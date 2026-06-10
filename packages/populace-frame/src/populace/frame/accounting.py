@@ -53,7 +53,7 @@ def _resolve(
             "weighted accounting requires numeric or boolean values."
         )
     values = series.to_numpy(dtype=np.float64)
-    weights = bundle._effective_weights(owner)
+    weights = bundle.resolve_weights(owner).values
     return values, weights, owner
 
 

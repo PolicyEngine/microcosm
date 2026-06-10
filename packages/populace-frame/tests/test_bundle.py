@@ -247,6 +247,105 @@ class TestEffectiveWeights:
             wsum(uneven, "tax_unit_income")
 
 
+class TestResolveWeights:
+    """Public kind-preserving weight resolution (the fit-on-a-grouped-frame fix).
+
+    ``resolve_weights`` returns a typed :class:`Weights` for *any* entity,
+    resolving inheritance and carrying the source entity's kind — unlike
+    ``weights_for``, which only returns an entity's own stored vector. This is
+    what lets a person-level fit run on a household-weighted frame.
+    """
+
+    def test_person_resolve_on_household_weighted_frame_carries_kind_and_values(
+        self, make_bundle
+    ) -> None:
+        """A person resolve inherits the household's kind and broadcast values.
+
+        ``weights_for("person")`` raises (no stored person weights); the new
+        ``resolve_weights("person")`` instead returns the household design
+        weights broadcast through membership, *as a Weights of kind design* —
+        not a bare ndarray that has dropped the kind.
+        """
+        bundle = make_bundle(weight_values=(100.0, 200.0))
+        # The old accessor still refuses an entity without its own weights.
+        with pytest.raises(ValueError, match="No weights stored"):
+            bundle.weights_for("person")
+
+        resolved = bundle.resolve_weights("person")
+        assert isinstance(resolved, Weights)
+        # Kind is preserved from the source (household) entity.
+        assert resolved.kind is WeightKind.DESIGN
+        # Values are the household weights broadcast onto the 5 persons:
+        # persons 0-1 in hh 1 (100), persons 2-4 in hh 2 (200).
+        assert resolved.values.tolist() == [100.0, 100.0, 200.0, 200.0, 200.0]
+        # And exactly the effective-weight values accounting uses.
+        np.testing.assert_array_equal(
+            resolved.values, bundle._effective_weights("person")
+        )
+
+    def test_calibrated_household_resolves_to_calibrated_person(
+        self, make_bundle
+    ) -> None:
+        """A calibrated household frame resolves person weights as calibrated.
+
+        The kind moves forward with the source: when the household weights are
+        calibrated, a person inherits ``calibrated``, so a fit that demands the
+        kind match sees ``calibrated`` (not a kind the inherited vector lost).
+        """
+        bundle = make_bundle(
+            weight_values=(100.0, 200.0), kind=WeightKind.CALIBRATED
+        )
+        resolved = bundle.resolve_weights("person")
+        assert resolved.kind is WeightKind.CALIBRATED
+        assert resolved.values.tolist() == [100.0, 100.0, 200.0, 200.0, 200.0]
+
+    def test_entity_with_its_own_weights_returns_them_as_is(
+        self, make_bundle
+    ) -> None:
+        """When the entity stores weights, resolve returns that exact object."""
+        bundle = make_bundle(weight_values=(100.0, 200.0))
+        # The household stores its own weights: returned identically.
+        assert bundle.resolve_weights("household") is bundle.weights_for("household")
+
+    def test_ambiguity_still_raises(self) -> None:
+        """Zero or multiple weighted group entities make a person resolve ambiguous.
+
+        ``resolve_weights`` keeps the same ambiguity guard ``_effective_weights``
+        has: with two weighted group entities there is no single source kind to
+        carry, so it refuses.
+        """
+        schema = EntitySchema(group_entities=("household", "tax_unit"))
+        person = pd.DataFrame(
+            {
+                "person_id": range(4),
+                "person_household_id": [1, 1, 2, 2],
+                "person_tax_unit_id": [1, 1, 2, 3],
+            }
+        )
+        household = pd.DataFrame({"household_id": [1, 2]})
+        tax_unit = pd.DataFrame({"tax_unit_id": [1, 2, 3]})
+        bundle = Frame(
+            {"person": person, "household": household, "tax_unit": tax_unit},
+            schema,
+            {
+                "household": Weights(
+                    values=np.array([5.0, 11.0]), kind=WeightKind.DESIGN
+                ),
+                "tax_unit": Weights(
+                    values=np.array([1.0, 2.0, 3.0]), kind=WeightKind.DESIGN
+                ),
+            },
+        )
+        with pytest.raises(ValueError, match="weighted group entities"):
+            bundle.resolve_weights("person")
+
+    def test_unknown_entity_is_named(self, make_bundle) -> None:
+        """Resolving an undeclared entity raises, naming the schema's entities."""
+        bundle = make_bundle()
+        with pytest.raises(ValueError, match="Unknown entity"):
+            bundle.resolve_weights("firm")
+
+
 class TestStratumMass:
     def test_mass_per_stratum_via_household_broadcast(self, make_bundle) -> None:
         strata = pd.Series(["cps", "cps", "syn", "syn", "syn"], index=range(5))
