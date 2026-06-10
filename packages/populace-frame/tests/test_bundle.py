@@ -112,6 +112,23 @@ class TestAccessors:
                 strata=strata,
             )
 
+    def test_stray_weight_column_is_reserved_by_the_kernel(
+        self, simple_schema
+    ) -> None:
+        """C1: a {entity}_weight column the bundle doesn't own as typed weights
+        is a reserved name the kernel materializes at export — it is refused."""
+        person = pd.DataFrame(
+            {"person_id": [0, 1], "person_household_id": [1, 1], "x": [1.0, 2.0]}
+        )
+        household = pd.DataFrame({"household_id": [1], "household_weight": [42.0]})
+        # household carries a household_weight COLUMN but only person carries
+        # typed weights — the column is an orphan the engine would consume.
+        weights = {
+            "person": Weights(values=np.array([3.0, 3.0]), kind=WeightKind.DESIGN)
+        }
+        with pytest.raises(ValueError, match="reserved weight-column name"):
+            Frame({"person": person, "household": household}, simple_schema, weights)
+
     def test_unsorted_group_ids_rejected(self, simple_schema) -> None:
         person = pd.DataFrame(
             {"person_id": [0, 1], "person_household_id": [2, 1]}

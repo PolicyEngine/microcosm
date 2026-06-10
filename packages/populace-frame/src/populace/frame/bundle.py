@@ -91,6 +91,7 @@ class Frame:
         self._validate_links()
         self._validate_global_columns()
         self._validate_weights()
+        self._validate_reserved_weight_columns()
 
     # ------------------------------------------------------------------
     # Validation (constructor invariants)
@@ -271,6 +272,37 @@ class Frame:
                 raise ValueError(
                     f"Weights for entity {entity!r} have length {len(weights)} "
                     f"but the {entity!r} table has {n} row(s)."
+                )
+
+    def _validate_reserved_weight_columns(self) -> None:
+        """Reserve the ``{entity}_weight`` column names for the kernel.
+
+        Weights are typed vectors stored off the tables; the rules-engine
+        adapters materialize them into ``{entity}_weight`` columns at export
+        from the bundle's typed weights. A ``{entity}_weight`` column sitting
+        in an entity table the bundle does *not* carry typed weights for is an
+        orphan the kernel would otherwise ignore silently while the engine
+        consumes it — the calibration-loses-mass footgun. The name belongs to
+        the kernel, so reject it.
+
+        A ``{entity}_weight`` column on an entity that *does* carry typed
+        weights is redundant but harmless: the export always overwrites it
+        from the typed weights (see the adapter's ``_engine_tables``), so it
+        is permitted for round-trip convenience.
+        """
+        for entity in self._schema.entities:
+            reserved = f"{entity}_weight"
+            for table_entity in self._schema.entities:
+                if reserved not in self._tables[table_entity].columns:
+                    continue
+                if table_entity == entity and entity in self._weights:
+                    continue
+                raise ValueError(
+                    f"Column {reserved!r} on the {table_entity!r} table is a "
+                    "reserved weight-column name the kernel owns (it is "
+                    f"materialized from {entity!r}'s typed weights at export). "
+                    "Store weights as a typed Weights vector, not a table "
+                    "column; drop this column before constructing the frame."
                 )
 
     def _validated_strata(self, strata: pd.Series | None) -> pd.Series:

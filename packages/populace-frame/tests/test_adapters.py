@@ -8,12 +8,54 @@ and fails with a precise error only when an engine-backed method is called.
 import importlib.util
 import json
 
+import numpy as np
+import pandas as pd
 import pytest
 
-from populace.frame import US_SCHEMA, ExportContract, RulesEngine
+from populace.frame import (
+    US_SCHEMA,
+    ExportContract,
+    Frame,
+    RulesEngine,
+    WeightKind,
+    Weights,
+)
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 _POLICYENGINE_INSTALLED = importlib.util.find_spec("policyengine_us") is not None
+
+
+def _us_bundle(household_weight_column=None, weight_values=(1500.0, 900.0)):
+    """A minimal US-schema bundle (no engine needed for _engine_tables)."""
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "person_household_id": [1, 1, 2],
+            "person_tax_unit_id": [1, 1, 2],
+            "person_spm_unit_id": [1, 1, 2],
+            "person_family_id": [1, 1, 2],
+            "person_marital_unit_id": [1, 1, 2],
+            "age": [40.0, 38.0, 33.0],
+        }
+    )
+    household = pd.DataFrame({"household_id": [1, 2]})
+    if household_weight_column is not None:
+        household["household_weight"] = household_weight_column
+    group = lambda name: pd.DataFrame({f"{name}_id": [1, 2]})  # noqa: E731
+    tables = {
+        "person": person,
+        "household": household,
+        "tax_unit": group("tax_unit"),
+        "spm_unit": group("spm_unit"),
+        "family": group("family"),
+        "marital_unit": group("marital_unit"),
+    }
+    weights = {
+        "household": Weights(
+            values=np.array(weight_values), kind=WeightKind.CALIBRATED
+        )
+    }
+    return Frame(tables, US_SCHEMA, weights)
 
 
 class TestLazyImport:
@@ -73,3 +115,19 @@ class TestExportContract:
         )
         adapter = PolicyEngineUSEngine(contract=contract)
         assert adapter.export_contract() is contract
+
+
+class TestEngineTablesWeights:
+    """C1: typed weights are authoritative for the exported household_weight."""
+
+    def test_typed_weights_overwrite_a_stale_household_weight_column(self) -> None:
+        # A leftover household_weight column [999, 999] must NOT win over the
+        # bundle's calibrated typed weights [1500, 900].
+        bundle = _us_bundle(household_weight_column=[999.0, 999.0])
+        tables = PolicyEngineUSEngine()._engine_tables(bundle)
+        assert tables["household"]["household_weight"].tolist() == [1500.0, 900.0]
+
+    def test_household_weight_is_materialized_when_no_column_present(self) -> None:
+        bundle = _us_bundle(household_weight_column=None)
+        tables = PolicyEngineUSEngine()._engine_tables(bundle)
+        assert tables["household"]["household_weight"].tolist() == [1500.0, 900.0]

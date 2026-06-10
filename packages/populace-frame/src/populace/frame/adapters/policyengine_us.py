@@ -247,7 +247,10 @@ class PolicyEngineUSEngine:
         """Copy the bundle's tables and materialize the household weights.
 
         The bundle owns the typed weights; the engine wants them as the
-        ``household_weight`` column on the household table.
+        ``household_weight`` column on the household table. The typed weights
+        are always authoritative: any ``household_weight`` column already on
+        the table is overwritten (never trusted), so a stale or leftover
+        column can never override calibrated weights on export.
         """
         expected = (_PERSON_TABLE, *_GROUP_TABLES)
         if set(bundle.entities) != set(expected):
@@ -256,10 +259,9 @@ class PolicyEngineUSEngine:
                 f"{list(expected)}; bundle has {list(bundle.entities)}."
             )
         tables = {name: bundle.table(name).copy() for name in expected}
-        if _HOUSEHOLD_WEIGHT_COLUMN not in tables["household"].columns:
-            tables["household"][_HOUSEHOLD_WEIGHT_COLUMN] = bundle.weights_for(
-                "household"
-            ).values
+        tables["household"][_HOUSEHOLD_WEIGHT_COLUMN] = bundle.weights_for(
+            "household"
+        ).values
         return tables
 
     def _build_dataset(
