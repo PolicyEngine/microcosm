@@ -1,11 +1,14 @@
 [project]
-name = "micro-workspace"
+name = "populace-workspace"
 version = "0.0.0"
-description = "Workspace root for the micro stack (not a published package)"
+description = "Workspace root for the populace stack (not a published package)"
 requires-python = ">=3.13"
 
 [tool.uv.workspace]
 members = ["packages/*"]
+
+[dependency-groups]
+dev = ["ruff>=0.8"]
 
 [tool.ruff]
 line-length = 88
@@ -14,6 +17,11 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B"]
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+# populace is a PEP 420 namespace package (no top-level __init__.py), so
+# first-party detection cannot infer it from the src layout.
+known-first-party = ["populace"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
