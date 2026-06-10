@@ -92,6 +92,80 @@ def test_zero_inflated_draws_preserve_zero_mass_and_signs(
     assert (nonzero[nonzero < 0] <= 0.5 * max_train_neg).all()
 
 
+def test_gate_retains_a_rare_low_weight_class_and_draws_it(
+    rare_positive_frame,
+) -> None:
+    """The gate keeps a vanishingly-rare sign class and can draw it.
+
+    The reviewer's repro: ~10 positive rows at weight 1 among ~4990 zeros at
+    weight 50 (weighted positive share ~4e-5). The old gate was fit on an n-of-n
+    weighted bootstrap, which drew the positive rows with probability ~4e-5 and
+    so produced a single-class gate that drew the positive sign with probability
+    zero (0 positive draws across millions). Fitting the gate directly with
+    ``sample_weight`` keeps every row, so:
+
+    (a) the fitted gate retains both classes (0 and 1); and
+    (b) across seeds the model produces a positive draw at least once — the
+        positive regime is reachable, not collapsed to zero.
+    """
+    frame, target, _ = rare_positive_frame(seed=0)
+    # The target is zero-inflated positive: zeros plus a positive tail.
+    fitted = fit(frame, ["signal", "noise"], ["target"], n_estimators=60, seed=0)
+    assert fitted.regimes()["target"] == Regime.ZERO_INFLATED_POSITIVE
+
+    # (a) The gate retained both sign classes (0 and 1); the bootstrap dropped 1.
+    gate = fitted._target_models["target"].gate
+    assert set(np.asarray(gate.classes_).tolist()) == {0, 1}
+
+    # (b) Positive draws appear. One predict is ~n*4e-5 ~ 0.2 expected positives,
+    # so aggregate several seeds to make the assertion robust: the share is small
+    # but emphatically not zero (the bug drew exactly zero, forever).
+    total_positive = 0
+    for _ in range(8):
+        draws = fitted.predict(frame)["target"].to_numpy()
+        total_positive += int((draws > 0).sum())
+    assert total_positive > 0, (
+        "the rare positive regime was never drawn; the gate collapsed to the "
+        "zero class (the reproduced bootstrap bug)"
+    )
+
+
+def test_gate_consistency_guard_rejects_a_dropped_class(make_person_frame) -> None:
+    """The internal-consistency guard fires if the gate drops a training class.
+
+    Regime detection found a sign class, but the fitted gate's ``classes_`` lack
+    it — drawing it at probability zero would silently lose that sign. The fit
+    must raise rather than ship an inconsistent gate. We force the inconsistency
+    by monkeypatching the gate factory to return a classifier that always fits a
+    single class.
+    """
+    import populace.fit.qrf as qrf_module
+
+    n = 400
+    rng = np.random.default_rng(0)
+    # A genuine zero-inflated-positive target (so a gate is built).
+    x = rng.normal(size=n)
+    target = np.where(rng.random(n) < 0.3, np.abs(rng.normal(1000.0, 100.0, n)), 0.0)
+    frame = make_person_frame({"x": x, "target": target})
+
+    class _SingleClassGate:
+        """A stand-in classifier that always fits only the zero class."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            self.classes_ = np.array([0])
+
+        def fit(self, x, y, sample_weight=None):  # noqa: A002 - mirror sklearn
+            return self
+
+    original = qrf_module._make_gate
+    qrf_module._make_gate = lambda seed: _SingleClassGate()
+    try:
+        with pytest.raises(ValueError, match="Sign gate dropped class"):
+            fit(frame, ["x"], ["target"], n_estimators=10, seed=0)
+    finally:
+        qrf_module._make_gate = original
+
+
 def test_degenerate_zero_target_draws_all_zero(make_person_frame) -> None:
     """A target that is constant zero in training draws exactly zero."""
     n = 200

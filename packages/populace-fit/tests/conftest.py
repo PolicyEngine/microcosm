@@ -130,6 +130,54 @@ def weight_correlated_frame():
 
 
 @pytest.fixture
+def rare_positive_frame():
+    """Factory: a target positive on a few low-weight rows, zero elsewhere.
+
+    The reviewer's gate-bug repro. About ``n_positive`` rows carry a positive
+    value at weight 1; every other row is zero at weight 50, so the *weighted*
+    positive share is tiny (~4e-5 at the defaults). An n-of-n weighted bootstrap
+    of the gate draws each positive row with probability ~4e-5, so the resampled
+    labels almost always contain only the zero class — the gate collapses to one
+    class and can never draw the positive sign. Weighting the gate directly by
+    ``sample_weight`` keeps every row, so both classes survive.
+
+    The predictors carry a weak signal about which rows are positive (so the
+    forest can place them), but the positive rows remain rare enough under the
+    weights that the bootstrap would drop them.
+
+    Returns:
+        A callable ``make(seed=0, n=CONTRACT_N, n_positive=10)`` returning
+        ``(frame, target_values, weight_values)``.
+    """
+
+    def make(
+        seed: int = 0,
+        n: int = CONTRACT_N,
+        n_positive: int = 10,
+    ) -> tuple[Frame, np.ndarray, np.ndarray]:
+        rng = np.random.default_rng(seed)
+        positive_idx = rng.choice(n, size=n_positive, replace=False)
+        is_positive = np.zeros(n, dtype=bool)
+        is_positive[positive_idx] = True
+        # A predictor weakly correlated with being positive, so the gate has a
+        # signal to learn (without it, even a correct gate could not separate
+        # the classes and the test would not isolate the bootstrap bug).
+        signal = rng.normal(0.0, 1.0, n)
+        signal[is_positive] += 2.5
+        noise = rng.normal(0.0, 1.0, n)
+        target = np.where(
+            is_positive, np.abs(rng.normal(100_000.0, 10_000.0, n)), 0.0
+        )
+        weights = np.where(is_positive, 1.0, 50.0)
+        frame = _person_household_frame(
+            {"signal": signal, "noise": noise, "target": target}, weights
+        )
+        return frame, target, weights
+
+    return make
+
+
+@pytest.fixture
 def zero_inflated_frame():
     """Factory: a frame with a zero-inflated, sign-mixed target.
 

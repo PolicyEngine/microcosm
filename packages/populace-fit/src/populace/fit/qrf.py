@@ -3,10 +3,10 @@
 This is the from-scratch successor to microimpute's regime-gated QRF imputer,
 reimplemented against the :class:`~populace.frame.Frame`. Three ideas combine:
 
-**Weighted bootstrap.** ``quantile_forest`` (and random forests generally)
-cannot honor a ``sample_weight`` in their *predictive* distribution: a
-fully-grown leaf holds one training row, so weighting impurity does not move the
-value a draw reads out, and the backend uses ``sample_weight`` only as a
+**Weighted bootstrap (forests only).** ``quantile_forest`` (and random forests
+generally) cannot honor a ``sample_weight`` in their *predictive* distribution:
+a fully-grown leaf holds one training row, so weighting impurity does not move
+the value a draw reads out, and the backend uses ``sample_weight`` only as a
 zero-weight filter on leaf membership. So weights are materialized *into the
 data*: before each forest is grown, training rows are drawn with replacement
 with probability proportional to weight (:func:`_weighted_bootstrap`). The leaf
@@ -21,7 +21,12 @@ crossing (predicting values in the empty gap between the negative and positive
 clusters). So a classifier gates each row into its sign class, and a separate
 forest models the magnitude within each nonzero sign. Regime detection is
 **structural**: it reads the unweighted support, because which signs *exist* is
-a fact about the variable, not about the population's weighting.
+a fact about the variable, not about the population's weighting. The gate is
+weighted *directly* by ``sample_weight`` — which the histogram classifier
+honors exactly — **not** by the forests' bootstrap: an n-of-n weighted
+resample would delete a vanishingly rare sign class outright (a positive row at
+weight 1 among thousands of zeros at weight 50 is drawn with probability ~4e-5),
+collapsing the gate to a single class that can never draw the missing sign.
 
 **Chaining.** Targets are imputed sequentially; each conditions on the
 predictors plus the targets already drawn, so the joint structure across
@@ -367,8 +372,9 @@ class RegimeGatedQRF:
                 single if regime == Regime.NEGATIVE_ONLY else None,
             )
 
-        # Gated regimes: a sign label per row, weighted into the gate by the
-        # same bootstrap so the gate's probabilities are weighted too.
+        # Gated regimes: a sign label per row. The gate is weighted directly by
+        # sample_weight (not by bootstrap), so every sign class survives even
+        # when one is vanishingly rare under the weights.
         labels = self._sign_labels(y)
         gate = self._fit_gate(features, labels, weights, rng)
         pos_mask = y > self.zero_atol
@@ -391,10 +397,52 @@ class RegimeGatedQRF:
         weights: np.ndarray | None,
         rng: np.random.Generator,
     ) -> HistGradientBoostingClassifier:
-        """Weighted-bootstrap the rows, then fit the sign-gate classifier."""
-        x_fit, labels_fit = _weighted_bootstrap(features, labels, weights, rng)
+        """Fit the sign-gate classifier, weighting it directly by sample_weight.
+
+        Unlike the forests, the gate is *not* weighted by bootstrap.
+        ``HistGradientBoostingClassifier`` honors ``sample_weight`` exactly, so
+        passing the weights directly weights the gate's class probabilities
+        without resampling. An n-of-n weighted bootstrap would instead delete
+        rare low-weight classes entirely — a single positive row at weight 1
+        among thousands of zeros at weight 50 is drawn with probability ~4e-5,
+        so the resampled labels routinely contain only the zero class and the
+        gate could never draw the positive sign (the reproduced gate bug). With
+        ``sample_weight`` every training row is present, so every sign class the
+        data contains survives into ``classes_``.
+
+        A guard then enforces internal consistency: every sign class present in
+        the (unweighted) training labels must appear in the fitted gate's
+        ``classes_``. If sklearn ever dropped a class, drawing it at probability
+        zero would silently lose that sign, so we raise instead.
+
+        Args:
+            features: The chained predictor matrix for this target's rows.
+            labels: Per-row sign codes (``-1`` / ``0`` / ``1``).
+            weights: Per-row weights, or ``None`` for an unweighted gate.
+            rng: Seeded generator supplying the gate's ``random_state`` (kept
+                for fit reproducibility even though no resample is drawn).
+
+        Returns:
+            The fitted sign-gate classifier.
+
+        Raises:
+            ValueError: If a sign class present in ``labels`` is absent from the
+                fitted gate's ``classes_`` (internal inconsistency).
+        """
         gate = _make_gate(int(rng.integers(0, 2**31 - 1)))
-        gate.fit(x_fit, labels_fit)
+        gate.fit(features, labels, sample_weight=weights)
+        training_classes = set(np.unique(labels).tolist())
+        fitted_classes = set(np.asarray(gate.classes_).tolist())
+        missing = sorted(training_classes - fitted_classes)
+        if missing:
+            raise ValueError(
+                "Sign gate dropped class(es) present in training: "
+                f"{missing} are in the training sign labels "
+                f"{sorted(training_classes)} but absent from the fitted gate's "
+                f"classes_ {sorted(fitted_classes)}. Drawing a missing class at "
+                "probability zero would silently lose that sign; refusing to "
+                "fit an inconsistent gate."
+            )
         return gate
 
 
