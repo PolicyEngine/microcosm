@@ -19,7 +19,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 import pandas as pd
 
-from populace.frame import Frame, WeightKind
+from populace.frame import Frame, WeightKind, assert_kind_transition
 
 __all__ = [
     "ConditionalModel",
@@ -177,10 +177,17 @@ def resolve_fit_weights(
     predictor and target shares — so a model can hand it straight to its
     weighted bootstrap.
 
+    Weights are resolved through :meth:`~populace.frame.Frame.resolve_weights`,
+    not only an entity's *own* stored vector: a person-level fit on a
+    household-weighted frame reads the household weights broadcast onto persons,
+    carrying the household's kind. The kind discipline is unchanged — the
+    requested kind must match the *resolved* (possibly inherited) kind — so a
+    fit can never silently weight by a kind the caller did not ask for.
+
     Args:
         frame: The frame carrying the typed weights.
-        entity: The entity that owns the predictors and targets (its weights
-            are the ones that weight the fit).
+        entity: The entity that owns the predictors and targets (its effective
+            weights are the ones that weight the fit).
         weights: ``"none"`` to fit unweighted (the only unweighted path), or a
             :class:`~populace.frame.WeightKind` / its string value selecting
             which typed weight vector of ``entity`` to use.
@@ -193,8 +200,8 @@ def resolve_fit_weights(
         TypeError: If ``weights`` is neither a string nor a
             :class:`~populace.frame.WeightKind`.
         ValueError: If the spec is an unknown string, or the requested kind is
-            not the kind of ``entity``'s stored weights. The message names the
-            valid specs / the stored kind.
+            not the kind of ``entity``'s resolved weights. The message names the
+            valid specs / the resolved kind and an actionable fix.
     """
     if isinstance(weights, WeightKind):
         requested = weights
@@ -216,12 +223,35 @@ def resolve_fit_weights(
             f"To fit unweighted, pass weights={NO_WEIGHTS!r} explicitly."
         )
 
-    stored = frame.weights_for(entity)  # raises naming the entity if absent
-    if stored.kind is not requested:
+    # Resolve through the frame's effective weights, not only the entity's own
+    # stored vector: a person-level fit on a household-weighted frame inherits
+    # the household weights (and their kind). Raises naming the entity / the
+    # ambiguity if the weights cannot be resolved.
+    resolved = frame.resolve_weights(entity)
+    if resolved.kind is not requested:
+        try:
+            # Kinds only move forward (design -> importance -> calibrated).
+            # If the requested kind is reachable from the resolved one, telling
+            # the caller to advance the frame's weights is actionable.
+            assert_kind_transition(resolved.kind, requested)
+        except ValueError:
+            # The requested kind ranks *below* the resolved kind, so advancing
+            # is impossible (calibrated weights never revert to design). The
+            # only actionable fix is to request the kind the frame actually
+            # carries.
+            raise ValueError(
+                f"Requested {requested.value!r} weights for entity {entity!r}, "
+                f"but its resolved weights are {resolved.kind.value!r}. Weight "
+                "kinds only move forward "
+                "(design -> importance -> calibrated), so the frame cannot be "
+                f"reverted to {requested.value!r}; pass "
+                f"weights={resolved.kind.value!r} to fit on the weights the "
+                "frame carries."
+            ) from None
         raise ValueError(
             f"Requested {requested.value!r} weights for entity {entity!r}, but "
-            f"its stored weights are {stored.kind.value!r}. Either pass "
-            f"weights={stored.kind.value!r}, or advance the frame's weights to "
-            f"{requested.value!r} first."
+            f"its resolved weights are {resolved.kind.value!r}. Either pass "
+            f"weights={resolved.kind.value!r}, or advance the frame's weights "
+            f"to {requested.value!r} first."
         )
-    return np.asarray(stored.values, dtype=np.float64)
+    return np.asarray(resolved.values, dtype=np.float64)
