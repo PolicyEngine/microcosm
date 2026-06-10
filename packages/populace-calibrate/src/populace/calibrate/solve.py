@@ -5,7 +5,7 @@
 :class:`~populace.frame.Frame` (:mod:`populace.calibrate.matrix`), then optimizes
 the weight vector of ``weight_entity`` to minimize the eCPS relative-error loss
 
-    ``mean(((A @ w - b + 1) / (b + 1))**2)``
+    ``mean(((A @ w - b) / (b + 1))**2)``
 
 — the loss that produced the enhanced CPS — with torch's Adam over the
 **log-weights** (so weights stay strictly positive by construction). It returns a
@@ -462,10 +462,20 @@ def _search_l0_lambda_for_budget(
         return weights, trajectory, n_nonzero
 
     best: tuple[np.ndarray, np.ndarray, float, int] | None = None
+    # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
+    # (the conserve+cap projection raised). It is *more* pruning than feasible,
+    # so it steers the search the same way "too few survivors" does — toward a
+    # smaller penalty — without crashing the whole search or polluting ``best``.
+    _over_pruned = -1
 
     def consider(lam: float) -> int:
         nonlocal best
-        weights, trajectory, n_nonzero = evaluate(lam)
+        try:
+            weights, trajectory, n_nonzero = evaluate(lam)
+        except ValueError as exc:
+            if "Infeasible combination" in str(exc):
+                return _over_pruned
+            raise
         if best is None or abs(n_nonzero - target_records) < abs(
             best[3] - target_records
         ):
@@ -480,26 +490,36 @@ def _search_l0_lambda_for_budget(
     iters_left = budget_iters
     n_nonzero = consider(10.0**first_u)
     iters_left -= 1
-    # Seed the bracket so the side the warm start landed on is tightened.
+    # Seed the bracket so the side the warm start landed on is tightened. An
+    # over-pruned (infeasible) probe groups with "too few survivors".
     if n_nonzero > target_records:
         lo_u = first_u  # too many survivors -> need a larger penalty
     else:
-        hi_u = first_u  # too few survivors -> need a smaller penalty
+        hi_u = first_u  # too few survivors / over-pruned -> need a smaller penalty
 
-    while iters_left > 0 and best is not None and abs(
-        best[3] - target_records
-    ) > tol:
+    # Keep searching while no feasible run is known yet, or the best is outside
+    # tolerance, until the iteration budget is spent.
+    while iters_left > 0 and (best is None or abs(best[3] - target_records) > tol):
         mid_u = (lo_u + hi_u) / 2.0
         n_nonzero = consider(10.0**mid_u)
         iters_left -= 1
-        if n_nonzero > target_records:
-            lo_u = mid_u
-        elif n_nonzero < target_records:
-            hi_u = mid_u
+        if n_nonzero == _over_pruned or n_nonzero < target_records:
+            hi_u = mid_u  # over-pruned / too few survivors -> smaller penalty
+        elif n_nonzero > target_records:
+            lo_u = mid_u  # too many survivors -> larger penalty
         else:
             break
 
-    assert best is not None  # at least one evaluation always runs
+    if best is None:
+        # Every penalty tried over-pruned past the cap-feasible floor: the budget
+        # cannot be met under this conservation + cap. Name the three causes.
+        raise ValueError(
+            f"Cannot meet target_records={target_records} with mass='conserve' "
+            f"and max_weight_ratio={max_weight_ratio}: every L0 penalty searched "
+            "over-pruned past the mass the surviving records can carry under the "
+            "cap. Loosen max_weight_ratio, relax mass conservation, or raise the "
+            "record budget."
+        )
     return best
 
 
@@ -601,7 +621,7 @@ def calibrate(
 
     Compiles the targets into a sparse system and optimizes the log-weights with
     Adam to minimize the eCPS relative-error loss
-    ``mean(((A @ w - b + 1)/(b + 1))**2)``. Returns a new frame whose
+    ``mean(((A @ w - b)/(b + 1))**2)``. Returns a new frame whose
     ``weight_entity`` weights are :class:`~populace.frame.WeightKind.CALIBRATED`.
 
     Args:

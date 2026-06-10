@@ -22,7 +22,7 @@ reproduces them.
    and reported**, never dropped silently.
 3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
    the log-weights with torch Adam to minimize the **eCPS relative-error loss**
-   `mean(((A @ w - b + 1)/(b + 1))**2)` — the loss that produced the enhanced
+   `mean(((A @ w - b)/(b + 1))**2)` — the loss that produced the enhanced
    CPS. Weights stay strictly positive by construction (`w = exp(log_w)`). The
    result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.

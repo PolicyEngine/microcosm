@@ -435,3 +435,37 @@ def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> Non
     result = calibrate(frame, targets, epochs=400, seed=0)
     estimate = result.frame.resolve_weights("household").values.sum()
     assert abs(estimate - 5.0) < 0.05  # not 4.0
+
+
+def test_budget_search_survives_a_mid_search_infeasible_probe(feasible_frame) -> None:
+    """A feasible budget under conserve + cap must not crash on a search probe.
+
+    The L0 budget search bisects ``l0_lambda``; an intermediate (too-large)
+    penalty can over-prune past what the surviving records can carry under the
+    cap, tripping the conserve+cap infeasibility raise *inside* the search. That
+    must be caught and steered (toward a smaller penalty), not surfaced as a
+    failure that wrongly blames the user's budget — which is itself feasible.
+    """
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    # 395 survivors at cap 1.05x can carry the input total (395*1.05 > 400), so
+    # the budget is feasible — the search must reach it, not raise.
+    result = calibrate(
+        frame,
+        targets,
+        epochs=200,
+        seed=0,
+        target_records=395,
+        mass="conserve",
+        max_weight_ratio=1.05,
+    )
+    assert result.n_nonzero > 0
+    # Mass is still conserved on the survivors.
+    initial_total = frame.resolve_weights("household").values.sum()
+    final_total = result.frame.resolve_weights("household").values.sum()
+    assert abs(final_total - initial_total) / initial_total < 1e-6
