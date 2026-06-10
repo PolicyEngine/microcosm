@@ -9,6 +9,8 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import pytest
+
 from populace.calibrate import Target, TargetSet, calibrate
 from populace.frame import WeightKind
 
@@ -164,6 +166,87 @@ def test_l0_prunes_toward_a_record_budget(feasible_frame) -> None:
     # Pruned well below the 400 records, in the neighborhood of the budget.
     assert nonzero < 250
     assert result.l0_lambda > 0.0
+
+
+def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
+    feasible_frame,
+) -> None:
+    """L0 pruning survives mass-conservation + a weight cap (Finding 4).
+
+    With ``mass="conserve"`` and a ``max_weight_ratio`` cap, the post-pruning
+    mass deficit must be filled only over the surviving (gate-open) records.
+    Filling it over *all* records with headroom — including the gate-closed,
+    ~0-weight pruned ones — resurrects every record (the bug: free-mass pruned
+    hundreds, conserve+cap returned zero pruned).
+
+    The cap here is loose enough that the survivors *can* absorb the freed mass
+    (a count target at factor 1.0 means the survivors must carry the full input
+    total, so a tight cap is genuinely infeasible — tested separately).
+    """
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    free = calibrate(frame, targets, epochs=400, seed=0, l0_lambda=3e-3)
+    free_nonzero = int((free.frame.resolve_weights("household").values > 1e-6).sum())
+    assert free_nonzero < 100  # free mass prunes hard
+
+    capped = calibrate(
+        frame, targets, epochs=400, seed=0, l0_lambda=3e-3,
+        mass="conserve", max_weight_ratio=100.0,
+    )
+    capped_w = capped.frame.resolve_weights("household").values
+    capped_nonzero = int((capped_w > 1e-6).sum())
+    # The pruned records stay pruned: the survivor count is still small, nowhere
+    # near the full 400 the resurrection bug returned.
+    assert capped_nonzero < 150, capped_nonzero
+    # Mass is still conserved on the survivors.
+    initial_total = frame.resolve_weights("household").values.sum()
+    assert abs(capped_w.sum() - initial_total) / initial_total < 1e-6
+
+
+def test_cap_below_one_with_conserve_is_rejected_a_priori(feasible_frame) -> None:
+    """``max_weight_ratio < 1`` with ``mass="conserve"`` is infeasible (Finding 7).
+
+    Every capped weight is below its initial, so ``sum(cap) < total`` and the
+    input mass can never be restored. This is infeasible before any optimization
+    and must be rejected in argument validation, naming the three causes — not
+    surfaced later as an opaque kernel mass-conservation failure.
+    """
+    frame, truths = feasible_frame(n=100)
+    targets = TargetSet((_income_target(truths["income"], 1.0),))
+    with pytest.raises(ValueError, match="max_weight_ratio"):
+        calibrate(
+            frame, targets, epochs=50, seed=0,
+            mass="conserve", max_weight_ratio=0.5,
+        )
+
+
+def test_prune_conserve_cap_infeasible_when_survivors_lack_headroom(
+    feasible_frame,
+) -> None:
+    """If the surviving records cannot absorb the deficit under the cap, raise.
+
+    A tight cap (just above 1) leaves the few survivors almost no headroom, so
+    they cannot soak up the mass freed by pruning. That is genuinely infeasible
+    and must raise a clear error naming pruning + conserve + cap, rather than
+    silently resurrecting the pruned records to balance the books.
+    """
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    with pytest.raises(ValueError, match="prun.*conserve.*cap|conserve.*cap.*prun"):
+        calibrate(
+            frame, targets, epochs=400, seed=0, l0_lambda=5e-3,
+            mass="conserve", max_weight_ratio=1.05,
+        )
 
 
 def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:

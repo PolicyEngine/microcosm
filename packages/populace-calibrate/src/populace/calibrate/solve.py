@@ -233,6 +233,9 @@ def _optimize(
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
     total0 = float(w0.sum())
+    # Same prune threshold the result's n_nonzero uses, so "pruned" here means
+    # exactly what the reported non-zero count means.
+    prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
     log_w = torch.tensor(np.log(w0), dtype=torch.float32, requires_grad=True)
 
     gates: HardConcrete | None = None
@@ -309,9 +312,18 @@ def _optimize(
     # Exact mass conservation on the returned vector: a single closing rescale
     # to the input total. When a max_weight_ratio is also set, the rescale is
     # capped at the bound and the residual is redistributed below the bound, so
-    # both invariants hold together.
+    # both invariants hold together. When L0 pruning is active, the deficit is
+    # redistributed only over surviving (gate-open) records so the cap fill never
+    # resurrects a pruned one.
     if conserve_mass:
-        final = _project_to_total(final, total0, max_weight_ratio, w0)
+        pruned = (
+            final <= prune_atol
+            if (gates is not None and l0_lambda > 0.0)
+            else None
+        )
+        final = _project_to_total(
+            final, total0, max_weight_ratio, w0, pruned=pruned
+        )
     return final, trajectory
 
 
@@ -320,15 +332,35 @@ def _project_to_total(
     total: float,
     max_weight_ratio: float | None,
     initial_weights: np.ndarray,
+    *,
+    pruned: np.ndarray | None = None,
 ) -> np.ndarray:
     """Scale ``weights`` to sum to ``total`` while respecting an optional cap.
 
-    Without a cap this is a single multiplicative rescale. With a cap, records
-    are scaled up only to their bound and any shortfall is spread over the
-    records still below their bound, iterating until the total is met or no
-    headroom remains (in which case the cap binds and the total is the maximum
-    achievable — the caller's targets and cap are then jointly infeasible, which
-    the mass-conservation tolerance surfaces).
+    Without a cap this is a single multiplicative rescale (which preserves
+    zeros, so pruned records stay pruned). With a cap, records are scaled up only
+    to their bound and any shortfall is spread over the records still below their
+    bound, iterating until the total is met or no headroom remains.
+
+    When ``pruned`` is given (L0 pruning is active), the gate-closed records it
+    marks are held at their pruned value and are *never* refilled: the cap-fill
+    deficit is redistributed only over surviving records. This is the guard
+    against the cap fill resurrecting pruned records (Finding 4) — additive
+    redistribution over *all* records with headroom would re-open every gate.
+
+    Args:
+        weights: The realized weights to rescale (capped already or not).
+        total: The mass to restore (the input total).
+        max_weight_ratio: The per-record cap multiplier, or ``None``.
+        initial_weights: The initial weights the cap multiplies.
+        pruned: Optional boolean mask of gate-closed records to hold at zero and
+            exclude from deficit redistribution. ``None`` redistributes over
+            every record with headroom (the no-pruning case).
+
+    Raises:
+        ValueError: If pruning is active and the surviving (non-pruned) records
+            lack the headroom to absorb the freed mass under the cap — pruning +
+            conserve + cap are then jointly infeasible.
     """
     weights = weights.astype(np.float64).copy()
     if max_weight_ratio is None:
@@ -339,6 +371,9 @@ def _project_to_total(
 
     cap = max_weight_ratio * np.asarray(initial_weights, dtype=np.float64)
     weights = np.minimum(weights, cap)
+    # Survivors are the records eligible to absorb the deficit: below their cap
+    # and, when pruning is active, not gate-closed.
+    eligible = np.ones(len(weights), dtype=bool) if pruned is None else ~pruned
     for _ in range(64):
         current = weights.sum()
         if current <= 0 or np.isclose(current, total, rtol=1e-12):
@@ -347,9 +382,22 @@ def _project_to_total(
             weights *= total / current
             continue
         headroom = cap - weights
-        free = headroom > 0
+        free = (headroom > 0) & eligible
         if not free.any():
-            break  # cap binds everywhere; total is the achievable maximum.
+            if pruned is not None and pruned.any():
+                # The survivors are pinned at their caps yet the mass is still
+                # short: the only way to close it would be to refill pruned
+                # records, which we refuse. Surface the joint infeasibility.
+                raise ValueError(
+                    "Infeasible combination: L0 pruning + mass='conserve' + "
+                    f"max_weight_ratio={max_weight_ratio!r}. After pruning "
+                    f"{int(pruned.sum())} record(s), the {int(eligible.sum())} "
+                    "surviving record(s) cannot absorb the freed mass under the "
+                    "cap (sum of survivor caps < input total). Raise "
+                    "max_weight_ratio, loosen the record budget (smaller "
+                    "l0_lambda), or use mass='free'."
+                )
+            break  # no pruning: cap binds everywhere; total is the maximum.
         deficit = total - current
         share = headroom[free] / headroom[free].sum()
         weights[free] = np.minimum(weights[free] + deficit * share, cap[free])
@@ -431,6 +479,21 @@ def calibrate(
     if max_weight_ratio is not None and not (max_weight_ratio > 0):
         raise ValueError(
             f"max_weight_ratio must be positive, got {max_weight_ratio!r}."
+        )
+    if (
+        max_weight_ratio is not None
+        and max_weight_ratio < 1
+        and mass == CONSERVE_MASS
+    ):
+        # Every capped weight is below its initial, so sum(cap) < input total:
+        # mass conservation is infeasible a priori (Finding 7). Reject it here
+        # with a named error rather than letting it surface later as the kernel's
+        # opaque mass-conservation failure.
+        raise ValueError(
+            f"max_weight_ratio={max_weight_ratio!r} < 1 with mass={mass!r} is "
+            "infeasible: every weight is capped below its initial value, so the "
+            "total cannot be conserved (sum of caps < input total). Use "
+            "max_weight_ratio >= 1, or mass='free'."
         )
     if target_records is not None and (
         not isinstance(target_records, int) or target_records <= 0
