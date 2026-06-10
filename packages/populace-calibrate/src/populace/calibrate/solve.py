@@ -71,12 +71,6 @@ CONSERVE_MASS = "conserve"
 #: non-zero record count for the L0 path. Relative to the *initial* mean weight.
 _PRUNE_REL_ATOL = 1e-6
 
-#: Default L0 penalty applied when ``target_records`` is requested but no
-#: ``l0_lambda`` is given and budget control is off. Small, matching the eCPS
-#: gate's regime where the relative-error term dominates and the penalty trims
-#: the long tail.
-_DEFAULT_L0_LAMBDA = 1e-6
-
 #: Bracket for the ``l0_lambda`` budget search (Finding 3). The achieved non-zero
 #: count is monotone decreasing in ``l0_lambda``; this bracket spans
 #: "essentially no pruning" to "prune almost everything" across the regimes the
