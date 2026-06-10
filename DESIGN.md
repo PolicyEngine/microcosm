@@ -116,12 +116,31 @@ not a migration). Nothing outside the adapter imports a rules engine.
 
 ## Longitudinal (the social-security-model direction)
 
-- Person-period tables; entity linkage may recompose over time (marriage,
-  divorce, household splits) — the structure operator's longitudinal extension.
+This section names kernel changes the current `Frame` does NOT yet support;
+they are deliberate future work, called out so step 6 of the sequencing is an
+extension, not a rewrite (the kernel must grow these hooks before then).
+
+- **Keying.** A person spans periods, so person-id uniqueness (today a
+  constructor invariant) becomes `(person_id, period)` — either a composite key
+  or a separate `person_period` table. Decide before the Dynamics operator;
+  the cross-sectional kernel stays a single-period special case.
+- **Population is not closed.** "One weight per trajectory" alone cannot hit
+  2026 *and* 2036 cross-sectional totals, because cohorts enter and leave.
+  Trajectories therefore carry **entry/exit markers** (birth, death,
+  immigration, emigration), and a trajectory's weight contributes to a period
+  only while it is resident/alive. The Dynamics operator's scope explicitly
+  includes immigration and births, not only mortality.
+- **Household accounting under trajectory weights.** Households recompose over
+  time, so members of one period-t household may carry *different* trajectory
+  weights. Period-t group accounting then needs an explicit **weight-share /
+  weight-share-matrix operator** (Ernst-style, as in SIPP/PSID panel
+  weighting) — a declared function of member trajectory weights, not the
+  kernel's member-constant collapse. Naming this operator is a prerequisite,
+  not a detail.
 - The generative object is the **trajectory**. Two strategies behind one
   `Dynamics` operator: trajectory imputation from panel donors (SIPP short
   panels, PSID long panels) and fitted transition kernels (employment,
-  earnings-rank mobility, marriage, disability, mortality).
+  earnings-rank mobility, marriage, disability, mortality, entry/exit).
 - Earnings histories must preserve **rank persistence** (AIME is a 35-year
   order statistic): rank/copula methods across years over single-year
   marginals.
@@ -161,6 +180,25 @@ one line. New names mean legacy pins (`microimpute`, `microcalibrate`,
 transition. `microplex` keeps its own repo and brand — it is the engine, not
 a shard of the namespace — and re-bases onto populace-frame stage by stage.
 
+**Why shards rather than one package with extras.** The justification is
+*independent heavy dependencies*, not modularity for its own sake:
+`populace-calibrate` pulls torch and L0/sparse solvers; `populace-fit` pulls
+scikit-learn / quantile-forest; an analyst doing imputation should never
+install torch, and vice versa. Absent that, one distribution with extras would
+be simpler — so the shard split earns its keep only as long as the dependency
+footprints stay genuinely disjoint. Shards are NOT an invitation for third
+parties to publish into `populace.*`: the namespace is ours; external operators
+ship under their own names and register as contributions (see The commons),
+never as namespace squatters.
+
+**Constellation versioning has a mechanism, not just an intent.** Each shard
+pins `populace-frame>=X,<X+1` AND asserts kernel compatibility at import (a
+cheap `frame.__version__` check) so pip's looser resolution can't silently
+assemble an incompatible set. CI builds the wheels and installs them **with
+pip** from a local index before running the contract suite — a standing
+regression against the 2026 "pip ignores `[tool.uv.sources]`" incident, which
+had no test.
+
 ## Sequencing
 
 1. microframe kernel: bundle + typed weights + strata + accounting + unit
@@ -172,3 +210,92 @@ a shard of the namespace — and re-bases onto populace-frame stage by stage.
    2026-06 driver becomes a spec-driven pool definition).
 6. Dynamics operator + SIPP/PSID donors (social-security-model proving
    ground).
+
+## Evaluation (the gate that governs everything)
+
+The sound comparison is the merge operator, so its weaknesses are governance
+risks, not footnotes:
+
+- **Holdout rotation + query budget.** Repeatedly merging contributions judged
+  against one fixed holdout is leaderboard overfitting (the reusable-holdout
+  problem). Fresh survey waves are the natural holdout rotation; each holdout
+  vintage carries a query budget, and the population's reported score is always
+  against the *current* unseen vintage. While an incumbent (eCPS) exists,
+  matched-N symmetric-refit comparison anchors the scale; past the 3M→30M
+  asymptote there is no comparator and the gate becomes absolute held-out
+  scoring — which is exactly why rotation is mandatory, not optional.
+- **Protected families are defined, not vibes.** The non-degradation clause
+  names specific target families (income-tax-relevant: capital gains,
+  dividends, interest, retirement income; plus poverty/SPM, and the
+  benefit-program families) with explicit tolerances. A contribution may not
+  worsen any protected family beyond tolerance even if it improves aggregate
+  loss. This list is versioned with the population and is the steward's call.
+- **Off-target validity.** Generate-big-then-prune *selects* records by the
+  calibration objective, so validity must be scored on held-out targets and
+  variables the objective never saw — otherwise "passes calibration" launders
+  into "is correct."
+- **Correlated evidence.** Target standard errors from one survey are
+  design-correlated across its published cells; treating them as diagonal
+  overweights cell-rich surveys (the standard GREG caveat). Evidence
+  combination accounts for within-source covariance, not just per-cell SEs.
+
+## The commons (the end state)
+
+**The population is the product; the library is its tooling.** The long-run
+goal is a communal, continuously improving synthetic population — at full scale
+one statistically-faithful record per person — that many parties improve.
+
+There are exactly three ways to contribute, and they are the package
+decomposition:
+
+1. **Records** — a new stratum at honest weights (`frame`/strata).
+2. **Conditional structure** — a fitted model carrying P(y|x) from data the
+   contributor holds (`fit` artifacts). Private sources contribute *only*
+   this way: certified conditional models, never microdata.
+3. **Facts** — targets with standard errors (`calibrate`; Ledger's lane).
+   Calibration is uncertainty-weighted evidence combination, not exact-hit.
+
+**The merge operator is the sound comparison, institutionalized:** a
+contribution merges iff it improves the population's score on held-out,
+rotated evidence without degrading any protected family beyond tolerance. CI
+for the population.
+
+**The disclosure criterion is measurable, and it is not "uniqueness."** At full
+scale every record is unique, so uniqueness cannot be the test. The operating
+rule has three parts, because provenance alone is insufficient:
+
+1. *No traceable derivation* — a record's values may not derive from a
+   specific individual's private data (the provenance rule). Necessary, not
+   sufficient.
+2. *No singling-out or inferential disclosure on sharp strata* — a
+   public-sharp stratum (e.g. a Forbes-400 record) may NOT be enriched with
+   attributes inferred from conditionals trained on private data about that
+   identifiable person. Sharp identity and private inference may not meet on
+   the same record. This is the rule an agency or IRB actually enforces, and
+   provenance-clean derivations can still violate it.
+3. *Statistical indistinguishability from holdout, not training* — the
+   population must resemble held-out data and must NOT resemble any
+   contributor's training data more closely (the authenticity-vs-privacy
+   metric), measured and reported, with its known weaknesses stated.
+
+**Private-evidence gates (honest about maturity).** Differential-privacy
+certificates — with empirical ε lower-bounding via LiRA/RMIA-class attacks —
+are the *gate*; membership-inference smoke tests are necessary-not-sufficient
+pre-checks, not the gate. A **per-source privacy-budget composition** policy is
+required from day one: two certified-DP models trained by different parties on
+overlapping individuals (e.g. IRS and a state agency) compose, and cumulative ε
+per person must be tracked, not assumed independent. Known tension to design
+around: DP-trained models lose the most utility exactly in the tails, which are
+the main value of private contributions — so the near-term path is public +
+formally-DP sources, with private-source onboarding gated behind attestation
+and audit infrastructure that does not yet exist.
+
+Other named hard parts: evidence double-counting across contributors
+(provenance lineage deduplicates *evidence*, not just records), and gate
+governance — who sets the protected families, the tolerances, and the holdout
+rotation (the steward institute's role).
+
+Population releases ship like model releases — `us-330m-vN` with an evidence
+changelog, score deltas, protected-family report, and environment certificates
+— via a hub (versioned populations + contribution registry), an extension of
+the artifacts-carry-their-environment rule.
