@@ -437,3 +437,46 @@ def test_different_seeds_give_different_draws(weight_correlated_frame) -> None:
         a.predict(frame)["target"].to_numpy(),
         b.predict(frame)["target"].to_numpy(),
     )
+
+
+def test_fit_and_draw_use_independent_rng_streams(weight_correlated_frame) -> None:
+    """The draw RNG is an independent SeedSequence child of the model seed.
+
+    Before the fix the fitted model was seeded with the raw model seed, so its
+    draw uniforms were bit-identical to the fit's bootstrap-selection uniforms
+    (max |diff| = 0). The draw stream must instead come from the second spawned
+    child, independent of the fit's resampling, yet still reproducible.
+    """
+    frame, _, _ = weight_correlated_frame(seed=0, n=400)
+    seed = 7
+    fitted = fit(frame, ["age", "is_male"], ["target"], n_estimators=20, seed=seed)
+    _, draw_child = np.random.SeedSequence(seed).spawn(2)
+    expected = np.random.default_rng(draw_child).random(5)
+    actual = fitted._rng.random(5)  # initial draw-stream state, before any predict
+    np.testing.assert_array_equal(actual, expected)
+    # And it must NOT be the raw-seed stream that the fit also used.
+    assert not np.array_equal(actual, np.random.default_rng(seed).random(5))
+
+
+def test_weighted_gate_reproduces_population_zero_share_not_sample(
+    make_person_frame,
+) -> None:
+    """The zero gate reproduces the *weighted* zero-share, not the sample's.
+
+    The sample is half zeros, but zeros carry low weight and positives high
+    weight, so the population (weighted) zero-share is 0.1 while the sample's is
+    0.5. The predictor is independent of zero-ness, so a correctly weighted gate
+    reproduces the marginal weighted zero rate. A gate fit unweighted (or on an
+    unweighted resample) would reproduce 0.5.
+    """
+    rng = np.random.default_rng(0)
+    n = 6000
+    is_zero = np.arange(n) < n // 2
+    target = np.where(is_zero, 0.0, 1.0 + rng.random(n))
+    weights = np.where(is_zero, 1.0, 9.0)  # weighted zero-share = 3000/30000 = 0.1
+    x = rng.normal(size=n)  # predictor independent of zero-ness
+    frame = make_person_frame({"x": x, "target": target}, weights=weights)
+    draws = fit(frame, ["x"], ["target"], n_estimators=80, seed=0).predict(frame)
+    draw_zero_share = float((draws["target"].to_numpy() == 0).mean())
+    assert abs(draw_zero_share - 0.1) < 0.05  # tracks the weighted population
+    assert abs(draw_zero_share - 0.5) > 0.2  # decisively not the sample share

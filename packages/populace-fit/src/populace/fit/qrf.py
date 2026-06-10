@@ -434,10 +434,15 @@ class RegimeGatedQRF:
         table = frame.table(entity)
         _validate_targets_finite(table, targets)
 
-        # The fit RNG is derived from the seed so the whole fit is reproducible;
-        # each forest gets its own integer seed spun from it so distinct forests
-        # are independent yet deterministic.
-        rng = np.random.default_rng(self.seed)
+        # Split the model seed into two independent streams: one drives the
+        # fit (bootstrap resample, forest randomness, gate random_state), the
+        # other drives the predict-time draw quantiles. Seeding both from the
+        # same seed (as before) made the draw uniforms bit-identical to the
+        # gate's bootstrap-selection uniforms — the draws were not independent
+        # of the fit's resampling. SeedSequence.spawn keeps both reproducible
+        # from the one model seed, so determinism is preserved.
+        fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
+        rng = np.random.default_rng(fit_seed)
 
         target_models: dict[str, _TargetModel] = {}
         for position, target in enumerate(targets):
@@ -458,7 +463,7 @@ class RegimeGatedQRF:
             targets=targets,
             target_models=target_models,
             zero_atol=self.zero_atol,
-            seed=self.seed,
+            draw_seed=draw_seed,
         )
 
     def _fit_target(
@@ -579,10 +584,11 @@ class FittedRegimeGatedQRF:
     Holds the per-target gated forests and draws by, for each target in chain
     order: gating each row to a sign class, drawing a magnitude from that
     class's forest at a per-row quantile, and carrying the drawn column forward
-    as a predictor for later targets. The draw RNG is seeded from the fit seed,
-    so a freshly fitted model reproduces its first :meth:`predict`, while
-    successive calls on one fitted model advance the state and give independent
-    draws.
+    as a predictor for later targets. The draw RNG is seeded from an
+    independent ``SeedSequence`` child of the model seed (separate from the
+    fit's resampling stream), so a freshly fitted model reproduces its first
+    :meth:`predict`, while successive calls on one fitted model advance the
+    state and give independent draws.
 
     Attributes:
         entity: The entity the predictors and targets live on.
@@ -598,14 +604,14 @@ class FittedRegimeGatedQRF:
         targets: list[str],
         target_models: dict[str, _TargetModel],
         zero_atol: float,
-        seed: int,
+        draw_seed: np.random.SeedSequence,
     ) -> None:
         self.entity = entity
         self.predictors = list(predictors)
         self.targets = list(targets)
         self._target_models = target_models
         self._zero_atol = zero_atol
-        self._rng = np.random.default_rng(seed)
+        self._rng = np.random.default_rng(draw_seed)
 
     def regimes(self) -> dict[str, str]:
         """The detected :class:`Regime` label per target."""
