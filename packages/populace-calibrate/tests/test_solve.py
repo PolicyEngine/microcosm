@@ -245,9 +245,17 @@ def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
     ~0-weight pruned ones — resurrects every record (the bug: free-mass pruned
     hundreds, conserve+cap returned zero pruned).
 
-    The cap here is loose enough that the survivors *can* absorb the freed mass
-    (a count target at factor 1.0 means the survivors must carry the full input
-    total, so a tight cap is genuinely infeasible — tested separately).
+    The conserve+cap run uses ``target_records`` budget control rather than a
+    fixed penalty, because a fixed ``l0_lambda`` prunes platform-dependently:
+    3e-3 left tens of survivors on arm64 but 3 of 400 on x86 CI, where the
+    freed mass had nowhere to go under the 100x cap (feasibility needs
+    ``survivors >= n / ratio`` = 4) — while a cap loose enough to make any
+    count feasible lets the conserve rescale feed an all-gates-closed
+    collapse. The budget search adapts the penalty until the survivor count
+    tracks the budget on *any* platform, keeping the scenario away from both
+    cliffs. The resurrection bug is still caught: under it every probe
+    returns ~400 nonzero records, nowhere near the budget or the assertion
+    bound.
     """
     frame, truths = feasible_frame(n=400)
     targets = TargetSet(
@@ -261,17 +269,33 @@ def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
     assert free_nonzero < 100  # free mass prunes hard
 
     capped = calibrate(
-        frame, targets, epochs=400, seed=0, l0_lambda=3e-3,
+        frame, targets, epochs=400, seed=0, target_records=80,
         mass="conserve", max_weight_ratio=100.0,
     )
     capped_w = capped.frame.resolve_weights("household").values
     capped_nonzero = int((capped_w > 1e-6).sum())
-    # The pruned records stay pruned: the survivor count is still small, nowhere
-    # near the full 400 the resurrection bug returned.
+    # The pruned records stay pruned: the survivor count tracks the budget,
+    # nowhere near the full 400 the resurrection bug returned.
     assert capped_nonzero < 150, capped_nonzero
     # Mass is still conserved on the survivors.
     initial_total = frame.resolve_weights("household").values.sum()
     assert abs(capped_w.sum() - initial_total) / initial_total < 1e-6
+
+
+def test_all_gates_closed_raises_a_named_error(feasible_frame) -> None:
+    """An L0 penalty that closes every gate raises a named error.
+
+    A penalty far above the fit loss drives every gate shut (under Adam the
+    per-parameter step is sign-dominated, so the penalty's gradient marches
+    every gate logit down regardless of scale) and the calibrated vector is
+    all zeros. The kernel would reject that with an opaque "Weights cannot be
+    all zero"; calibrate must instead name the cause — the penalty — and the
+    remedies, before the kernel ever sees the weights.
+    """
+    frame, truths = feasible_frame(n=50)
+    targets = TargetSet((_income_target(truths["income"], 1.0),))
+    with pytest.raises(ValueError, match="l0_lambda"):
+        calibrate(frame, targets, epochs=300, seed=0, l0_lambda=100.0)
 
 
 def test_cap_below_one_with_conserve_is_rejected_a_priori(feasible_frame) -> None:

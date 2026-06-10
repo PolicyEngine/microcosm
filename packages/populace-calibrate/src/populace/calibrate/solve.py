@@ -759,6 +759,18 @@ def calibrate(
             temperature=temperature,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
+        if effective_l0 > 0.0 and n_nonzero == 0:
+            # Every gate closed: the penalty overwhelmed the fit loss (under
+            # Adam the tug-of-war is about gradient sign, so a penalty far
+            # above the loss marches every gate logit shut). The kernel would
+            # reject the all-zero vector with an opaque "Weights cannot be all
+            # zero" — name the cause and the remedies here instead.
+            raise ValueError(
+                f"L0 pruning closed every gate: l0_lambda={effective_l0!r} "
+                "overwhelmed the fit loss and every calibrated weight is "
+                "zero. Lower l0_lambda, or use target_records= budget "
+                "control, which adapts the penalty to a survivor count."
+            )
 
     calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
     new_frame = _apply_weights(
