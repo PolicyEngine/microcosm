@@ -164,3 +164,35 @@ def test_l0_prunes_toward_a_record_budget(feasible_frame) -> None:
     # Pruned well below the 400 records, in the neighborhood of the budget.
     assert nonzero < 250
     assert result.l0_lambda > 0.0
+
+
+def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:
+    """The loss is minimized at est == target, not est == target - 1.
+
+    A +1 in the loss numerator (the eCPS reference carries one) biases the
+    optimum to target - 1 — negligible at $2T magnitudes, fatal for small
+    targets: a count of 5 converges to 4. The numerator must be the raw
+    residual.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from populace.frame import EntitySchema, Frame, WeightKind, Weights
+
+    n = 50
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame({"household_id": range(n)}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=np.full(n, 0.1), kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (Target(name="count", entity="household", aggregation="count", value=5.0),)
+    )
+    result = calibrate(frame, targets, epochs=400, seed=0)
+    estimate = result.frame.resolve_weights("household").values.sum()
+    assert abs(estimate - 5.0) < 0.05  # not 4.0

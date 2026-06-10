@@ -158,14 +158,20 @@ class CalibrationResult:
 def _relative_error_loss(
     estimate: torch.Tensor, targets: torch.Tensor
 ) -> torch.Tensor:
-    """The eCPS relative-error loss ``mean(((est - tgt + 1)/(tgt + 1))**2)``.
+    """The relative-error loss ``mean(((est - tgt)/(tgt + 1))**2)``.
 
-    The ``+1`` in numerator and denominator is the eCPS regularizer: it keeps
-    the loss finite and well-scaled for targets near zero (a zero-valued count
-    target contributes ``est**2`` rather than dividing by zero), exactly as in
-    the reference ``reweight`` loss.
+    The ``+1`` in the *denominator* is the regularizer: it keeps the loss finite
+    and well-scaled for targets near zero (a zero-valued count target then
+    contributes ``est**2`` rather than dividing by zero). The numerator is the
+    raw residual ``est - tgt``, so the loss is minimized exactly at ``est = tgt``.
+
+    The reference eCPS ``reweight`` carries a ``+1`` in the numerator too; that
+    is harmless only because every eCPS target is far larger than 1, but it
+    biases the optimum to ``est = tgt - 1`` and is fatal for small-valued
+    targets (a count of 5 converges to 4). We drop it — this is also the loss
+    this docstring has always described.
     """
-    rel_error = ((estimate - targets) + 1.0) / (targets + 1.0)
+    rel_error = (estimate - targets) / (targets + 1.0)
     return (rel_error**2).mean()
 
 
