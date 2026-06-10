@@ -13,6 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "populace-calibrate",
+    "populace-data",
     "populace-fit",
     "populace-frame",
     "populace-workspace",
@@ -1166,6 +1167,36 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.13" },
     { name = "torch", specifier = ">=2" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "populace-data"
+version = "0.1.0"
+source = { editable = "packages/populace-data" }
+dependencies = [
+    { name = "h5py" },
+    { name = "huggingface-hub" },
+]
+
+[package.optional-dependencies]
+us = [
+    { name = "policyengine-us" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "h5py", specifier = ">=3" },
+    { name = "huggingface-hub", specifier = ">=0.20" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.350" },
+]
+provides-extras = ["us"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

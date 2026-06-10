@@ -24,12 +24,11 @@ Homepage = "https://populace.dev"
 Repository = "https://github.com/PolicyEngine/populace"
 
 [dependency-groups]
-# The live loader test runs only when an engine is present; install the US
-# engine into the dev group so `uv run --group dev pytest` exercises it.
-dev = [
-    "pytest>=8",
-    "policyengine-us>=1.350",
-]
+# Just the test runner — kept minimal so the workspace CI does not pull a
+# country engine (policyengine-us is heavy) onto every shard's run. The live
+# loader test is skipif-engine-absent, so it skips in CI and runs locally
+# wherever the engine is installed.
+dev = ["pytest>=8"]
 
 [build-system]
 requires = ["hatchling"]
