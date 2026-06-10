@@ -7,3 +7,4 @@ __pycache__/
 dist/
 build/
 *.h5
+!packages/*/build/

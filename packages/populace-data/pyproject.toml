@@ -17,7 +17,10 @@ dependencies = [
 # Country engines are optional: install the one(s) you load. The extra name is
 # the country slug, matching the registry key and the loader's error message.
 [project.optional-dependencies]
-us = ["policyengine-us>=1.350"]
+# Floor at the engine version verified to load the published artifact (the
+# USSingleYearDataset loader + entity-flatten behavior the file is built
+# against are recent); cap below 2 to guard a breaking dataset-schema major.
+us = ["policyengine-us>=1.723,<2"]
 
 [project.urls]
 Homepage = "https://populace.dev"

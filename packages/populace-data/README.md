@@ -42,9 +42,11 @@ nor any country model until a load actually needs one.
 | --- | --- | --- | --- |
 | US | 2024 | [`policyengine/populace-us`](https://huggingface.co/datasets/policyengine/populace-us) | `policyengine-us` |
 
-The **populace-US** population is a calibrated synthetic microdataset and a
-drop-in replacement for the enhanced CPS — built from CPS ASEC structure, IRS
-PUF tax detail (weight-aware imputation), and SCF balance sheets, calibrated to
-PolicyEngine's administrative target surface with a hard per-record weight
-bound. Build provenance lives in [`build/us/`](build/us); validation is
-documented at [populace.dev](https://populace.dev).
+The **populace-US** population is a calibrated synthetic microdataset that
+loads anywhere the enhanced CPS loads — built from CPS ASEC structure and IRS
+PUF tax detail (weight-aware imputation), calibrated to PolicyEngine's
+administrative target surface with a hard per-record weight bound. Its
+strengths and its gaps (no wealth layer yet, degenerate housing tenure,
+several un-imputed income streams) are documented on the dataset card and the
+[populace.dev dashboard](https://populace.dev/dashboard); the provenance
+snapshot lives in [`build/us/`](build/us).
