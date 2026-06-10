@@ -1,20 +1,20 @@
-"""PolicyEngine-US adapter for the :class:`~microframe.rules.RulesEngine` protocol.
+"""PolicyEngine-US adapter for the :class:`~populace.frame.rules.RulesEngine` protocol.
 
 ``policyengine_us`` is imported lazily inside methods: this module (and
-microframe itself) imports without it, and every entry point that does need
-it raises a clear ``ImportError`` naming the ``microframe[policyengine]``
-extra when it is absent.
+populace-frame itself) imports without it, and every entry point that does
+need it raises a clear ``ImportError`` naming the
+``populace-frame[policyengine]`` extra when it is absent.
 
 Layout contract (load-bearing for the engine)
 ---------------------------------------------
 ``USSingleYearDataset`` flattens every entity table into a single
 ``{column: array}`` dict; ``policyengine-core`` then reconstructs the entity
-graph from PolicyEngine's id/membership conventions — exactly the bundle
+graph from PolicyEngine's id/membership conventions — exactly the frame
 invariants (``person_id``, ``person_{group}_id`` on the person table,
 ``{group}_id`` on each group table, globally unique column names). The
-adapter therefore never fabricates id or membership columns: the bundle
+adapter therefore never fabricates id or membership columns: the frame
 already guarantees them. The one thing it adds is the ``household_weight``
-column, materialized from the bundle's typed household weights.
+column, materialized from the frame's typed household weights.
 """
 
 from collections.abc import Mapping, Sequence
@@ -24,10 +24,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microframe.bundle import WeightedBundle
-from microframe.rules import ExportContract
-from microframe.schema import EntitySchema
-from microframe.units import US_SCHEMA
+from populace.frame.bundle import Frame
+from populace.frame.rules import ExportContract
+from populace.frame.schema import EntitySchema
+from populace.frame.units import US_SCHEMA
 
 __all__ = ["PolicyEngineUSEngine"]
 
@@ -97,7 +97,7 @@ class PolicyEngineUSEngine:
 
     def materialize(
         self,
-        bundle: WeightedBundle,
+        bundle: Frame,
         variables: Sequence[str],
         period: int | str,
     ) -> Mapping[str, np.ndarray]:
@@ -149,7 +149,7 @@ class PolicyEngineUSEngine:
 
     def write_dataset(
         self,
-        bundle: WeightedBundle,
+        bundle: Frame,
         path: str | Path,
         period: int | str,
     ) -> None:
@@ -228,7 +228,7 @@ class PolicyEngineUSEngine:
         except ImportError as exc:
             raise ImportError(
                 "The PolicyEngine-US adapter requires the 'policyengine-us' "
-                "package. Install it with 'microframe[policyengine]'."
+                "package. Install it with 'populace-frame[policyengine]'."
             ) from exc
         return policyengine_us
 
@@ -243,7 +243,7 @@ class PolicyEngineUSEngine:
             raise ValueError(f"Unknown PolicyEngine-US variable {name!r}.")
         return variables[name]
 
-    def _engine_tables(self, bundle: WeightedBundle) -> dict[str, pd.DataFrame]:
+    def _engine_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
         """Copy the bundle's tables and materialize the household weights.
 
         The bundle owns the typed weights; the engine wants them as the

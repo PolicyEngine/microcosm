@@ -19,13 +19,13 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_numeric_dtype
 
-from microframe.bundle import WeightedBundle
+from populace.frame.bundle import Frame
 
 __all__ = ["wsum", "wmean", "wquantile", "wmedian", "gini", "groupby_wsum"]
 
 
 def _resolve(
-    bundle: WeightedBundle,
+    bundle: Frame,
     column: str,
     entity: str | None,
 ) -> tuple[np.ndarray, np.ndarray, str]:
@@ -57,7 +57,7 @@ def _resolve(
     return values, weights, owner
 
 
-def wsum(bundle: WeightedBundle, column: str, entity: str | None = None) -> float:
+def wsum(bundle: Frame, column: str, entity: str | None = None) -> float:
     """Weighted sum of ``column``: ``sum(values * weights)``.
 
     Args:
@@ -73,7 +73,7 @@ def wsum(bundle: WeightedBundle, column: str, entity: str | None = None) -> floa
     return float((values * weights).sum())
 
 
-def wmean(bundle: WeightedBundle, column: str, entity: str | None = None) -> float:
+def wmean(bundle: Frame, column: str, entity: str | None = None) -> float:
     """Weighted mean of ``column``: ``sum(values * weights) / sum(weights)``.
 
     Args:
@@ -89,7 +89,7 @@ def wmean(bundle: WeightedBundle, column: str, entity: str | None = None) -> flo
 
 
 def wquantile(
-    bundle: WeightedBundle,
+    bundle: Frame,
     column: str,
     q: float | np.ndarray,
     entity: str | None = None,
@@ -135,14 +135,14 @@ def wquantile(
     return pd.Series(result, index=quantiles)
 
 
-def wmedian(bundle: WeightedBundle, column: str, entity: str | None = None) -> float:
+def wmedian(bundle: Frame, column: str, entity: str | None = None) -> float:
     """Weighted median of ``column`` (the 0.5 weighted quantile)."""
     result = wquantile(bundle, column, 0.5, entity)
     return float(result)
 
 
 def gini(
-    bundle: WeightedBundle,
+    bundle: Frame,
     column: str,
     entity: str | None = None,
     negatives: str | None = None,
@@ -207,7 +207,7 @@ def gini(
 
 
 def groupby_wsum(
-    bundle: WeightedBundle,
+    bundle: Frame,
     column: str,
     by: str,
     entity: str | None = None,

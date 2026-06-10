@@ -1,10 +1,16 @@
-"""Entity schemas and variable metadata for the kernel.
+"""Entity schemas, link declarations, and variable metadata for the kernel.
 
-An :class:`EntitySchema` declares the entity structure of a bundle once, at
+An :class:`EntitySchema` declares the entity structure of a frame once, at
 assembly: a person entity plus the group entities persons belong to. Linkage
 columns follow a fixed convention — the person table carries one membership
 column ``person_{group}_id`` per group, and each group table carries its own
 id column ``{group}_id`` — so every operator reads structure the same way.
+
+:class:`LinkSpec` declares an *association* between two entities (e.g. a
+``jobs`` link between persons and firms): a many-to-many relation carried as
+its own table, distinct from the partition semantics of group membership.
+Links are a documented placeholder today — the schema declares them and the
+frame validates their tables, but link-aware operators come later.
 
 :class:`VariableMetadata` records what a variable is (owning entity, dtype
 kind, period semantics) so tools resolve it through metadata instead of
@@ -13,29 +19,74 @@ guessing.
 
 from dataclasses import dataclass
 
-__all__ = ["EntitySchema", "VariableMetadata"]
+__all__ = ["EntitySchema", "LinkSpec", "VariableMetadata"]
 
 _DTYPE_KINDS: tuple[str, ...] = ("float", "int", "bool", "str")
 _PERIOD_SEMANTICS: tuple[str, ...] = ("year", "month", "point")
 
 
+@dataclass(frozen=True)
+class LinkSpec:
+    """Declaration of an association (link) between two entities.
+
+    A link is a many-to-many relation carried as its own table — e.g. a
+    ``jobs`` link between persons and firms, where one person may hold many
+    jobs and one firm employs many persons. The link table is keyed by the
+    link's name in a frame's ``tables`` and must carry the two linked
+    entities' id columns (``{left}_id`` / ``{right}_id`` per the schema's
+    id-column convention), each validated against the linked table's ids.
+
+    This is a documented placeholder: the schema declares links and the
+    frame validates their tables on construction, but link-aware operators
+    (broadcast through links, link-preserving ``select``/``concat``,
+    link targets outside the partition entities) come later.
+
+    Attributes:
+        name: Name of the link (and of its table in a frame's ``tables``).
+        left_entity: Entity on the left side of the relation.
+        right_entity: Entity on the right side of the relation.
+
+    Raises:
+        ValueError: If any field is empty.
+    """
+
+    name: str
+    left_entity: str
+    right_entity: str
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("LinkSpec.name must be non-empty.")
+        if not self.left_entity:
+            raise ValueError("LinkSpec.left_entity must be non-empty.")
+        if not self.right_entity:
+            raise ValueError("LinkSpec.right_entity must be non-empty.")
+
+
 @dataclass(frozen=True, kw_only=True)
 class EntitySchema:
-    """Entity structure of a bundle: one person entity plus group entities.
+    """Entity structure of a frame: one person entity plus group entities.
 
     Attributes:
         person_entity: Name of the person-level entity. Defaults to
             ``"person"``.
         group_entities: Names of the group entities persons belong to (e.g.
             ``("household", "tax_unit")``). Order is preserved.
+        links: Declared associations between entities (see
+            :class:`LinkSpec`). A documented placeholder: declared links are
+            validated here and their tables are validated by the frame, but
+            link-aware operators come later.
 
     Raises:
         ValueError: If ``group_entities`` is empty, contains duplicates or
-            empty names, or contains the person entity.
+            empty names, or contains the person entity; or if ``links``
+            contains duplicate names, names that collide with an entity, or
+            sides that are not declared entities.
     """
 
     person_entity: str = "person"
     group_entities: tuple[str, ...]
+    links: tuple[LinkSpec, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.person_entity:
@@ -52,6 +103,25 @@ class EntitySchema:
             raise ValueError(
                 f"person_entity {self.person_entity!r} cannot also be a group entity."
             )
+        self._validate_links()
+
+    def _validate_links(self) -> None:
+        names = [link.name for link in self.links]
+        if len(set(names)) != len(names):
+            duplicated = sorted({name for name in names if names.count(name) > 1})
+            raise ValueError(f"Link names must be unique; duplicated: {duplicated}.")
+        entities = set(self.entities)
+        for link in self.links:
+            if link.name in entities:
+                raise ValueError(
+                    f"Link name {link.name!r} collides with an entity name."
+                )
+            for side in (link.left_entity, link.right_entity):
+                if side not in entities:
+                    raise ValueError(
+                        f"Link {link.name!r} references unknown entity "
+                        f"{side!r}; declared entities: {list(self.entities)}."
+                    )
 
     @property
     def entities(self) -> tuple[str, ...]:
@@ -93,6 +163,23 @@ class EntitySchema:
         """
         self._require_group(group)
         return f"{group}_id"
+
+    def entity_id_column(self, entity: str) -> str:
+        """Id column for any declared entity: ``{entity}_id``.
+
+        Args:
+            entity: The person entity or a declared group entity.
+
+        Returns:
+            :attr:`person_id_column` for the person entity, otherwise
+            :meth:`id_column`.
+
+        Raises:
+            ValueError: If ``entity`` is not declared by the schema.
+        """
+        if entity == self.person_entity:
+            return self.person_id_column
+        return self.id_column(entity)
 
     def _require_group(self, group: str) -> None:
         if group not in self.group_entities:

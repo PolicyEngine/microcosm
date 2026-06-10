@@ -9,7 +9,8 @@ recode.
 import numpy as np
 import pandas as pd
 import pytest
-from microframe import EntitySchema, WeightedBundle, WeightKind, Weights
+
+from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 # Census A_EXPRRP relationship-to-reference-person recode values, spelled out
 # so the fixtures document the exact codes they exercise.
@@ -46,7 +47,7 @@ def make_bundle(simple_schema):
         strata: pd.Series | None = None,
         person_ids: tuple[int, ...] = (0, 1, 2, 3, 4),
         household_ids: tuple[int, ...] = (1, 2),
-    ) -> WeightedBundle:
+    ) -> Frame:
         person = pd.DataFrame(
             {
                 "person_id": np.asarray(person_ids, dtype="int64"),
@@ -71,7 +72,7 @@ def make_bundle(simple_schema):
             }
         )
         weights = Weights(values=np.asarray(weight_values), kind=kind)
-        return WeightedBundle(
+        return Frame(
             {"person": person, "household": household},
             simple_schema,
             {"household": weights},

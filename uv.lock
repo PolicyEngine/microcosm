@@ -12,8 +12,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "micro-workspace",
-    "microframe",
+    "populace-frame",
+    "populace-workspace",
 ]
 
 [[package]]
@@ -550,21 +550,6 @@ wheels = [
 ]
 
 [[package]]
-name = "micro-workspace"
-version = "0.0.0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.8" }]
-
-[[package]]
 name = "microdf-python"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -575,48 +560,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a3/1b/a4b6a53c8e6668c190e1928ebf9f8c67d6a4995ff4a4b0e3403ded30d4ab/microdf_python-1.3.0.tar.gz", hash = "sha256:f352fe32c25a4fd6d6188ef6aaca0214b53b29a8a7913aca6af0362dd9c922bd", size = 28141, upload-time = "2026-04-17T23:20:57.018Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/aa/ce692e0488b5e6c0943f52886cf6a15f5d9a6dee7744b190a3a1d67f5d6e/microdf_python-1.3.0-py3-none-any.whl", hash = "sha256:e17757a198648108eae24f39384e27b5ae8061acf1b43fa56520010dc00a7b55", size = 28908, upload-time = "2026-04-17T23:20:56.051Z" },
-]
-
-[[package]]
-name = "microframe"
-version = "0.1.0"
-source = { editable = "packages/microframe" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pydantic" },
-]
-
-[package.optional-dependencies]
-policyengine = [
-    { name = "microunit" },
-    { name = "policyengine-us" },
-]
-us = [
-    { name = "microunit" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "microunit" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "microunit", marker = "extra == 'policyengine'", specifier = ">=0.1.0" },
-    { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
-    { name = "numpy", specifier = ">=2" },
-    { name = "pandas", specifier = ">=2.3" },
-    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.0" },
-    { name = "pydantic", specifier = ">=2" },
-]
-provides-extras = ["us", "policyengine"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "microunit", specifier = ">=0.1.0" },
-    { name = "pytest", specifier = ">=8" },
 ]
 
 [[package]]
@@ -961,6 +904,63 @@ sdist = { url = "https://files.pythonhosted.org/packages/31/06/743737c7016001920
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/e2/74e268a755ce7c0c270667ce2374e7fc7c490770fe842f8861bbea5395b0/policyengine_us-1.722.5-py3-none-any.whl", hash = "sha256:103f923a4dfed86786a495638d3914a60328bb4db9ddc22790729707c55a5fbf", size = 11321479, upload-time = "2026-06-09T09:11:56.25Z" },
 ]
+
+[[package]]
+name = "populace-frame"
+version = "0.1.0"
+source = { editable = "packages/populace-frame" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+policyengine = [
+    { name = "microunit" },
+    { name = "policyengine-us" },
+]
+us = [
+    { name = "microunit" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "microunit" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "microunit", marker = "extra == 'policyengine'", specifier = ">=0.1.0" },
+    { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
+    { name = "numpy", specifier = ">=2" },
+    { name = "pandas", specifier = ">=2.3" },
+    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.0" },
+    { name = "pydantic", specifier = ">=2" },
+]
+provides-extras = ["us", "policyengine"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "microunit", specifier = ">=0.1.0" },
+    { name = "pytest", specifier = ">=8" },
+]
+
+[[package]]
+name = "populace-workspace"
+version = "0.0.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.8" }]
 
 [[package]]
 name = "prompt-toolkit"

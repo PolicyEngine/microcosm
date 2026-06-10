@@ -2,8 +2,10 @@
 
 import numpy as np
 import pytest
-from microframe import (
+
+from populace.frame import (
     EntitySchema,
+    LinkSpec,
     VariableMetadata,
     WeightKind,
     Weights,
@@ -76,6 +78,27 @@ class TestEntitySchema:
             schema.membership_column("benunit")
         with pytest.raises(ValueError, match="benunit"):
             schema.id_column("benunit")
+
+    def test_entity_id_column_resolves_person_and_groups(self) -> None:
+        schema = EntitySchema(group_entities=("household",))
+        assert schema.entity_id_column("person") == "person_id"
+        assert schema.entity_id_column("household") == "household_id"
+        with pytest.raises(ValueError, match="firm"):
+            schema.entity_id_column("firm")
+
+
+class TestLinkSpec:
+    def test_declares_an_association(self) -> None:
+        jobs = LinkSpec(name="jobs", left_entity="person", right_entity="firm")
+        schema = EntitySchema(group_entities=("household", "firm"), links=(jobs,))
+        assert schema.links == (jobs,)
+
+    @pytest.mark.parametrize("field_name", ["name", "left_entity", "right_entity"])
+    def test_fields_must_be_non_empty(self, field_name: str) -> None:
+        kwargs = {"name": "jobs", "left_entity": "person", "right_entity": "firm"}
+        kwargs[field_name] = ""
+        with pytest.raises(ValueError, match=field_name):
+            LinkSpec(**kwargs)
 
 
 class TestVariableMetadata:

@@ -1,9 +1,11 @@
-"""The kernel datatype: a weighted, stratified bundle of entity tables.
+"""The kernel datatype: a weighted, stratified frame of entity tables.
 
-A :class:`WeightedBundle` holds one table per entity (person plus the group
-entities declared by its :class:`~microframe.schema.EntitySchema`), typed
-weights for the weighted entities, and per-person stratum labels. Structure
-is established once, at assembly, and validated on every construction:
+A :class:`Frame` holds one table per entity (person plus the group
+entities declared by its :class:`~populace.frame.schema.EntitySchema`), typed
+weights for the weighted entities, per-person stratum labels, and — as a
+documented placeholder — link tables for the schema's declared associations.
+Structure is established once, at assembly, and validated on every
+construction:
 
 - every group table's id column is unique, sorted ascending, and contains
   exactly the distinct ids referenced by the person membership column;
@@ -11,9 +13,11 @@ is established once, at assembly, and validated on every construction:
 - weight vectors match their entity table lengths;
 - strata are aligned to the person index;
 - column names are globally unique across entity tables (the flattening
-  rule rules engines rely on).
+  rule rules engines rely on);
+- every provided link table carries both linked entities' id columns, and
+  every id it references exists in the linked entity's table.
 
-All operations return new bundles; a bundle is never mutated in place.
+All operations return new frames; a frame is never mutated in place.
 """
 
 from collections.abc import Mapping
@@ -21,27 +25,36 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
-from microframe.schema import EntitySchema
-from microframe.weights import Weights, assert_kind_transition
+from populace.frame.schema import EntitySchema
+from populace.frame.weights import Weights, assert_kind_transition
 
-__all__ = ["WeightedBundle", "DEFAULT_STRATUM"]
+__all__ = ["Frame", "DEFAULT_STRATUM"]
 
-#: Stratum label assigned when a bundle is constructed without explicit strata.
+#: Stratum label assigned when a frame is constructed without explicit strata.
 DEFAULT_STRATUM = "default"
 
 #: Kind rank used to resolve the union kind on concatenation.
 _KIND_ORDER = ("design", "importance", "calibrated")
 
 
-class WeightedBundle:
-    """Entity tables + typed weights + strata, with kernel-enforced invariants.
+class Frame:
+    """A weighted sampling frame of entity tables, with kernel invariants.
+
+    The name is the survey-statistics term: a *sampling frame* is the list
+    of units a sample is drawn from and the thing weights refer back to. A
+    ``Frame`` is that object made executable — entity tables with explicit
+    linkage, typed weights with conservation invariants, and per-person
+    strata recording how each record entered the frame. Every operator in
+    the populace stack takes a frame and returns a frame.
 
     Args:
         tables: One :class:`pandas.DataFrame` per entity declared by
-            ``schema`` (the person entity and every group entity). Tables are
-            copied; the caller's frames are never mutated or aliased.
+            ``schema`` (the person entity and every group entity), plus
+            optionally one table per declared link, keyed by the link's
+            name. Tables are copied; the caller's frames are never mutated
+            or aliased.
         schema: The entity structure (see
-            :class:`~microframe.schema.EntitySchema`).
+            :class:`~populace.frame.schema.EntitySchema`).
         weights: Typed weight vectors keyed by entity name. At least one
             entity must carry weights (typically the household).
         strata: Per-person provenance labels, index-aligned to the person
@@ -55,7 +68,7 @@ class WeightedBundle:
             entity, column, or ids involved.
     """
 
-    __slots__ = ("_schema", "_strata", "_tables", "_weights")
+    __slots__ = ("_link_tables", "_schema", "_strata", "_tables", "_weights")
 
     def __init__(
         self,
@@ -65,11 +78,17 @@ class WeightedBundle:
         strata: pd.Series | None = None,
     ) -> None:
         self._schema = schema
-        self._tables = {name: frame.copy() for name, frame in tables.items()}
+        declared_links = {link.name for link in schema.links}
+        self._tables: dict[str, pd.DataFrame] = {}
+        self._link_tables: dict[str, pd.DataFrame] = {}
+        for name, frame in tables.items():
+            target = self._link_tables if name in declared_links else self._tables
+            target[name] = frame.copy()
         self._weights = dict(weights)
         self._strata = self._validated_strata(strata)
         self._validate_tables()
         self._validate_linkage()
+        self._validate_links()
         self._validate_global_columns()
         self._validate_weights()
 
@@ -88,10 +107,14 @@ class WeightedBundle:
                 f"{list(self._schema.entities)}."
             )
         if unknown:
-            raise ValueError(
+            message = (
                 f"Unknown entity table(s): {unknown}; schema declares "
-                f"{list(self._schema.entities)}."
+                f"{list(self._schema.entities)}"
             )
+            link_names = [link.name for link in self._schema.links]
+            if link_names:
+                message += f" and link(s) {link_names}"
+            raise ValueError(message + ".")
         person = self._tables[self._schema.person_entity]
         id_column = self._schema.person_id_column
         if id_column not in person.columns:
@@ -168,6 +191,43 @@ class WeightedBundle:
                     + "; ".join(parts)
                     + "."
                 )
+
+    def _validate_links(self) -> None:
+        """Validate provided link tables against the schema's declared links.
+
+        Placeholder scope: a provided link table must carry both linked
+        entities' id columns (no missing values), and every id it references
+        must exist in the linked entity's table. Link tables are join
+        tables, not entity tables — they are exempt from the global
+        column-uniqueness rule and are not yet carried through
+        ``select``/``concat``.
+        """
+        for link in self._schema.links:
+            table = self._link_tables.get(link.name)
+            if table is None:
+                continue
+            for side in (link.left_entity, link.right_entity):
+                column = self._schema.entity_id_column(side)
+                if column not in table.columns:
+                    raise ValueError(
+                        f"Link table {link.name!r} must carry the id column "
+                        f"{column!r} referencing entity {side!r}."
+                    )
+                values = table[column]
+                if values.isna().any():
+                    raise ValueError(
+                        f"Link table {link.name!r} id column {column!r} "
+                        "contains missing values."
+                    )
+                dangling = np.setdiff1d(
+                    values.to_numpy(), self._entity_ids(side)
+                )
+                if dangling.size:
+                    raise ValueError(
+                        f"Link table {link.name!r} references {side} id(s) "
+                        f"absent from the {side!r} table: "
+                        f"{dangling[:5].tolist()}."
+                    )
 
     def _validate_global_columns(self) -> None:
         owners: dict[str, list[str]] = {}
@@ -268,6 +328,41 @@ class WeightedBundle:
         """Entities that carry explicit weight vectors."""
         return tuple(entity for entity in self.entities if entity in self._weights)
 
+    @property
+    def links(self) -> tuple[str, ...]:
+        """Names of the link tables this frame carries, in declaration order."""
+        return tuple(
+            link.name
+            for link in self._schema.links
+            if link.name in self._link_tables
+        )
+
+    def link(self, name: str) -> pd.DataFrame:
+        """Return the link table named ``name``.
+
+        Args:
+            name: A link declared by the schema whose table this frame
+                carries.
+
+        Returns:
+            The link table. Treat as read-only.
+
+        Raises:
+            ValueError: If ``name`` is not a declared link, or the frame
+                carries no table for it.
+        """
+        declared = [link.name for link in self._schema.links]
+        if name not in declared:
+            raise ValueError(
+                f"Unknown link {name!r}; schema declares links {declared}."
+            )
+        if name not in self._link_tables:
+            raise ValueError(
+                f"No table provided for link {name!r}; provided links: "
+                f"{list(self.links)}."
+            )
+        return self._link_tables[name]
+
     def table(self, entity: str) -> pd.DataFrame:
         """Return the table for ``entity``.
 
@@ -297,7 +392,7 @@ class WeightedBundle:
             entity: An entity declared by the schema.
 
         Returns:
-            The stored :class:`~microframe.weights.Weights`.
+            The stored :class:`~populace.frame.weights.Weights`.
 
         Raises:
             ValueError: If no weights are stored for ``entity``. The message
@@ -414,7 +509,7 @@ class WeightedBundle:
         weights: Weights,
         *,
         require_mass: bool = False,
-    ) -> "WeightedBundle":
+    ) -> "Frame":
         """Return a new bundle with ``entity``'s weights replaced.
 
         Kind transitions are enforced: weights only move forward
@@ -462,7 +557,12 @@ class WeightedBundle:
             )
         new_weights = dict(self._weights)
         new_weights[entity] = weights
-        return WeightedBundle(self._tables, self._schema, new_weights, self._strata)
+        return Frame(
+            {**self._tables, **self._link_tables},
+            self._schema,
+            new_weights,
+            self._strata,
+        )
 
     def broadcast(self, column: str, to: str = "person") -> pd.Series:
         """Map a group-table column onto persons via membership.
@@ -515,7 +615,7 @@ class WeightedBundle:
             f"{list(self.entities)}."
         )
 
-    def concat(self, other: "WeightedBundle") -> "WeightedBundle":
+    def concat(self, other: "Frame") -> "Frame":
         """Union of two bundles; this is how pool strata assemble.
 
         The bundles must share the same schema, per-entity column sets, and
@@ -538,14 +638,23 @@ class WeightedBundle:
             strata and weights.
 
         Raises:
-            TypeError: If ``other`` is not a :class:`WeightedBundle`.
+            TypeError: If ``other`` is not a :class:`Frame`.
+            NotImplementedError: If either frame carries link tables (links
+                are a placeholder; link-aware concat comes with the full
+                link operator).
             ValueError: On schema/column/weight-set mismatch, overlapping
                 strata with overlapping id spaces, or non-integer colliding
                 ids that cannot be shifted.
         """
-        if not isinstance(other, WeightedBundle):
+        if not isinstance(other, Frame):
             raise TypeError(
-                f"concat expects a WeightedBundle, got {type(other).__name__}."
+                f"concat expects a Frame, got {type(other).__name__}."
+            )
+        if self._link_tables or other._link_tables:
+            raise NotImplementedError(
+                "concat does not yet carry link tables (links are a "
+                "documented placeholder); drop link tables before "
+                "concatenating."
             )
         if self._schema != other._schema:
             raise ValueError("Cannot concat bundles with different schemas.")
@@ -611,9 +720,9 @@ class WeightedBundle:
                     union.values[order], kind=union.kind
                 )
         strata = pd.concat([self._strata, other._strata], ignore_index=True)
-        return WeightedBundle(tables, self._schema, weights, strata)
+        return Frame(tables, self._schema, weights, strata)
 
-    def select(self, person_mask: np.ndarray | pd.Series) -> "WeightedBundle":
+    def select(self, person_mask: np.ndarray | pd.Series) -> "Frame":
         """Subset persons and prune group tables to the ids still referenced.
 
         Args:
@@ -627,9 +736,17 @@ class WeightedBundle:
             strata.
 
         Raises:
+            NotImplementedError: If the frame carries link tables (links are
+                a placeholder; link-aware select comes with the full link
+                operator).
             ValueError: If the mask is misaligned, non-boolean, or would
                 select no persons.
         """
+        if self._link_tables:
+            raise NotImplementedError(
+                "select does not yet prune link tables (links are a "
+                "documented placeholder); drop link tables before selecting."
+            )
         person = self.person
         if isinstance(person_mask, pd.Series):
             if not person_mask.index.equals(person.index):
@@ -677,7 +794,7 @@ class WeightedBundle:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
-        return WeightedBundle(tables, self._schema, weights, strata)
+        return Frame(tables, self._schema, weights, strata)
 
     # ------------------------------------------------------------------
     # Concat helpers
@@ -725,7 +842,7 @@ class WeightedBundle:
             person = other_tables[person_entity]
             person[membership_column] = person[membership_column] + offset
 
-    def _concat_weights(self, entity: str, other: "WeightedBundle") -> Weights:
+    def _concat_weights(self, entity: str, other: "Frame") -> Weights:
         """Concatenate two entities' weight vectors; kind is the further one."""
         mine = self._weights[entity]
         theirs = other._weights[entity]
@@ -745,7 +862,8 @@ class WeightedBundle:
             for entity in self.weighted_entities
         )
         n_strata = self._strata.nunique()
+        links = f"; links={list(self.links)}" if self._link_tables else ""
         return (
-            f"WeightedBundle({sizes}; weights[{weighted}]; "
-            f"strata={n_strata})"
+            f"Frame({sizes}; weights[{weighted}]; "
+            f"strata={n_strata}{links})"
         )

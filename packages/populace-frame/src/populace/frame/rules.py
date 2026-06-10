@@ -18,8 +18,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from microframe.bundle import WeightedBundle
-from microframe.schema import EntitySchema
+from populace.frame.bundle import Frame
+from populace.frame.schema import EntitySchema
 
 __all__ = ["RulesEngine", "ExportContract"]
 
@@ -42,7 +42,7 @@ class RulesEngine(Protocol):
 
     def materialize(
         self,
-        bundle: WeightedBundle,
+        bundle: Frame,
         variables: Sequence[str],
         period: int | str,
     ) -> Mapping[str, np.ndarray]:
@@ -60,7 +60,7 @@ class RulesEngine(Protocol):
 
     def write_dataset(
         self,
-        bundle: WeightedBundle,
+        bundle: Frame,
         path: str | Path,
         period: int | str,
     ) -> None:

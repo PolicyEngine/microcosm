@@ -1,7 +1,7 @@
 """PolicyEngine-US adapter behavior against the real engine.
 
 The whole module skips when ``policyengine_us`` is not installed (it is not
-a workspace dependency; install via ``microframe[policyengine]`` to run
+a workspace dependency; install via ``populace-frame[policyengine]`` to run
 these).
 """
 
@@ -11,15 +11,15 @@ import pytest
 
 pytest.importorskip("policyengine_us")
 
-from microframe import (  # noqa: E402
+from populace.frame import (  # noqa: E402
     US_SCHEMA,
     ExportContract,
-    WeightedBundle,
+    Frame,
     WeightKind,
     Weights,
     wsum,
 )
-from microframe.adapters.policyengine_us import PolicyEngineUSEngine  # noqa: E402
+from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +28,7 @@ def adapter() -> PolicyEngineUSEngine:
 
 
 @pytest.fixture
-def us_bundle() -> WeightedBundle:
+def us_bundle() -> Frame:
     """Two households (a married couple, a single filer) with full US linkage."""
     person = pd.DataFrame(
         {
@@ -58,7 +58,7 @@ def us_bundle() -> WeightedBundle:
             values=np.array([1500.0, 900.0]), kind=WeightKind.DESIGN
         )
     }
-    return WeightedBundle(tables, US_SCHEMA, weights)
+    return Frame(tables, US_SCHEMA, weights)
 
 
 class TestVariableMetadata:
@@ -166,7 +166,7 @@ class TestEndToEnd:
         results = adapter.materialize(us_bundle, ["employment_income"], period=2024)
         person = us_bundle.person.copy()
         person["employment_income_2024"] = results["employment_income"]
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {
                 name: (person if name == "person" else us_bundle.table(name))
                 for name in us_bundle.entities

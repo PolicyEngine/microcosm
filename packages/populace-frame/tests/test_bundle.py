@@ -1,12 +1,13 @@
-"""WeightedBundle accessors, broadcast, weights resolution, concat, select."""
+"""Frame accessors, broadcast, weights resolution, concat, select."""
 
 import numpy as np
 import pandas as pd
 import pytest
-from microframe import (
+
+from populace.frame import (
     DEFAULT_STRATUM,
     EntitySchema,
-    WeightedBundle,
+    Frame,
     WeightKind,
     Weights,
     wsum,
@@ -52,7 +53,7 @@ class TestAccessors:
         weights = {
             "household": Weights(values=np.array([2.0]), kind=WeightKind.DESIGN)
         }
-        bundle = WeightedBundle(
+        bundle = Frame(
             {"person": person, "household": household}, simple_schema, weights
         )
         person.loc[0, "x"] = 99.0  # caller mutation must not reach the bundle
@@ -64,7 +65,7 @@ class TestAccessors:
             "household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)
         }
         with pytest.raises(ValueError, match="household"):
-            WeightedBundle({"person": person}, simple_schema, weights)
+            Frame({"person": person}, simple_schema, weights)
 
     def test_unknown_entity_table_is_named(self, simple_schema, make_bundle) -> None:
         bundle = make_bundle()
@@ -74,7 +75,7 @@ class TestAccessors:
             "spaceship": pd.DataFrame({"spaceship_id": [1]}),
         }
         with pytest.raises(ValueError, match="spaceship"):
-            WeightedBundle(
+            Frame(
                 tables, simple_schema, {"household": bundle.weights_for("household")}
             )
 
@@ -85,7 +86,7 @@ class TestAccessors:
             "galaxy": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN),
         }
         with pytest.raises(ValueError, match="galaxy"):
-            WeightedBundle(
+            Frame(
                 {"person": bundle.person, "household": bundle.table("household")},
                 bundle.schema,
                 weights,
@@ -94,7 +95,7 @@ class TestAccessors:
     def test_weights_must_not_be_empty(self, make_bundle) -> None:
         bundle = make_bundle()
         with pytest.raises(ValueError, match="at least one entity"):
-            WeightedBundle(
+            Frame(
                 {"person": bundle.person, "household": bundle.table("household")},
                 bundle.schema,
                 {},
@@ -104,7 +105,7 @@ class TestAccessors:
         bundle = make_bundle()
         strata = pd.Series(["a", "a", None, "b", "b"], index=bundle.person.index)
         with pytest.raises(ValueError, match="missing"):
-            WeightedBundle(
+            Frame(
                 {"person": bundle.person, "household": bundle.table("household")},
                 bundle.schema,
                 {"household": bundle.weights_for("household")},
@@ -120,7 +121,7 @@ class TestAccessors:
             "household": Weights(values=np.array([1.0, 1.0]), kind=WeightKind.DESIGN)
         }
         with pytest.raises(ValueError, match="sorted"):
-            WeightedBundle(
+            Frame(
                 {"person": person, "household": household}, simple_schema, weights
             )
 
@@ -156,7 +157,7 @@ class TestEffectiveWeights:
     """Weight resolution for accounting: explicit, broadcast, or collapsed."""
 
     @staticmethod
-    def _nested_bundle(person_weights: bool = False) -> WeightedBundle:
+    def _nested_bundle(person_weights: bool = False) -> Frame:
         """person + household + tax_unit, tax units nested within households."""
         schema = EntitySchema(group_entities=("household", "tax_unit"))
         person = pd.DataFrame(
@@ -178,7 +179,7 @@ class TestEffectiveWeights:
             weights["person"] = Weights(
                 values=np.array([1.0, 1.0, 2.0, 2.0]), kind=WeightKind.DESIGN
             )
-        return WeightedBundle(
+        return Frame(
             {"person": person, "household": household, "tax_unit": tax_unit},
             schema,
             weights,
@@ -268,7 +269,7 @@ class TestConcat:
         b = make_bundle(strata=pd.Series("other", index=range(5)))
         extra = b.person.copy()
         extra["bonus"] = 1.0
-        b_extra = WeightedBundle(
+        b_extra = Frame(
             {"person": extra, "household": b.table("household")},
             b.schema,
             {"household": b.weights_for("household")},
@@ -289,7 +290,7 @@ class TestConcat:
         other_schema = EntitySchema(group_entities=("family",))
         person = pd.DataFrame({"person_id": [0], "person_family_id": [1]})
         family = pd.DataFrame({"family_id": [1]})
-        b = WeightedBundle(
+        b = Frame(
             {"person": person, "family": family},
             other_schema,
             {"family": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)},

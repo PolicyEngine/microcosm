@@ -3,8 +3,9 @@
 import numpy as np
 import pandas as pd
 import pytest
-from microframe import (
-    WeightedBundle,
+
+from populace.frame import (
+    Frame,
     WeightKind,
     Weights,
     gini,
@@ -18,7 +19,7 @@ from microframe import (
 
 def _bundle(values, weights, schema_factory=None):
     """One household per person so person weights equal household weights."""
-    from microframe import EntitySchema
+    from populace.frame import EntitySchema
 
     n = len(values)
     person = pd.DataFrame(
@@ -29,7 +30,7 @@ def _bundle(values, weights, schema_factory=None):
         }
     )
     household = pd.DataFrame({"household_id": range(n)})
-    return WeightedBundle(
+    return Frame(
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {
@@ -50,7 +51,7 @@ class TestSumsAndMeans:
         bundle = make_bundle()
         person = bundle.person.copy()
         person["is_adult"] = person["age"] >= 18
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {"person": person, "household": bundle.table("household")},
             bundle.schema,
             {"household": bundle.weights_for("household")},
@@ -62,7 +63,7 @@ class TestSumsAndMeans:
         bundle = make_bundle()
         household = bundle.table("household").copy()
         household["rent"] = [1000.0, 2000.0]
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {"person": bundle.person, "household": household},
             bundle.schema,
             {"household": bundle.weights_for("household")},
@@ -161,7 +162,7 @@ class TestGroupbyWsum:
         bundle = make_bundle()
         person = bundle.person.copy()
         person["sex"] = ["F", "M", "F", "M", "F"]
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {"person": person, "household": bundle.table("household")},
             bundle.schema,
             {"household": bundle.weights_for("household")},
@@ -181,7 +182,7 @@ class TestGroupbyWsum:
         bundle = make_bundle()
         household = bundle.table("household").copy()
         household["rent"] = [1000.0, 2000.0]
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {"person": bundle.person, "household": household},
             bundle.schema,
             {"household": bundle.weights_for("household")},
@@ -193,7 +194,7 @@ class TestGroupbyWsum:
         bundle = make_bundle()
         household = bundle.table("household").copy()
         household["rent"] = [1000.0, 2000.0]
-        rebuilt = WeightedBundle(
+        rebuilt = Frame(
             {"person": bundle.person, "household": household},
             bundle.schema,
             {"household": bundle.weights_for("household")},

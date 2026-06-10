@@ -5,13 +5,13 @@ PolicyEngine-US groups people into five nested entities:
 module takes a person-level frame carrying the raw CPS ASEC columns (Census
 names such as ``PH_SEQ``, ``A_LINENO``, ``A_SPOUSE``, ``PEPAR1``/``PEPAR2``,
 ``A_EXPRRP``, ``SPM_ID``, ``PF_SEQ``) and household weights, constructs the
-unit systems, and returns a :class:`~microframe.bundle.WeightedBundle` whose
+unit systems, and returns a :class:`~populace.frame.bundle.Frame` whose
 person table carries one ``person_{group}_id`` membership column per group
 and whose group tables carry their ``{group}_id`` columns.
 
 The tax-unit system is the one with real federal filing/dependency rules, so
 it is delegated to :mod:`microunit` — the sanctioned tax-unit constructor
-(install via ``microframe[us]``). This module never re-implements those
+(install via ``populace-frame[us]``). This module never re-implements those
 rules; it maps the person frame onto microunit's CPS-like input contract and
 reads back its dense ``TAX_ID``, role, and filing-status output. The
 remaining systems (SPM unit, family, marital unit) are partitions of existing
@@ -29,9 +29,9 @@ see real income signal.
 import numpy as np
 import pandas as pd
 
-from microframe.bundle import WeightedBundle
-from microframe.schema import EntitySchema
-from microframe.weights import Weights
+from populace.frame.bundle import Frame
+from populace.frame.schema import EntitySchema
+from populace.frame.weights import Weights
 
 __all__ = [
     "US_GROUP_ENTITIES",
@@ -109,7 +109,7 @@ def assign_us_unit_structure(
     schema: EntitySchema = US_SCHEMA,
     tax_unit_mode: str = "policyengine",
     strata: pd.Series | None = None,
-) -> WeightedBundle:
+) -> Frame:
     """Construct the PolicyEngine unit systems and return a validated bundle.
 
     The function is deterministic and side-effect free: the input ``person``
@@ -171,12 +171,12 @@ def assign_us_unit_structure(
             ``person``.
 
     Returns:
-        A validated :class:`~microframe.bundle.WeightedBundle` with the
+        A validated :class:`~populace.frame.bundle.Frame` with the
         person table and the five group tables.
 
     Raises:
         ImportError: If :mod:`microunit` is not installed (install via
-            ``microframe[us]``).
+            ``populace-frame[us]``).
         ValueError: If any required column is missing (the message names
             exactly which), the schema is not the US schema, the household
             weights cannot be aligned, or the constructed partitions fail
@@ -249,7 +249,7 @@ def assign_us_unit_structure(
         "family": family_table,
         "marital_unit": marital_unit_table,
     }
-    return WeightedBundle(tables, schema, {"household": weights}, strata)
+    return Frame(tables, schema, {"household": weights}, strata)
 
 
 # ----------------------------------------------------------------------------
@@ -318,7 +318,7 @@ def _import_construct_tax_units():
         raise ImportError(
             "US tax-unit construction requires the 'microunit' package (the "
             "sanctioned tax-unit constructor). Install it with "
-            "'microframe[us]' to use assign_us_unit_structure()."
+            "'populace-frame[us]' to use assign_us_unit_structure()."
         ) from exc
     return construct_tax_units
 
@@ -434,7 +434,7 @@ def _assign_spm_unit_ids(
 
     partition = assign_spm_partition(
         spm_input,
-        family_col="__microframe_no_family_fallback__",
+        family_col="__populace_frame_no_family_fallback__",
     )
     return _dense_ids(pd.Series(partition.unit_id.to_numpy(), index=person.index))
 

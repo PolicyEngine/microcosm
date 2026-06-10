@@ -1,26 +1,28 @@
 """The behavioral contract suite: guarantees the platform makes, as tests.
 
-Each test states an invariant the micro stack promises — about weights,
-bundle structure, mass conservation, accounting, unit assignment, and the
-rules-engine boundary. Operators (microfit, microcal, microplex stages) may
-rely on every guarantee here; anything that would break one of these tests
-is a kernel-level bug, not a tuning choice.
+Each test states an invariant the populace stack promises — about weights,
+frame structure, links, mass conservation, accounting, unit assignment, and
+the rules-engine boundary. Operators (populace-fit, populace-calibrate,
+microplex stages) may rely on every guarantee here; anything that would
+break one of these tests is a kernel-level bug, not a tuning choice.
 """
 
 import numpy as np
 import pandas as pd
 import pytest
-from microframe import (
+
+from populace.frame import (
     US_SCHEMA,
     EntitySchema,
+    Frame,
+    LinkSpec,
     RulesEngine,
-    WeightedBundle,
     WeightKind,
     Weights,
     gini,
     wsum,
 )
-from microframe.adapters.policyengine_us import PolicyEngineUSEngine
+from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 # ----------------------------------------------------------------------------
 # Weights: corrupted vectors can never enter the system
@@ -136,7 +138,7 @@ def test_bundle_rejects_orphan_group_ids(simple_schema) -> None:
         "household": Weights(values=np.array([1.0, 2.0, 3.0]), kind=WeightKind.DESIGN)
     }
     with pytest.raises(ValueError, match="referenced by no person"):
-        WeightedBundle(tables, simple_schema, weights)
+        Frame(tables, simple_schema, weights)
 
 
 def test_bundle_rejects_dangling_membership(simple_schema) -> None:
@@ -144,7 +146,7 @@ def test_bundle_rejects_dangling_membership(simple_schema) -> None:
     tables = _tables()
     tables["person"].loc[2, "person_household_id"] = 99
     with pytest.raises(ValueError, match="absent from the table"):
-        WeightedBundle(tables, simple_schema, _weights())
+        Frame(tables, simple_schema, _weights())
 
 
 def test_bundle_rejects_duplicate_global_column_names(simple_schema) -> None:
@@ -152,7 +154,7 @@ def test_bundle_rejects_duplicate_global_column_names(simple_schema) -> None:
     tables = _tables()
     tables["household"]["income"] = [1.0, 2.0]  # collides with person.income
     with pytest.raises(ValueError, match="globally unique"):
-        WeightedBundle(tables, simple_schema, _weights())
+        Frame(tables, simple_schema, _weights())
 
 
 def test_bundle_rejects_misaligned_strata(simple_schema) -> None:
@@ -160,10 +162,10 @@ def test_bundle_rejects_misaligned_strata(simple_schema) -> None:
     tables = _tables()
     wrong_length = pd.Series(["a", "b"])
     with pytest.raises(ValueError, match="aligned"):
-        WeightedBundle(tables, simple_schema, _weights(), strata=wrong_length)
+        Frame(tables, simple_schema, _weights(), strata=wrong_length)
     wrong_index = pd.Series(["a", "b", "c"], index=[10, 11, 12])
     with pytest.raises(ValueError, match="aligned"):
-        WeightedBundle(tables, simple_schema, _weights(), strata=wrong_index)
+        Frame(tables, simple_schema, _weights(), strata=wrong_index)
 
 
 def test_bundle_rejects_duplicate_person_ids(simple_schema) -> None:
@@ -171,7 +173,7 @@ def test_bundle_rejects_duplicate_person_ids(simple_schema) -> None:
     tables = _tables()
     tables["person"].loc[1, "person_id"] = 0
     with pytest.raises(ValueError, match="unique"):
-        WeightedBundle(tables, simple_schema, _weights())
+        Frame(tables, simple_schema, _weights())
 
 
 def test_bundle_rejects_weight_length_mismatch(simple_schema) -> None:
@@ -181,7 +183,7 @@ def test_bundle_rejects_weight_length_mismatch(simple_schema) -> None:
         "household": Weights(values=np.array([1.0, 2.0, 3.0]), kind=WeightKind.DESIGN)
     }
     with pytest.raises(ValueError, match="length 3"):
-        WeightedBundle(tables, simple_schema, weights)
+        Frame(tables, simple_schema, weights)
 
 
 # ----------------------------------------------------------------------------
@@ -283,7 +285,7 @@ def test_gini_of_equal_incomes_is_zero(simple_schema) -> None:
         }
     )
     household = pd.DataFrame({"household_id": [1, 2]})
-    bundle = WeightedBundle(
+    bundle = Frame(
         {"person": person, "household": household},
         simple_schema,
         {"household": Weights(values=np.array([3.0, 7.0]), kind=WeightKind.DESIGN)},
@@ -302,7 +304,7 @@ def test_gini_of_one_has_everything_approaches_one(simple_schema) -> None:
         }
     )
     household = pd.DataFrame({"household_id": range(n)})
-    bundle = WeightedBundle(
+    bundle = Frame(
         {"person": person, "household": household},
         simple_schema,
         {"household": Weights(values=np.ones(n), kind=WeightKind.DESIGN)},
@@ -323,7 +325,7 @@ def test_unit_assignment_partitions_exactly(
     """Every person gets exactly one id per system; every table is the exact
     sorted set of referenced ids; the result passes full bundle validation."""
     pytest.importorskip("microunit")
-    from microframe import assign_us_unit_structure
+    from populace.frame import assign_us_unit_structure
 
     bundle = assign_us_unit_structure(
         three_household_frame,
@@ -359,7 +361,7 @@ def test_export_round_trips_through_the_rules_adapter(
     """A bundle written by the adapter reloads with every column intact."""
     pytest.importorskip("policyengine_us")
     pytest.importorskip("microunit")
-    from microframe import assign_us_unit_structure
+    from populace.frame import assign_us_unit_structure
 
     bundle = assign_us_unit_structure(
         three_household_frame,
@@ -373,20 +375,102 @@ def test_export_round_trips_through_the_rules_adapter(
 
 
 # ----------------------------------------------------------------------------
-# microfit (not yet in workspace): the contract it must meet on arrival
+# Links (documented placeholder): declared associations validate their tables
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="microfit not yet in workspace")
+def test_jobs_link_table_validates_against_linked_tables() -> None:
+    """A declared person×firm jobs link carries a validated link table.
+
+    Placeholder scope: the schema declares the association, the frame
+    accepts the link table keyed by the link's name, requires both linked
+    entities' id columns, and refuses ids absent from the linked tables.
+    The full link operator (link-aware broadcast/select/concat, link
+    targets outside the partition entities) comes later.
+    """
+    schema = EntitySchema(
+        group_entities=("household", "firm"),
+        links=(LinkSpec(name="jobs", left_entity="person", right_entity="firm"),),
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [0, 1],
+            "person_household_id": [1, 1],
+            "person_firm_id": [1, 2],
+        }
+    )
+    household = pd.DataFrame({"household_id": [1]})
+    firm = pd.DataFrame({"firm_id": [1, 2]})
+    weights = {
+        "household": Weights(values=np.array([100.0]), kind=WeightKind.DESIGN)
+    }
+    # Many-to-many: person 0 holds jobs at both firms.
+    jobs = pd.DataFrame({"person_id": [0, 0, 1], "firm_id": [1, 2, 2]})
+
+    frame = Frame(
+        {"person": person, "household": household, "firm": firm, "jobs": jobs},
+        schema,
+        weights,
+    )
+    assert frame.links == ("jobs",)
+    assert frame.link("jobs")["firm_id"].tolist() == [1, 2, 2]
+    # The link table is a join table, not an entity table: its id columns do
+    # not violate the global column-uniqueness (flattening) rule.
+    assert frame.column_entity("firm_id") == "firm"
+
+    with pytest.raises(ValueError, match="must carry the id column 'firm_id'"):
+        Frame(
+            {
+                "person": person,
+                "household": household,
+                "firm": firm,
+                "jobs": jobs.drop(columns=["firm_id"]),
+            },
+            schema,
+            weights,
+        )
+    with pytest.raises(ValueError, match="absent from the 'firm' table"):
+        Frame(
+            {
+                "person": person,
+                "household": household,
+                "firm": firm,
+                "jobs": pd.DataFrame({"person_id": [0], "firm_id": [99]}),
+            },
+            schema,
+            weights,
+        )
+
+
+def test_link_declarations_are_validated() -> None:
+    """Link names are unique, distinct from entities, and sides are declared."""
+    jobs = LinkSpec(name="jobs", left_entity="person", right_entity="firm")
+    with pytest.raises(ValueError, match="unique"):
+        EntitySchema(group_entities=("household", "firm"), links=(jobs, jobs))
+    with pytest.raises(ValueError, match="collides with an entity"):
+        EntitySchema(
+            group_entities=("household", "firm"),
+            links=(LinkSpec(name="firm", left_entity="person", right_entity="firm"),),
+        )
+    with pytest.raises(ValueError, match="unknown entity 'firm'"):
+        EntitySchema(group_entities=("household",), links=(jobs,))
+
+
+# ----------------------------------------------------------------------------
+# populace-fit (not yet in workspace): the contract it must meet on arrival
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.skip(reason="populace-fit not yet in workspace")
 def test_weighted_fit_shifts_draws_toward_weighted_truth() -> None:
-    """Contract for the microfit conditional-models operator.
+    """Contract for the populace-fit conditional-models operator.
 
     Fit the canonical conditional model on data where the weighted
     conditional distribution differs from the unweighted one (e.g. a
     high-income regime carrying most of the weight). Draws from the fitted
     model must track the *weighted* truth: the weighted mean/quantiles of the
     draws converge to the weighted-population values, not the unweighted
-    sample values. A fit that ignores bundle weights must be impossible to
+    sample values. A fit that ignores frame weights must be impossible to
     express without writing ``weights: none`` explicitly.
     """
 

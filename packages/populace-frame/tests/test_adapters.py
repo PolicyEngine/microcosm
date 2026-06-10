@@ -9,8 +9,9 @@ import importlib.util
 import json
 
 import pytest
-from microframe import US_SCHEMA, ExportContract, RulesEngine
-from microframe.adapters.policyengine_us import PolicyEngineUSEngine
+
+from populace.frame import US_SCHEMA, ExportContract, RulesEngine
+from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 _POLICYENGINE_INSTALLED = importlib.util.find_spec("policyengine_us") is not None
 
@@ -28,7 +29,7 @@ class TestLazyImport:
     )
     def test_engine_methods_name_the_extra_when_missing(self) -> None:
         adapter = PolicyEngineUSEngine()
-        with pytest.raises(ImportError, match=r"microframe\[policyengine\]"):
+        with pytest.raises(ImportError, match=r"populace-frame\[policyengine\]"):
             adapter.variable_entity("employment_income")
 
 

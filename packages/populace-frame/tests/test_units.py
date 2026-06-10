@@ -11,20 +11,21 @@ spouse pairing, determinism, validation errors, and the bundle-shaped result
 import numpy as np
 import pandas as pd
 import pytest
-from microframe import (
+
+from populace.frame import (
     MICROUNIT_REQUIRED_COLUMNS,
     TAX_UNIT_FILING_STATUS_COLUMN,
     US_SCHEMA,
     EntitySchema,
-    WeightedBundle,
+    Frame,
     WeightKind,
     Weights,
 )
 
 pytest.importorskip("microunit")
 
-from microframe import assign_us_unit_structure  # noqa: E402
-from microframe.units import _microunit_input_frame  # noqa: E402
+from populace.frame import assign_us_unit_structure  # noqa: E402
+from populace.frame.units import _microunit_input_frame  # noqa: E402
 
 
 def _weights(frame: pd.DataFrame) -> Weights:
@@ -32,12 +33,12 @@ def _weights(frame: pd.DataFrame) -> Weights:
     return Weights(values=np.full(n, 1000.0), kind=WeightKind.DESIGN)
 
 
-def _assign(frame: pd.DataFrame, **kwargs) -> WeightedBundle:
+def _assign(frame: pd.DataFrame, **kwargs) -> Frame:
     kwargs.setdefault("household_weights", _weights(frame))
     return assign_us_unit_structure(frame, year=2024, **kwargs)
 
 
-def _by_line(bundle: WeightedBundle, ph_seq: int, line: int) -> pd.Series:
+def _by_line(bundle: Frame, ph_seq: int, line: int) -> pd.Series:
     """Return the augmented person row for a given household line number."""
     person = bundle.person
     mask = (person["PH_SEQ"] == ph_seq) & (person["A_LINENO"] == line)
@@ -162,7 +163,7 @@ class TestMaritalUnits:
 class TestBundleResult:
     def test_returns_validated_us_bundle(self, three_household_frame) -> None:
         bundle = _assign(three_household_frame)
-        assert isinstance(bundle, WeightedBundle)
+        assert isinstance(bundle, Frame)
         assert bundle.schema == US_SCHEMA
         for group in US_SCHEMA.group_entities:
             assert US_SCHEMA.membership_column(group) in bundle.person.columns
