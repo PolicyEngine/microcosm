@@ -176,6 +176,42 @@ def _make_gate(seed: int) -> HistGradientBoostingClassifier:
     return HistGradientBoostingClassifier(random_state=seed)
 
 
+def _interp_rows(
+    quantiles: np.ndarray, grid: np.ndarray, predictions: np.ndarray
+) -> np.ndarray:
+    """Per-row linear interpolation of grid predictions at per-row quantiles.
+
+    Equivalent to ``[np.interp(q[i], grid, predictions[i]) for i]`` but
+    vectorized: ``grid`` (the quantile knots) is shared across rows, so one
+    ``searchsorted`` locates every row's bracket at once and the interpolation
+    is a single weighted blend. Quantiles outside ``grid`` clamp to the end
+    values (the ``np.interp`` convention), so ``q`` at/near 0 or 1 reads the
+    observed conditional min/max.
+
+    Args:
+        quantiles: One quantile per row, shape ``(m,)``.
+        grid: Ascending quantile knots the forest was queried at, shape
+            ``(g,)``.
+        predictions: Predicted values, shape ``(m, g)``, row-aligned with
+            ``quantiles`` and column-aligned with ``grid``.
+
+    Returns:
+        One interpolated value per row, shape ``(m,)``.
+    """
+    upper = np.searchsorted(grid, quantiles, side="left")
+    upper = np.clip(upper, 1, len(grid) - 1)
+    lower = upper - 1
+    grid_lo = grid[lower]
+    grid_hi = grid[upper]
+    span = grid_hi - grid_lo
+    weight = np.where(span > 0, (quantiles - grid_lo) / span, 0.0)
+    weight = np.clip(weight, 0.0, 1.0)  # clamp q outside the grid to the ends
+    rows = np.arange(len(quantiles))
+    values_lo = predictions[rows, lower]
+    values_hi = predictions[rows, upper]
+    return values_lo + weight * (values_hi - values_lo)
+
+
 @dataclass(frozen=True)
 class _Forest:
     """A fitted quantile forest plus the feature columns it was fit on."""
@@ -186,31 +222,65 @@ class _Forest:
     def draw(self, frame: pd.DataFrame, quantiles: np.ndarray) -> np.ndarray:
         """Draw one value per row at that row's quantile.
 
+        The forest is queried on a shared fine grid of quantiles, then each
+        row's value is read out by **linearly interpolating** its predicted
+        grid values at its exact quantile — not by snapping to the nearest grid
+        point. Snapping quantizes every draw to one of the grid's quantiles,
+        which flattens the conditional and biases tail draws toward the
+        grid-bracket interior; interpolation reads the true per-row quantile.
+
+        The grid includes points adjacent to 0 and 1 (see :data:`_QUANTILE_GRID`),
+        so the observed conditional min and max are drawable: ``q=1`` is the
+        observed maximum, not extrapolation, and a draw with quantile near 1
+        must be able to reach it.
+
+        The predict is chunked over rows (:data:`_PREDICT_CHUNK_ROWS`) so the
+        ``(n_rows x n_grid)`` prediction matrix never has to materialize whole —
+        at 3M+ rows that matrix alone would be tens of GB.
+
         Args:
             frame: Feature rows (must carry the fitted columns).
-            quantiles: One quantile in (0, 1) per row.
+            quantiles: One quantile in ``[0, 1]`` per row.
 
         Returns:
             One drawn value per row, positionally aligned with ``frame``.
         """
         features = frame.loc[:, list(self.columns)].to_numpy(dtype=np.float64)
-        # Query the forest on a shared fine grid, then read out each row at the
-        # grid point nearest its quantile. One predict call covers all rows;
-        # quantile_forest returns shape (n_rows, n_grid).
+        quantiles = np.asarray(quantiles, dtype=np.float64)
         grid = _QUANTILE_GRID
-        predictions = np.asarray(self.model.predict(features, quantiles=list(grid)))
-        predictions = predictions.reshape(len(features), len(grid))
-        indices = np.clip(
-            np.rint(quantiles * (len(grid) - 1)).astype(int), 0, len(grid) - 1
-        )
-        return predictions[np.arange(len(features)), indices]
+        n = len(features)
+        out = np.empty(n, dtype=np.float64)
+        for start in range(0, n, _PREDICT_CHUNK_ROWS):
+            stop = min(start + _PREDICT_CHUNK_ROWS, n)
+            block = features[start:stop]
+            predictions = np.asarray(
+                self.model.predict(block, quantiles=list(grid))
+            ).reshape(len(block), len(grid))
+            out[start:stop] = _interp_rows(quantiles[start:stop], grid, predictions)
+        return out
 
 
-#: Fine symmetric quantile grid over the open interval (0, 1). Querying a forest
-#: at a shared grid and reading each row at its nearest grid point lets one
-#: predict call serve per-row quantiles. The endpoints are excluded because a
-#: forest cannot extrapolate past its observed extremes.
-_QUANTILE_GRID = np.linspace(1.0 / 202.0, 1.0 - 1.0 / 202.0, 201)
+#: Fine symmetric quantile grid used to read per-row draws. The interior is an
+#: evenly spaced grid over ``(0, 1)``; points adjacent to 0 and 1 are prepended
+#: and appended so the *observed* conditional extremes are drawable. The maximum
+#: is the ``q=1`` order statistic (and the minimum the ``q=0`` one), which a
+#: forest can return exactly — it is reading an observed value, not
+#: extrapolating past it — so excluding the endpoints (as the nearest-snap grid
+#: did) needlessly truncates the tails. ``np.interp`` then maps any per-row
+#: quantile, including ones at or beyond the grid ends, onto these values.
+_GRID_EPS = 1e-6
+_QUANTILE_GRID = np.concatenate(
+    [
+        [_GRID_EPS],
+        np.linspace(1.0 / 202.0, 1.0 - 1.0 / 202.0, 201),
+        [1.0 - _GRID_EPS],
+    ]
+)
+
+#: Row-batch size for the draw predict. Bounds the ``(rows x grid)`` matrix so a
+#: 3M+ row draw streams in fixed-memory blocks instead of allocating the whole
+#: matrix at once.
+_PREDICT_CHUNK_ROWS = 50_000
 
 
 def _fit_forest(
@@ -221,12 +291,22 @@ def _fit_forest(
     *,
     seed: int,
     n_estimators: int,
+    max_samples_leaf: int | float | None,
     rng: np.random.Generator,
 ) -> _Forest:
-    """Weighted-bootstrap the rows, then grow a quantile forest on them."""
+    """Weighted-bootstrap the rows, then grow a quantile forest on them.
+
+    ``max_samples_leaf`` is passed through to the forest: the quantile-forest
+    default of ``1`` keeps only one sample per leaf, which thins each row's
+    conditional to ~``n_estimators`` atoms and undershoots tail mass; ``None``
+    keeps every leaf sample, so the conditional reflects the full leaf
+    population.
+    """
     x_fit, y_fit = _weighted_bootstrap(x, y, weights, rng)
     model = RandomForestQuantileRegressor(
-        n_estimators=n_estimators, random_state=seed
+        n_estimators=n_estimators,
+        max_samples_leaf=max_samples_leaf,
+        random_state=seed,
     )
     model.fit(x_fit, y_fit)
     return _Forest(model=model, columns=columns)
@@ -265,6 +345,14 @@ class RegimeGatedQRF:
         n_estimators: Trees per forest.
         zero_atol: Magnitudes at or below this count as zeros in regime
             detection.
+        max_samples_leaf: Samples retained per forest leaf for the conditional.
+            ``None`` (the default here) keeps **all** leaf samples, so the
+            per-row conditional reflects the full leaf population; the
+            quantile-forest default of ``1`` keeps only one sample per leaf,
+            thinning each row's conditional to ~``n_estimators`` atoms and
+            undershooting tail mass (roughly halving the share above a high
+            threshold). Pass an int/float to cap the leaf sample, matching the
+            quantile-forest semantics.
         seed: Base random seed. Controls the weighted-bootstrap resample, the
             forest randomness, and the per-row draw quantiles, so a fixed seed
             makes a freshly fitted model's first draw reproducible.
@@ -275,10 +363,12 @@ class RegimeGatedQRF:
         *,
         n_estimators: int = DEFAULT_N_ESTIMATORS,
         zero_atol: float = DEFAULT_ZERO_ATOL,
+        max_samples_leaf: int | float | None = None,
         seed: int = 0,
     ) -> None:
         self.n_estimators = int(n_estimators)
         self.zero_atol = float(zero_atol)
+        self.max_samples_leaf = max_samples_leaf
         self.seed = int(seed)
 
     def fit(
@@ -356,6 +446,7 @@ class RegimeGatedQRF:
                 sub_weights,
                 seed=int(rng.integers(0, 2**31 - 1)),
                 n_estimators=self.n_estimators,
+                max_samples_leaf=self.max_samples_leaf,
                 rng=rng,
             )
 

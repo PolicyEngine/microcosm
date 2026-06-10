@@ -215,6 +215,143 @@ def test_chaining_columns_grow_along_the_chain(correlated_targets_frame) -> None
 
 
 # ----------------------------------------------------------------------------
+# Tail-draw fidelity: full leaf samples, interpolation, drawable extremes
+# ----------------------------------------------------------------------------
+
+#: The heavy-tail threshold for the weight_correlated fixture: the bulk sits at
+#: ~40k and the rare regime at ~600k, so 300k cleanly separates them.
+_TAIL_THRESHOLD = 300_000.0
+
+
+def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
+    weight_correlated_frame,
+) -> None:
+    """Weighted-draw tail share matches truth and beats the pre-fix nearest-snap.
+
+    The fixture's weighted-population share above 300k is ~0.0050. The pre-fix
+    forest kept one sample per leaf (``max_samples_leaf=1``) and snapped each
+    draw to the nearest of 201 interior grid points, which thinned the
+    conditional and undershot the tail by roughly a third (share ~0.0035). The
+    fix — ``max_samples_leaf=None`` (all leaf samples) plus linear
+    interpolation at the exact per-row quantile — recovers the tail. The
+    contract:
+
+    (a) the fix's weighted tail share is within ~2x of the weighted truth; and
+    (b) it is materially closer to the truth than the nearest-snap baseline.
+    """
+    frame, target, weights = weight_correlated_frame(seed=0)
+    truth_share = float(
+        np.average((target > _TAIL_THRESHOLD).astype(float), weights=weights)
+    )
+    # The fixture must actually have a tail to test (guard against a fixture
+    # change collapsing it).
+    assert truth_share > 0.0
+
+    fitted = fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=1)
+    draws = fitted.predict(frame)["target"].to_numpy()
+    fix_share = float(
+        np.average((draws > _TAIL_THRESHOLD).astype(float), weights=weights)
+    )
+
+    # The nearest-snap, one-sample-per-leaf baseline (the pre-fix behavior),
+    # reconstructed by monkeypatching the draw read-out and forcing
+    # max_samples_leaf=1.
+    import populace.fit.qrf as qrf_module
+
+    interior_grid = np.linspace(1.0 / 202.0, 1.0 - 1.0 / 202.0, 201)
+
+    def nearest_snap_draw(self, frame_in, quantiles):
+        feats = frame_in.loc[:, list(self.columns)].to_numpy(dtype=np.float64)
+        preds = np.asarray(
+            self.model.predict(feats, quantiles=list(interior_grid))
+        ).reshape(len(feats), len(interior_grid))
+        idx = np.clip(
+            np.rint(quantiles * (len(interior_grid) - 1)).astype(int),
+            0,
+            len(interior_grid) - 1,
+        )
+        return preds[np.arange(len(feats)), idx]
+
+    original_draw = qrf_module._Forest.draw
+    qrf_module._Forest.draw = nearest_snap_draw
+    try:
+        baseline_fitted = fit(
+            frame,
+            ["age", "is_male"],
+            ["target"],
+            n_estimators=100,
+            max_samples_leaf=1,
+            seed=1,
+        )
+        baseline_draws = baseline_fitted.predict(frame)["target"].to_numpy()
+    finally:
+        qrf_module._Forest.draw = original_draw
+    baseline_share = float(
+        np.average(
+            (baseline_draws > _TAIL_THRESHOLD).astype(float), weights=weights
+        )
+    )
+
+    # (a) within ~2x of the weighted truth, both directions.
+    assert 0.5 * truth_share <= fix_share <= 2.0 * truth_share, (
+        f"fix tail share {fix_share:.5f} not within 2x of truth {truth_share:.5f}"
+    )
+    # (b) materially closer to truth than the nearest-snap baseline.
+    assert abs(fix_share - truth_share) < abs(baseline_share - truth_share), (
+        f"fix share {fix_share:.5f} (err "
+        f"{abs(fix_share - truth_share):.5f}) is not closer to truth "
+        f"{truth_share:.5f} than the nearest-snap baseline {baseline_share:.5f} "
+        f"(err {abs(baseline_share - truth_share):.5f})"
+    )
+
+
+def test_high_quantile_draw_reaches_the_observed_max() -> None:
+    """A draw at q->1 reaches the observed conditional max via the grid endpoint.
+
+    The pre-fix grid stopped at q=0.995 and snapped to it, so a lone extreme —
+    the observed maximum, which sits in the conditional's top atom above
+    q=0.995 — was unreachable: q=1 is the observed max, not extrapolation, and
+    the grid excluded it. The fix prepends/appends grid points adjacent to 0 and
+    1, so the observed max is drawable. This is a direct probe of the forest's
+    draw at q=1 against the interior-only (winsorized) grid.
+    """
+    from quantile_forest import RandomForestQuantileRegressor
+
+    from populace.fit.qrf import _QUANTILE_GRID, _Forest
+
+    rng = np.random.default_rng(0)
+    n = 2000
+    # All rows share one feature value, so every tree has a single leaf holding
+    # the whole sample — the conditional is the marginal, with a clean max.
+    x = np.zeros((n, 1))
+    y = rng.normal(100.0, 10.0, n)
+    observed_max = 1000.0
+    y[0] = observed_max  # a lone extreme: the observed conditional maximum
+    model = RandomForestQuantileRegressor(
+        n_estimators=50, max_samples_leaf=None, random_state=0
+    )
+    model.fit(x, y)
+    forest = _Forest(model=model, columns=("x",))
+
+    import pandas as pd
+
+    probe = pd.DataFrame({"x": np.zeros(1)})
+    draw_at_one = forest.draw(probe, np.array([1.0]))[0]
+    # The endpoint grid reaches the observed max (within sampling tolerance).
+    assert draw_at_one == pytest.approx(observed_max, rel=0.02)
+
+    # The interior-only grid (the pre-fix winsorized grid) cannot: its top
+    # quantile q=0.995 reads far below the lone extreme.
+    interior_grid = np.linspace(1.0 / 202.0, 1.0 - 1.0 / 202.0, 201)
+    interior_top = float(
+        np.asarray(model.predict(np.zeros((1, 1)), quantiles=[interior_grid[-1]]))[0]
+    )
+    assert interior_top < 0.5 * observed_max
+    # And the endpoint of the live grid is the one that closes the gap.
+    assert _QUANTILE_GRID[-1] > interior_grid[-1]
+
+
+# ----------------------------------------------------------------------------
 # Shape and determinism
 # ----------------------------------------------------------------------------
 
