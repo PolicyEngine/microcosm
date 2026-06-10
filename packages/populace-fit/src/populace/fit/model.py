@@ -116,6 +116,15 @@ class ConditionalModel(Protocol):
         ...
 
 
+def _duplicates(names: list[str]) -> list[str]:
+    """Return the sorted set of names that appear more than once."""
+    seen: set[str] = set()
+    dups: set[str] = set()
+    for name in names:
+        (dups if name in seen else seen).add(name)
+    return sorted(dups)
+
+
 def predictors_targets_entity(
     frame: Frame, predictors: list[str], targets: list[str]
 ) -> str:
@@ -145,6 +154,18 @@ def predictors_targets_entity(
         raise ValueError("fit requires at least one predictor.")
     if not targets:
         raise ValueError("fit requires at least one target.")
+    predictor_dups = _duplicates(predictors)
+    if predictor_dups:
+        raise ValueError(f"Duplicate predictors: {predictor_dups}.")
+    target_dups = _duplicates(targets)
+    if target_dups:
+        raise ValueError(f"Duplicate targets: {target_dups}.")
+    overlap = sorted(set(predictors) & set(targets))
+    if overlap:
+        raise ValueError(
+            f"Columns are both predictor and target: {overlap}; a target "
+            "cannot condition on itself."
+        )
     owners: dict[str, str] = {}
     for column in (*predictors, *targets):
         owners[column] = frame.column_entity(column)  # raises naming the column

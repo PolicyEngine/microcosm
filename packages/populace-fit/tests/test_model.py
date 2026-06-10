@@ -161,7 +161,7 @@ def test_fit_refuses_unknown_columns() -> None:
     """An unknown predictor or target names the missing column."""
     frame = _two_entity_frame()
     with pytest.raises(ValueError, match="not found on any entity table"):
-        fit(frame, ["age", "nonexistent"], ["age"], weights="none")
+        fit(frame, ["nonexistent"], ["age"], weights="none")
 
 
 def test_fit_refuses_empty_predictors_or_targets() -> None:
@@ -267,3 +267,19 @@ def test_post_calibration_default_design_fit_raises_actionable_message() -> None
     # And it must NOT give the impossible advice to advance to design.
     assert "advance the frame's weights to 'design'" not in message
     assert "only move forward" in message
+
+
+def test_duplicate_or_overlapping_columns_raise(weight_correlated_frame) -> None:
+    """Duplicate predictors/targets, or a column that is both, are refused.
+
+    A duplicate target silently fit twice (dict-key collision) then crashed at
+    predict; a target listed among predictors silently fit P(y|y). Both now
+    raise naming the culprit.
+    """
+    frame, _, _ = weight_correlated_frame(seed=0, n=200)
+    with pytest.raises(ValueError, match="Duplicate targets"):
+        fit(frame, ["age"], ["target", "target"])
+    with pytest.raises(ValueError, match="Duplicate predictors"):
+        fit(frame, ["age", "age"], ["target"])
+    with pytest.raises(ValueError, match="both predictor and target"):
+        fit(frame, ["age", "target"], ["target"])
