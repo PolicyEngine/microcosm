@@ -144,6 +144,48 @@ def landmine_frame():
 
 
 @pytest.fixture
+def multiperson_frame():
+    """Factory: a household frame with multiple persons per household.
+
+    Households hold several persons each (so person- and household-length
+    vectors differ), every person carries an ``age``, and household weights are
+    uniform. This is the frame a person-entity ``sum``/``mean`` target must
+    compile against while calibrating *household* weights — the cross-entity
+    collapse path. Returns the per-person ``age`` and household membership so a
+    test can compute the true weighted person aggregates by hand.
+
+    Returns:
+        A callable ``make(seed=0, n_households=60, max_persons=4, weight=1000.0)``
+        returning ``(frame, age, person_household, weights)`` where ``age`` and
+        ``person_household`` are person-aligned and ``weights`` is the household
+        weight vector.
+    """
+
+    def make(
+        seed: int = 0,
+        n_households: int = 60,
+        max_persons: int = 4,
+        weight: float = 1000.0,
+    ) -> tuple[Frame, np.ndarray, np.ndarray, np.ndarray]:
+        rng = np.random.default_rng(seed)
+        persons_per_household = rng.integers(1, max_persons + 1, n_households)
+        household_ids = np.arange(n_households, dtype="int64")
+        person_household = np.repeat(household_ids, persons_per_household)
+        n_persons = len(person_household)
+        age = rng.integers(1, 90, n_persons).astype(float)
+        weights = np.full(n_households, weight)
+        frame = household_frame(
+            household_columns={},
+            weights=weights,
+            person_columns={"age": age},
+            persons_per_household=persons_per_household,
+        )
+        return frame, age, person_household, weights
+
+    return make
+
+
+@pytest.fixture
 def multiperiod_frame():
     """Factory: a frame carrying two periods' income columns over one weight set.
 

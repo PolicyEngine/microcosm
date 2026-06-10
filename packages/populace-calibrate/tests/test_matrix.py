@@ -145,6 +145,68 @@ def test_normal_target_value_compiles_fine(feasible_frame) -> None:
     assert problem.matrix.shape[0] == 1
 
 
+def test_person_sum_target_collapses_onto_multi_person_households(
+    multiperson_frame,
+) -> None:
+    """A person-level ``sum`` compiles onto household weights via group collapse.
+
+    On a real multi-person frame the per-person values sum within each household
+    (members share the household weight), so the household row's entry is the
+    household's person-total, and the weighted row reproduces the true aggregate.
+    """
+    frame, age, person_household, weights = multiperson_frame()
+    targets = TargetSet(
+        (
+            Target(name="total_age", entity="person", aggregation="sum",
+                   value=1.0, measure="age"),
+        )
+    )
+    problem = build_constraint_matrix(frame, targets, "household")
+    assert problem.matrix.shape[0] == 1
+    assert problem.skipped == ()
+    # The household row equals each household's summed person ages.
+    expected_row = np.zeros(frame.n("household"))
+    np.add.at(expected_row, person_household, age)
+    np.testing.assert_allclose(problem.matrix.toarray()[0], expected_row)
+    # The weighted estimate recovers the true weighted person-age total.
+    true_total = float((age * weights[person_household]).sum())
+    np.testing.assert_allclose(problem.estimates(weights)[0], true_total, rtol=1e-9)
+
+
+def test_person_mean_target_compiles_on_multi_person_households(
+    multiperson_frame,
+) -> None:
+    """A person-level ``mean`` compiles on a multi-person frame (Finding 5).
+
+    The compiler builds the row at the person-aligned linearization point but
+    previously called ``Target.offset`` with the *group* weight vector, so its
+    internal ``filter_mask * weights`` broadcast (n_persons,) against
+    (n_households,) and raised — the target was silently skipped with a raw-numpy
+    reason. ``offset`` must see the same person-aligned weights the row does.
+    """
+    frame, age, person_household, weights = multiperson_frame()
+    person_weights = weights[person_household]
+    true_mean = float((age * person_weights).sum() / person_weights.sum())
+    targets = TargetSet(
+        (
+            Target(name="mean_age", entity="person", aggregation="mean",
+                   value=true_mean * 1.1, measure="age"),
+        )
+    )
+    value = true_mean * 1.1
+    problem = build_constraint_matrix(frame, targets, "household")
+    assert problem.skipped == (), problem.skipped
+    assert problem.matrix.shape[0] == 1
+    # By the mean linearization, target_vector = value + (row @ w0 - current_mean)
+    # and estimates(w0) = row @ w0, so estimates(w0) - target_vector + value
+    # recovers the true current mean exactly — and the row solving to value would
+    # land the mean on the target. This identity holds only if offset saw the
+    # same person-aligned weights as the row (the Finding 5 fix).
+    est_at_w0 = float(problem.estimates(weights)[0])
+    recovered_mean = est_at_w0 - float(problem.target_vector[0]) + value
+    np.testing.assert_allclose(recovered_mean, true_mean, rtol=1e-6)
+
+
 def test_uncompilable_target_is_skipped_and_reported(feasible_frame) -> None:
     frame, truths = feasible_frame(n=100)
     targets = TargetSet(

@@ -130,10 +130,53 @@ class CalibrationProblem:
         return np.asarray(self.matrix @ np.asarray(weights, dtype=np.float64))
 
 
-def _entity_row(
+def _linearization_weights(
     target: Target,
     frame: Frame,
     weights: np.ndarray,
+    weight_entity: str,
+) -> np.ndarray:
+    """Weights aligned to ``target.entity`` for the ``mean`` linearization.
+
+    The constraint row and its ``offset`` are both built at a linearization
+    point on the *target's* entity. When the target is measured on the calibrated
+    entity that point is ``weights`` itself; when it is a person-level target
+    collapsed onto a group, the point is the group weights broadcast onto persons
+    (members share the group weight). Resolving this once keeps the row and the
+    offset on the *same* point — passing the group vector to a person-length
+    ``offset`` is the broadcast bug this guards against.
+
+    Args:
+        target: The target to compile.
+        frame: The frame to read from.
+        weights: The calibrated entity's current weights.
+        weight_entity: The entity being calibrated.
+
+    Returns:
+        The weight vector aligned to ``target.entity``'s records.
+
+    Raises:
+        ValueError: If the target's entity is neither the calibrated entity nor a
+            person entity nested under the calibrated group entity.
+    """
+    if target.entity == weight_entity:
+        return np.asarray(weights, dtype=np.float64)
+    person_entity = frame.schema.person_entity
+    group_entities = set(frame.schema.group_entities)
+    if target.entity == person_entity and weight_entity in group_entities:
+        return frame._group_values_to_person(weight_entity, weights)
+    raise ValueError(
+        f"Target {target.name!r}: measured on entity {target.entity!r} but "
+        f"calibrating {weight_entity!r}. Compilation supports a target on the "
+        "calibrated entity, or a person-level target collapsed onto a group "
+        f"entity persons belong to; {target.entity!r} is neither here."
+    )
+
+
+def _entity_row(
+    target: Target,
+    frame: Frame,
+    entity_weights: np.ndarray,
     weight_entity: str,
 ) -> np.ndarray:
     """Build ``target``'s row aligned to ``weight_entity``'s weight vector.
@@ -148,8 +191,10 @@ def _entity_row(
     Args:
         target: The target to compile.
         frame: The frame to read from.
-        weights: The calibrated entity's current weights (for ``mean``
-            linearization; the row is built against these).
+        entity_weights: The linearization point aligned to ``target.entity``
+            (from :func:`_linearization_weights`) — the calibrated entity's own
+            weights, or the group weights broadcast onto persons for the
+            cross-entity case.
         weight_entity: The entity being calibrated.
 
     Returns:
@@ -163,29 +208,18 @@ def _entity_row(
     """
     if target.entity == weight_entity:
         # The row is built against the calibrated entity's own weights.
-        return target.constraint_row(frame, weights)
+        return target.constraint_row(frame, entity_weights)
 
-    person_entity = frame.schema.person_entity
-    group_entities = set(frame.schema.group_entities)
     # Supported cross-entity case: target measured on persons, weights on a
-    # group the persons belong to. Build the per-person row, then collapse to
-    # one value per group by summation (members share the group weight).
-    if target.entity == person_entity and weight_entity in group_entities:
-        # Person-level mean linearization needs person weights; broadcast the
-        # group weights onto persons so the row is built at the right point.
-        person_weights = frame._group_values_to_person(weight_entity, weights)
-        person_row = target.constraint_row(frame, person_weights)
-        positions = frame._group_positions(weight_entity)
-        collapsed = np.zeros(frame.n(weight_entity), dtype=np.float64)
-        np.add.at(collapsed, positions, person_row)
-        return collapsed
-
-    raise ValueError(
-        f"Target {target.name!r}: measured on entity {target.entity!r} but "
-        f"calibrating {weight_entity!r}. Compilation supports a target on the "
-        "calibrated entity, or a person-level target collapsed onto a group "
-        f"entity persons belong to; {target.entity!r} is neither here."
-    )
+    # group the persons belong to. ``entity_weights`` is already the group
+    # weights broadcast onto persons; build the per-person row at that point,
+    # then collapse to one value per group by summation (members share the
+    # group weight).
+    person_row = target.constraint_row(frame, entity_weights)
+    positions = frame._group_positions(weight_entity)
+    collapsed = np.zeros(frame.n(weight_entity), dtype=np.float64)
+    np.add.at(collapsed, positions, person_row)
+    return collapsed
 
 
 def build_constraint_matrix(
@@ -235,8 +269,15 @@ def build_constraint_matrix(
 
     for target in targets:
         try:
-            row = _entity_row(target, frame, w0, weight_entity)
-            offset = target.offset(frame, w0)
+            # The row and its offset must share one linearization point on the
+            # target's *own* entity; resolving it once is the fix for person-
+            # entity mean/offset targets on multi-person frames (offset was
+            # otherwise handed the group vector and broadcast against persons).
+            entity_weights = _linearization_weights(
+                target, frame, w0, weight_entity
+            )
+            row = _entity_row(target, frame, entity_weights, weight_entity)
+            offset = target.offset(frame, entity_weights)
         except (KeyError, ValueError) as exc:
             skipped.append(SkippedTarget(target=target, reason=str(exc)))
             continue
