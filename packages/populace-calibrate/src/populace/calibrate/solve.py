@@ -38,15 +38,14 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from populace.frame import Frame, MassChange, Weights, WeightKind
-
+from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
     build_constraint_matrix,
 )
-from populace.calibrate.gates import HardConcrete
 from populace.calibrate.target import TargetSet
+from populace.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
     "calibrate",
@@ -291,6 +290,15 @@ def _optimize(
             gates.eval()
             weights = weights * gates()
         final = weights.detach().numpy().astype(np.float64)
+
+    # Make the hard ratio bound exact on the returned vector. The per-step
+    # clamp is in float32, so exp() can overshoot the bound by a float epsilon
+    # (~1e-7 relative); a closing float64 cap guarantees no returned weight
+    # exceeds max_weight_ratio * w0, which downstream code may assert.
+    if max_weight_ratio is not None:
+        final = np.minimum(
+            final, max_weight_ratio * np.asarray(w0, dtype=np.float64)
+        )
 
     # Exact mass conservation on the returned vector: a single closing rescale
     # to the input total. When a max_weight_ratio is also set, the rescale is

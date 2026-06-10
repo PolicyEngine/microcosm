@@ -25,9 +25,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import sparse
 
-from populace.frame import Frame, Weights
-
 from populace.calibrate.target import Target, TargetSet
+from populace.frame import Frame, Weights
 
 __all__ = ["CalibrationProblem", "SkippedTarget", "build_constraint_matrix"]
 

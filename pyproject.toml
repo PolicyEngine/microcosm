@@ -25,4 +25,6 @@ known-first-party = ["populace"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
-addopts = "-q"
+# importlib mode lets shards share test-file basenames (each has its own
+# test_compat.py) without the prepend-mode rootdir collision.
+addopts = "-q --import-mode=importlib"
