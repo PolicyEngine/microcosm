@@ -1,0 +1,20 @@
+[project]
+name = "micro-workspace"
+version = "0.0.0"
+description = "Workspace root for the micro stack (not a published package)"
+requires-python = ">=3.13"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+addopts = "-q"
