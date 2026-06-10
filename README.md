@@ -21,7 +21,7 @@ packages; there is no backward-compatibility layer.
 ## Development
 
 ```bash
-uv sync                  # workspace install
+uv sync --all-packages   # workspace install (all members + dev groups)
 uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
