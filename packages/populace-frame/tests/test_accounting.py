@@ -119,6 +119,27 @@ class TestQuantiles:
         bundle = _bundle([10.0, 50.0], [9.0, 1.0])
         assert wmedian(bundle, "x") == 10.0
 
+    def test_nan_propagates_through_wquantile_and_wmedian(self) -> None:
+        """H1: a NaN in the data makes every quantile NaN, like wsum/wmean.
+
+        Without propagation, NaN sorts last (treated as +inf) and its weight
+        stays in the denominator, so wmedian([1, NaN, 3]) returned 3.0 and
+        wquantile(0.25) returned 1.0 — silently partial numbers.
+        """
+        bundle = _bundle([1.0, np.nan, 3.0], [1.0, 1.0, 1.0])
+        assert np.isnan(wmedian(bundle, "x"))
+        assert np.isnan(wquantile(bundle, "x", 0.25))
+        assert np.isnan(wquantile(bundle, "x", 0.5))
+        assert np.isnan(wquantile(bundle, "x", 1.0))
+
+    def test_nan_propagates_through_array_quantiles(self) -> None:
+        """H1: an array of q over NaN data is all-NaN, indexed by q."""
+        bundle = _bundle([1.0, np.nan, 3.0], [1.0, 1.0, 1.0])
+        result = wquantile(bundle, "x", np.array([0.25, 0.75]))
+        assert isinstance(result, pd.Series)
+        assert result.isna().all()
+        assert result.index.tolist() == [0.25, 0.75]
+
 
 class TestGini:
     def test_known_two_point_distribution(self) -> None:

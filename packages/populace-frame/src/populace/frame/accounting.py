@@ -119,6 +119,16 @@ def wquantile(
         raise ValueError(f"Quantiles must lie in [0, 1], got {quantiles.tolist()}.")
     scalar = np.asarray(q).shape == ()
 
+    # NaN propagates, as the module promises: a quantile over data containing
+    # a NaN is NaN for every q, never a silently partial number (NaN sorts
+    # last, so without this guard it would be treated as +inf and the missing
+    # value's weight would still inflate the denominator).
+    if np.isnan(values).any():
+        result = np.full(quantiles.shape, np.nan)
+        if scalar:
+            return float(result[0])
+        return pd.Series(result, index=quantiles)
+
     nonzero = weights > 0
     values = values[nonzero]
     weights = weights[nonzero]
