@@ -72,7 +72,7 @@ class TestLazyImport:
     def test_engine_methods_name_the_extra_when_missing(self) -> None:
         adapter = PolicyEngineUSEngine()
         with pytest.raises(ImportError, match=r"populace-frame\[policyengine\]"):
-            adapter.variable_entity("employment_income")
+            adapter.variable_metadata("employment_income")
 
 
 class TestExportContract:

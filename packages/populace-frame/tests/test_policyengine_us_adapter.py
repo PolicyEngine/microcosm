@@ -62,16 +62,26 @@ def us_bundle() -> Frame:
 
 
 class TestVariableMetadata:
-    def test_variable_entity(self, adapter) -> None:
-        assert adapter.variable_entity("employment_income") == "person"
-        assert adapter.variable_entity("household_net_income") == "household"
+    def test_entity_dtype_period(self, adapter) -> None:
+        meta = adapter.variable_metadata("employment_income")
+        assert meta.entity == "person"
+        assert meta.dtype == "float"
+        assert meta.period == "year"
+        assert (
+            adapter.variable_metadata("household_net_income").entity == "household"
+        )
 
-    def test_variable_dtype(self, adapter) -> None:
-        assert adapter.variable_dtype("employment_income") is float
+    def test_enum_variable_reports_str_dtype(self, adapter) -> None:
+        assert adapter.variable_metadata("filing_status").dtype == "str"
 
     def test_unknown_variable_is_named(self, adapter) -> None:
         with pytest.raises(ValueError, match="not_a_variable"):
-            adapter.variable_entity("not_a_variable")
+            adapter.variable_metadata("not_a_variable")
+
+    def test_variables_lists_inputs_not_outputs(self, adapter) -> None:
+        names = adapter.variables()
+        assert "employment_income" in names  # input
+        assert "income_tax" not in names  # formula-owned output
 
 
 class TestMaterialize:
@@ -149,8 +159,8 @@ class TestWriteDataset:
         path = tmp_path / "defaulted.h5"
         defaulted.write_dataset(us_bundle, path, period=2024)
         reloaded = USSingleYearDataset(file_path=str(path))
-        entity = PolicyEngineUSEngine().variable_entity("takes_up_snap_if_eligible")
-        assert entity == "spm_unit"
+        meta = PolicyEngineUSEngine().variable_metadata("takes_up_snap_if_eligible")
+        assert meta.entity == "spm_unit"
         assert reloaded.spm_unit["takes_up_snap_if_eligible"].all()
 
     def test_non_h5_path_is_rejected(self, adapter, us_bundle, tmp_path) -> None:

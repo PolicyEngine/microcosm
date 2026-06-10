@@ -26,7 +26,7 @@ import pandas as pd
 
 from populace.frame.bundle import Frame
 from populace.frame.rules import ExportContract
-from populace.frame.schema import EntitySchema
+from populace.frame.schema import EntitySchema, VariableMetadata
 from populace.frame.units import US_SCHEMA
 
 __all__ = ["PolicyEngineUSEngine"]
@@ -40,6 +40,31 @@ _GROUP_TABLES: tuple[str, ...] = (
     "marital_unit",
 )
 _HOUSEHOLD_WEIGHT_COLUMN = "household_weight"
+
+# PolicyEngine ``value_type`` (a Python type) → kernel dtype kind. Enum value
+# types are not listed and fall back to ``"str"`` at the call site.
+_DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
+    float: "float",
+    int: "int",
+    bool: "bool",
+    str: "str",
+}
+# PolicyEngine ``definition_period`` → kernel period semantics. Anything else
+# (``"eternity"``, ``"day"``) is point-in-time state.
+_PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
+
+
+def _has_formula(variable: Any) -> bool:
+    """Return whether a PolicyEngine variable is computed by a formula.
+
+    Input variables (read from data, what a pool must produce) have no
+    formula; formula-owned outputs do. PolicyEngine exposes formulas either as
+    a ``formula`` attribute or a ``formulas`` mapping keyed by start date.
+    """
+    if getattr(variable, "formula", None) is not None:
+        return True
+    formulas = getattr(variable, "formulas", None)
+    return bool(formulas)
 
 
 class PolicyEngineUSEngine:
@@ -69,23 +94,47 @@ class PolicyEngineUSEngine:
     # Variable metadata
     # ------------------------------------------------------------------
 
-    def variable_entity(self, name: str) -> str:
-        """Return the PolicyEngine entity key a variable lives on.
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        """Return entity, dtype kind, and period semantics for a variable.
+
+        Maps the PolicyEngine variable's ``value_type`` to a kernel dtype kind
+        (``float``/``int``/``bool``/``str``; enums are reported as ``str``) and
+        its ``definition_period`` to period semantics (``year``/``month``, with
+        ``eternity``/``day`` reported as ``point``).
 
         Raises:
             ImportError: If ``policyengine_us`` is not installed.
             ValueError: If the variable is unknown to the tax-benefit system.
         """
+        variable = self._variable(name)
+        return VariableMetadata(
+            name=name,
+            entity=variable.entity.key,
+            dtype=_DTYPE_KIND_BY_VALUE_TYPE.get(variable.value_type, "str"),
+            period=_PERIOD_BY_DEFINITION.get(
+                getattr(variable, "definition_period", "year"), "point"
+            ),
+        )
+
+    def variables(self) -> list[str]:
+        """Return the engine's input variable names (those without a formula).
+
+        Computed/formula-owned variables are excluded — a pool produces inputs,
+        not outputs.
+
+        Raises:
+            ImportError: If ``policyengine_us`` is not installed.
+        """
+        system_variables = self._tax_benefit_system().variables
+        return sorted(
+            name
+            for name, variable in system_variables.items()
+            if not _has_formula(variable)
+        )
+
+    def _entity_of(self, name: str) -> str:
+        """Return the entity key a variable lives on (internal use)."""
         return self._variable(name).entity.key
-
-    def variable_dtype(self, name: str) -> type:
-        """Return the PolicyEngine value type of a variable (e.g. ``float``).
-
-        Raises:
-            ImportError: If ``policyengine_us`` is not installed.
-            ValueError: If the variable is unknown to the tax-benefit system.
-        """
-        return self._variable(name).value_type
 
     def entity_schema(self) -> EntitySchema:
         """Return the US entity schema (no engine import required)."""
@@ -128,7 +177,7 @@ class PolicyEngineUSEngine:
         simulation = microsimulation_class(dataset=dataset)
         results: dict[str, np.ndarray] = {}
         for name in variables:
-            entity = self.variable_entity(name)
+            entity = self._entity_of(name)
             values = np.asarray(simulation.calculate(name, period=period))
             expected = bundle.n(entity)
             if values.shape != (expected,):
@@ -318,12 +367,38 @@ class PolicyEngineUSEngine:
 
         reloaded = USSingleYearDataset(file_path=str(output_path))
         persisted_columns: set[str] = set()
+        dtype_mismatches: list[str] = []
         for name in (_PERSON_TABLE, *_GROUP_TABLES):
-            persisted_columns.update(getattr(reloaded, name).columns)
+            reloaded_table = getattr(reloaded, name)
+            persisted_columns.update(reloaded_table.columns)
+            source_table = tables.get(name)
+            if source_table is None or len(source_table) == 0:
+                continue
+            for column in source_table.columns:
+                if column not in reloaded_table.columns:
+                    continue
+                source_kind = source_table[column].dtype.kind
+                reloaded_kind = reloaded_table[column].dtype.kind
+                # Treat the numeric kinds (int/uint/float) as compatible; a
+                # round-trip that turns a number into a string (or drops a
+                # column's values) is the failure this guards against.
+                numeric = {"i", "u", "f"}
+                same = source_kind == reloaded_kind or (
+                    source_kind in numeric and reloaded_kind in numeric
+                )
+                if not same:
+                    dtype_mismatches.append(
+                        f"{name}.{column}: {source_kind!r}->{reloaded_kind!r}"
+                    )
 
         missing = expected_columns - persisted_columns
         if missing:
             raise ValueError(
                 "Export round-trip verification failed; columns absent after "
                 f"reload: {sorted(missing)}."
+            )
+        if dtype_mismatches:
+            raise ValueError(
+                "Export round-trip verification failed; dtype changed on "
+                f"reload: {sorted(dtype_mismatches)}."
             )

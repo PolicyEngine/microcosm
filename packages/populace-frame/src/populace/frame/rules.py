@@ -19,21 +19,51 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from populace.frame.bundle import Frame
-from populace.frame.schema import EntitySchema
+from populace.frame.schema import EntitySchema, VariableMetadata
 
 __all__ = ["RulesEngine", "ExportContract"]
 
 
 @runtime_checkable
 class RulesEngine(Protocol):
-    """Adapter interface to a tax-benefit rules engine."""
+    """Adapter interface to a tax-benefit rules engine.
 
-    def variable_entity(self, name: str) -> str:
-        """Return the entity a variable lives on (e.g. ``"tax_unit"``)."""
+    The protocol is deliberately minimal: it resolves variable metadata,
+    enumerates input variables, materializes computed variables onto a
+    frame, and writes a frame as an engine-native dataset. An adapter wraps
+    one engine (policyengine-us today, Axiom rulespec-us next); nothing
+    outside an adapter imports a rules engine.
+
+    Known future extensions, called out so the additions are planned rather
+    than discovered (each is a breaking protocol change when it lands):
+
+    - **Reform / branch simulation.** Any policy-comparison evaluation needs
+      to materialize variables under a counterfactual parameter set. Deferred;
+      will arrive as a ``materialize(..., reform=...)`` parameter or a sibling
+      method.
+    - **Multi-period materialization.** ``materialize`` is single-period;
+      longitudinal runs will need a period range. Deferred.
+    - **Enum value domains and defaults.** ``variable_metadata`` reports a
+      coarse dtype kind; full enum value sets and default values are not yet
+      exposed.
+    """
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        """Return the variable's owning entity, dtype kind, and period.
+
+        Replaces the older ``variable_entity`` / ``variable_dtype`` pair so a
+        single call resolves everything the kernel needs about a variable,
+        including the period semantics the charter promises.
+        """
         ...
 
-    def variable_dtype(self, name: str) -> type:
-        """Return the value type of a variable (e.g. ``float``)."""
+    def variables(self) -> Sequence[str]:
+        """Return the input variables the engine accepts on a dataset.
+
+        The spec engine needs to enumerate inputs (to know what a pool must
+        produce); this is that surface. Computed/formula-owned outputs are
+        not included.
+        """
         ...
 
     def entity_schema(self) -> EntitySchema:

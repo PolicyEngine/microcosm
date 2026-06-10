@@ -912,7 +912,6 @@ source = { editable = "packages/populace-frame" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
@@ -937,7 +936,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.0" },
-    { name = "pydantic", specifier = ">=2" },
 ]
 provides-extras = ["us", "policyengine"]
 

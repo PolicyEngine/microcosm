@@ -14,10 +14,12 @@ import pytest
 from populace.frame import (
     US_SCHEMA,
     EntitySchema,
+    ExportContract,
     Frame,
     LinkSpec,
     MassChange,
     RulesEngine,
+    VariableMetadata,
     WeightKind,
     Weights,
     gini,
@@ -415,6 +417,49 @@ def test_policyengine_us_adapter_satisfies_rules_engine_protocol() -> None:
     adapter = PolicyEngineUSEngine()
     assert isinstance(adapter, RulesEngine)
     assert adapter.entity_schema() == US_SCHEMA
+
+
+def test_a_minimal_engine_satisfies_the_protocol() -> None:
+    """A non-PolicyEngine engine implementing the surface is a RulesEngine.
+
+    This is the swap contract: rulespec-us (or any engine) becomes a new
+    adapter, not a kernel change, as long as it answers this surface.
+    """
+
+    class FakeEngine:
+        def variable_metadata(self, name):
+            return VariableMetadata(
+                name=name, entity="person", dtype="float", period="year"
+            )
+
+        def variables(self):
+            return ["employment_income"]
+
+        def entity_schema(self):
+            return EntitySchema(group_entities=("household",))
+
+        def materialize(self, bundle, variables, period):
+            return {}
+
+        def export_contract(self):
+            return ExportContract.empty()
+
+        def write_dataset(self, bundle, path, period):
+            return None
+
+    assert isinstance(FakeEngine(), RulesEngine)
+
+
+def test_populace_is_a_namespace_package() -> None:
+    """No shard ships a top-level populace/__init__.py (PEP 420).
+
+    A shard clobbering the namespace would break side-by-side installation of
+    the other shards; this pins the implicit-namespace guarantee.
+    """
+    import populace
+
+    assert getattr(populace, "__file__", None) is None
+    assert hasattr(populace, "__path__")
 
 
 def test_export_round_trips_through_the_rules_adapter(
