@@ -253,6 +253,11 @@ def test_chaining_columns_grow_along_the_chain(correlated_targets_frame) -> None
 #: ~40k and the rare regime at ~600k, so 300k cleanly separates them.
 _TAIL_THRESHOLD = 300_000.0
 
+#: Independent predict() rounds averaged per tail-share estimate. One round's
+#: share noise (~0.0011) matches the ~0.0015 nearest-snap bias the contract
+#: must detect; five rounds put that gap near 3 sigma of the comparison.
+_TAIL_DRAW_ROUNDS = 5
+
 
 def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     weight_correlated_frame,
@@ -268,7 +273,17 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     contract:
 
     (a) the fix's weighted tail share is within ~2x of the weighted truth; and
-    (b) it is materially closer to the truth than the nearest-snap baseline.
+    (b) averaged over draws, it is closer to the truth than the nearest-snap
+        baseline.
+
+    Both shares are averaged over ``_TAIL_DRAW_ROUNDS`` independent
+    ``predict()`` rounds (successive calls advance the fitted model's RNG). A
+    single round's share has sd ~ ``sqrt(p(1-p)/n_eff)`` ~ 0.0011 at the
+    fixture's n=5000 — the same order as the ~0.0015 nearest-snap bias under
+    test — so a one-round comparison is a platform coin flip (it failed
+    exactly that way on x86 CI while passing on arm64). Averaging K rounds
+    shrinks the comparison noise by ~sqrt(K), putting the bias gap near 3
+    sigma.
     """
     frame, target, weights = weight_correlated_frame(seed=0)
     truth_share = float(
@@ -279,10 +294,23 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     assert truth_share > 0.0
 
     fitted = fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=1)
-    draws = fitted.predict(frame)["target"].to_numpy()
-    fix_share = float(
-        np.average((draws > _TAIL_THRESHOLD).astype(float), weights=weights)
-    )
+
+    def averaged_tail_share(model) -> float:
+        shares = [
+            float(
+                np.average(
+                    (
+                        model.predict(frame)["target"].to_numpy()
+                        > _TAIL_THRESHOLD
+                    ).astype(float),
+                    weights=weights,
+                )
+            )
+            for _ in range(_TAIL_DRAW_ROUNDS)
+        ]
+        return float(np.mean(shares))
+
+    fix_share = averaged_tail_share(fitted)
 
     # The nearest-snap, one-sample-per-leaf baseline (the pre-fix behavior),
     # reconstructed by monkeypatching the draw read-out and forcing
@@ -314,14 +342,9 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
             max_samples_leaf=1,
             seed=1,
         )
-        baseline_draws = baseline_fitted.predict(frame)["target"].to_numpy()
+        baseline_share = averaged_tail_share(baseline_fitted)
     finally:
         qrf_module._Forest.draw = original_draw
-    baseline_share = float(
-        np.average(
-            (baseline_draws > _TAIL_THRESHOLD).astype(float), weights=weights
-        )
-    )
 
     # (a) within ~2x of the weighted truth, both directions.
     assert 0.5 * truth_share <= fix_share <= 2.0 * truth_share, (
