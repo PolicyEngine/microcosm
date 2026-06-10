@@ -1,0 +1,39 @@
+[project]
+name = "populace-data"
+version = "0.1.0"
+description = "The distribution end of the populace stack: a registry of published populace populations and a loader that returns each as its policyengine engine dataset (one entry per country/year, artifacts on the Hugging Face Hub)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "PolicyEngine" }]
+dependencies = [
+    # Loading a published population needs only the Hub client; the country
+    # engine is an optional extra so the base install stays light (no torch,
+    # no engine). h5py is the artifact format and a cheap integrity check.
+    "huggingface_hub>=0.20",
+    "h5py>=3",
+]
+
+# Country engines are optional: install the one(s) you load. The extra name is
+# the country slug, matching the registry key and the loader's error message.
+[project.optional-dependencies]
+us = ["policyengine-us>=1.350"]
+
+[project.urls]
+Homepage = "https://populace.dev"
+Repository = "https://github.com/PolicyEngine/populace"
+
+[dependency-groups]
+# The live loader test runs only when an engine is present; install the US
+# engine into the dev group so `uv run --group dev pytest` exercises it.
+dev = [
+    "pytest>=8",
+    "policyengine-us>=1.350",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/populace"]
