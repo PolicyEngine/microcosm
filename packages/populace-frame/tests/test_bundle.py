@@ -8,10 +8,15 @@ from populace.frame import (
     DEFAULT_STRATUM,
     EntitySchema,
     Frame,
+    MassChange,
     WeightKind,
     Weights,
     wsum,
 )
+
+#: A declared mass change with unspecified magnitude, for tests that replace
+#: weights to exercise non-mass behavior (kind transitions, length, collapse).
+_FREE_MASS = MassChange(factor=None, reason="test fixture: mass not under test")
 
 
 class TestAccessors:
@@ -221,6 +226,7 @@ class TestEffectiveWeights:
         with_tax_unit_weights = bundle.with_weights(
             "tax_unit",
             Weights(values=np.array([1.0, 1.0, 1.0]), kind=WeightKind.DESIGN),
+            mass=_FREE_MASS,
         )
         assert with_tax_unit_weights.schema == schema
         with pytest.raises(ValueError, match="weighted group entities"):
@@ -235,6 +241,7 @@ class TestEffectiveWeights:
         uneven = bundle.with_weights(
             "person",
             Weights(values=np.array([1.0, 3.0, 2.0, 2.0]), kind=WeightKind.DESIGN),
+            mass=_FREE_MASS,
         )
         with pytest.raises(ValueError, match="unequal person-level weights"):
             wsum(uneven, "tax_unit_income")
@@ -255,29 +262,29 @@ class TestWithWeights:
         replacement = Weights(
             values=np.array([1.0, 2.0]), kind=WeightKind.CALIBRATED
         )
-        updated = bundle.with_weights("household", replacement)
+        updated = bundle.with_weights("household", replacement, mass=_FREE_MASS)
         assert bundle.weights_for("household").kind is WeightKind.DESIGN
         assert updated.weights_for("household").kind is WeightKind.CALIBRATED
 
     def test_adding_weights_to_unweighted_entity(self, make_bundle) -> None:
         bundle = make_bundle()
         person_weights = Weights(values=np.ones(5), kind=WeightKind.IMPORTANCE)
-        updated = bundle.with_weights("person", person_weights)
+        updated = bundle.with_weights("person", person_weights, mass=_FREE_MASS)
         assert set(updated.weighted_entities) == {"person", "household"}
 
-    def test_require_mass_without_existing_weights_is_an_error(
+    def test_conserve_without_existing_weights_is_an_error(
         self, make_bundle
     ) -> None:
         bundle = make_bundle()
         person_weights = Weights(values=np.ones(5), kind=WeightKind.DESIGN)
         with pytest.raises(ValueError, match="existing weights"):
-            bundle.with_weights("person", person_weights, require_mass=True)
+            bundle.with_weights("person", person_weights, mass="conserve")
 
     def test_length_mismatch_is_an_error(self, make_bundle) -> None:
         bundle = make_bundle()
         wrong = Weights(values=np.array([1.0]), kind=WeightKind.CALIBRATED)
         with pytest.raises(ValueError, match="length 1"):
-            bundle.with_weights("household", wrong)
+            bundle.with_weights("household", wrong, mass=_FREE_MASS)
 
 
 class TestConcat:
@@ -298,7 +305,11 @@ class TestConcat:
     def test_weighted_entity_mismatch_is_named(self, make_bundle) -> None:
         a = make_bundle()
         b = make_bundle(strata=pd.Series("other", index=range(5)))
-        b = b.with_weights("person", Weights(values=np.ones(5), kind=WeightKind.DESIGN))
+        b = b.with_weights(
+            "person",
+            Weights(values=np.ones(5), kind=WeightKind.DESIGN),
+            mass=_FREE_MASS,
+        )
         with pytest.raises(ValueError, match="weighted entities differ"):
             a.concat(b)
 

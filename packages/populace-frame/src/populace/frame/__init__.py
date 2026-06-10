@@ -15,7 +15,7 @@ from populace.frame.accounting import (
     wquantile,
     wsum,
 )
-from populace.frame.bundle import DEFAULT_STRATUM, Frame
+from populace.frame.bundle import CONSERVE_MASS, DEFAULT_STRATUM, Frame
 from populace.frame.rules import ExportContract, RulesEngine
 from populace.frame.schema import EntitySchema, LinkSpec, VariableMetadata
 from populace.frame.units import (
@@ -25,11 +25,18 @@ from populace.frame.units import (
     US_SCHEMA,
     assign_us_unit_structure,
 )
-from populace.frame.weights import WeightKind, Weights, assert_kind_transition
+from populace.frame.weights import (
+    MassChange,
+    MassChangeRecord,
+    WeightKind,
+    Weights,
+    assert_kind_transition,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "CONSERVE_MASS",
     "DEFAULT_STRATUM",
     "MICROUNIT_REQUIRED_COLUMNS",
     "TAX_UNIT_FILING_STATUS_COLUMN",
@@ -39,6 +46,8 @@ __all__ = [
     "ExportContract",
     "Frame",
     "LinkSpec",
+    "MassChange",
+    "MassChangeRecord",
     "RulesEngine",
     "VariableMetadata",
     "WeightKind",

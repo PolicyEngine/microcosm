@@ -6,6 +6,7 @@ import pytest
 from populace.frame import (
     EntitySchema,
     LinkSpec,
+    MassChange,
     VariableMetadata,
     WeightKind,
     Weights,
@@ -61,6 +62,41 @@ class TestWeights:
         assert_kind_transition(WeightKind.IMPORTANCE, WeightKind.CALIBRATED)
         with pytest.raises(ValueError, match="backward"):
             assert_kind_transition(WeightKind.CALIBRATED, WeightKind.IMPORTANCE)
+
+
+class TestMassChange:
+    def test_factor_and_reason_are_recorded(self) -> None:
+        change = MassChange(factor=2.0, reason="oversampled the rare stratum")
+        assert change.factor == 2.0
+        assert change.reason == "oversampled the rare stratum"
+
+    def test_unspecified_factor_is_allowed(self) -> None:
+        change = MassChange(factor=None, reason="importance resampling")
+        assert change.factor is None
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            pytest.param({"factor": 1.0, "reason": ""}, "reason", id="empty-reason"),
+            pytest.param(
+                {"factor": 1.0, "reason": "   "}, "reason", id="blank-reason"
+            ),
+            pytest.param(
+                {"factor": 0.0, "reason": "x"}, "positive", id="zero-factor"
+            ),
+            pytest.param(
+                {"factor": -1.0, "reason": "x"}, "positive", id="negative-factor"
+            ),
+            pytest.param(
+                {"factor": float("inf"), "reason": "x"},
+                "positive",
+                id="infinite-factor",
+            ),
+        ],
+    )
+    def test_invalid_mass_change_rejected(self, kwargs: dict, match: str) -> None:
+        with pytest.raises(ValueError, match=match):
+            MassChange(**kwargs)
 
 
 class TestEntitySchema:

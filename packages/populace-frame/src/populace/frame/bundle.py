@@ -26,7 +26,12 @@ import numpy as np
 import pandas as pd
 
 from populace.frame.schema import EntitySchema
-from populace.frame.weights import Weights, assert_kind_transition
+from populace.frame.weights import (
+    MassChange,
+    MassChangeRecord,
+    Weights,
+    assert_kind_transition,
+)
 
 __all__ = ["Frame", "DEFAULT_STRATUM"]
 
@@ -35,6 +40,12 @@ DEFAULT_STRATUM = "default"
 
 #: Kind rank used to resolve the union kind on concatenation.
 _KIND_ORDER = ("design", "importance", "calibrated")
+
+#: Literal accepted by :meth:`Frame.with_weights` to require mass conservation.
+CONSERVE_MASS = "conserve"
+
+#: Default relative tolerance for the ``mass="conserve"`` total check.
+_MASS_CONSERVE_RTOL = 1e-9
 
 
 class Frame:
@@ -68,7 +79,14 @@ class Frame:
             entity, column, or ids involved.
     """
 
-    __slots__ = ("_link_tables", "_schema", "_strata", "_tables", "_weights")
+    __slots__ = (
+        "_link_tables",
+        "_mass_log",
+        "_schema",
+        "_strata",
+        "_tables",
+        "_weights",
+    )
 
     def __init__(
         self,
@@ -76,8 +94,11 @@ class Frame:
         schema: EntitySchema,
         weights: Mapping[str, Weights],
         strata: pd.Series | None = None,
+        *,
+        mass_log: tuple[MassChangeRecord, ...] = (),
     ) -> None:
         self._schema = schema
+        self._mass_log = tuple(mass_log)
         declared_links = {link.name for link in schema.links}
         self._tables: dict[str, pd.DataFrame] = {}
         self._link_tables: dict[str, pd.DataFrame] = {}
@@ -369,6 +390,19 @@ class Frame:
             if link.name in self._link_tables
         )
 
+    @property
+    def mass_log(self) -> tuple[MassChangeRecord, ...]:
+        """Declared, intentional weight-mass changes applied to reach this frame.
+
+        Each :class:`~populace.frame.weights.MassChangeRecord` is one
+        :meth:`with_weights` call that passed ``mass=MassChange(...)`` — an
+        importance resampling or a recalibration to a new control total —
+        recorded in application order. Mass-conserving replacements
+        (``mass="conserve"``) leave no entry. The log is carried forward
+        through :meth:`select` and :meth:`concat`.
+        """
+        return self._mass_log
+
     def link(self, name: str) -> pd.DataFrame:
         """Return the link table named ``name``.
 
@@ -540,60 +574,118 @@ class Frame:
         entity: str,
         weights: Weights,
         *,
-        require_mass: bool = False,
+        mass: "str | MassChange",
     ) -> "Frame":
         """Return a new bundle with ``entity``'s weights replaced.
 
         Kind transitions are enforced: weights only move forward
         (``design -> importance -> calibrated``; same-kind replacement is
-        allowed). With ``require_mass=True`` the replacement must conserve
-        total mass against the existing vector.
+        allowed).
+
+        The effect on total mass is an explicit, required decision — there is
+        no silent default that could lose mass (calibration dropping a
+        population from 300M to 3 must never pass unnoticed). Pass ``mass`` as
+        one of:
+
+        * :data:`CONSERVE_MASS` (the string ``"conserve"``) — the replacement
+          must keep the existing total mass (within ``rtol=1e-9``). Requires
+          existing weights to conserve against.
+        * a :class:`~populace.frame.weights.MassChange` — declares an
+          intentional change of mass (importance resampling, or calibration to
+          a new control total), with a reason. If its ``factor`` is given, the
+          realized ratio must match it (within ``rtol=1e-9``). The change is
+          appended to the returned frame's :attr:`mass_log`.
 
         Args:
             entity: Entity whose weights to set.
             weights: The replacement vector (length must match the entity
                 table).
-            require_mass: When ``True``, raise unless the new total mass
-                matches the existing total within ``rtol=1e-9``. Requires
-                existing weights to compare against.
+            mass: The mass policy — :data:`CONSERVE_MASS` or a
+                :class:`~populace.frame.weights.MassChange`. Required.
 
         Returns:
             A new validated bundle.
 
         Raises:
-            TypeError: If ``weights`` is not a :class:`Weights`.
-            ValueError: On a backward kind transition, a mass-conservation
-                violation (the message carries both totals), a length
-                mismatch, or ``require_mass=True`` without existing weights.
+            TypeError: If ``weights`` is not a :class:`Weights`, or ``mass`` is
+                neither :data:`CONSERVE_MASS` nor a :class:`MassChange`.
+            ValueError: On a backward kind transition, a length mismatch,
+                ``mass="conserve"`` without existing weights or against a
+                changed total (the message carries both totals), or a
+                :class:`MassChange` whose declared ``factor`` does not match
+                the realized ratio.
         """
         self.table(entity)  # validates the entity name
         if not isinstance(weights, Weights):
             raise TypeError(
                 f"weights must be a Weights instance, got {type(weights).__name__}."
             )
+        if mass != CONSERVE_MASS and not isinstance(mass, MassChange):
+            raise TypeError(
+                "with_weights requires an explicit mass policy: pass "
+                f"mass={CONSERVE_MASS!r} or mass=MassChange(factor=..., "
+                f"reason=...); got {mass!r}."
+            )
         existing = self._weights.get(entity)
         if existing is not None:
             assert_kind_transition(existing.kind, weights.kind)
-            if require_mass:
-                try:
-                    existing.assert_mass_conserved(weights)
-                except ValueError as exc:
-                    raise ValueError(
-                        f"with_weights({entity!r}) violates mass conservation: "
-                        f"{exc}"
-                    ) from None
-        elif require_mass:
-            raise ValueError(
-                f"require_mass=True needs existing weights for entity "
-                f"{entity!r} to conserve against; none are stored."
-            )
+
+        record: MassChangeRecord | None = None
+        if mass == CONSERVE_MASS:
+            if existing is None:
+                raise ValueError(
+                    f"mass='conserve' needs existing weights for entity "
+                    f"{entity!r} to conserve against; none are stored. Pass a "
+                    "MassChange to declare the initial mass intentionally."
+                )
+            try:
+                existing.assert_mass_conserved(weights, rtol=_MASS_CONSERVE_RTOL)
+            except ValueError as exc:
+                raise ValueError(
+                    f"with_weights({entity!r}, mass='conserve') violates mass "
+                    f"conservation: {exc}"
+                ) from None
+        else:
+            record = self._mass_change_record(entity, existing, weights, mass)
+
         new_weights = dict(self._weights)
         new_weights[entity] = weights
+        new_mass_log = self._mass_log if record is None else (*self._mass_log, record)
         return Frame(
             {**self._tables, **self._link_tables},
             self._schema,
             new_weights,
             self._strata,
+            mass_log=new_mass_log,
+        )
+
+    @staticmethod
+    def _mass_change_record(
+        entity: str,
+        existing: Weights | None,
+        weights: Weights,
+        change: MassChange,
+    ) -> MassChangeRecord:
+        """Validate a declared :class:`MassChange` and build its log record."""
+        old_total = existing.total if existing is not None else 0.0
+        new_total = weights.total
+        if change.factor is not None and existing is not None and old_total != 0.0:
+            realized = new_total / old_total
+            if not np.isclose(
+                realized, change.factor, rtol=_MASS_CONSERVE_RTOL, atol=0.0
+            ):
+                raise ValueError(
+                    f"with_weights({entity!r}) declared MassChange "
+                    f"factor={change.factor!r} but the realized ratio is "
+                    f"{realized!r} (old total {old_total!r} -> new total "
+                    f"{new_total!r})."
+                )
+        return MassChangeRecord(
+            entity=entity,
+            old_total=old_total,
+            new_total=new_total,
+            declared_factor=change.factor,
+            reason=change.reason,
         )
 
     def broadcast(self, column: str, to: str = "person") -> pd.Series:
@@ -752,7 +844,13 @@ class Frame:
                     union.values[order], kind=union.kind
                 )
         strata = pd.concat([self._strata, other._strata], ignore_index=True)
-        return Frame(tables, self._schema, weights, strata)
+        return Frame(
+            tables,
+            self._schema,
+            weights,
+            strata,
+            mass_log=(*self._mass_log, *other._mass_log),
+        )
 
     def select(self, person_mask: np.ndarray | pd.Series) -> "Frame":
         """Subset persons and prune group tables to the ids still referenced.
@@ -826,7 +924,9 @@ class Frame:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
-        return Frame(tables, self._schema, weights, strata)
+        return Frame(
+            tables, self._schema, weights, strata, mass_log=self._mass_log
+        )
 
     # ------------------------------------------------------------------
     # Concat helpers

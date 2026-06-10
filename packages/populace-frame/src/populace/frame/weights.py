@@ -13,7 +13,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["WeightKind", "Weights", "assert_kind_transition"]
+__all__ = [
+    "WeightKind",
+    "Weights",
+    "MassChange",
+    "MassChangeRecord",
+    "assert_kind_transition",
+]
 
 
 class WeightKind(enum.Enum):
@@ -144,3 +150,63 @@ class Weights:
                 f"Weight mass not conserved: total {a!r} ({self.kind.value}) "
                 f"!= total {b!r} ({other.kind.value}) at rtol={rtol}."
             )
+
+
+@dataclass(frozen=True)
+class MassChange:
+    """A declared, intentional change to a weight vector's total mass.
+
+    Replacing a weight vector either conserves its total mass or changes it on
+    purpose — there is no silent third option. ``MassChange`` is the explicit
+    declaration of the second: importance resampling that deliberately
+    re-scales mass, or calibration to a *new* control total. It records why
+    the mass is allowed to move so the decision is auditable on the frame.
+
+    Attributes:
+        factor: The intended ratio of new total to old total, when known
+            (e.g. ``2.0`` to double the mass). ``None`` declares an
+            intentional change of magnitude the caller does not pin in advance
+            (e.g. an importance-resampling step whose realized ratio is
+            data-dependent); the change is still recorded, just not asserted.
+        reason: Non-empty human-readable justification (e.g. ``"calibrated to
+            2026 ACS household control total"``).
+
+    Raises:
+        ValueError: If ``reason`` is empty, or ``factor`` is given and is not
+            a positive, finite number.
+    """
+
+    factor: float | None
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason or not self.reason.strip():
+            raise ValueError("MassChange.reason must be a non-empty justification.")
+        if self.factor is not None:
+            factor = float(self.factor)
+            if not np.isfinite(factor) or factor <= 0:
+                raise ValueError(
+                    f"MassChange.factor must be positive and finite, got "
+                    f"{self.factor!r}."
+                )
+            object.__setattr__(self, "factor", factor)
+
+
+@dataclass(frozen=True)
+class MassChangeRecord:
+    """An entry in a frame's mass log: one applied, intentional mass change.
+
+    Attributes:
+        entity: Entity whose weights changed.
+        old_total: Total mass before the change.
+        new_total: Total mass after the change.
+        declared_factor: The ``factor`` the caller declared on the
+            :class:`MassChange` (``None`` when left unspecified).
+        reason: The justification carried on the :class:`MassChange`.
+    """
+
+    entity: str
+    old_total: float
+    new_total: float
+    declared_factor: float | None
+    reason: str

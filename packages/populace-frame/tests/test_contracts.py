@@ -16,6 +16,7 @@ from populace.frame import (
     EntitySchema,
     Frame,
     LinkSpec,
+    MassChange,
     RulesEngine,
     WeightKind,
     Weights,
@@ -58,11 +59,12 @@ def test_weights_are_immutable() -> None:
 
 def test_with_weights_allows_forward_kind_transitions(make_bundle) -> None:
     """Weights move design -> importance -> calibrated through with_weights."""
-    bundle = make_bundle(kind=WeightKind.DESIGN)
+    bundle = make_bundle(kind=WeightKind.DESIGN)  # total 300
     importance = Weights(values=np.array([90.0, 210.0]), kind=WeightKind.IMPORTANCE)
     calibrated = Weights(values=np.array([95.0, 205.0]), kind=WeightKind.CALIBRATED)
-    stage_two = bundle.with_weights("household", importance)
-    stage_three = stage_two.with_weights("household", calibrated)
+    # Both redistributions conserve total mass (300), so "conserve" applies.
+    stage_two = bundle.with_weights("household", importance, mass="conserve")
+    stage_three = stage_two.with_weights("household", calibrated, mass="conserve")
     assert stage_three.weights_for("household").kind is WeightKind.CALIBRATED
 
 
@@ -83,7 +85,7 @@ def test_with_weights_forbids_backward_kind_transitions(
     bundle = make_bundle(kind=start)
     replacement = Weights(values=np.array([100.0, 200.0]), kind=attempted)
     with pytest.raises(ValueError, match="backward"):
-        bundle.with_weights("household", replacement)
+        bundle.with_weights("household", replacement, mass="conserve")
 
 
 def test_with_weights_enforces_mass_conservation_with_both_totals(
@@ -93,7 +95,7 @@ def test_with_weights_enforces_mass_conservation_with_both_totals(
     bundle = make_bundle(weight_values=(100.0, 200.0))  # total 300
     shrunk = Weights(values=np.array([100.0, 140.0]), kind=WeightKind.CALIBRATED)
     with pytest.raises(ValueError) as excinfo:
-        bundle.with_weights("household", shrunk, require_mass=True)
+        bundle.with_weights("household", shrunk, mass="conserve")
     message = str(excinfo.value)
     assert "300.0" in message
     assert "240.0" in message
@@ -103,8 +105,68 @@ def test_with_weights_accepts_mass_conserving_replacement(make_bundle) -> None:
     """A redistribution that conserves total mass passes the gate."""
     bundle = make_bundle(weight_values=(100.0, 200.0))
     moved = Weights(values=np.array([120.0, 180.0]), kind=WeightKind.CALIBRATED)
-    result = bundle.with_weights("household", moved, require_mass=True)
+    result = bundle.with_weights("household", moved, mass="conserve")
     assert result.weights_for("household").total == 300.0
+    # A conserving replacement leaves the mass log untouched.
+    assert result.mass_log == ()
+
+
+def test_conserve_mode_catches_the_hundredfold_mass_loss(make_bundle) -> None:
+    """C2: mass='conserve' refuses a calibration that drops total mass 100x.
+
+    The documented-but-not-enforced footgun: replacing total mass 300 with
+    3.0 must NOT pass silently. The kernel raises and names both totals.
+    """
+    bundle = make_bundle(weight_values=(100.0, 200.0))  # total 300
+    collapsed = Weights(values=np.array([2.0, 1.0]), kind=WeightKind.CALIBRATED)
+    with pytest.raises(ValueError) as excinfo:
+        bundle.with_weights("household", collapsed, mass="conserve")
+    message = str(excinfo.value)
+    assert "300.0" in message
+    assert "3.0" in message
+
+
+def test_mass_change_allows_an_intentional_loss_and_records_the_reason(
+    make_bundle,
+) -> None:
+    """C2: a declared MassChange permits the 100x change and logs the reason."""
+    bundle = make_bundle(weight_values=(100.0, 200.0))  # total 300
+    collapsed = Weights(values=np.array([2.0, 1.0]), kind=WeightKind.CALIBRATED)
+    result = bundle.with_weights(
+        "household",
+        collapsed,
+        mass=MassChange(
+            factor=0.01, reason="calibrated to a 1%-scale toy control total"
+        ),
+    )
+    assert result.weights_for("household").total == 3.0
+    assert len(result.mass_log) == 1
+    record = result.mass_log[0]
+    assert record.entity == "household"
+    assert record.old_total == 300.0
+    assert record.new_total == 3.0
+    assert record.declared_factor == 0.01
+    assert "control total" in record.reason
+
+
+def test_with_weights_requires_an_explicit_mass_policy(make_bundle) -> None:
+    """C2: there is no silent default — omitting mass is a TypeError."""
+    bundle = make_bundle(weight_values=(100.0, 200.0))
+    moved = Weights(values=np.array([120.0, 180.0]), kind=WeightKind.CALIBRATED)
+    with pytest.raises(TypeError, match="mass"):
+        bundle.with_weights("household", moved)
+
+
+def test_mass_change_factor_must_match_the_realized_ratio(make_bundle) -> None:
+    """C2: a declared factor that disagrees with the realized ratio is refused."""
+    bundle = make_bundle(weight_values=(100.0, 200.0))  # total 300
+    doubled = Weights(values=np.array([200.0, 400.0]), kind=WeightKind.CALIBRATED)
+    with pytest.raises(ValueError, match="factor"):
+        bundle.with_weights(
+            "household",
+            doubled,
+            mass=MassChange(factor=3.0, reason="claims 3x but realizes 2x"),
+        )
 
 
 # ----------------------------------------------------------------------------
