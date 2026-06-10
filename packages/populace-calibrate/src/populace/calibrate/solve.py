@@ -23,16 +23,20 @@ Four declared options, each a real feature (and each its own test):
   the documented guard against the tail "landmine" (a rare high-value,
   near-zero-weight donor whose weight detonates on reweight and blows up an
   aggregate).
-- ``target_records`` + ``l0_lambda`` add hard-concrete L0 gates
-  (:mod:`populace.calibrate.gates`) that prune the pool toward
-  ``target_records`` non-zero weights — the generate-big-then-prune path.
-- ``target_records`` (without ``l0_lambda``) is also honored by ``l0_lambda``
-  auto-selection: if records are requested but no penalty is given, a small
-  default penalty is used and reported.
+- ``target_records`` turns on hard-concrete L0 gates
+  (:mod:`populace.calibrate.gates`) with **budget control**: the solver searches
+  ``l0_lambda`` (a bisection on its log) so the achieved non-zero count tracks
+  ``target_records``, and reports the penalty it settled on — the
+  generate-big-then-prune path. A supplied ``l0_lambda`` is the search's warm
+  start.
+- ``l0_lambda`` alone (no ``target_records``) prunes at a fixed penalty: ``> 0``
+  gates the pool, ``0.0`` keeps every record. It is the sole control when no
+  budget is given.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,9 +71,23 @@ CONSERVE_MASS = "conserve"
 _PRUNE_REL_ATOL = 1e-6
 
 #: Default L0 penalty applied when ``target_records`` is requested but no
-#: ``l0_lambda`` is given. Small, matching the eCPS gate's regime where the
-#: relative-error term dominates and the penalty trims the long tail.
+#: ``l0_lambda`` is given and budget control is off. Small, matching the eCPS
+#: gate's regime where the relative-error term dominates and the penalty trims
+#: the long tail.
 _DEFAULT_L0_LAMBDA = 1e-6
+
+#: Bracket for the ``l0_lambda`` budget search (Finding 3). The achieved non-zero
+#: count is monotone decreasing in ``l0_lambda``; this bracket spans
+#: "essentially no pruning" to "prune almost everything" across the regimes the
+#: eCPS gate operates in. The search bisects on ``log10(l0_lambda)`` inside it.
+_L0_SEARCH_LO = 1e-7
+_L0_SEARCH_HI = 1e1
+
+#: Number of outer iterations (full optimizations) the budget search may spend
+#: bisecting ``l0_lambda``. Each iteration is one ``_optimize`` run, so this caps
+#: the search's cost at ``budget_iters`` optimizations; ~10 bisection steps cut
+#: the ``log10`` bracket by 2^10, far finer than the count is resolvable.
+_DEFAULT_BUDGET_ITERS = 10
 
 
 @dataclass(frozen=True)
@@ -113,8 +131,11 @@ class CalibrationResult:
         skipped: Targets that could not be compiled (carried through from the
             matrix build), each with its reason.
         problem: The compiled :class:`CalibrationProblem` (matrix, b, names).
-        l0_lambda: The L0 penalty actually applied (0.0 when no pruning).
-        n_nonzero: Number of calibrated weights above the prune threshold.
+        l0_lambda: The L0 penalty actually applied (0.0 when no pruning). When a
+            ``target_records`` budget was set, this is the penalty the budget
+            search settled on, not the value passed in.
+        n_nonzero: Number of calibrated weights above the prune threshold. With a
+            ``target_records`` budget, the quantity the search drives toward it.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -327,6 +348,121 @@ def _optimize(
     return final, trajectory
 
 
+def _search_l0_lambda_for_budget(
+    matrix: torch.Tensor,
+    targets: torch.Tensor,
+    initial_weights: np.ndarray,
+    *,
+    target_records: int,
+    epochs: int,
+    learning_rate: float,
+    conserve_mass: bool,
+    max_weight_ratio: float | None,
+    init_mean: float,
+    temperature: float,
+    seed: int,
+    prune_atol: float,
+    initial_lambda: float | None,
+    budget_iters: int = _DEFAULT_BUDGET_ITERS,
+) -> tuple[np.ndarray, np.ndarray, float, int]:
+    """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
+
+    The realized non-zero count is monotone *decreasing* in ``l0_lambda`` (a
+    stronger penalty closes more gates), so a bisection on ``log10(l0_lambda)``
+    drives the count toward ``target_records``. Each evaluation is a full
+    :func:`_optimize` run reseeded to ``seed`` (so the count-vs-lambda response is
+    a deterministic function the bisection can trust). This is the budget control
+    Finding 3 requires: the *number* of records now enters the optimization, not
+    just the penalty.
+
+    The search keeps the bracket ``[_L0_SEARCH_LO, _L0_SEARCH_HI]`` and tracks the
+    best run seen (the one whose non-zero count is closest to the budget),
+    returning it even if the bracket never pins the budget exactly — the count is
+    a noisy discrete function, so "closest within ``budget_iters`` steps" is the
+    honest contract. Stops early once the achieved count is within ``tol`` of the
+    budget, where ``tol = max(1, round(0.05 * target_records))``.
+
+    Args:
+        matrix: The constraint matrix (``A.T`` as a torch tensor), as
+            :func:`_optimize` consumes it.
+        targets: The target vector tensor.
+        initial_weights: The starting weights.
+        target_records: The non-zero budget to hit.
+        epochs, learning_rate, conserve_mass, max_weight_ratio, init_mean,
+            temperature: Passed through to :func:`_optimize`.
+        seed: Reseeded before every evaluation for a deterministic response.
+        prune_atol: Threshold counting a weight as non-zero (a survivor).
+        initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
+            start (clamped into the bracket); ``None`` starts at the bracket
+            mid-point.
+        budget_iters: Maximum number of optimizations the search may spend.
+
+    Returns:
+        ``(weights, trajectory, l0_lambda, n_nonzero)`` of the best run found.
+    """
+    lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
+    tol = max(1, round(0.05 * target_records))
+
+    def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int]:
+        torch.manual_seed(seed)
+        weights, trajectory = _optimize(
+            matrix,
+            targets,
+            initial_weights,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=conserve_mass,
+            max_weight_ratio=max_weight_ratio,
+            l0_lambda=lam,
+            target_records=target_records,
+            init_mean=init_mean,
+            temperature=temperature,
+        )
+        n_nonzero = int((weights > prune_atol).sum())
+        return weights, trajectory, n_nonzero
+
+    best: tuple[np.ndarray, np.ndarray, float, int] | None = None
+
+    def consider(lam: float) -> int:
+        nonlocal best
+        weights, trajectory, n_nonzero = evaluate(lam)
+        if best is None or abs(n_nonzero - target_records) < abs(
+            best[3] - target_records
+        ):
+            best = (weights, trajectory, lam, n_nonzero)
+        return n_nonzero
+
+    # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
+    if initial_lambda is not None and initial_lambda > 0:
+        first_u = min(max(math.log10(initial_lambda), lo_u), hi_u)
+    else:
+        first_u = (lo_u + hi_u) / 2.0
+    iters_left = budget_iters
+    n_nonzero = consider(10.0**first_u)
+    iters_left -= 1
+    # Seed the bracket so the side the warm start landed on is tightened.
+    if n_nonzero > target_records:
+        lo_u = first_u  # too many survivors -> need a larger penalty
+    else:
+        hi_u = first_u  # too few survivors -> need a smaller penalty
+
+    while iters_left > 0 and best is not None and abs(
+        best[3] - target_records
+    ) > tol:
+        mid_u = (lo_u + hi_u) / 2.0
+        n_nonzero = consider(10.0**mid_u)
+        iters_left -= 1
+        if n_nonzero > target_records:
+            lo_u = mid_u
+        elif n_nonzero < target_records:
+            hi_u = mid_u
+        else:
+            break
+
+    assert best is not None  # at least one evaluation always runs
+    return best
+
+
 def _project_to_total(
     weights: np.ndarray,
     total: float,
@@ -418,6 +554,7 @@ def calibrate(
     l0_lambda: float = 0.0,
     init_mean: float = 0.999,
     temperature: float = 0.25,
+    budget_iters: int = _DEFAULT_BUDGET_ITERS,
     seed: int = 0,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
@@ -445,13 +582,24 @@ def calibrate(
             :data:`CONSERVE_MASS` to hold it to the input total.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
-        target_records: If given, enable L0 pruning toward this many non-zero
-            weights (uses a default ``l0_lambda`` when none is supplied).
-        l0_lambda: L0 penalty strength. ``> 0`` enables hard-concrete gates that
-            prune the pool; ``0.0`` (default) keeps every record.
+        target_records: If given, enable L0 pruning with **budget control**: the
+            solver searches ``l0_lambda`` (a bisection on its log, ``budget_iters``
+            optimizations) so the achieved non-zero count tracks this budget, and
+            reports the penalty it settled on as
+            :attr:`CalibrationResult.l0_lambda`. A supplied ``l0_lambda`` is the
+            search's warm start. The achieved count tracks the budget within a
+            tolerance (the count is a noisy discrete function of the penalty), not
+            exactly.
+        l0_lambda: L0 penalty strength. Used directly when ``target_records`` is
+            ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
+            ``0.0`` (default) keeps every record. When ``target_records`` is set,
+            this is only the budget search's warm start (the search overrides it).
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
+        budget_iters: Maximum optimizations the ``target_records`` budget search
+            may spend bisecting ``l0_lambda`` (only used when ``target_records``
+            is set). Higher resolves the budget finer at a proportional cost.
         seed: Seed for torch's RNG (the gate sampling), for reproducibility.
 
     Returns:
@@ -501,32 +649,56 @@ def calibrate(
         raise ValueError(
             f"target_records must be a positive integer, got {target_records!r}."
         )
+    if budget_iters <= 0:
+        raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
 
     problem = build_constraint_matrix(frame, targets, weight_entity)
     initial = problem.initial_weights
     w0 = initial.values
-
-    effective_l0 = l0_lambda
-    if target_records is not None and l0_lambda == 0.0:
-        effective_l0 = _DEFAULT_L0_LAMBDA
+    prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
 
     torch.manual_seed(seed)
     matrix_t = torch.tensor(problem.matrix.toarray().T, dtype=torch.float32)
     targets_t = torch.tensor(problem.target_vector, dtype=torch.float32)
 
-    final_weights, trajectory = _optimize(
-        matrix_t,
-        targets_t,
-        w0,
-        epochs=epochs,
-        learning_rate=learning_rate,
-        conserve_mass=(mass == CONSERVE_MASS),
-        max_weight_ratio=max_weight_ratio,
-        l0_lambda=effective_l0,
-        target_records=target_records,
-        init_mean=init_mean,
-        temperature=temperature,
-    )
+    if target_records is not None:
+        # Budget control (Finding 3): search l0_lambda so the achieved non-zero
+        # count tracks target_records. The supplied l0_lambda (if any) is the
+        # warm start; the search reports the penalty it settled on.
+        final_weights, trajectory, effective_l0, n_nonzero = (
+            _search_l0_lambda_for_budget(
+                matrix_t,
+                targets_t,
+                w0,
+                target_records=target_records,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                conserve_mass=(mass == CONSERVE_MASS),
+                max_weight_ratio=max_weight_ratio,
+                init_mean=init_mean,
+                temperature=temperature,
+                seed=seed,
+                prune_atol=prune_atol,
+                initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
+                budget_iters=budget_iters,
+            )
+        )
+    else:
+        effective_l0 = l0_lambda
+        final_weights, trajectory = _optimize(
+            matrix_t,
+            targets_t,
+            w0,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=(mass == CONSERVE_MASS),
+            max_weight_ratio=max_weight_ratio,
+            l0_lambda=effective_l0,
+            target_records=target_records,
+            init_mean=init_mean,
+            temperature=temperature,
+        )
+        n_nonzero = int((final_weights > prune_atol).sum())
 
     calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
     new_frame = _apply_weights(
@@ -534,8 +706,6 @@ def calibrate(
     )
 
     diagnostics = _build_diagnostics(problem, w0, final_weights)
-    prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
-    n_nonzero = int((final_weights > prune_atol).sum())
 
     return CalibrationResult(
         frame=new_frame,

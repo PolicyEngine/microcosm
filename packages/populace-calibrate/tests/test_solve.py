@@ -168,6 +168,72 @@ def test_l0_prunes_toward_a_record_budget(feasible_frame) -> None:
     assert result.l0_lambda > 0.0
 
 
+def test_target_records_controls_the_budget_not_just_lambda(
+    feasible_frame,
+) -> None:
+    """``target_records`` actually drives the achieved non-zero count (Finding 3).
+
+    Previously ``target_records`` was dead: the *number* never entered the
+    optimization (pruning was controlled entirely by ``l0_lambda``), so budget
+    10 and budget 350 at the same lambda produced bitwise-identical weights. With
+    budget control, two different budgets must produce materially different
+    non-zero counts, each tracking its budget.
+    """
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    low = calibrate(frame, targets, epochs=250, seed=0, target_records=100)
+    high = calibrate(frame, targets, epochs=250, seed=0, target_records=250)
+
+    # The budgets produce materially different non-zero counts...
+    assert high.n_nonzero - low.n_nonzero > 50, (low.n_nonzero, high.n_nonzero)
+    # ...and the lower budget really is the smaller pool, ordered by budget.
+    assert low.n_nonzero < high.n_nonzero
+    # Each tracks its budget within a loose tolerance (the search is on a noisy,
+    # discrete count, so the band is generous but far tighter than "anything").
+    assert abs(low.n_nonzero - 100) <= 40, low.n_nonzero
+    assert abs(high.n_nonzero - 250) <= 60, high.n_nonzero
+    # A budget-controlled run reports the penalty it settled on.
+    assert low.l0_lambda > 0.0 and high.l0_lambda > 0.0
+    # The smaller pool took the stronger penalty (more pruning pressure).
+    assert low.l0_lambda > high.l0_lambda
+
+
+def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> None:
+    """Without ``target_records``, ``l0_lambda`` alone prunes monotonically.
+
+    The fixed-penalty path (no budget search) is still a real control: a stronger
+    ``l0_lambda`` keeps strictly fewer records, and the reported ``l0_lambda`` is
+    exactly the value passed in (no search overrides it).
+    """
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    weak = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-4)
+    strong = calibrate(frame, targets, epochs=300, seed=0, l0_lambda=3e-3)
+    assert strong.n_nonzero < weak.n_nonzero
+    # Reported penalty is the value supplied, unchanged.
+    assert weak.l0_lambda == 3e-4
+    assert strong.l0_lambda == 3e-3
+
+
+def test_budget_iters_must_be_positive(feasible_frame) -> None:
+    """A non-positive ``budget_iters`` is rejected with a named error."""
+    frame, truths = feasible_frame(n=50)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    with pytest.raises(ValueError, match="budget_iters"):
+        calibrate(frame, targets, epochs=50, seed=0, target_records=10,
+                  budget_iters=0)
+
+
 def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
     feasible_frame,
 ) -> None:

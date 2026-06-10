@@ -12,9 +12,10 @@ weight per trajectory".
 
 Three load-bearing options beyond the fit: ``mass`` ("free" or "conserve") to
 control the total; ``max_weight_ratio`` as a hard per-record bound (the guard
-against tail "landmine" records detonating on reweight); and
-``target_records`` + ``l0_lambda`` for hard-concrete L0 pruning toward a record
-budget (the generate-big-then-prune path).
+against tail "landmine" records detonating on reweight); and ``target_records``
+for hard-concrete L0 pruning with budget control — the solver searches
+``l0_lambda`` so the achieved non-zero count tracks the budget (the
+generate-big-then-prune path). ``l0_lambda`` alone prunes at a fixed penalty.
 
 Importing this shard asserts compatibility with the installed
 :mod:`populace.frame` kernel — the constellation mechanism from DESIGN.md: a

@@ -39,9 +39,13 @@ reproduces them.
   the documented guard against the tail **landmine**: a rare high-value,
   near-zero-weight donor whose weight detonates on reweight and blows up an
   aggregate (the $201T-scale failure the charter exists to prevent).
-- **`target_records` + `l0_lambda`** add hard-concrete L0 gates (ported from the
-  eCPS `HardConcrete`) that prune the pool toward a record budget — the
-  generate-big-then-prune path (300k → 3M → 30M pools).
+- **`target_records`** turns on hard-concrete L0 gates (ported from the eCPS
+  `HardConcrete`) with **budget control**: the solver searches `l0_lambda` so the
+  achieved non-zero count tracks the record budget, and reports the penalty it
+  settled on (`result.l0_lambda`) — the generate-big-then-prune path
+  (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.
+- **`l0_lambda`** alone (no `target_records`) prunes at a fixed penalty: `> 0`
+  gates the pool, `0.0` keeps every record.
 
 ## Example
 
