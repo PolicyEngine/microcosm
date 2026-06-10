@@ -154,3 +154,43 @@ it re-bases onto microframe stage by stage.
    2026-06 driver becomes a spec-driven pool definition).
 6. Dynamics operator + SIPP/PSID donors (social-security-model proving
    ground).
+
+## The commons (the end state)
+
+**The population is the product; the library is its tooling.** The long-run
+goal is a communal, continuously improving synthetic population —
+asymptotically one record per actual person (statistically valid, never
+identifying) — that many parties improve.
+
+There are exactly three ways to contribute, and they are the package
+decomposition:
+
+1. **Records** — a new stratum at honest weights (`frame`/strata).
+2. **Conditional structure** — a fitted model carrying P(y|x) from data the
+   contributor holds (`fit` artifacts). Private sources contribute *only*
+   this way: certified conditional models (DP-trained,
+   membership-inference-audited), never microdata.
+3. **Facts** — targets with standard errors (`calibrate`; Ledger's lane).
+   Calibration is uncertainty-weighted evidence combination, not exact-hit.
+
+**The merge operator is the sound comparison, institutionalized:** a
+contribution merges iff it improves the population's score on held-out
+evidence without degrading protected families. CI for the population.
+
+**Privacy by provenance, not coarseness.** At full scale every record is
+unique; the criterion is causal: no record's values may derive traceably from
+an individual's private data. Sharpness is tiered by source — public-source
+strata may be arbitrarily sharp (a Forbes-400 stratum is public data); private
+evidence enters only through certified conditionals. Platform gates: resemble
+the holdout, never the training data.
+
+Known hard parts, designed-for: verifying contributor DP claims (empirical
+membership-inference audits first, attestation later; start with public +
+formally-DP sources), evidence double-counting across contributors (provenance
+lineage deduplicates *evidence*, not just records), and gate governance (the
+steward institute's role).
+
+Population releases ship like model releases — `us-330m-vN` with an evidence
+changelog, score deltas, and environment certificates — via a hub (versioned
+populations + contribution registry), an extension of the
+artifacts-carry-their-environment rule.
