@@ -138,19 +138,20 @@ class TestWriteDataset:
         from policyengine_us.data import USSingleYearDataset
 
         contract = ExportContract(
-            required=("snap_take_up_seed",),
+            required=("takes_up_snap_if_eligible",),
             forbidden=(),
             optional=(),
             formula_owned_excluded=(),
         )
         defaulted = PolicyEngineUSEngine(
-            contract=contract, defaults={"snap_take_up_seed": 0.5}
+            contract=contract, defaults={"takes_up_snap_if_eligible": True}
         )
         path = tmp_path / "defaulted.h5"
         defaulted.write_dataset(us_bundle, path, period=2024)
         reloaded = USSingleYearDataset(file_path=str(path))
-        entity = PolicyEngineUSEngine().variable_entity("snap_take_up_seed")
-        assert (getattr(reloaded, entity)["snap_take_up_seed"] == 0.5).all()
+        entity = PolicyEngineUSEngine().variable_entity("takes_up_snap_if_eligible")
+        assert entity == "spm_unit"
+        assert reloaded.spm_unit["takes_up_snap_if_eligible"].all()
 
     def test_non_h5_path_is_rejected(self, adapter, us_bundle, tmp_path) -> None:
         with pytest.raises(ValueError, match=r"\.h5"):
