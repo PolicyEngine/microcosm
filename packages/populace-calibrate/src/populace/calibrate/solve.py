@@ -46,6 +46,7 @@ from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
+    _linearization_weights,
     build_constraint_matrix,
 )
 from populace.calibrate.target import TargetSet
@@ -96,15 +97,22 @@ class TargetDiagnostic:
 
     Attributes:
         name: The target's ``"name@period"`` row label.
-        target: The target value the row aims at (the right-hand side ``b``).
-        initial_estimate: ``row @ w0`` under the input weights.
-        final_estimate: ``row @ w`` under the calibrated weights.
+        target: The target value aimed at. For ``sum``/``count`` this is the
+            compiled right-hand side ``b``; for ``mean`` it is the user's declared
+            target mean (not the linearization's shifted right-hand side).
+        initial_estimate: The achieved aggregate under the input weights —
+            ``row @ w0`` for ``sum``/``count``, the true ratio
+            ``sum(measure*filter*w0)/sum(filter*w0)`` for ``mean``.
+        final_estimate: The achieved aggregate under the calibrated weights —
+            ``row @ w`` for ``sum``/``count``, the true ratio under ``w`` for
+            ``mean`` (the achieved mean, not the linearized row value).
         relative_error: ``(final_estimate - target) / target`` (or
             ``final_estimate - target`` when ``target`` is zero, since the
-            relative form is undefined there).
+            relative form is undefined there). For ``mean`` this is the true
+            ratio's relative miss.
         within_tolerance: Whether ``|final_estimate - target|`` is within the
-            target's declared tolerance. ``None`` when the target declared no
-            tolerance.
+            target's declared tolerance (the true achieved value for ``mean``).
+            ``None`` when the target declared no tolerance.
     """
 
     name: str
@@ -136,6 +144,10 @@ class CalibrationResult:
             search settled on, not the value passed in.
         n_nonzero: Number of calibrated weights above the prune threshold. With a
             ``target_records`` budget, the quantity the search drives toward it.
+        closing_loss: The eCPS relative-error loss evaluated once on the
+            *returned* weights (after the closing mass/cap projections). Exposed
+            as :attr:`final_loss`; recorded separately from the trajectory, whose
+            tail is a pre-step/pre-projection value.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -151,6 +163,7 @@ class CalibrationResult:
     problem: CalibrationProblem
     l0_lambda: float
     n_nonzero: int
+    closing_loss: float
 
     @property
     def initial_loss(self) -> float:
@@ -159,8 +172,15 @@ class CalibrationResult:
 
     @property
     def final_loss(self) -> float:
-        """The eCPS relative-error loss under the calibrated weights."""
-        return float(self.loss_trajectory[-1])
+        """The eCPS relative-error loss of the *returned* weights.
+
+        This is a single eval-mode evaluation on the weights actually returned —
+        after the closing mass/cap projections — so it describes the calibrated
+        vector. It is **not** ``loss_trajectory[-1]``: the trajectory records each
+        epoch's loss before that epoch's step and before the closing projections,
+        so its tail can differ (e.g. under ``mass="conserve"`` with a cap).
+        """
+        return self.closing_loss
 
     @property
     def fraction_within_10pct(self) -> float:
@@ -198,16 +218,42 @@ def _relative_error_loss(
 
 def _build_diagnostics(
     problem: CalibrationProblem,
+    frame: Frame,
     initial_weights: np.ndarray,
     final_weights: np.ndarray,
 ) -> tuple[TargetDiagnostic, ...]:
-    """Assemble per-target diagnostics from the problem and both weight vectors."""
+    """Assemble per-target diagnostics from the problem and both weight vectors.
+
+    ``sum``/``count`` rows are exactly ``A @ w``, so their estimates and target
+    come straight from the compiled system. A ``mean`` row is only the *linearized*
+    value about the input weights — reporting ``A @ w`` for it after a large mass
+    move reads as a perfect hit even when the achieved ratio missed (Finding 6).
+    For ``mean`` targets the diagnostic instead reports the true ratio
+    ``sum(measure*filter*w)/sum(filter*w)`` under each weight vector, against the
+    user's declared target value (not the linearization's shifted right-hand
+    side).
+    """
     initial_est = problem.estimates(initial_weights)
     final_est = problem.estimates(final_weights)
+    weight_entity = problem.weight_entity
     diagnostics: list[TargetDiagnostic] = []
     for i, target in enumerate(problem.targets):
-        tgt = float(problem.target_vector[i])
-        final = float(final_est[i])
+        if target.aggregation == "mean":
+            # True achieved ratio under the (entity-aligned) weights, against the
+            # user's declared mean value.
+            tgt = float(target.value)
+            w0_aligned = _linearization_weights(
+                target, frame, initial_weights, weight_entity
+            )
+            w_aligned = _linearization_weights(
+                target, frame, final_weights, weight_entity
+            )
+            initial_value = target.achieved_value(frame, w0_aligned)
+            final = target.achieved_value(frame, w_aligned)
+        else:
+            tgt = float(problem.target_vector[i])
+            initial_value = float(initial_est[i])
+            final = float(final_est[i])
         if tgt != 0.0:
             rel = (final - tgt) / tgt
         else:
@@ -221,8 +267,8 @@ def _build_diagnostics(
             TargetDiagnostic(
                 name=problem.names[i],
                 target=tgt,
-                initial_estimate=float(initial_est[i]),
-                final_estimate=final,
+                initial_estimate=float(initial_value),
+                final_estimate=float(final),
                 relative_error=float(rel),
                 within_tolerance=within,
             )
@@ -705,7 +751,14 @@ def calibrate(
         frame, weight_entity, initial, calibrated, mass, targets
     )
 
-    diagnostics = _build_diagnostics(problem, w0, final_weights)
+    diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
+    # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
+    # eCPS relative-error loss the optimizer minimizes, mean(((A@w - b)/(b+1))**2),
+    # evaluated after the closing mass/cap projections — so final_loss describes
+    # what calibrate returns, not the trajectory's pre-projection tail.
+    b = problem.target_vector
+    residual = problem.estimates(final_weights) - b
+    closing_loss = float(((residual / (b + 1.0)) ** 2).mean())
 
     return CalibrationResult(
         frame=new_frame,
@@ -718,6 +771,7 @@ def calibrate(
         problem=problem,
         l0_lambda=effective_l0,
         n_nonzero=n_nonzero,
+        closing_loss=closing_loss,
     )
 
 

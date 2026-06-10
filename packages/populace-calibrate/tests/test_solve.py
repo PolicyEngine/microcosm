@@ -315,6 +315,96 @@ def test_prune_conserve_cap_infeasible_when_survivors_lack_headroom(
         )
 
 
+def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
+    """``final_loss`` is the loss of the weights actually returned (Finding 8).
+
+    The loss trajectory records each epoch's value *before* that epoch's step and
+    before the closing mass/cap projections, so its tail does not describe the
+    returned vector. With ``mass="conserve"`` and a cap, the closing projection
+    moves the weights, so the trajectory tail and the true loss on the returned
+    weights diverge. ``final_loss`` must equal the loss recomputed on the
+    returned weights.
+    """
+    frame, truths = feasible_frame(n=200)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.5),
+            _income_target(truths["income"], 1.5),
+        )
+    )
+    result = calibrate(
+        frame, targets, epochs=300, seed=0,
+        mass="conserve", max_weight_ratio=2.0,
+    )
+    # Recompute the eCPS relative-error loss on the returned weights directly.
+    # final_loss is a float64 closing eval, so it matches to machine epsilon.
+    b = result.problem.target_vector
+    est = result.problem.estimates(result.weights)
+    true_loss = float((((est - b) / (b + 1.0)) ** 2).mean())
+    assert abs(result.final_loss - true_loss) < 1e-9
+    # final_loss is NOT merely the trajectory tail (which is pre-projection): on
+    # this conserve+cap run they differ materially.
+    assert abs(result.final_loss - float(result.loss_trajectory[-1])) > 1e-4
+    # initial_loss still describes the input weights (the trajectory head),
+    # to float32 precision since the trajectory is computed in float32 torch.
+    est0 = result.problem.estimates(result.initial_weights)
+    true_initial = float((((est0 - b) / (b + 1.0)) ** 2).mean())
+    assert abs(result.initial_loss - true_initial) < 1e-5
+
+
+def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None:
+    """``mean`` diagnostics describe the true ratio, not the linearized row value.
+
+    A ``mean`` row is linearized about the input weights; ``A @ w`` is the
+    linearized value, which after a large mass move is *not* the achieved mean.
+    Reporting it gave a near-zero ``relative_error`` and a spurious
+    ``within_tolerance=True`` even when the true achieved mean missed the target
+    and its tolerance (Finding 6). The diagnostic must recompute the true ratio
+    ``sum(measure*filter*w) / sum(filter*w)`` under the final weights.
+    """
+    frame, _ = feasible_frame(n=200, seed=1)
+    income = frame.table("household")["income"].to_numpy()
+    w0 = frame.resolve_weights("household").values
+    true_mean = float((income * w0).sum() / w0.sum())
+    target_mean = true_mean * 1.5  # a large move, so linearization is inexact
+    targets = TargetSet(
+        (
+            Target(name="mean_income", entity="household", aggregation="mean",
+                   value=target_mean, measure="income",
+                   tolerance=target_mean * 0.02),
+        )
+    )
+    result = calibrate(frame, targets, epochs=500, seed=0)
+    diag = result.diagnostics[0]
+    w = result.frame.resolve_weights("household").values
+    w0_now = frame.resolve_weights("household").values
+    true_achieved = float((income * w).sum() / w.sum())
+
+    # The diagnostic's target is the user's declared mean, not the shifted
+    # linearization right-hand side.
+    assert abs(diag.target - target_mean) < 1e-9
+    # The reported final estimate IS the true achieved mean (a sane ratio in the
+    # tens of thousands), not the linearized row value the matrix produces.
+    assert abs(diag.final_estimate - true_achieved) < 1e-6 * abs(true_achieved)
+    assert diag.final_estimate > true_mean  # moved up toward the target
+    # The linearized value (what the old diagnostic reported) is materially
+    # different from the true ratio — proving the fix changed the number, not
+    # just relabeled it.
+    linearized = float(result.problem.estimates(w)[0])
+    assert abs(linearized - true_achieved) > 0.1 * abs(true_achieved)
+    # initial_estimate is the true ratio at the input weights, too.
+    true_initial = float((income * w0_now).sum() / w0_now.sum())
+    assert abs(diag.initial_estimate - true_initial) < 1e-6 * abs(true_initial)
+    # relative_error reflects the true ratio's miss, not a spurious ~0.
+    expected_rel = (true_achieved - target_mean) / target_mean
+    assert abs(diag.relative_error - expected_rel) < 1e-9
+    # within_tolerance is the TRUE-ratio tolerance decision (not the
+    # linearization's spurious "perfect hit").
+    assert diag.within_tolerance is (
+        abs(true_achieved - target_mean) <= target_mean * 0.02
+    )
+
+
 def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:
     """The loss is minimized at est == target, not est == target - 1.
 

@@ -254,6 +254,52 @@ class Target:
         current_mean = numerator / denominator
         return (filter_mask / denominator) * (values - current_mean)
 
+    def achieved_value(self, frame: Frame, weights: np.ndarray) -> float:
+        """The *true* aggregate under ``weights`` (no linearization).
+
+        Unlike ``constraint_row(frame, w0) @ w`` — which for a ``mean`` is only
+        the first-order linearized value about ``w0`` — this evaluates the
+        aggregate exactly at ``weights``:
+
+        - ``sum``: ``sum(measure * filter * weights)``.
+        - ``count``: ``sum(filter * weights)``.
+        - ``mean``: the true ratio ``sum(measure*filter*weights) /
+          sum(filter*weights)``.
+
+        Diagnostics use this so a ``mean`` target's ``relative_error`` and
+        ``within_tolerance`` describe the achieved ratio, not the linearization
+        (which can read as a perfect hit after a large mass move).
+
+        Args:
+            frame: The frame to read measure/filter values from.
+            weights: The weights of ``entity`` to evaluate at (aligned to
+                ``entity``'s records).
+
+        Returns:
+            The true weighted aggregate.
+
+        Raises:
+            ValueError: If a ``mean`` target's filtered denominator mass is zero
+                under ``weights`` (the ratio is undefined).
+            KeyError: From :meth:`_record_values` if a column is missing.
+        """
+        n = frame.n(self.entity)
+        filter_mask = self._filter_mask(frame, n)
+        weights = np.asarray(weights, dtype=np.float64)
+        if self.aggregation == "count":
+            return float((filter_mask * weights).sum())
+        values = self._record_values(frame, self.measure, n)
+        if self.aggregation == "sum":
+            return float((values * filter_mask * weights).sum())
+        # mean: the true ratio under these weights.
+        denominator = float((filter_mask * weights).sum())
+        if denominator <= 0:
+            raise ValueError(
+                f"Target {self.name!r}: mean is undefined — its filtered "
+                "denominator mass is zero under the given weights."
+            )
+        return float((values * filter_mask * weights).sum()) / denominator
+
     def offset(self, frame: Frame, weights: np.ndarray) -> float:
         """Constant the compiler adds to ``value`` to anchor a ``mean`` row.
 
