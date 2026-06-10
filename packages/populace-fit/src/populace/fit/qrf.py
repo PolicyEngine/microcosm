@@ -133,6 +133,40 @@ def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
     return Regime.DEGENERATE_ZERO
 
 
+def _validate_targets_finite(table: pd.DataFrame, targets: list[str]) -> None:
+    """Raise unless every target column is entirely finite.
+
+    A NaN target is the silent corruption this guards against: the sign labels
+    (``y > zero_atol`` / ``y < -zero_atol``) are both ``False`` for NaN, so a
+    NaN row is relabeled to the *zero* class — a missing value masquerading as a
+    structural zero, NaN-blind. The model has no notion of missingness, so the
+    only sound contract is to require finite targets and refuse otherwise,
+    naming the offending column and its NaN count so the caller can find it.
+
+    Predictors are not checked here: a forest can split around NaN features and
+    a missing predictor is not silently miscoded the way a missing target is.
+
+    Args:
+        table: The entity table the fit reads targets from.
+        targets: Target column names.
+
+    Raises:
+        ValueError: If any target column contains non-finite values. The message
+            names the first offending column and its NaN/inf count.
+    """
+    for target in targets:
+        values = table[target].to_numpy(dtype=np.float64)
+        non_finite = int((~np.isfinite(values)).sum())
+        if non_finite:
+            raise ValueError(
+                f"Target column {target!r} contains {non_finite} non-finite "
+                f"value(s) (NaN/inf) out of {len(values)}. A NaN target would be "
+                "silently relabeled to the zero class (the sign labels are "
+                "NaN-blind); fit requires finite targets. Drop or impute the "
+                f"missing {target!r} values before fitting."
+            )
+
+
 def _weighted_bootstrap(
     x: np.ndarray,
     y: np.ndarray,
@@ -389,14 +423,16 @@ class RegimeGatedQRF:
 
         Raises:
             ValueError: If predictors/targets are empty, span more than one
-                entity, name unknown columns, or request a weight kind the
-                entity's stored weights are not. Messages name the culprits.
+                entity, name unknown columns, request a weight kind the
+                entity's resolved weights are not, or a target column contains
+                non-finite (NaN/inf) values. Messages name the culprits.
         """
         predictors = list(predictors)
         targets = list(targets)
         entity = predictors_targets_entity(frame, predictors, targets)
         weight_values = resolve_fit_weights(frame, entity, weights)
         table = frame.table(entity)
+        _validate_targets_finite(table, targets)
 
         # The fit RNG is derived from the seed so the whole fit is reproducible;
         # each forest gets its own integer seed spun from it so distinct forests

@@ -177,6 +177,37 @@ def test_degenerate_zero_target_draws_all_zero(make_person_frame) -> None:
     assert (draws == 0.0).all()
 
 
+def test_nan_target_raises_naming_the_column_and_count(make_person_frame) -> None:
+    """A target with NaNs is refused at fit, naming the column and NaN count.
+
+    Without the guard, a NaN target is silently relabeled to the zero class —
+    the sign labels (``y > atol`` / ``y < -atol``) are both False for NaN — so
+    missing values masquerade as structural zeros, NaN-blind. Fit must instead
+    raise, naming the offending column and how many values are non-finite.
+    """
+    n = 200
+    rng = np.random.default_rng(0)
+    target = np.abs(rng.normal(1000.0, 100.0, n))
+    target[5] = np.nan
+    target[17] = np.nan
+    target[42] = np.nan
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+
+    with pytest.raises(ValueError, match=r"Target column 'target' contains 3 "):
+        fit(frame, ["x"], ["target"], n_estimators=10, seed=0)
+
+
+def test_inf_target_is_also_refused(make_person_frame) -> None:
+    """Infinity in a target is non-finite too, and refused the same way."""
+    n = 120
+    rng = np.random.default_rng(1)
+    target = np.abs(rng.normal(500.0, 50.0, n))
+    target[3] = np.inf
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+    with pytest.raises(ValueError, match="non-finite"):
+        fit(frame, ["x"], ["target"], n_estimators=10, seed=0)
+
+
 # ----------------------------------------------------------------------------
 # Chaining: a target conditioned on a prior imputed target tracks correlation
 # ----------------------------------------------------------------------------
