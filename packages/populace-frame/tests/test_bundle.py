@@ -345,6 +345,77 @@ class TestResolveWeights:
         with pytest.raises(ValueError, match="Unknown entity"):
             bundle.resolve_weights("firm")
 
+    def test_group_resolve_on_a_person_only_weighted_frame(self) -> None:
+        """A group entity derives its weights from the person weights.
+
+        Regression: when only the person entity is weighted (no weighted group
+        entity — the shape the fit suite's own fixtures build), resolving a
+        group entity must derive its weights from the person weights, exactly
+        as ``_effective_weights`` does, not raise "0 weighted group entities".
+        Because all accounting routes through ``resolve_weights``, the earlier
+        version broke ``wsum``/``wmean``/etc. on group columns of such frames.
+        """
+        schema = EntitySchema(group_entities=("household",))
+        person = pd.DataFrame(
+            {"person_id": range(4), "person_household_id": [1, 1, 2, 2]}
+        )
+        household = pd.DataFrame(
+            {"household_id": [1, 2], "hh_value": [10.0, 20.0]}
+        )
+        frame = Frame(
+            {"person": person, "household": household},
+            schema,
+            {
+                "person": Weights(
+                    values=np.array([1.0, 1.0, 2.0, 2.0]), kind=WeightKind.DESIGN
+                )
+            },
+        )
+        resolved = frame.resolve_weights("household")
+        assert resolved.kind is WeightKind.DESIGN  # from the person source
+        assert resolved.values.tolist() == [1.0, 2.0]  # member-constant collapse
+        # accounting on a group column works (it raised before the fix)
+        assert wsum(frame, "hh_value") == 1.0 * 10.0 + 2.0 * 20.0  # 50.0
+
+    def test_mixed_kind_resolve_tags_values_with_their_source_kind(self) -> None:
+        """A resolved kind names the source the *values* came from.
+
+        person calibrated + household design; resolving ``tax_unit`` derives
+        its values from the person (calibrated) weights, so the kind must be
+        calibrated too — not the sibling household's design. The earlier
+        version tagged person-derived values with the group's kind, which would
+        let ``resolve_fit_weights(..., "design")`` silently fit on calibrated
+        weights — the exact discipline this API exists to enforce.
+        """
+        schema = EntitySchema(group_entities=("household", "tax_unit"))
+        person = pd.DataFrame(
+            {
+                "person_id": range(4),
+                "person_household_id": [1, 1, 2, 2],
+                "person_tax_unit_id": [1, 1, 2, 3],
+            }
+        )
+        household = pd.DataFrame({"household_id": [1, 2]})
+        tax_unit = pd.DataFrame({"tax_unit_id": [1, 2, 3]})
+        frame = Frame(
+            {"person": person, "household": household, "tax_unit": tax_unit},
+            schema,
+            {
+                "person": Weights(
+                    values=np.array([1.0, 1.0, 2.0, 2.0]),
+                    kind=WeightKind.CALIBRATED,
+                ),
+                "household": Weights(
+                    values=np.array([5.0, 11.0]), kind=WeightKind.DESIGN
+                ),
+            },
+        )
+        resolved = frame.resolve_weights("tax_unit")
+        np.testing.assert_array_equal(
+            resolved.values, frame._effective_weights("tax_unit")
+        )
+        assert resolved.kind is WeightKind.CALIBRATED  # the value source, not design
+
 
 class TestStratumMass:
     def test_mass_per_stratum_via_household_broadcast(self, make_bundle) -> None:

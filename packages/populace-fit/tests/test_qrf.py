@@ -480,3 +480,22 @@ def test_weighted_gate_reproduces_population_zero_share_not_sample(
     draw_zero_share = float((draws["target"].to_numpy() == 0).mean())
     assert abs(draw_zero_share - 0.1) < 0.05  # tracks the weighted population
     assert abs(draw_zero_share - 0.5) > 0.2  # decisively not the sample share
+
+
+def test_forests_keep_all_leaf_samples(make_person_frame) -> None:
+    """max_samples_leaf=None is pinned independently of the readout fix.
+
+    quantile-forest defaults to one sample per leaf, which thins each row's
+    conditional to ~n_estimators atoms and undershoots tail mass. The tail
+    fidelity fix sets max_samples_leaf=None; without this explicit pin a revert
+    to the default passes the rest of the suite (the tail test's baseline also
+    uses leaf=1, so interpolation alone clears it). This pins the leaf component.
+    """
+    rng = np.random.default_rng(0)
+    n = 400
+    frame = make_person_frame(
+        {"x": rng.normal(size=n), "target": np.abs(rng.normal(size=n)) + 0.1}
+    )
+    fitted = fit(frame, ["x"], ["target"], n_estimators=8, seed=0)
+    forest = fitted._target_models["target"].positive.model
+    assert forest.max_samples_leaf is None

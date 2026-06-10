@@ -516,23 +516,39 @@ class Frame:
     def _inherited_kind(self, entity: str) -> WeightKind:
         """Kind of the weights ``entity`` inherits when it stores none.
 
-        Mirrors :meth:`_effective_weights`'s resolution: the person entity
-        inherits the single weighted group entity's kind; a group entity
-        without weights derives from the person-level weights, which in turn
-        resolve to the single weighted group entity. Either way the kind is the
-        single weighted group entity's kind.
+        Mirrors :meth:`_effective_weights`'s resolution *exactly*, so the kind
+        always names the same source the values come from:
+
+        - the person entity inherits the single weighted group entity's kind;
+        - a group entity without its own weights derives from the person-level
+          weights — which is the person's own kind when the person stores
+          weights, otherwise (recursively) the single weighted group's kind.
+
+        The earlier version always returned the single weighted *group*
+        entity's kind, which (a) raised on person-weighted frames where
+        ``_effective_weights`` succeeds via the person path, and (b) could tag
+        person-derived values with a sibling group's kind.
         """
-        candidates = [
-            group for group in self._schema.group_entities if group in self._weights
-        ]
-        if len(candidates) != 1:
-            raise ValueError(
-                f"Cannot resolve weights for entity {entity!r}: no explicit "
-                f"weights and {len(candidates)} weighted group entities "
-                f"{candidates}; store weights for exactly one entity to "
-                "broadcast from."
-            )
-        return self._weights[candidates[0]].kind
+        person_entity = self._schema.person_entity
+        if entity == person_entity:
+            candidates = [
+                group
+                for group in self._schema.group_entities
+                if group in self._weights
+            ]
+            if len(candidates) != 1:
+                raise ValueError(
+                    f"Cannot resolve weights for entity {entity!r}: no explicit "
+                    f"weights and {len(candidates)} weighted group entities "
+                    f"{candidates}; store weights for exactly one entity to "
+                    "broadcast from."
+                )
+            return self._weights[candidates[0]].kind
+        # A group entity without its own weights derives from the person-level
+        # weights — the same source _effective_weights uses for its values.
+        if person_entity in self._weights:
+            return self._weights[person_entity].kind
+        return self._inherited_kind(person_entity)
 
     def stratum_mass(self) -> pd.Series:
         """Weighted person mass per stratum.
