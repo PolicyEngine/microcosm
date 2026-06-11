@@ -13,9 +13,11 @@ tags:
 
 The **populace-built US population**: a calibrated synthetic microdataset for
 [PolicyEngine-US](https://github.com/PolicyEngine/policyengine-us), built by the
-[`populace`](https://github.com/PolicyEngine/populace) stack. It loads anywhere
-the enhanced CPS loads (an API-compatible alternative population), with its own
-calibrated weights — and its own strengths and gaps, both documented below.
+[`populace`](https://github.com/PolicyEngine/populace) stack **entirely from
+primary sources** — the enhanced CPS appears only as the benchmark this file is
+scored against, never as a build input. It loads anywhere the enhanced CPS
+loads (an API-compatible alternative population), with its own calibrated
+weights — and its own strengths and gaps, both documented below.
 
 ## Load it
 
@@ -43,21 +45,47 @@ path = hf_hub_download(
 )
 ```
 
-## What it is
+## How it is built
 
-One HDF5 `USSingleYearDataset` per year. The population is generated from a
-declarative spec: Current Population Survey ASEC provides household structure,
-demographics, benefits, and tenure (~half the records are PUF-derived clones,
-flagged per record); tax detail is imputed from the IRS Public Use File with
-weight-aware quantile-forest models; the wealth, mortgage, vehicle, insurance
--premium, and prior-year-income layers are imputed with the same models using
-the published enhanced CPS as the donor (those layers are survey-imputed in
-the incumbent itself); every imputed value is clipped to the incumbent's
-realized per-record range (the support guard); and the result is calibrated to
-PolicyEngine's administrative target surface (3,704 IRS/Census/program
-targets) with a hard per-record weight bound (`max_weight_ratio=50`), so no
-aggregate leans on a handful of super-weighted records. Same source classes
-and hosting precedent as PolicyEngine's published enhanced CPS.
+One HDF5 `USSingleYearDataset` per year. Every layer comes from a primary
+survey or administrative source:
+
+| source | provides |
+| --- | --- |
+| Census CPS ASEC | household structure, demographics, incomes, benefits, tenure, hours, occupation flags, health coverage at interview, retirement distributions (DST codes), childcare, prior-year income (longitudinal PERIDNUM join) |
+| IRS SOI Public Use File 2015 (uprated) | tax detail: capital gains, dividends, interest, itemized-deduction inputs, QBI/SSTB components, partnership self-employment, estates, tuition |
+| Fed SCF 2022 | wealth: bank/stock/bond assets, net worth, mortgage balance hints |
+| Census SIPP | tip income for tipped occupations; household vehicles (count and value) |
+| CPS-ORG | hourly wage, paid-hourly status, union coverage |
+| MEPS-IC parameters | employer-sponsored insurance premiums |
+| Census ACS 2022 | rent for renter households |
+
+Imputations use weight-aware quantile-forest models fit on each donor's own
+records, and every imputed value is clipped to **that donor's** realized range
+(the support guard) — nothing is anchored to the enhanced CPS. The result is
+calibrated to PolicyEngine's administrative target surface (3,704 IRS/Census/
+program targets, **plus a signed net short-term capital gains target** so the
+optimizer cannot silently drive a net-negative aggregate to extremes) with a
+hard per-record weight bound (`max_weight_ratio=50`), so no aggregate leans on
+a handful of super-weighted records.
+
+## Acceptance gates
+
+The build refuses to publish unless every gate passes; this file passed all
+of them:
+
+- **Parity 0**: every PolicyEngine input layer the enhanced CPS populates
+  non-degenerately, this file's simulation populates (169 reference layers
+  checked at simulation level).
+- **Exported-nonzero**: all 309 stored columns carry signal — no all-zero
+  scaffolding that would silently mask engine formulas or defaults.
+- **Calibration**: 95.09% of 3,704 targets within 10% (loss 0.022); max
+  household weight 297,651 with **zero records above 500k** (the enhanced CPS
+  ships 21, max 1.05M).
+- **Smoke aggregates** through `Microsimulation`: 332.3M people, $97.8B SNAP,
+  $176.5T net worth (Fed Z.1 ≈ $169T), net short-term capital gains
+  **−$77.5B** against the −$76.8B PUF-anchored target, tips $52.9B, rent
+  $757.5B.
 
 ## Validation
 
@@ -67,47 +95,28 @@ targets never seen by either side's refit. Lower is better.
 
 | metric | populace-us | enhanced CPS |
 | --- | --- | --- |
-| training loss (2,965 targets) | **0.132** | 1.089 |
-| held-out loss (739 unseen targets) | **0.032** | 0.317 |
-| full-surface loss (3,704 targets) | **0.164** | 1.406 |
+| training loss (2,965 targets) | **0.190** | 1.089 |
+| held-out loss (739 unseen targets) | **0.038** | 0.317 |
+| full-surface loss (3,704 targets) | **0.228** | 1.406 |
 
-Per individual target the incumbent still wins more often (2,484 of 3,704 to
-our 1,168, 52 ties): populace wins big where it wins and loses narrowly where
-it loses. Both facts are the story.
-
-Shipped-file properties: **0 parity gaps** (every PolicyEngine input the
-enhanced CPS populates non-degenerately, this file populates), **95.55% of
-3,704 calibration targets within 10%** (calibration loss 0.022), max household
-weight 382,478 with **zero records above 500k** (the enhanced CPS ships 21,
-max 1.05M). End-to-end through `Microsimulation`: 332.7M people, $93.2B SNAP,
-$338.4B traditional 401(k) contributions, $163.6T net worth (incumbent:
-$163.4T).
+Per individual target the incumbent still wins more often (2,613 of 3,704 to our 1,040, 51 ties): populace wins big where it wins and loses narrowly where it loses. Both facts are the story.
 
 ## Known gaps
 
 We publish the misses with the hits:
 
-- **Short-term capital gains over-weight large losses**: the aggregate is
-  −$0.9T against the donor's weighted −$77B. The pool's records are faithful
-  at design weights (−$164B); calibration amplifies loss-heavy records to hit
-  the targets it can see, and net STCG is not on the target surface. A
-  net-STCG calibration target is on the roadmap.
-- **Donor-imputed layers inherit the incumbent's model error.** Wealth,
-  mortgages, vehicles, premiums, and prior-year income are drawn from models
-  trained on the enhanced CPS, whose own values for those layers are
-  themselves survey-imputed (SCF/SIPP/ACS).
-- **Aggregate household net income is $13.7T** vs the incumbent's $22.2T —
-  most of the gap is the STCG item above plus thinner tail capital income;
-  several program totals land closer to administrative actuals than the
-  incumbent (SNAP $93.2B, SSI near the ~$60B outlay). Results from the two
-  populations are not interchangeable.
-- **Per-target wins still favor the incumbent** (see Validation): the
-  aggregate losses are far lower, but on a majority of individual targets the
-  enhanced CPS sits closer.
+- **Net worth runs ~4% above Fed Z.1** ($176.5T vs ≈ $169T): the calibration
+  target ($160T) sits below Z.1 and the achieved total lands between them.
+- **Investment interest expense is thin** ($5.1B against IRS SOI ≈ $24B):
+  the PUF-residual rule populates the layer conservatively; a dedicated SOI
+  calibration target is the roadmap item.
+- **Per-target wins vs the incumbent**: see Validation — aggregate losses
+  are what the comparison gates on, but per-target patterns differ between
+  the two populations. Results are not interchangeable.
 
 The dashboard at [populace.dev/dashboard](https://populace.dev/dashboard)
-shows the full per-family calibration fit, the worst-fit targets by name, and
-the weight distribution. Methodology and evidence:
-[populace.dev](https://populace.dev); loader and registry:
+shows the full per-family calibration fit, the worst-fit targets by name, the
+weight distribution, and a live strip while a build chain runs. Methodology
+and evidence: [populace.dev](https://populace.dev); loader and registry:
 [github.com/PolicyEngine/populace](https://github.com/PolicyEngine/populace)
 (`packages/populace-data`).

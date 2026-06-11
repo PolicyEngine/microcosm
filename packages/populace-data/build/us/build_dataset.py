@@ -16,9 +16,9 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 ART = "/Users/maxghenis/.claude-worktrees/microplex-spec-build/artifacts"
 POOL = f"{ART}/spec_candidate_full_2024/candidate_policyengine_us.h5"
 TP = f"{ART}/spec_candidate_full_2024/candidate_timeperiod.h5"
-SURFACE = f"{ART}/v2_target_surface_raw.npz"
-OUT = f"{ART}/populace_us_2024_v2.h5"
-OUT_TP = f"{ART}/populace_us_2024_v2_timeperiod.h5"
+SURFACE = f"{ART}/target_surface_raw.npz"
+OUT = f"{ART}/populace_us_2024.h5"
+OUT_TP = f"{ART}/populace_us_2024_timeperiod.h5"
 
 
 def log(*a):
@@ -110,6 +110,19 @@ def main():
         seed=0,
     )
     cw = result.frame.resolve_weights("household").values.astype(np.float64)
+    # Telemetry (fail-soft): per-target diagnostics power the observatory's
+    # live fit tables and cross-run regression checks.
+    try:
+        import pathlib as _pathlib
+        import sys as _sys
+
+        _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+        import populace_telemetry as _telemetry
+
+        _telemetry.push_target_diagnostics(result.diagnostics)
+    except Exception as _err:  # noqa: BLE001 - telemetry never fails a build
+        log(f"telemetry skipped: {_err}")
+
     log(
         f"done {time.time()-t0:.0f}s | loss {result.initial_loss:.3f}->"
         f"{result.final_loss:.4f} | within10 "
@@ -129,25 +142,76 @@ def main():
             del tbl["year"]
             log(f"dropped year from {ent}")
     ds.save(OUT)
-    # All-zero stored copies of PE FORMULA variables mask the formulas (a
-    # stored input supersedes computation): drop them so PE computes live —
-    # e.g. traditional_401k_contributions from the *_desired inputs.
+    # No all-zero stored layers, period (the exported_nonzero gate's
+    # invariant): an all-zero column either masks a PE formula (a stored
+    # input supersedes computation) or is dead scaffolding shadowing the
+    # engine's own default. Drop every all-zero numeric/bool column whose
+    # PE default is itself zero/False — the artifact then says exactly what
+    # it knows and nothing else. Structural id/weight columns are kept.
     from policyengine_us.system import system as _pe
 
     dropped_masks = []
+    kept_zero = []
     for ent in ("person", "household", "tax_unit", "spm_unit", "family",
                 "marital_unit"):
         tbl = getattr(ds, ent)
+        structural = {f"{ent}_id", f"{ent}_weight"} | {
+            c for c in tbl.columns if c.startswith("person_")
+        }
         for c in list(tbl.columns):
+            if c in structural:
+                continue
+            vals = tbl[c].to_numpy()
+            if vals.dtype.kind not in "fiub" or np.any(vals):
+                continue
             var = _pe.variables.get(c)
-            if var is not None and var.formulas:
-                vals = tbl[c].to_numpy()
-                if vals.dtype.kind in "fiu" and not np.any(vals):
-                    del tbl[c]
-                    dropped_masks.append(f"{ent}.{c}")
+            default = getattr(var, "default_value", 0) if var is not None else 0
+            default_is_zero = (
+                default in (0, 0.0, False) or default is None
+            )
+            if default_is_zero:
+                del tbl[c]
+                dropped_masks.append(f"{ent}.{c}")
+            else:
+                # Dropping would CHANGE semantics (engine default != 0):
+                # the stored zeros are a real statement. Keep + report.
+                kept_zero.append(f"{ent}.{c} (default {default!r})")
     if dropped_masks:
-        log(f"dropped formula-masking zero columns: {dropped_masks}")
+        log(f"dropped {len(dropped_masks)} all-zero columns: {dropped_masks}")
         ds.save(OUT)
+    if kept_zero:
+        log(f"kept all-zero columns with nonzero engine defaults: {kept_zero}")
+
+    # other_health_insurance_premiums: usdata's decomposition — reported
+    # non-Medicare premiums minus the baseline-computed CHIP/marketplace/
+    # Medicaid premiums, floored at zero (mirrors derive_other_health_
+    # insurance_premiums; runs a baseline sim on the artifact itself).
+    from policyengine_us import Microsimulation as _Msim
+
+    _sim = _Msim(dataset=USSingleYearDataset(file_path=OUT))
+    # All terms mapped to person grain explicitly — the premium variables
+    # live at different entities (person vs tax unit).
+    _reported = np.asarray(
+        _sim.calculate(
+            "health_insurance_premiums_without_medicare_part_b",
+            2024,
+            map_to="person",
+        ).values,
+        dtype=np.float64,
+    )
+    _modeled = sum(
+        np.asarray(
+            _sim.calculate(_v, 2024, map_to="person").values, dtype=np.float64
+        )
+        for _v in ("chip_premium", "marketplace_net_premium", "medicaid_premium")
+    )
+    _other = np.maximum(_reported - _modeled, 0.0)
+    _ds2 = USSingleYearDataset(file_path=OUT)
+    _ds2.person["other_health_insurance_premiums"] = _other
+    _ds2.save(OUT)
+    log(
+        f"other_health_insurance_premiums decomposed: nz {(_other>0).mean()*100:.1f}%"
+    )
 
     chk = USSingleYearDataset(file_path=OUT)
     assert np.array_equal(
@@ -174,7 +238,7 @@ def main():
     log("timeperiod export verified")
 
     np.savez_compressed(
-        f"{ART}/populace_us_2024_v2_calibration.npz",
+        f"{ART}/populace_us_2024_calibration.npz",
         calibrated_weights=cw,
         max_weight_ratio=50.0,
         final_loss=result.final_loss,
@@ -183,7 +247,7 @@ def main():
         learning_rate=0.15,
         seed=0,
     )
-    log("V2 BUILD COMPLETE")
+    log("BUILD COMPLETE")
     return 0
 
 
