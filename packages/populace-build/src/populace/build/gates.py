@@ -36,6 +36,7 @@ from populace.calibrate.solve import relative_error_loss
 __all__ = [
     "GateResult",
     "GateReport",
+    "exported_nonzero_gate",
     "parity_gate",
     "support_gate",
     "aggregate_admin_gate",
@@ -112,6 +113,66 @@ class GateReport:
                 for result in self.results
             },
         }
+
+
+def exported_nonzero_gate(
+    column_shares: Mapping[str, float],
+    *,
+    exemptions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Every exported column carries signal: no all-zero stored layers.
+
+    Stronger than parity (which only checks layers the reference populates):
+    if the artifact stores a column at all, it must be populated. An
+    all-zero stored column is either a pipeline bug (real values lost on
+    the way to export — the v3 head-carry incident) or dead scaffolding
+    that masks the engine's own defaults/formulas; the fix is to populate
+    it or drop it, never to ship zeros.
+
+    Args:
+        column_shares: Stored column -> share of records with a non-zero
+            (or True) value, over every exported column.
+        exemptions: Column -> REASON for columns allowed to ship all-zero.
+            Every exemption is a named, documented decision and is recorded
+            in the gate details; an empty reason is refused.
+
+    Returns:
+        Pass iff every non-exempt column has a positive non-zero share.
+
+    Raises:
+        ValueError: If an exemption has an empty reason — an undocumented
+            exemption is just a silent zero with extra steps.
+    """
+    exemptions = dict(exemptions or {})
+    for column, reason in exemptions.items():
+        if not reason:
+            raise ValueError(
+                f"Exemption for {column!r} needs a reason; an undocumented "
+                "exemption is just a silent zero with extra steps."
+            )
+    failures = []
+    for name, share in sorted(column_shares.items()):
+        if share > 0.0 or name in exemptions:
+            continue
+        failures.append(
+            f"{name}: stored but all-zero — populate it or drop it "
+            "(zeros mask engine defaults/formulas)."
+        )
+    unused = sorted(set(exemptions) - set(column_shares))
+    return GateResult(
+        name="exported_nonzero",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": len(column_shares),
+            "exempted": {
+                name: reason
+                for name, reason in sorted(exemptions.items())
+                if name in column_shares
+            },
+            "unused_exemptions": unused,
+        },
+    )
 
 
 def parity_gate(

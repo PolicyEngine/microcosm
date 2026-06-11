@@ -209,3 +209,45 @@ class TestZeroValuedAnchor:
         assert aggregate_admin_gate({anchor.name: 0.0}, [anchor]).passed
         assert aggregate_admin_gate({anchor.name: 0.3}, [anchor]).passed
         assert not aggregate_admin_gate({anchor.name: 0.8}, [anchor]).passed
+
+
+class TestExportedNonzeroGate:
+    def test_all_zero_column_fails_with_remedy_named(self) -> None:
+        from populace.build import exported_nonzero_gate
+
+        result = exported_nonzero_gate({"snap": 0.1, "net_worth": 0.0})
+        assert not result.passed
+        assert "net_worth" in result.failures[0]
+        assert "populate it or drop it" in result.failures[0]
+
+    def test_fully_populated_export_passes(self) -> None:
+        from populace.build import exported_nonzero_gate
+
+        result = exported_nonzero_gate({"snap": 0.1, "tips": 0.004})
+        assert result.passed
+        assert result.details["columns_checked"] == 2
+
+    def test_exemption_needs_a_reason(self) -> None:
+        from populace.build import exported_nonzero_gate
+
+        with pytest.raises(ValueError, match="needs a reason"):
+            exported_nonzero_gate({"x": 0.0}, exemptions={"x": ""})
+
+    def test_documented_exemption_passes_and_is_recorded(self) -> None:
+        from populace.build import exported_nonzero_gate
+
+        result = exported_nonzero_gate(
+            {"x": 0.0},
+            exemptions={"x": "no NOL filers in 2024 vintage (SOI table 1.4)"},
+        )
+        assert result.passed
+        assert "x" in result.details["exempted"]
+
+    def test_unused_exemptions_are_surfaced(self) -> None:
+        from populace.build import exported_nonzero_gate
+
+        result = exported_nonzero_gate(
+            {"y": 0.5}, exemptions={"gone_var": "documented"}
+        )
+        assert result.passed
+        assert result.details["unused_exemptions"] == ["gone_var"]
