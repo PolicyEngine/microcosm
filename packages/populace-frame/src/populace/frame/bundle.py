@@ -141,9 +141,7 @@ class Frame:
         person = self._tables[self._schema.person_entity]
         id_column = self._schema.person_id_column
         if id_column not in person.columns:
-            raise ValueError(
-                f"Person table must carry the id column {id_column!r}."
-            )
+            raise ValueError(f"Person table must carry the id column {id_column!r}.")
         if person[id_column].isna().any():
             raise ValueError(f"Person id column {id_column!r} contains missing values.")
         if person[id_column].duplicated().any():
@@ -242,9 +240,7 @@ class Frame:
                         f"Link table {link.name!r} id column {column!r} "
                         "contains missing values."
                     )
-                dangling = np.setdiff1d(
-                    values.to_numpy(), self._entity_ids(side)
-                )
+                dangling = np.setdiff1d(values.to_numpy(), self._entity_ids(side))
                 if dangling.size:
                     raise ValueError(
                         f"Link table {link.name!r} references {side} id(s) "
@@ -258,9 +254,7 @@ class Frame:
             for column in self._tables[entity].columns:
                 owners.setdefault(column, []).append(entity)
         duplicated = {
-            column: entities
-            for column, entities in owners.items()
-            if len(entities) > 1
+            column: entities for column, entities in owners.items() if len(entities) > 1
         }
         if duplicated:
             described = ", ".join(
@@ -386,9 +380,7 @@ class Frame:
     def links(self) -> tuple[str, ...]:
         """Names of the link tables this frame carries, in declaration order."""
         return tuple(
-            link.name
-            for link in self._schema.links
-            if link.name in self._link_tables
+            link.name for link in self._schema.links if link.name in self._link_tables
         )
 
     @property
@@ -532,9 +524,7 @@ class Frame:
         person_entity = self._schema.person_entity
         if entity == person_entity:
             candidates = [
-                group
-                for group in self._schema.group_entities
-                if group in self._weights
+                group for group in self._schema.group_entities if group in self._weights
             ]
             if len(candidates) != 1:
                 raise ValueError(
@@ -593,9 +583,7 @@ class Frame:
         person_entity = self._schema.person_entity
         if entity == person_entity:
             candidates = [
-                group
-                for group in self._schema.group_entities
-                if group in self._weights
+                group for group in self._schema.group_entities if group in self._weights
             ]
             if len(candidates) != 1:
                 raise ValueError(
@@ -813,9 +801,236 @@ class Frame:
             if column in self._tables[entity].columns:
                 return entity
         raise ValueError(
-            f"Column {column!r} not found on any entity table "
-            f"{list(self.entities)}."
+            f"Column {column!r} not found on any entity table {list(self.entities)}."
         )
+
+    def place(
+        self,
+        column: str,
+        entity: str,
+        *,
+        how: str = "sum",
+        head_flag: str | None = None,
+    ) -> "Frame":
+        """Move ``column`` onto ``entity``, aggregating or carrying as needed.
+
+        This is the single entity-placement operation builds use instead of
+        hand-rolled groupby/map plumbing. Three directions are supported:
+
+        * **person -> group**: aggregate person values to one per group.
+          ``how`` is one of ``"sum"`` (numeric), ``"max"`` (numeric),
+          ``"any"`` (boolean), or ``"first"`` (first member in person-table
+          order; any dtype).
+        * **group -> person**: ``how="broadcast"`` gives every member the
+          group value; ``how="head"`` lands the value on one designated
+          member per group (rows named by the boolean person column
+          ``head_flag``, or the group's first member when ``head_flag`` is
+          None) and the dtype's zero elsewhere.
+        * **group -> group**: the source groups must nest inside the target
+          groups (all members of a source group share one target group);
+          source values aggregate into target rows with ``how`` as in
+          person -> group.
+
+        Weights, strata, links, and the mass log pass through untouched —
+        placement moves a column, never mass.
+
+        Args:
+            column: Column to move (globally unique, so its owner is
+                unambiguous). Structural columns (entity ids, membership
+                columns) are refused.
+            entity: Destination entity.
+            how: Placement rule; see above. Defaults to ``"sum"``.
+            head_flag: For ``how="head"`` only — boolean person column naming
+                exactly one member per group.
+
+        Returns:
+            A new validated bundle with the column on ``entity``.
+
+        Raises:
+            ValueError: On unknown column/entity, structural columns, a
+                ``how`` invalid for the direction, non-nested group -> group
+                placement, an ambiguous ``head_flag``, or a dtype invalid
+                for ``how``.
+        """
+        person_entity = self._schema.person_entity
+        if entity not in self.entities:
+            raise ValueError(
+                f"Unknown destination entity {entity!r}; frame has "
+                f"{list(self.entities)}."
+            )
+        structural = {self._schema.person_id_column} | {
+            name
+            for group in self._schema.group_entities
+            for name in (
+                self._schema.id_column(group),
+                self._schema.membership_column(group),
+            )
+        }
+        if column in structural:
+            raise ValueError(
+                f"Column {column!r} is structural (id/membership) and cannot be placed."
+            )
+        owner = self.column_entity(column)
+        if owner == entity:
+            return self
+        # No destination-collision check is needed: the flattening rule
+        # (global column-name uniqueness) makes a same-named destination
+        # column impossible while the source still carries it.
+        values = self._tables[owner][column].to_numpy()
+
+        if owner == person_entity:
+            placed = self._aggregate_to_group(column, entity, values, how)
+        elif entity == person_entity:
+            placed = self._carry_to_person(column, owner, values, how, head_flag)
+        else:
+            placed = self._aggregate_group_to_group(column, owner, entity, values, how)
+
+        tables = {name: table for name, table in self._tables.items()}
+        tables.update(self._link_tables)
+        destination = tables[entity].copy()
+        destination[column] = placed
+        tables[entity] = destination
+        tables[owner] = tables[owner].drop(columns=[column])
+        return Frame(
+            tables,
+            self._schema,
+            dict(self._weights),
+            self._strata,
+            mass_log=self._mass_log,
+        )
+
+    def _aggregate_positions(
+        self,
+        column: str,
+        values: np.ndarray,
+        positions: np.ndarray,
+        n_rows: int,
+        how: str,
+    ) -> np.ndarray:
+        """Aggregate ``values`` into ``n_rows`` slots at ``positions``."""
+        if how == "first":
+            out = np.zeros(n_rows, dtype=values.dtype)
+            # first occurrence in table order wins
+            order_first = np.unique(positions, return_index=True)
+            out[order_first[0]] = values[order_first[1]]
+            return out
+        if how == "any":
+            if values.dtype != np.bool_:
+                raise ValueError(
+                    f'place(how="any") needs a boolean column; {column!r} has '
+                    f"dtype {values.dtype}."
+                )
+            out = np.zeros(n_rows, dtype=bool)
+            np.logical_or.at(out, positions, values)
+            return out
+        if how in ("sum", "max"):
+            if not np.issubdtype(values.dtype, np.number):
+                raise ValueError(
+                    f'place(how="{how}") needs a numeric column; {column!r} '
+                    f"has dtype {values.dtype}."
+                )
+            if how == "sum":
+                out = np.zeros(n_rows, dtype=np.float64)
+                np.add.at(out, positions, values.astype(np.float64))
+                return out
+            out = np.full(n_rows, -np.inf)
+            np.maximum.at(out, positions, values.astype(np.float64))
+            out[np.isneginf(out)] = 0.0
+            return out
+        raise ValueError(
+            f"Unknown aggregation {how!r}; expected one of "
+            "'sum', 'max', 'any', 'first'."
+        )
+
+    def _aggregate_to_group(
+        self, column: str, group: str, values: np.ndarray, how: str
+    ) -> np.ndarray:
+        """person -> group placement."""
+        positions = self._group_positions(group)
+        return self._aggregate_positions(column, values, positions, self.n(group), how)
+
+    def _carry_to_person(
+        self,
+        column: str,
+        group: str,
+        values: np.ndarray,
+        how: str,
+        head_flag: str | None,
+    ) -> np.ndarray:
+        """group -> person placement (broadcast or head-carry)."""
+        if how == "broadcast":
+            return self._group_values_to_person(group, values)
+        if how != "head":
+            raise ValueError(
+                f"group -> person placement supports how='broadcast' or "
+                f"'head', got {how!r}."
+            )
+        positions = self._group_positions(group)
+        person = self.person
+        if head_flag is not None:
+            if head_flag not in person.columns:
+                raise ValueError(
+                    f"head_flag column {head_flag!r} not on the person table."
+                )
+            flags = person[head_flag].to_numpy()
+            if flags.dtype != np.bool_:
+                raise ValueError(
+                    f"head_flag column {head_flag!r} must be boolean, got "
+                    f"dtype {flags.dtype}."
+                )
+            counts = np.zeros(self.n(group), dtype=np.int64)
+            np.add.at(counts, positions, flags.astype(np.int64))
+            if (counts != 1).any():
+                ids = self._tables[group][self._schema.id_column(group)]
+                bad = ids.to_numpy()[counts != 1]
+                raise ValueError(
+                    f"head_flag {head_flag!r} must name exactly one member "
+                    f"per {group!r}; offending id(s) include "
+                    f"{bad[:5].tolist()}."
+                )
+            head_rows = flags
+        else:
+            first_rows = np.unique(positions, return_index=True)[1]
+            head_rows = np.zeros(len(person), dtype=bool)
+            head_rows[first_rows] = True
+        if values.dtype == np.bool_:
+            zero: object = False
+        elif np.issubdtype(values.dtype, np.number):
+            zero = values.dtype.type(0)
+        else:
+            raise ValueError(
+                f'place(how="head") needs a numeric or boolean column; '
+                f"{column!r} has dtype {values.dtype}."
+            )
+        broadcast = self._group_values_to_person(group, values)
+        return np.where(head_rows, broadcast, zero)
+
+    def _aggregate_group_to_group(
+        self,
+        column: str,
+        source: str,
+        target: str,
+        values: np.ndarray,
+        how: str,
+    ) -> np.ndarray:
+        """group -> group placement; source groups must nest in target."""
+        source_positions = self._group_positions(source)
+        target_positions = self._group_positions(target)
+        n_source = self.n(source)
+        lo = np.full(n_source, np.iinfo(np.int64).max, dtype=np.int64)
+        hi = np.full(n_source, -1, dtype=np.int64)
+        np.minimum.at(lo, source_positions, target_positions)
+        np.maximum.at(hi, source_positions, target_positions)
+        unequal = lo != hi
+        if unequal.any():
+            ids = self._tables[source][self._schema.id_column(source)]
+            bad = ids.to_numpy()[unequal]
+            raise ValueError(
+                f"Cannot place {column!r} from {source!r} onto {target!r}: "
+                f"{source!r} id(s) {bad[:5].tolist()} span multiple "
+                f"{target!r} rows ({source!r} does not nest in {target!r})."
+            )
+        return self._aggregate_positions(column, values, lo, self.n(target), how)
 
     def concat(self, other: "Frame") -> "Frame":
         """Union of two bundles; this is how pool strata assemble.
@@ -849,9 +1064,7 @@ class Frame:
                 ids that cannot be shifted.
         """
         if not isinstance(other, Frame):
-            raise TypeError(
-                f"concat expects a Frame, got {type(other).__name__}."
-            )
+            raise TypeError(f"concat expects a Frame, got {type(other).__name__}.")
         if self._link_tables or other._link_tables:
             raise NotImplementedError(
                 "concat does not yet carry link tables (links are a "
@@ -882,9 +1095,7 @@ class Frame:
         id_overlap = [
             entity
             for entity in self.entities
-            if np.intersect1d(
-                self._entity_ids(entity), other._entity_ids(entity)
-            ).size
+            if np.intersect1d(self._entity_ids(entity), other._entity_ids(entity)).size
             > 0
         ]
         if strata_overlap and id_overlap:
@@ -918,9 +1129,7 @@ class Frame:
             tables[group] = combined.iloc[order].reset_index(drop=True)
             if group in self._weights:
                 union = self._concat_weights(group, other)
-                weights[group] = union.with_values(
-                    union.values[order], kind=union.kind
-                )
+                weights[group] = union.with_values(union.values[order], kind=union.kind)
         strata = pd.concat([self._strata, other._strata], ignore_index=True)
         return Frame(
             tables,
@@ -959,16 +1168,13 @@ class Frame:
         if isinstance(person_mask, pd.Series):
             if not person_mask.index.equals(person.index):
                 raise ValueError(
-                    "person_mask Series must be index-aligned to the person "
-                    "table."
+                    "person_mask Series must be index-aligned to the person table."
                 )
             mask = person_mask.to_numpy()
         else:
             mask = np.asarray(person_mask)
         if mask.dtype != np.bool_:
-            raise ValueError(
-                f"person_mask must be boolean, got dtype {mask.dtype}."
-            )
+            raise ValueError(f"person_mask must be boolean, got dtype {mask.dtype}.")
         if mask.shape != (len(person),):
             raise ValueError(
                 f"person_mask must have one element per person row "
@@ -976,8 +1182,7 @@ class Frame:
             )
         if not mask.any():
             raise ValueError(
-                "select would produce an empty bundle; at least one person "
-                "must remain."
+                "select would produce an empty bundle; at least one person must remain."
             )
 
         person_entity = self._schema.person_entity
@@ -1002,9 +1207,7 @@ class Frame:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
-        return Frame(
-            tables, self._schema, weights, strata, mass_log=self._mass_log
-        )
+        return Frame(tables, self._schema, weights, strata, mass_log=self._mass_log)
 
     # ------------------------------------------------------------------
     # Concat helpers
@@ -1073,7 +1276,4 @@ class Frame:
         )
         n_strata = self._strata.nunique()
         links = f"; links={list(self.links)}" if self._link_tables else ""
-        return (
-            f"Frame({sizes}; weights[{weighted}]; "
-            f"strata={n_strata}{links})"
-        )
+        return f"Frame({sizes}; weights[{weighted}]; strata={n_strata}{links})"
