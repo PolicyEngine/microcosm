@@ -62,3 +62,23 @@ class TestBuildConfig:
             BuildConfig(year=2024, mass="leaky")
         with pytest.raises(ValueError, match="survey year"):
             BuildConfig(year=1900)
+
+
+class TestUsSources:
+    def test_sources_module_imports_without_donor_deps(self) -> None:
+        """Donor loaders import lazily: the module itself must import on a
+        base install; each stage fails loudly only when actually called
+        without its donor available."""
+        from populace.build.us import sources
+
+        for stage in (
+            "add_scf_wealth",
+            "add_sipp_tips",
+            "add_org_wages",
+            "add_meps_esi_premiums",
+            "add_prior_year_income",
+            "add_mortgage_conversion",
+            "add_acs_rent",
+            "add_vehicle_assets",
+        ):
+            assert callable(getattr(sources, stage))
