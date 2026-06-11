@@ -37,7 +37,8 @@ Four declared options, each a real feature (and each its own test):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -54,6 +55,7 @@ from populace.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
     "calibrate",
+    "relative_error_loss",
     "CalibrationResult",
     "TargetDiagnostic",
     "FREE_MASS",
@@ -142,6 +144,12 @@ class CalibrationResult:
             *returned* weights (after the closing mass/cap projections). Exposed
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
+        options: The solver configuration as passed (method, epochs,
+            learning_rate, mass, max_weight_ratio, target_records, seed) plus
+            the realized ``matrix_format`` (``"dense"`` or ``"sparse_csr"``).
+            This is what a build records in its release manifest — the
+            max_weight_ratio bound is part of the dataset's provenance, not a
+            local solver detail.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -158,6 +166,7 @@ class CalibrationResult:
     l0_lambda: float
     n_nonzero: int
     closing_loss: float
+    options: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def initial_loss(self) -> float:
@@ -190,9 +199,69 @@ class CalibrationResult:
         return hits / len(self.diagnostics)
 
 
-def _relative_error_loss(
-    estimate: torch.Tensor, targets: torch.Tensor
-) -> torch.Tensor:
+#: Density above which a sparse matrix gains nothing over dense compute.
+_SPARSE_DENSITY_CUTOFF = 0.25
+#: Matrices smaller than this (cells) stay dense; sparse kernels have
+#: per-call overhead that only pays off at scale.
+_SPARSE_MIN_CELLS = 1_000_000
+
+
+def _torch_constraint_matrix(matrix) -> torch.Tensor:
+    """Torch operator for ``A`` (targets x records): sparse CSR when it pays.
+
+    The dense path materializes ``A`` as a float32 tensor — fine for small
+    problems, fatal at national scale (3,704 x 75k is ~1.1 GB; a 3M-record
+    pool would need ~44 GB). Above :data:`_SPARSE_MIN_CELLS` cells and below
+    :data:`_SPARSE_DENSITY_CUTOFF` density, the scipy CSR converts directly
+    to a torch sparse-CSR tensor and every epoch runs SpMM instead; autograd
+    flows to the dense weight operand.
+    """
+    cells = int(matrix.shape[0]) * int(matrix.shape[1])
+    density = (matrix.nnz / cells) if cells else 1.0
+    if cells >= _SPARSE_MIN_CELLS and density <= _SPARSE_DENSITY_CUTOFF:
+        as_f32 = matrix.astype(np.float32)
+        return torch.sparse_csr_tensor(
+            torch.from_numpy(np.asarray(as_f32.indptr, dtype=np.int64)),
+            torch.from_numpy(np.asarray(as_f32.indices, dtype=np.int64)),
+            torch.from_numpy(as_f32.data),
+            size=as_f32.shape,
+        )
+    return torch.tensor(matrix.toarray(), dtype=torch.float32)
+
+
+def _apply_constraint(matrix: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    """``A @ w`` for a dense or sparse-CSR ``A`` (targets x records)."""
+    if matrix.layout == torch.sparse_csr:
+        # SpMM needs a 2-D dense operand; SpMV is not exposed with autograd.
+        return (matrix @ weights.unsqueeze(1)).squeeze(1)
+    return matrix @ weights
+
+
+def relative_error_loss(estimates: np.ndarray, targets: np.ndarray) -> float:
+    """THE loss, in numpy: ``mean(((est - tgt)/(tgt + 1))**2)``.
+
+    The single canonical definition every measurement imports — the solver's
+    closing loss, the acceptance gates, and scorers all call this function
+    (the torch twin below is the autograd path of the same formula). Refuses
+    non-finite inputs: a NaN estimate is a harness bug, not a large miss.
+    """
+    estimates = np.asarray(estimates, dtype=np.float64)
+    targets = np.asarray(targets, dtype=np.float64)
+    if estimates.shape != targets.shape:
+        raise ValueError(
+            f"estimates and targets must align, got shapes "
+            f"{estimates.shape} vs {targets.shape}."
+        )
+    if not (np.isfinite(estimates).all() and np.isfinite(targets).all()):
+        raise ValueError(
+            "relative_error_loss requires finite inputs; got non-finite "
+            "estimate or target values."
+        )
+    rel = (estimates - targets) / (targets + 1.0)
+    return float((rel**2).mean())
+
+
+def _relative_error_loss(estimate: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     """The relative-error loss ``mean(((est - tgt)/(tgt + 1))**2)``.
 
     The ``+1`` in the *denominator* is the regularizer: it keeps the loss finite
@@ -302,9 +371,7 @@ def _optimize(
     gates: HardConcrete | None = None
     params: list[torch.Tensor] = [log_w]
     if l0_lambda > 0.0 or target_records is not None:
-        gates = HardConcrete(
-            len(w0), init_mean=init_mean, temperature=temperature
-        )
+        gates = HardConcrete(len(w0), init_mean=init_mean, temperature=temperature)
         params = [log_w, *gates.parameters()]
 
     optimizer = torch.optim.Adam(params, lr=learning_rate)
@@ -320,7 +387,7 @@ def _optimize(
         weights = torch.exp(log_w)
         if gates is not None:
             weights = weights * gates()
-        estimate = weights @ matrix
+        estimate = _apply_constraint(matrix, weights)
         loss = _relative_error_loss(estimate, targets)
         penalty = (
             l0_lambda * gates.get_penalty()
@@ -366,9 +433,7 @@ def _optimize(
     # (~1e-7 relative); a closing float64 cap guarantees no returned weight
     # exceeds max_weight_ratio * w0, which downstream code may assert.
     if max_weight_ratio is not None:
-        final = np.minimum(
-            final, max_weight_ratio * np.asarray(w0, dtype=np.float64)
-        )
+        final = np.minimum(final, max_weight_ratio * np.asarray(w0, dtype=np.float64))
 
     # Exact mass conservation on the returned vector: a single closing rescale
     # to the input total. When a max_weight_ratio is also set, the rescale is
@@ -378,13 +443,9 @@ def _optimize(
     # resurrects a pruned one.
     if conserve_mass:
         pruned = (
-            final <= prune_atol
-            if (gates is not None and l0_lambda > 0.0)
-            else None
+            final <= prune_atol if (gates is not None and l0_lambda > 0.0) else None
         )
-        final = _project_to_total(
-            final, total0, max_weight_ratio, w0, pruned=pruned
-        )
+        final = _project_to_total(final, total0, max_weight_ratio, w0, pruned=pruned)
     return final, trajectory
 
 
@@ -423,7 +484,7 @@ def _search_l0_lambda_for_budget(
     budget, where ``tol = max(1, round(0.05 * target_records))``.
 
     Args:
-        matrix: The constraint matrix (``A.T`` as a torch tensor), as
+        matrix: The constraint matrix ``A`` (dense or sparse-CSR torch tensor), as
             :func:`_optimize` consumes it.
         targets: The target vector tensor.
         initial_weights: The starting weights.
@@ -688,11 +749,7 @@ def calibrate(
         raise ValueError(
             f"max_weight_ratio must be positive, got {max_weight_ratio!r}."
         )
-    if (
-        max_weight_ratio is not None
-        and max_weight_ratio < 1
-        and mass == CONSERVE_MASS
-    ):
+    if max_weight_ratio is not None and max_weight_ratio < 1 and mass == CONSERVE_MASS:
         # Every capped weight is below its initial, so sum(cap) < input total:
         # mass conservation is infeasible a priori (Finding 7). Reject it here
         # with a named error rather than letting it surface later as the kernel's
@@ -718,7 +775,7 @@ def calibrate(
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
 
     torch.manual_seed(seed)
-    matrix_t = torch.tensor(problem.matrix.toarray().T, dtype=torch.float32)
+    matrix_t = _torch_constraint_matrix(problem.matrix)
     targets_t = torch.tensor(problem.target_vector, dtype=torch.float32)
 
     if target_records is not None:
@@ -773,18 +830,16 @@ def calibrate(
             )
 
     calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
-    new_frame = _apply_weights(
-        frame, weight_entity, initial, calibrated, mass, targets
-    )
+    new_frame = _apply_weights(frame, weight_entity, initial, calibrated, mass, targets)
 
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
     # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
     # eCPS relative-error loss the optimizer minimizes, mean(((A@w - b)/(b+1))**2),
     # evaluated after the closing mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
-    b = problem.target_vector
-    residual = problem.estimates(final_weights) - b
-    closing_loss = float(((residual / (b + 1.0)) ** 2).mean())
+    closing_loss = relative_error_loss(
+        problem.estimates(final_weights), problem.target_vector
+    )
 
     return CalibrationResult(
         frame=new_frame,
@@ -798,6 +853,18 @@ def calibrate(
         l0_lambda=effective_l0,
         n_nonzero=n_nonzero,
         closing_loss=closing_loss,
+        options={
+            "method": method,
+            "epochs": epochs,
+            "learning_rate": learning_rate,
+            "mass": mass,
+            "max_weight_ratio": max_weight_ratio,
+            "target_records": target_records,
+            "seed": seed,
+            "matrix_format": (
+                "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
+            ),
+        },
     )
 
 
@@ -820,12 +887,8 @@ def _apply_weights(
     if mass == CONSERVE_MASS:
         from populace.frame import CONSERVE_MASS as FRAME_CONSERVE
 
-        return frame.with_weights(
-            weight_entity, calibrated, mass=FRAME_CONSERVE
-        )
-    factor = (
-        calibrated.total / initial.total if initial.total != 0 else None
-    )
+        return frame.with_weights(weight_entity, calibrated, mass=FRAME_CONSERVE)
+    factor = calibrated.total / initial.total if initial.total != 0 else None
     reason = (
         f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
         "(eCPS relative-error loss); total mass free to move"

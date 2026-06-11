@@ -189,9 +189,7 @@ def _tables(simple_schema_unused=None) -> dict[str, pd.DataFrame]:
 
 
 def _weights() -> dict[str, Weights]:
-    return {
-        "household": Weights(values=np.array([1.0, 2.0]), kind=WeightKind.DESIGN)
-    }
+    return {"household": Weights(values=np.array([1.0, 2.0]), kind=WeightKind.DESIGN)}
 
 
 def test_bundle_rejects_orphan_group_ids(simple_schema) -> None:
@@ -508,9 +506,7 @@ def test_jobs_link_table_validates_against_linked_tables() -> None:
     )
     household = pd.DataFrame({"household_id": [1]})
     firm = pd.DataFrame({"firm_id": [1, 2]})
-    weights = {
-        "household": Weights(values=np.array([100.0]), kind=WeightKind.DESIGN)
-    }
+    weights = {"household": Weights(values=np.array([100.0]), kind=WeightKind.DESIGN)}
     # Many-to-many: person 0 holds jobs at both firms.
     jobs = pd.DataFrame({"person_id": [0, 0, 1], "firm_id": [1, 2, 2]})
 

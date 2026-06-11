@@ -175,7 +175,8 @@ def predictors_targets_entity(
         for column, entity in owners.items():
             by_entity.setdefault(entity, []).append(column)
         described = "; ".join(
-            f"{entity}: {sorted(columns)}" for entity, columns in sorted(by_entity.items())
+            f"{entity}: {sorted(columns)}"
+            for entity, columns in sorted(by_entity.items())
         )
         raise ValueError(
             "Predictors and targets must all live on one entity, but they span "

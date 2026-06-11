@@ -75,9 +75,7 @@ def test_max_weight_ratio_is_respected(feasible_frame) -> None:
     frame, truths = feasible_frame()
     w0 = frame.resolve_weights("household").values
     targets = TargetSet((_income_target(truths["income"], 3.0),))
-    result = calibrate(
-        frame, targets, epochs=300, seed=0, max_weight_ratio=2.0
-    )
+    result = calibrate(frame, targets, epochs=300, seed=0, max_weight_ratio=2.0)
     w = result.frame.resolve_weights("household").values
     assert (w <= 2.0 * w0 + 1e-9).all()
 
@@ -105,9 +103,7 @@ def test_weight_ratio_bound_prevents_a_landmine(landmine_frame) -> None:
 
     unbounded = calibrate(frame, far_target, epochs=300, seed=0)
     unbounded_w = unbounded.frame.resolve_weights("household").values
-    bounded = calibrate(
-        frame, far_target, epochs=300, seed=0, max_weight_ratio=10.0
-    )
+    bounded = calibrate(frame, far_target, epochs=300, seed=0, max_weight_ratio=10.0)
     bounded_w = bounded.frame.resolve_weights("household").values
 
     # Unbounded blows the donor weight far past the bound; bounded cannot.
@@ -230,8 +226,7 @@ def test_budget_iters_must_be_positive(feasible_frame) -> None:
     frame, truths = feasible_frame(n=50)
     targets = TargetSet((_population_target(truths["population"], 1.0),))
     with pytest.raises(ValueError, match="budget_iters"):
-        calibrate(frame, targets, epochs=50, seed=0, target_records=10,
-                  budget_iters=0)
+        calibrate(frame, targets, epochs=50, seed=0, target_records=10, budget_iters=0)
 
 
 def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
@@ -269,8 +264,13 @@ def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
     assert free_nonzero < 100  # free mass prunes hard
 
     capped = calibrate(
-        frame, targets, epochs=400, seed=0, target_records=80,
-        mass="conserve", max_weight_ratio=100.0,
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        target_records=80,
+        mass="conserve",
+        max_weight_ratio=100.0,
     )
     capped_w = capped.frame.resolve_weights("household").values
     capped_nonzero = int((capped_w > 1e-6).sum())
@@ -310,8 +310,12 @@ def test_cap_below_one_with_conserve_is_rejected_a_priori(feasible_frame) -> Non
     targets = TargetSet((_income_target(truths["income"], 1.0),))
     with pytest.raises(ValueError, match="max_weight_ratio"):
         calibrate(
-            frame, targets, epochs=50, seed=0,
-            mass="conserve", max_weight_ratio=0.5,
+            frame,
+            targets,
+            epochs=50,
+            seed=0,
+            mass="conserve",
+            max_weight_ratio=0.5,
         )
 
 
@@ -334,8 +338,13 @@ def test_prune_conserve_cap_infeasible_when_survivors_lack_headroom(
     )
     with pytest.raises(ValueError, match="prun.*conserve.*cap|conserve.*cap.*prun"):
         calibrate(
-            frame, targets, epochs=400, seed=0, l0_lambda=5e-3,
-            mass="conserve", max_weight_ratio=1.05,
+            frame,
+            targets,
+            epochs=400,
+            seed=0,
+            l0_lambda=5e-3,
+            mass="conserve",
+            max_weight_ratio=1.05,
         )
 
 
@@ -357,8 +366,12 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
         )
     )
     result = calibrate(
-        frame, targets, epochs=300, seed=0,
-        mass="conserve", max_weight_ratio=2.0,
+        frame,
+        targets,
+        epochs=300,
+        seed=0,
+        mass="conserve",
+        max_weight_ratio=2.0,
     )
     # Recompute the eCPS relative-error loss on the returned weights directly.
     # final_loss is a float64 closing eval, so it matches to machine epsilon.
@@ -393,9 +406,14 @@ def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None
     target_mean = true_mean * 1.5  # a large move, so linearization is inexact
     targets = TargetSet(
         (
-            Target(name="mean_income", entity="household", aggregation="mean",
-                   value=target_mean, measure="income",
-                   tolerance=target_mean * 0.02),
+            Target(
+                name="mean_income",
+                entity="household",
+                aggregation="mean",
+                value=target_mean,
+                measure="income",
+                tolerance=target_mean * 0.02,
+            ),
         )
     )
     result = calibrate(frame, targets, epochs=500, seed=0)

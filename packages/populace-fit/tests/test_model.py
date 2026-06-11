@@ -209,13 +209,9 @@ def _cps_shape_frame(
             "income": rng.normal(40_000.0, 10_000.0, n_people).clip(0.0),
         }
     )
-    household = pd.DataFrame(
-        {"household_id": np.arange(n_households, dtype="int64")}
-    )
+    household = pd.DataFrame({"household_id": np.arange(n_households, dtype="int64")})
     # A non-trivial design weight vector, one per household.
-    weights = Weights(
-        values=50.0 + np.arange(n_households, dtype=float), kind=kind
-    )
+    weights = Weights(values=50.0 + np.arange(n_households, dtype=float), kind=kind)
     schema = EntitySchema(group_entities=("household",))
     return Frame(
         {"person": person, "household": household},

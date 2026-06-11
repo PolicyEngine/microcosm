@@ -29,9 +29,7 @@ class TestWeights:
 
     def test_with_values_revalidates(self) -> None:
         weights = Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)
-        replacement = weights.with_values(
-            np.array([2.0]), kind=WeightKind.CALIBRATED
-        )
+        replacement = weights.with_values(np.array([2.0]), kind=WeightKind.CALIBRATED)
         assert replacement.kind is WeightKind.CALIBRATED
         assert replacement.total == 2.0
         with pytest.raises(ValueError, match="non-negative"):
@@ -78,12 +76,8 @@ class TestMassChange:
         ("kwargs", "match"),
         [
             pytest.param({"factor": 1.0, "reason": ""}, "reason", id="empty-reason"),
-            pytest.param(
-                {"factor": 1.0, "reason": "   "}, "reason", id="blank-reason"
-            ),
-            pytest.param(
-                {"factor": 0.0, "reason": "x"}, "positive", id="zero-factor"
-            ),
+            pytest.param({"factor": 1.0, "reason": "   "}, "reason", id="blank-reason"),
+            pytest.param({"factor": 0.0, "reason": "x"}, "positive", id="zero-factor"),
             pytest.param(
                 {"factor": -1.0, "reason": "x"}, "positive", id="negative-factor"
             ),

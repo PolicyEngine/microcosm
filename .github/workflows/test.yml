@@ -23,3 +23,42 @@ jobs:
         run: uv run pytest
       - name: Lint
         run: uv run ruff check .
+
+  wheels:
+    # The charter-mandated packaging gate: editable installs hide packaging
+    # breaks (path hacks, missing package dirs, namespace mistakes — the
+    # populace.build/.gitignore incident is the canonical example). Build
+    # real wheels for every shard, install them into a clean venv with pip
+    # semantics, and run the suite against the installed constellation.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build wheels for every shard
+        run: |
+          for shard in packages/*/; do
+            uv build --wheel "$shard" --out-dir dist/
+          done
+          ls -l dist/
+      - name: Install from wheels into a clean venv
+        run: |
+          uv venv /tmp/wheels-venv
+          uv pip install --python /tmp/wheels-venv/bin/python dist/*.whl pytest
+      - name: Import every shard from the installed wheels
+        run: |
+          /tmp/wheels-venv/bin/python -c "
+          import populace.frame, populace.fit, populace.calibrate, populace.build, populace.data
+          print('frame', populace.frame.__version__)
+          print('fit', populace.fit.__version__)
+          print('calibrate', populace.calibrate.__version__)
+          print('build', populace.build.__version__)
+          print('data', populace.data.__version__)
+          "
+      - name: Run the suite against the installed wheels
+        run: |
+          /tmp/wheels-venv/bin/python -m pytest packages/*/tests -p no:cacheprovider

@@ -55,9 +55,7 @@ class TestAccessors:
             {"person_id": [0], "person_household_id": [1], "x": [1.0]}
         )
         household = pd.DataFrame({"household_id": [1]})
-        weights = {
-            "household": Weights(values=np.array([2.0]), kind=WeightKind.DESIGN)
-        }
+        weights = {"household": Weights(values=np.array([2.0]), kind=WeightKind.DESIGN)}
         bundle = Frame(
             {"person": person, "household": household}, simple_schema, weights
         )
@@ -66,9 +64,7 @@ class TestAccessors:
 
     def test_missing_entity_table_is_named(self, simple_schema) -> None:
         person = pd.DataFrame({"person_id": [0], "person_household_id": [1]})
-        weights = {
-            "household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)
-        }
+        weights = {"household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)}
         with pytest.raises(ValueError, match="household"):
             Frame({"person": person}, simple_schema, weights)
 
@@ -80,9 +76,7 @@ class TestAccessors:
             "spaceship": pd.DataFrame({"spaceship_id": [1]}),
         }
         with pytest.raises(ValueError, match="spaceship"):
-            Frame(
-                tables, simple_schema, {"household": bundle.weights_for("household")}
-            )
+            Frame(tables, simple_schema, {"household": bundle.weights_for("household")})
 
     def test_weights_for_unknown_entity_key_rejected(self, make_bundle) -> None:
         bundle = make_bundle()
@@ -117,9 +111,7 @@ class TestAccessors:
                 strata=strata,
             )
 
-    def test_stray_weight_column_is_reserved_by_the_kernel(
-        self, simple_schema
-    ) -> None:
+    def test_stray_weight_column_is_reserved_by_the_kernel(self, simple_schema) -> None:
         """C1: a {entity}_weight column the bundle doesn't own as typed weights
         is a reserved name the kernel materializes at export — it is refused."""
         person = pd.DataFrame(
@@ -135,17 +127,13 @@ class TestAccessors:
             Frame({"person": person, "household": household}, simple_schema, weights)
 
     def test_unsorted_group_ids_rejected(self, simple_schema) -> None:
-        person = pd.DataFrame(
-            {"person_id": [0, 1], "person_household_id": [2, 1]}
-        )
+        person = pd.DataFrame({"person_id": [0, 1], "person_household_id": [2, 1]})
         household = pd.DataFrame({"household_id": [2, 1]})
         weights = {
             "household": Weights(values=np.array([1.0, 1.0]), kind=WeightKind.DESIGN)
         }
         with pytest.raises(ValueError, match="sorted"):
-            Frame(
-                {"person": person, "household": household}, simple_schema, weights
-            )
+            Frame({"person": person, "household": household}, simple_schema, weights)
 
 
 class TestBroadcast:
@@ -292,16 +280,12 @@ class TestResolveWeights:
         calibrated, a person inherits ``calibrated``, so a fit that demands the
         kind match sees ``calibrated`` (not a kind the inherited vector lost).
         """
-        bundle = make_bundle(
-            weight_values=(100.0, 200.0), kind=WeightKind.CALIBRATED
-        )
+        bundle = make_bundle(weight_values=(100.0, 200.0), kind=WeightKind.CALIBRATED)
         resolved = bundle.resolve_weights("person")
         assert resolved.kind is WeightKind.CALIBRATED
         assert resolved.values.tolist() == [100.0, 100.0, 200.0, 200.0, 200.0]
 
-    def test_entity_with_its_own_weights_returns_them_as_is(
-        self, make_bundle
-    ) -> None:
+    def test_entity_with_its_own_weights_returns_them_as_is(self, make_bundle) -> None:
         """When the entity stores weights, resolve returns that exact object."""
         bundle = make_bundle(weight_values=(100.0, 200.0))
         # The household stores its own weights: returned identically.
@@ -359,9 +343,7 @@ class TestResolveWeights:
         person = pd.DataFrame(
             {"person_id": range(4), "person_household_id": [1, 1, 2, 2]}
         )
-        household = pd.DataFrame(
-            {"household_id": [1, 2], "hh_value": [10.0, 20.0]}
-        )
+        household = pd.DataFrame({"household_id": [1, 2], "hh_value": [10.0, 20.0]})
         frame = Frame(
             {"person": person, "household": household},
             schema,
@@ -429,9 +411,7 @@ class TestStratumMass:
 class TestWithWeights:
     def test_returns_new_bundle_and_keeps_original(self, make_bundle) -> None:
         bundle = make_bundle()
-        replacement = Weights(
-            values=np.array([1.0, 2.0]), kind=WeightKind.CALIBRATED
-        )
+        replacement = Weights(values=np.array([1.0, 2.0]), kind=WeightKind.CALIBRATED)
         updated = bundle.with_weights("household", replacement, mass=_FREE_MASS)
         assert bundle.weights_for("household").kind is WeightKind.DESIGN
         assert updated.weights_for("household").kind is WeightKind.CALIBRATED
@@ -442,9 +422,7 @@ class TestWithWeights:
         updated = bundle.with_weights("person", person_weights, mass=_FREE_MASS)
         assert set(updated.weighted_entities) == {"person", "household"}
 
-    def test_conserve_without_existing_weights_is_an_error(
-        self, make_bundle
-    ) -> None:
+    def test_conserve_without_existing_weights_is_an_error(self, make_bundle) -> None:
         bundle = make_bundle()
         person_weights = Weights(values=np.ones(5), kind=WeightKind.DESIGN)
         with pytest.raises(ValueError, match="existing weights"):
