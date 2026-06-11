@@ -196,3 +196,29 @@ class TestInvariantsPreserved:
         )
         assert placed.mass_log == nested_frame.mass_log
         assert tuple(placed.strata) == tuple(nested_frame.strata)
+
+
+class TestDtypeContracts:
+    def test_first_carries_object_dtype(self, nested_frame):
+        frame = nested_frame
+        person = frame.person.copy()
+        person["occupation"] = ["nurse", "", "clerk", "farmer", "pilot"]
+        frame = Frame(
+            {
+                "person": person,
+                "household": frame.table("household"),
+                "tax_unit": frame.table("tax_unit"),
+            },
+            frame.schema,
+            {"household": frame.weights_for("household")},
+        )
+        placed = frame.place("occupation", "tax_unit", how="first")
+        assert list(placed.table("tax_unit")["occupation"]) == [
+            "nurse",
+            "clerk",
+            "pilot",
+        ]
+
+    def test_head_flag_with_non_head_how_is_refused(self, nested_frame):
+        with pytest.raises(ValueError, match='only meaningful with how="head"'):
+            nested_frame.place("rent", "person", how="broadcast", head_flag="is_head")

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from populace.calibrate.registry import TargetSpec
+from populace.calibrate.solve import relative_error_loss
 
 __all__ = [
     "GateResult",
@@ -41,24 +42,6 @@ __all__ = [
     "per_family_fit_gate",
     "relative_error_loss",
 ]
-
-
-def relative_error_loss(estimates: np.ndarray, targets: np.ndarray) -> float:
-    """The calibrator's objective, ``mean(((est - tgt)/(tgt + 1))**2)``.
-
-    Exposed here so scorers and gates evaluate the *same* loss the solver
-    minimizes (the architecture review's objective-mismatch fix): one
-    definition, imported everywhere it is measured.
-    """
-    estimates = np.asarray(estimates, dtype=np.float64)
-    targets = np.asarray(targets, dtype=np.float64)
-    if estimates.shape != targets.shape:
-        raise ValueError(
-            f"estimates and targets must align, got shapes "
-            f"{estimates.shape} vs {targets.shape}."
-        )
-    rel = (estimates - targets) / (targets + 1.0)
-    return float((rel**2).mean())
 
 
 @dataclass(frozen=True)

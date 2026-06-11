@@ -31,11 +31,14 @@ jobs:
     # real wheels for every shard, install them into a clean venv with pip
     # semantics, and run the suite against the installed constellation.
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - name: Build wheels for every shard
         run: |
           for shard in packages/*/; do

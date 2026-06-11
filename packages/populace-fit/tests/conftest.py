@@ -165,9 +165,7 @@ def rare_positive_frame():
         signal = rng.normal(0.0, 1.0, n)
         signal[is_positive] += 2.5
         noise = rng.normal(0.0, 1.0, n)
-        target = np.where(
-            is_positive, np.abs(rng.normal(100_000.0, 10_000.0, n)), 0.0
-        )
+        target = np.where(is_positive, np.abs(rng.normal(100_000.0, 10_000.0, n)), 0.0)
         weights = np.where(is_positive, 1.0, 50.0)
         frame = _person_household_frame(
             {"signal": signal, "noise": noise, "target": target}, weights
@@ -204,9 +202,7 @@ def zero_inflated_frame():
         neg = (u >= zero_fraction) & (u < zero_fraction + neg_fraction)
         target[pos] = np.abs(rng.normal(10_000.0, 2_000.0, n))[pos]
         target[neg] = -np.abs(rng.normal(3_000.0, 800.0, n))[neg]
-        frame = _person_household_frame(
-            {"x": x, "target": target}, np.full(n, 10.0)
-        )
+        frame = _person_household_frame({"x": x, "target": target}, np.full(n, 10.0))
         return frame, target
 
     return make

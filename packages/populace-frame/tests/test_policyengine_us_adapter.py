@@ -45,18 +45,14 @@ def us_bundle() -> Frame:
     group = lambda name: pd.DataFrame({f"{name}_id": [1, 2]})  # noqa: E731
     tables = {
         "person": person,
-        "household": pd.DataFrame(
-            {"household_id": [1, 2], "state_fips": [6, 36]}
-        ),
+        "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [6, 36]}),
         "tax_unit": group("tax_unit"),
         "spm_unit": group("spm_unit"),
         "family": group("family"),
         "marital_unit": group("marital_unit"),
     }
     weights = {
-        "household": Weights(
-            values=np.array([1500.0, 900.0]), kind=WeightKind.DESIGN
-        )
+        "household": Weights(values=np.array([1500.0, 900.0]), kind=WeightKind.DESIGN)
     }
     return Frame(tables, US_SCHEMA, weights)
 
@@ -67,9 +63,7 @@ class TestVariableMetadata:
         assert meta.entity == "person"
         assert meta.dtype == "float"
         assert meta.period == "year"
-        assert (
-            adapter.variable_metadata("household_net_income").entity == "household"
-        )
+        assert adapter.variable_metadata("household_net_income").entity == "household"
 
     def test_enum_variable_reports_str_dtype(self, adapter) -> None:
         assert adapter.variable_metadata("filing_status").dtype == "str"
@@ -142,9 +136,7 @@ class TestWriteDataset:
             gated.write_dataset(us_bundle, path, period=2024)
         assert not path.exists()
 
-    def test_defaults_broadcast_onto_owning_entity(
-        self, us_bundle, tmp_path
-    ) -> None:
+    def test_defaults_broadcast_onto_owning_entity(self, us_bundle, tmp_path) -> None:
         from policyengine_us.data import USSingleYearDataset
 
         contract = ExportContract(

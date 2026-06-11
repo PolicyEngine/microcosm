@@ -124,9 +124,7 @@ class TestSpmUnitsAndFamilies:
         assert bundle.person["person_spm_unit_id"].nunique() == 1
         assert bundle.table("spm_unit")["spm_unit_id"].tolist() == [1]
 
-    def test_family_splits_within_household_by_pf_seq(
-        self, multigenerational
-    ) -> None:
+    def test_family_splits_within_household_by_pf_seq(self, multigenerational) -> None:
         bundle = _assign(multigenerational)
         grandparent = _by_line(bundle, 30, 1)
         adult_child = _by_line(bundle, 30, 2)
@@ -137,9 +135,7 @@ class TestSpmUnitsAndFamilies:
 
 
 class TestMaritalUnits:
-    def test_spouses_share_and_children_are_singletons(
-        self, married_with_kids
-    ) -> None:
+    def test_spouses_share_and_children_are_singletons(self, married_with_kids) -> None:
         bundle = _assign(married_with_kids)
         couple_id = _by_line(bundle, 10, 1)["person_marital_unit_id"]
         assert _by_line(bundle, 10, 2)["person_marital_unit_id"] == couple_id
@@ -276,9 +272,7 @@ class TestValidation:
 class TestHarmonizedIncomeMapping:
     """The microunit input view sources income from harmonized names."""
 
-    def test_harmonized_income_is_mapped_onto_asec_names(
-        self, single_filer
-    ) -> None:
+    def test_harmonized_income_is_mapped_onto_asec_names(self, single_filer) -> None:
         frame = single_filer.copy()
         frame["self_employment_income"] = [1200.0]
         assert "WSAL_VAL" not in frame.columns  # only the harmonized names exist

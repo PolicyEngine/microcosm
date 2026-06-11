@@ -95,6 +95,14 @@ class TargetSpec:
     notes: str = ""
 
     def __post_init__(self) -> None:
+        # Coerce numerics so the content hash is independent of authoring
+        # style: TargetSpec(value=1000) and TargetSpec(value=1000.0) are the
+        # same fact and must produce the same registry version.
+        object.__setattr__(self, "value", float(self.value))
+        if self.se is not None:
+            object.__setattr__(self, "se", float(self.se))
+        if self.tolerance is not None:
+            object.__setattr__(self, "tolerance", float(self.tolerance))
         if not self.name:
             raise ValueError("TargetSpec.name must be non-empty.")
         if not self.entity:

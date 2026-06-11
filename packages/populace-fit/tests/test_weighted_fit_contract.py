@@ -96,6 +96,4 @@ def test_design_is_the_default_and_matches_explicit_design(
         frame, ["age", "is_male"], ["target"], n_estimators=_N_ESTIMATORS, seed=_SEED
     ).predict(frame)["target"]
 
-    assert float(default_draws.mean()) == pytest.approx(
-        true_weighted_mean, rel=0.20
-    )
+    assert float(default_draws.mean()) == pytest.approx(true_weighted_mean, rel=0.20)

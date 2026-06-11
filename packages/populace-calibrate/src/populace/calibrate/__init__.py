@@ -90,6 +90,7 @@ from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     CalibrationResult,
     TargetDiagnostic,
     calibrate,
+    relative_error_loss,
 )
 from populace.calibrate.target import (  # noqa: E402 - after the compat gate
     AGGREGATIONS,
@@ -113,6 +114,7 @@ __all__ = [
     "TargetSpec",
     "build_constraint_matrix",
     "calibrate",
+    "relative_error_loss",
     "specs_from_pe_surface",
     "__version__",
 ]

@@ -223,9 +223,7 @@ class PolicyEngineUSEngine:
         """
         output_path = Path(path)
         if output_path.suffix != ".h5":
-            raise ValueError(
-                f"path must end with '.h5', got {output_path.name!r}."
-            )
+            raise ValueError(f"path must end with '.h5', got {output_path.name!r}.")
         contract = self._contract
         tables = self._engine_tables(bundle)
 

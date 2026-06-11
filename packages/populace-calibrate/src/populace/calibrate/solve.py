@@ -55,6 +55,7 @@ from populace.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
     "calibrate",
+    "relative_error_loss",
     "CalibrationResult",
     "TargetDiagnostic",
     "FREE_MASS",
@@ -234,6 +235,30 @@ def _apply_constraint(matrix: torch.Tensor, weights: torch.Tensor) -> torch.Tens
         # SpMM needs a 2-D dense operand; SpMV is not exposed with autograd.
         return (matrix @ weights.unsqueeze(1)).squeeze(1)
     return matrix @ weights
+
+
+def relative_error_loss(estimates: np.ndarray, targets: np.ndarray) -> float:
+    """THE loss, in numpy: ``mean(((est - tgt)/(tgt + 1))**2)``.
+
+    The single canonical definition every measurement imports — the solver's
+    closing loss, the acceptance gates, and scorers all call this function
+    (the torch twin below is the autograd path of the same formula). Refuses
+    non-finite inputs: a NaN estimate is a harness bug, not a large miss.
+    """
+    estimates = np.asarray(estimates, dtype=np.float64)
+    targets = np.asarray(targets, dtype=np.float64)
+    if estimates.shape != targets.shape:
+        raise ValueError(
+            f"estimates and targets must align, got shapes "
+            f"{estimates.shape} vs {targets.shape}."
+        )
+    if not (np.isfinite(estimates).all() and np.isfinite(targets).all()):
+        raise ValueError(
+            "relative_error_loss requires finite inputs; got non-finite "
+            "estimate or target values."
+        )
+    rel = (estimates - targets) / (targets + 1.0)
+    return float((rel**2).mean())
 
 
 def _relative_error_loss(estimate: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
@@ -812,9 +837,9 @@ def calibrate(
     # eCPS relative-error loss the optimizer minimizes, mean(((A@w - b)/(b+1))**2),
     # evaluated after the closing mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
-    b = problem.target_vector
-    residual = problem.estimates(final_weights) - b
-    closing_loss = float(((residual / (b + 1.0)) ** 2).mean())
+    closing_loss = relative_error_loss(
+        problem.estimates(final_weights), problem.target_vector
+    )
 
     return CalibrationResult(
         frame=new_frame,

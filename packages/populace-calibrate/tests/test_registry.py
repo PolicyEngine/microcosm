@@ -184,3 +184,14 @@ class TestSurfaceIngest:
     def test_misaligned_lengths_refused(self) -> None:
         with pytest.raises(ValueError, match="must align"):
             specs_from_pe_surface(["a/b"], [1.0, 2.0], family_sources={"a": "s"})
+
+
+class TestVersionStability:
+    def test_int_and_float_values_hash_identically(self) -> None:
+        """Authoring style must not change the fact's identity."""
+        a = TargetRegistry([_spec(value=1000)], country="us")
+        b = TargetRegistry([_spec(value=1000.0)], country="us")
+        assert a.version == b.version
+        c = TargetRegistry([_spec(se=12)], country="us")
+        d = TargetRegistry([_spec(se=12.0)], country="us")
+        assert c.version == d.version

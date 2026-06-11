@@ -92,9 +92,7 @@ class CalibrationProblem:
     def __post_init__(self) -> None:
         n_rows = self.matrix.shape[0]
         if not (
-            len(self.target_vector) == n_rows
-            == len(self.names)
-            == len(self.targets)
+            len(self.target_vector) == n_rows == len(self.names) == len(self.targets)
         ):
             raise ValueError(
                 "CalibrationProblem row dimensions disagree: matrix has "
@@ -253,9 +251,7 @@ def build_constraint_matrix(
             message lists each skip reason so the cause is visible).
     """
     if not isinstance(targets, TargetSet):
-        raise TypeError(
-            f"targets must be a TargetSet, got {type(targets).__name__}."
-        )
+        raise TypeError(f"targets must be a TargetSet, got {type(targets).__name__}.")
     frame.table(weight_entity)  # validates the entity name
     initial = frame.resolve_weights(weight_entity)
     w0 = initial.values
@@ -273,9 +269,7 @@ def build_constraint_matrix(
             # target's *own* entity; resolving it once is the fix for person-
             # entity mean/offset targets on multi-person frames (offset was
             # otherwise handed the group vector and broadcast against persons).
-            entity_weights = _linearization_weights(
-                target, frame, w0, weight_entity
-            )
+            entity_weights = _linearization_weights(target, frame, w0, weight_entity)
             row = _entity_row(target, frame, entity_weights, weight_entity)
             offset = target.offset(frame, entity_weights)
         except (KeyError, ValueError) as exc:

@@ -51,9 +51,7 @@ def _us_bundle(household_weight_column=None, weight_values=(1500.0, 900.0)):
         "marital_unit": group("marital_unit"),
     }
     weights = {
-        "household": Weights(
-            values=np.array(weight_values), kind=WeightKind.CALIBRATED
-        )
+        "household": Weights(values=np.array(weight_values), kind=WeightKind.CALIBRATED)
     }
     return Frame(tables, US_SCHEMA, weights)
 

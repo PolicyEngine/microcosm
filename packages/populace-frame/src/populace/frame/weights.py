@@ -98,9 +98,7 @@ class Weights:
             raise ValueError("Weights.values cannot be empty.")
         if not np.isfinite(values).all():
             bad = int((~np.isfinite(values)).sum())
-            raise ValueError(
-                f"Weights must be finite; found {bad} NaN/inf value(s)."
-            )
+            raise ValueError(f"Weights must be finite; found {bad} NaN/inf value(s).")
         if (values < 0).any():
             bad = int((values < 0).sum())
             raise ValueError(

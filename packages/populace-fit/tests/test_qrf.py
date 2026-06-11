@@ -302,8 +302,7 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
             float(
                 np.average(
                     (
-                        model.predict(frame)["target"].to_numpy()
-                        > _TAIL_THRESHOLD
+                        model.predict(frame)["target"].to_numpy() > _TAIL_THRESHOLD
                     ).astype(float),
                     weights=weights,
                 )
@@ -312,12 +311,16 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
         ]
         return float(np.mean(shares))
 
-    fix_share = float(np.mean([
-        averaged_tail_share(
-            fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=s)
+    fix_share = float(
+        np.mean(
+            [
+                averaged_tail_share(
+                    fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=s)
+                )
+                for s in _TAIL_FIT_SEEDS
+            ]
         )
-        for s in _TAIL_FIT_SEEDS
-    ]))
+    )
 
     # The nearest-snap, one-sample-per-leaf baseline (the pre-fix behavior),
     # reconstructed by monkeypatching the draw read-out and forcing
@@ -341,19 +344,23 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     original_draw = qrf_module._Forest.draw
     qrf_module._Forest.draw = nearest_snap_draw
     try:
-        baseline_share = float(np.mean([
-            averaged_tail_share(
-                fit(
-                    frame,
-                    ["age", "is_male"],
-                    ["target"],
-                    n_estimators=100,
-                    max_samples_leaf=1,
-                    seed=s,
-                )
+        baseline_share = float(
+            np.mean(
+                [
+                    averaged_tail_share(
+                        fit(
+                            frame,
+                            ["age", "is_male"],
+                            ["target"],
+                            n_estimators=100,
+                            max_samples_leaf=1,
+                            seed=s,
+                        )
+                    )
+                    for s in _TAIL_FIT_SEEDS
+                ]
             )
-            for s in _TAIL_FIT_SEEDS
-        ]))
+        )
     finally:
         qrf_module._Forest.draw = original_draw
 

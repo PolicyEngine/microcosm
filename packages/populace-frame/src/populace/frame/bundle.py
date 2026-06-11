@@ -870,6 +870,10 @@ class Frame:
             raise ValueError(
                 f"Column {column!r} is structural (id/membership) and cannot be placed."
             )
+        if head_flag is not None and how != "head":
+            raise ValueError(
+                f'head_flag is only meaningful with how="head", got how={how!r}.'
+            )
         owner = self.column_entity(column)
         if owner == entity:
             return self

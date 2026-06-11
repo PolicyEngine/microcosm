@@ -33,9 +33,7 @@ def test_matrix_has_one_row_per_target_one_column_per_weight(feasible_frame) -> 
     # The count row is the all-ones indicator; the income row is per-record income.
     dense = problem.matrix.toarray()
     np.testing.assert_allclose(dense[0], np.ones(150))
-    np.testing.assert_allclose(
-        dense[1], frame.table("household")["income"].to_numpy()
-    )
+    np.testing.assert_allclose(dense[1], frame.table("household")["income"].to_numpy())
     # b is the target vector, aligned to rows.
     np.testing.assert_allclose(
         problem.target_vector,
@@ -104,8 +102,12 @@ def test_target_value_near_minus_one_is_rejected_with_a_named_error(
     frame, _ = feasible_frame(n=50)
     targets = TargetSet(
         (
-            Target(name="counts_to_neg_one", entity="household",
-                   aggregation="count", value=-1.0),
+            Target(
+                name="counts_to_neg_one",
+                entity="household",
+                aggregation="count",
+                value=-1.0,
+            ),
         )
     )
     with pytest.raises(ValueError, match="counts_to_neg_one"):
@@ -123,9 +125,13 @@ def test_mean_target_one_below_current_mean_is_rejected(feasible_frame) -> None:
     current_mean = float(frame.table("household")["income"].to_numpy().mean())
     targets = TargetSet(
         (
-            Target(name="mean_one_below", entity="household",
-                   aggregation="mean", value=current_mean - 1.0,
-                   measure="income"),
+            Target(
+                name="mean_one_below",
+                entity="household",
+                aggregation="mean",
+                value=current_mean - 1.0,
+                measure="income",
+            ),
         )
     )
     with pytest.raises(ValueError, match="mean_one_below"):
@@ -137,8 +143,12 @@ def test_normal_target_value_compiles_fine(feasible_frame) -> None:
     frame, truths = feasible_frame(n=50)
     targets = TargetSet(
         (
-            Target(name="population", entity="household",
-                   aggregation="count", value=truths["population"]),
+            Target(
+                name="population",
+                entity="household",
+                aggregation="count",
+                value=truths["population"],
+            ),
         )
     )
     problem = build_constraint_matrix(frame, targets)
@@ -157,8 +167,13 @@ def test_person_sum_target_collapses_onto_multi_person_households(
     frame, age, person_household, weights = multiperson_frame()
     targets = TargetSet(
         (
-            Target(name="total_age", entity="person", aggregation="sum",
-                   value=1.0, measure="age"),
+            Target(
+                name="total_age",
+                entity="person",
+                aggregation="sum",
+                value=1.0,
+                measure="age",
+            ),
         )
     )
     problem = build_constraint_matrix(frame, targets, "household")
@@ -189,8 +204,13 @@ def test_person_mean_target_compiles_on_multi_person_households(
     true_mean = float((age * person_weights).sum() / person_weights.sum())
     targets = TargetSet(
         (
-            Target(name="mean_age", entity="person", aggregation="mean",
-                   value=true_mean * 1.1, measure="age"),
+            Target(
+                name="mean_age",
+                entity="person",
+                aggregation="mean",
+                value=true_mean * 1.1,
+                measure="age",
+            ),
         )
     )
     value = true_mean * 1.1

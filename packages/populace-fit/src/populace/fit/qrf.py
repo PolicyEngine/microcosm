@@ -650,9 +650,7 @@ class FittedRegimeGatedQRF:
             )
         return table.loc[:, self.predictors].copy()
 
-    def _draw_target(
-        self, features: pd.DataFrame, model: _TargetModel
-    ) -> np.ndarray:
+    def _draw_target(self, features: pd.DataFrame, model: _TargetModel) -> np.ndarray:
         """Draw one value per row for a single target via its regime pipeline."""
         n = len(features)
         if model.regime == Regime.DEGENERATE_ZERO:

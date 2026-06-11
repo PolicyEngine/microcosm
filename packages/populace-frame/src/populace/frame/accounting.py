@@ -136,9 +136,7 @@ def wquantile(
     values = values[sorter]
     cumulative = np.cumsum(weights[sorter])
     proportions = cumulative / cumulative[-1]
-    positions = np.minimum(
-        np.searchsorted(proportions, quantiles), len(values) - 1
-    )
+    positions = np.minimum(np.searchsorted(proportions, quantiles), len(values) - 1)
     result = values[positions]
     if scalar:
         return float(result[0])

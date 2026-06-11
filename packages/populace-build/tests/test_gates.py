@@ -195,3 +195,17 @@ class TestRelativeErrorLoss:
     def test_shape_mismatch_is_refused(self) -> None:
         with pytest.raises(ValueError, match="must align"):
             relative_error_loss(np.zeros(2), np.zeros(3))
+
+
+class TestZeroValuedAnchor:
+    def test_zero_anchor_gates_on_absolute_scale(self) -> None:
+        anchor = TargetSpec(
+            name="soi/net_operating_loss_carryforward_count",
+            entity="household",
+            value=0.0,
+            source="IRS SOI (no filers expected)",
+            family="irs_soi",
+        )
+        assert aggregate_admin_gate({anchor.name: 0.0}, [anchor]).passed
+        assert aggregate_admin_gate({anchor.name: 0.3}, [anchor]).passed
+        assert not aggregate_admin_gate({anchor.name: 0.8}, [anchor]).passed
