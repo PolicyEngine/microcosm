@@ -8,3 +8,5 @@ dist/
 build/
 *.h5
 !packages/*/build/
+# populace.build is a real namespace package, not a build-artifact dir
+!packages/populace-build/src/populace/build/

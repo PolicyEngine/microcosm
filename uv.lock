@@ -12,6 +12,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "populace-build",
     "populace-calibrate",
     "populace-data",
     "populace-fit",
@@ -1141,6 +1142,44 @@ sdist = { url = "https://files.pythonhosted.org/packages/1a/9c/8835e12d624157941
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/a2/792ab362ea7c5f08a3931644fe1f36df2d167097a675781c1790c4951e37/policyengine_us-1.724.0-py3-none-any.whl", hash = "sha256:6cc45f6f17f21b1dc62800f0bd1988c833c3e0975c39c926dcdca904bf0942dd", size = 11327533, upload-time = "2026-06-10T17:43:08.875Z" },
 ]
+
+[[package]]
+name = "populace-build"
+version = "0.1.0"
+source = { editable = "packages/populace-build" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "populace-calibrate" },
+    { name = "populace-fit" },
+    { name = "populace-frame" },
+]
+
+[package.optional-dependencies]
+us = [
+    { name = "h5py" },
+    { name = "policyengine-us" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pandas", specifier = ">=2" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.723,<2" },
+    { name = "populace-calibrate", editable = "packages/populace-calibrate" },
+    { name = "populace-fit", editable = "packages/populace-fit" },
+    { name = "populace-frame", editable = "packages/populace-frame" },
+]
+provides-extras = ["us"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "populace-calibrate"
