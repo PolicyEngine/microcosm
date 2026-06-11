@@ -13,6 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "populace-calibrate",
+    "populace-data",
     "populace-fit",
     "populace-frame",
     "populace-workspace",
@@ -1126,7 +1127,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.722.5"
+version = "1.724.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1136,9 +1137,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/06/743737c7016001920a01cf24964cf9df836845bdc7427d7f494cd87706fd/policyengine_us-1.722.5.tar.gz", hash = "sha256:0af9be8578d9628d1689c3de8896bf35b848f68dd5dfed24734f502e6fe5a5da", size = 10134818, upload-time = "2026-06-09T09:12:00.37Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/9c/8835e12d62415794144fbb14d14244f00f4fd50a95b55e47128f6fbef9bb/policyengine_us-1.724.0.tar.gz", hash = "sha256:9cb67f2537d3613ae2cef20d91b8b82ae6b5673c8360befffad82ad9efebb369", size = 10136935, upload-time = "2026-06-10T17:43:12.191Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/e2/74e268a755ce7c0c270667ce2374e7fc7c490770fe842f8861bbea5395b0/policyengine_us-1.722.5-py3-none-any.whl", hash = "sha256:103f923a4dfed86786a495638d3914a60328bb4db9ddc22790729707c55a5fbf", size = 11321479, upload-time = "2026-06-09T09:11:56.25Z" },
+    { url = "https://files.pythonhosted.org/packages/76/a2/792ab362ea7c5f08a3931644fe1f36df2d167097a675781c1790c4951e37/policyengine_us-1.724.0-py3-none-any.whl", hash = "sha256:6cc45f6f17f21b1dc62800f0bd1988c833c3e0975c39c926dcdca904bf0942dd", size = 11327533, upload-time = "2026-06-10T17:43:08.875Z" },
 ]
 
 [[package]]
@@ -1166,6 +1167,36 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.13" },
     { name = "torch", specifier = ">=2" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "populace-data"
+version = "0.1.0"
+source = { editable = "packages/populace-data" }
+dependencies = [
+    { name = "h5py" },
+    { name = "huggingface-hub" },
+]
+
+[package.optional-dependencies]
+us = [
+    { name = "policyengine-us" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "h5py", specifier = ">=3" },
+    { name = "huggingface-hub", specifier = ">=0.20" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.723,<2" },
+]
+provides-extras = ["us"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
