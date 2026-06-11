@@ -79,6 +79,11 @@ from populace.calibrate.matrix import (  # noqa: E402 - after the compat gate
     SkippedTarget,
     build_constraint_matrix,
 )
+from populace.calibrate.registry import (  # noqa: E402 - after the compat gate
+    TargetRegistry,
+    TargetSpec,
+    specs_from_pe_surface,
+)
 from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     CONSERVE_MASS,
     FREE_MASS,
@@ -103,8 +108,11 @@ __all__ = [
     "SkippedTarget",
     "Target",
     "TargetDiagnostic",
+    "TargetRegistry",
     "TargetSet",
+    "TargetSpec",
     "build_constraint_matrix",
     "calibrate",
+    "specs_from_pe_surface",
     "__version__",
 ]
