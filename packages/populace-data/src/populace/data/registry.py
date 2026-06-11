@@ -91,6 +91,18 @@ def register(spec: DatasetSpec) -> DatasetSpec:
 
 register(
     DatasetSpec(
+        country="uk",
+        year=2023,
+        hf_repo="policyengine/populace-uk-private",
+        filename="populace_uk_2023.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+    )
+)
+
+register(
+    DatasetSpec(
         country="us",
         year=2024,
         hf_repo="policyengine/populace-us",

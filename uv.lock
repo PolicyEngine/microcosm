@@ -1127,6 +1127,21 @@ wheels = [
 ]
 
 [[package]]
+name = "policyengine-uk"
+version = "2.89.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "microdf-python" },
+    { name = "policyengine-core" },
+    { name = "pydantic" },
+    { name = "tables" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/49/75c80cd9b1145d8cfd5efbdb534aca2c9d5c5722fef3fc8f4887831505ea/policyengine_uk-2.89.0.tar.gz", hash = "sha256:aea49956a350ec35c1e0def7cd28db324b055711ec5ab7f331395dca8d103341", size = 1216776, upload-time = "2026-06-11T13:06:04.826Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/5f/fd32a3f7314b02b3b6a8362d6b2869af5b51569301945c00ee1172e01914/policyengine_uk-2.89.0-py3-none-any.whl", hash = "sha256:72acae45a35a59cf7429bba69363601e624bfd643d50cd74b8d20d325497e9fd", size = 1999087, upload-time = "2026-06-11T13:06:02.819Z" },
+]
+
+[[package]]
 name = "policyengine-us"
 version = "1.724.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1220,6 +1235,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+uk = [
+    { name = "policyengine-uk" },
+]
 us = [
     { name = "policyengine-us" },
 ]
@@ -1233,9 +1251,10 @@ dev = [
 requires-dist = [
     { name = "h5py", specifier = ">=3" },
     { name = "huggingface-hub", specifier = ">=0.20" },
+    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.723,<2" },
 ]
-provides-extras = ["us"]
+provides-extras = ["us", "uk"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
