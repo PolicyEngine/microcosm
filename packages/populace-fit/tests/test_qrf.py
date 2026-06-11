@@ -253,10 +253,14 @@ def test_chaining_columns_grow_along_the_chain(correlated_targets_frame) -> None
 #: ~40k and the rare regime at ~600k, so 300k cleanly separates them.
 _TAIL_THRESHOLD = 300_000.0
 
-#: Independent predict() rounds averaged per tail-share estimate. One round's
-#: share noise (~0.0011) matches the ~0.0015 nearest-snap bias the contract
-#: must detect; five rounds put that gap near 3 sigma of the comparison.
-_TAIL_DRAW_ROUNDS = 5
+#: Independent predict() rounds averaged per tail-share estimate, and
+#: independent fit seeds averaged over: one round's share noise (~0.0011)
+#: matches the ~0.0015 nearest-snap bias the contract must detect, and a
+#: single fitted forest can sit ~0.0013 low for every draw round (forest-level
+#: wobble — observed on x86 CI). Averaging across fits and draws puts the
+#: bias gap near 4 sigma of the comparison.
+_TAIL_DRAW_ROUNDS = 3
+_TAIL_FIT_SEEDS = (1, 2, 3, 4)
 
 
 def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
@@ -293,8 +297,6 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     # change collapsing it).
     assert truth_share > 0.0
 
-    fitted = fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=1)
-
     def averaged_tail_share(model) -> float:
         shares = [
             float(
@@ -310,7 +312,12 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
         ]
         return float(np.mean(shares))
 
-    fix_share = averaged_tail_share(fitted)
+    fix_share = float(np.mean([
+        averaged_tail_share(
+            fit(frame, ["age", "is_male"], ["target"], n_estimators=100, seed=s)
+        )
+        for s in _TAIL_FIT_SEEDS
+    ]))
 
     # The nearest-snap, one-sample-per-leaf baseline (the pre-fix behavior),
     # reconstructed by monkeypatching the draw read-out and forcing
@@ -334,15 +341,19 @@ def test_tail_share_tracks_weighted_truth_and_beats_nearest_snap(
     original_draw = qrf_module._Forest.draw
     qrf_module._Forest.draw = nearest_snap_draw
     try:
-        baseline_fitted = fit(
-            frame,
-            ["age", "is_male"],
-            ["target"],
-            n_estimators=100,
-            max_samples_leaf=1,
-            seed=1,
-        )
-        baseline_share = averaged_tail_share(baseline_fitted)
+        baseline_share = float(np.mean([
+            averaged_tail_share(
+                fit(
+                    frame,
+                    ["age", "is_male"],
+                    ["target"],
+                    n_estimators=100,
+                    max_samples_leaf=1,
+                    seed=s,
+                )
+            )
+            for s in _TAIL_FIT_SEEDS
+        ]))
     finally:
         qrf_module._Forest.draw = original_draw
 
