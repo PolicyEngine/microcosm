@@ -1,0 +1,197 @@
+"""populace.build.us: the typed stage plan of the US dataset build.
+
+This module is the declarative description of how the US population dataset
+is assembled — the stage order, what each stage produces, and **which primary
+survey each imputation draws from**, with citations. It replaces the
+imperative driver's implicit structure with one reviewable object:
+:func:`us_plan` returns the :class:`~populace.build.plan.StagePlan` whose
+donor graph is the published sources diagram.
+
+Every donor here is a primary source. The enhanced CPS appears nowhere: it
+is the benchmark the finished dataset is scored against, never a build
+input.
+
+Implementations are injected: :func:`us_plan` requires one callable per
+declared stage and refuses to assemble without all of them — there is no
+stub, default, or fallback implementation (a plan you can run with a missing
+stage would be the silent-fallback bug as a framework feature). The proven
+stage functions live with the active build today and are being ported here
+as the canonical home; until that port completes, callers pass them in.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+
+from populace.build.plan import DonorSpec, Stage, StagePlan
+from populace.frame import Frame
+
+__all__ = ["BuildConfig", "US_DONORS", "US_STAGE_NAMES", "us_plan"]
+
+
+@dataclass(frozen=True)
+class BuildConfig:
+    """The declared knobs of a US build — everything a manifest must record.
+
+    Attributes:
+        year: The dataset's time period.
+        seed: The build-wide imputation seed.
+        max_weight_ratio: The hard calibration bound (part of the dataset's
+            provenance; recorded by the calibration's options too).
+        calibration_epochs: Solver epochs.
+        calibration_learning_rate: Solver learning rate.
+        mass: Calibration mass policy (``"free"`` or ``"conserve"``).
+        registry_path: Path to the versioned target-registry artifact the
+            calibration compiles (see
+            :mod:`populace.calibrate.registry`).
+        extra: Free-form recorded settings (donor file paths, vintages).
+    """
+
+    year: int
+    seed: int = 0
+    max_weight_ratio: float = 50.0
+    calibration_epochs: int = 3000
+    calibration_learning_rate: float = 0.15
+    mass: str = "free"
+    registry_path: str | None = None
+    extra: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.year < 1990:
+            raise ValueError(f"year must be a survey year, got {self.year!r}.")
+        if not (self.max_weight_ratio > 0):
+            raise ValueError(
+                f"max_weight_ratio must be positive, got "
+                f"{self.max_weight_ratio!r}."
+            )
+        if self.mass not in ("free", "conserve"):
+            raise ValueError(
+                f"mass must be 'free' or 'conserve', got {self.mass!r}."
+            )
+
+    def to_manifest(self) -> dict[str, object]:
+        """A JSON-ready record for the release manifest."""
+        return {
+            "year": self.year,
+            "seed": self.seed,
+            "max_weight_ratio": self.max_weight_ratio,
+            "calibration_epochs": self.calibration_epochs,
+            "calibration_learning_rate": self.calibration_learning_rate,
+            "mass": self.mass,
+            "registry_path": self.registry_path,
+            "extra": dict(self.extra),
+        }
+
+
+#: The US donor graph: every imputation stage's primary survey, with
+#: citations. This is the single place the build's sources are declared —
+#: the observatory's sources diagram and the dataset card derive from it.
+US_DONORS: Mapping[str, DonorSpec] = {
+    "scf_wealth": DonorSpec(
+        survey="Fed SCF 2022",
+        source="https://www.federalreserve.gov/econres/scfindex.htm",
+        notes=(
+            "Wealth components (accounts, stocks, bonds, debts), net worth, "
+            "and vehicles; household grain, head-carried person assets."
+        ),
+    ),
+    "sipp_tips": DonorSpec(
+        survey="Census SIPP",
+        source="https://www.census.gov/programs-surveys/sipp.html",
+        notes="Tip income for tipped occupations.",
+    ),
+    "org_wages": DonorSpec(
+        survey="CPS ORG",
+        source="https://www.bls.gov/cps/earnings.htm",
+        notes=(
+            "Hourly-wage labor-market inputs. Donor load failures abort the "
+            "build — the silent zero-fallback this stage once had is "
+            "structurally impossible under StagePlan."
+        ),
+    ),
+    "meps_esi_premiums": DonorSpec(
+        survey="MEPS-IC",
+        source="https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
+        notes="Employer-sponsored insurance premium parameters.",
+    ),
+    "prior_year_income": DonorSpec(
+        survey="CPS ASEC (prior year)",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes="PERIDNUM longitudinal join for prior-year earnings.",
+    ),
+    "puf_tax_detail": DonorSpec(
+        survey="IRS PUF 2015 (uprated)",
+        source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+        notes=(
+            "Itemized-deduction detail, QBI components, partnership SE, "
+            "mortgage-interest split; support clipped to the PUF's own "
+            "realized ranges."
+        ),
+    ),
+    "acs_rent": DonorSpec(
+        survey="Census ACS 2022",
+        source="https://www.census.gov/programs-surveys/acs",
+        notes="Rent for renter households and vehicles owned.",
+    ),
+}
+
+#: Stage order of the US build. Derivation stages (no donor) interleave with
+#: the donor imputations; the export/calibration stages close the plan.
+US_STAGE_NAMES: tuple[str, ...] = (
+    "asec_load",
+    "unit_assignment",
+    "derive_cps_carried",
+    "puf_tax_detail",
+    "scf_wealth",
+    "sipp_tips",
+    "org_wages",
+    "meps_esi_premiums",
+    "prior_year_income",
+    "mortgage_conversion",
+    "acs_rent",
+    "entity_placement",
+    "export",
+)
+
+
+def us_plan(
+    implementations: Mapping[str, Callable[[Frame], Frame]],
+) -> StagePlan:
+    """Assemble the US build plan from stage implementations.
+
+    Args:
+        implementations: One ``transform(frame) -> Frame`` per stage in
+            :data:`US_STAGE_NAMES`. ALL stages must be provided — a missing
+            stage refuses to assemble (there are no default or stub
+            implementations), and an unknown name is refused too (a typo
+            must not silently drop a stage).
+
+    Returns:
+        The validated :class:`~populace.build.plan.StagePlan`, with each
+        imputation stage carrying its :data:`US_DONORS` citation.
+
+    Raises:
+        ValueError: If any declared stage lacks an implementation, or an
+            implementation is supplied for an undeclared stage.
+    """
+    missing = [name for name in US_STAGE_NAMES if name not in implementations]
+    if missing:
+        raise ValueError(
+            f"us_plan needs an implementation for every declared stage; "
+            f"missing {missing}. There are no stubs or fallbacks by design."
+        )
+    unknown = sorted(set(implementations) - set(US_STAGE_NAMES))
+    if unknown:
+        raise ValueError(
+            f"Unknown stage implementation(s) {unknown}; declared stages "
+            f"are {list(US_STAGE_NAMES)}."
+        )
+    return StagePlan(
+        Stage(
+            name=name,
+            transform=implementations[name],
+            donor=US_DONORS.get(name),
+        )
+        for name in US_STAGE_NAMES
+    )
