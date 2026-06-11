@@ -77,15 +77,15 @@ of them:
 - **Parity 0**: every PolicyEngine input layer the enhanced CPS populates
   non-degenerately, this file's simulation populates (169 reference layers
   checked at simulation level).
-- **Exported-nonzero**: all 309 stored columns carry signal — no all-zero
+- **Exported-nonzero**: all 308 stored columns carry signal — no all-zero
   scaffolding that would silently mask engine formulas or defaults.
-- **Calibration**: 95.09% of 3,704 targets within 10% (loss 0.022); max
-  household weight 297,651 with **zero records above 500k** (the enhanced CPS
+- **Calibration**: 94.66% of 3,704 targets within 10% (loss 0.022); max
+  household weight 379,623 with **zero records above 500k** (the enhanced CPS
   ships 21, max 1.05M).
-- **Smoke aggregates** through `Microsimulation`: 332.3M people, $97.8B SNAP,
-  $176.5T net worth (Fed Z.1 ≈ $169T), net short-term capital gains
-  **−$77.5B** against the −$76.8B PUF-anchored target, tips $52.9B, rent
-  $757.5B.
+- **Smoke aggregates** through `Microsimulation`: 332.8M people, $98.0B SNAP,
+  $175.5T net worth (Fed Z.1 ≈ $169T), net short-term capital gains
+  **−$77.4B** against the −$76.8B PUF-anchored target, tips $53.1B, rent
+  $759.7B.
 
 ## Validation
 
@@ -95,19 +95,19 @@ targets never seen by either side's refit. Lower is better.
 
 | metric | populace-us | enhanced CPS |
 | --- | --- | --- |
-| training loss (2,965 targets) | **0.190** | 1.089 |
-| held-out loss (739 unseen targets) | **0.038** | 0.317 |
-| full-surface loss (3,704 targets) | **0.228** | 1.406 |
+| training loss (2,965 targets) | **0.176** | 1.089 |
+| held-out loss (739 unseen targets) | **0.037** | 0.317 |
+| full-surface loss (3,704 targets) | **0.213** | 1.406 |
 
-Per individual target the incumbent still wins more often (2,613 of 3,704 to our 1,040, 51 ties): populace wins big where it wins and loses narrowly where it loses. Both facts are the story.
+Per individual target the incumbent still wins more often (2,528 of 3,704 to our 1,127, 49 ties): populace wins big where it wins and loses narrowly where it loses. Both facts are the story.
 
 ## Known gaps
 
 We publish the misses with the hits:
 
-- **Net worth runs ~4% above Fed Z.1** ($176.5T vs ≈ $169T): the calibration
+- **Net worth runs ~4% above Fed Z.1** ($175.5T vs ≈ $169T): the calibration
   target ($160T) sits below Z.1 and the achieved total lands between them.
-- **Investment interest expense is thin** ($5.1B against IRS SOI ≈ $24B):
+- **Investment interest expense is thin** ($7.2B against IRS SOI ≈ $24B):
   the PUF-residual rule populates the layer conservatively; a dedicated SOI
   calibration target is the roadmap item.
 - **Per-target wins vs the incumbent**: see Validation — aggregate losses

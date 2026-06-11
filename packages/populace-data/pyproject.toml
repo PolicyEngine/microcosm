@@ -21,6 +21,10 @@ dependencies = [
 # USSingleYearDataset loader + entity-flatten behavior the file is built
 # against are recent); cap below 2 to guard a breaking dataset-schema major.
 us = ["policyengine-us>=1.723,<2"]
+# The UK artifact lives in a PRIVATE repo (UK Data Service licence): loads
+# require an authenticated HF token with access. The loader surfaces the
+# 401 with that explanation rather than retrying.
+uk = ["policyengine-uk>=2.88"]
 
 [project.urls]
 Homepage = "https://populace.dev"
