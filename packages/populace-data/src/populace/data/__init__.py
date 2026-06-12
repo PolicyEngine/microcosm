@@ -35,6 +35,14 @@ from populace.data.loader import (
     resolve,
 )
 from populace.data.registry import REGISTRY, DatasetSpec, register
+from populace.data.release import (
+    LATEST_POINTER_PATH,
+    LATEST_POINTER_SCHEMA_VERSION,
+    LatestPointer,
+    latest_pointer_payload,
+    latest_release,
+    publish_release,
+)
 
 __all__ = [
     "load",
@@ -49,6 +57,12 @@ __all__ = [
     "REQUIRED_RELEASE_FILES",
     "ReleaseContractError",
     "validate_release_dir",
+    "LATEST_POINTER_PATH",
+    "LATEST_POINTER_SCHEMA_VERSION",
+    "LatestPointer",
+    "latest_pointer_payload",
+    "latest_release",
+    "publish_release",
 ]
 
 __version__ = "0.1.0"
