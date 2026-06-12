@@ -69,10 +69,10 @@ def parse_args(argv=None):
     p.add_argument("--epochs", type=int, default=512)
     p.add_argument("--lr", type=float, default=0.15)
     p.add_argument(
-        "--max-weight",
+        "--ratio",
         type=float,
-        default=2_500.0,
-        help="Hard per-column weight cap (incumbent local max is 2,405).",
+        default=100.0,
+        help="Per-column cap as a multiple of the design init weight.",
     )
     p.add_argument(
         "--target-records",
@@ -174,6 +174,16 @@ def stage_subsample(args, out: Path) -> Path:
             out_df = df if mask is None else df.loc[mask].reset_index(drop=True)
             dst.put(key, out_df)
 
+    hh_weight = hh_table["household_weight"].to_numpy(dtype=float)
+    inv_rate = np.where(
+        np.isin(np.arange(len(hh_weight)), np.flatnonzero(hh_keep))
+        & hh_table["household_id"].isin(set(np.asarray(hh_ids)[top].tolist())).to_numpy(),
+        1.0,
+        len(rest_idx) / max(len(keep_rest), 1),
+    )
+    base_init = (hh_weight * inv_rate)[hh_keep]
+    np.save(out / "base_init_weights.npy", base_init)
+
     meta = {
         "source": str(args.dataset),
         "n_households": int(keep.sum()),
@@ -181,6 +191,7 @@ def stage_subsample(args, out: Path) -> Path:
         "agi_cut": float(cut),
         "seed": args.seed,
         "entity_counts": lengths,
+        "rest_inverse_rate": float(len(rest_idx) / max(len(keep_rest), 1)),
     }
     meta_path.write_text(json.dumps(meta, indent=2))
     log.info("subsample: written %s", sub_path)
@@ -526,9 +537,15 @@ def stage_solve(args, out: Path):
     ya = y[achievable]
 
     n_total = X.shape[1]
-    # Flat init at the incumbent's nonzero-mean weight scale; the cap then
-    # gives 50x headroom — the same ratio discipline as the national build.
-    init = np.full(n_total, 50.0)
+    meta = json.loads((out / "stack_meta.json").read_text())
+    n_cds = int(meta["n_cds"])
+    base_init = np.load(out / "base_init_weights.npy")
+    # Design-weight init: each household's national design mass (inflated by
+    # its stratum's inverse sampling rate) split evenly across the CD stack.
+    # Tail records then start near their true tiny per-CD weights instead of
+    # eleven log-units away. The cap is a per-column ratio on this init.
+    init = np.tile(base_init / n_cds, n_cds)
+    init = np.maximum(init, 1e-4)
     A = _torch_constraint_matrix(Xa)
     t0 = time.time()
     w, traj = _optimize(
@@ -538,7 +555,7 @@ def stage_solve(args, out: Path):
         epochs=args.epochs,
         learning_rate=args.lr,
         conserve_mass=False,
-        max_weight_ratio=args.max_weight / float(init[0]),
+        max_weight_ratio=args.ratio,
         l0_lambda=0.0,
         target_records=args.target_records,
         init_mean=0.999,
@@ -566,7 +583,7 @@ def stage_solve(args, out: Path):
         "within_25pct": float((rel < 0.25).mean()),
         "epochs": args.epochs,
         "lr": args.lr,
-        "max_weight": args.max_weight,
+        "ratio": args.ratio,
         "target_records": args.target_records,
     }
     (out / "solve_summary.json").write_text(json.dumps(summary, indent=2))
