@@ -58,9 +58,9 @@ def parse_args(argv=None):
 
 
 def cd_geoid_to_code(geoid: str, fips_to_code: dict) -> str:
-    """'0101' -> 'AL-01'."""
-    state = fips_to_code[int(geoid[:2])]
-    return f"{state}-{geoid[2:].zfill(2)}"
+    """'101' -> 'AL-01' (GEOID = state_fips * 100 + district)."""
+    state = fips_to_code[int(geoid) // 100]
+    return f"{state}-{int(geoid) % 100:02d}"
 
 
 def loss_fn(est: np.ndarray, y: np.ndarray) -> float:

@@ -222,9 +222,13 @@ def stage_matrix(args, out: Path, base_h5: Path):
 
     db_uri = f"sqlite:///{args.db}"
     cds = get_all_cds_from_database(db_uri)
+    # CD GEOIDs are integer strings: state_fips * 100 + district.
+    def cd_state(cd: str) -> str:
+        return f"{int(cd) // 100:02d}"
+
     if args.pilot_states:
-        states_allowed = sorted({cd[:2] for cd in cds})[: args.pilot_states]
-        cds = [cd for cd in cds if cd[:2] in states_allowed]
+        states_allowed = sorted({cd_state(cd) for cd in cds})[: args.pilot_states]
+        cds = [cd for cd in cds if cd_state(cd) in states_allowed]
         log.info(
             "matrix: PILOT limited to states %s (%d CDs)", states_allowed, len(cds)
         )
@@ -256,7 +260,7 @@ def stage_matrix(args, out: Path, base_h5: Path):
     if args.skip_national_rows:
         targets_df = targets_df[targets_df["geo_level"] != "national"]
     if args.pilot_states:
-        states_set = {cd[:2] for cd in cds}
+        states_set = {cd_state(cd) for cd in cds}
         keep = (
             (targets_df["geo_level"] == "national")
             | (
@@ -330,13 +334,13 @@ def stage_matrix(args, out: Path, base_h5: Path):
         elif m["geo_level"] == "district":
             district_rows.setdefault(m["geo_id"], []).append(i)
 
-    states = sorted({cd[:2] for cd in cds})
+    states = sorted({cd_state(cd) for cd in cds})
     cache_dir = out / "state_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     t0 = time.time()
     for s_i, state in enumerate(states):
-        state_cds = [cd for cd in cds if cd[:2] == state]
+        state_cds = [cd for cd in cds if cd_state(cd) == state]
         spath = cache_dir / f"state_{state}.npz"
         if spath.exists():
             log.info("matrix: state %s cached (%d/%d)", state, s_i + 1, len(states))
@@ -345,6 +349,11 @@ def stage_matrix(args, out: Path, base_h5: Path):
         sim = Microsimulation(dataset=str(base_h5))
         state_fips_arr = np.full(n_hh, int(state), dtype=np.int32)
         sim.set_input("state_fips", TIME_PERIOD, state_fips_arr)
+        # Stored geography-scoped inputs from the national build must not
+        # survive state reassignment (e.g. in_nyc fires NYC credits under
+        # any state). The exporter re-sets them per assigned area.
+        sim.set_input("in_nyc", TIME_PERIOD, np.zeros(n_hh, dtype=bool))
+        sim.set_input("county_fips", TIME_PERIOD, np.zeros(n_hh, dtype=np.int32))
         # v0: takeup drawn per state (incumbent's newer flow draws per
         # block; per-CD draws are a later refinement).
         for var_name, entity, rate_key in SIMPLE_TAKEUP_VARS:
@@ -517,7 +526,9 @@ def stage_solve(args, out: Path):
     ya = y[achievable]
 
     n_total = X.shape[1]
-    init = np.full(n_total, max(132_000_000.0 / n_total, 1.0))
+    # Flat init at the incumbent's nonzero-mean weight scale; the cap then
+    # gives 50x headroom — the same ratio discipline as the national build.
+    init = np.full(n_total, 50.0)
     A = _torch_constraint_matrix(Xa)
     t0 = time.time()
     w, traj = _optimize(
