@@ -17,9 +17,9 @@ losses are recorded. The verdict requires winning train AND holdout in
 aggregate, with per-area win counts disclosed.
 
 Usage:
-  .venv/bin/python scripts/score_local.py --run out/pilot \
+  .venv/bin/python scripts/score_local.py --run out/local-v0 \
       --districts-dir inputs/districts [--areas AL-01,AL-02] \
-      [--rotations 3] [--epochs 256]
+      [--rotations 3] [--workers 6]
 """
 
 from __future__ import annotations
@@ -43,16 +43,20 @@ TIME_PERIOD = 2024
 HOLDOUT_SHARE = 0.2
 BASE_ROTATION_SEED = 20260529
 
+_WORKER = {}
+
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--run", required=True, help="Build output dir (out/pilot)")
+    p.add_argument("--run", required=True, help="Build output dir")
     p.add_argument("--districts-dir", required=True)
     p.add_argument("--areas", default=None, help="Comma-separated CD codes (AL-01)")
     p.add_argument("--rotations", type=int, default=3)
     p.add_argument("--epochs", type=int, default=256)
     p.add_argument("--lr", type=float, default=0.15)
-    p.add_argument("--max-weight", type=float, default=2_500.0)
+    p.add_argument("--max-weight", type=float, default=5_000.0)
+    p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--db", default="inputs/calibration/policy_data.db")
     p.add_argument("--out", default=None)
     return p.parse_args(argv)
 
@@ -60,6 +64,7 @@ def parse_args(argv=None):
 def cd_geoid_to_code(geoid: str, fips_to_code: dict) -> str:
     """'101' -> 'AL-01' (GEOID = state_fips * 100 + district)."""
     state = fips_to_code[int(geoid) // 100]
+    state = getattr(state, "value", state)
     return f"{state}-{int(geoid) % 100:02d}"
 
 
@@ -67,12 +72,10 @@ def loss_fn(est: np.ndarray, y: np.ndarray) -> float:
     return float(np.mean(((est - y) / (np.abs(y) + 1.0)) ** 2))
 
 
-def matched_subsample(
-    M: np.ndarray, w0: np.ndarray, n_target: int, seed: int
-) -> np.ndarray:
-    """Mass-preserving seeded subsample of columns: pick n_target columns
-    with probability proportional to w0, return their indices."""
-    n = M.shape[1]
+def matched_subsample(w0: np.ndarray, n_target: int, seed: int) -> np.ndarray:
+    """Mass-preserving seeded subsample: pick n_target columns with
+    probability proportional to w0."""
+    n = len(w0)
     if n <= n_target:
         return np.arange(n)
     rng = np.random.default_rng(seed)
@@ -80,22 +83,11 @@ def matched_subsample(
     return np.sort(rng.choice(n, size=n_target, replace=False, p=p))
 
 
-def refit_loss(
-    M: np.ndarray,
-    y: np.ndarray,
-    train_idx: np.ndarray,
-    hold_idx: np.ndarray,
-    *,
-    epochs: int,
-    lr: float,
-    max_weight: float,
-    init_total: float,
-) -> tuple[float, float]:
+def refit_loss(M, y, train_idx, hold_idx, *, epochs, lr, max_weight, init_total):
     import torch
+    from scipy import sparse
 
     from populace.calibrate.solve import _optimize, _torch_constraint_matrix
-
-    from scipy import sparse
 
     n = M.shape[1]
     init = np.full(n, max(init_total / n, 1.0))
@@ -118,12 +110,23 @@ def refit_loss(
     return train, hold
 
 
-def incumbent_matrix(h5_path: Path, rows_meta: list, builder) -> np.ndarray:
+def _init_worker(db_path: str):
+    from policyengine_us_data.calibration.unified_matrix_builder import (
+        UnifiedMatrixBuilder,
+    )
+
+    _WORKER["builder"] = UnifiedMatrixBuilder(
+        db_uri=f"sqlite:///{db_path}", time_period=TIME_PERIOD
+    )
+
+
+def _incumbent_matrix(h5_path: str, rows_meta: list):
     """(n_rows x n_households) value matrix for the incumbent artifact,
-    simulated with its stored inputs."""
+    simulated with its stored inputs, plus its shipped weights."""
     from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=str(h5_path))
+    builder = _WORKER["builder"]
+    sim = Microsimulation(dataset=h5_path)
     builder._entity_rel_cache = None
     n_hh = len(sim.calculate("household_id", map_to="household").values)
 
@@ -148,8 +151,7 @@ def incumbent_matrix(h5_path: Path, rows_meta: list, builder) -> np.ndarray:
                     var_cache[m["variable"]] = sim.calculate(
                         m["variable"], TIME_PERIOD, map_to="household"
                     ).values.astype(np.float64)
-                except Exception as exc:
-                    log.warning("incumbent %s: %s", m["variable"], exc)
+                except Exception:
                     var_cache[m["variable"]] = np.zeros(n_hh)
             if ckey not in mask_cache:
                 mask_cache[ckey] = builder._evaluate_constraints_entity_aware(
@@ -161,86 +163,14 @@ def incumbent_matrix(h5_path: Path, rows_meta: list, builder) -> np.ndarray:
     return out, weights
 
 
-def main(argv=None):
-    import pandas as pd
-    from scipy import sparse
-
-    from policyengine_us_data.calibration.unified_matrix_builder import (
-        UnifiedMatrixBuilder,
-        _GEO_VARS,
-    )
-    from policyengine_us_data.utils.census import STATE_NAME_TO_FIPS
-
-    args = parse_args(argv)
-    run = Path(args.run)
-    out_path = Path(args.out) if args.out else run / "benchmark.json"
-
-    # State FIPS -> postal code via the calibration utils mapping.
-    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
-        STATE_FIPS_TO_CODE,
-    )
-
-    meta = json.loads((run / "stack_meta.json").read_text())
-    cds = meta["cds"]
-    n_hh = meta["n_households"]
-    targets_df = pd.read_parquet(run / "targets.parquet")
-    X = sparse.load_npz(run / "X_stacked.npz")
-    w_full = np.load(run / "weights.npy")
-
-    db_uri = f"sqlite:///{Path(args.run).parent.parent / 'inputs' / 'calibration' / 'policy_data.db'}"
-    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=TIME_PERIOD)
-
-    constraint_cache: dict[int, list] = {}
-
-    area_codes = None
-    if args.areas:
-        area_codes = set(args.areas.split(","))
-
-    results = []
-    for cd in cds:
-        code = cd_geoid_to_code(cd, STATE_FIPS_TO_CODE)
-        if area_codes and code not in area_codes:
-            continue
-        h5 = Path(args.districts_dir) / f"{code}.h5"
-        if not h5.exists():
-            log.warning("%s: incumbent h5 missing, skipping", code)
-            continue
-
-        rows = targets_df[
-            (targets_df["geo_level"] == "district")
-            & (targets_df["geographic_id"].astype(str) == cd)
-        ]
-        if rows.empty:
-            continue
-        rows_meta = []
-        row_indices = []
-        for idx, row in rows.iterrows():
-            sid = int(row["stratum_id"])
-            if sid not in constraint_cache:
-                constraint_cache[sid] = builder._get_stratum_constraints(sid)
-            non_geo = [
-                c for c in constraint_cache[sid] if c["variable"] not in _GEO_VARS
-            ]
-            reform_id = row.get("reform_id", 0) or 0
-            if int(reform_id) != 0:
-                continue
-            rows_meta.append(
-                {"variable": str(row["variable"]), "non_geo": non_geo}
-            )
-            row_indices.append(idx)
-        y = targets_df.loc[row_indices, "value"].values.astype(np.float64)
-
-        # Candidate block: nonzero-weight columns of this CD.
-        ci = cds.index(cd)
-        block = slice(ci * n_hh, (ci + 1) * n_hh)
-        w_block = w_full[block]
-        nz = np.flatnonzero(w_block > 0)
-        M_cand = np.asarray(X[row_indices, block].todense(), dtype=np.float64)[:, nz]
-        w0_cand = w_block[nz]
-
-        # Incumbent block.
-        M_inc, w0_inc = incumbent_matrix(h5, rows_meta, builder)
-
+def score_area(payload: dict) -> dict:
+    """Worker: simulate the incumbent area artifact and run the rotations."""
+    code = payload["code"]
+    try:
+        M_inc, w0_inc = _incumbent_matrix(payload["h5"], payload["rows_meta"])
+        M_cand = payload["M_cand"]
+        w0_cand = payload["w0_cand"]
+        y = payload["y"]
         n_matched = min(M_cand.shape[1], M_inc.shape[1])
         area = {
             "area": code,
@@ -251,8 +181,7 @@ def main(argv=None):
             "rotations": [],
         }
         init_total = float(w0_inc.sum())
-
-        for r in range(args.rotations):
+        for r in range(payload["rotations"]):
             seed = BASE_ROTATION_SEED + r
             rng = np.random.default_rng(seed)
             n_t = len(y)
@@ -260,20 +189,16 @@ def main(argv=None):
             perm = rng.permutation(n_t)
             hold_idx = np.sort(perm[:hold_n])
             train_idx = np.sort(perm[hold_n:])
-
-            sub_c = matched_subsample(M_cand, w0_cand, n_matched, seed)
-            sub_i = matched_subsample(M_inc, w0_inc, n_matched, seed)
-
-            tc, hc = refit_loss(
-                M_cand[:, sub_c], y, train_idx, hold_idx,
-                epochs=args.epochs, lr=args.lr,
-                max_weight=args.max_weight, init_total=init_total,
+            sub_c = matched_subsample(w0_cand, n_matched, seed)
+            sub_i = matched_subsample(w0_inc, n_matched, seed)
+            solver = dict(
+                epochs=payload["epochs"],
+                lr=payload["lr"],
+                max_weight=payload["max_weight"],
+                init_total=init_total,
             )
-            ti, hi = refit_loss(
-                M_inc[:, sub_i], y, train_idx, hold_idx,
-                epochs=args.epochs, lr=args.lr,
-                max_weight=args.max_weight, init_total=init_total,
-            )
+            tc, hc = refit_loss(M_cand[:, sub_c], y, train_idx, hold_idx, **solver)
+            ti, hi = refit_loss(M_inc[:, sub_i], y, train_idx, hold_idx, **solver)
             area["rotations"].append(
                 {
                     "seed": seed,
@@ -281,17 +206,132 @@ def main(argv=None):
                     "incumbent": {"train": ti, "holdout": hi},
                 }
             )
-            log.info(
-                "%s r%d: cand %.4f/%.4f vs inc %.4f/%.4f",
-                code, r, tc, hc, ti, hi,
-            )
-        results.append(area)
+        return area
+    except Exception as exc:
+        return {"area": code, "error": f"{type(exc).__name__}: {exc}"}
 
-    # Aggregate verdict.
+
+def _log_area(area: dict, done: int, total: int) -> None:
+    if "error" in area:
+        log.warning("%s ERROR %s", area["area"], area["error"])
+        return
+    r0 = area["rotations"][0]
+    log.info(
+        "%s (%d/%d): cand %.4f/%.4f vs inc %.4f/%.4f",
+        area["area"], done, total,
+        r0["candidate"]["train"], r0["candidate"]["holdout"],
+        r0["incumbent"]["train"], r0["incumbent"]["holdout"],
+    )
+
+
+def main(argv=None):
+    import pandas as pd
+    from scipy import sparse
+
+    from policyengine_us_data.calibration.unified_matrix_builder import (
+        UnifiedMatrixBuilder,
+        _GEO_VARS,
+    )
+    from policyengine_us_data.datasets.cps.local_area_calibration.calibration_utils import (
+        STATE_FIPS_TO_CODE,
+    )
+
+    args = parse_args(argv)
+    run = Path(args.run)
+    out_path = Path(args.out) if args.out else run / "benchmark.json"
+    db_path = str(Path(args.db).resolve())
+
+    meta = json.loads((run / "stack_meta.json").read_text())
+    cds = meta["cds"]
+    n_hh = meta["n_households"]
+    targets_df = pd.read_parquet(run / "targets.parquet")
+    X = sparse.load_npz(run / "X_stacked.npz").tocsc()
+    w_full = np.load(run / "weights.npy")
+
+    builder = UnifiedMatrixBuilder(
+        db_uri=f"sqlite:///{db_path}", time_period=TIME_PERIOD
+    )
+    constraint_cache: dict[int, list] = {}
+    area_codes = set(args.areas.split(",")) if args.areas else None
+
+    payloads = []
+    for ci, cd in enumerate(cds):
+        code = cd_geoid_to_code(cd, STATE_FIPS_TO_CODE)
+        if area_codes and code not in area_codes:
+            continue
+        h5 = Path(args.districts_dir) / f"{code}.h5"
+        if not h5.exists():
+            log.warning("%s: incumbent h5 missing, skipping", code)
+            continue
+        rows = targets_df[
+            (targets_df["geo_level"] == "district")
+            & (targets_df["geographic_id"].astype(str) == cd)
+        ]
+        if rows.empty:
+            continue
+        rows_meta, row_indices = [], []
+        for idx, row in rows.iterrows():
+            reform_id = row.get("reform_id", 0) or 0
+            if int(reform_id) != 0:
+                continue
+            sid = int(row["stratum_id"])
+            if sid not in constraint_cache:
+                constraint_cache[sid] = builder._get_stratum_constraints(sid)
+            non_geo = [
+                c for c in constraint_cache[sid] if c["variable"] not in _GEO_VARS
+            ]
+            rows_meta.append({"variable": str(row["variable"]), "non_geo": non_geo})
+            row_indices.append(idx)
+        y = targets_df.loc[row_indices, "value"].values.astype(np.float64)
+
+        block = X[:, ci * n_hh : (ci + 1) * n_hh]
+        w_block = w_full[ci * n_hh : (ci + 1) * n_hh]
+        nz = np.flatnonzero(w_block > 0)
+        M_cand = np.asarray(block[row_indices][:, nz].todense(), dtype=np.float64)
+        payloads.append(
+            {
+                "cd": cd,
+                "code": code,
+                "h5": str(h5),
+                "rows_meta": rows_meta,
+                "y": y,
+                "M_cand": M_cand,
+                "w0_cand": w_block[nz],
+                "rotations": args.rotations,
+                "epochs": args.epochs,
+                "lr": args.lr,
+                "max_weight": args.max_weight,
+            }
+        )
+    log.info("scoring %d areas with %d workers", len(payloads), args.workers)
+
+    results = []
+    if args.workers > 1:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(
+            max_workers=args.workers,
+            initializer=_init_worker,
+            initargs=(db_path,),
+        ) as pool:
+            futs = {pool.submit(score_area, p): p["code"] for p in payloads}
+            for fut in as_completed(futs):
+                area = fut.result()
+                results.append(area)
+                _log_area(area, len(results), len(payloads))
+    else:
+        _init_worker(db_path)
+        for p in payloads:
+            area = score_area(p)
+            results.append(area)
+            _log_area(area, len(results), len(payloads))
+
+    good = [a for a in results if "error" not in a]
+
     def agg(side, kind):
         vals = [
             rot[side][kind]
-            for a in results
+            for a in good
             for rot in a["rotations"]
             if np.isfinite(rot[side][kind])
         ]
@@ -299,19 +339,20 @@ def main(argv=None):
 
     wins_train = sum(
         1
-        for a in results
+        for a in good
         for rot in a["rotations"]
         if rot["candidate"]["train"] < rot["incumbent"]["train"]
     )
     wins_hold = sum(
         1
-        for a in results
+        for a in good
         for rot in a["rotations"]
         if rot["candidate"]["holdout"] < rot["incumbent"]["holdout"]
     )
-    n_rot = sum(len(a["rotations"]) for a in results)
+    n_rot = sum(len(a["rotations"]) for a in good)
     summary = {
-        "areas": len(results),
+        "areas": len(good),
+        "errors": len(results) - len(good),
         "rotations_total": n_rot,
         "candidate_train_mean": agg("candidate", "train"),
         "incumbent_train_mean": agg("incumbent", "train"),
