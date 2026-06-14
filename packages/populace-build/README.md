@@ -13,6 +13,13 @@ names its donor survey and fails loudly — no silent fallbacks), and the
   [target registry](../populace-calibrate/), with signs checked (this gate
   catches the class of failure where calibration silently drives net
   short-term capital gains to −$3.9T);
+- **export surface** — every replacement artifact can prove that its
+  exported variables match a reference surface, with only documented
+  structural extras or reviewed exclusions (for UK, this is the eFRS
+  compatibility check);
+- **target surface** — the calibration target set covers the reference
+  target surface and may only be wider, not narrower (for UK, Populace must
+  calibrate to at least the eFRS target surface);
 - **per-family fit** — the calibration's within-10% share, reported per
   source family so one family cannot hide inside the global average;
 - **rotated holdout** — deterministic target folds so *every* target is held

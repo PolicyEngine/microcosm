@@ -22,6 +22,9 @@ The gates encode the build lessons of 2026:
   calibration.
 - :func:`enum_domain_gate` — enum-typed engine inputs must carry engine enum
   member names, not raw source-system codes.
+- :func:`export_surface_gate` and :func:`target_surface_gate` — replacement
+  builds can prove they cover a reference artifact's export variables and
+  calibration targets, e.g. UK Populace against eFRS.
 
 Scoring uses :func:`relative_error_loss` — the calibrator's own objective —
 so there is no calibrator-vs-scorer objective mismatch: what the solver
@@ -42,6 +45,7 @@ __all__ = [
     "GateResult",
     "GateReport",
     "enum_domain_gate",
+    "export_surface_gate",
     "formula_owned_export_gate",
     "exported_nonzero_gate",
     "parity_gate",
@@ -50,6 +54,7 @@ __all__ = [
     "per_family_fit_gate",
     "source_coverage_gate",
     "relative_error_loss",
+    "target_surface_gate",
 ]
 
 
@@ -222,6 +227,135 @@ def formula_owned_export_gate(
             "formula_owned_columns": len(formula_owned),
             "structural_exemptions": sorted(structural & exported & formula_owned),
             "offenders": offenders,
+        },
+    )
+
+
+def _reviewed_exclusion_reasons(
+    reviewed_exclusions: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if reviewed_exclusions is None:
+        return {}
+    if not isinstance(reviewed_exclusions, Mapping):
+        raise TypeError("Reviewed exclusions must be a mapping from name to reason.")
+    exclusions = {
+        str(name): str(reason) for name, reason in reviewed_exclusions.items()
+    }
+    undocumented = sorted(name for name, reason in exclusions.items() if not reason)
+    if undocumented:
+        raise ValueError(
+            f"Reviewed exclusions need reasons; missing reasons for {undocumented}."
+        )
+    return exclusions
+
+
+def export_surface_gate(
+    candidate_columns: Iterable[str],
+    reference_columns: Iterable[str],
+    *,
+    candidate_name: str = "candidate",
+    reference_name: str = "reference",
+    allowed_extra_columns: Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Require a published export surface to match a reference dataset.
+
+    This is stricter than :func:`parity_gate`: parity checks whether populated
+    reference layers are also populated, while this gate checks the exported
+    variable *surface* itself. It is intended for live release blocking where a
+    country has a known incumbent-compatible artifact, such as UK Populace
+    matching eFRS exported variables. Extra columns are refused unless the
+    build declares them as structural/compatibility additions; missing
+    reference columns require a named reviewed exclusion.
+    """
+    candidate = {str(name) for name in candidate_columns}
+    reference = {str(name) for name in reference_columns}
+    allowed_extras = {str(name) for name in allowed_extra_columns}
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+
+    missing = sorted((reference - candidate) - set(exclusions))
+    unexpected = sorted((candidate - reference) - allowed_extras)
+    failures: list[str] = []
+    if missing:
+        failures.append(
+            f"{candidate_name}: missing {len(missing)} {reference_name} export "
+            f"column(s): {missing[:20]}."
+        )
+    if unexpected:
+        failures.append(
+            f"{candidate_name}: exports {len(unexpected)} column(s) outside the "
+            f"{reference_name} surface without an allow-list entry: "
+            f"{unexpected[:20]}."
+        )
+
+    return GateResult(
+        name="export_surface",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "candidate_name": candidate_name,
+            "reference_name": reference_name,
+            "candidate_columns": len(candidate),
+            "reference_columns": len(reference),
+            "allowed_extra_columns": sorted(candidate & allowed_extras),
+            "unused_allowed_extra_columns": sorted(allowed_extras - candidate),
+            "reviewed_exclusions": {
+                name: reason
+                for name, reason in sorted(exclusions.items())
+                if name in reference
+            },
+            "unused_reviewed_exclusions": sorted(set(exclusions) - reference),
+            "missing_reference_columns": missing,
+            "unexpected_candidate_columns": unexpected,
+        },
+    )
+
+
+def target_surface_gate(
+    candidate_targets: Iterable[str],
+    reference_targets: Iterable[str],
+    *,
+    candidate_name: str = "candidate",
+    reference_name: str = "reference",
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Require calibration targets to cover a reference target surface.
+
+    A replacement population should not publish with a narrower calibration
+    surface than the dataset it is replacing. Candidate extras are allowed:
+    newer source-backed targets are a strict improvement as long as every
+    reference target is covered or has a reviewed exclusion.
+    """
+    candidate = {str(name) for name in candidate_targets}
+    reference = {str(name) for name in reference_targets}
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+
+    missing = sorted((reference - candidate) - set(exclusions))
+    extras = sorted(candidate - reference)
+    failures: list[str] = []
+    if missing:
+        failures.append(
+            f"{candidate_name}: missing {len(missing)} {reference_name} "
+            f"calibration target(s): {missing[:20]}."
+        )
+
+    return GateResult(
+        name="target_surface",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "candidate_name": candidate_name,
+            "reference_name": reference_name,
+            "candidate_targets": len(candidate),
+            "reference_targets": len(reference),
+            "extra_candidate_targets": extras,
+            "reviewed_exclusions": {
+                name: reason
+                for name, reason in sorted(exclusions.items())
+                if name in reference
+            },
+            "unused_reviewed_exclusions": sorted(set(exclusions) - reference),
+            "missing_reference_targets": missing,
         },
     )
 

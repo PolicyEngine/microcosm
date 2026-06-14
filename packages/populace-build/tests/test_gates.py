@@ -14,12 +14,14 @@ from populace.build import (
     GateResult,
     aggregate_admin_gate,
     enum_domain_gate,
+    export_surface_gate,
     formula_owned_export_gate,
     parity_gate,
     per_family_fit_gate,
     relative_error_loss,
     source_coverage_gate,
     support_gate,
+    target_surface_gate,
 )
 from populace.calibrate import TargetSpec
 
@@ -278,6 +280,107 @@ class TestFormulaOwnedExportGate:
         )
         assert result.passed
         assert result.details["structural_exemptions"] == ["person_id"]
+
+
+class TestExportSurfaceGate:
+    def test_reference_export_surface_match_passes(self) -> None:
+        result = export_surface_gate(
+            ["age", "employment_income", "household_id"],
+            ["age", "employment_income"],
+            candidate_name="populace-uk",
+            reference_name="eFRS",
+            allowed_extra_columns=["household_id"],
+        )
+        assert result.passed
+        assert result.details["allowed_extra_columns"] == ["household_id"]
+
+    def test_missing_reference_column_fails(self) -> None:
+        result = export_surface_gate(
+            ["age"],
+            ["age", "employment_income"],
+            candidate_name="populace-uk",
+            reference_name="eFRS",
+        )
+        assert not result.passed
+        assert "employment_income" in result.failures[0]
+
+    def test_unreviewed_extra_column_fails(self) -> None:
+        result = export_surface_gate(
+            ["age", "employment_income", "raw_frs_serial"],
+            ["age", "employment_income"],
+            candidate_name="populace-uk",
+            reference_name="eFRS",
+        )
+        assert not result.passed
+        assert "raw_frs_serial" in result.failures[0]
+
+    def test_reviewed_missing_reference_column_passes_and_is_recorded(self) -> None:
+        result = export_surface_gate(
+            ["age"],
+            ["age", "legacy_efrs_marker"],
+            reviewed_exclusions={
+                "legacy_efrs_marker": "reference-only audit field, not a PE input"
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "legacy_efrs_marker": "reference-only audit field, not a PE input"
+        }
+
+    def test_reviewed_exclusion_needs_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="need reasons"):
+            export_surface_gate(["age"], ["age", "x"], reviewed_exclusions={"x": ""})
+
+    def test_reviewed_exclusion_list_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            export_surface_gate(
+                ["age"],
+                ["age", "x"],
+                reviewed_exclusions=["x"],  # type: ignore[arg-type]
+            )
+
+
+class TestTargetSurfaceGate:
+    def test_candidate_can_be_strict_superset_of_reference(self) -> None:
+        result = target_surface_gate(
+            ["ons/population", "hmrc/income_tax", "dwp/universal_credit"],
+            ["ons/population", "hmrc/income_tax"],
+            candidate_name="populace-uk",
+            reference_name="eFRS",
+        )
+        assert result.passed
+        assert result.details["extra_candidate_targets"] == ["dwp/universal_credit"]
+
+    def test_missing_reference_target_fails(self) -> None:
+        result = target_surface_gate(
+            ["ons/population"],
+            ["ons/population", "hmrc/income_tax"],
+            candidate_name="populace-uk",
+            reference_name="eFRS",
+        )
+        assert not result.passed
+        assert "hmrc/income_tax" in result.failures[0]
+
+    def test_reviewed_missing_reference_target_passes_and_is_recorded(self) -> None:
+        result = target_surface_gate(
+            ["ons/population"],
+            ["ons/population", "legacy/benefit_count"],
+            reviewed_exclusions={
+                "legacy/benefit_count": "retired eFRS target replaced by DWP admin target"
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "legacy/benefit_count": "retired eFRS target replaced by DWP admin target"
+        }
+
+    def test_reviewed_exclusion_list_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            target_surface_gate(
+                ["ons/population"],
+                ["ons/population", "hmrc/income_tax"],
+                reviewed_exclusions=["hmrc/income_tax"],  # type: ignore[arg-type]
+            )
 
 
 class TestEnumDomainGate:
