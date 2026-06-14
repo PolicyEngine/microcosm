@@ -18,11 +18,11 @@ names its donor survey and fails loudly — no silent fallbacks), and the
 - **rotated holdout** — deterministic target folds so *every* target is held
   out exactly once across rotations, instead of one lucky split.
 
-All gate losses use the calibrator's relative-error loss
+All gate losses use the calibrator's bounded relative-error loss
 `mean(((est − target)/(target + 1))²)` — scorers consume the same functions,
 so there is no calibrator-vs-scorer objective mismatch.
 
-The `us` extra adds the engine + survey loaders for the US stage plan.
+The `us` extra adds the engine and survey loaders for the US stage plan.
 
 ## US plan status
 
@@ -30,8 +30,5 @@ The `us` extra adds the engine + survey loaders for the US stage plan.
 citations (`US_DONORS`), and the manifest-ready `BuildConfig`. The stage
 *implementations* are injected (`us_plan(implementations)`) and the plan
 refuses to assemble with any stage missing — no stubs, no fallbacks. The
-proven implementations currently live with the active build worktree; they
-are being ported here as their canonical home immediately after the in-flight
-v3 release ships (porting mid-release would either fork the implementations
-or destabilize the release — the two failure modes this repo exists to
-prevent). The port lands with the worktree copies deleted in the same commit.
+canonical implementations live in `populace.build.us.sources`; release-specific
+benchmark comparison harnesses live outside this repo.

@@ -47,13 +47,10 @@ def rotated_folds(
         raise ValueError(f"n_targets must be positive, got {n_targets!r}.")
     if not (2 <= n_folds <= n_targets):
         raise ValueError(
-            f"n_folds must be between 2 and n_targets={n_targets}, got "
-            f"{n_folds!r}."
+            f"n_folds must be between 2 and n_targets={n_targets}, got {n_folds!r}."
         )
     order = np.random.default_rng(seed).permutation(n_targets)
-    return tuple(
-        np.sort(order[fold::n_folds]) for fold in range(n_folds)
-    )
+    return tuple(np.sort(order[fold::n_folds]) for fold in range(n_folds))
 
 
 @dataclass(frozen=True)

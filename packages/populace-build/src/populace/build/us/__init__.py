@@ -7,16 +7,15 @@ imperative driver's implicit structure with one reviewable object:
 :func:`us_plan` returns the :class:`~populace.build.plan.StagePlan` whose
 donor graph is the published sources diagram.
 
-Every donor here is a primary source. The enhanced CPS appears nowhere: it
-is the benchmark the finished dataset is scored against, never a build
-input.
+Every donor here is a primary source. Incumbent production datasets are not
+build inputs; release comparisons against them live in the external benchmark
+repo.
 
 Implementations are injected: :func:`us_plan` requires one callable per
 declared stage and refuses to assemble without all of them — there is no
 stub, default, or fallback implementation (a plan you can run with a missing
-stage would be the silent-fallback bug as a framework feature). The proven
-stage functions live with the active build today and are being ported here
-as the canonical home; until that port completes, callers pass them in.
+stage would be the silent-fallback bug as a framework feature). Canonical US
+stage functions live in :mod:`populace.build.us.sources`.
 """
 
 from __future__ import annotations
@@ -62,13 +61,10 @@ class BuildConfig:
             raise ValueError(f"year must be a survey year, got {self.year!r}.")
         if not (self.max_weight_ratio > 0):
             raise ValueError(
-                f"max_weight_ratio must be positive, got "
-                f"{self.max_weight_ratio!r}."
+                f"max_weight_ratio must be positive, got {self.max_weight_ratio!r}."
             )
         if self.mass not in ("free", "conserve"):
-            raise ValueError(
-                f"mass must be 'free' or 'conserve', got {self.mass!r}."
-            )
+            raise ValueError(f"mass must be 'free' or 'conserve', got {self.mass!r}.")
 
     def to_manifest(self) -> dict[str, object]:
         """A JSON-ready record for the release manifest."""

@@ -86,7 +86,7 @@ class TestExportContract:
             "_description": "ignored documentation",
             "required": ["person_id", "household_weight"],
             "forbidden": ["spm_unit_net_income"],
-            "optional": ["ecps_bookkeeping"],
+            "optional": ["engine_bookkeeping"],
             "formula_owned_excluded": ["eitc"],
         }
         path = tmp_path / "contract.json"
@@ -94,15 +94,15 @@ class TestExportContract:
         contract = ExportContract.from_path(path)
         assert contract.required == ("person_id", "household_weight")
         assert contract.forbidden == ("spm_unit_net_income",)
-        assert contract.optional == ("ecps_bookkeeping",)
+        assert contract.optional == ("engine_bookkeeping",)
         assert contract.formula_owned_excluded == ("eitc",)
 
-    def test_from_path_accepts_ecps_internal_optional_key(self, tmp_path) -> None:
-        manifest = {"ecps_internal_optional": ["spm_unit_pre_subsidy_childcare"]}
+    def test_from_path_ignores_unknown_sections(self, tmp_path) -> None:
+        manifest = {"legacy_internal_optional": ["spm_unit_pre_subsidy_childcare"]}
         path = tmp_path / "contract.json"
         path.write_text(json.dumps(manifest), encoding="utf-8")
         contract = ExportContract.from_path(path)
-        assert contract.optional == ("spm_unit_pre_subsidy_childcare",)
+        assert contract.optional == ()
 
     def test_adapter_returns_its_contract(self) -> None:
         contract = ExportContract(

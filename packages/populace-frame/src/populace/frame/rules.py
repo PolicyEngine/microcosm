@@ -130,9 +130,7 @@ class ExportContract:
 
         Keys whose name starts with ``"_"`` (documentation/metadata such as
         ``_description`` and ``_categories``) are ignored. The optional
-        section is read from ``"optional"``, falling back to the
-        ``"ecps_internal_optional"`` key used by existing eCPS parity
-        manifests.
+        section is read from ``"optional"``.
 
         Args:
             path: Filesystem path to the contract JSON manifest.
@@ -144,7 +142,7 @@ class ExportContract:
         sections = {
             key: value for key, value in payload.items() if not key.startswith("_")
         }
-        optional = sections.get("optional", sections.get("ecps_internal_optional", ()))
+        optional = sections.get("optional", ())
         return cls(
             required=_as_str_tuple(sections.get("required", ())),
             forbidden=_as_str_tuple(sections.get("forbidden", ())),

@@ -4,7 +4,7 @@ The only place :class:`~populace.frame.WeightKind.CALIBRATED` weights are
 produced. Compiles declared facts — population control totals, counts, averages
 with standard-error-style tolerances — into a sparse linear constraint system
 over a :class:`~populace.frame.Frame`, then solves for the weight vector that
-best reproduces them under the eCPS relative-error loss
+best reproduces them under the bounded relative-error loss
 ``mean(((A @ w - b)/(b + 1))**2)``, optimized with torch's Adam over the
 log-weights (positivity by construction). Multi-period targets stack as
 ``(target, period)`` rows over the *same* weight vector — the charter's "one

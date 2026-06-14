@@ -67,9 +67,7 @@ class GateResult:
 
     def __post_init__(self) -> None:
         if self.passed and self.failures:
-            raise ValueError(
-                f"Gate {self.name!r} cannot pass with failures recorded."
-            )
+            raise ValueError(f"Gate {self.name!r} cannot pass with failures recorded.")
         if not self.passed and not self.failures:
             raise ValueError(
                 f"Gate {self.name!r} cannot fail without naming a failure."
@@ -207,9 +205,7 @@ def parity_gate(
                 "candidate is all-zero (the layer would mask engine "
                 "formulas or drop the variable entirely)."
             )
-    populated = sum(
-        1 for share in reference_nonzero.values() if share > 0.0
-    )
+    populated = sum(1 for share in reference_nonzero.values() if share > 0.0)
     return GateResult(
         name="parity",
         passed=not failures,
@@ -308,8 +304,10 @@ def aggregate_admin_gate(
             continue
         achieved = float(aggregates[spec.name])
         checked += 1
-        if spec.value != 0 and achieved != 0 and (
-            np.sign(achieved) != np.sign(spec.value)
+        if (
+            spec.value != 0
+            and achieved != 0
+            and (np.sign(achieved) != np.sign(spec.value))
         ):
             failures.append(
                 f"{spec.name}: sign flip — achieved {achieved:.4g} vs "
@@ -317,11 +315,7 @@ def aggregate_admin_gate(
             )
             continue
         scale = max(abs(spec.value), 1.0)
-        rtol = (
-            spec.tolerance / scale
-            if spec.tolerance is not None
-            else default_rtol
-        )
+        rtol = spec.tolerance / scale if spec.tolerance is not None else default_rtol
         miss = abs(achieved - spec.value) / scale
         if miss > rtol:
             failures.append(
@@ -380,8 +374,7 @@ def per_family_fit_gate(
         f"{family}: only {share:.1%} of {len(by_family[family])} targets "
         f"within {within:.0%} (floor {min_family_share:.0%})."
         for family, share in shares.items()
-        if len(by_family[family]) >= min_family_size
-        and share < min_family_share
+        if len(by_family[family]) >= min_family_size and share < min_family_share
     ]
     return GateResult(
         name="per_family_fit",

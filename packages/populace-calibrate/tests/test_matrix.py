@@ -93,8 +93,8 @@ def test_target_value_near_minus_one_is_rejected_with_a_named_error(
 ) -> None:
     """A compiled RHS of exactly -1 zeroes the loss denominator ``(b + 1)``.
 
-    The eCPS loss divides each residual by ``(target + 1)``. A target value of
-    exactly -1 makes that denominator zero, so the loss is NaN, the gradients are
+    The bounded relative-error loss divides each residual by ``(target + 1)``.
+    A target value of exactly -1 makes that denominator zero, so the loss is NaN, the gradients are
     NaN, every weight goes NaN, and the kernel raises an opaque "Weights must be
     finite" error naming neither the target nor the cause. The compiler must
     reject the offending target up front, naming it.

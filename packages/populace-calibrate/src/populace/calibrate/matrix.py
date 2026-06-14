@@ -31,7 +31,8 @@ from populace.frame import Frame, Weights
 __all__ = ["CalibrationProblem", "SkippedTarget", "build_constraint_matrix"]
 
 #: Half-width of the forbidden band around ``-1`` for a compiled target value.
-#: The eCPS loss divides each residual by ``(target_value + 1)``; a compiled
+#: The bounded relative-error loss divides each residual by
+#: ``(target_value + 1)``; a compiled
 #: value within ``_DENOM_EPS`` of ``-1`` drives that denominator to ~0, so the
 #: loss, its gradients, and every weight go NaN — surfacing only as the kernel's
 #: opaque "Weights must be finite" error. We reject such targets at compile time
@@ -314,7 +315,7 @@ def build_constraint_matrix(
         )
 
     target_vector = np.asarray(values, dtype=np.float64)
-    # Guard the loss denominator: the eCPS relative-error loss divides each
+    # Guard the loss denominator: the bounded relative-error loss divides each
     # residual by ``(target_value + 1)``. A compiled value at -1 (a raw
     # ``value=-1``, or a ``mean`` whose ``value`` is exactly 1 below the current
     # mean, since its compiled RHS is ``value - current_mean``) makes that

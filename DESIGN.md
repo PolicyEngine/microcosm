@@ -1,29 +1,27 @@
-# The micro stack: design charter
+# The Populace stack: design charter
 
-**Status:** founding document, 2026-06-10. Decisions here were agreed between Max
-and Claude after building and scoring the first spec-driven eCPS-replacement
-candidate (see `microplex` `claude/spec-build-20260610` `_MISSION_JOURNAL.md`),
-which surfaced every failure mode this design exists to prevent.
+**Status:** founding document, updated 2026-06-14. Decisions here were agreed
+between Max and Claude after building and scoring the first Populace
+population candidate, which surfaced every failure mode this design exists to
+prevent.
 
 ## Why a rebuild
 
-The current stack (microdf, microimpute, microcalibrate, microunit, microplex)
-is factored by *technique* and shares no datatype. Every seam between packages
-is an implicit convention about flat DataFrames and weight columns, and the
-worst bugs of 2026-06 lived exactly at those seams:
+The previous microdata stack was factored by *technique* and shared no
+datatype. Every seam between packages was an implicit convention about flat
+DataFrames and weight columns, and the worst bugs of 2026-06 lived exactly at
+those seams:
 
-- microimpute silently ignored `weight_col` for all numeric targets — the
-  landmine mechanism that broke eCPS reproduced at $201T scale in the first
-  full microplex candidate.
+- The legacy imputation path silently ignored numeric fit weights — the
+  landmine mechanism that reproduced at $201T scale in the first full
+  candidate.
 - The spine builder re-identified synthetic ids and zeroed weights as
   undocumented side effects; two full builds shipped half-empty.
 - The evaluation harness lived in a country pack, was deleted in a refactor,
   and required environment archaeology to run again.
 
-**No backward compatibility.** policyengine-us-data pins legacy microimpute /
-microcalibrate; PolicyEngine pins legacy microdf. Those needs are short-lived
-(microplex replaces policyengine-us-data). This stack is built as if from
-scratch.
+**No backward compatibility.** Legacy consumers pin the packages they still
+need. Populace is built as if from scratch.
 
 ## The kernel: one datatype, packages as operators
 
@@ -37,9 +35,10 @@ packages/
                        succeeds microimpute)
   populace-calibrate/  representation operator (import populace.calibrate;
                        succeeds microcalibrate)
-  microplex/           (stays its own repo and brand: the engine) spec
-                       engine + eval, re-based onto populace-frame
-                       progressively
+  populace-build/      typed build plans, donor graphs, stage contracts,
+                       country build stages, and release gates
+  populace-data/       published population registry and lazy rules-engine
+                       dataset loaders
 ```
 
 ### populace.frame.Frame
@@ -98,9 +97,8 @@ not a migration). Nothing outside the adapter imports a rules engine.
   is no unweighted default. A step that wants an unweighted fit writes
   `weights: none` explicitly and says why.
 - Canonical model: regime-gated, chained quantile forests with weights
-  materialized by weighted bootstrap (the microimpute#196 fix is the reference
-  implementation), behind a small `ConditionalModel` protocol so sequence /
-  trajectory models slot in later.
+  materialized by weighted bootstrap, behind a small `ConditionalModel`
+  protocol so sequence / trajectory models slot in later.
 - Draws sample the *weighted conditional*; tail support below pool resolution
   is the pool's job (strata), never the fit's.
 
@@ -145,9 +143,9 @@ extension, not a rewrite (the kernel must grow these hooks before then).
   order statistic): rank/copula methods across years over single-year
   marginals.
 - Validation: held-out waves (fit 1..t, score t+1), backcasts against public
-  SSA cohort statistics, and the same matched/symmetric-refit honesty used for
-  the eCPS comparison. Rare trajectories (long disability spells, top lifetime
-  earners) are strata, same as the cross-sectional tail.
+  SSA cohort statistics, and matched/symmetric-refit honesty for external
+  incumbent benchmarks. Rare trajectories (long disability spells, top
+  lifetime earners) are strata, same as the cross-sectional tail.
 
 ## Process rules (as binding as the architecture)
 
@@ -159,11 +157,11 @@ extension, not a rewrite (the kernel must grow these hooks before then).
 2. **Constellation versioning.** The workspace releases packages in lockstep
    with a compatibility matrix; consumers pin the constellation, not ad-hoc
    git SHAs. (pip ignoring `[tool.uv.sources]` cost a month of broken CI in
-   microplex — CI here installs with uv, and packages never rely on uv-only
-   resolution for correctness.)
+   the previous stack — CI here installs with uv, and packages never rely on
+   uv-only resolution for correctness.)
 3. **Artifacts carry their environment.** Anything scored embeds a certificate
-   of the rules-engine and package versions that scored it; `micro score a.h5
-   --against b.h5` must work on a clean machine.
+   of the rules-engine and package versions that scored it; external benchmark
+   harnesses must run from a clean machine with explicit artifact inputs.
 4. **Stage manifests are load-bearing.** Every pipeline stage reads/writes a
    versioned artifact with invariant checks; A/B experiments re-run one stage
    against cached upstreams, not whole builds.
@@ -177,8 +175,7 @@ ships a top-level `populace/__init__.py` (implicit namespace), so the shards
 install side by side, and a `populace` metapackage pins the constellation in
 one line. New names mean legacy pins (`microimpute`, `microcalibrate`,
 `microdf`, `microunit`) coexist without version gymnastics during the
-transition. `microplex` keeps its own repo and brand — it is the engine, not
-a shard of the namespace — and re-bases onto populace-frame stage by stage.
+transition.
 
 **Why shards rather than one package with extras.** The justification is
 *independent heavy dependencies*, not modularity for its own sake:
@@ -201,13 +198,14 @@ had no test.
 
 ## Sequencing
 
-1. microframe kernel: bundle + typed weights + strata + accounting + unit
+1. `populace-frame` kernel: bundle + typed weights + strata + accounting + unit
    structure port + RulesEngine protocol + policyengine-us adapter.
 2. Behavioral contract suite + CI.
-3. microfit canonical model (weighted-bootstrap QRF, regime gates, chaining).
-4. microcal (APG/L0 over bundle weights, multi-period constraint stacking).
-5. microplex stage-by-stage re-base (pool strata replace SpineBuilder; the
-   2026-06 driver becomes a spec-driven pool definition).
+3. `populace-fit` canonical model (weighted-bootstrap QRF, regime gates,
+   chaining).
+4. `populace-calibrate` (APG/L0 over bundle weights, multi-period constraint
+   stacking).
+5. `populace-build` country stages and release manifests.
 6. Dynamics operator + SIPP/PSID donors (social-security-model proving
    ground).
 
@@ -220,10 +218,11 @@ risks, not footnotes:
   against one fixed holdout is leaderboard overfitting (the reusable-holdout
   problem). Fresh survey waves are the natural holdout rotation; each holdout
   vintage carries a query budget, and the population's reported score is always
-  against the *current* unseen vintage. While an incumbent (eCPS) exists,
-  matched-N symmetric-refit comparison anchors the scale; past the 3M→30M
-  asymptote there is no comparator and the gate becomes absolute held-out
-  scoring — which is exactly why rotation is mandatory, not optional.
+  against the *current* unseen vintage. While an incumbent production dataset
+  exists, matched-N symmetric-refit comparison anchors the scale in the
+  external benchmark repo; past the 3M→30M asymptote there is no comparator and
+  the gate becomes absolute held-out scoring — which is exactly why rotation is
+  mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
   dividends, interest, retirement income; plus poverty/SPM, and the

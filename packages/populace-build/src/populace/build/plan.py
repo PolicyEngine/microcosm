@@ -223,9 +223,7 @@ class StagePlan:
                 seconds=elapsed,
             )
             records.append(record)
-            donor_note = (
-                f" <- {stage.donor.survey}" if stage.donor is not None else ""
-            )
+            donor_note = f" <- {stage.donor.survey}" if stage.donor is not None else ""
             log(
                 f"stage {stage.name}{donor_note}: "
                 f"{len(stage.produces)} column(s) in {elapsed:.1f}s"

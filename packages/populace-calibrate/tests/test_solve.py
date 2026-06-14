@@ -373,7 +373,7 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
         mass="conserve",
         max_weight_ratio=2.0,
     )
-    # Recompute the eCPS relative-error loss on the returned weights directly.
+    # Recompute the bounded relative-error loss on the returned weights directly.
     # final_loss is a float64 closing eval, so it matches to machine epsilon.
     b = result.problem.target_vector
     est = result.problem.estimates(result.weights)
@@ -450,10 +450,9 @@ def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None
 def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:
     """The loss is minimized at est == target, not est == target - 1.
 
-    A +1 in the loss numerator (the eCPS reference carries one) biases the
-    optimum to target - 1 — negligible at $2T magnitudes, fatal for small
-    targets: a count of 5 converges to 4. The numerator must be the raw
-    residual.
+    A +1 in the loss numerator biases the optimum to target - 1 — negligible at
+    $2T magnitudes, fatal for small targets: a count of 5 converges to 4. The
+    numerator must be the raw residual.
     """
     import numpy as np
     import pandas as pd

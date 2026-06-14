@@ -78,7 +78,7 @@ class Target:
             The frame is responsible for carrying period-specific columns;
             ``period`` is metadata the compiler stacks on, not a column lookup.
         tolerance: Optional absolute tolerance for "is this target hit". Used
-            by diagnostics, not by the loss (the loss is the eCPS relative
+            by diagnostics, not by the loss (the loss is the bounded relative
             error over all targets jointly).
         filter: Optional column name or callable producing a boolean (or
             0/1) per-record mask. For ``count`` it selects which records to

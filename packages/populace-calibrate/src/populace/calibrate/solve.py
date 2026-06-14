@@ -3,12 +3,12 @@
 :func:`calibrate` is the representation operator. It compiles a
 :class:`~populace.calibrate.target.TargetSet` against a
 :class:`~populace.frame.Frame` (:mod:`populace.calibrate.matrix`), then optimizes
-the weight vector of ``weight_entity`` to minimize the eCPS relative-error loss
+the weight vector of ``weight_entity`` to minimize the bounded relative-error loss
 
     ``mean(((A @ w - b) / (b + 1))**2)``
 
-— the loss that produced the enhanced CPS — with torch's Adam over the
-**log-weights** (so weights stay strictly positive by construction). It returns a
+with torch's Adam over the **log-weights** (so weights stay strictly positive by
+construction). It returns a
 :class:`CalibrationResult` carrying a new frame whose ``weight_entity`` weights
 are :class:`~populace.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
@@ -75,8 +75,8 @@ _PRUNE_REL_ATOL = 1e-6
 
 #: Bracket for the ``l0_lambda`` budget search (Finding 3). The achieved non-zero
 #: count is monotone decreasing in ``l0_lambda``; this bracket spans
-#: "essentially no pruning" to "prune almost everything" across the regimes the
-#: eCPS gate operates in. The search bisects on ``log10(l0_lambda)`` inside it.
+#: "essentially no pruning" to "prune almost everything" across sparse-weight
+#: regimes. The search bisects on ``log10(l0_lambda)`` inside it.
 _L0_SEARCH_LO = 1e-7
 _L0_SEARCH_HI = 1e1
 
@@ -140,7 +140,7 @@ class CalibrationResult:
             search settled on, not the value passed in.
         n_nonzero: Number of calibrated weights above the prune threshold. With a
             ``target_records`` budget, the quantity the search drives toward it.
-        closing_loss: The eCPS relative-error loss evaluated once on the
+        closing_loss: The bounded relative-error loss evaluated once on the
             *returned* weights (after the closing mass/cap projections). Exposed
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
@@ -170,12 +170,12 @@ class CalibrationResult:
 
     @property
     def initial_loss(self) -> float:
-        """The eCPS relative-error loss under the input weights."""
+        """The bounded relative-error loss under the input weights."""
         return float(self.loss_trajectory[0])
 
     @property
     def final_loss(self) -> float:
-        """The eCPS relative-error loss of the *returned* weights.
+        """The bounded relative-error loss of the *returned* weights.
 
         This is a single eval-mode evaluation on the weights actually returned —
         after the closing mass/cap projections — so it describes the calibrated
@@ -269,11 +269,10 @@ def _relative_error_loss(estimate: torch.Tensor, targets: torch.Tensor) -> torch
     contributes ``est**2`` rather than dividing by zero). The numerator is the
     raw residual ``est - tgt``, so the loss is minimized exactly at ``est = tgt``.
 
-    The reference eCPS ``reweight`` carries a ``+1`` in the numerator too; that
-    is harmless only because every eCPS target is far larger than 1, but it
+    Some older reweighting formulas carried a ``+1`` in the numerator too. That
     biases the optimum to ``est = tgt - 1`` and is fatal for small-valued
-    targets (a count of 5 converges to 4). We drop it — this is also the loss
-    this docstring has always described.
+    targets (a count of 5 converges to 4). We use the raw residual — this is
+    also the loss this docstring has always described.
     """
     rel_error = (estimate - targets) / (targets + 1.0)
     return (rel_error**2).mean()
@@ -355,7 +354,7 @@ def _optimize(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run the torch optimization and return ``(final_weights, loss_trajectory)``.
 
-    Optimizes the log-weights with Adam against the eCPS relative-error loss.
+    Optimizes the log-weights with Adam against the bounded relative-error loss.
     Positivity is by construction (``w = exp(log_w)`` times optional gates). The
     hard constraints — mass conservation and ``max_weight_ratio`` — are applied
     by projecting the realized weights after each step, so they hold on the
@@ -681,7 +680,7 @@ def calibrate(
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
     Compiles the targets into a sparse system and optimizes the log-weights with
-    Adam to minimize the eCPS relative-error loss
+    Adam to minimize the bounded relative-error loss
     ``mean(((A @ w - b)/(b + 1))**2)``. Returns a new frame whose
     ``weight_entity`` weights are :class:`~populace.frame.WeightKind.CALIBRATED`.
 
@@ -834,7 +833,8 @@ def calibrate(
 
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
     # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
-    # eCPS relative-error loss the optimizer minimizes, mean(((A@w - b)/(b+1))**2),
+    # bounded relative-error loss the optimizer minimizes,
+    # mean(((A@w - b)/(b+1))**2),
     # evaluated after the closing mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
     closing_loss = relative_error_loss(
@@ -891,7 +891,7 @@ def _apply_weights(
     factor = calibrated.total / initial.total if initial.total != 0 else None
     reason = (
         f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
-        "(eCPS relative-error loss); total mass free to move"
+        "(bounded relative-error loss); total mass free to move"
     )
     return frame.with_weights(
         weight_entity,
