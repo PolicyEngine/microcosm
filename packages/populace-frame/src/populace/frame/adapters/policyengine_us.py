@@ -40,6 +40,14 @@ _GROUP_TABLES: tuple[str, ...] = (
     "marital_unit",
 )
 _HOUSEHOLD_WEIGHT_COLUMN = "household_weight"
+_FORMULA_OWNED_COMPAT_COLUMNS = frozenset(
+    {
+        # PolicyEngine-US PR #8614 made this an aggregate of the two source
+        # leaves. Some published wheels can still report it as an input, but
+        # Populace must not persist it as a final dataset input.
+        "partnership_s_corp_income",
+    }
+)
 
 # PolicyEngine ``value_type`` (a Python type) → kernel dtype kind. Enum value
 # types are not listed and fall back to ``"str"`` at the call site.
@@ -153,7 +161,8 @@ class PolicyEngineUSEngine:
         return sorted(
             name
             for name, variable in system_variables.items()
-            if not _is_engine_computed(variable)
+            if name not in _FORMULA_OWNED_COMPAT_COLUMNS
+            and not _is_engine_computed(variable)
         )
 
     def _entity_of(self, name: str) -> str:
@@ -393,7 +402,7 @@ class PolicyEngineUSEngine:
         variables = self._tax_benefit_system().variables
         present = {column for frame in tables.values() for column in frame.columns}
         structural = self._structural_columns()
-        return {
+        return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
             column
             for column in present
             if column not in structural

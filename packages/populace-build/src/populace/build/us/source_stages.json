@@ -49,7 +49,9 @@
         "charitable_deduction",
         "interest_deduction",
         "qualified_business_income",
-        "partnership_s_corp_income",
+        "partnership_income",
+        "s_corp_income",
+        "partnership_self_employment_net_earnings",
         "partnership_s_corp_loss"
       ],
       "nonnegative_outputs": [
