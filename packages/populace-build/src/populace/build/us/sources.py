@@ -51,6 +51,14 @@ SCF_TARGETS = [
     "stock_assets",
 ]
 
+# SCF targets that are physically non-negative (an interest amount paid is never
+# below zero). The SCF donor carries a few small negative artifacts for these,
+# and the support guard — which clips to the donor's own [min, max] range —
+# would otherwise pass them straight through into the dataset. Floor them at
+# zero. Signed targets (net_worth, equity-like fields) are intentionally
+# excluded: those can legitimately be negative.
+NONNEGATIVE_SCF_TARGETS = frozenset({"auto_loan_interest"})
+
 
 def _support_guard(values: np.ndarray, donor: np.ndarray, name: str, log) -> np.ndarray:
     lo, hi = float(np.nanmin(donor)), float(np.nanmax(donor))
@@ -61,6 +69,20 @@ def _support_guard(values: np.ndarray, donor: np.ndarray, name: str, log) -> np.
             f"  support-guard {name}: clipped {n} to donor range [{lo:,.0f}, {hi:,.0f}]"
         )
     return clipped
+
+
+def _floor_nonnegative(hh: pd.DataFrame, log) -> pd.DataFrame:
+    """Floor physically non-negative SCF targets at zero (see
+    ``NONNEGATIVE_SCF_TARGETS``)."""
+    for name in NONNEGATIVE_SCF_TARGETS:
+        if name not in hh.columns:
+            continue
+        values = hh[name].to_numpy(dtype=np.float64)
+        n = int((values < 0).sum())
+        if n:
+            log(f"  non-negativity floor {name}: raised {n} negative values to 0")
+            hh[name] = np.maximum(values, 0.0)
+    return hh
 
 
 def add_scf_wealth(
@@ -175,6 +197,7 @@ def add_scf_wealth(
     for t in targets:
         vals = np.asarray(draws[t], dtype=np.float64)
         hh[t] = _support_guard(vals, scf[t].to_numpy(dtype=np.float64), t, log)
+    hh = _floor_nonnegative(hh, log)
 
     def hh_sum(cols):
         present = [c for c in cols if c in hh.columns]

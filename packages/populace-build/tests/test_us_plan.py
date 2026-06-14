@@ -82,3 +82,30 @@ class TestUsSources:
             "add_vehicle_assets",
         ):
             assert callable(getattr(sources, stage))
+
+    def test_floor_nonnegative_clears_negative_interest(self) -> None:
+        """auto_loan_interest is floored at zero; signed targets are untouched.
+
+        The SCF donor carries small negative auto_loan_interest artifacts that
+        the support guard passes through; the floor must remove them without
+        touching legitimately-signed fields like net_worth.
+        """
+        import pandas as pd
+
+        from populace.build.us import sources
+
+        assert "auto_loan_interest" in sources.NONNEGATIVE_SCF_TARGETS
+        assert "net_worth" not in sources.NONNEGATIVE_SCF_TARGETS
+
+        hh = pd.DataFrame(
+            {
+                "auto_loan_interest": [-9.0, -0.5, 0.0, 120.0],
+                "net_worth": [-5000.0, 1.0, 2.0, 3.0],
+            }
+        )
+        out = sources._floor_nonnegative(hh.copy(), lambda *_args: None)
+
+        assert (out["auto_loan_interest"] >= 0).all()
+        assert out["auto_loan_interest"].tolist() == [0.0, 0.0, 0.0, 120.0]
+        # Signed target is left exactly as-is.
+        assert out["net_worth"].tolist() == [-5000.0, 1.0, 2.0, 3.0]
