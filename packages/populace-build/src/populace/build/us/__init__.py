@@ -14,16 +14,24 @@ repo.
 Implementations are injected: :func:`us_plan` requires one callable per
 declared stage and refuses to assemble without all of them — there is no
 stub, default, or fallback implementation (a plan you can run with a missing
-stage would be the silent-fallback bug as a framework feature). Canonical US
-stage functions live in :mod:`populace.build.us.sources`.
+stage would be the silent-fallback bug as a framework feature). Source-stage
+content lives in the packaged JSON manifest loaded as
+:data:`US_SOURCE_MANIFEST`; executable Python belongs only in shared Populace
+runtimes that interpret those specs.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from importlib.resources import files
 
 from populace.build.plan import DonorSpec, Stage, StagePlan
+from populace.build.source_manifest import (
+    SourceManifest,
+    SourceStageSpec,
+    load_source_manifest,
+)
 from populace.build.us.fiscal_targets import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
@@ -39,6 +47,9 @@ __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
+    "US_NONNEGATIVE_SOURCE_OUTPUTS",
+    "US_SOURCE_MANIFEST",
+    "US_SOURCE_STAGE_SPECS",
     "US_STAGE_NAMES",
     "us_plan",
 ]
@@ -103,8 +114,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         survey="Fed SCF 2022",
         source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
-            "Wealth components (accounts, stocks, bonds, debts), net worth, "
-            "and vehicles; household grain, head-carried person assets."
+            "Wealth components (accounts, stocks, bonds, debts) and net "
+            "worth; household grain, head-carried person assets."
         ),
     ),
     "sipp_tips": DonorSpec(
@@ -143,7 +154,15 @@ US_DONORS: Mapping[str, DonorSpec] = {
     "acs_rent": DonorSpec(
         survey="Census ACS 2022",
         source="https://www.census.gov/programs-surveys/acs",
-        notes="Rent for renter households and vehicles owned.",
+        notes="Rent for renter households.",
+    ),
+    "vehicle_assets": DonorSpec(
+        survey="Census SIPP",
+        source="https://www.census.gov/programs-surveys/sipp.html",
+        notes=(
+            "Household vehicle count and value; vehicle value folds into "
+            "household net worth."
+        ),
     ),
 }
 
@@ -161,8 +180,20 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "prior_year_income",
     "mortgage_conversion",
     "acs_rent",
+    "vehicle_assets",
     "entity_placement",
     "export",
+)
+
+
+def _load_us_source_manifest() -> SourceManifest:
+    return load_source_manifest(files(__package__).joinpath("source_stages.json"))
+
+
+US_SOURCE_MANIFEST = _load_us_source_manifest()
+US_SOURCE_STAGE_SPECS: tuple[SourceStageSpec, ...] = US_SOURCE_MANIFEST.stages
+US_NONNEGATIVE_SOURCE_OUTPUTS: frozenset[str] = frozenset(
+    output for stage in US_SOURCE_STAGE_SPECS for output in stage.nonnegative_outputs
 )
 
 

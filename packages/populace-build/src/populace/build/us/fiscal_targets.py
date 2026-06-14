@@ -4,8 +4,8 @@ These are release-gate requirements for the US target registry, not a scoring
 harness. In particular, JCT tax-expenditure rows must be computed from simple
 neutralization reforms: run the baseline income tax, neutralize one provision,
 run income tax again, and use ``reform_income_tax - baseline_income_tax`` as
-the per-household calibration row. That matches the legacy eCPS JCT target
-semantics and avoids treating tax expenditures as ordinary aggregate columns.
+the per-household calibration row. This avoids treating tax expenditures as
+ordinary aggregate columns.
 """
 
 from __future__ import annotations

@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from populace.build.us import US_DONORS, US_STAGE_NAMES, BuildConfig, us_plan
+from populace.build.source_manifest import SourceManifest, SourceOperationSpec
+from populace.build.us import (
+    US_DONORS,
+    US_NONNEGATIVE_SOURCE_OUTPUTS,
+    US_SOURCE_MANIFEST,
+    US_SOURCE_STAGE_SPECS,
+    US_STAGE_NAMES,
+    BuildConfig,
+    us_plan,
+)
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _noop_implementations() -> dict:
@@ -65,47 +78,128 @@ class TestBuildConfig:
 
 
 class TestUsSources:
-    def test_sources_module_imports_without_donor_deps(self) -> None:
-        """Donor loaders import lazily: the module itself must import on a
-        base install; each stage fails loudly only when actually called
-        without its donor available."""
+    def test_source_manifest_loads_as_spec_contract(self) -> None:
+        assert US_SOURCE_MANIFEST.country == "us"
+        assert US_SOURCE_MANIFEST.version == 1
+        assert len(US_SOURCE_STAGE_SPECS) >= len(US_DONORS)
+
+    def test_every_donor_stage_has_matching_source_spec(self) -> None:
+        specs = US_SOURCE_MANIFEST.stage_map()
+        for stage, donor in US_DONORS.items():
+            assert stage in specs
+            assert specs[stage].survey == donor.survey
+            assert specs[stage].source == donor.source
+
+    def test_source_specs_align_with_declared_plan(self) -> None:
+        derived_source_specs = {"mortgage_conversion"}
+        assert {spec.stage for spec in US_SOURCE_STAGE_SPECS} == set(
+            US_DONORS
+        ) | derived_source_specs
+        assert set(US_DONORS).issubset(US_STAGE_NAMES)
+        assert derived_source_specs.issubset(US_STAGE_NAMES)
+
+    def test_source_specs_are_manifest_only_not_python_loaders(self) -> None:
+        for spec in US_SOURCE_STAGE_SPECS:
+            assert spec.operations
+            for operation in spec.operations:
+                assert "module" not in operation.parameters
+                assert "function" not in operation.parameters
+                assert operation.kind not in {
+                    "python_module",
+                    "python_function",
+                    "import_module",
+                }
+
+    def test_source_operation_parser_rejects_python_loader_shapes(self) -> None:
+        with pytest.raises(ValueError, match="executable-loader"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "python_module",
+                    "module": "populace.build.us.sources",
+                    "function": "add_scf_wealth",
+                }
+            )
+        with pytest.raises(ValueError, match="allowed manifest operation"):
+            SourceOperationSpec.from_mapping({"kind": "custom_loader"})
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "postprocess": [{"callable": "clean_scf"}],
+                }
+            )
+
+    def test_source_manifest_parser_rejects_python_loader_artifacts(self) -> None:
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceManifest.from_mapping(
+                {
+                    "version": 1,
+                    "country": "us",
+                    "policy": "spec only",
+                    "stages": [
+                        {
+                            "stage": "scf_wealth",
+                            "survey": "Fed SCF 2022",
+                            "source": "https://www.federalreserve.gov/econres/scfindex.htm",
+                            "grain": "household",
+                            "artifacts": [
+                                {
+                                    "kind": "public_microdata",
+                                    "loader": "populace.build.us.sources:add_scf_wealth",
+                                }
+                            ],
+                            "operations": [
+                                {"kind": "read_table", "table": "scf_household"}
+                            ],
+                            "outputs": ["net_worth"],
+                        }
+                    ],
+                }
+            )
+
+    def test_legacy_sources_import_path_is_metadata_only(self) -> None:
         from populace.build.us import sources
-
-        for stage in (
-            "add_scf_wealth",
-            "add_sipp_tips",
-            "add_org_wages",
-            "add_meps_esi_premiums",
-            "add_prior_year_income",
-            "add_mortgage_conversion",
-            "add_acs_rent",
-            "add_vehicle_assets",
-        ):
-            assert callable(getattr(sources, stage))
-
-    def test_floor_nonnegative_clears_negative_interest(self) -> None:
-        """auto_loan_interest is floored at zero; signed targets are untouched.
-
-        The SCF donor carries small negative auto_loan_interest artifacts that
-        the support guard passes through; the floor must remove them without
-        touching legitimately-signed fields like net_worth.
-        """
-        import pandas as pd
-
-        from populace.build.us import sources
-
-        assert "auto_loan_interest" in sources.NONNEGATIVE_SCF_TARGETS
-        assert "net_worth" not in sources.NONNEGATIVE_SCF_TARGETS
-
-        hh = pd.DataFrame(
-            {
-                "auto_loan_interest": [-9.0, -0.5, 0.0, 120.0],
-                "net_worth": [-5000.0, 1.0, 2.0, 3.0],
-            }
+        from populace.build.us.sources import (
+            SCF_TARGETS,
+            _support_guard,
+            add_scf_wealth,
         )
-        out = sources._floor_nonnegative(hh.copy(), lambda *_args: None)
 
-        assert (out["auto_loan_interest"] >= 0).all()
-        assert out["auto_loan_interest"].tolist() == [0.0, 0.0, 0.0, 120.0]
-        # Signed target is left exactly as-is.
-        assert out["net_worth"].tolist() == [-5000.0, 1.0, 2.0, 3.0]
+        assert sources.US_SOURCE_MANIFEST is US_SOURCE_MANIFEST
+        with pytest.raises(AttributeError, match="has been removed"):
+            sources.__getattr__("add_scf_wealth")
+        with pytest.raises(RuntimeError, match="has been removed"):
+            add_scf_wealth(None, None, 0, lambda *_args: None)
+        with pytest.raises(RuntimeError, match="has been removed"):
+            _support_guard([], [], "x", lambda *_args: None)
+        with pytest.raises(RuntimeError, match="has been removed"):
+            sources.NONNEGATIVE_SCF_TARGETS.__contains__("auto_loan_interest")
+        with pytest.raises(RuntimeError, match="has been removed"):
+            SCF_TARGETS.__contains__("net_worth")
+
+    def test_scf_nonnegative_requirement_is_source_declared(self) -> None:
+        specs = US_SOURCE_MANIFEST.stage_map()
+        assert "auto_loan_interest" in specs["scf_wealth"].nonnegative_outputs
+        assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
+        assert "net_worth" not in US_NONNEGATIVE_SOURCE_OUTPUTS
+
+    def test_no_incumbent_data_package_references_in_live_tree(self) -> None:
+        forbidden = (
+            "policyengine_" + "us_data",
+            "policyengine-" + "us-data",
+            "policyengine_" + "uk_data",
+            "policyengine-" + "uk-data",
+        )
+        checked_suffixes = {".py", ".toml", ".md", ".json"}
+        offenders: list[tuple[str, str]] = []
+        for path in ROOT.rglob("*"):
+            if not path.is_file() or path.suffix not in checked_suffixes:
+                continue
+            if ".git" in path.parts or ".venv" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for needle in forbidden:
+                if needle in text:
+                    offenders.append((str(path.relative_to(ROOT)), needle))
+        assert offenders == []
