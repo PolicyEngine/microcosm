@@ -184,6 +184,14 @@ class TestUsSources:
         assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
         assert "net_worth" not in US_NONNEGATIVE_SOURCE_OUTPUTS
 
+    def test_puf_stage_declares_partnership_s_corp_leaves_not_aggregate(self) -> None:
+        outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
+        assert "partnership_income" in outputs
+        assert "s_corp_income" in outputs
+        assert "partnership_self_employment_net_earnings" in outputs
+        assert "partnership_s_corp_income" not in outputs
+        assert "partnership_se_income" not in outputs
+
     def test_no_incumbent_data_package_references_in_live_tree(self) -> None:
         forbidden = (
             "policyengine_" + "us_data",

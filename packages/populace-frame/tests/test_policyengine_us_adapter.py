@@ -77,7 +77,8 @@ class TestVariableMetadata:
         assert "employment_income" in names  # input
         assert "partnership_income" in names
         assert "s_corp_income" in names
-        assert "partnership_s_corp_income" in names
+        assert "partnership_self_employment_net_earnings" in names
+        assert "partnership_s_corp_income" not in names
         assert "in_nyc" not in names
         assert "ssi" not in names  # formula-owned output
         assert "spm_unit_capped_work_childcare_expenses" not in names
@@ -161,7 +162,7 @@ class TestWriteDataset:
             adapter.write_dataset(rebuilt, path, period=2024)
         assert not path.exists()
 
-    def test_partnership_s_corp_inputs_round_trip(
+    def test_partnership_s_corp_leaf_inputs_round_trip(
         self, adapter, us_bundle, tmp_path
     ) -> None:
         from policyengine_us.data import USSingleYearDataset
@@ -169,7 +170,7 @@ class TestWriteDataset:
         person = us_bundle.person.copy()
         person["partnership_income"] = [1_500.0, 0.0, 400.0]
         person["s_corp_income"] = [500.0, 0.0, 100.0]
-        person["partnership_s_corp_income"] = [2_000.0, 0.0, 500.0]
+        person["partnership_self_employment_net_earnings"] = [900.0, 0.0, 250.0]
         rebuilt = Frame(
             {
                 name: (person if name == "person" else us_bundle.table(name))
@@ -184,11 +185,31 @@ class TestWriteDataset:
         reloaded = USSingleYearDataset(file_path=str(path))
         assert reloaded.person["partnership_income"].tolist() == [1_500.0, 0.0, 400.0]
         assert reloaded.person["s_corp_income"].tolist() == [500.0, 0.0, 100.0]
-        assert reloaded.person["partnership_s_corp_income"].tolist() == [
-            2_000.0,
+        assert "partnership_s_corp_income" not in reloaded.person.columns
+        assert reloaded.person["partnership_self_employment_net_earnings"].tolist() == [
+            900.0,
             0.0,
-            500.0,
+            250.0,
         ]
+
+    def test_partnership_s_corp_aggregate_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["partnership_s_corp_income"] = [2_000.0, 0.0, 500.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "partnership_s_corp_aggregate.h5"
+        with pytest.raises(ValueError, match="partnership_s_corp_income"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
 
     def test_enum_domain_column_blocks_raw_source_codes(
         self, adapter, us_bundle, tmp_path
