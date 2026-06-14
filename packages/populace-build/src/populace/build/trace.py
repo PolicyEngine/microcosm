@@ -659,9 +659,7 @@ def _output_from_manifest_artifact(
         "name": filename,
         "sha256": artifact.get("sha256"),
         "location": (
-            _huggingface_location(
-                filename, repo=artifact_repo, revision=hf_revision
-            )
+            _huggingface_location(filename, repo=artifact_repo, revision=hf_revision)
             if filename
             else None
         ),

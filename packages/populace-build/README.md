@@ -29,13 +29,15 @@ All gate losses use the calibrator's bounded relative-error loss
 `mean(((est − target)/(target + 1))²)` — scorers consume the same functions,
 so there is no calibrator-vs-scorer objective mismatch.
 
-The `us` extra adds the engine and survey loaders for the US stage plan.
+The `us` extra adds the rules engine for formula/export checks. Country source
+loaders are not Python dependencies: source stages are declared in packaged
+JSON manifests and executed by shared Populace runtimes.
 
 ## US plan status
 
 `populace.build.us` declares the US build: stage order, donor graph with
-citations (`US_DONORS`), and the manifest-ready `BuildConfig`. The stage
-*implementations* are injected (`us_plan(implementations)`) and the plan
-refuses to assemble with any stage missing — no stubs, no fallbacks. The
-canonical implementations live in `populace.build.us.sources`; release-specific
-benchmark comparison harnesses live outside this repo.
+citations (`US_DONORS`), the manifest-ready `BuildConfig`, and the packaged
+source-stage manifest (`US_SOURCE_MANIFEST`). The stage *implementations* are
+injected (`us_plan(implementations)`) and the plan refuses to assemble with any
+stage missing — no stubs, no fallbacks. Release-specific benchmark comparison
+harnesses live outside this repo.

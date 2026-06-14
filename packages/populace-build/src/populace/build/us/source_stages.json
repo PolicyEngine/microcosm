@@ -1,0 +1,473 @@
+{
+  "version": 1,
+  "country": "us",
+  "policy": "US source stages are manifest-defined. Country/source content may declare primary artifacts, columns, sentinel handling, derivations, imputation recipes, and outputs here; executable Python belongs only in shared Populace runtimes.",
+  "stages": [
+    {
+      "stage": "puf_tax_detail",
+      "survey": "IRS PUF 2015 (uprated)",
+      "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "fixed_width_or_csv",
+          "vintage": "2015",
+          "locator": "IRS SOI Public Use File"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "puf_tax_unit",
+          "weight": "s006"
+        },
+        {
+          "kind": "uprate",
+          "from_year": 2015,
+          "to_year_from_build_config": true
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "employment_income",
+            "self_employment_income",
+            "taxable_interest_income",
+            "ordinary_dividends",
+            "capital_gains",
+            "filing_status"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "salt_deduction",
+        "medical_expense_deduction",
+        "charitable_deduction",
+        "interest_deduction",
+        "qualified_business_income",
+        "partnership_s_corp_income",
+        "partnership_s_corp_loss"
+      ],
+      "nonnegative_outputs": [
+        "salt_deduction",
+        "medical_expense_deduction",
+        "charitable_deduction",
+        "interest_deduction"
+      ],
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons."
+    },
+    {
+      "stage": "scf_wealth",
+      "survey": "Fed SCF 2022",
+      "source": "https://www.federalreserve.gov/econres/scfindex.htm",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "sas_or_stata",
+          "vintage": "2022",
+          "locator": "Federal Reserve Survey of Consumer Finances public extract"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "scf_household",
+          "weight": "wgt"
+        },
+        {
+          "kind": "replace_sentinels",
+          "sentinels": [
+            -1,
+            -7,
+            -8,
+            -9
+          ],
+          "scope": "not_applicable_or_missing_fields"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "auto_loan_interest",
+            "net_worth_components",
+            "financial_asset_components",
+            "household_asset_components"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "is_female",
+            "cps_race",
+            "is_married",
+            "own_children_in_household",
+            "employment_income",
+            "interest_dividend_income",
+            "social_security_pension_income"
+          ]
+        },
+        {
+          "kind": "head_carry",
+          "from_entity": "household",
+          "to_entity": "person",
+          "condition": "is_household_head"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "net_worth",
+        "scf_primary_residence_value",
+        "scf_retirement_assets",
+        "scf_business_equity",
+        "scf_mortgage_debt",
+        "scf_other_residential_real_estate",
+        "scf_nonresidential_real_estate_equity",
+        "scf_other_residential_debt",
+        "scf_other_financial_assets",
+        "scf_other_nonfinancial_assets",
+        "scf_other_managed_assets",
+        "scf_cash_value_life_insurance",
+        "scf_certificates_of_deposit",
+        "scf_savings_bonds",
+        "scf_credit_card_debt",
+        "scf_student_loan_debt",
+        "scf_vehicle_installment_debt",
+        "scf_other_installment_debt",
+        "scf_other_lines_of_credit",
+        "scf_other_debt",
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets"
+      ],
+      "nonnegative_outputs": [
+        "auto_loan_interest"
+      ],
+      "notes": "Sentinel replacement is declared here so impossible negative auto-loan interest is rejected at the source boundary and again at export gates."
+    },
+    {
+      "stage": "sipp_tips",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_extract",
+          "vintage": "latest_available",
+          "locator": "Census Survey of Income and Program Participation"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person"
+        },
+        {
+          "kind": "fit_tip_income_model",
+          "predictors": [
+            "employment_income",
+            "is_tipped_occupation",
+            "age"
+          ]
+        },
+        {
+          "kind": "zero_when_false",
+          "condition": "is_tipped_occupation"
+        }
+      ],
+      "outputs": [
+        "tip_income"
+      ],
+      "nonnegative_outputs": [
+        "tip_income"
+      ]
+    },
+    {
+      "stage": "org_wages",
+      "survey": "CPS ORG",
+      "source": "https://www.bls.gov/cps/earnings.htm",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "cps_basic_monthly",
+          "vintage": "build_year",
+          "locator": "CPS Outgoing Rotation Group"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "cps_org_person"
+        },
+        {
+          "kind": "fit_labor_market_models",
+          "predictors": [
+            "age",
+            "is_female",
+            "cps_race",
+            "is_hispanic",
+            "state_fips",
+            "employment_income",
+            "hours_worked_last_week",
+            "weeks_worked"
+          ]
+        }
+      ],
+      "outputs": [
+        "hourly_wage",
+        "is_paid_hourly",
+        "is_union_member_or_covered",
+        "weekly_hours_worked_before_lsr",
+        "fsla_overtime_premium"
+      ],
+      "nonnegative_outputs": [
+        "hourly_wage",
+        "weekly_hours_worked_before_lsr",
+        "fsla_overtime_premium"
+      ]
+    },
+    {
+      "stage": "meps_esi_premiums",
+      "survey": "MEPS-IC",
+      "source": "https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "MEPS Insurance Component plan-type premium tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "meps_ic_plan_premiums"
+        },
+        {
+          "kind": "assign_by_plan_type",
+          "inputs": [
+            "has_esi",
+            "is_esi_dependent",
+            "tax_unit_size",
+            "state_fips"
+          ]
+        }
+      ],
+      "outputs": [
+        "employer_sponsored_insurance_premiums"
+      ],
+      "nonnegative_outputs": [
+        "employer_sponsored_insurance_premiums"
+      ]
+    },
+    {
+      "stage": "prior_year_income",
+      "survey": "CPS ASEC (prior year)",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year_minus_one",
+          "locator": "Census CPS ASEC person file"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "asec_person",
+          "columns": [
+            "PERIDNUM",
+            "WSAL_VAL",
+            "SEMP_VAL"
+          ]
+        },
+        {
+          "kind": "join",
+          "left": "current_person.PERIDNUM",
+          "right": "prior_person.PERIDNUM"
+        },
+        {
+          "kind": "replace_sentinels",
+          "sentinels": [
+            -1,
+            -9999
+          ],
+          "value": null
+        }
+      ],
+      "outputs": [
+        "employment_income_last_year",
+        "self_employment_income_last_year",
+        "previous_year_income_available"
+      ],
+      "nonnegative_outputs": [
+        "employment_income_last_year",
+        "self_employment_income_last_year"
+      ]
+    },
+    {
+      "stage": "mortgage_conversion",
+      "survey": "IRS PUF 2015 (uprated) + Fed SCF 2022",
+      "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "derived_from_prior_stages",
+          "inputs": [
+            "interest_deduction",
+            "scf_mortgage_debt",
+            "tenure_type"
+          ]
+        }
+      ],
+      "operations": [
+        {
+          "kind": "derive_mortgage_balance_hints",
+          "inputs": [
+            "interest_deduction",
+            "scf_mortgage_debt",
+            "filing_status"
+          ]
+        },
+        {
+          "kind": "convert_interest_to_structural_mortgage_inputs"
+        },
+        {
+          "kind": "head_carry",
+          "from_entity": "tax_unit",
+          "to_entity": "person",
+          "condition": "tax_unit_role_input == HEAD"
+        }
+      ],
+      "outputs": [
+        "deductible_mortgage_interest",
+        "home_mortgage_interest",
+        "mortgage_interest",
+        "mortgage_principal",
+        "investment_interest_expense"
+      ],
+      "nonnegative_outputs": [
+        "deductible_mortgage_interest",
+        "home_mortgage_interest",
+        "mortgage_interest",
+        "mortgage_principal",
+        "investment_interest_expense"
+      ],
+      "notes": "The conversion is a declarative structural transform over PUF and SCF outputs, not a benchmark data loader."
+    },
+    {
+      "stage": "acs_rent",
+      "survey": "Census ACS 2022",
+      "source": "https://www.census.gov/programs-surveys/acs",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "acs_pums",
+          "vintage": "2022",
+          "locator": "Census ACS PUMS household and person files"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "acs_household",
+            "acs_person"
+          ]
+        },
+        {
+          "kind": "aggregate_person_to_household",
+          "aggregates": [
+            "employment_income",
+            "household_size"
+          ]
+        },
+        {
+          "kind": "fit_weighted_imputer",
+          "predictors": [
+            "state_fips",
+            "household_employment_income",
+            "household_size"
+          ],
+          "weight": "household_weight"
+        },
+        {
+          "kind": "zero_when_false",
+          "condition": "tenure_type == RENTED"
+        },
+        {
+          "kind": "head_carry",
+          "from_entity": "household",
+          "to_entity": "person",
+          "condition": "is_household_head"
+        }
+      ],
+      "outputs": [
+        "pre_subsidy_rent"
+      ],
+      "nonnegative_outputs": [
+        "pre_subsidy_rent"
+      ]
+    },
+    {
+      "stage": "vehicle_assets",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_extract",
+          "vintage": "latest_available",
+          "locator": "Census Survey of Income and Program Participation"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_household"
+        },
+        {
+          "kind": "fit_vehicle_model",
+          "predictors": [
+            "employment_income",
+            "interest_dividend_income",
+            "rental_income",
+            "age",
+            "is_female",
+            "is_married",
+            "tenure_type"
+          ]
+        },
+        {
+          "kind": "fold_into",
+          "output": "net_worth",
+          "component": "household_vehicles_value"
+        }
+      ],
+      "outputs": [
+        "household_vehicles_owned",
+        "household_vehicles_value"
+      ],
+      "nonnegative_outputs": [
+        "household_vehicles_owned",
+        "household_vehicles_value"
+      ]
+    }
+  ]
+}

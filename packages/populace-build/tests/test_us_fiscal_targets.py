@@ -3,8 +3,8 @@ from populace.build.us import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    US_NONNEGATIVE_SOURCE_OUTPUTS,
     SimpleTaxExpenditureReform,
-    sources,
 )
 from populace.calibrate import TargetSpec
 
@@ -180,10 +180,10 @@ def test_macro_realism_bands_cover_issue_40_backstops() -> None:
 
 
 def test_scf_nonnegative_targets_gate_negative_interest() -> None:
-    assert sources.NONNEGATIVE_SCF_TARGETS == frozenset({"auto_loan_interest"})
+    assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
     result = nonnegative_columns_gate(
         {"auto_loan_interest": [120.0, -9.0]},
-        sources.NONNEGATIVE_SCF_TARGETS,
+        US_NONNEGATIVE_SOURCE_OUTPUTS,
     )
     assert not result.passed
     assert "auto_loan_interest" in result.failures[0]
