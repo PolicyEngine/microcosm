@@ -10,3 +10,6 @@ build/
 !packages/*/build/
 # populace.build is a real namespace package, not a build-artifact dir
 !packages/populace-build/src/populace/build/
+# Local-area build outputs (private FRS-derived artifacts: matrices, weights,
+# diagnostics). Never committed — data protection + they are build products.
+out/
