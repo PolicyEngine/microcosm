@@ -148,6 +148,7 @@ class TargetCoverageRequirement:
     accepted_name_substrings: tuple[str, ...] = ()
     accepted_measures: tuple[str, ...] = ()
     accepted_families: tuple[str, ...] = ()
+    required_measures: tuple[str, ...] = ()
     required_metadata: tuple[tuple[str, str], ...] = ()
     min_matches: int = 1
     notes: str = ""
@@ -269,6 +270,11 @@ def _matches_target_requirement(
         or entry.family in requirement.accepted_families
     )
     if not selector_matched:
+        return False
+    if (
+        requirement.required_measures
+        and entry.measure not in requirement.required_measures
+    ):
         return False
     return all(
         entry.metadata.get(key) == value for key, value in requirement.required_metadata
