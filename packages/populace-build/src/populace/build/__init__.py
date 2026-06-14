@@ -54,6 +54,7 @@ from populace.build.gates import (  # noqa: E402 - after the compat gate
     GateResult,
     aggregate_admin_gate,
     enum_domain_gate,
+    export_surface_gate,
     exported_nonzero_gate,
     formula_owned_export_gate,
     parity_gate,
@@ -61,6 +62,7 @@ from populace.build.gates import (  # noqa: E402 - after the compat gate
     relative_error_loss,
     source_coverage_gate,
     support_gate,
+    target_surface_gate,
 )
 from populace.build.holdout import (  # noqa: E402 - after the compat gate
     rotated_folds,
@@ -84,6 +86,7 @@ __all__ = [
     "StageRecord",
     "aggregate_admin_gate",
     "enum_domain_gate",
+    "export_surface_gate",
     "exported_nonzero_gate",
     "formula_owned_export_gate",
     "parity_gate",
@@ -93,5 +96,6 @@ __all__ = [
     "source_coverage_gate",
     "summarize_rotations",
     "support_gate",
+    "target_surface_gate",
     "__version__",
 ]
