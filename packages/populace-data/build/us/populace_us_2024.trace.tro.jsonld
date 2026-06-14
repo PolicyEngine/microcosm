@@ -1,0 +1,154 @@
+{
+  "@context": [
+    {
+      "pop": "https://populace.dev/trace/0.1#",
+      "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+      "schema": "https://schema.org/",
+      "trov": "https://w3id.org/trace/trov/0.1#"
+    }
+  ],
+  "@graph": [
+    {
+      "@id": "tro",
+      "@type": "trov:TransparentResearchObject",
+      "pop:buildDate": "2026-06-11",
+      "pop:selfUrl": "https://huggingface.co/datasets/policyengine/populace-us/resolve/main/releases/populace-us-2024-9f1260b-20260611/populace_us_2024.trace.tro.jsonld",
+      "schema:creator": {
+        "@type": "schema:Organization",
+        "schema:name": "PolicyEngine",
+        "schema:url": "https://policyengine.org"
+      },
+      "schema:dateCreated": "2026-06-11",
+      "schema:description": "TRACE TRO for a populace dataset build. The composition pins the build's output artifacts (calibrated dataset and weights) and the restricted survey inputs it consumed, by sha256, so a build can be credibly attested even where the inputs cannot be re-accessed.",
+      "schema:name": "populace build TRO (populace-us-2024-9f1260b-20260611)",
+      "trov:createdWith": {
+        "@type": "schema:SoftwareApplication",
+        "schema:name": "populace-build",
+        "schema:softwareVersion": "0.1.0"
+      },
+      "trov:hasArrangement": [
+        {
+          "@id": "arrangement/1",
+          "@type": "trov:ArtifactArrangement",
+          "trov:hasArtifactLocation": [
+            {
+              "@id": "arrangement/1/location/dataset",
+              "@type": "trov:ArtifactLocation",
+              "trov:hasArtifact": {
+                "@id": "composition/1/artifact/dataset"
+              },
+              "trov:hasLocation": "https://huggingface.co/datasets/policyengine/populace-us/resolve/4a8e7d39eb9e282397d186b4550107b1955eddc5/populace_us_2024.h5"
+            },
+            {
+              "@id": "arrangement/1/location/calibration",
+              "@type": "trov:ArtifactLocation",
+              "trov:hasArtifact": {
+                "@id": "composition/1/artifact/calibration"
+              },
+              "trov:hasLocation": "https://huggingface.co/datasets/policyengine/populace-us/resolve/4a8e7d39eb9e282397d186b4550107b1955eddc5/populace_us_2024_calibration.npz"
+            },
+            {
+              "@id": "arrangement/1/location/build_config",
+              "@type": "trov:ArtifactLocation",
+              "trov:hasArtifact": {
+                "@id": "composition/1/artifact/build_config"
+              },
+              "trov:hasLocation": "urn:pop:payload:build_config:37fc0c46619d3c1153b79cb95aace167bd158bf10c5f9dda2efc059acd0830a9"
+            },
+            {
+              "@id": "arrangement/1/location/gate_report",
+              "@type": "trov:ArtifactLocation",
+              "trov:hasArtifact": {
+                "@id": "composition/1/artifact/gate_report"
+              },
+              "trov:hasLocation": "urn:pop:payload:gate_report:6f10989dbe3ccaf599d9ae46489f1723624f14141f85475a4eee9fb39cbce747"
+            },
+            {
+              "@id": "arrangement/1/location/stage_records",
+              "@type": "trov:ArtifactLocation",
+              "trov:hasArtifact": {
+                "@id": "composition/1/artifact/stage_records"
+              },
+              "trov:hasLocation": "urn:pop:payload:stage_records:dd89da5f4d3ec47b674fdcaec676de589264198554e4099d91334d57ed0448a3"
+            }
+          ]
+        }
+      ],
+      "trov:hasComposition": {
+        "@id": "composition/1",
+        "@type": "trov:ArtifactComposition",
+        "trov:hasArtifact": [
+          {
+            "@id": "composition/1/artifact/dataset",
+            "@type": "trov:ResearchArtifact",
+            "schema:name": "populace_us_2024.h5",
+            "trov:mimeType": "application/x-hdf5",
+            "trov:sha256": "dc75c0d4fdedd57946db84a8d838dbc5b61a284365c3ce6eb6508b8e81111a4b"
+          },
+          {
+            "@id": "composition/1/artifact/calibration",
+            "@type": "trov:ResearchArtifact",
+            "schema:name": "populace_us_2024_calibration.npz",
+            "trov:mimeType": "application/x-numpy-npz",
+            "trov:sha256": "a3da2f59085c45f0e16b06337818e3513c2635911dc0d16fa7deb5006263c12a"
+          },
+          {
+            "@id": "composition/1/artifact/build_config",
+            "@type": "trov:ResearchArtifact",
+            "schema:name": "build_config",
+            "trov:mimeType": "application/json",
+            "trov:sha256": "37fc0c46619d3c1153b79cb95aace167bd158bf10c5f9dda2efc059acd0830a9"
+          },
+          {
+            "@id": "composition/1/artifact/gate_report",
+            "@type": "trov:ResearchArtifact",
+            "schema:name": "gate_report",
+            "trov:mimeType": "application/json",
+            "trov:sha256": "6f10989dbe3ccaf599d9ae46489f1723624f14141f85475a4eee9fb39cbce747"
+          },
+          {
+            "@id": "composition/1/artifact/stage_records",
+            "@type": "trov:ResearchArtifact",
+            "schema:name": "stage_records",
+            "trov:mimeType": "application/json",
+            "trov:sha256": "dd89da5f4d3ec47b674fdcaec676de589264198554e4099d91334d57ed0448a3"
+          }
+        ],
+        "trov:hasFingerprint": {
+          "@id": "composition/1/fingerprint",
+          "@type": "trov:CompositionFingerprint",
+          "trov:sha256": "64c1db587b49f1000c49b55c3ee6e4aa35030626a057258573053407aae62df3"
+        }
+      },
+      "trov:hasPerformance": {
+        "@id": "trp/1",
+        "@type": "trov:TransparentResearchPerformance",
+        "pop:buildId": "populace-us-2024-9f1260b-20260611",
+        "pop:buildSha": "9f1260b",
+        "pop:builder": "populace",
+        "pop:emittedIn": "local",
+        "pop:gateNames": [
+          "calibration",
+          "exported_nonzero",
+          "parity_gaps",
+          "smoke"
+        ],
+        "pop:gatesPassed": true,
+        "rdfs:comment": "populace build populace-us-2024-9f1260b-20260611.",
+        "trov:accessedArrangement": {
+          "@id": "arrangement/1"
+        },
+        "trov:wasConductedBy": {
+          "@id": "trs"
+        }
+      },
+      "trov:wasAssembledBy": {
+        "@id": "trs",
+        "@type": "trov:TransparentResearchSystem",
+        "rdfs:comment": "The populace dataset build: a typed stage plan over primary survey donors, calibrated to an administrative target surface, gated before publication.",
+        "schema:name": "populace build pipeline"
+      }
+    }
+  ]
+}
