@@ -80,6 +80,7 @@ class TestExportContract:
         assert contract.forbidden == ()
         assert contract.optional == ()
         assert contract.formula_owned_excluded == ()
+        assert contract.closed is False
 
     def test_from_path_parses_sections_and_ignores_metadata(self, tmp_path) -> None:
         manifest = {
@@ -88,6 +89,7 @@ class TestExportContract:
             "forbidden": ["spm_unit_net_income"],
             "optional": ["engine_bookkeeping"],
             "formula_owned_excluded": ["eitc"],
+            "closed": True,
         }
         path = tmp_path / "contract.json"
         path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -96,6 +98,7 @@ class TestExportContract:
         assert contract.forbidden == ("spm_unit_net_income",)
         assert contract.optional == ("engine_bookkeeping",)
         assert contract.formula_owned_excluded == ("eitc",)
+        assert contract.closed is True
 
     def test_from_path_ignores_unknown_sections(self, tmp_path) -> None:
         manifest = {"legacy_internal_optional": ["spm_unit_pre_subsidy_childcare"]}

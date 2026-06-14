@@ -18,7 +18,14 @@ dependencies = [
 # The US build pulls survey loaders and the rules engine; the base install
 # (stage machinery + gates) stays light so scorers can consume the gates
 # without an engine.
-us = ["policyengine-us>=1.723,<2", "policyengine-us-data>=1.69,<2", "h5py>=3"]
+us = [
+    "policyengine-us>=1.729,<2",
+    # 1.115.4 pins policyengine-us==1.693.5, which conflicts with the
+    # current engine surface needed for formula-owned export checks. Lift the
+    # cap once policyengine-us-data publishes compatible metadata again.
+    "policyengine-us-data>=1.115.2,<1.115.4",
+    "h5py>=3",
+]
 
 [project.urls]
 Homepage = "https://populace.dev"

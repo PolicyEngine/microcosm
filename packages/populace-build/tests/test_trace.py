@@ -41,9 +41,9 @@ RELEASE_MANIFEST_FIXTURE: dict = {
         "sha256": ("a3da2f59085c45f0e16b06337818e3513c2635911dc0d16fa7deb5006263c12a"),
     },
     "construction": (
-        "eCPS-free: every layer from primary sources (CPS ASEC, IRS PUF 2015 "
-        "uprated, Fed SCF 2022, Census SIPP, CPS-ORG, MEPS-IC parameters, "
-        "Census ACS 2022); enhanced CPS used only as the scoring benchmark"
+        "Every layer from primary sources (CPS ASEC, IRS PUF 2015 uprated, "
+        "Fed SCF 2022, Census SIPP, CPS-ORG, MEPS-IC parameters, Census ACS "
+        "2022); incumbent comparisons live in the external benchmark repo"
     ),
     "gates": {
         "parity_gaps": 0,
@@ -62,16 +62,43 @@ RELEASE_MANIFEST_FIXTURE: dict = {
             "net_stcg_b": -77.5,
         },
     },
-    "score_vs_enhanced_cps": {
-        "protocol": (
-            "matched 41,314 households, symmetric refit, 739-target holdout "
-            "(seed 20260529)"
-        ),
-        "train_loss": {"populace": 0.18957, "enhanced_cps": 1.08879},
-        "holdout_loss": {"populace": 0.03837, "enhanced_cps": 0.3167},
-        "full_loss": {"populace": 0.22794, "enhanced_cps": 1.40549},
-        "per_target_wins": {"populace": 1040, "enhanced_cps": 2613, "ties": 51},
+    "stage_records": [
+        {
+            "stage": "support_export",
+            "artifact": "populace_us_2024.h5",
+            "passed": True,
+        }
+    ],
+}
+
+SCHEMA_V1_RELEASE_MANIFEST_FIXTURE: dict = {
+    "schema_version": 1,
+    "data_package": {"name": "populace-data", "version": "0.1.0"},
+    "build": {
+        "build_id": "populace-us-2024-9f1260b-20260611",
+        "builder": "populace",
+        "build_sha": "9f1260b",
+        "build_date": "2026-06-11",
     },
+    "artifacts": {
+        "populace_us_2024": {
+            "kind": "microdata",
+            "path": "populace_us_2024.h5",
+            "repo_id": "policyengine/populace-us",
+            "sha256": (
+                "dc75c0d4fdedd57946db84a8d838dbc5b61a284365c3ce6eb6508b8e81111a4b"
+            ),
+        },
+        "calibration_diagnostics": {
+            "kind": "diagnostics",
+            "path": "calibration_diagnostics.json",
+            "repo_id": "policyengine/populace-diagnostics",
+            "sha256": (
+                "a3da2f59085c45f0e16b06337818e3513c2635911dc0d16fa7deb5006263c12a"
+            ),
+        },
+    },
+    "gates": {"exported_nonzero": {"passed": True}},
 }
 
 # The IRS PUF: a restricted input the build consumes but a re-runner cannot
@@ -453,6 +480,42 @@ class TestReleaseManifestConverter:
             "https://huggingface.co/datasets/policyengine/populace-us/"
             "resolve/4a8e7d39eb9e/populace_us_2024.h5"
         ]
+
+    def test_schema_v1_release_manifest_outputs_artifacts(self) -> None:
+        tro = trace.tro_from_release_manifest(
+            SCHEMA_V1_RELEASE_MANIFEST_FIXTURE,
+            hf_revision="abc123",
+        )
+        node = _graph_node(tro)
+        perf = node["trov:hasPerformance"]
+        assert perf["pop:buildId"] == "populace-us-2024-9f1260b-20260611"
+        assert perf["pop:buildSha"] == "9f1260b"
+        hashes = _artifact_hashes(node)
+        assert (
+            SCHEMA_V1_RELEASE_MANIFEST_FIXTURE["artifacts"]["populace_us_2024"][
+                "sha256"
+            ]
+            in hashes
+        )
+        assert (
+            SCHEMA_V1_RELEASE_MANIFEST_FIXTURE["artifacts"]["calibration_diagnostics"][
+                "sha256"
+            ]
+            in hashes
+        )
+        locations = {
+            loc["trov:hasLocation"]
+            for loc in _locations(node)
+            if "trov:hasLocation" in loc
+        }
+        assert (
+            "https://huggingface.co/datasets/policyengine/populace-us/resolve/"
+            "abc123/populace_us_2024.h5"
+        ) in locations
+        assert (
+            "https://huggingface.co/datasets/policyengine/populace-diagnostics/"
+            "resolve/abc123/calibration_diagnostics.json"
+        ) in locations
 
 
 class TestGatesPassedDerivation:

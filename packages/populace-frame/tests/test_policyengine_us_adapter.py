@@ -75,6 +75,12 @@ class TestVariableMetadata:
     def test_variables_lists_inputs_not_outputs(self, adapter) -> None:
         names = adapter.variables()
         assert "employment_income" in names  # input
+        assert "partnership_income" in names
+        assert "s_corp_income" in names
+        assert "partnership_s_corp_income" in names
+        assert "in_nyc" not in names
+        assert "ssi" not in names  # formula-owned output
+        assert "spm_unit_capped_work_childcare_expenses" not in names
         assert "income_tax" not in names  # formula-owned output
 
 
@@ -134,6 +140,239 @@ class TestWriteDataset:
         path = tmp_path / "gated.h5"
         with pytest.raises(ValueError, match="employment_income"):
             gated.write_dataset(us_bundle, path, period=2024)
+        assert not path.exists()
+
+    def test_formula_owned_columns_block_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["ssi"] = [12_000.0, 0.0, 0.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "formula_blocked.h5"
+        with pytest.raises(ValueError, match="ssi"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_partnership_s_corp_inputs_round_trip(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        from policyengine_us.data import USSingleYearDataset
+
+        person = us_bundle.person.copy()
+        person["partnership_income"] = [1_500.0, 0.0, 400.0]
+        person["s_corp_income"] = [500.0, 0.0, 100.0]
+        person["partnership_s_corp_income"] = [2_000.0, 0.0, 500.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "partnership_s_corp_inputs.h5"
+        adapter.write_dataset(rebuilt, path, period=2024)
+        reloaded = USSingleYearDataset(file_path=str(path))
+        assert reloaded.person["partnership_income"].tolist() == [1_500.0, 0.0, 400.0]
+        assert reloaded.person["s_corp_income"].tolist() == [500.0, 0.0, 100.0]
+        assert reloaded.person["partnership_s_corp_income"].tolist() == [
+            2_000.0,
+            0.0,
+            500.0,
+        ]
+
+    def test_enum_domain_column_blocks_raw_source_codes(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["race"] = [0, 1, 10]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "enum_blocked.h5"
+        with pytest.raises(ValueError, match="enum-domain.*race"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_enum_domain_names_round_trip_for_true_input(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        from policyengine_us.data import USSingleYearDataset
+
+        household = us_bundle.table("household").copy()
+        household["tenure_type"] = ["RENTED", "OWNED_WITH_MORTGAGE"]
+        rebuilt = Frame(
+            {
+                name: (household if name == "household" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "enum_valid.h5"
+        adapter.write_dataset(rebuilt, path, period=2024)
+        reloaded = USSingleYearDataset(file_path=str(path))
+        assert reloaded.household["tenure_type"].tolist() == [
+            "RENTED",
+            "OWNED_WITH_MORTGAGE",
+        ]
+
+    def test_in_nyc_formula_owned_column_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        household = us_bundle.table("household").copy()
+        household["in_nyc"] = [False, True]
+        rebuilt = Frame(
+            {
+                name: (household if name == "household" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "formula_blocked.h5"
+        with pytest.raises(ValueError, match="in_nyc"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_spm_unit_formula_owned_column_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        spm_unit = us_bundle.table("spm_unit").copy()
+        spm_unit["spm_unit_capped_work_childcare_expenses"] = [3_000.0, 0.0]
+        rebuilt = Frame(
+            {
+                name: (spm_unit if name == "spm_unit" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "formula_blocked.h5"
+        with pytest.raises(ValueError, match="spm_unit_capped_work_childcare_expenses"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_contract_listed_formula_owned_columns_still_block_the_write(
+        self, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["ssi"] = [12_000.0, 0.0, 0.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+        adapter = PolicyEngineUSEngine(
+            contract=ExportContract(
+                required=(),
+                forbidden=(),
+                optional=(),
+                formula_owned_excluded=("ssi",),
+            )
+        )
+
+        path = tmp_path / "formula_blocked.h5"
+        with pytest.raises(ValueError, match="ssi"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_contract_formula_owned_exclusion_blocks_non_engine_column(
+        self, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["legacy_formula_output"] = [1.0, 0.0, 1.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+        adapter = PolicyEngineUSEngine(
+            contract=ExportContract(
+                required=(),
+                forbidden=(),
+                optional=(),
+                formula_owned_excluded=("legacy_formula_output",),
+            )
+        )
+
+        path = tmp_path / "contract_formula_blocked.h5"
+        with pytest.raises(ValueError, match="legacy_formula_output"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_future_formula_does_not_block_current_period_input(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        from policyengine_us.data import USSingleYearDataset
+
+        person = us_bundle.person.copy()
+        person["weeks_worked"] = [52, 26, 40]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "future_formula_input.h5"
+        adapter.write_dataset(rebuilt, path, period=2024)
+
+        reloaded = USSingleYearDataset(file_path=str(path))
+        assert reloaded.person["weeks_worked"].tolist() == [52, 26, 40]
+
+    def test_closed_contract_blocks_unexpected_columns(
+        self, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["internal_bookkeeping"] = [1.0, 0.0, 1.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+        gated = PolicyEngineUSEngine(
+            contract=ExportContract(
+                required=(),
+                forbidden=(),
+                optional=("age", "employment_income", "state_fips"),
+                formula_owned_excluded=(),
+                closed=True,
+            )
+        )
+
+        path = tmp_path / "closed.h5"
+        with pytest.raises(ValueError, match="internal_bookkeeping"):
+            gated.write_dataset(rebuilt, path, period=2024)
         assert not path.exists()
 
     def test_defaults_broadcast_onto_owning_entity(self, us_bundle, tmp_path) -> None:

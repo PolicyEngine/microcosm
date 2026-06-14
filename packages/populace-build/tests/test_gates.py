@@ -13,9 +13,12 @@ from populace.build import (
     GateReport,
     GateResult,
     aggregate_admin_gate,
+    enum_domain_gate,
+    formula_owned_export_gate,
     parity_gate,
     per_family_fit_gate,
     relative_error_loss,
+    source_coverage_gate,
     support_gate,
 )
 from populace.calibrate import TargetSpec
@@ -218,7 +221,7 @@ class TestExportedNonzeroGate:
         result = exported_nonzero_gate({"snap": 0.1, "net_worth": 0.0})
         assert not result.passed
         assert "net_worth" in result.failures[0]
-        assert "populate it or drop it" in result.failures[0]
+        assert "populate it or remove it upstream" in result.failures[0]
 
     def test_fully_populated_export_passes(self) -> None:
         from populace.build import exported_nonzero_gate
@@ -251,3 +254,119 @@ class TestExportedNonzeroGate:
         )
         assert result.passed
         assert result.details["unused_exemptions"] == ["gone_var"]
+
+
+class TestFormulaOwnedExportGate:
+    def test_formula_owned_column_fails_with_remedy_named(self) -> None:
+        result = formula_owned_export_gate(
+            ["person_id", "employment_income", "ssi"],
+            ["ssi", "income_tax"],
+            structural_columns=["person_id"],
+        )
+        assert not result.passed
+        assert result.failures == (
+            "ssi: formula-owned engine output exported as an input; "
+            "remove it upstream before export.",
+        )
+        assert result.details["offenders"] == ["ssi"]
+
+    def test_structural_overlap_is_exempted(self) -> None:
+        result = formula_owned_export_gate(
+            ["person_id", "employment_income"],
+            ["person_id", "income_tax"],
+            structural_columns=["person_id"],
+        )
+        assert result.passed
+        assert result.details["structural_exemptions"] == ["person_id"]
+
+
+class TestEnumDomainGate:
+    def test_valid_enum_names_pass(self) -> None:
+        result = enum_domain_gate(
+            {"race": ["WHITE", "BLACK", "HISPANIC", "OTHER"]},
+            {"race": ("WHITE", "BLACK", "HISPANIC", "OTHER")},
+        )
+        assert result.passed
+        assert result.details["columns_checked"] == 1
+
+    def test_raw_source_codes_fail_with_examples(self) -> None:
+        result = enum_domain_gate(
+            {"race": [0, 1, 10, 11]},
+            {"race": ("WHITE", "BLACK", "HISPANIC", "OTHER")},
+        )
+        assert not result.passed
+        assert result.failures and "race" in result.failures[0]
+        assert result.details["invalid_counts"] == {"race": 4}
+        assert "10" in result.details["invalid_examples"]["race"]
+
+    def test_enum_class_domains_are_supported(self) -> None:
+        import enum
+
+        class Race(enum.Enum):
+            WHITE = "white"
+            BLACK = "black"
+
+        result = enum_domain_gate({"race": [Race.WHITE, "BLACK"]}, {"race": Race})
+        assert result.passed
+
+
+class TestSourceCoverageGate:
+    def test_hard_targets_must_be_active_or_reviewed(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        result = source_coverage_gate(coverage)
+        assert not result.passed
+        assert "census-pep-state-age-sex" in result.failures[0]
+
+    def test_reviewed_hard_target_exclusion_passes_and_is_recorded(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        result = source_coverage_gate(
+            coverage,
+            reviewed_exclusions={
+                "census-pep-state-age-sex": "state-age targets not in this smoke build"
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "census-pep-state-age-sex": "state-age targets not in this smoke build"
+        }
+
+    def test_validation_only_family_cannot_be_a_hard_target(self) -> None:
+        coverage = (
+            {
+                "family_id": "census_cps_spm",
+                "role": "validation_only",
+                "package_aliases": ("census-cps-spm-2024",),
+            },
+        )
+        result = source_coverage_gate(
+            coverage,
+            active_target_families=("census_cps_spm",),
+        )
+        assert not result.passed
+        assert "validation-only" in result.failures[0]
+
+    def test_source_gaps_are_reported_without_failing(self) -> None:
+        coverage = (
+            {
+                "family_id": "usda_wic",
+                "role": "source_gap",
+                "missing_source_packages": ("USDA FNS WIC program data",),
+            },
+        )
+        result = source_coverage_gate(coverage)
+        assert result.passed
+        assert result.details["source_gaps"] == {
+            "usda_wic": ("USDA FNS WIC program data",)
+        }

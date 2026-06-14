@@ -74,6 +74,11 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
+from populace.calibrate.diagnostics import (  # noqa: E402 - after the compat gate
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    diagnostics_payload,
+    write_calibration_diagnostics,
+)
 from populace.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
     SkippedTarget,
@@ -102,6 +107,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AGGREGATIONS",
+    "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CONSERVE_MASS",
     "FREE_MASS",
     "CalibrationProblem",
@@ -114,7 +120,9 @@ __all__ = [
     "TargetSpec",
     "build_constraint_matrix",
     "calibrate",
+    "diagnostics_payload",
     "relative_error_loss",
     "specs_from_pe_surface",
+    "write_calibration_diagnostics",
     "__version__",
 ]

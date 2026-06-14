@@ -21,6 +21,12 @@ country engine (an optional extra). It therefore carries no kernel-compat gate â
 there is no kernel in its dependency closure to gate against.
 """
 
+from populace.data.contract import (
+    RELEASE_MANIFEST_SCHEMA_VERSION,
+    REQUIRED_RELEASE_FILES,
+    ReleaseContractError,
+    validate_release_dir,
+)
 from populace.data.loader import (
     available,
     download,
@@ -29,6 +35,14 @@ from populace.data.loader import (
     resolve,
 )
 from populace.data.registry import REGISTRY, DatasetSpec, register
+from populace.data.release import (
+    LATEST_POINTER_PATH,
+    LATEST_POINTER_SCHEMA_VERSION,
+    LatestPointer,
+    latest_pointer_payload,
+    latest_release,
+    publish_release,
+)
 
 __all__ = [
     "load",
@@ -39,6 +53,16 @@ __all__ = [
     "DatasetSpec",
     "REGISTRY",
     "register",
+    "RELEASE_MANIFEST_SCHEMA_VERSION",
+    "REQUIRED_RELEASE_FILES",
+    "ReleaseContractError",
+    "validate_release_dir",
+    "LATEST_POINTER_PATH",
+    "LATEST_POINTER_SCHEMA_VERSION",
+    "LatestPointer",
+    "latest_pointer_payload",
+    "latest_release",
+    "publish_release",
 ]
 
 __version__ = "0.1.0"

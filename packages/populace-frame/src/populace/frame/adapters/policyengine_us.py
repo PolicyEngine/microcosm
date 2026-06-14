@@ -54,17 +54,40 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 
 
-def _has_formula(variable: Any) -> bool:
+def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
     """Return whether a PolicyEngine variable is computed by a formula.
 
-    Input variables (read from data, what a pool must produce) have no
-    formula; formula-owned outputs do. PolicyEngine exposes formulas either as
-    a ``formula`` attribute or a ``formulas`` mapping keyed by start date.
+    Input variables (read from data, what a pool must produce) are plain source
+    variables. Formula-owned outputs may be backed by a direct formula or a
+    formula mapping keyed by start date.
     """
+    if period is not None:
+        return variable.get_formula(str(period)) is not None
     if getattr(variable, "formula", None) is not None:
         return True
     formulas = getattr(variable, "formulas", None)
     return bool(formulas)
+
+
+def _enum_domain(variable: Any) -> tuple[str, ...]:
+    possible_values = getattr(variable, "possible_values", None)
+    members = getattr(possible_values, "__members__", None)
+    if isinstance(members, Mapping):
+        return tuple(str(name) for name in members)
+    return ()
+
+
+def _stored_enum_name(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (float, np.floating)) and np.isnan(value):
+        return None
+    if isinstance(value, bytes):
+        return value.decode()
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
+    return str(value)
 
 
 class PolicyEngineUSEngine:
@@ -72,7 +95,8 @@ class PolicyEngineUSEngine:
 
     Args:
         contract: Column-parity contract for :meth:`write_dataset` exports.
-            ``None`` means an empty contract (no required/forbidden checks).
+            ``None`` means an empty contract (no required/forbidden/closed
+            surface checks).
         defaults: Scalar defaults broadcast onto the owning entity table for
             contract-required columns no bundle table provides.
 
@@ -129,7 +153,7 @@ class PolicyEngineUSEngine:
         return sorted(
             name
             for name, variable in system_variables.items()
-            if not _has_formula(variable)
+            if not _is_engine_computed(variable)
         )
 
     def _entity_of(self, name: str) -> str:
@@ -204,11 +228,12 @@ class PolicyEngineUSEngine:
     ) -> None:
         """Write the bundle as a ``USSingleYearDataset`` HDF5 file.
 
-        Applies the export gate: forbidden and formula-owned columns are
-        dropped, defaults are broadcast onto the owning entity table for
-        required columns no table provides, and a dataset with missing
-        required columns is never written. After writing, the dataset is
-        reloaded and every persisted column verified (round-trip check).
+        Applies the export gate: forbidden and formula-owned columns block the
+        export, defaults are broadcast onto the owning entity table for
+        required columns no table provides, closed contracts reject unexpected
+        non-structural columns, and a dataset with violations is never
+        written. After writing, the dataset is reloaded and every persisted
+        column verified (round-trip check).
 
         Args:
             bundle: A US-schema bundle.
@@ -218,25 +243,14 @@ class PolicyEngineUSEngine:
         Raises:
             ImportError: If ``policyengine_us`` is not installed.
             ValueError: If ``path`` does not end in ``.h5``, the contract is
-                violated (the message lists the missing/forbidden columns),
-                or the round-trip verification fails.
+                violated (the message lists missing/forbidden/formula-owned/
+                unexpected columns), or the round-trip verification fails.
         """
         output_path = Path(path)
         if output_path.suffix != ".h5":
             raise ValueError(f"path must end with '.h5', got {output_path.name!r}.")
         contract = self._contract
         tables = self._engine_tables(bundle)
-
-        forbidden = set(contract.forbidden)
-        drop_on_sight = forbidden | set(contract.formula_owned_excluded)
-        dropped: set[str] = set()
-        forbidden_present: set[str] = set()
-        for name, frame in tables.items():
-            present_drops = drop_on_sight.intersection(frame.columns)
-            if present_drops:
-                tables[name] = frame.drop(columns=sorted(present_drops))
-            dropped.update(present_drops)
-            forbidden_present.update(forbidden.intersection(present_drops))
 
         present_columns: set[str] = set()
         for frame in tables.values():
@@ -256,11 +270,36 @@ class PolicyEngineUSEngine:
                     continue
             missing_required.append(column)
 
-        if forbidden_present or missing_required:
+        forbidden_present = set(contract.forbidden).intersection(present_columns)
+        formula_owned_present = self._engine_computed_columns(
+            tables, period=period
+        ) | set(contract.formula_owned_excluded).intersection(present_columns)
+        unexpected: set[str] = set()
+        if contract.closed:
+            allowed = (
+                set(contract.required)
+                | set(contract.optional)
+                | self._structural_columns()
+                | {_HOUSEHOLD_WEIGHT_COLUMN}
+            )
+            unexpected = present_columns - allowed
+
+        enum_domain_failures = self._enum_domain_failures(tables)
+
+        if (
+            forbidden_present
+            or missing_required
+            or formula_owned_present
+            or unexpected
+            or enum_domain_failures
+        ):
             raise ValueError(
                 "Export contract violated; nothing was written. Missing "
                 f"required column(s): {sorted(missing_required)}; forbidden "
-                f"column(s) present: {sorted(forbidden_present)}."
+                f"column(s) present: {sorted(forbidden_present)}; formula-owned "
+                f"column(s) present: {sorted(formula_owned_present)}; unexpected column(s) "
+                f"present: {sorted(unexpected)}; enum-domain violation(s): "
+                f"{enum_domain_failures}."
             )
 
         self._write_and_verify(tables, period=int(period), output_path=output_path)
@@ -336,6 +375,69 @@ class PolicyEngineUSEngine:
         if column in variables:
             return variables[column].entity.key
         return _PERSON_TABLE
+
+    def _engine_computed_columns(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        *,
+        period: int | str,
+    ) -> set[str]:
+        """PolicyEngine-computed columns present in the pending export.
+
+        Formula-owned columns cannot be allowed through implicitly: if a
+        source table carries a PolicyEngine output name such as ``ssi``,
+        keeping it in the HDF5 file turns that formula output into an input
+        and masks reforms. Such columns must be removed upstream before the
+        writer is called, after checking aggregate deltas.
+        """
+        variables = self._tax_benefit_system().variables
+        present = {column for frame in tables.values() for column in frame.columns}
+        structural = self._structural_columns()
+        return {
+            column
+            for column in present
+            if column not in structural
+            and column in variables
+            and _is_engine_computed(variables[column], period=period)
+        }
+
+    def _enum_domain_failures(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+    ) -> list[str]:
+        """Return enum input columns carrying values outside engine domains."""
+        variables = self._tax_benefit_system().variables
+        structural = self._structural_columns()
+        failures: list[str] = []
+        for entity, frame in tables.items():
+            for column in frame.columns:
+                if column in structural or column not in variables:
+                    continue
+                allowed = set(_enum_domain(variables[column]))
+                if not allowed:
+                    continue
+                invalid: list[str] = []
+                for value in frame[column].to_numpy(dtype=object):
+                    name = _stored_enum_name(value)
+                    if name not in allowed:
+                        invalid.append("<missing>" if name is None else name)
+                if invalid:
+                    failures.append(
+                        f"{entity}.{column}: {len(invalid)}/{len(frame)} value(s) "
+                        "outside enum domain; invalid examples "
+                        f"{sorted(set(invalid))[:8]}; allowed values "
+                        f"{sorted(allowed)[:8]}"
+                    )
+        return failures
+
+    def _structural_columns(self) -> set[str]:
+        """Entity ids and memberships required to reconstruct the frame."""
+        schema = self.entity_schema()
+        return {schema.person_id_column} | {
+            column
+            for group in schema.group_entities
+            for column in (schema.id_column(group), schema.membership_column(group))
+        }
 
     def _write_and_verify(
         self,

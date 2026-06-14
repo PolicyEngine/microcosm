@@ -11,7 +11,7 @@ dependencies = [
 
 [project.optional-dependencies]
 us = ["microunit>=0.1.0"]
-policyengine = ["policyengine-us>=1.0", "microunit>=0.1.0"]
+policyengine = ["policyengine-us>=1.729,<2", "microunit>=0.1.0"]
 
 [dependency-groups]
 dev = [

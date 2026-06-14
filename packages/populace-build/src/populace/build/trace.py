@@ -525,20 +525,15 @@ def tro_from_release_manifest(
 ) -> dict:
     """Convert a populace release manifest into a TRACE TRO.
 
-    Maps the real field names of
-    ``packages/populace-data/build/us/release_manifest.json``:
+    Maps the release manifest fields:
 
-    - ``build_id`` / ``builder`` / ``build_sha`` / ``build_date`` ->
-      identity on the build performance;
-    - ``dataset`` and ``calibration`` (each ``{filename, sha256}``) -> the two
-      output artifacts, located at their canonical Hugging Face URLs;
+    - schema-v1 ``build`` / ``artifacts`` fields, or the earlier top-level
+      ``build_id`` / ``dataset`` / ``calibration`` smoke-manifest fields;
+    - output artifacts, located at their canonical Hugging Face URLs;
     - the whole ``gates`` block -> the ``gate_report`` payload, with
       ``pop:gatesPassed``/``pop:gateNames`` derived from its keys;
-    - ``construction`` -> the build-config payload (the manifest's only
-      configuration record);
-    - ``score_vs_enhanced_cps`` -> the stage-records payload slot (the
-      manifest has no per-stage records, so the scoring summary stands in as
-      the build's recorded evidence trail).
+    - ``construction`` -> the build-config payload;
+    - optional ``stage_records`` -> the stage-records payload slot.
 
     Restricted inputs (the IRS PUF, Fed SCF, Census SIPP) are not in the
     release manifest — pass them via ``input_artifacts`` to bind them too.
@@ -551,41 +546,72 @@ def tro_from_release_manifest(
     Raises:
         ValueError: If a declared output artifact lacks a ``sha256``.
     """
+    build_info = manifest.get("build")
+    if isinstance(build_info, Mapping):
+        build_id = str(build_info.get("build_id", ""))
+        builder = str(build_info.get("builder", manifest.get("builder", "populace")))
+        build_sha = str(build_info.get("build_sha", manifest.get("build_sha", "")))
+        build_date = str(build_info.get("build_date", manifest.get("build_date", "")))
+    else:
+        build_id = str(manifest["build_id"])
+        builder = str(manifest.get("builder", "populace"))
+        build_sha = str(manifest.get("build_sha", ""))
+        build_date = str(manifest.get("build_date", ""))
+
     outputs: list[dict[str, Any]] = []
-    dataset = manifest.get("dataset")
-    if isinstance(dataset, Mapping):
-        outputs.append(
-            _output_from_manifest_artifact(
-                dataset, spec_id="dataset", hf_repo=hf_repo, hf_revision=hf_revision
+    artifacts = manifest.get("artifacts")
+    if isinstance(artifacts, Mapping):
+        for artifact_id, artifact in artifacts.items():
+            if not isinstance(artifact, Mapping):
+                continue
+            outputs.append(
+                _output_from_manifest_artifact(
+                    artifact,
+                    spec_id=str(artifact_id),
+                    hf_repo=hf_repo,
+                    hf_revision=hf_revision,
+                )
             )
-        )
-    calibration = manifest.get("calibration")
-    if isinstance(calibration, Mapping):
-        outputs.append(
-            _output_from_manifest_artifact(
-                calibration,
-                spec_id="calibration",
-                hf_repo=hf_repo,
-                hf_revision=hf_revision,
+    else:
+        dataset = manifest.get("dataset")
+        if isinstance(dataset, Mapping):
+            outputs.append(
+                _output_from_manifest_artifact(
+                    dataset,
+                    spec_id="dataset",
+                    hf_repo=hf_repo,
+                    hf_revision=hf_revision,
+                )
             )
-        )
+        calibration = manifest.get("calibration")
+        if isinstance(calibration, Mapping):
+            outputs.append(
+                _output_from_manifest_artifact(
+                    calibration,
+                    spec_id="calibration",
+                    hf_repo=hf_repo,
+                    hf_revision=hf_revision,
+                )
+            )
 
     config_manifest = (
         {"construction": manifest["construction"]}
         if "construction" in manifest
         else None
     )
+    stage_records_value = manifest.get("stage_records")
     stage_records = (
-        [{"score_vs_enhanced_cps": manifest["score_vs_enhanced_cps"]}]
-        if "score_vs_enhanced_cps" in manifest
+        list(stage_records_value)
+        if isinstance(stage_records_value, Sequence)
+        and not isinstance(stage_records_value, (str, bytes))
         else None
     )
 
     return build_build_tro(
-        build_id=str(manifest["build_id"]),
-        builder=str(manifest.get("builder", "populace")),
-        build_sha=str(manifest.get("build_sha", "")),
-        build_date=str(manifest.get("build_date", "")),
+        build_id=build_id,
+        builder=builder,
+        build_sha=build_sha,
+        build_date=build_date,
         config_manifest=config_manifest,
         stage_records=stage_records,
         gate_manifest=manifest.get("gates"),
@@ -602,7 +628,12 @@ def _created_at_from_manifest(manifest: Mapping[str, Any]) -> str | None:
     Uses the build date as-is (it is a calendar date, not an instant — the
     manifest records no finer timestamp).
     """
-    build_date = manifest.get("build_date")
+    build_info = manifest.get("build")
+    build_date = (
+        build_info.get("build_date")
+        if isinstance(build_info, Mapping)
+        else manifest.get("build_date")
+    )
     return str(build_date) if build_date else None
 
 
@@ -613,19 +644,24 @@ def _output_from_manifest_artifact(
     hf_repo: str,
     hf_revision: str,
 ) -> dict[str, Any]:
-    """Build an output-artifact mapping from a manifest ``{filename, sha256}``.
+    """Build an output-artifact mapping from a manifest artifact entry.
 
     Locates the file at its canonical Hugging Face dataset URL. The sha256
     is carried through as-is; :func:`build_build_tro` raises when it is
     missing so the failure is legible.
     """
-    filename = artifact.get("filename")
+    filename = artifact.get("filename") or artifact.get("path")
+    artifact_repo = artifact.get("repo_id")
+    if not isinstance(artifact_repo, str) or not artifact_repo:
+        artifact_repo = hf_repo
     return {
         "id": spec_id,
         "name": filename,
         "sha256": artifact.get("sha256"),
         "location": (
-            _huggingface_location(filename, repo=hf_repo, revision=hf_revision)
+            _huggingface_location(
+                filename, repo=artifact_repo, revision=hf_revision
+            )
             if filename
             else None
         ),
