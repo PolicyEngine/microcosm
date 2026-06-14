@@ -1,24 +1,31 @@
-"""US fiscal target-profile requirements.
+"""US fiscal target-profile requirements and declared target facts.
 
-These are release-gate requirements for the US target registry, not a scoring
-harness. In particular, JCT tax-expenditure rows must be computed from simple
-neutralization reforms: run the baseline income tax, neutralize one provision,
-run income tax again, and use ``reform_income_tax - baseline_income_tax`` as
-the per-household calibration row. This avoids treating tax expenditures as
-ordinary aggregate columns.
+JCT tax-expenditure rows must be computed from simple neutralization reforms:
+run baseline income tax, neutralize one provision, run income tax again, and
+use ``reform_income_tax - baseline_income_tax`` as the per-household
+calibration row. This avoids treating tax expenditures as ordinary aggregate
+columns.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from importlib.resources import files
 from typing import Literal
 
 from populace.build.gates import TargetCoverageRequirement
+from populace.calibrate import TargetRegistry, TargetSpec
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
+    "US_FISCAL_TARGET_REGISTRY",
+    "US_FISCAL_TARGET_SPECS",
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
+    "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
+    "US_SOI_FISCAL_TARGET_SPECS",
+    "US_STATE_INCOME_TAX_TARGET_SPECS",
     "SimpleTaxExpenditureReform",
 ]
 
@@ -38,18 +45,44 @@ class SimpleTaxExpenditureReform:
 
     target_name: str
     neutralized_variable: str
+    value: float
     source: str
+    measure: str
+    period: int | str
     kind: TaxExpenditureReformKind = "neutralize_variable"
     output_variable: str = "income_tax"
     matrix_row: TaxExpenditureMatrixRow = "reform_minus_baseline_income_tax"
+
+    @classmethod
+    def from_target_spec(cls, spec: TargetSpec) -> SimpleTaxExpenditureReform:
+        """Build the reform contract from a declared JCT target row."""
+        return cls(
+            target_name=spec.name,
+            neutralized_variable=spec.metadata.get("neutralized_variable", ""),
+            value=spec.value,
+            source=spec.source,
+            measure=spec.measure or "",
+            period=spec.period,
+            kind=spec.metadata.get("kind", ""),
+            output_variable=spec.metadata.get("output_variable", ""),
+            matrix_row=spec.metadata.get("matrix_row", ""),
+        )
 
     def __post_init__(self) -> None:
         if not self.target_name:
             raise ValueError("target_name is required.")
         if not self.neutralized_variable:
             raise ValueError(f"{self.target_name}: neutralized_variable is required.")
+        if not self.value > 0:
+            raise ValueError(f"{self.target_name}: value must be positive.")
         if not self.source:
             raise ValueError(f"{self.target_name}: source is required.")
+        if self.measure != self.target_name:
+            raise ValueError(
+                f"{self.target_name}: JCT targets must use a precomputed "
+                "measure column named after the target row, not an ordinary "
+                "income_tax column."
+            )
         if self.kind != "neutralize_variable":
             raise ValueError(
                 f"{self.target_name}: JCT targets must use a simple "
@@ -71,6 +104,7 @@ class SimpleTaxExpenditureReform:
             requirement_id=f"jct_tax_expenditure:{self.neutralized_variable}",
             label=f"JCT tax expenditure for {self.neutralized_variable}",
             accepted_names=(self.target_name,),
+            required_measures=(self.target_name,),
             required_metadata=(
                 ("kind", self.kind),
                 ("output_variable", self.output_variable),
@@ -84,32 +118,27 @@ class SimpleTaxExpenditureReform:
         )
 
 
-US_JCT_TAX_EXPENDITURE_REFORMS: tuple[SimpleTaxExpenditureReform, ...] = (
-    SimpleTaxExpenditureReform(
-        target_name="nation/jct/salt_deduction_expenditure",
-        neutralized_variable="salt_deduction",
-        source="Joint Committee on Taxation tax expenditure estimate",
-    ),
-    SimpleTaxExpenditureReform(
-        target_name="nation/jct/medical_expense_deduction_expenditure",
-        neutralized_variable="medical_expense_deduction",
-        source="Joint Committee on Taxation tax expenditure estimate",
-    ),
-    SimpleTaxExpenditureReform(
-        target_name="nation/jct/charitable_deduction_expenditure",
-        neutralized_variable="charitable_deduction",
-        source="Joint Committee on Taxation tax expenditure estimate",
-    ),
-    SimpleTaxExpenditureReform(
-        target_name="nation/jct/interest_deduction_expenditure",
-        neutralized_variable="interest_deduction",
-        source="Joint Committee on Taxation tax expenditure estimate",
-    ),
-    SimpleTaxExpenditureReform(
-        target_name="nation/jct/qualified_business_income_deduction_expenditure",
-        neutralized_variable="qualified_business_income_deduction",
-        source="Joint Committee on Taxation tax expenditure estimate",
-    ),
+def _load_us_fiscal_target_specs() -> tuple[TargetSpec, ...]:
+    payload = json.loads(files(__package__).joinpath("fiscal_targets.json").read_text())
+    if payload.get("country") != "us":
+        raise ValueError("US fiscal target manifest must declare country='us'.")
+    return tuple(TargetSpec(**raw) for raw in payload["target_specs"])
+
+
+US_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = _load_us_fiscal_target_specs()
+US_FISCAL_TARGET_REGISTRY = TargetRegistry(US_FISCAL_TARGET_SPECS, country="us")
+US_JCT_TAX_EXPENDITURE_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
+    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "jct"
+)
+US_JCT_TAX_EXPENDITURE_REFORMS: tuple[SimpleTaxExpenditureReform, ...] = tuple(
+    SimpleTaxExpenditureReform.from_target_spec(spec)
+    for spec in US_JCT_TAX_EXPENDITURE_TARGET_SPECS
+)
+US_STATE_INCOME_TAX_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
+    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "state_income_tax"
+)
+US_SOI_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
+    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "irs_soi"
 )
 
 US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (
@@ -117,6 +146,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         requirement_id="federal_income_tax_total",
         label="Federal individual income tax total",
         accepted_names=(
+            "nation/cbo/individual_income_tax",
             "nation/treasury/individual_income_tax",
             "nation/treasury/individual income tax",
             "nation/irs/income_tax_total",
@@ -124,6 +154,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
             "nation/irs/total income tax",
         ),
         accepted_name_prefixes=(
+            "nation/cbo/individual_income_tax/",
             "nation/treasury/individual_income_tax/",
             "nation/treasury/individual income tax/",
             "nation/irs/income_tax_total/",
@@ -144,7 +175,10 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
     TargetCoverageRequirement(
         requirement_id="irs_wages_distribution",
         label="SOI wages by AGI bracket",
-        accepted_name_substrings=("/irs/salaries and wages/",),
+        accepted_name_substrings=(
+            "/irs/salaries and wages/",
+            "/irs/employment income/",
+        ),
         min_matches=5,
     ),
     TargetCoverageRequirement(
@@ -192,15 +226,10 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
     TargetCoverageRequirement(
         requirement_id="state_income_tax",
         label="State individual income tax collections",
-        accepted_names=("state_income_tax",),
-        accepted_name_substrings=(
-            "/state_income_tax",
-            "/state income tax",
-            "/individual_income_tax",
-            "/state individual income tax",
-        ),
-        accepted_measures=("state_income_tax",),
-        min_matches=50,
+        accepted_name_prefixes=("state/",),
+        accepted_families=("state_income_tax",),
+        required_metadata=(("target_role", "state_income_tax"),),
+        min_matches=51,
     ),
     *(spec.coverage_requirement() for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
 )

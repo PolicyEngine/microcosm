@@ -2,8 +2,13 @@ from populace.build import nonnegative_columns_gate, target_profile_coverage_gat
 from populace.build.us import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_REGISTRY,
+    US_FISCAL_TARGET_SPECS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    US_JCT_TAX_EXPENDITURE_TARGET_SPECS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
+    US_SOI_FISCAL_TARGET_SPECS,
+    US_STATE_INCOME_TAX_TARGET_SPECS,
     SimpleTaxExpenditureReform,
 )
 from populace.calibrate import TargetSpec
@@ -13,16 +18,106 @@ def test_jct_tax_expenditure_specs_are_simple_income_tax_reforms() -> None:
     assert len(US_JCT_TAX_EXPENDITURE_REFORMS) >= 5
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         assert isinstance(spec, SimpleTaxExpenditureReform)
+        assert spec.value > 0
+        assert spec.measure == spec.target_name
         assert spec.kind == "neutralize_variable"
         assert spec.output_variable == "income_tax"
         assert spec.matrix_row == "reform_minus_baseline_income_tax"
         assert spec.neutralized_variable
 
 
+def test_jct_target_specs_keep_reform_contract_and_values() -> None:
+    by_variable = {
+        spec.metadata["neutralized_variable"]: spec
+        for spec in US_JCT_TAX_EXPENDITURE_TARGET_SPECS
+    }
+    assert set(by_variable) == {
+        "salt_deduction",
+        "medical_expense_deduction",
+        "charitable_deduction",
+        "interest_deduction",
+        "qualified_business_income_deduction",
+    }
+    assert by_variable["salt_deduction"].value == 21.247e9
+    assert by_variable["charitable_deduction"].value == 65.301e9
+    for target in by_variable.values():
+        assert target.measure == target.name
+        assert target.metadata["kind"] == "neutralize_variable"
+        assert target.metadata["output_variable"] == "income_tax"
+        assert target.metadata["matrix_row"] == "reform_minus_baseline_income_tax"
+        assert (
+            target.metadata["measure_construction"]
+            == "income_tax(reform)-income_tax(baseline)"
+        )
+
+
 def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         result = target_profile_coverage_gate([spec], [spec.coverage_requirement()])
         assert result.passed
+
+
+def test_us_fiscal_target_specs_are_declared_registry() -> None:
+    assert US_FISCAL_TARGET_REGISTRY.country == "us"
+    assert len(US_FISCAL_TARGET_REGISTRY) == len(US_FISCAL_TARGET_SPECS)
+    assert len(US_FISCAL_TARGET_SPECS) >= 450
+    assert set(US_FISCAL_TARGET_REGISTRY.families()) == {
+        "cbo",
+        "irs_soi",
+        "jct",
+        "state_income_tax",
+    }
+
+
+def test_us_fiscal_target_specs_pass_issue_40_coverage_gate() -> None:
+    result = target_profile_coverage_gate(
+        US_FISCAL_TARGET_SPECS,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert result.passed
+
+
+def test_total_income_tax_target_is_not_positive_receipts_surrogate() -> None:
+    income_tax = next(
+        spec
+        for spec in US_FISCAL_TARGET_SPECS
+        if spec.name == "nation/cbo/individual_income_tax"
+    )
+    assert income_tax.measure == "income_tax"
+    assert income_tax.value == 2_426_067_000_000
+    assert income_tax.metadata["target_role"] == "federal_income_tax_total"
+
+
+def test_state_income_tax_targets_cover_states_and_dc() -> None:
+    assert len(US_STATE_INCOME_TAX_TARGET_SPECS) == 51
+    by_state = {
+        spec.metadata["state"]: spec for spec in US_STATE_INCOME_TAX_TARGET_SPECS
+    }
+    assert by_state["CA"].value == 115_845_000_000
+    assert by_state["NY"].value == 63_247_000_000
+    assert by_state["DC"].value == 3_456_000_000
+    for state in ("AK", "FL", "NV", "SD", "TX", "WA", "WY", "NH", "TN"):
+        assert by_state[state].value == 0
+    for spec in US_STATE_INCOME_TAX_TARGET_SPECS:
+        assert spec.measure == spec.name
+        assert spec.metadata["target_role"] == "state_income_tax"
+
+
+def test_soi_fiscal_targets_restore_income_source_surface() -> None:
+    assert len(US_SOI_FISCAL_TARGET_SPECS) >= 400
+    names = {spec.name for spec in US_SOI_FISCAL_TARGET_SPECS}
+    assert any("/irs/adjusted gross income/total/" in name for name in names)
+    assert any("/irs/employment income/total/" in name for name in names)
+    assert any("/irs/capital gains gross/total/" in name for name in names)
+    assert any("/irs/partnership and s corp income/total/" in name for name in names)
+    assert any("/irs/ordinary dividends/total/" in name for name in names)
+    assert any("/irs/taxable interest income/total/" in name for name in names)
+    assert any("/irs/total pension income/total/" in name for name in names)
+    assert any("/irs/total social security/total/" in name for name in names)
+    for spec in US_SOI_FISCAL_TARGET_SPECS:
+        assert spec.measure == spec.name
+        assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+        assert spec.metadata["taxable_only"] == "true"
 
 
 def test_us_fiscal_requirements_include_tax_and_agi_controls() -> None:
@@ -80,7 +175,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
             for i in range(20)
         ],
         *complete_income_source_rows(),
-        *[f"state/{i:02d}/state_income_tax" for i in range(50)],
+        *complete_state_income_tax_rows(51),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
@@ -102,7 +197,7 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
             for i in range(20)
         ],
         *complete_income_source_rows(),
-        *[f"state/{i:02d}/state_income_tax" for i in range(50)],
+        *complete_state_income_tax_rows(51),
         *(spec.target_name for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
     ]
     result = target_profile_coverage_gate(
@@ -115,6 +210,68 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
             f"jct_tax_expenditure:{spec.neutralized_variable}" in failure
             for failure in result.failures
         )
+
+
+def test_jct_target_with_income_tax_measure_fails_even_with_metadata() -> None:
+    targets = [
+        {"name": "nation/treasury/individual_income_tax", "measure": "income_tax"},
+        *[
+            f"nation/irs/adjusted gross income/total/AGI in {i}/taxable/All"
+            for i in range(20)
+        ],
+        *complete_income_source_rows(),
+        *complete_state_income_tax_rows(51),
+        *[
+            TargetSpec(
+                name=spec.target_name,
+                entity="household",
+                measure="income_tax",
+                value=spec.value,
+                source=spec.source,
+                family="jct",
+                metadata={
+                    "kind": spec.kind,
+                    "output_variable": spec.output_variable,
+                    "matrix_row": spec.matrix_row,
+                    "neutralized_variable": spec.neutralized_variable,
+                    "measure_construction": ("income_tax(reform)-income_tax(baseline)"),
+                },
+            )
+            for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+        ],
+    ]
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert not result.passed
+    for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
+        assert any(
+            f"jct_tax_expenditure:{spec.neutralized_variable}" in failure
+            for failure in result.failures
+        )
+
+
+def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
+    targets = [
+        {"name": "nation/cbo/individual_income_tax", "measure": "income_tax"},
+        *[
+            f"nation/irs/adjusted gross income/total/AGI in {i}/taxable/All"
+            for i in range(20)
+        ],
+        *complete_income_source_rows(),
+        *complete_state_income_tax_rows(49),
+        *complete_jct_rows(),
+    ]
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert not result.passed
+    assert result.failures == (
+        "state_income_tax: target profile has 49 match(es), needs 51 for "
+        "State individual income tax collections.",
+    )
 
 
 def complete_income_source_rows() -> list[str]:
@@ -135,13 +292,25 @@ def complete_income_source_rows() -> list[str]:
     ]
 
 
+def complete_state_income_tax_rows(count: int) -> list[dict[str, object]]:
+    return [
+        {
+            "name": f"state/{i:02d}/state_income_tax",
+            "measure": f"state/{i:02d}/state_income_tax",
+            "family": "state_income_tax",
+            "metadata": {"target_role": "state_income_tax"},
+        }
+        for i in range(count)
+    ]
+
+
 def complete_jct_rows() -> list[TargetSpec]:
     return [
         TargetSpec(
             name=spec.target_name,
             entity="household",
-            measure="income_tax_delta",
-            value=1.0,
+            measure=spec.target_name,
+            value=spec.value,
             source=spec.source,
             family="jct",
             metadata={
@@ -149,6 +318,7 @@ def complete_jct_rows() -> list[TargetSpec]:
                 "output_variable": spec.output_variable,
                 "matrix_row": spec.matrix_row,
                 "neutralized_variable": spec.neutralized_variable,
+                "measure_construction": ("income_tax(reform)-income_tax(baseline)"),
             },
         )
         for spec in US_JCT_TAX_EXPENDITURE_REFORMS
@@ -163,7 +333,7 @@ def test_complete_synthetic_fiscal_surface_passes() -> None:
             for i in range(20)
         ],
         *complete_income_source_rows(),
-        *[f"state/{i:02d}/state_income_tax" for i in range(50)],
+        *complete_state_income_tax_rows(51),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
