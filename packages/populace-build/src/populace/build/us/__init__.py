@@ -24,9 +24,24 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from populace.build.plan import DonorSpec, Stage, StagePlan
+from populace.build.us.fiscal_targets import (
+    US_FISCAL_MACRO_REALISM_BANDS,
+    US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_JCT_TAX_EXPENDITURE_REFORMS,
+    SimpleTaxExpenditureReform,
+)
 from populace.frame import Frame
 
-__all__ = ["BuildConfig", "US_DONORS", "US_STAGE_NAMES", "us_plan"]
+__all__ = [
+    "BuildConfig",
+    "SimpleTaxExpenditureReform",
+    "US_DONORS",
+    "US_FISCAL_MACRO_REALISM_BANDS",
+    "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
+    "US_JCT_TAX_EXPENDITURE_REFORMS",
+    "US_STAGE_NAMES",
+    "us_plan",
+]
 
 
 @dataclass(frozen=True)

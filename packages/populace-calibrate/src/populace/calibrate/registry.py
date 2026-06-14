@@ -32,7 +32,7 @@ import hashlib
 import json
 import math
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from populace.calibrate.target import Target, TargetSet
@@ -71,6 +71,8 @@ class TargetSpec:
             — the sign guard.
         tolerance: Optional absolute hit tolerance, passed to the Target.
         notes: Free-text caveats.
+        metadata: Declarative target semantics consumed by release gates,
+            e.g. the simple-reform contract for JCT tax-expenditure rows.
 
     Raises:
         TypeError: If ``measure`` or ``filter`` is not a string (callables
@@ -93,6 +95,7 @@ class TargetSpec:
     signed: bool = False
     tolerance: float | None = None
     notes: str = ""
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Coerce numerics so the content hash is independent of authoring
@@ -103,6 +106,13 @@ class TargetSpec:
             object.__setattr__(self, "se", float(self.se))
         if self.tolerance is not None:
             object.__setattr__(self, "tolerance", float(self.tolerance))
+        if not isinstance(self.metadata, Mapping):
+            raise TypeError(
+                f"TargetSpec {self.name!r}: metadata must be a mapping from "
+                f"str to str, got {type(self.metadata).__name__}."
+            )
+        metadata = {str(key): str(value) for key, value in self.metadata.items()}
+        object.__setattr__(self, "metadata", metadata)
         if not self.name:
             raise ValueError("TargetSpec.name must be non-empty.")
         if not self.entity:
@@ -134,6 +144,14 @@ class TargetSpec:
                 "requires signed=True — declare the sign expectation "
                 "explicitly (the net-STCG lesson)."
             )
+        bad_metadata = sorted(
+            key for key, value in metadata.items() if not key or not value
+        )
+        if bad_metadata:
+            raise ValueError(
+                f"TargetSpec {self.name!r}: metadata keys and values must be "
+                f"non-empty strings; bad keys {bad_metadata}."
+            )
 
     @property
     def key(self) -> tuple[str, int | str]:
@@ -152,6 +170,7 @@ class TargetSpec:
             tolerance=self.tolerance,
             filter=self.filter,
             source=self.source,
+            metadata=self.metadata,
         )
 
 
