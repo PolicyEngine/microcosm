@@ -66,9 +66,7 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     assert payload["options"]["epochs"] == 120
     assert payload["options"]["seed"] == 0
 
-    income = next(
-        row for row in payload["targets"] if row["name"].startswith("income")
-    )
+    income = next(row for row in payload["targets"] if row["name"].startswith("income"))
     assert income["initial_estimate"] is not None
     assert income["final_estimate"] is not None
     assert income["within_tolerance"] is True  # tolerance was a whole truth wide

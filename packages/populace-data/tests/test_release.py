@@ -26,15 +26,33 @@ from populace.data.release import (
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 
 
+def _calibration_diagnostics() -> dict:
+    return {
+        "schema_version": 1,
+        "weight_entity": "household",
+        "options": {"epochs": 120},
+        "loss_trajectory": [1.0, 0.5],
+        "skipped": [],
+        "targets": [
+            {
+                "name": "population",
+                "target": 1.0,
+                "initial_estimate": 0.8,
+                "final_estimate": 1.0,
+                "relative_error": 0.0,
+                "within_tolerance": True,
+            }
+        ],
+    }
+
+
 class FakeHub:
     """Records uploads in order; serves downloads from what was uploaded."""
 
     def __init__(self) -> None:
         self.uploads: list[tuple[str, bytes]] = []
 
-    def upload_file(
-        self, *, path_or_fileobj, path_in_repo, repo_id, repo_type
-    ) -> None:
+    def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type) -> None:
         assert repo_type == "dataset"
         assert repo_id == "policyengine/populace-us"
         if isinstance(path_or_fileobj, bytes):
@@ -89,7 +107,9 @@ def release_dir(tmp_path: Path) -> Path:
             }
         )
     )
-    (directory / "sound_ecps_replacement_comparison.json").write_text("{}")
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
     return directory
 
 
@@ -126,10 +146,30 @@ def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> Non
     assert hub.uploads == []
 
 
-def test_extra_files_ride_along_before_the_pointer(
+def test_invalid_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
 ) -> None:
     (release_dir / "calibration_diagnostics.json").write_text("{}")
+    with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
+        publish_release(release_dir, "policyengine/populace-us", api=hub)
+    assert hub.uploads == []
+
+
+def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
+    hub: FakeHub, release_dir: Path
+) -> None:
+    (release_dir / "calibration_diagnostics.json").write_text(
+        '{"schema_version": 1, "targets": [], "loss_trajectory": [NaN], '
+        '"skipped": [], "options": {}}'
+    )
+    with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
+        publish_release(release_dir, "policyengine/populace-us", api=hub)
+    assert hub.uploads == []
+
+
+def test_extra_files_ride_along_before_the_pointer(
+    hub: FakeHub, release_dir: Path
+) -> None:
     publish_release(
         release_dir,
         "policyengine/populace-us",
@@ -143,18 +183,17 @@ def test_extra_files_ride_along_before_the_pointer(
 
 
 def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="calibration_diagnostics"):
+    with pytest.raises(FileNotFoundError, match="support_audit"):
         publish_release(
             release_dir,
             "policyengine/populace-us",
             api=hub,
-            extra_files=("calibration_diagnostics.json",),
+            extra_files=("support_audit.json",),
         )
+    assert hub.uploads == []
 
 
-def test_publish_then_resolve_round_trips(
-    hub: FakeHub, release_dir: Path
-) -> None:
+def test_publish_then_resolve_round_trips(hub: FakeHub, release_dir: Path) -> None:
     published = publish_release(
         release_dir,
         "policyengine/populace-us",
@@ -171,9 +210,7 @@ def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
     hub.uploads.append(
         (
             LATEST_POINTER_PATH,
-            json.dumps(
-                {"schema_version": LATEST_POINTER_SCHEMA_VERSION + 1}
-            ).encode(),
+            json.dumps({"schema_version": LATEST_POINTER_SCHEMA_VERSION + 1}).encode(),
         )
     )
     with pytest.raises(ValueError, match="Upgrade populace-data"):
@@ -188,4 +225,32 @@ def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
         )
     )
     with pytest.raises(ValueError, match="release_id"):
+        latest_release("policyengine/populace-us", api=hub)
+
+
+def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
+    hub.uploads.append(
+        (
+            LATEST_POINTER_PATH,
+            json.dumps(
+                {
+                    "schema_version": LATEST_POINTER_SCHEMA_VERSION,
+                    "release_id": RELEASE_ID,
+                    "paths": {"build_manifest": "releases/x/build_manifest.json"},
+                }
+            ).encode(),
+        )
+    )
+    with pytest.raises(ValueError, match="paths"):
+        latest_release("policyengine/populace-us", api=hub)
+
+
+def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
+    payload = latest_pointer_payload(RELEASE_ID)
+    payload["paths"]["build_manifest"] = (
+        f"releases/{RELEASE_ID}/calibration_diagnostics.json"
+    )
+    hub.uploads.append((LATEST_POINTER_PATH, json.dumps(payload).encode()))
+
+    with pytest.raises(ValueError, match="malformed=\\['build_manifest'\\]"):
         latest_release("policyengine/populace-us", api=hub)

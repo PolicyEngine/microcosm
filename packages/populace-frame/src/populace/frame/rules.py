@@ -7,7 +7,8 @@ imports a rules engine; the kernel and every operator talk to this protocol.
 
 :class:`ExportContract` is the frozen column-parity contract a dataset export
 is gated against: which columns it must contain, must not contain, may carry,
-and must leave to the engine's own formulas.
+must leave to the engine's own formulas, and whether the surface is closed to
+unexpected extras.
 """
 
 import json
@@ -105,19 +106,24 @@ class ExportContract:
     Attributes:
         required: Columns the export MUST contain. A missing required column
             fails the export gate.
-        forbidden: Columns the export MUST NOT contain. They are dropped on
-            sight and their presence fails the gate.
+        forbidden: Columns the export MUST NOT contain. Their presence fails
+            the export gate.
         optional: Bookkeeping columns that are neither required nor
             forbidden; an export passes them through untouched if present.
         formula_owned_excluded: Variables the engine owns through formulas
-            and the baseline does not persist as inputs. They are silently
-            dropped if present so the engine computes them itself.
+            and the baseline must not persist as inputs. Their presence fails
+            the export gate; upstream build stages must drop them before
+            calling the engine writer.
+        closed: If true, exports may only contain required/optional columns
+            plus adapter-defined structural columns. Unexpected extras fail
+            the export gate before anything is written.
     """
 
     required: tuple[str, ...]
     forbidden: tuple[str, ...]
     optional: tuple[str, ...]
     formula_owned_excluded: tuple[str, ...]
+    closed: bool = False
 
     @classmethod
     def empty(cls) -> "ExportContract":
@@ -150,6 +156,7 @@ class ExportContract:
             formula_owned_excluded=_as_str_tuple(
                 sections.get("formula_owned_excluded", ())
             ),
+            closed=bool(sections.get("closed", False)),
         )
 
 

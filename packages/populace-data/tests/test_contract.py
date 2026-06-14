@@ -33,8 +33,7 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
             "filename": "populace_us_2024_calibration.npz",
             "sha256": "a3da2f",
         },
-        "gates": {"parity_gaps": 0},
-        "score_vs_enhanced_cps": {"per_target_wins": {}},
+        "gates": {"exported_nonzero": {"passed": True}},
     }
 
 
@@ -54,17 +53,35 @@ def _release_manifest(release_id: str = RELEASE_ID) -> dict:
     }
 
 
+def _calibration_diagnostics() -> dict:
+    return {
+        "schema_version": 1,
+        "weight_entity": "household",
+        "options": {"epochs": 120},
+        "loss_trajectory": [1.0, 0.5],
+        "skipped": [],
+        "targets": [
+            {
+                "name": "population",
+                "target": 1.0,
+                "initial_estimate": 0.8,
+                "final_estimate": 1.0,
+                "relative_error": 0.0,
+                "within_tolerance": True,
+            }
+        ],
+    }
+
+
 @pytest.fixture
 def release_dir(tmp_path: Path) -> Path:
     """A complete, contract-valid release directory."""
     directory = tmp_path / "releases" / RELEASE_ID
     directory.mkdir(parents=True)
     (directory / "build_manifest.json").write_text(json.dumps(_build_manifest()))
-    (directory / "release_manifest.json").write_text(
-        json.dumps(_release_manifest())
-    )
-    (directory / "sound_ecps_replacement_comparison.json").write_text(
-        json.dumps({"schema_version": 1, "target_diagnostics": {}})
+    (directory / "release_manifest.json").write_text(json.dumps(_release_manifest()))
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
     )
     return directory
 
@@ -85,7 +102,7 @@ def test_each_required_file_is_named_when_missing(
 def test_the_1abddeb_shape_is_rejected(release_dir: Path) -> None:
     """The regression: a release with only an unversioned release manifest."""
     (release_dir / "build_manifest.json").unlink()
-    (release_dir / "sound_ecps_replacement_comparison.json").unlink()
+    (release_dir / "calibration_diagnostics.json").unlink()
     (release_dir / "release_manifest.json").write_text(
         json.dumps(
             {
@@ -142,9 +159,22 @@ def test_unparseable_manifest_is_a_named_failure(release_dir: Path) -> None:
         validate_release_dir(release_dir)
 
 
+def test_malformed_calibration_diagnostics_is_rejected(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").write_text(
+        json.dumps({"schema_version": 1})
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "calibration_diagnostics.json" in failures
+    assert "targets" in failures
+
+
 def test_all_failures_reported_at_once(release_dir: Path) -> None:
     """A publisher sees the full repair list, not one failure per run."""
-    (release_dir / "sound_ecps_replacement_comparison.json").unlink()
+    (release_dir / "calibration_diagnostics.json").unlink()
     manifest = _release_manifest()
     del manifest["schema_version"]
     manifest["artifacts"] = {}

@@ -40,8 +40,10 @@ RELEASE_MANIFEST_SCHEMA_VERSION = 1
 REQUIRED_RELEASE_FILES = (
     "build_manifest.json",
     "release_manifest.json",
-    "sound_ecps_replacement_comparison.json",
+    "calibration_diagnostics.json",
 )
+
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 1
 
 
 class ReleaseContractError(ValueError):
@@ -63,8 +65,11 @@ class ReleaseContractError(ValueError):
 
 def _load_json(path: Path, failures: list[str]) -> Mapping | None:
     try:
-        loaded = json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
+        loaded = json.loads(
+            path.read_text(),
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
         failures.append(f"{path.name} is not valid JSON: {exc}.")
         return None
     if not isinstance(loaded, Mapping):
@@ -73,6 +78,10 @@ def _load_json(path: Path, failures: list[str]) -> Mapping | None:
         )
         return None
     return loaded
+
+
+def _reject_json_constant(token: str) -> None:
+    raise ValueError(f"non-standard JSON constant {token}")
 
 
 def _check_build_manifest(
@@ -93,9 +102,7 @@ def _check_build_manifest(
     else:
         for key in ("filename", "sha256"):
             if not dataset.get(key):
-                failures.append(
-                    f"build_manifest.json 'dataset' is missing {key!r}."
-                )
+                failures.append(f"build_manifest.json 'dataset' is missing {key!r}.")
     if not isinstance(manifest.get("gates"), Mapping):
         failures.append(
             "build_manifest.json is missing the 'gates' object (the "
@@ -120,9 +127,7 @@ def _check_release_manifest(
         )
     build = manifest.get("build")
     if not isinstance(build, Mapping) or not build.get("build_id"):
-        failures.append(
-            "release_manifest.json is missing 'build.build_id'."
-        )
+        failures.append("release_manifest.json is missing 'build.build_id'.")
     elif build["build_id"] != release_id:
         failures.append(
             f"release_manifest.json 'build.build_id' is "
@@ -132,22 +137,60 @@ def _check_release_manifest(
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, Mapping) or not artifacts:
         failures.append(
-            "release_manifest.json must declare a non-empty 'artifacts' "
-            "mapping."
+            "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
     else:
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
                 failures.append(
-                    f"release_manifest.json artifact {key!r} must be an "
-                    f"object."
+                    f"release_manifest.json artifact {key!r} must be an object."
                 )
                 continue
             for field in ("path", "repo_id", "sha256"):
                 if not entry.get(field):
                     failures.append(
-                        f"release_manifest.json artifact {key!r} is missing "
-                        f"{field!r}."
+                        f"release_manifest.json artifact {key!r} is missing {field!r}."
+                    )
+
+
+def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) -> None:
+    schema_version = diagnostics.get("schema_version")
+    if schema_version is None:
+        failures.append("calibration_diagnostics.json is missing 'schema_version'.")
+    elif schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        failures.append(
+            f"calibration_diagnostics.json 'schema_version' is {schema_version!r}; "
+            f"this library publishes version "
+            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+        )
+
+    expected_sections = {
+        "targets": list,
+        "loss_trajectory": list,
+        "skipped": list,
+        "options": Mapping,
+    }
+    for section, expected_type in expected_sections.items():
+        value = diagnostics.get(section)
+        if not isinstance(value, expected_type):
+            failures.append(
+                f"calibration_diagnostics.json is missing a {section!r} "
+                f"{expected_type.__name__}."
+            )
+
+    targets = diagnostics.get("targets")
+    if isinstance(targets, list):
+        for index, target in enumerate(targets):
+            if not isinstance(target, Mapping):
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} must be an object."
+                )
+                continue
+            for field in ("name", "target", "initial_estimate", "final_estimate"):
+                if field not in target:
+                    failures.append(
+                        "calibration_diagnostics.json target row "
+                        f"{index} is missing {field!r}."
                     )
 
 
@@ -172,9 +215,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
     failures: list[str] = []
 
     if not release_dir.is_dir():
-        raise ReleaseContractError(
-            release_dir, [f"{release_dir} is not a directory."]
-        )
+        raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
 
     for filename in REQUIRED_RELEASE_FILES:
         if not (release_dir / filename).is_file():
@@ -191,6 +232,12 @@ def validate_release_dir(release_dir: Path | str) -> None:
         manifest = _load_json(release_manifest_path, failures)
         if manifest is not None:
             _check_release_manifest(manifest, release_id, failures)
+
+    calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
+    if calibration_diagnostics_path.is_file():
+        diagnostics = _load_json(calibration_diagnostics_path, failures)
+        if diagnostics is not None:
+            _check_calibration_diagnostics(diagnostics, failures)
 
     if failures:
         raise ReleaseContractError(release_dir, failures)

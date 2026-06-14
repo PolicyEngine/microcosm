@@ -4,7 +4,7 @@ Each gate is a pure function from evidence to a :class:`GateResult` — no gate
 mutates anything, every failure names the exact variable/target involved, and
 a :class:`GateReport` aggregates the suite into one publishable verdict.
 
-The four gates encode the build lessons of 2026:
+The gates encode the build lessons of 2026:
 
 - :func:`parity_gate` — the incumbent-replacement contract: every variable
   layer the reference populates, the candidate populates. An all-zero layer
@@ -17,6 +17,11 @@ The four gates encode the build lessons of 2026:
   gains at −$3.9T and investment-interest at $33.5T.
 - :func:`per_family_fit_gate` — calibration fit reported per source family,
   so a collapsed family cannot hide inside a good global average.
+- :func:`source_coverage_gate` — hard-target source families must be active or
+  explicitly excluded, while validation-only families must stay out of hard
+  calibration.
+- :func:`enum_domain_gate` — enum-typed engine inputs must carry engine enum
+  member names, not raw source-system codes.
 
 Scoring uses :func:`relative_error_loss` — the calibrator's own objective —
 so there is no calibrator-vs-scorer objective mismatch: what the solver
@@ -36,11 +41,14 @@ from populace.calibrate.solve import relative_error_loss
 __all__ = [
     "GateResult",
     "GateReport",
+    "enum_domain_gate",
+    "formula_owned_export_gate",
     "exported_nonzero_gate",
     "parity_gate",
     "support_gate",
     "aggregate_admin_gate",
     "per_family_fit_gate",
+    "source_coverage_gate",
     "relative_error_loss",
 ]
 
@@ -125,7 +133,7 @@ def exported_nonzero_gate(
     all-zero stored column is either a pipeline bug (real values lost on
     the way to export — the v3 head-carry incident) or dead scaffolding
     that masks the engine's own defaults/formulas; the fix is to populate
-    it or drop it, never to ship zeros.
+    it or remove it upstream, never to ship zeros.
 
     Args:
         column_shares: Stored column -> share of records with a non-zero
@@ -153,7 +161,7 @@ def exported_nonzero_gate(
         if share > 0.0 or name in exemptions:
             continue
         failures.append(
-            f"{name}: stored but all-zero — populate it or drop it "
+            f"{name}: stored but all-zero — populate it or remove it upstream "
             "(zeros mask engine defaults/formulas)."
         )
     unused = sorted(set(exemptions) - set(column_shares))
@@ -169,6 +177,234 @@ def exported_nonzero_gate(
                 if name in column_shares
             },
             "unused_exemptions": unused,
+        },
+    )
+
+
+def formula_owned_export_gate(
+    exported_columns: Iterable[str],
+    formula_owned_columns: Iterable[str],
+    *,
+    structural_columns: Iterable[str] = (),
+) -> GateResult:
+    """Formula-owned engine outputs must not be persisted as inputs.
+
+    A PolicyEngine-native HDF5 file turns every persisted variable column into
+    a simulation input. Persisting a formula-owned variable such as ``ssi``
+    therefore pins the baseline value and masks reforms; the artifact must
+    arrive at export without it, so the engine computes it. Entity ids and
+    memberships can be exempted via ``structural_columns`` because those are
+    reconstruction scaffolding, not policy inputs.
+
+    Args:
+        exported_columns: Columns the artifact will persist.
+        formula_owned_columns: Variables owned by engine formulas.
+        structural_columns: Non-input structural columns allowed through even
+            when their names overlap the engine's variable registry.
+
+    Returns:
+        Pass iff no non-structural exported column is formula-owned.
+    """
+    exported = set(exported_columns)
+    structural = set(structural_columns)
+    formula_owned = set(formula_owned_columns)
+    offenders = sorted((exported & formula_owned) - structural)
+    return GateResult(
+        name="formula_owned_export",
+        passed=not offenders,
+        failures=tuple(
+            f"{name}: formula-owned engine output exported as an input; "
+            "remove it upstream before export."
+            for name in offenders
+        ),
+        details={
+            "columns_checked": len(exported),
+            "formula_owned_columns": len(formula_owned),
+            "structural_exemptions": sorted(structural & exported & formula_owned),
+            "offenders": offenders,
+        },
+    )
+
+
+def _enum_member_name(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
+    return str(value)
+
+
+def _enum_domain_names(domain: Iterable[object] | object) -> tuple[str, ...]:
+    members = getattr(domain, "__members__", None)
+    if isinstance(members, Mapping):
+        return tuple(str(name) for name in members)
+    return tuple(_enum_member_name(value) for value in domain)  # type: ignore[arg-type]
+
+
+def enum_domain_gate(
+    column_values: Mapping[str, Iterable[object]],
+    enum_domains: Mapping[str, Iterable[object] | object],
+) -> GateResult:
+    """Validate exported enum inputs against their engine enum domains.
+
+    A non-zero raw source code can pass parity and nonzero checks while still
+    being impossible for the rules engine to interpret. This gate operates on
+    exported columns whose corresponding engine variable declares enum
+    ``possible_values`` and requires stored values to be enum member names
+    such as ``"WHITE"`` rather than source codes such as ``"10"``.
+
+    Args:
+        column_values: Exported enum column -> stored values.
+        enum_domains: Exported enum column -> valid enum members, member
+            names, or an enum class exposing ``__members__``.
+
+    Returns:
+        Pass iff every provided enum column's non-missing values are inside
+        its declared domain. Missing values are treated as invalid because a
+        present enum input column should be fully interpretable by the engine;
+        omit the column to let the engine default it.
+    """
+    failures: list[str] = []
+    invalid_counts: dict[str, int] = {}
+    invalid_examples: dict[str, list[str]] = {}
+    allowed_values: dict[str, list[str]] = {}
+    columns_checked = 0
+
+    for column, values in sorted(column_values.items()):
+        if column not in enum_domains:
+            continue
+        allowed = set(_enum_domain_names(enum_domains[column]))
+        allowed_values[column] = sorted(allowed)
+        columns_checked += 1
+        invalid: list[str] = []
+        total = 0
+        for value in values:
+            total += 1
+            if value is None or (
+                isinstance(value, (float, np.floating)) and np.isnan(value)
+            ):
+                invalid.append("<missing>")
+                continue
+            name = _enum_member_name(value)
+            if name not in allowed:
+                invalid.append(name)
+        if not invalid:
+            continue
+        examples = sorted(set(invalid))[:8]
+        invalid_counts[column] = len(invalid)
+        invalid_examples[column] = examples
+        failures.append(
+            f"{column}: {len(invalid)}/{total} value(s) outside enum domain; "
+            f"invalid examples {examples}; allowed values {sorted(allowed)[:8]}."
+        )
+
+    return GateResult(
+        name="enum_domain",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": columns_checked,
+            "invalid_counts": invalid_counts,
+            "invalid_examples": invalid_examples,
+            "allowed_values": allowed_values,
+        },
+    )
+
+
+def _coverage_field(entry: object, name: str, default: object = None) -> object:
+    if isinstance(entry, Mapping):
+        return entry.get(name, default)
+    return getattr(entry, name, default)
+
+
+def source_coverage_gate(
+    coverage_entries: Iterable[object],
+    *,
+    active_target_aliases: Iterable[str] = (),
+    active_target_families: Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | Iterable[str] = (),
+) -> GateResult:
+    """Gate source-family coverage for a release target profile.
+
+    Hard-target source package aliases must either appear in the active target
+    inventory or have an explicit reviewed exclusion. Validation-only families
+    can appear in diagnostics, but fail the gate if activated as hard targets.
+    Source gaps are reported in details without failing; they are facts about
+    source availability, not evidence that the build covered the family.
+
+    ``coverage_entries`` intentionally accepts either dict-like entries or the
+    ``SourceCoverageEntry`` dataclass from ``populace.build.us.source_coverage``
+    so callers can also pass a live Arch coverage contract.
+    """
+    active_aliases = set(active_target_aliases)
+    active_families = set(active_target_families)
+    if isinstance(reviewed_exclusions, Mapping):
+        exclusion_reasons = {
+            str(alias): str(reason) for alias, reason in reviewed_exclusions.items()
+        }
+    else:
+        exclusion_reasons = {
+            str(alias): "reviewed exclusion" for alias in reviewed_exclusions
+        }
+
+    failures: list[str] = []
+    missing_hard_targets: list[str] = []
+    reviewed: dict[str, str] = {}
+    validation_misuse: list[str] = []
+    source_gaps: dict[str, tuple[str, ...]] = {}
+
+    for entry in coverage_entries:
+        family = str(_coverage_field(entry, "family_id", ""))
+        role = str(_coverage_field(entry, "role", ""))
+        aliases = tuple(
+            str(a) for a in (_coverage_field(entry, "package_aliases", ()) or ())
+        )
+        if role == "hard_target":
+            for alias in aliases:
+                if alias in active_aliases:
+                    continue
+                if alias in exclusion_reasons:
+                    reviewed[alias] = exclusion_reasons[alias]
+                    continue
+                missing_hard_targets.append(alias)
+                failures.append(
+                    f"{family}/{alias}: hard-target source alias is not active "
+                    "and has no reviewed exclusion."
+                )
+        elif role == "validation_only":
+            if family in active_families or any(
+                alias in active_aliases for alias in aliases
+            ):
+                validation_misuse.append(family)
+                failures.append(
+                    f"{family}: validation-only source family activated as a hard target."
+                )
+        elif role == "source_gap":
+            source_gaps[family] = tuple(
+                str(item)
+                for item in (
+                    _coverage_field(entry, "missing_source_packages", ()) or ()
+                )
+            )
+
+    unused_exclusions = sorted(set(exclusion_reasons) - set(reviewed))
+    if unused_exclusions:
+        failures.append(
+            f"Reviewed exclusions not in coverage contract: {unused_exclusions}."
+        )
+
+    return GateResult(
+        name="source_coverage",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "active_target_aliases": sorted(active_aliases),
+            "active_target_families": sorted(active_families),
+            "missing_hard_targets": sorted(missing_hard_targets),
+            "reviewed_exclusions": reviewed,
+            "validation_only_activated": sorted(validation_misuse),
+            "source_gaps": source_gaps,
         },
     )
 

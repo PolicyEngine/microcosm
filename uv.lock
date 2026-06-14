@@ -1499,7 +1499,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.724.0"
+version = "1.729.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1509,9 +1509,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/9c/8835e12d62415794144fbb14d14244f00f4fd50a95b55e47128f6fbef9bb/policyengine_us-1.724.0.tar.gz", hash = "sha256:9cb67f2537d3613ae2cef20d91b8b82ae6b5673c8360befffad82ad9efebb369", size = 10136935, upload-time = "2026-06-10T17:43:12.191Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/cb/b2efba2094a708cd71890d98d72b99394fabc5894a4cceec14381e03fa35/policyengine_us-1.729.0.tar.gz", hash = "sha256:ac05c4d621c7f848b0806effc14e913160d5d47d777eadced6bc18edf392d75c", size = 10373862, upload-time = "2026-06-14T18:05:25.747Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/a2/792ab362ea7c5f08a3931644fe1f36df2d167097a675781c1790c4951e37/policyengine_us-1.724.0-py3-none-any.whl", hash = "sha256:6cc45f6f17f21b1dc62800f0bd1988c833c3e0975c39c926dcdca904bf0942dd", size = 11327533, upload-time = "2026-06-10T17:43:08.875Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/7d/778f92ae94997b00c3c9ac34b345f6c9333435f905670ee4eeb2f5e19809/policyengine_us-1.729.0-py3-none-any.whl", hash = "sha256:8d21d3f7c0e82a9415edffe8ea53939330a63d9c8f6bd334299bddb697cf2c00", size = 11905076, upload-time = "2026-06-14T18:05:21.806Z" },
 ]
 
 [[package]]
@@ -1575,8 +1575,8 @@ requires-dist = [
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.723,<2" },
-    { name = "policyengine-us-data", marker = "extra == 'us'", specifier = ">=1.69,<2" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.729,<2" },
+    { name = "policyengine-us-data", marker = "extra == 'us'", specifier = ">=1.115.2,<1.115.4" },
     { name = "populace-calibrate", editable = "packages/populace-calibrate" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
@@ -1642,7 +1642,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3" },
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.723,<2" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.729,<2" },
 ]
 provides-extras = ["us", "uk"]
 
@@ -1708,7 +1708,7 @@ requires-dist = [
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
-    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.0" },
+    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.729,<2" },
 ]
 provides-extras = ["us", "policyengine"]
 

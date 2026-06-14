@@ -62,7 +62,7 @@ class LatestPointer:
         updated_at: ISO-8601 UTC timestamp of when the pointer was written.
         paths: Repo-relative path of each contract file, keyed by its stem
             (``"build_manifest"``, ``"release_manifest"``,
-            ``"sound_ecps_replacement_comparison"``).
+            ``"calibration_diagnostics"``).
     """
 
     release_id: str
@@ -70,9 +70,7 @@ class LatestPointer:
     paths: dict[str, str]
 
 
-def latest_pointer_payload(
-    release_id: str, *, updated_at: str | None = None
-) -> dict:
+def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) -> dict:
     """The ``latest.json`` payload for ``release_id``.
 
     Paths are derived from the release contract — the pointer names exactly
@@ -84,9 +82,7 @@ def latest_pointer_payload(
         updated_at: ISO-8601 UTC timestamp; defaults to now.
     """
     if updated_at is None:
-        updated_at = (
-            datetime.now(UTC).replace(microsecond=0).isoformat()
-        )
+        updated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     return {
         "schema_version": LATEST_POINTER_SCHEMA_VERSION,
         "release_id": release_id,
@@ -145,8 +141,6 @@ def publish_release(
     release_dir = Path(release_dir)
     validate_release_dir(release_dir)
     release_id = release_dir.name
-    if api is None:
-        api = _hf_api()
 
     filenames = list(REQUIRED_RELEASE_FILES) + [
         name for name in extra_files if name not in REQUIRED_RELEASE_FILES
@@ -157,6 +151,12 @@ def publish_release(
             raise FileNotFoundError(
                 f"extra release file {filename!r} not found in {release_dir}."
             )
+
+    if api is None:
+        api = _hf_api()
+
+    for filename in filenames:
+        local = release_dir / filename
         api.upload_file(
             path_or_fileobj=str(local),
             path_in_repo=f"releases/{release_id}/{filename}",
@@ -202,11 +202,27 @@ def latest_release(repo_id: str, *, api=None) -> LatestPointer:
         )
     release_id = payload.get("release_id")
     if not release_id:
+        raise ValueError(f"{LATEST_POINTER_PATH} in {repo_id} has no 'release_id'.")
+    paths = payload.get("paths")
+    if not isinstance(paths, dict):
+        raise ValueError(f"{LATEST_POINTER_PATH} in {repo_id} has no 'paths' object.")
+    expected_paths = latest_pointer_payload(str(release_id), updated_at="")["paths"]
+    observed_paths = {str(key): value for key, value in paths.items()}
+    missing_paths = sorted(set(expected_paths) - set(observed_paths))
+    unexpected_paths = sorted(set(observed_paths) - set(expected_paths))
+    malformed_paths = sorted(
+        key
+        for key in set(expected_paths) & set(observed_paths)
+        if observed_paths[key] != expected_paths[key]
+    )
+    if missing_paths or unexpected_paths or malformed_paths:
         raise ValueError(
-            f"{LATEST_POINTER_PATH} in {repo_id} has no 'release_id'."
+            f"{LATEST_POINTER_PATH} in {repo_id} has incomplete paths: "
+            f"missing={missing_paths}, unexpected={unexpected_paths}, "
+            f"malformed={malformed_paths}."
         )
     return LatestPointer(
         release_id=str(release_id),
         updated_at=str(payload.get("updated_at", "")),
-        paths={str(k): str(v) for k, v in (payload.get("paths") or {}).items()},
+        paths={str(k): str(v) for k, v in paths.items()},
     )

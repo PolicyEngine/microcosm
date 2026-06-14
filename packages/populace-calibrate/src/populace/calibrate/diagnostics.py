@@ -75,8 +75,7 @@ def diagnostics_payload(result: CalibrationResult) -> dict:
         "fraction_within_10pct": _finite(result.fraction_within_10pct),
         "loss_trajectory": [_finite(loss) for loss in result.loss_trajectory],
         "skipped": [
-            {"name": skip.target.name, "reason": skip.reason}
-            for skip in result.skipped
+            {"name": skip.target.name, "reason": skip.reason} for skip in result.skipped
         ],
         "targets": [
             {
@@ -92,9 +91,7 @@ def diagnostics_payload(result: CalibrationResult) -> dict:
     }
 
 
-def write_calibration_diagnostics(
-    result: CalibrationResult, path: Path | str
-) -> Path:
+def write_calibration_diagnostics(result: CalibrationResult, path: Path | str) -> Path:
     """Write the diagnostics payload to ``path`` as JSON.
 
     The conventional filename is ``calibration_diagnostics.json`` inside a
@@ -110,7 +107,5 @@ def write_calibration_diagnostics(
     path = Path(path)
     # allow_nan=False is the guard: a non-finite value that escaped the
     # scrub is a bug here, not something to smuggle out as invalid JSON.
-    path.write_text(
-        json.dumps(diagnostics_payload(result), indent=1, allow_nan=False)
-    )
+    path.write_text(json.dumps(diagnostics_payload(result), indent=1, allow_nan=False))
     return path
