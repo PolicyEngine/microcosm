@@ -3,7 +3,7 @@
 Each test states an invariant the populace stack promises — about weights,
 frame structure, links, mass conservation, accounting, unit assignment, and
 the rules-engine boundary. Operators (populace-fit, populace-calibrate,
-microplex stages) may rely on every guarantee here; anything that would
+populace-build stages) may rely on every guarantee here; anything that would
 break one of these tests is a kernel-level bug, not a tuning choice.
 """
 

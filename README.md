@@ -1,6 +1,6 @@
 # populace
 
-The rebuilt micro stack: one kernel datatype — the **`Frame`**, a weighted
+The population stack: one kernel datatype — the **`Frame`**, a weighted
 sampling frame of entity tables — and packages as operators on it. One PEP 420
 `populace` namespace, shipped as shard distributions; a `populace` metapackage
 will pin the constellation.
@@ -10,9 +10,8 @@ will pin the constellation.
 | `populace-frame` | `populace.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
 | `populace-fit` | `populace.fit` | conditional models (weight-aware by construction) | microimpute |
 | `populace-calibrate` | `populace.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
-
-`microplex` — the engine — keeps its own repo and brand, and re-bases onto
-populace-frame stage by stage.
+| `populace-build` | `populace.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
+| `populace-data` | `populace.data` | published population registry and lazy engine loaders | country-specific data packages |
 
 See [DESIGN.md](DESIGN.md) for the charter: why the rebuild, the kernel
 semantics, the RulesEngine protocol (policyengine-us today, Axiom rulespec-us
@@ -20,8 +19,9 @@ next), longitudinal design (one weight per trajectory), and the process rules
 (behavioral contract tests, constellation versioning, environment-carrying
 artifacts).
 
-Legacy consumers (policyengine-us-data, PolicyEngine apps) pin the legacy
-packages; there is no backward-compatibility layer.
+Incumbent comparisons and historical replacement benchmarks live outside this
+repo. The live Populace repo owns the library, build contracts, published
+population registry, and acceptance gates.
 
 ## Development
 

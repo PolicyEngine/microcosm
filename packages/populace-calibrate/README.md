@@ -21,9 +21,9 @@ reproduces them.
    Uncompilable targets (missing column, zero `mean` denominator) are **skipped
    and reported**, never dropped silently.
 3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
-   the log-weights with torch Adam to minimize the **eCPS relative-error loss**
-   `mean(((A @ w - b)/(b + 1))**2)` — the loss that produced the enhanced
-   CPS. Weights stay strictly positive by construction (`w = exp(log_w)`). The
+   the log-weights with torch Adam to minimize the **bounded relative-error
+   loss** `mean(((A @ w - b)/(b + 1))**2)`. Weights stay strictly positive by
+   construction (`w = exp(log_w)`). The
    result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.
 
@@ -39,8 +39,8 @@ reproduces them.
   the documented guard against the tail **landmine**: a rare high-value,
   near-zero-weight donor whose weight detonates on reweight and blows up an
   aggregate (the $201T-scale failure the charter exists to prevent).
-- **`target_records`** turns on hard-concrete L0 gates (ported from the eCPS
-  `HardConcrete`) with **budget control**: the solver searches `l0_lambda` so the
+- **`target_records`** turns on hard-concrete L0 gates with **budget control**:
+  the solver searches `l0_lambda` so the
   achieved non-zero count tracks the record budget, and reports the penalty it
   settled on (`result.l0_lambda`) — the generate-big-then-prune path
   (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.

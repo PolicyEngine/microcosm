@@ -73,7 +73,6 @@ def add_scf_wealth(
     at household-head grain and attached to households, support-guarded to the
     SCF's own realized ranges.
     """
-    from microimpute import Imputer
     from policyengine_us_data.datasets.cps.cps import (
         add_scf_financial_asset_targets,
         add_scf_household_asset_targets,
@@ -81,6 +80,9 @@ def add_scf_wealth(
         add_scf_net_worth_target,
     )
     from policyengine_us_data.datasets.scf.scf import SCF_2022
+
+    from populace.fit import RegimeGatedQRF
+    from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
     scf_raw = SCF_2022().load_dataset()
     scf = pd.DataFrame({k: scf_raw[k] for k in scf_raw.keys()})
@@ -150,10 +152,24 @@ def add_scf_wealth(
 
     donor_cols = [c for c in predictors if c in scf.columns]
     targets = [t for t in targets if t in scf.columns]
-    donor = scf[donor_cols + targets + ["wgt"]].dropna()
-    fitted = Imputer(seed=seed, log_level="WARNING").fit(
-        donor, donor_cols, targets, weight_col="wgt"
+    donor = scf[donor_cols + targets + ["wgt"]].dropna().reset_index(drop=True)
+    donor_person = donor[donor_cols + targets].copy()
+    donor_person.insert(0, "person_id", np.arange(len(donor_person), dtype=np.int64))
+    donor_person["person_record_id"] = donor_person["person_id"]
+    donor_frame = Frame(
+        {
+            "person": donor_person,
+            "record": pd.DataFrame({"record_id": donor_person["person_id"]}),
+        },
+        EntitySchema(group_entities=("record",)),
+        {
+            "person": Weights(
+                values=donor["wgt"].to_numpy(dtype=np.float64),
+                kind=WeightKind.DESIGN,
+            )
+        },
     )
+    fitted = RegimeGatedQRF(seed=seed).fit(donor_frame, donor_cols, targets)
     draws = fitted.predict(recv[donor_cols].copy().reset_index(drop=True))
     hh = hh.copy()
     for t in targets:
@@ -204,7 +220,7 @@ def add_scf_wealth(
             "head-carry onto an all-False mask."
         )
     headp = person["is_household_head"].astype(bool)
-    hmap = dict(zip(hh["household_id"].tolist(), range(len(hh))))
+    hmap = dict(zip(hh["household_id"].tolist(), range(len(hh)), strict=False))
     pidx = person["person_household_id"].map(hmap)
     for pe_name, vals in head_carry_to_person.items():
         person[pe_name] = np.where(
@@ -380,16 +396,14 @@ def add_prior_year_income(person: pd.DataFrame, asec_year: int, log) -> pd.DataF
     Maps last year's WSAL_VAL/SEMP_VAL onto matched persons; sentinel values
     {-1, -9999} mean unavailable.
     """
-    from microplex.data_sources.cps import load_cps_asec
-
     person = person.copy()
     if "PERIDNUM" not in person.columns:
         log("  prior-year: PERIDNUM missing from pool; skipping")
         return person
-    prior = load_cps_asec(
-        year=asec_year - 1,
-        extra_person_columns=["PERIDNUM", "WSAL_VAL", "SEMP_VAL"],
-    ).persons.to_pandas()
+    prior = _load_census_cps_person(
+        asec_year - 1,
+        columns=("PERIDNUM", "WSAL_VAL", "SEMP_VAL"),
+    )
     prior = prior.drop_duplicates("PERIDNUM").set_index("PERIDNUM")
     sentinels = {-1, -9999}
     cur_ids = person["PERIDNUM"]
@@ -415,6 +429,28 @@ def add_prior_year_income(person: pd.DataFrame, asec_year: int, log) -> pd.DataF
         f"  prior-year join: matched {matched.mean() * 100:.1f}% of persons (ASEC {asec_year - 1})"
     )
     return person
+
+
+def _load_census_cps_person(year: int, *, columns: tuple[str, ...]) -> pd.DataFrame:
+    """Load raw Census CPS ASEC person columns from policyengine-us-data."""
+    from policyengine_us_data.datasets.cps import census_cps
+
+    dataset_cls = getattr(census_cps, f"CensusCPS_{int(year)}", None)
+    if dataset_cls is None:
+        raise ValueError(f"No policyengine-us-data Census CPS ASEC loader for {year}.")
+    tables = dataset_cls().load_dataset()
+    try:
+        person = tables["person"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            f"CensusCPS_{int(year)} did not expose a 'person' table."
+        ) from exc
+    missing = [column for column in columns if column not in person.columns]
+    if missing:
+        raise RuntimeError(
+            f"CensusCPS_{int(year)} person table is missing required columns {missing}."
+        )
+    return person.loc[:, list(columns)].copy()
 
 
 def add_mortgage_conversion(
@@ -660,7 +696,7 @@ def add_acs_rent(person: pd.DataFrame, hh: pd.DataFrame, seed: int, log):
             "head-carry onto an all-False mask."
         )
     headp = person["is_household_head"].astype(bool)
-    hmap = dict(zip(hh["household_id"].tolist(), range(len(hh))))
+    hmap = dict(zip(hh["household_id"].tolist(), range(len(hh)), strict=False))
     pidx = person["person_household_id"].map(hmap)
     person = person.copy()
     person["pre_subsidy_rent"] = np.where(

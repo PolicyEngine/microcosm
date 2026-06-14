@@ -33,12 +33,12 @@ class TestUsPlan:
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             us_plan(implementations)
 
-    def test_no_ecps_anywhere_in_the_donor_graph(self) -> None:
-        """The enhanced CPS is the benchmark, never a build input."""
+    def test_no_incumbent_dataset_anywhere_in_the_donor_graph(self) -> None:
+        """Incumbent production datasets are benchmarks, never build inputs."""
         for spec in US_DONORS.values():
             text = f"{spec.survey} {spec.source} {spec.notes}".lower()
-            assert "enhanced cps" not in text
-            assert "ecps" not in text
+            assert "production dataset" not in text
+            assert "benchmark" not in text
 
 
 class TestBuildConfig:

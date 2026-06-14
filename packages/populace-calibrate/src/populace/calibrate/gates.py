@@ -5,9 +5,8 @@ relaxed Bernoulli (the hard-concrete distribution of Louizos et al., 2018) whose
 expected L0 "norm" — the expected number of open gates — is differentiable. The
 solver multiplies the record weights by these gates and adds
 ``l0_lambda * penalty`` to the loss; raising ``l0_lambda`` drives gates shut,
-pruning the pool toward fewer non-zero weights. This is the port of the eCPS
-``HardConcrete`` gate (``policyengine_us_data.utils.l0``) the charter names as
-the core of calibration — generate big, then prune to ``target_records``.
+pruning the pool toward fewer non-zero weights. This is the core calibration
+path: generate big, then prune to ``target_records``.
 
 The math is the reference one verbatim: a sigmoid-of-logistic-noise stretched to
 ``[gamma, zeta]`` and clamped to ``[0, 1]`` in training (so gates can hit hard 0

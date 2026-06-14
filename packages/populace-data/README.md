@@ -43,10 +43,9 @@ nor any country model until a load actually needs one.
 | US | 2024 | [`policyengine/populace-us`](https://huggingface.co/datasets/policyengine/populace-us) | `policyengine-us` |
 
 The **populace-US** population is a calibrated synthetic microdataset that
-loads anywhere the enhanced CPS loads — built from CPS ASEC structure and IRS
-PUF tax detail (weight-aware imputation), calibrated to PolicyEngine's
+loads as a PolicyEngine-US dataset — built from CPS ASEC structure and IRS PUF
+tax detail (weight-aware imputation), calibrated to PolicyEngine's
 administrative target surface with a hard per-record weight bound. Its
-strengths and its gaps (no wealth layer yet, degenerate housing tenure,
-several un-imputed income streams) are documented on the dataset card and the
-[populace.dev dashboard](https://populace.dev/dashboard); the provenance
-snapshot lives in [`build/us/`](build/us).
+strengths and gaps are documented on the dataset card and the
+[populace.dev dashboard](https://populace.dev/dashboard). Historical incumbent
+benchmark comparisons live outside this package.
