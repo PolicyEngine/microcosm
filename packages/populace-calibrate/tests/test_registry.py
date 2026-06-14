@@ -60,11 +60,24 @@ class TestTargetSpec:
             _spec(se=0.0)
 
     def test_to_target_compiles(self) -> None:
-        target = _spec(tolerance=5.0).to_target()
+        target = _spec(
+            tolerance=5.0,
+            metadata={"kind": "neutralize_variable", "output_variable": "income_tax"},
+        ).to_target()
         assert target.name == "census/population"
         assert target.value == 1000.0
         assert target.tolerance == 5.0
         assert target.source == "Census ACS 2024 table B01003"
+        assert target.metadata == {
+            "kind": "neutralize_variable",
+            "output_variable": "income_tax",
+        }
+
+    def test_metadata_needs_non_empty_keys_and_values(self) -> None:
+        with pytest.raises(ValueError, match="metadata"):
+            _spec(metadata={"": "neutralize_variable"})
+        with pytest.raises(ValueError, match="metadata"):
+            _spec(metadata={"kind": ""})
 
 
 class TestRegistryIdentity:
@@ -100,7 +113,11 @@ class TestArtifactRoundTrip:
     def test_round_trip_preserves_everything(self, tmp_path) -> None:
         registry = TargetRegistry(
             [
-                _spec(se=12.5, notes="ACS 1-year"),
+                _spec(
+                    se=12.5,
+                    notes="ACS 1-year",
+                    metadata={"kind": "neutralize_variable"},
+                ),
                 _spec(
                     name="puf/net_short_term_capital_gains",
                     value=-76.8e9,

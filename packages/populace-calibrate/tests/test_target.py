@@ -55,6 +55,27 @@ def test_measure_may_be_a_column_or_a_callable() -> None:
     assert callable(callable_target.measure)
 
 
+def test_metadata_is_carried_on_target() -> None:
+    target = Target(
+        name="jct/salt",
+        entity="household",
+        aggregation="sum",
+        value=1.0,
+        measure="income_tax_delta",
+        metadata={"kind": "neutralize_variable"},
+    )
+    assert target.metadata == {"kind": "neutralize_variable"}
+
+    with pytest.raises(ValueError, match="metadata"):
+        Target(
+            name="bad",
+            entity="household",
+            aggregation="count",
+            value=1.0,
+            metadata={"kind": ""},
+        )
+
+
 def test_targetset_is_an_ordered_container() -> None:
     a = Target(name="a", entity="household", aggregation="count", value=1.0)
     b = Target(name="b", entity="household", aggregation="count", value=2.0)

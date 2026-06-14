@@ -12,15 +12,19 @@ import pytest
 from populace.build import (
     GateReport,
     GateResult,
+    TargetCoverageRequirement,
     aggregate_admin_gate,
     enum_domain_gate,
     export_surface_gate,
     formula_owned_export_gate,
+    macro_realism_gate,
+    nonnegative_columns_gate,
     parity_gate,
     per_family_fit_gate,
     relative_error_loss,
     source_coverage_gate,
     support_gate,
+    target_profile_coverage_gate,
     target_surface_gate,
 )
 from populace.calibrate import TargetSpec
@@ -258,6 +262,60 @@ class TestExportedNonzeroGate:
         assert result.details["unused_exemptions"] == ["gone_var"]
 
 
+class TestNonnegativeColumnsGate:
+    def test_negative_exported_value_fails_with_column_named(self) -> None:
+        result = nonnegative_columns_gate(
+            {"auto_loan_interest": [0.0, 125.0, -9.0]},
+            ["auto_loan_interest"],
+        )
+        assert not result.passed
+        assert "auto_loan_interest" in result.failures[0]
+        assert "below zero" in result.failures[0]
+        assert result.details["negative_counts"] == {"auto_loan_interest": 1}
+
+    def test_nonnegative_required_column_passes(self) -> None:
+        result = nonnegative_columns_gate(
+            {"auto_loan_interest": [0.0, 125.0, float("nan")]},
+            ["auto_loan_interest"],
+        )
+        assert result.passed
+        assert result.details["minima"] == {"auto_loan_interest": 0.0}
+
+    def test_missing_required_column_fails(self) -> None:
+        result = nonnegative_columns_gate({}, ["auto_loan_interest"])
+        assert not result.passed
+        assert "required non-negative column missing" in result.failures[0]
+
+    def test_reviewed_exclusion_needs_mapping_reason(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            nonnegative_columns_gate(
+                {},
+                ["auto_loan_interest"],
+                reviewed_exclusions=["auto_loan_interest"],  # type: ignore[arg-type]
+            )
+
+    def test_sliceable_column_is_scanned_in_chunks(self) -> None:
+        class SliceableColumn:
+            shape = (5,)
+
+            def __init__(self) -> None:
+                self.slices: list[slice] = []
+
+            def __getitem__(self, key: slice) -> np.ndarray:
+                self.slices.append(key)
+                return np.asarray([0.0, -1.0, 2.0, 3.0, 4.0])[key]
+
+        column = SliceableColumn()
+        result = nonnegative_columns_gate(
+            {"auto_loan_interest": column},
+            ["auto_loan_interest"],
+            chunk_size=2,
+        )
+        assert not result.passed
+        assert column.slices == [slice(0, 2), slice(2, 4), slice(4, 5)]
+        assert result.details["negative_counts"] == {"auto_loan_interest": 1}
+
+
 class TestFormulaOwnedExportGate:
     def test_formula_owned_column_fails_with_remedy_named(self) -> None:
         result = formula_owned_export_gate(
@@ -381,6 +439,128 @@ class TestTargetSurfaceGate:
                 ["ons/population", "hmrc/income_tax"],
                 reviewed_exclusions=["hmrc/income_tax"],  # type: ignore[arg-type]
             )
+
+
+class TestTargetProfileCoverageGate:
+    def test_required_target_concept_must_be_present(self) -> None:
+        result = target_profile_coverage_gate(
+            ["nation/irs/adjusted gross income/total"],
+            [
+                TargetCoverageRequirement(
+                    requirement_id="income_tax",
+                    label="Federal income tax",
+                    accepted_measures=("income_tax",),
+                    accepted_names=("nation/irs/income_tax_total",),
+                )
+            ],
+        )
+        assert not result.passed
+        assert "income_tax" in result.failures[0]
+
+    def test_requirement_can_match_structured_target_metadata(self) -> None:
+        result = target_profile_coverage_gate(
+            [
+                {
+                    "name": "nation/treasury/individual_income_tax",
+                    "measure": "income_tax",
+                    "family": "treasury",
+                }
+            ],
+            [
+                TargetCoverageRequirement(
+                    requirement_id="income_tax",
+                    label="Federal income tax",
+                    accepted_measures=("income_tax",),
+                )
+            ],
+        )
+        assert result.passed
+        assert result.details["matches_by_requirement"] == {
+            "income_tax": ["nation/treasury/individual_income_tax"]
+        }
+
+    def test_requirement_metadata_must_match_when_declared(self) -> None:
+        requirement = TargetCoverageRequirement(
+            requirement_id="jct_salt",
+            label="JCT SALT expenditure",
+            accepted_names=("nation/jct/salt_deduction_expenditure",),
+            required_metadata=(
+                ("kind", "neutralize_variable"),
+                ("output_variable", "income_tax"),
+            ),
+        )
+        missing_metadata = target_profile_coverage_gate(
+            ["nation/jct/salt_deduction_expenditure"], [requirement]
+        )
+        assert not missing_metadata.passed
+
+        with_metadata = target_profile_coverage_gate(
+            [
+                {
+                    "name": "nation/jct/salt_deduction_expenditure",
+                    "kind": "neutralize_variable",
+                    "output_variable": "income_tax",
+                }
+            ],
+            [requirement],
+        )
+        assert with_metadata.passed
+
+    def test_minimum_match_count_is_enforced(self) -> None:
+        requirement = TargetCoverageRequirement(
+            requirement_id="state_income_tax",
+            label="State income tax",
+            accepted_name_substrings=("/state_income_tax",),
+            min_matches=2,
+        )
+        fail = target_profile_coverage_gate(
+            ["state/CA/state_income_tax"], [requirement]
+        )
+        assert not fail.passed
+        ok = target_profile_coverage_gate(
+            ["state/CA/state_income_tax", "state/NY/state_income_tax"],
+            [requirement],
+        )
+        assert ok.passed
+
+    def test_reviewed_exclusion_needs_mapping_reason(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            target_profile_coverage_gate(
+                [],
+                [
+                    TargetCoverageRequirement(
+                        requirement_id="income_tax",
+                        label="Federal income tax",
+                        accepted_measures=("income_tax",),
+                    )
+                ],
+                reviewed_exclusions=["income_tax"],  # type: ignore[arg-type]
+            )
+
+
+class TestMacroRealismGate:
+    def test_metrics_inside_bands_pass(self) -> None:
+        result = macro_realism_gate(
+            {"income_tax_to_gdp": 0.09},
+            {"income_tax_to_gdp": (0.07, 0.11)},
+        )
+        assert result.passed
+
+    def test_missing_and_out_of_band_metrics_fail(self) -> None:
+        result = macro_realism_gate(
+            {"income_tax_to_gdp": 0.04},
+            {
+                "income_tax_to_gdp": (0.07, 0.11),
+                "agi_to_gdp": (0.50, 0.70),
+            },
+        )
+        assert not result.passed
+        assert any("income_tax_to_gdp" in failure for failure in result.failures)
+        assert any("agi_to_gdp" in failure for failure in result.failures)
+
+    def test_bad_band_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="low > high"):
+            macro_realism_gate({"x": 1.0}, {"x": (2.0, 1.0)})
 
 
 class TestEnumDomainGate:

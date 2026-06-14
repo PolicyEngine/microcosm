@@ -48,11 +48,15 @@ __all__ = [
     "export_surface_gate",
     "formula_owned_export_gate",
     "exported_nonzero_gate",
+    "macro_realism_gate",
+    "nonnegative_columns_gate",
     "parity_gate",
     "support_gate",
     "aggregate_admin_gate",
     "per_family_fit_gate",
     "source_coverage_gate",
+    "target_profile_coverage_gate",
+    "TargetCoverageRequirement",
     "relative_error_loss",
     "target_surface_gate",
 ]
@@ -126,6 +130,257 @@ class GateReport:
         }
 
 
+@dataclass(frozen=True)
+class TargetCoverageRequirement:
+    """One required concept in a calibration target profile.
+
+    A source-coverage gate can prove the build *loaded* SOI, JCT, or Census
+    packages; it cannot prove the compiled target registry actually contains
+    the fiscal aggregates that replacement scoring depends on. This
+    requirement names a target concept and the target names, name prefixes,
+    substrings, measures, or families that satisfy it.
+    """
+
+    requirement_id: str
+    label: str
+    accepted_names: tuple[str, ...] = ()
+    accepted_name_prefixes: tuple[str, ...] = ()
+    accepted_name_substrings: tuple[str, ...] = ()
+    accepted_measures: tuple[str, ...] = ()
+    accepted_families: tuple[str, ...] = ()
+    required_metadata: tuple[tuple[str, str], ...] = ()
+    min_matches: int = 1
+    notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.requirement_id:
+            raise ValueError("TargetCoverageRequirement.requirement_id is required.")
+        if not self.label:
+            raise ValueError(
+                f"TargetCoverageRequirement {self.requirement_id!r}: label is required."
+            )
+        if self.min_matches < 1:
+            raise ValueError(
+                f"TargetCoverageRequirement {self.requirement_id!r}: "
+                "min_matches must be at least 1."
+            )
+        if not (
+            self.accepted_names
+            or self.accepted_name_prefixes
+            or self.accepted_name_substrings
+            or self.accepted_measures
+            or self.accepted_families
+        ):
+            raise ValueError(
+                f"TargetCoverageRequirement {self.requirement_id!r}: at least "
+                "one accepted selector is required."
+            )
+        bad_metadata = [
+            (key, value)
+            for key, value in self.required_metadata
+            if not key or not value
+        ]
+        if bad_metadata:
+            raise ValueError(
+                f"TargetCoverageRequirement {self.requirement_id!r}: "
+                f"metadata requirements need non-empty keys and values: {bad_metadata}."
+            )
+
+
+@dataclass(frozen=True)
+class _TargetInventoryEntry:
+    name: str
+    measure: str
+    family: str
+    metadata: Mapping[str, str]
+
+
+def _target_inventory_entry(target: object) -> _TargetInventoryEntry:
+    if isinstance(target, str):
+        name = target
+        measure = ""
+        family = name.split("/", 1)[0] if "/" in name else ""
+        return _TargetInventoryEntry(
+            name=name, measure=measure, family=family, metadata={}
+        )
+    metadata: dict[str, str] = {}
+    if isinstance(target, Mapping):
+        name = str(target.get("name", ""))
+        measure = str(target.get("measure") or "")
+        family = str(target.get("family") or "")
+        metadata = {
+            str(key): str(value)
+            for key, value in target.items()
+            if key not in {"name", "measure", "family", "metadata"}
+            and value is not None
+        }
+        nested_metadata = target.get("metadata")
+        if isinstance(nested_metadata, Mapping):
+            metadata.update(
+                {
+                    str(key): str(value)
+                    for key, value in nested_metadata.items()
+                    if value is not None
+                }
+            )
+    else:
+        name = str(getattr(target, "name", "") or getattr(target, "target_name", ""))
+        measure = str(getattr(target, "measure", "") or "")
+        family = str(getattr(target, "family", "") or "")
+        nested_metadata = getattr(target, "metadata", None)
+        if isinstance(nested_metadata, Mapping):
+            metadata.update(
+                {
+                    str(key): str(value)
+                    for key, value in nested_metadata.items()
+                    if value is not None
+                }
+            )
+        for key in (
+            "kind",
+            "output_variable",
+            "matrix_row",
+            "neutralized_variable",
+        ):
+            value = getattr(target, key, None)
+            if value is not None:
+                metadata[key] = str(value)
+    if not family and "/" in name:
+        family = name.split("/", 1)[0]
+    return _TargetInventoryEntry(
+        name=name, measure=measure, family=family, metadata=metadata
+    )
+
+
+def _matches_target_requirement(
+    entry: _TargetInventoryEntry,
+    requirement: TargetCoverageRequirement,
+) -> bool:
+    name = entry.name
+    lower_name = name.lower()
+    selector_matched = (
+        name in requirement.accepted_names
+        or any(name.startswith(prefix) for prefix in requirement.accepted_name_prefixes)
+        or any(
+            substring.lower() in lower_name
+            for substring in requirement.accepted_name_substrings
+        )
+        or entry.measure in requirement.accepted_measures
+        or entry.family in requirement.accepted_families
+    )
+    if not selector_matched:
+        return False
+    return all(
+        entry.metadata.get(key) == value for key, value in requirement.required_metadata
+    )
+
+
+def target_profile_coverage_gate(
+    targets: Iterable[object],
+    requirements: Iterable[TargetCoverageRequirement],
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Require a target profile to contain specified fiscal/admin concepts.
+
+    This complements :func:`source_coverage_gate`: source coverage proves the
+    administrative package is available, while this gate proves the compiled
+    target registry actually activates rows for the concepts that must be hard
+    calibration constraints.
+    """
+
+    inventory = tuple(_target_inventory_entry(target) for target in targets)
+    requirements = tuple(requirements)
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+
+    failures: list[str] = []
+    matches_by_requirement: dict[str, list[str]] = {}
+    for requirement in requirements:
+        matches = sorted(
+            {
+                entry.name
+                for entry in inventory
+                if entry.name and _matches_target_requirement(entry, requirement)
+            }
+        )
+        matches_by_requirement[requirement.requirement_id] = matches
+        if len(matches) >= requirement.min_matches:
+            continue
+        if requirement.requirement_id in exclusions:
+            continue
+        failures.append(
+            f"{requirement.requirement_id}: target profile has {len(matches)} "
+            f"match(es), needs {requirement.min_matches} for {requirement.label}."
+        )
+
+    requirement_ids = {requirement.requirement_id for requirement in requirements}
+    unused_exclusions = sorted(set(exclusions) - requirement_ids)
+    if unused_exclusions:
+        failures.append(
+            f"Reviewed exclusions not in target coverage requirements: "
+            f"{unused_exclusions}."
+        )
+
+    return GateResult(
+        name="target_profile_coverage",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "targets_checked": len(inventory),
+            "requirements_checked": len(requirements),
+            "matches_by_requirement": matches_by_requirement,
+            "reviewed_exclusions": {
+                requirement.requirement_id: exclusions[requirement.requirement_id]
+                for requirement in requirements
+                if requirement.requirement_id in exclusions
+            },
+            "unused_reviewed_exclusions": unused_exclusions,
+        },
+    )
+
+
+def macro_realism_gate(
+    metrics: Mapping[str, float],
+    bands: Mapping[str, tuple[float, float]],
+) -> GateResult:
+    """Validate macro ratios against broad release-blocking bands.
+
+    Bands are intentionally coarse backstops, not calibration objectives. They
+    catch a published file whose aggregate fiscal profile is implausible even
+    if the solver reports a low loss on the rows it was given.
+    """
+
+    failures: list[str] = []
+    checked: dict[str, float] = {}
+    for name, band in sorted(bands.items()):
+        if len(band) != 2:
+            raise ValueError(f"Band for {name!r} must be a (low, high) pair.")
+        low, high = map(float, band)
+        if low > high:
+            raise ValueError(f"Band for {name!r} has low > high: {band!r}.")
+        if name not in metrics:
+            failures.append(f"{name}: macro metric missing.")
+            continue
+        value = float(metrics[name])
+        checked[name] = value
+        if not np.isfinite(value):
+            failures.append(f"{name}: macro metric is not finite ({value!r}).")
+        elif value < low or value > high:
+            failures.append(
+                f"{name}: {value:.6g} outside acceptable band [{low:.6g}, {high:.6g}]."
+            )
+
+    return GateResult(
+        name="macro_realism",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "metrics_checked": checked,
+            "bands": {name: tuple(map(float, band)) for name, band in bands.items()},
+        },
+    )
+
+
 def exported_nonzero_gate(
     column_shares: Mapping[str, float],
     *,
@@ -182,6 +437,122 @@ def exported_nonzero_gate(
                 if name in column_shares
             },
             "unused_exemptions": unused,
+        },
+    )
+
+
+def _numeric_chunks(values: Iterable[float], chunk_size: int) -> Iterable[np.ndarray]:
+    """Yield float chunks without forcing sliceable HDF5 columns into memory."""
+    if isinstance(values, np.ndarray):
+        yield values.astype(np.float64, copy=False).reshape(-1)
+        return
+    shape = getattr(values, "shape", None)
+    if (
+        shape
+        and len(shape) >= 1
+        and hasattr(values, "__getitem__")
+        and not hasattr(values, "iloc")
+    ):
+        n_rows = int(shape[0])
+        for start in range(0, n_rows, chunk_size):
+            stop = min(start + chunk_size, n_rows)
+            yield np.asarray(values[start:stop], dtype=np.float64).reshape(-1)
+        return
+    try:
+        yield np.asarray(values, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError):
+        yield np.fromiter(values, dtype=np.float64)
+
+
+def nonnegative_columns_gate(
+    column_values: Mapping[str, Iterable[float]],
+    required_nonnegative: Iterable[str],
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    atol: float = 0.0,
+    chunk_size: int = 1_000_000,
+) -> GateResult:
+    """Require physically non-negative exported columns to have no negatives.
+
+    Support guards only ensure imputations stay inside donor ranges. If a
+    donor carries sentinel artifacts below zero for a physically non-negative
+    quantity, support checks can preserve the bug. This gate is the release
+    contract for columns such as loan interest amounts: all finite stored
+    values must be at least zero, except for reviewed exclusions with reasons.
+    """
+
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    required = {str(name) for name in required_nonnegative}
+    failures: list[str] = []
+    negative_counts: dict[str, int] = {}
+    minima: dict[str, float | None] = {}
+
+    if atol < 0:
+        raise ValueError(f"atol must be non-negative, got {atol!r}.")
+    if chunk_size < 1:
+        raise ValueError(f"chunk_size must be positive, got {chunk_size!r}.")
+
+    for name in sorted(required):
+        if name in exclusions:
+            continue
+        if name not in column_values:
+            failures.append(f"{name}: required non-negative column missing.")
+            minima[name] = None
+            continue
+        n_negative = 0
+        minimum: float | None = None
+        negative_minimum: float | None = None
+        for values in _numeric_chunks(column_values[name], chunk_size):
+            if values.size == 0:
+                continue
+            finite_mask = np.isfinite(values)
+            if not finite_mask.any():
+                continue
+            finite = values[finite_mask]
+            chunk_min = float(finite.min())
+            minimum = chunk_min if minimum is None else min(minimum, chunk_min)
+            negative = finite < -atol
+            if negative.any():
+                n_negative += int(negative.sum())
+                chunk_negative_min = float(finite[negative].min())
+                negative_minimum = (
+                    chunk_negative_min
+                    if negative_minimum is None
+                    else min(negative_minimum, chunk_negative_min)
+                )
+        minima[name] = minimum
+        negative_counts[name] = n_negative
+        if n_negative:
+            failures.append(
+                f"{name}: {n_negative} finite value(s) below zero "
+                f"(minimum {negative_minimum:.6g}); floor or fix "
+                "the source before publishing."
+            )
+
+    unused_exclusions = sorted(set(exclusions) - required)
+    if unused_exclusions:
+        failures.append(
+            f"Reviewed exclusions not in non-negative requirements: "
+            f"{unused_exclusions}."
+        )
+
+    return GateResult(
+        name="nonnegative_columns",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_required": len(required),
+            "columns_checked": sorted(required & set(column_values)),
+            "negative_counts": negative_counts,
+            "minima": minima,
+            "reviewed_exclusions": {
+                name: reason
+                for name, reason in sorted(exclusions.items())
+                if name in required
+            },
+            "unused_reviewed_exclusions": unused_exclusions,
+            "atol": float(atol),
+            "chunk_size": int(chunk_size),
         },
     )
 

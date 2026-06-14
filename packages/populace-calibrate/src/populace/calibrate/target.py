@@ -27,7 +27,7 @@ compiler (:mod:`populace.calibrate.matrix`) turns a target set plus a
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -85,6 +85,9 @@ class Target:
             count; for ``mean`` it selects the denominator population; for
             ``sum`` it gates the summed value. ``None`` means "all records".
         source: Free-text provenance (e.g. ``"ACS 2024 table B19001"``).
+        metadata: Declarative target semantics used by release gates. For
+            example, a JCT tax-expenditure target records that the row is an
+            ``income_tax`` delta from a simple neutralization reform.
 
     Raises:
         ValueError: If ``name`` or ``entity`` is empty, ``aggregation`` is not
@@ -102,6 +105,7 @@ class Target:
     tolerance: float | None = None
     filter: str | MeasureFn | None = None
     source: str = ""
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -132,6 +136,21 @@ class Target:
                 f"Target {self.name!r}: aggregation {self.aggregation!r} needs a "
                 "measure (a column name or callable); only 'count' may omit it."
             )
+        if not isinstance(self.metadata, Mapping):
+            raise TypeError(
+                f"Target {self.name!r}: metadata must be a mapping from "
+                f"str to str, got {type(self.metadata).__name__}."
+            )
+        metadata = {str(key): str(value) for key, value in self.metadata.items()}
+        bad_metadata = sorted(
+            key for key, value in metadata.items() if not key or not value
+        )
+        if bad_metadata:
+            raise ValueError(
+                f"Target {self.name!r}: metadata keys and values must be "
+                f"non-empty strings; bad keys {bad_metadata}."
+            )
+        object.__setattr__(self, "metadata", metadata)
 
     @property
     def key(self) -> tuple[str, int | str]:
