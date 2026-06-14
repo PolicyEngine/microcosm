@@ -72,6 +72,14 @@ from populace.build.holdout import (  # noqa: E402 - after the compat gate
     rotated_folds,
     summarize_rotations,
 )
+from populace.build.ledger_targets import (  # noqa: E402 - after the compat gate
+    LedgerTargetMapping,
+    LedgerTargetSelection,
+    UnsupportedLedgerTarget,
+    select_ledger_targets,
+    select_ledger_targets_from_jsonl,
+    target_spec_from_ledger_fact,
+)
 from populace.build.plan import (  # noqa: E402 - after the compat gate
     DonorSpec,
     Stage,
@@ -89,6 +97,8 @@ __all__ = [
     "StagePlan",
     "StageRecord",
     "TargetCoverageRequirement",
+    "LedgerTargetMapping",
+    "LedgerTargetSelection",
     "aggregate_admin_gate",
     "enum_domain_gate",
     "export_surface_gate",
@@ -101,9 +111,13 @@ __all__ = [
     "relative_error_loss",
     "rotated_folds",
     "source_coverage_gate",
+    "select_ledger_targets",
+    "select_ledger_targets_from_jsonl",
     "summarize_rotations",
     "support_gate",
     "target_profile_coverage_gate",
+    "target_spec_from_ledger_fact",
     "target_surface_gate",
+    "UnsupportedLedgerTarget",
     "__version__",
 ]
