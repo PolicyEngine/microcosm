@@ -1,11 +1,18 @@
 import json
+from dataclasses import asdict
+
+import pytest
 
 from populace.build.gates import TargetCoverageRequirement, target_profile_coverage_gate
 from populace.build.ledger_targets import (
     LedgerTargetMapping,
+    LedgerTargetReference,
+    compile_ledger_target_references,
+    ledger_target_registry_parity_report,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
 )
+from populace.calibrate import TargetRegistry, TargetSpec
 
 
 def _ledger_fact(**overrides):
@@ -181,6 +188,149 @@ def test__given_consumer_contract_jsonl__then_populace_selects_targets(
     # Then
     assert not selection.unsupported
     assert selection.specs[0].name == "arch.aggregate_fact.v2:abc123"
+
+
+def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="nation/irs/adjusted gross income/total",
+        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        aggregation="sum",
+        filter="is_tax_return",
+        period=2024,
+        source="IRS SOI Table 1.1",
+        family="irs_soi",
+        metadata={"target_role": "soi_fiscal_distribution"},
+        uprating_index="cpi_u",
+        uprating_from_period=2023,
+        uprating_to_period=2024,
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row()],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.name == "nation/irs/adjusted gross income/total"
+    assert spec.entity == "tax_unit"
+    assert spec.measure == "adjusted_gross_income"
+    assert spec.filter == "is_tax_return"
+    assert spec.period == 2024
+    assert spec.source == "IRS SOI Table 1.1"
+    assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+    assert spec.metadata["uprating_index"] == "cpi_u"
+    assert spec.metadata["uprating_from_period"] == "2023"
+    assert spec.metadata["uprating_to_period"] == "2024"
+
+
+def test__given_missing_ledger_reference_fact__then_compilation_fails() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="missing fact target",
+        ledger_fact_key="arch.aggregate_fact.v2:missing",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="did not match a Ledger fact identifier"):
+        compile_ledger_target_references(
+            [_consumer_fact_row()], [reference], country="us"
+        )
+
+
+@pytest.mark.parametrize("measure", [None, ""])
+def test__given_non_count_reference_without_measure__then_compilation_fails(
+    measure,
+) -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="missing measure target",
+        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure=measure,
+        aggregation="sum",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="requires a model measure column"):
+        compile_ledger_target_references(
+            [_consumer_fact_row()], [reference], country="us"
+        )
+
+
+def test__given_reference_identifiers_match_different_facts__then_compilation_fails() -> (
+    None
+):
+    # Given
+    first = _consumer_fact_row()
+    second = _consumer_fact_row(
+        aggregate_fact_key="arch.aggregate_fact.v2:def456",
+        legacy_fact_key="arch.fact.v1:def456",
+        lineage={"source_record_id": "irs_soi.ty2023.table_1_1.all.total_tax"},
+    )
+    reference = LedgerTargetReference(
+        name="inconsistent reference",
+        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        ledger_source_record_id="irs_soi.ty2023.table_1_1.all.total_tax",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="resolve to different Ledger facts"):
+        compile_ledger_target_references([first, second], [reference], country="us")
+
+
+def test__given_lineage_only_metadata_diff__then_parity_report_names_full_digest() -> (
+    None
+):
+    # Given
+    expected = TargetRegistry(
+        [
+            TargetSpec(
+                name="agi",
+                entity="tax_unit",
+                measure="adjusted_gross_income",
+                value=100.0,
+                source="source",
+            )
+        ],
+        country="us",
+    )
+    actual = TargetRegistry(
+        [
+            TargetSpec(
+                name="agi",
+                entity="tax_unit",
+                measure="adjusted_gross_income",
+                value=100.0,
+                source="source",
+                metadata={"ledger_fact_key": "fact"},
+            )
+        ],
+        country="us",
+    )
+
+    # When
+    report = ledger_target_registry_parity_report(expected, actual)
+
+    # Then
+    assert not report.passed
+    assert any(
+        "full target registry digest differs" in line for line in report.failures
+    )
+    assert (
+        report.details["expected_calibration_digest"]
+        == report.details["actual_calibration_digest"]
+    )
+    assert asdict(expected.specs[0]) != asdict(actual.specs[0])
 
 
 def test__given_domain_scoped_fact_without_filter_mapping__then_it_is_unsupported() -> (
