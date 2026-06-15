@@ -171,7 +171,10 @@ def publish_release(
             )
     root_artifacts = _release_manifest_root_artifacts(release_dir)
     if root_artifacts and artifact_root is None:
-        root_artifacts = {}
+        raise ValueError(
+            "release_manifest.json declares root artifacts; pass artifact_root "
+            "so publish_release can upload and verify them before latest.json."
+        )
     for path_in_repo, expected_sha in root_artifacts.items():
         if artifact_root is None:  # pragma: no cover - guarded above
             continue

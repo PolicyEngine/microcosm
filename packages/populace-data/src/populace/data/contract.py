@@ -18,6 +18,7 @@ before any byte reaches the Hub.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -92,6 +93,14 @@ def _load_json(path: Path, failures: list[str]) -> Mapping | None:
         )
         return None
     return loaded
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _reject_json_constant(token: str) -> None:
@@ -302,6 +311,43 @@ def _check_release_manifest(
                     value=entry.get("sha256"),
                     failures=failures,
                 )
+        if (
+            release_id.startswith("populace-us-")
+            and _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None
+        ):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
+            )
+
+
+def _check_local_artifact_hashes(
+    release_dir: Path,
+    release_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    if release_manifest is None:
+        return
+    artifacts = release_manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        return
+    for key, entry in artifacts.items():
+        if not isinstance(entry, Mapping):
+            continue
+        path = entry.get("path")
+        expected_sha = entry.get("sha256")
+        if not isinstance(path, str) or not isinstance(expected_sha, str):
+            continue
+        local = release_dir / path
+        if not local.is_file():
+            continue
+        observed_sha = _sha256(local)
+        if observed_sha != expected_sha:
+            failures.append(
+                f"release_manifest.json artifact {key!r} declares sha256 "
+                f"{expected_sha} for local file {path!r}, but observed "
+                f"{observed_sha}."
+            )
 
 
 def _artifact_by_path(release_manifest: Mapping, path: str) -> Mapping | None:
@@ -588,6 +634,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
         calibration_diagnostics,
         failures,
     )
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
@@ -615,13 +662,18 @@ def _check_us_fiscal_source_consistency(
     fiscal_sources = source_coverage_diagnostics.get("fiscal_target_sources")
     if not isinstance(targets, list) or not isinstance(fiscal_sources, Mapping):
         return
-    calibrated_families = {
+    calibrated_family_counts: dict[str, int] = {}
+    for family in (
         registry.get("family")
         for target in targets
         if isinstance(target, Mapping)
         for registry in (target.get("registry"),)
         if isinstance(registry, Mapping) and registry.get("family")
-    }
+    ):
+        calibrated_family_counts[str(family)] = (
+            calibrated_family_counts.get(str(family), 0) + 1
+        )
+    calibrated_families = set(calibrated_family_counts)
     missing = sorted(
         str(family) for family in calibrated_families - fiscal_sources.keys()
     )
@@ -630,6 +682,26 @@ def _check_us_fiscal_source_consistency(
             f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} fiscal_target_sources must "
             f"cover every calibrated target family; missing {missing}."
         )
+    unexpected = sorted(
+        str(family) for family in fiscal_sources.keys() - calibrated_families
+    )
+    if unexpected:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} fiscal_target_sources must "
+            f"only describe calibrated target families; unexpected {unexpected}."
+        )
+    for family, expected_count in sorted(calibrated_family_counts.items()):
+        source = fiscal_sources.get(family)
+        if not isinstance(source, Mapping):
+            continue
+        target_count = source.get("target_count")
+        if target_count != expected_count:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                f"fiscal_target_sources[{family!r}].target_count is "
+                f"{target_count!r} but calibration_diagnostics.json has "
+                f"{expected_count} calibrated target(s) for that family."
+            )
 
 
 def _check_cross_manifest_consistency(

@@ -7,8 +7,7 @@ release-manifest schemas (an unversioned early shape next to
 fails with each violation named.
 """
 
-from __future__ import annotations
-
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,6 +27,7 @@ GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
 DIAGNOSTICS_SHA = "c" * 64
+SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 
@@ -58,8 +58,13 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
     }
 
 
-def _release_manifest(release_id: str = RELEASE_ID) -> dict:
-    return {
+def _release_manifest(
+    release_id: str = RELEASE_ID,
+    *,
+    diagnostics_sha: str = DIAGNOSTICS_SHA,
+    source_coverage_sha: str = SOURCE_COVERAGE_SHA,
+) -> dict:
+    manifest = {
         "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
         "data_package": {"name": "populace-data", "version": "0.1.0"},
         "build": {"build_id": release_id},
@@ -80,10 +85,18 @@ def _release_manifest(release_id: str = RELEASE_ID) -> dict:
                 "kind": "diagnostics",
                 "path": "calibration_diagnostics.json",
                 "repo_id": "policyengine/populace-us",
-                "sha256": DIAGNOSTICS_SHA,
+                "sha256": diagnostics_sha,
             },
         },
     }
+    if release_id.startswith("populace-us-"):
+        manifest["artifacts"]["us_source_coverage"] = {
+            "kind": "diagnostics",
+            "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+            "repo_id": "policyengine/populace-us",
+            "sha256": source_coverage_sha,
+        }
+    return manifest
 
 
 def _calibration_diagnostics() -> dict:
@@ -180,14 +193,41 @@ def release_dir(tmp_path: Path) -> Path:
     directory = tmp_path / "releases" / RELEASE_ID
     directory.mkdir(parents=True)
     (directory / "build_manifest.json").write_text(json.dumps(_build_manifest()))
-    (directory / "release_manifest.json").write_text(json.dumps(_release_manifest()))
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
     )
     (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
         json.dumps(_source_coverage_diagnostics())
     )
+    diagnostics_sha = _sha256(directory / "calibration_diagnostics.json")
+    source_coverage_sha = _sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
+    (directory / "release_manifest.json").write_text(
+        json.dumps(
+            _release_manifest(
+                diagnostics_sha=diagnostics_sha,
+                source_coverage_sha=source_coverage_sha,
+            )
+        )
+    )
     return directory
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_json_and_refresh_manifest_hash(
+    release_dir: Path,
+    *,
+    filename: str,
+    artifact_key: str,
+    payload: dict,
+) -> None:
+    (release_dir / filename).write_text(json.dumps(payload))
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][artifact_key]["sha256"] = _sha256(release_dir / filename)
+    manifest_path.write_text(json.dumps(manifest))
 
 
 def test_a_complete_release_passes(release_dir: Path) -> None:
@@ -209,11 +249,16 @@ def test_non_us_release_does_not_require_us_source_coverage(tmp_path: Path) -> N
     (directory / "build_manifest.json").write_text(
         json.dumps(_build_manifest(UK_RELEASE_ID))
     )
-    (directory / "release_manifest.json").write_text(
-        json.dumps(_release_manifest(UK_RELEASE_ID))
-    )
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
+    )
+    (directory / "release_manifest.json").write_text(
+        json.dumps(
+            _release_manifest(
+                UK_RELEASE_ID,
+                diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
+            )
+        )
     )
 
     validate_release_dir(directory)
@@ -284,6 +329,44 @@ def test_release_manifest_must_list_calibration_diagnostics(
     (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
         validate_release_dir(release_dir)
+
+
+def test_release_manifest_must_list_us_source_coverage_for_us_release(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["artifacts"].pop("us_source_coverage")
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
+
+
+def test_release_manifest_local_calibration_diagnostics_hash_must_match(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["artifacts"]["calibration_diagnostics"]["sha256"] = "0" * 64
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "artifact 'calibration_diagnostics' declares sha256" in failures
+    assert "calibration_diagnostics.json" in failures
+
+
+def test_release_manifest_local_us_source_coverage_hash_must_match(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["artifacts"]["us_source_coverage"]["sha256"] = "0" * 64
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "artifact 'us_source_coverage' declares sha256" in failures
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
 
 
 def test_build_manifest_requires_clean_git_commit(release_dir: Path) -> None:
@@ -403,6 +486,46 @@ def test_us_source_coverage_must_cover_calibrated_families(
         validate_release_dir(release_dir)
     failures = "\n".join(excinfo.value.failures)
     assert "fiscal_target_sources must cover every calibrated target family" in failures
+
+
+def test_us_source_coverage_must_not_claim_uncalibrated_families(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["fiscal_target_sources"]["irs_soi"] = {
+        "label": "Internal Revenue Service Statistics of Income",
+        "target_count": 1,
+        "sources": ["SOI publication"],
+        "reference_urls": ["https://example.test/soi"],
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=payload,
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "unexpected ['irs_soi']" in failures
+
+
+def test_us_source_coverage_target_counts_match_calibration(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["fiscal_target_sources"]["cbo"]["target_count"] = 2
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=payload,
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "fiscal_target_sources['cbo'].target_count is 2" in failures
+    assert "has 1 calibrated target(s)" in failures
 
 
 def test_build_manifest_requires_runtime_versions(release_dir: Path) -> None:
