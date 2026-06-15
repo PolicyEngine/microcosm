@@ -119,6 +119,7 @@ class FakeHub:
 
     def __init__(self) -> None:
         self.uploads: list[tuple[str, bytes]] = []
+        self.tags: list[dict[str, str | None]] = []
 
     def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type) -> None:
         assert repo_type == "dataset"
@@ -128,6 +129,12 @@ class FakeHub:
         else:
             content = Path(path_or_fileobj).read_bytes()
         self.uploads.append((path_in_repo, content))
+        return {"commit_hash": f"commit-{len(self.uploads)}"}
+
+    def create_tag(self, *, repo_id, tag, repo_type, revision=None) -> None:
+        assert repo_type == "dataset"
+        assert repo_id == "policyengine/populace-us"
+        self.tags.append({"tag": tag, "revision": revision})
 
     def hf_hub_download(self, *, repo_id, filename, repo_type) -> str:
         assert repo_type == "dataset"
@@ -192,6 +199,11 @@ def release_dir(tmp_path: Path) -> Path:
                         "repo_id": "policyengine/populace-us",
                         "sha256": DATASET_SHA,
                     },
+                    "populace_us_2024_calibration": {
+                        "path": "populace_us_2024_calibration.npz",
+                        "repo_id": "policyengine/populace-us",
+                        "sha256": CALIBRATION_SHA,
+                    },
                     "calibration_diagnostics": {
                         "path": "calibration_diagnostics.json",
                         "repo_id": "policyengine/populace-us",
@@ -207,6 +219,15 @@ def release_dir(tmp_path: Path) -> Path:
     (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
         json.dumps(_source_coverage_diagnostics())
     )
+    return directory
+
+
+@pytest.fixture
+def artifact_root(tmp_path: Path) -> Path:
+    directory = tmp_path / "artifacts"
+    directory.mkdir()
+    (directory / "populace_us_2024.h5").write_bytes(b"h5 payload")
+    (directory / "populace_us_2024_calibration.npz").write_bytes(b"npz payload")
     return directory
 
 
@@ -238,6 +259,57 @@ def test_publish_uploads_pointer_last(hub: FakeHub, release_dir: Path) -> None:
     assert uploaded_paths[-1] == LATEST_POINTER_PATH
     for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in uploaded_paths[:-1]
+
+
+def test_publish_uploads_root_artifacts_before_release_files(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    uploaded_paths = [path for path, _ in hub.uploads]
+    assert uploaded_paths[:2] == [
+        "populace_us_2024.h5",
+        "populace_us_2024_calibration.npz",
+    ]
+    assert (
+        uploaded_paths.index("populace_us_2024.h5")
+        < uploaded_paths.index(f"releases/{RELEASE_ID}/build_manifest.json")
+        < uploaded_paths.index(LATEST_POINTER_PATH)
+    )
+
+
+def test_missing_root_artifact_uploads_nothing(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    (artifact_root / "populace_us_2024_calibration.npz").unlink()
+    with pytest.raises(FileNotFoundError, match="populace_us_2024_calibration"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_release_tag_is_created_before_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        create_tag=True,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-6"}]
+    assert hub.uploads[-1][0] == LATEST_POINTER_PATH
 
 
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
