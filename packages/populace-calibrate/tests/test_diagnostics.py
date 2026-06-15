@@ -14,7 +14,9 @@ from pathlib import Path
 from populace.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     Target,
+    TargetRegistry,
     TargetSet,
+    TargetSpec,
     calibrate,
     diagnostics_payload,
     write_calibration_diagnostics,
@@ -58,6 +60,11 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
 
     assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
     assert payload["weight_entity"] == "household"
+    assert payload["target_surface"]["n_targets"] == len(result.diagnostics)
+    assert len(payload["target_surface"]["sha256"]) == 64
+    assert payload["target_surface"]["constraint_matrix"]["rows"] == len(
+        result.diagnostics
+    )
     assert len(payload["loss_trajectory"]) == 120
     assert len(payload["targets"]) == len(result.diagnostics)
     assert payload["n_records"] == result.weights.shape[0]
@@ -67,6 +74,11 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     assert payload["options"]["seed"] == 0
 
     income = next(row for row in payload["targets"] if row["name"].startswith("income"))
+    assert income["target_name"] == "income"
+    assert income["entity"] == "household"
+    assert income["aggregation"] == "sum"
+    assert income["measure"] == {"kind": "column", "name": "income"}
+    assert income["metadata"] == {}
     assert income["initial_estimate"] is not None
     assert income["final_estimate"] is not None
     assert income["within_tolerance"] is True  # tolerance was a whole truth wide
@@ -102,3 +114,43 @@ def test_writer_round_trips(feasible_frame, tmp_path: Path) -> None:
     loaded = json.loads(path.read_text())
     assert loaded == diagnostics_payload(result)
     assert loaded["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+
+
+def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="population",
+                entity="household",
+                aggregation="count",
+                value=truths["population"] * 1.2,
+                period=2024,
+                source="Census PEP 2024",
+                family="census_population",
+            ),
+            TargetSpec(
+                name="income",
+                entity="household",
+                aggregation="sum",
+                measure="income",
+                value=truths["income"] * 1.2,
+                period=2024,
+                source="IRS SOI 2024",
+                family="irs_soi",
+            ),
+        ),
+        country="us",
+    )
+    result = calibrate(frame, registry.to_target_set(), epochs=120, seed=0)
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    assert payload["target_registry"] == {
+        "country": "us",
+        "version": registry.version,
+        "n_specs": 2,
+    }
+    income = next(row for row in payload["targets"] if row["target_name"] == "income")
+    assert income["period"] == 2024
+    assert income["source"] == "IRS SOI 2024"
+    assert income["registry"]["family"] == "irs_soi"

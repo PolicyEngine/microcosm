@@ -27,19 +27,49 @@ from populace.data.release import (
 )
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
+GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+DATASET_SHA = "d" * 64
+CALIBRATION_SHA = "a" * 64
+DIAGNOSTICS_SHA = "c" * 64
+TARGET_SURFACE_SHA = "e" * 64
+REGISTRY_VERSION = "registryabc123"
 
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "weight_entity": "household",
         "options": {"epochs": 120},
+        "target_surface": {
+            "schema_version": 1,
+            "weight_entity": "household",
+            "n_targets": 1,
+            "n_records": 2,
+            "constraint_matrix": {"rows": 1, "columns": 2, "nnz": 2},
+            "sha256": TARGET_SURFACE_SHA,
+            "names_sha256": "b" * 64,
+            "values_sha256": "f" * 64,
+        },
+        "target_registry": {
+            "country": "us",
+            "version": REGISTRY_VERSION,
+            "n_specs": 1,
+        },
         "loss_trajectory": [1.0, 0.5],
         "skipped": [],
         "targets": [
             {
-                "name": "population",
+                "name": "population@2024",
+                "target_name": "population",
+                "period": 2024,
+                "entity": "household",
+                "aggregation": "count",
+                "measure": None,
+                "filter": None,
+                "source": "Census PEP 2024",
+                "metadata": {},
                 "target": 1.0,
+                "compiled_target": 1.0,
                 "initial_estimate": 0.8,
                 "final_estimate": 1.0,
                 "relative_error": 0.0,
@@ -125,7 +155,28 @@ def release_dir(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "build_id": RELEASE_ID,
-                "dataset": {"filename": "populace_us_2024.h5", "sha256": "dc"},
+                "build_sha": GIT_COMMIT[:7],
+                "code": {
+                    "repository": "PolicyEngine/populace",
+                    "git_commit": GIT_COMMIT,
+                    "git_dirty": False,
+                },
+                "dataset": {
+                    "filename": "populace_us_2024.h5",
+                    "sha256": DATASET_SHA,
+                },
+                "calibration": {
+                    "filename": "populace_us_2024_calibration.npz",
+                    "sha256": CALIBRATION_SHA,
+                    "target_surface": {
+                        "sha256": TARGET_SURFACE_SHA,
+                        "n_targets": 1,
+                    },
+                    "target_registry": {
+                        "version": REGISTRY_VERSION,
+                        "n_specs": 1,
+                    },
+                },
                 "gates": {"parity_gaps": 0},
             }
         )
@@ -139,8 +190,13 @@ def release_dir(tmp_path: Path) -> Path:
                     "populace_us_2024": {
                         "path": "populace_us_2024.h5",
                         "repo_id": "policyengine/populace-us",
-                        "sha256": "dc",
-                    }
+                        "sha256": DATASET_SHA,
+                    },
+                    "calibration_diagnostics": {
+                        "path": "calibration_diagnostics.json",
+                        "repo_id": "policyengine/populace-us",
+                        "sha256": DIAGNOSTICS_SHA,
+                    },
                 },
             }
         )
@@ -204,7 +260,7 @@ def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
 ) -> None:
     (release_dir / "calibration_diagnostics.json").write_text(
-        '{"schema_version": 1, "targets": [], "loss_trajectory": [NaN], '
+        '{"schema_version": 2, "targets": [], "loss_trajectory": [NaN], '
         '"skipped": [], "options": {}}'
     )
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
