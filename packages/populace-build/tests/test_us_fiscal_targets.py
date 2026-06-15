@@ -378,7 +378,7 @@ def test_complete_synthetic_fiscal_surface_passes() -> None:
 def test_macro_realism_bands_cover_issue_40_backstops() -> None:
     assert "federal_income_tax_to_gdp" in US_FISCAL_MACRO_REALISM_BANDS
     assert "agi_to_gdp" in US_FISCAL_MACRO_REALISM_BANDS
-    assert "spm_poverty_rate" in US_FISCAL_MACRO_REALISM_BANDS
+    assert "spm_below_threshold_rate" in US_FISCAL_MACRO_REALISM_BANDS
 
 
 def test_scf_nonnegative_targets_gate_negative_interest() -> None:

@@ -80,11 +80,11 @@ def _source_coverage_diagnostics() -> dict:
         "schema_version": 1,
         "classification": "release_gate",
         "source_contract": {
-            "name": "us_poverty_nonfiler_source_coverage",
+            "name": "us_source_coverage",
             "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
         },
         "gate": {
-            "name": "us_poverty_nonfiler_source_coverage",
+            "name": "us_source_coverage",
             "passed": True,
             "failures": [],
         },
@@ -249,7 +249,7 @@ def test_failed_us_source_coverage_diagnostics_is_rejected(
 ) -> None:
     payload = _source_coverage_diagnostics()
     payload["gate"] = {
-        "name": "us_poverty_nonfiler_source_coverage",
+        "name": "us_source_coverage",
         "passed": False,
         "failures": ["social_security_ssi/ssa-ssi-table-7b1-2024 missing"],
     }

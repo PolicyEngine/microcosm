@@ -316,5 +316,5 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
 US_FISCAL_MACRO_REALISM_BANDS: dict[str, tuple[float, float]] = {
     "federal_income_tax_to_gdp": (0.07, 0.11),
     "agi_to_gdp": (0.50, 0.70),
-    "spm_poverty_rate": (0.06, 0.18),
+    "spm_below_threshold_rate": (0.06, 0.18),
 }

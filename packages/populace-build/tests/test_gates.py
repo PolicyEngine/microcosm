@@ -733,10 +733,10 @@ class TestSourceCoverageGate:
         result = source_coverage_gate(
             coverage,
             active_target_aliases=("census-pep-state-age-sex",),
-            name="us_poverty_nonfiler_source_coverage",
+            name="us_source_coverage",
         )
         manifest = GateReport((result,)).to_manifest()
-        gate = manifest["gates"]["us_poverty_nonfiler_source_coverage"]
+        gate = manifest["gates"]["us_source_coverage"]
         assert gate["passed"]
         assert gate["details"]["coverage_summary"]["hard_target"] == {
             "families": 1,

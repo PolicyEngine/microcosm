@@ -46,7 +46,7 @@ REQUIRED_RELEASE_FILES = (
 )
 
 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 1
-US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_poverty_nonfiler_source_coverage.json"
+US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 
 
@@ -232,10 +232,10 @@ def _check_source_coverage_diagnostics(
             "'source_contract' object."
         )
     else:
-        if source_contract.get("name") != "us_poverty_nonfiler_source_coverage":
+        if source_contract.get("name") != "us_source_coverage":
             failures.append(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.name must "
-                "be 'us_poverty_nonfiler_source_coverage'."
+                "be 'us_source_coverage'."
             )
         arch_commit = source_contract.get("arch_commit")
         if not isinstance(arch_commit, str) or len(arch_commit) != 40:
@@ -250,10 +250,10 @@ def _check_source_coverage_diagnostics(
             f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing the 'gate' object."
         )
     else:
-        if gate.get("name") != "us_poverty_nonfiler_source_coverage":
+        if gate.get("name") != "us_source_coverage":
             failures.append(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.name must be "
-                "'us_poverty_nonfiler_source_coverage'."
+                "'us_source_coverage'."
             )
         if gate.get("passed") is not True:
             failures.append(

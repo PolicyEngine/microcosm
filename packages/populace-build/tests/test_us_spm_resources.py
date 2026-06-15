@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import pytest
 
-from populace.build.us.poverty import (
+from populace.build.us.spm_resources import (
     spm_resource_diagnostics,
     write_spm_resource_diagnostics,
 )
@@ -30,11 +30,11 @@ def test_spm_resource_diagnostics_reports_validation_only_payload() -> None:
 
     assert diagnostics["classification"] == "validation_only"
     assert diagnostics["population"] == 6.0
-    assert diagnostics["poverty_count"] == 3.0
-    assert diagnostics["poverty_rate"] == pytest.approx(0.5)
+    assert diagnostics["below_spm_threshold_count"] == 3.0
+    assert diagnostics["below_spm_threshold_rate"] == pytest.approx(0.5)
     assert diagnostics["negative_resources"]["count"] == 1.0
     assert diagnostics["negative_resources"]["minimum"] == -500.0
-    assert diagnostics["groups"]["state"]["CA"]["poverty_count"] == 2.0
+    assert diagnostics["groups"]["state"]["CA"]["below_spm_threshold_count"] == 2.0
     assert diagnostics["validation_references"]["census_cps_spm"] == {
         "classification": "validation_only"
     }
@@ -68,8 +68,8 @@ def test_spm_resource_diagnostics_ignores_invalid_rows_in_counts() -> None:
     )
 
     assert diagnostics["population"] == 5.0
-    assert diagnostics["poverty_count"] == 2.0
-    assert diagnostics["poverty_rate"] == pytest.approx(0.4)
+    assert diagnostics["below_spm_threshold_count"] == 2.0
+    assert diagnostics["below_spm_threshold_rate"] == pytest.approx(0.4)
     assert diagnostics["negative_resources"]["count"] == 0.0
 
 

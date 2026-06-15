@@ -54,11 +54,11 @@ def _source_coverage_diagnostics() -> dict:
         "schema_version": 1,
         "classification": "release_gate",
         "source_contract": {
-            "name": "us_poverty_nonfiler_source_coverage",
+            "name": "us_source_coverage",
             "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
         },
         "gate": {
-            "name": "us_poverty_nonfiler_source_coverage",
+            "name": "us_source_coverage",
             "passed": True,
             "failures": [],
         },
@@ -166,7 +166,7 @@ def test_pointer_payload_names_every_contract_file() -> None:
         == f"releases/{RELEASE_ID}/build_manifest.json"
     )
     assert (
-        payload["paths"]["us_poverty_nonfiler_source_coverage"]
+        payload["paths"]["us_source_coverage"]
         == f"releases/{RELEASE_ID}/{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE}"
     )
 
