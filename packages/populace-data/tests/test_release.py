@@ -28,8 +28,8 @@ from populace.data.release import (
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
-DATASET_SHA = "d" * 64
-CALIBRATION_SHA = "a" * 64
+DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
+CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 DIAGNOSTICS_SHA = "c" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
@@ -74,6 +74,7 @@ def _calibration_diagnostics() -> dict:
                 "final_estimate": 1.0,
                 "relative_error": 0.0,
                 "within_tolerance": True,
+                "registry": {"family": "cbo"},
             }
         ],
     }
@@ -111,6 +112,14 @@ def _source_coverage_diagnostics() -> dict:
         "missing_hard_targets": [],
         "reviewed_exclusions": {},
         "validation_only_activated": [],
+        "fiscal_target_sources": {
+            "cbo": {
+                "label": "Congressional Budget Office revenue projections",
+                "target_count": 1,
+                "sources": ["Census PEP 2024"],
+                "reference_urls": ["https://example.test/source"],
+            }
+        },
     }
 
 
@@ -167,6 +176,11 @@ def release_dir(tmp_path: Path) -> Path:
                     "repository": "PolicyEngine/populace",
                     "git_commit": GIT_COMMIT,
                     "git_dirty": False,
+                },
+                "runtime": {
+                    "python": "3.14.0",
+                    "policyengine-us": "1.729.0",
+                    "policyengine-core": "3.19.0",
                 },
                 "dataset": {
                     "filename": "populace_us_2024.h5",
@@ -288,6 +302,20 @@ def test_missing_root_artifact_uploads_nothing(
 ) -> None:
     (artifact_root / "populace_us_2024_calibration.npz").unlink()
     with pytest.raises(FileNotFoundError, match="populace_us_2024_calibration"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_root_artifact_hash_mismatch_uploads_nothing(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    (artifact_root / "populace_us_2024.h5").write_bytes(b"wrong payload")
+    with pytest.raises(ValueError, match="release artifact 'populace_us_2024.h5'"):
         publish_release(
             release_dir,
             "policyengine/populace-us",

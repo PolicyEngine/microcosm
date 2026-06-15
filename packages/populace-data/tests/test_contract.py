@@ -42,6 +42,11 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
             "git_commit": GIT_COMMIT,
             "git_dirty": False,
         },
+        "runtime": {
+            "python": "3.14.0",
+            "policyengine-us": "1.729.0",
+            "policyengine-core": "3.19.0",
+        },
         "dataset": {"filename": "populace_us_2024.h5", "sha256": DATASET_SHA},
         "calibration": {
             "filename": "populace_us_2024_calibration.npz",
@@ -64,6 +69,12 @@ def _release_manifest(release_id: str = RELEASE_ID) -> dict:
                 "path": "populace_us_2024.h5",
                 "repo_id": "policyengine/populace-us",
                 "sha256": DATASET_SHA,
+            },
+            "populace_us_2024_calibration": {
+                "kind": "calibration",
+                "path": "populace_us_2024_calibration.npz",
+                "repo_id": "policyengine/populace-us",
+                "sha256": CALIBRATION_SHA,
             },
             "calibration_diagnostics": {
                 "kind": "diagnostics",
@@ -114,6 +125,7 @@ def _calibration_diagnostics() -> dict:
                 "final_estimate": 1.0,
                 "relative_error": 0.0,
                 "within_tolerance": True,
+                "registry": {"family": "cbo"},
             }
         ],
     }
@@ -151,6 +163,14 @@ def _source_coverage_diagnostics() -> dict:
         "missing_hard_targets": [],
         "reviewed_exclusions": {},
         "validation_only_activated": [],
+        "fiscal_target_sources": {
+            "cbo": {
+                "label": "Congressional Budget Office revenue projections",
+                "target_count": 1,
+                "sources": ["Census PEP 2024"],
+                "reference_urls": ["https://example.test/source"],
+            }
+        },
     }
 
 
@@ -359,6 +379,74 @@ def test_us_source_coverage_reviewed_exclusions_need_reasons(
         validate_release_dir(release_dir)
     failures = "\n".join(excinfo.value.failures)
     assert "reviewed_exclusions need non-empty string reasons" in failures
+
+
+def test_us_source_coverage_requires_fiscal_target_sources(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    del payload["fiscal_target_sources"]
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(json.dumps(payload))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "fiscal_target_sources" in failures
+
+
+def test_us_source_coverage_must_cover_calibrated_families(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["fiscal_target_sources"] = {}
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(json.dumps(payload))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "fiscal_target_sources must cover every calibrated target family" in failures
+
+
+def test_build_manifest_requires_runtime_versions(release_dir: Path) -> None:
+    manifest = _build_manifest()
+    del manifest["runtime"]
+    (release_dir / "build_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "runtime" in failures
+
+
+def test_build_manifest_rejects_unknown_runtime_versions(release_dir: Path) -> None:
+    manifest = _build_manifest()
+    manifest["runtime"]["policyengine-us"] = "not-installed"
+    (release_dir / "build_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "runtime.policyengine-us" in failures
+
+
+def test_release_manifest_must_include_dataset_root_artifact(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    del manifest["artifacts"]["populace_us_2024"]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "dataset root artifact" in failures
+
+
+def test_release_manifest_root_artifact_hashes_match_build_manifest(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["artifacts"]["populace_us_2024"]["sha256"] = "0" * 64
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "sha256 matching build_manifest.json" in failures
 
 
 def test_all_failures_reported_at_once(release_dir: Path) -> None:
