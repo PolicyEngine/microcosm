@@ -30,10 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from populace.data.contract import (
-    REQUIRED_RELEASE_FILES,
-    validate_release_dir,
-)
+from populace.data.contract import required_release_files, validate_release_dir
 
 __all__ = [
     "LATEST_POINTER_PATH",
@@ -62,7 +59,8 @@ class LatestPointer:
         updated_at: ISO-8601 UTC timestamp of when the pointer was written.
         paths: Repo-relative path of each contract file, keyed by its stem
             (``"build_manifest"``, ``"release_manifest"``,
-            ``"calibration_diagnostics"``).
+            ``"calibration_diagnostics"``, plus country-specific contract
+            files such as US source coverage).
     """
 
     release_id: str
@@ -74,8 +72,8 @@ def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) ->
     """The ``latest.json`` payload for ``release_id``.
 
     Paths are derived from the release contract — the pointer names exactly
-    the files :data:`~populace.data.contract.REQUIRED_RELEASE_FILES`
-    guarantees exist.
+    the files :func:`~populace.data.contract.required_release_files`
+    guarantees exist for this release id.
 
     Args:
         release_id: The build id being made current.
@@ -89,7 +87,7 @@ def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) ->
         "updated_at": updated_at,
         "paths": {
             filename.removesuffix(".json"): f"releases/{release_id}/{filename}"
-            for filename in REQUIRED_RELEASE_FILES
+            for filename in required_release_files(release_id)
         },
     }
 
@@ -142,8 +140,9 @@ def publish_release(
     validate_release_dir(release_dir)
     release_id = release_dir.name
 
-    filenames = list(REQUIRED_RELEASE_FILES) + [
-        name for name in extra_files if name not in REQUIRED_RELEASE_FILES
+    contract_files = required_release_files(release_id)
+    filenames = list(contract_files) + [
+        name for name in extra_files if name not in contract_files
     ]
     for filename in filenames:
         local = release_dir / filename

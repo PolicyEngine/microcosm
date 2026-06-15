@@ -24,7 +24,9 @@ there is no kernel in its dependency closure to gate against.
 from populace.data.contract import (
     RELEASE_MANIFEST_SCHEMA_VERSION,
     REQUIRED_RELEASE_FILES,
+    US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
+    required_release_files,
     validate_release_dir,
 )
 from populace.data.loader import (
@@ -55,7 +57,9 @@ __all__ = [
     "register",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
+    "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
+    "required_release_files",
     "validate_release_dir",
     "LATEST_POINTER_PATH",
     "LATEST_POINTER_SCHEMA_VERSION",

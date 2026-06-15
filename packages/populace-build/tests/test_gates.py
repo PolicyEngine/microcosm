@@ -624,6 +624,67 @@ class TestSourceCoverageGate:
         assert result.details["reviewed_exclusions"] == {
             "census-pep-state-age-sex": "state-age targets not in this smoke build"
         }
+        assert result.details["coverage_summary"]["hard_target"] == {
+            "families": 1,
+            "package_aliases": 1,
+            "covered_package_aliases": 0,
+            "missing_package_aliases": 0,
+            "reviewed_excluded_package_aliases": 1,
+        }
+
+    def test_reviewed_hard_target_exclusion_requires_reason(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        result = source_coverage_gate(
+            coverage,
+            reviewed_exclusions={"census-pep-state-age-sex": ""},
+        )
+        assert not result.passed
+        assert "requires a non-empty string reason" in result.failures[0]
+        assert "census-pep-state-age-sex" in result.details["missing_hard_targets"]
+        assert result.details["reviewed_exclusions"] == {}
+        assert result.details["coverage_summary"]["hard_target"] == {
+            "families": 1,
+            "package_aliases": 1,
+            "covered_package_aliases": 0,
+            "missing_package_aliases": 1,
+            "reviewed_excluded_package_aliases": 0,
+        }
+
+    def test_reviewed_hard_target_exclusion_reason_must_be_string(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        result = source_coverage_gate(
+            coverage,
+            reviewed_exclusions={"census-pep-state-age-sex": None},
+        )
+        assert not result.passed
+        assert "requires a non-empty string reason" in result.failures[0]
+        assert result.details["reviewed_exclusions"] == {}
+
+    def test_reviewed_hard_target_exclusion_requires_mapping(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        with pytest.raises(TypeError, match="mapping from alias to reason"):
+            source_coverage_gate(
+                coverage,
+                reviewed_exclusions=("census-pep-state-age-sex",),
+            )
 
     def test_validation_only_family_cannot_be_a_hard_target(self) -> None:
         coverage = (
@@ -639,6 +700,9 @@ class TestSourceCoverageGate:
         )
         assert not result.passed
         assert "validation-only" in result.failures[0]
+        assert result.details["validation_only_families"]["census_cps_spm"][
+            "activated_as_hard_target"
+        ]
 
     def test_source_gaps_are_reported_without_failing(self) -> None:
         coverage = (
@@ -652,4 +716,32 @@ class TestSourceCoverageGate:
         assert result.passed
         assert result.details["source_gaps"] == {
             "usda_wic": ("USDA FNS WIC program data",)
+        }
+        assert result.details["coverage_summary"]["source_gap"] == {
+            "families": 1,
+            "missing_source_packages": 1,
+        }
+
+    def test_named_source_coverage_gate_surfaces_manifest_summary(self) -> None:
+        coverage = (
+            {
+                "family_id": "population_age_sex",
+                "role": "hard_target",
+                "package_aliases": ("census-pep-state-age-sex",),
+            },
+        )
+        result = source_coverage_gate(
+            coverage,
+            active_target_aliases=("census-pep-state-age-sex",),
+            name="us_poverty_nonfiler_source_coverage",
+        )
+        manifest = GateReport((result,)).to_manifest()
+        gate = manifest["gates"]["us_poverty_nonfiler_source_coverage"]
+        assert gate["passed"]
+        assert gate["details"]["coverage_summary"]["hard_target"] == {
+            "families": 1,
+            "package_aliases": 1,
+            "covered_package_aliases": 1,
+            "missing_package_aliases": 0,
+            "reviewed_excluded_package_aliases": 0,
         }
