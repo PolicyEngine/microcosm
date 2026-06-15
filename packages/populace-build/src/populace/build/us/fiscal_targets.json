@@ -80,9 +80,9 @@
       }
     },
     {
-      "name": "nation/jct/interest_deduction_expenditure",
+      "name": "nation/jct/deductible_mortgage_interest_expenditure",
       "entity": "household",
-      "measure": "nation/jct/interest_deduction_expenditure",
+      "measure": "nation/jct/deductible_mortgage_interest_expenditure",
       "aggregation": "sum",
       "value": 24800000000,
       "period": 2024,
@@ -93,7 +93,7 @@
         "kind": "neutralize_variable",
         "output_variable": "income_tax",
         "matrix_row": "reform_minus_baseline_income_tax",
-        "neutralized_variable": "interest_deduction",
+        "neutralized_variable": "deductible_mortgage_interest",
         "source_year": "2024",
         "reference_url": "https://www.jct.gov/publications/2024/jcx-48-24/",
         "measure_construction": "income_tax(reform)-income_tax(baseline)"

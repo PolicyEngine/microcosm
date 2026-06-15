@@ -18,9 +18,32 @@ from populace.build.us import (
 )
 from populace.calibrate import TargetSpec
 
+ECPS_JCT_TAX_EXPENDITURE_TARGETS = {
+    "salt_deduction": (
+        "nation/jct/salt_deduction_expenditure",
+        21.247e9,
+    ),
+    "medical_expense_deduction": (
+        "nation/jct/medical_expense_deduction_expenditure",
+        11.4e9,
+    ),
+    "charitable_deduction": (
+        "nation/jct/charitable_deduction_expenditure",
+        65.301e9,
+    ),
+    "deductible_mortgage_interest": (
+        "nation/jct/deductible_mortgage_interest_expenditure",
+        24.8e9,
+    ),
+    "qualified_business_income_deduction": (
+        "nation/jct/qualified_business_income_deduction_expenditure",
+        63.1e9,
+    ),
+}
+
 
 def test_jct_tax_expenditure_specs_are_simple_income_tax_reforms() -> None:
-    assert len(US_JCT_TAX_EXPENDITURE_REFORMS) >= 5
+    assert len(US_JCT_TAX_EXPENDITURE_REFORMS) == len(ECPS_JCT_TAX_EXPENDITURE_TARGETS)
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         assert isinstance(spec, SimpleTaxExpenditureReform)
         assert spec.value > 0
@@ -36,16 +59,13 @@ def test_jct_target_specs_keep_reform_contract_and_values() -> None:
         spec.metadata["neutralized_variable"]: spec
         for spec in US_JCT_TAX_EXPENDITURE_TARGET_SPECS
     }
-    assert set(by_variable) == {
-        "salt_deduction",
-        "medical_expense_deduction",
-        "charitable_deduction",
-        "interest_deduction",
-        "qualified_business_income_deduction",
-    }
-    assert by_variable["salt_deduction"].value == 21.247e9
-    assert by_variable["charitable_deduction"].value == 65.301e9
+    assert set(by_variable) == set(ECPS_JCT_TAX_EXPENDITURE_TARGETS)
     for target in by_variable.values():
+        target_name, target_value = ECPS_JCT_TAX_EXPENDITURE_TARGETS[
+            target.metadata["neutralized_variable"]
+        ]
+        assert target.name == target_name
+        assert target.value == target_value
         assert target.measure == target.name
         assert target.metadata["kind"] == "neutralize_variable"
         assert target.metadata["output_variable"] == "income_tax"
@@ -54,6 +74,23 @@ def test_jct_target_specs_keep_reform_contract_and_values() -> None:
             target.metadata["measure_construction"]
             == "income_tax(reform)-income_tax(baseline)"
         )
+
+
+def test_jct_target_surface_restores_ecps_reform_variables() -> None:
+    """Keep Populace's JCT tax-expenditure surface aligned with eCPS."""
+    by_target = {
+        spec.target_name: spec.neutralized_variable
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+    }
+    expected = {
+        target_name: variable
+        for variable, (target_name, _target_value) in (
+            ECPS_JCT_TAX_EXPENDITURE_TARGETS.items()
+        )
+    }
+    assert by_target == expected
+    assert "nation/jct/interest_deduction_expenditure" not in by_target
+    assert "interest_deduction" not in by_target.values()
 
 
 def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:
@@ -180,7 +217,7 @@ def test_current_comparison_like_surface_fails_missing_tax_controls_and_jct_meta
         "nation/jct/salt_deduction_expenditure",
         "nation/jct/medical_expense_deduction_expenditure",
         "nation/jct/charitable_deduction_expenditure",
-        "nation/jct/interest_deduction_expenditure",
+        "nation/jct/deductible_mortgage_interest_expenditure",
         "nation/jct/qualified_business_income_deduction_expenditure",
     ]
     result = target_profile_coverage_gate(

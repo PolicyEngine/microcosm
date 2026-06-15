@@ -25,6 +25,7 @@ mocking of our own internals.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -168,10 +169,13 @@ def publish_release(
             raise FileNotFoundError(
                 f"extra release file {filename!r} not found in {release_dir}."
             )
-    artifact_paths = _release_manifest_artifact_paths(release_dir)
-    if artifact_paths and artifact_root is None:
-        artifact_paths = {}
-    for path_in_repo in artifact_paths.values():
+    root_artifacts = _release_manifest_root_artifacts(release_dir)
+    if root_artifacts and artifact_root is None:
+        raise ValueError(
+            "release_manifest.json declares root artifacts; pass artifact_root "
+            "so publish_release can upload and verify them before latest.json."
+        )
+    for path_in_repo, expected_sha in root_artifacts.items():
         if artifact_root is None:  # pragma: no cover - guarded above
             continue
         local = artifact_root / path_in_repo
@@ -179,13 +183,19 @@ def publish_release(
             raise FileNotFoundError(
                 f"release artifact {path_in_repo!r} not found under {artifact_root}."
             )
+        observed_sha = _sha256(local)
+        if observed_sha != expected_sha:
+            raise ValueError(
+                f"release artifact {path_in_repo!r} has sha256 {observed_sha} "
+                f"but release_manifest.json declares {expected_sha}."
+            )
 
     if api is None:
         api = _hf_api()
 
     last_commit = None
     if artifact_root is not None:
-        for path_in_repo in artifact_paths.values():
+        for path_in_repo in root_artifacts:
             local = artifact_root / path_in_repo
             last_commit = api.upload_file(
                 path_or_fileobj=str(local),
@@ -219,6 +229,37 @@ def publish_release(
         repo_type="dataset",
     )
     return payload
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _release_manifest_root_artifacts(release_dir: Path) -> dict[str, str]:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    artifacts = manifest.get("artifacts", {})
+    if not isinstance(artifacts, dict):  # pragma: no cover - validated already
+        return {}
+    contract_files = set(required_release_files(release_dir.name))
+    root_artifacts: dict[str, str] = {}
+    for artifact in artifacts.values():
+        if not isinstance(artifact, dict):  # pragma: no cover - validated already
+            continue
+        path = artifact.get("path")
+        sha = artifact.get("sha256")
+        if not isinstance(path, str) or not path:
+            continue
+        if path in contract_files:
+            continue
+        if path.startswith("releases/"):
+            continue
+        if isinstance(sha, str):
+            root_artifacts[path] = sha
+    return root_artifacts
 
 
 def _release_manifest_artifact_paths(release_dir: Path) -> dict[str, str]:

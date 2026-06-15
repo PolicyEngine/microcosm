@@ -18,6 +18,7 @@ before any byte reaches the Hub.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -92,6 +93,14 @@ def _load_json(path: Path, failures: list[str]) -> Mapping | None:
         )
         return None
     return loaded
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _reject_json_constant(token: str) -> None:
@@ -185,6 +194,20 @@ def _check_build_manifest(
                 failures.append(
                     "build_manifest.json 'build_sha' must be a prefix of "
                     "'code.git_commit'."
+                )
+    runtime = manifest.get("runtime")
+    if not isinstance(runtime, Mapping):
+        failures.append(
+            "build_manifest.json is missing the 'runtime' object "
+            "(Python and package versions used for target materialization)."
+        )
+    else:
+        for package in ("python", "policyengine-us", "policyengine-core"):
+            value = runtime.get(package)
+            if not value or value in {"not-installed", "unknown"}:
+                failures.append(
+                    f"build_manifest.json 'runtime.{package}' must be a resolved "
+                    "version, not missing or unknown."
                 )
     dataset = manifest.get("dataset")
     if not isinstance(dataset, Mapping):
@@ -288,6 +311,53 @@ def _check_release_manifest(
                     value=entry.get("sha256"),
                     failures=failures,
                 )
+        if (
+            release_id.startswith("populace-us-")
+            and _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None
+        ):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
+            )
+
+
+def _check_local_artifact_hashes(
+    release_dir: Path,
+    release_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    if release_manifest is None:
+        return
+    artifacts = release_manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        return
+    for key, entry in artifacts.items():
+        if not isinstance(entry, Mapping):
+            continue
+        path = entry.get("path")
+        expected_sha = entry.get("sha256")
+        if not isinstance(path, str) or not isinstance(expected_sha, str):
+            continue
+        local = release_dir / path
+        if not local.is_file():
+            continue
+        observed_sha = _sha256(local)
+        if observed_sha != expected_sha:
+            failures.append(
+                f"release_manifest.json artifact {key!r} declares sha256 "
+                f"{expected_sha} for local file {path!r}, but observed "
+                f"{observed_sha}."
+            )
+
+
+def _artifact_by_path(release_manifest: Mapping, path: str) -> Mapping | None:
+    artifacts = release_manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        return None
+    for artifact in artifacts.values():
+        if isinstance(artifact, Mapping) and artifact.get("path") == path:
+            return artifact
+    return None
 
 
 def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) -> None:
@@ -442,6 +512,7 @@ def _check_source_coverage_diagnostics(
         "hard_target_families": Mapping,
         "validation_only_families": Mapping,
         "source_gap_families": Mapping,
+        "fiscal_target_sources": Mapping,
         "missing_hard_targets": list,
         "reviewed_exclusions": Mapping,
         "validation_only_activated": list,
@@ -466,6 +537,42 @@ def _check_source_coverage_diagnostics(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} reviewed_exclusions "
                 f"need non-empty string reasons for {bad_reviewed}."
             )
+
+    fiscal_sources = diagnostics.get("fiscal_target_sources")
+    if isinstance(fiscal_sources, Mapping):
+        for family, source in fiscal_sources.items():
+            if not isinstance(source, Mapping):
+                failures.append(
+                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                    f"fiscal_target_sources[{family!r}] must be an object."
+                )
+                continue
+            target_count = source.get("target_count")
+            if not isinstance(target_count, int) or target_count <= 0:
+                failures.append(
+                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                    f"fiscal_target_sources[{family!r}].target_count must be > 0."
+                )
+            sources = source.get("sources")
+            if (
+                not isinstance(sources, list)
+                or not sources
+                or any(not isinstance(item, str) or not item for item in sources)
+            ):
+                failures.append(
+                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                    f"fiscal_target_sources[{family!r}].sources must be a "
+                    "non-empty list of strings."
+                )
+            reference_urls = source.get("reference_urls")
+            if not isinstance(reference_urls, list) or any(
+                not isinstance(item, str) or not item for item in reference_urls
+            ):
+                failures.append(
+                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                    f"fiscal_target_sources[{family!r}].reference_urls must "
+                    "be a list of strings."
+                )
 
 
 def validate_release_dir(release_dir: Path | str) -> None:
@@ -494,6 +601,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None
     calibration_diagnostics: Mapping | None = None
+    source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
         if not (release_dir / filename).is_file():
@@ -526,15 +634,74 @@ def validate_release_dir(release_dir: Path | str) -> None:
         calibration_diagnostics,
         failures,
     )
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
         diagnostics = _load_json(source_coverage_path, failures)
         if diagnostics is not None:
+            source_coverage_diagnostics = diagnostics
             _check_source_coverage_diagnostics(diagnostics, failures)
+
+    _check_us_fiscal_source_consistency(
+        calibration_diagnostics, source_coverage_diagnostics, failures
+    )
 
     if failures:
         raise ReleaseContractError(release_dir, failures)
+
+
+def _check_us_fiscal_source_consistency(
+    calibration_diagnostics: Mapping | None,
+    source_coverage_diagnostics: Mapping | None,
+    failures: list[str],
+) -> None:
+    if calibration_diagnostics is None or source_coverage_diagnostics is None:
+        return
+    targets = calibration_diagnostics.get("targets")
+    fiscal_sources = source_coverage_diagnostics.get("fiscal_target_sources")
+    if not isinstance(targets, list) or not isinstance(fiscal_sources, Mapping):
+        return
+    calibrated_family_counts: dict[str, int] = {}
+    for family in (
+        registry.get("family")
+        for target in targets
+        if isinstance(target, Mapping)
+        for registry in (target.get("registry"),)
+        if isinstance(registry, Mapping) and registry.get("family")
+    ):
+        calibrated_family_counts[str(family)] = (
+            calibrated_family_counts.get(str(family), 0) + 1
+        )
+    calibrated_families = set(calibrated_family_counts)
+    missing = sorted(
+        str(family) for family in calibrated_families - fiscal_sources.keys()
+    )
+    if missing:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} fiscal_target_sources must "
+            f"cover every calibrated target family; missing {missing}."
+        )
+    unexpected = sorted(
+        str(family) for family in fiscal_sources.keys() - calibrated_families
+    )
+    if unexpected:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} fiscal_target_sources must "
+            f"only describe calibrated target families; unexpected {unexpected}."
+        )
+    for family, expected_count in sorted(calibrated_family_counts.items()):
+        source = fiscal_sources.get(family)
+        if not isinstance(source, Mapping):
+            continue
+        target_count = source.get("target_count")
+        if target_count != expected_count:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} "
+                f"fiscal_target_sources[{family!r}].target_count is "
+                f"{target_count!r} but calibration_diagnostics.json has "
+                f"{expected_count} calibrated target(s) for that family."
+            )
 
 
 def _check_cross_manifest_consistency(
@@ -579,6 +746,26 @@ def _check_cross_manifest_consistency(
                         f"target_registry.{field}."
                     )
 
+    if build_manifest is not None and release_manifest is not None:
+        dataset = build_manifest.get("dataset")
+        if isinstance(dataset, Mapping):
+            _check_root_artifact_matches_build_manifest(
+                release_manifest,
+                path=dataset.get("filename"),
+                sha256=dataset.get("sha256"),
+                description="dataset",
+                failures=failures,
+            )
+        calibration = build_manifest.get("calibration")
+        if isinstance(calibration, Mapping):
+            _check_root_artifact_matches_build_manifest(
+                release_manifest,
+                path=calibration.get("filename"),
+                sha256=calibration.get("sha256"),
+                description="calibration",
+                failures=failures,
+            )
+
     if release_manifest is not None and calibration_diagnostics is not None:
         artifacts = release_manifest.get("artifacts")
         if isinstance(artifacts, Mapping):
@@ -590,3 +777,27 @@ def _check_cross_manifest_consistency(
                     "release_manifest.json artifact 'calibration_diagnostics' "
                     "must record the diagnostics sha256."
                 )
+
+
+def _check_root_artifact_matches_build_manifest(
+    release_manifest: Mapping,
+    *,
+    path: object,
+    sha256: object,
+    description: str,
+    failures: list[str],
+) -> None:
+    if not isinstance(path, str) or not path:
+        return
+    artifact = _artifact_by_path(release_manifest, path)
+    if artifact is None:
+        failures.append(
+            f"release_manifest.json artifacts must include the {description} "
+            f"root artifact {path!r} declared by build_manifest.json."
+        )
+        return
+    if artifact.get("sha256") != sha256:
+        failures.append(
+            f"release_manifest.json artifact for {description} root artifact "
+            f"{path!r} must have sha256 matching build_manifest.json."
+        )

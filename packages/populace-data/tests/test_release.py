@@ -8,6 +8,7 @@ details.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,9 +29,8 @@ from populace.data.release import (
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
-DATASET_SHA = "d" * 64
-CALIBRATION_SHA = "a" * 64
-DIAGNOSTICS_SHA = "c" * 64
+DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
+CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 
@@ -74,6 +74,7 @@ def _calibration_diagnostics() -> dict:
                 "final_estimate": 1.0,
                 "relative_error": 0.0,
                 "within_tolerance": True,
+                "registry": {"family": "cbo"},
             }
         ],
     }
@@ -111,6 +112,14 @@ def _source_coverage_diagnostics() -> dict:
         "missing_hard_targets": [],
         "reviewed_exclusions": {},
         "validation_only_activated": [],
+        "fiscal_target_sources": {
+            "cbo": {
+                "label": "Congressional Budget Office revenue projections",
+                "target_count": 1,
+                "sources": ["Census PEP 2024"],
+                "reference_urls": ["https://example.test/source"],
+            }
+        },
     }
 
 
@@ -168,6 +177,11 @@ def release_dir(tmp_path: Path) -> Path:
                     "git_commit": GIT_COMMIT,
                     "git_dirty": False,
                 },
+                "runtime": {
+                    "python": "3.14.0",
+                    "policyengine-us": "1.729.0",
+                    "policyengine-core": "3.19.0",
+                },
                 "dataset": {
                     "filename": "populace_us_2024.h5",
                     "sha256": DATASET_SHA,
@@ -188,6 +202,14 @@ def release_dir(tmp_path: Path) -> Path:
             }
         )
     )
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps(_source_coverage_diagnostics())
+    )
+    diagnostics_sha = _sha256(directory / "calibration_diagnostics.json")
+    source_coverage_sha = _sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
     (directory / "release_manifest.json").write_text(
         json.dumps(
             {
@@ -207,19 +229,22 @@ def release_dir(tmp_path: Path) -> Path:
                     "calibration_diagnostics": {
                         "path": "calibration_diagnostics.json",
                         "repo_id": "policyengine/populace-us",
-                        "sha256": DIAGNOSTICS_SHA,
+                        "sha256": diagnostics_sha,
+                    },
+                    "us_source_coverage": {
+                        "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+                        "repo_id": "policyengine/populace-us",
+                        "sha256": source_coverage_sha,
                     },
                 },
             }
         )
     )
-    (directory / "calibration_diagnostics.json").write_text(
-        json.dumps(_calibration_diagnostics())
-    )
-    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
-        json.dumps(_source_coverage_diagnostics())
-    )
     return directory
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 @pytest.fixture
@@ -248,11 +273,14 @@ def test_pointer_payload_names_every_contract_file() -> None:
     )
 
 
-def test_publish_uploads_pointer_last(hub: FakeHub, release_dir: Path) -> None:
+def test_publish_uploads_pointer_last(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
     publish_release(
         release_dir,
         "policyengine/populace-us",
         api=hub,
+        artifact_root=artifact_root,
         updated_at="2026-06-11T13:53:15+00:00",
     )
     uploaded_paths = [path for path, _ in hub.uploads]
@@ -283,11 +311,37 @@ def test_publish_uploads_root_artifacts_before_release_files(
     )
 
 
+def test_publish_requires_artifact_root_for_root_artifacts(
+    hub: FakeHub, release_dir: Path
+) -> None:
+    with pytest.raises(ValueError, match="pass artifact_root"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+        )
+    assert hub.uploads == []
+
+
 def test_missing_root_artifact_uploads_nothing(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
     (artifact_root / "populace_us_2024_calibration.npz").unlink()
     with pytest.raises(FileNotFoundError, match="populace_us_2024_calibration"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_root_artifact_hash_mismatch_uploads_nothing(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    (artifact_root / "populace_us_2024.h5").write_bytes(b"wrong payload")
+    with pytest.raises(ValueError, match="release artifact 'populace_us_2024.h5'"):
         publish_release(
             release_dir,
             "policyengine/populace-us",
@@ -341,12 +395,13 @@ def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
 
 
 def test_extra_files_ride_along_before_the_pointer(
-    hub: FakeHub, release_dir: Path
+    hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
     publish_release(
         release_dir,
         "policyengine/populace-us",
         api=hub,
+        artifact_root=artifact_root,
         extra_files=("calibration_diagnostics.json",),
     )
     uploaded_paths = [path for path, _ in hub.uploads]
@@ -366,11 +421,14 @@ def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> Non
     assert hub.uploads == []
 
 
-def test_publish_then_resolve_round_trips(hub: FakeHub, release_dir: Path) -> None:
+def test_publish_then_resolve_round_trips(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
     published = publish_release(
         release_dir,
         "policyengine/populace-us",
         api=hub,
+        artifact_root=artifact_root,
         updated_at="2026-06-11T13:53:15+00:00",
     )
     pointer = latest_release("policyengine/populace-us", api=hub)
