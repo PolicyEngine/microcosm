@@ -19,6 +19,7 @@ before any byte reaches the Hub.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -45,9 +46,11 @@ REQUIRED_RELEASE_FILES = (
     "calibration_diagnostics.json",
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 1
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 2
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -95,6 +98,55 @@ def _reject_json_constant(token: str) -> None:
     raise ValueError(f"non-standard JSON constant {token}")
 
 
+def _check_sha256_field(
+    *,
+    filename: str,
+    owner: str,
+    value: object,
+    failures: list[str],
+) -> None:
+    if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+        failures.append(f"{filename} {owner} must be a 64-character lowercase sha256.")
+
+
+def _check_target_surface_ref(
+    surface: object,
+    *,
+    filename: str,
+    owner: str,
+    failures: list[str],
+) -> None:
+    if not isinstance(surface, Mapping):
+        failures.append(f"{filename} is missing {owner} target_surface object.")
+        return
+    _check_sha256_field(
+        filename=filename,
+        owner=f"{owner}.target_surface.sha256",
+        value=surface.get("sha256"),
+        failures=failures,
+    )
+    n_targets = surface.get("n_targets")
+    if not isinstance(n_targets, int) or n_targets <= 0:
+        failures.append(f"{filename} {owner}.target_surface.n_targets must be > 0.")
+
+
+def _check_target_registry_ref(
+    registry: object,
+    *,
+    filename: str,
+    owner: str,
+    failures: list[str],
+) -> None:
+    if not isinstance(registry, Mapping):
+        failures.append(f"{filename} is missing {owner} target_registry object.")
+        return
+    if not registry.get("version"):
+        failures.append(f"{filename} {owner}.target_registry.version is required.")
+    n_specs = registry.get("n_specs")
+    if not isinstance(n_specs, int) or n_specs <= 0:
+        failures.append(f"{filename} {owner}.target_registry.n_specs must be > 0.")
+
+
 def _check_build_manifest(
     manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
@@ -107,13 +159,69 @@ def _check_build_manifest(
             f"directory is named {release_id!r}; the directory name IS the "
             f"build id."
         )
+    code = manifest.get("code")
+    if not isinstance(code, Mapping):
+        failures.append(
+            "build_manifest.json is missing the 'code' object (repository, "
+            "git_commit, git_dirty)."
+        )
+    else:
+        if not code.get("repository"):
+            failures.append("build_manifest.json 'code.repository' is required.")
+        git_commit = code.get("git_commit")
+        if not isinstance(git_commit, str) or not _GIT_COMMIT_RE.fullmatch(git_commit):
+            failures.append(
+                "build_manifest.json 'code.git_commit' must be a full "
+                "40-character lowercase git commit."
+            )
+        if code.get("git_dirty") is not False:
+            failures.append(
+                "build_manifest.json 'code.git_dirty' must be false for a "
+                "publishable release."
+            )
+        build_sha = manifest.get("build_sha")
+        if isinstance(build_sha, str) and isinstance(git_commit, str):
+            if not git_commit.startswith(build_sha):
+                failures.append(
+                    "build_manifest.json 'build_sha' must be a prefix of "
+                    "'code.git_commit'."
+                )
     dataset = manifest.get("dataset")
     if not isinstance(dataset, Mapping):
         failures.append("build_manifest.json is missing the 'dataset' object.")
     else:
-        for key in ("filename", "sha256"):
-            if not dataset.get(key):
-                failures.append(f"build_manifest.json 'dataset' is missing {key!r}.")
+        if not dataset.get("filename"):
+            failures.append("build_manifest.json 'dataset' is missing 'filename'.")
+        _check_sha256_field(
+            filename="build_manifest.json",
+            owner="'dataset.sha256'",
+            value=dataset.get("sha256"),
+            failures=failures,
+        )
+    calibration = manifest.get("calibration")
+    if not isinstance(calibration, Mapping):
+        failures.append("build_manifest.json is missing the 'calibration' object.")
+    else:
+        if not calibration.get("filename"):
+            failures.append("build_manifest.json 'calibration.filename' is required.")
+        _check_sha256_field(
+            filename="build_manifest.json",
+            owner="'calibration.sha256'",
+            value=calibration.get("sha256"),
+            failures=failures,
+        )
+        _check_target_surface_ref(
+            calibration.get("target_surface"),
+            filename="build_manifest.json",
+            owner="'calibration'",
+            failures=failures,
+        )
+        _check_target_registry_ref(
+            calibration.get("target_registry"),
+            filename="build_manifest.json",
+            owner="'calibration'",
+            failures=failures,
+        )
     if not isinstance(manifest.get("gates"), Mapping):
         failures.append(
             "build_manifest.json is missing the 'gates' object (the "
@@ -151,6 +259,17 @@ def _check_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
     else:
+        diagnostics_artifact = artifacts.get("calibration_diagnostics")
+        if not isinstance(diagnostics_artifact, Mapping):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                "'calibration_diagnostics'."
+            )
+        elif diagnostics_artifact.get("path") != "calibration_diagnostics.json":
+            failures.append(
+                "release_manifest.json artifact 'calibration_diagnostics' "
+                "must point to calibration_diagnostics.json."
+            )
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
                 failures.append(
@@ -162,6 +281,13 @@ def _check_release_manifest(
                     failures.append(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
+            if isinstance(entry, Mapping):
+                _check_sha256_field(
+                    filename="release_manifest.json",
+                    owner=f"artifact {key!r}.sha256",
+                    value=entry.get("sha256"),
+                    failures=failures,
+                )
 
 
 def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) -> None:
@@ -176,6 +302,8 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
         )
 
     expected_sections = {
+        "target_surface": Mapping,
+        "target_registry": Mapping,
         "targets": list,
         "loss_trajectory": list,
         "skipped": list,
@@ -189,20 +317,60 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 f"{expected_type.__name__}."
             )
 
+    _check_target_surface_ref(
+        diagnostics.get("target_surface"),
+        filename="calibration_diagnostics.json",
+        owner="top-level",
+        failures=failures,
+    )
+    _check_target_registry_ref(
+        diagnostics.get("target_registry"),
+        filename="calibration_diagnostics.json",
+        owner="top-level",
+        failures=failures,
+    )
+
     targets = diagnostics.get("targets")
     if isinstance(targets, list):
+        surface = diagnostics.get("target_surface")
+        if isinstance(surface, Mapping) and surface.get("n_targets") != len(targets):
+            failures.append(
+                "calibration_diagnostics.json target_surface.n_targets must "
+                "equal len(targets)."
+            )
         for index, target in enumerate(targets):
             if not isinstance(target, Mapping):
                 failures.append(
                     f"calibration_diagnostics.json target row {index} must be an object."
                 )
                 continue
-            for field in ("name", "target", "initial_estimate", "final_estimate"):
+            for field in (
+                "name",
+                "target_name",
+                "period",
+                "entity",
+                "aggregation",
+                "target",
+                "compiled_target",
+                "initial_estimate",
+                "final_estimate",
+                "relative_error",
+            ):
                 if field not in target:
                     failures.append(
                         "calibration_diagnostics.json target row "
                         f"{index} is missing {field!r}."
                     )
+            if not target.get("source"):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} is missing non-empty 'source'."
+                )
+            if not isinstance(target.get("metadata"), Mapping):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} is missing 'metadata' object."
+                )
 
 
 def _check_source_coverage_diagnostics(
@@ -323,6 +491,10 @@ def validate_release_dir(release_dir: Path | str) -> None:
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
 
+    build_manifest: Mapping | None = None
+    release_manifest: Mapping | None = None
+    calibration_diagnostics: Mapping | None = None
+
     for filename in required_release_files(release_id):
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
@@ -331,19 +503,29 @@ def validate_release_dir(release_dir: Path | str) -> None:
     if build_manifest_path.is_file():
         manifest = _load_json(build_manifest_path, failures)
         if manifest is not None:
+            build_manifest = manifest
             _check_build_manifest(manifest, release_id, failures)
 
     release_manifest_path = release_dir / "release_manifest.json"
     if release_manifest_path.is_file():
         manifest = _load_json(release_manifest_path, failures)
         if manifest is not None:
+            release_manifest = manifest
             _check_release_manifest(manifest, release_id, failures)
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
+            calibration_diagnostics = diagnostics
             _check_calibration_diagnostics(diagnostics, failures)
+
+    _check_cross_manifest_consistency(
+        build_manifest,
+        release_manifest,
+        calibration_diagnostics,
+        failures,
+    )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
     if release_id.startswith("populace-us-") and source_coverage_path.is_file():
@@ -353,3 +535,58 @@ def validate_release_dir(release_dir: Path | str) -> None:
 
     if failures:
         raise ReleaseContractError(release_dir, failures)
+
+
+def _check_cross_manifest_consistency(
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    calibration_diagnostics: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Fields duplicated across files must agree exactly."""
+    if build_manifest is not None and calibration_diagnostics is not None:
+        calibration = build_manifest.get("calibration")
+        build_surface = (
+            calibration.get("target_surface")
+            if isinstance(calibration, Mapping)
+            else None
+        )
+        diagnostics_surface = calibration_diagnostics.get("target_surface")
+        if isinstance(build_surface, Mapping) and isinstance(
+            diagnostics_surface, Mapping
+        ):
+            for field in ("sha256", "n_targets"):
+                if build_surface.get(field) != diagnostics_surface.get(field):
+                    failures.append(
+                        "build_manifest.json calibration.target_surface."
+                        f"{field} must match calibration_diagnostics.json "
+                        f"target_surface.{field}."
+                    )
+        build_registry = (
+            calibration.get("target_registry")
+            if isinstance(calibration, Mapping)
+            else None
+        )
+        diagnostics_registry = calibration_diagnostics.get("target_registry")
+        if isinstance(build_registry, Mapping) and isinstance(
+            diagnostics_registry, Mapping
+        ):
+            for field in ("version", "n_specs"):
+                if build_registry.get(field) != diagnostics_registry.get(field):
+                    failures.append(
+                        "build_manifest.json calibration.target_registry."
+                        f"{field} must match calibration_diagnostics.json "
+                        f"target_registry.{field}."
+                    )
+
+    if release_manifest is not None and calibration_diagnostics is not None:
+        artifacts = release_manifest.get("artifacts")
+        if isinstance(artifacts, Mapping):
+            diagnostics_artifact = artifacts.get("calibration_diagnostics")
+            if isinstance(
+                diagnostics_artifact, Mapping
+            ) and not diagnostics_artifact.get("sha256"):
+                failures.append(
+                    "release_manifest.json artifact 'calibration_diagnostics' "
+                    "must record the diagnostics sha256."
+                )

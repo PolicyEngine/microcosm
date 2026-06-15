@@ -24,16 +24,30 @@ from populace.data import (
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
+GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+DATASET_SHA = "d" * 64
+CALIBRATION_SHA = "a" * 64
+DIAGNOSTICS_SHA = "c" * 64
+TARGET_SURFACE_SHA = "e" * 64
+REGISTRY_VERSION = "registryabc123"
 
 
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
     return {
         "build_id": release_id,
         "builder": "populace",
-        "dataset": {"filename": "populace_us_2024.h5", "sha256": "dc75c0"},
+        "build_sha": GIT_COMMIT[:7],
+        "code": {
+            "repository": "PolicyEngine/populace",
+            "git_commit": GIT_COMMIT,
+            "git_dirty": False,
+        },
+        "dataset": {"filename": "populace_us_2024.h5", "sha256": DATASET_SHA},
         "calibration": {
             "filename": "populace_us_2024_calibration.npz",
-            "sha256": "a3da2f",
+            "sha256": CALIBRATION_SHA,
+            "target_surface": {"sha256": TARGET_SURFACE_SHA, "n_targets": 1},
+            "target_registry": {"version": REGISTRY_VERSION, "n_specs": 1},
         },
         "gates": {"exported_nonzero": {"passed": True}},
     }
@@ -49,23 +63,53 @@ def _release_manifest(release_id: str = RELEASE_ID) -> dict:
                 "kind": "microdata",
                 "path": "populace_us_2024.h5",
                 "repo_id": "policyengine/populace-us",
-                "sha256": "dc75c0",
-            }
+                "sha256": DATASET_SHA,
+            },
+            "calibration_diagnostics": {
+                "kind": "diagnostics",
+                "path": "calibration_diagnostics.json",
+                "repo_id": "policyengine/populace-us",
+                "sha256": DIAGNOSTICS_SHA,
+            },
         },
     }
 
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "weight_entity": "household",
         "options": {"epochs": 120},
+        "target_surface": {
+            "schema_version": 1,
+            "weight_entity": "household",
+            "n_targets": 1,
+            "n_records": 2,
+            "constraint_matrix": {"rows": 1, "columns": 2, "nnz": 2},
+            "sha256": TARGET_SURFACE_SHA,
+            "names_sha256": "b" * 64,
+            "values_sha256": "f" * 64,
+        },
+        "target_registry": {
+            "country": "us",
+            "version": REGISTRY_VERSION,
+            "n_specs": 1,
+        },
         "loss_trajectory": [1.0, 0.5],
         "skipped": [],
         "targets": [
             {
-                "name": "population",
+                "name": "population@2024",
+                "target_name": "population",
+                "period": 2024,
+                "entity": "household",
+                "aggregation": "count",
+                "measure": None,
+                "filter": None,
+                "source": "Census PEP 2024",
+                "metadata": {},
                 "target": 1.0,
+                "compiled_target": 1.0,
                 "initial_estimate": 0.8,
                 "final_estimate": 1.0,
                 "relative_error": 0.0,
@@ -210,6 +254,50 @@ def test_artifact_entries_must_carry_provenance(release_dir: Path) -> None:
     (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ReleaseContractError, match="sha256"):
         validate_release_dir(release_dir)
+
+
+def test_release_manifest_must_list_calibration_diagnostics(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["artifacts"].pop("calibration_diagnostics")
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
+        validate_release_dir(release_dir)
+
+
+def test_build_manifest_requires_clean_git_commit(release_dir: Path) -> None:
+    manifest = _build_manifest()
+    manifest["code"]["git_dirty"] = True
+    (release_dir / "build_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "code.git_dirty" in failures
+
+
+def test_target_surface_hash_must_match_between_manifest_and_diagnostics(
+    release_dir: Path,
+) -> None:
+    manifest = _build_manifest()
+    manifest["calibration"]["target_surface"]["sha256"] = "1" * 64
+    (release_dir / "build_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "target_surface.sha256 must match" in failures
+
+
+def test_target_registry_version_must_match_between_manifest_and_diagnostics(
+    release_dir: Path,
+) -> None:
+    manifest = _build_manifest()
+    manifest["calibration"]["target_registry"]["version"] = "other"
+    (release_dir / "build_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "target_registry.version must match" in failures
 
 
 def test_unparseable_manifest_is_a_named_failure(release_dir: Path) -> None:
