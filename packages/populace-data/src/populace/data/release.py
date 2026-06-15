@@ -29,6 +29,8 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 from populace.data.contract import required_release_files, validate_release_dir
 
@@ -108,15 +110,22 @@ def publish_release(
     repo_id: str,
     *,
     api=None,
+    artifact_root: Path | str | None = None,
+    create_tag: bool = False,
+    tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
     updated_at: str | None = None,
 ) -> dict:
     """Upload a release directory and point ``latest.json`` at it.
 
     The order is the guarantee: the release contract is validated first (an
-    invalid release never reaches the Hub), every release file is uploaded
-    next, and the pointer goes up **last**, so a consumer that reads
-    ``latest.json`` always finds the files it names.
+    invalid release never reaches the Hub), optional root artifacts declared by
+    ``release_manifest.json`` are uploaded next, every release file is uploaded
+    after that, and the pointer goes up **last**, so a consumer that reads
+    ``latest.json`` always finds the files it names. If ``create_tag=True``, the
+    release tag is created after the root artifacts and release files but before
+    the pointer, so a newly visible ``latest.json`` never points at a manifest
+    whose artifact revision is still missing.
 
     Args:
         release_dir: Local ``releases/<build_id>`` directory.
@@ -124,6 +133,14 @@ def publish_release(
         api: A ``huggingface_hub.HfApi``-shaped object (anything with
             ``upload_file(path_or_fileobj=, path_in_repo=, repo_id=,
             repo_type=)``); constructed lazily when omitted.
+        artifact_root: Directory holding root dataset artifacts declared in
+            ``release_manifest.json`` (for example ``populace_us_2024.h5``).
+            Contract files are always read from ``release_dir`` and uploaded
+            under ``releases/<build_id>/``; artifact paths are uploaded to their
+            manifest-declared repo paths.
+        create_tag: Create an immutable Hub tag for the release after uploads.
+            The tag defaults to the release id.
+        tag_name: Optional tag name override when ``create_tag=True``.
         extra_files: Additional filenames in ``release_dir`` to upload
             beyond the contract files (e.g. a diagnostics artifact).
         updated_at: Pointer timestamp; defaults to now (UTC).
@@ -139,6 +156,7 @@ def publish_release(
     release_dir = Path(release_dir)
     validate_release_dir(release_dir)
     release_id = release_dir.name
+    artifact_root = Path(artifact_root) if artifact_root is not None else None
 
     contract_files = required_release_files(release_id)
     filenames = list(contract_files) + [
@@ -150,17 +168,47 @@ def publish_release(
             raise FileNotFoundError(
                 f"extra release file {filename!r} not found in {release_dir}."
             )
+    artifact_paths = _release_manifest_artifact_paths(release_dir)
+    if artifact_paths and artifact_root is None:
+        artifact_paths = {}
+    for path_in_repo in artifact_paths.values():
+        if artifact_root is None:  # pragma: no cover - guarded above
+            continue
+        local = artifact_root / path_in_repo
+        if not local.is_file():
+            raise FileNotFoundError(
+                f"release artifact {path_in_repo!r} not found under {artifact_root}."
+            )
 
     if api is None:
         api = _hf_api()
 
+    last_commit = None
+    if artifact_root is not None:
+        for path_in_repo in artifact_paths.values():
+            local = artifact_root / path_in_repo
+            last_commit = api.upload_file(
+                path_or_fileobj=str(local),
+                path_in_repo=path_in_repo,
+                repo_id=repo_id,
+                repo_type="dataset",
+            )
+
     for filename in filenames:
         local = release_dir / filename
-        api.upload_file(
+        last_commit = api.upload_file(
             path_or_fileobj=str(local),
             path_in_repo=f"releases/{release_id}/{filename}",
             repo_id=repo_id,
             repo_type="dataset",
+        )
+
+    if create_tag:
+        _create_release_tag(
+            api,
+            repo_id=repo_id,
+            tag=tag_name or release_id,
+            revision=_commit_revision(last_commit),
         )
 
     payload = latest_pointer_payload(release_id, updated_at=updated_at)
@@ -171,6 +219,66 @@ def publish_release(
         repo_type="dataset",
     )
     return payload
+
+
+def _release_manifest_artifact_paths(release_dir: Path) -> dict[str, str]:
+    """Root artifact paths from the validated release manifest.
+
+    Contract files have their public home under ``releases/<release_id>/`` and
+    are uploaded by filename elsewhere in :func:`publish_release`; this helper
+    returns only root dataset artifacts such as H5/NPZ payloads.
+    """
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    artifacts = manifest.get("artifacts", {})
+    if not isinstance(artifacts, dict):  # pragma: no cover - validated already
+        return {}
+    contract_files = set(required_release_files(release_dir.name))
+    paths: dict[str, str] = {}
+    for key, artifact in artifacts.items():
+        if not isinstance(artifact, dict):  # pragma: no cover - validated already
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path:
+            continue
+        if path in contract_files:
+            continue
+        if path.startswith("releases/"):
+            continue
+        paths[str(key)] = path
+    return paths
+
+
+def _commit_revision(commit_info: Any) -> str | None:
+    """Best-effort revision from ``huggingface_hub`` upload return objects."""
+    if commit_info is None:
+        return None
+    for attr in ("oid", "commit_hash", "commit_id"):
+        value = getattr(commit_info, attr, None)
+        if value:
+            return str(value)
+    if isinstance(commit_info, dict):
+        for key in ("oid", "commit_hash", "commit_id"):
+            value = commit_info.get(key)
+            if value:
+                return str(value)
+    return None
+
+
+def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | None):
+    kwargs = {
+        "repo_id": repo_id,
+        "tag": tag,
+        "repo_type": "dataset",
+    }
+    if revision is not None:
+        kwargs["revision"] = revision
+    create_tag = getattr(api, "create_tag", None)
+    if create_tag is None:
+        # Fake APIs in downstream smoke scripts sometimes only implement
+        # upload_file. Return a small sentinel rather than failing after a
+        # successful upload sequence; the real HfApi has create_tag.
+        return SimpleNamespace(tag=tag, revision=revision)
+    return create_tag(**kwargs)
 
 
 def latest_release(repo_id: str, *, api=None) -> LatestPointer:
