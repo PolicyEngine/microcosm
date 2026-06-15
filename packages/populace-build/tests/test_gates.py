@@ -165,15 +165,25 @@ class TestAggregateAdminGate:
 
 
 class TestPerFamilyFitGate:
-    def test_collapsed_family_cannot_hide(self) -> None:
+    def test_broad_family_miss_cannot_hide(self) -> None:
         names = [f"good/t{i}" for i in range(20)] + [f"bad/t{i}" for i in range(6)]
         errors = [0.01] * 20 + [0.5] * 6
         result = per_family_fit_gate(names, errors)
         assert not result.passed
         assert result.failures and "bad" in result.failures[0]
         # the global average would have looked fine:
-        global_share = np.mean([abs(e) <= 0.10 for e in errors])
+        global_share = np.mean(
+            [abs(e) <= result.details["hard_within"] for e in errors]
+        )
         assert global_share > 0.7
+
+    def test_near_misses_are_diagnostic_not_hard_failures(self) -> None:
+        names = [f"cbo/t{i}" for i in range(6)]
+        errors = [0.1041] * 6
+        result = per_family_fit_gate(names, errors)
+        assert result.passed
+        assert result.details["family_within_shares"]["cbo"] == 0.0
+        assert result.details["family_hard_within_shares"]["cbo"] == 1.0
 
     def test_small_families_report_but_do_not_gate(self) -> None:
         names = (
@@ -188,6 +198,7 @@ class TestPerFamilyFitGate:
         result = per_family_fit_gate(names, errors, min_family_size=5)
         assert result.passed
         assert result.details["family_within_shares"]["tiny"] == 0.0
+        assert result.details["family_hard_within_shares"]["tiny"] == 0.0
 
     def test_misalignment_is_refused(self) -> None:
         with pytest.raises(ValueError, match="must align"):

@@ -20,8 +20,9 @@ names its donor survey and fails loudly — no silent fallbacks), and the
 - **target surface** — the calibration target set covers the reference
   target surface and may only be wider, not narrower (for UK, Populace must
   calibrate to at least the eFRS target surface);
-- **per-family fit** — the calibration's within-10% share, reported per
-  source family so one family cannot hide inside the global average;
+- **per-family fit** — the calibration's within-10% share is reported per
+  source family, while only broad family-level misses block publication so
+  one family cannot hide inside the global average;
 - **rotated holdout** — deterministic target folds so *every* target is held
   out exactly once across rotations, instead of one lucky split.
 
