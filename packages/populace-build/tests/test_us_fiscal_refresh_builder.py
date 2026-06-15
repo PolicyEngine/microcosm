@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -134,6 +135,91 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
         "1 positive fiscal targets have zero materialized support "
         f"(examples: nation/irs/zero@{builder.PERIOD})."
     ]
+
+
+def test_build_manifests_emits_policyengine_certifiable_release_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-abcdef1-20260615"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.729.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                target=1.0,
+                initial_estimate=1.0,
+                final_estimate=1.0,
+            ),
+        ),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+
+        def __len__(self):
+            return 1
+
+    registry = FakeRegistry()
+
+    builder._build_manifests(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=registry,
+        dropped={"dropped_target_names": []},
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
+    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
+    assert manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "1.729.0",
+    }
+    for artifact in manifest["artifacts"].values():
+        assert artifact["repo_id"] == builder.REPO_ID
+        assert artifact["revision"] == release_id
+        assert artifact["kind"]
+        assert artifact["sha256"]
 
 
 def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:

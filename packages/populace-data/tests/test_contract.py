@@ -32,7 +32,14 @@ TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 
 
+def _model_package(release_id: str) -> tuple[str, str]:
+    if release_id.startswith("populace-uk-"):
+        return ("policyengine-uk", "2.89.0")
+    return ("policyengine-us", "1.729.0")
+
+
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
+    model_package, model_version = _model_package(release_id)
     return {
         "build_id": release_id,
         "builder": "populace",
@@ -44,8 +51,8 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
         },
         "runtime": {
             "python": "3.14.0",
-            "policyengine-us": "1.729.0",
             "policyengine-core": "3.19.0",
+            model_package: model_version,
         },
         "dataset": {"filename": "populace_us_2024.h5", "sha256": DATASET_SHA},
         "calibration": {
@@ -64,27 +71,42 @@ def _release_manifest(
     diagnostics_sha: str = DIAGNOSTICS_SHA,
     source_coverage_sha: str = SOURCE_COVERAGE_SHA,
 ) -> dict:
+    model_package, model_version = _model_package(release_id)
     manifest = {
         "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
         "data_package": {"name": "populace-data", "version": "0.1.0"},
-        "build": {"build_id": release_id},
+        "default_datasets": {"national": "populace_us_2024"},
+        "build": {
+            "build_id": release_id,
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": "3.19.0",
+            },
+            "built_with_model_package": {
+                "name": model_package,
+                "version": model_version,
+            },
+        },
         "artifacts": {
             "populace_us_2024": {
                 "kind": "microdata",
                 "path": "populace_us_2024.h5",
                 "repo_id": "policyengine/populace-us",
+                "revision": release_id,
                 "sha256": DATASET_SHA,
             },
             "populace_us_2024_calibration": {
                 "kind": "calibration",
                 "path": "populace_us_2024_calibration.npz",
                 "repo_id": "policyengine/populace-us",
+                "revision": release_id,
                 "sha256": CALIBRATION_SHA,
             },
             "calibration_diagnostics": {
                 "kind": "diagnostics",
                 "path": "calibration_diagnostics.json",
                 "repo_id": "policyengine/populace-us",
+                "revision": release_id,
                 "sha256": diagnostics_sha,
             },
         },
@@ -94,6 +116,7 @@ def _release_manifest(
             "kind": "diagnostics",
             "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
             "repo_id": "policyengine/populace-us",
+            "revision": release_id,
             "sha256": source_coverage_sha,
         }
     return manifest
@@ -558,6 +581,77 @@ def test_release_manifest_must_include_dataset_root_artifact(
         validate_release_dir(release_dir)
     failures = "\n".join(excinfo.value.failures)
     assert "dataset root artifact" in failures
+
+
+def test_release_manifest_requires_policyengine_certification_shape(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    del manifest["data_package"]
+    del manifest["default_datasets"]
+    del manifest["build"]["built_with_model_package"]
+    del manifest["artifacts"]["populace_us_2024"]["revision"]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "data_package" in failures
+    assert "default_datasets" in failures
+    assert "build.built_with_model_package" in failures
+    assert "artifact 'populace_us_2024' is missing 'revision'" in failures
+
+
+def test_release_manifest_default_dataset_must_name_artifact(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["default_datasets"]["national"] = "missing_dataset"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "default_datasets.national" in failures
+    assert "missing_dataset" in failures
+
+
+def test_release_manifest_default_dataset_must_be_microdata_root_artifact(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["default_datasets"]["national"] = "calibration_diagnostics"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "default_datasets.national" in failures
+    assert "not 'microdata'" in failures
+    assert "dataset root artifact" in failures
+
+
+def test_release_manifest_default_dataset_hash_must_match_build_manifest(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["artifacts"]["populace_us_2024"]["sha256"] = "0" * 64
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "default dataset artifact" in failures
+    assert "matching build_manifest.json" in failures
+
+
+def test_release_manifest_artifact_revisions_must_pin_release_tag(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["artifacts"]["populace_us_2024"]["revision"] = "main"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "artifact 'populace_us_2024' revision" in failures
+    assert RELEASE_ID in failures
 
 
 def test_release_manifest_root_artifact_hashes_match_build_manifest(

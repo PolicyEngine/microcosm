@@ -27,7 +27,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--create-tag",
         action="store_true",
+        default=True,
         help="Create a Hugging Face tag for the release before updating latest.json.",
+    )
+    parser.add_argument(
+        "--no-create-tag",
+        action="store_false",
+        dest="create_tag",
+        help=(
+            "Skip creating a Hugging Face tag. Refused when the release "
+            "manifest pins artifacts to the release id."
+        ),
     )
     parser.add_argument(
         "--tag-name",

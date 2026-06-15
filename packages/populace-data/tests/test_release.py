@@ -214,26 +214,46 @@ def release_dir(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "schema_version": 1,
-                "build": {"build_id": RELEASE_ID},
+                "data_package": {"name": "populace-data", "version": "0.1.0"},
+                "default_datasets": {"national": "populace_us_2024"},
+                "build": {
+                    "build_id": RELEASE_ID,
+                    "built_with_core_package": {
+                        "name": "policyengine-core",
+                        "version": "3.19.0",
+                    },
+                    "built_with_model_package": {
+                        "name": "policyengine-us",
+                        "version": "1.729.0",
+                    },
+                },
                 "artifacts": {
                     "populace_us_2024": {
+                        "kind": "microdata",
                         "path": "populace_us_2024.h5",
                         "repo_id": "policyengine/populace-us",
+                        "revision": RELEASE_ID,
                         "sha256": DATASET_SHA,
                     },
                     "populace_us_2024_calibration": {
+                        "kind": "calibration",
                         "path": "populace_us_2024_calibration.npz",
                         "repo_id": "policyengine/populace-us",
+                        "revision": RELEASE_ID,
                         "sha256": CALIBRATION_SHA,
                     },
                     "calibration_diagnostics": {
+                        "kind": "diagnostics",
                         "path": "calibration_diagnostics.json",
                         "repo_id": "policyengine/populace-us",
+                        "revision": RELEASE_ID,
                         "sha256": diagnostics_sha,
                     },
                     "us_source_coverage": {
+                        "kind": "diagnostics",
                         "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
                         "repo_id": "policyengine/populace-us",
+                        "revision": RELEASE_ID,
                         "sha256": source_coverage_sha,
                     },
                 },
@@ -285,6 +305,7 @@ def test_publish_uploads_pointer_last(
     )
     uploaded_paths = [path for path, _ in hub.uploads]
     assert uploaded_paths[-1] == LATEST_POINTER_PATH
+    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-6"}]
     for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in uploaded_paths[:-1]
 
@@ -364,6 +385,36 @@ def test_release_tag_is_created_before_pointer(
     )
     assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-6"}]
     assert hub.uploads[-1][0] == LATEST_POINTER_PATH
+
+
+def test_release_id_artifact_revision_requires_release_tag(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    with pytest.raises(ValueError, match="must create the matching Hugging Face tag"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            create_tag=False,
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_release_id_artifact_revision_rejects_tag_name_override(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    with pytest.raises(ValueError, match="tag_name must match the release id"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name="different-tag",
+        )
+    assert hub.uploads == []
+    assert hub.tags == []
 
 
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
