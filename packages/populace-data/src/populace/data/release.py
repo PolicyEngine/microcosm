@@ -112,7 +112,7 @@ def publish_release(
     *,
     api=None,
     artifact_root: Path | str | None = None,
-    create_tag: bool = False,
+    create_tag: bool = True,
     tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
     updated_at: str | None = None,
@@ -140,7 +140,8 @@ def publish_release(
             under ``releases/<build_id>/``; artifact paths are uploaded to their
             manifest-declared repo paths.
         create_tag: Create an immutable Hub tag for the release after uploads.
-            The tag defaults to the release id.
+            The tag defaults to the release id. This is required when artifact
+            revisions in ``release_manifest.json`` are pinned to the release id.
         tag_name: Optional tag name override when ``create_tag=True``.
         extra_files: Additional filenames in ``release_dir`` to upload
             beyond the contract files (e.g. a diagnostics artifact).
@@ -170,6 +171,19 @@ def publish_release(
                 f"extra release file {filename!r} not found in {release_dir}."
             )
     root_artifacts = _release_manifest_root_artifacts(release_dir)
+    artifact_revisions = _release_manifest_artifact_revisions(release_dir)
+    tag = tag_name or release_id
+    if release_id in artifact_revisions and not create_tag:
+        raise ValueError(
+            "release_manifest.json pins artifacts to the release id; "
+            "publish_release must create the matching Hugging Face tag before "
+            "updating latest.json."
+        )
+    if tag != release_id and release_id in artifact_revisions:
+        raise ValueError(
+            "release_manifest.json pins artifacts to the release id; tag_name "
+            "must match the release id."
+        )
     if root_artifacts and artifact_root is None:
         raise ValueError(
             "release_manifest.json declares root artifacts; pass artifact_root "
@@ -217,7 +231,7 @@ def publish_release(
         _create_release_tag(
             api,
             repo_id=repo_id,
-            tag=tag_name or release_id,
+            tag=tag,
             revision=_commit_revision(last_commit),
         )
 
@@ -287,6 +301,21 @@ def _release_manifest_artifact_paths(release_dir: Path) -> dict[str, str]:
             continue
         paths[str(key)] = path
     return paths
+
+
+def _release_manifest_artifact_revisions(release_dir: Path) -> set[str]:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    artifacts = manifest.get("artifacts", {})
+    if not isinstance(artifacts, dict):  # pragma: no cover - validated already
+        return set()
+    revisions: set[str] = set()
+    for artifact in artifacts.values():
+        if not isinstance(artifact, dict):  # pragma: no cover - validated already
+            continue
+        revision = artifact.get("revision")
+        if isinstance(revision, str) and revision:
+            revisions.add(revision)
+    return revisions
 
 
 def _commit_revision(commit_info: Any) -> str | None:

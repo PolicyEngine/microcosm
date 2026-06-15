@@ -202,7 +202,11 @@ def _check_build_manifest(
             "(Python and package versions used for target materialization)."
         )
     else:
-        for package in ("python", "policyengine-us", "policyengine-core"):
+        required_packages = ["python", "policyengine-core"]
+        model_package = _expected_model_package(release_id)
+        if model_package is not None:
+            required_packages.append(model_package)
+        for package in required_packages:
             value = runtime.get(package)
             if not value or value in {"not-installed", "unknown"}:
                 failures.append(
@@ -276,6 +280,35 @@ def _check_release_manifest(
             f"{build['build_id']!r} but the release directory is named "
             f"{release_id!r}."
         )
+    if isinstance(build, Mapping):
+        _check_release_manifest_package(
+            build.get("built_with_core_package"),
+            field="build.built_with_core_package",
+            expected_name="policyengine-core",
+            failures=failures,
+        )
+        _check_release_manifest_package(
+            build.get("built_with_model_package"),
+            field="build.built_with_model_package",
+            expected_name=_expected_model_package(release_id),
+            failures=failures,
+        )
+    data_package = manifest.get("data_package")
+    _check_release_manifest_package(
+        data_package,
+        field="data_package",
+        expected_name="populace-data",
+        failures=failures,
+    )
+    default_datasets = manifest.get("default_datasets")
+    if not isinstance(default_datasets, Mapping):
+        failures.append(
+            "release_manifest.json is missing the 'default_datasets' object."
+        )
+    elif not default_datasets.get("national"):
+        failures.append(
+            "release_manifest.json 'default_datasets.national' is required."
+        )
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, Mapping) or not artifacts:
         failures.append(
@@ -299,11 +332,17 @@ def _check_release_manifest(
                     f"release_manifest.json artifact {key!r} must be an object."
                 )
                 continue
-            for field in ("path", "repo_id", "sha256"):
+            for field in ("kind", "path", "repo_id", "revision", "sha256"):
                 if not entry.get(field):
                     failures.append(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
+            revision = entry.get("revision")
+            if isinstance(revision, str) and revision != release_id:
+                failures.append(
+                    f"release_manifest.json artifact {key!r} revision is "
+                    f"{revision!r}, expected the release id {release_id!r}."
+                )
             if isinstance(entry, Mapping):
                 _check_sha256_field(
                     filename="release_manifest.json",
@@ -319,6 +358,53 @@ def _check_release_manifest(
                 "release_manifest.json artifacts must include "
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
             )
+        if isinstance(default_datasets, Mapping):
+            national = default_datasets.get("national")
+            if isinstance(national, str) and national not in artifacts:
+                failures.append(
+                    "release_manifest.json 'default_datasets.national' "
+                    f"points to {national!r}, which is not an artifact key."
+                )
+            elif isinstance(national, str):
+                default_artifact = artifacts.get(national)
+                if (
+                    isinstance(default_artifact, Mapping)
+                    and default_artifact.get("kind") != "microdata"
+                ):
+                    failures.append(
+                        "release_manifest.json 'default_datasets.national' "
+                        f"points to artifact {national!r}, whose kind is "
+                        f"{default_artifact.get('kind')!r}, not 'microdata'."
+                    )
+
+
+def _check_release_manifest_package(
+    package: object,
+    *,
+    field: str,
+    expected_name: str | None,
+    failures: list[str],
+) -> None:
+    if not isinstance(package, Mapping):
+        failures.append(f"release_manifest.json is missing the '{field}' object.")
+        return
+    name = package.get("name")
+    if expected_name is not None and name != expected_name:
+        failures.append(
+            f"release_manifest.json '{field}.name' must be {expected_name!r}."
+        )
+    elif not name:
+        failures.append(f"release_manifest.json '{field}.name' is required.")
+    if not package.get("version"):
+        failures.append(f"release_manifest.json '{field}.version' is required.")
+
+
+def _expected_model_package(release_id: str) -> str | None:
+    if release_id.startswith("populace-us-"):
+        return "policyengine-us"
+    if release_id.startswith("populace-uk-"):
+        return "policyengine-uk"
+    return None
 
 
 def _check_local_artifact_hashes(
@@ -756,6 +842,12 @@ def _check_cross_manifest_consistency(
                 description="dataset",
                 failures=failures,
             )
+            _check_default_dataset_matches_build_manifest(
+                release_manifest,
+                path=dataset.get("filename"),
+                sha256=dataset.get("sha256"),
+                failures=failures,
+            )
         calibration = build_manifest.get("calibration")
         if isinstance(calibration, Mapping):
             _check_root_artifact_matches_build_manifest(
@@ -777,6 +869,35 @@ def _check_cross_manifest_consistency(
                     "release_manifest.json artifact 'calibration_diagnostics' "
                     "must record the diagnostics sha256."
                 )
+
+
+def _check_default_dataset_matches_build_manifest(
+    release_manifest: Mapping,
+    *,
+    path: object,
+    sha256: object,
+    failures: list[str],
+) -> None:
+    default_datasets = release_manifest.get("default_datasets")
+    artifacts = release_manifest.get("artifacts")
+    if not isinstance(default_datasets, Mapping) or not isinstance(artifacts, Mapping):
+        return
+    default_key = default_datasets.get("national")
+    if not isinstance(default_key, str):
+        return
+    default_artifact = artifacts.get(default_key)
+    if not isinstance(default_artifact, Mapping):
+        return
+    if default_artifact.get("path") != path:
+        failures.append(
+            "release_manifest.json 'default_datasets.national' must point to "
+            "the dataset root artifact declared by build_manifest.json."
+        )
+    if default_artifact.get("sha256") != sha256:
+        failures.append(
+            "release_manifest.json default dataset artifact must have sha256 "
+            "matching build_manifest.json."
+        )
 
 
 def _check_root_artifact_matches_build_manifest(

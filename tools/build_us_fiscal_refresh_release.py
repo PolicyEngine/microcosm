@@ -735,8 +735,14 @@ def _assert_export_matches_calibration(dataset_path: Path, result) -> None:
         raise RuntimeError("Post-export sanity failed: " + "; ".join(failures))
 
 
-def _artifact_entry(path: str, sha: str) -> dict[str, str]:
-    return {"path": path, "repo_id": REPO_ID, "sha256": sha}
+def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[str, str]:
+    return {
+        "kind": kind,
+        "path": path,
+        "repo_id": REPO_ID,
+        "revision": revision,
+        "sha256": sha,
+    }
 
 
 def _build_manifests(
@@ -761,16 +767,18 @@ def _build_manifests(
     gate_failures = _release_gate_failures(result, dropped)
 
     commit = _git_output("rev-parse", "HEAD")
+    built_at = datetime.now(UTC).isoformat()
+    runtime = _runtime_versions()
     manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": built_at,
         "code": {
             "repository": "PolicyEngine/populace",
             "git_commit": commit,
             "git_dirty": False,
         },
-        "runtime": _runtime_versions(),
+        "runtime": runtime,
         "dataset": {
             "filename": DATASET_FILENAME,
             "sha256": dataset_sha,
@@ -804,17 +812,47 @@ def _build_manifests(
 
     release_manifest = {
         "schema_version": 1,
-        "build": {"build_id": release_id},
+        "data_package": {
+            "name": "populace-data",
+            "version": runtime["populace-data"],
+        },
+        "default_datasets": {"national": "populace_us_2024"},
+        "build": {
+            "build_id": release_id,
+            "built_at": built_at,
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": runtime["policyengine-core"],
+            },
+            "built_with_model_package": {
+                "name": "policyengine-us",
+                "version": runtime["policyengine-us"],
+            },
+        },
         "artifacts": {
-            "populace_us_2024": _artifact_entry(DATASET_FILENAME, dataset_sha),
+            "populace_us_2024": _artifact_entry(
+                DATASET_FILENAME,
+                dataset_sha,
+                kind="microdata",
+                revision=release_id,
+            ),
             "populace_us_2024_calibration": _artifact_entry(
-                CALIBRATION_FILENAME, calibration_sha
+                CALIBRATION_FILENAME,
+                calibration_sha,
+                kind="calibration",
+                revision=release_id,
             ),
             "calibration_diagnostics": _artifact_entry(
-                "calibration_diagnostics.json", diagnostics_sha
+                "calibration_diagnostics.json",
+                diagnostics_sha,
+                kind="diagnostics",
+                revision=release_id,
             ),
             "us_source_coverage": _artifact_entry(
-                "us_source_coverage.json", coverage_sha
+                "us_source_coverage.json",
+                coverage_sha,
+                kind="diagnostics",
+                revision=release_id,
             ),
         },
     }
