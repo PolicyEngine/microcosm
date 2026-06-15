@@ -16,12 +16,14 @@ import pytest
 
 from populace.data import (
     RELEASE_MANIFEST_SCHEMA_VERSION,
-    REQUIRED_RELEASE_FILES,
+    US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
+    required_release_files,
     validate_release_dir,
 )
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
+UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
 
 
 def _build_manifest(release_id: str = RELEASE_ID) -> dict:
@@ -73,6 +75,41 @@ def _calibration_diagnostics() -> dict:
     }
 
 
+def _source_coverage_diagnostics() -> dict:
+    return {
+        "schema_version": 1,
+        "classification": "release_gate",
+        "source_contract": {
+            "name": "us_poverty_nonfiler_source_coverage",
+            "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
+        },
+        "gate": {
+            "name": "us_poverty_nonfiler_source_coverage",
+            "passed": True,
+            "failures": [],
+        },
+        "coverage_summary": {
+            "hard_target": {
+                "families": 9,
+                "package_aliases": 38,
+                "covered_package_aliases": 38,
+                "missing_package_aliases": 0,
+                "reviewed_excluded_package_aliases": 0,
+            },
+            "validation_only": {"families": 6, "activated_families": 0},
+            "source_gap": {"families": 6, "missing_source_packages": 11},
+        },
+        "hard_target_families": {"population_age_sex": {}},
+        "validation_only_families": {"census_cps_spm": {}},
+        "source_gap_families": {"usda_wic": {}},
+        "active_target_aliases": ["census-pep-2024-national-age-sex"],
+        "active_target_families": [],
+        "missing_hard_targets": [],
+        "reviewed_exclusions": {},
+        "validation_only_activated": [],
+    }
+
+
 @pytest.fixture
 def release_dir(tmp_path: Path) -> Path:
     """A complete, contract-valid release directory."""
@@ -83,6 +120,9 @@ def release_dir(tmp_path: Path) -> Path:
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
     )
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps(_source_coverage_diagnostics())
+    )
     return directory
 
 
@@ -90,13 +130,32 @@ def test_a_complete_release_passes(release_dir: Path) -> None:
     validate_release_dir(release_dir)
 
 
-@pytest.mark.parametrize("filename", REQUIRED_RELEASE_FILES)
+@pytest.mark.parametrize("filename", required_release_files(RELEASE_ID))
 def test_each_required_file_is_named_when_missing(
     release_dir: Path, filename: str
 ) -> None:
     (release_dir / filename).unlink()
     with pytest.raises(ReleaseContractError, match=filename):
         validate_release_dir(release_dir)
+
+
+def test_non_us_release_does_not_require_us_source_coverage(tmp_path: Path) -> None:
+    directory = tmp_path / "releases" / UK_RELEASE_ID
+    directory.mkdir(parents=True)
+    (directory / "build_manifest.json").write_text(
+        json.dumps(_build_manifest(UK_RELEASE_ID))
+    )
+    (directory / "release_manifest.json").write_text(
+        json.dumps(_release_manifest(UK_RELEASE_ID))
+    )
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
+
+    validate_release_dir(directory)
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
+        UK_RELEASE_ID
+    )
 
 
 def test_the_1abddeb_shape_is_rejected(release_dir: Path) -> None:
@@ -170,6 +229,48 @@ def test_malformed_calibration_diagnostics_is_rejected(
     failures = "\n".join(excinfo.value.failures)
     assert "calibration_diagnostics.json" in failures
     assert "targets" in failures
+
+
+def test_malformed_us_source_coverage_diagnostics_is_rejected(
+    release_dir: Path,
+) -> None:
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps({"schema_version": 1})
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
+    assert "coverage_summary" in failures
+
+
+def test_failed_us_source_coverage_diagnostics_is_rejected(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["gate"] = {
+        "name": "us_poverty_nonfiler_source_coverage",
+        "passed": False,
+        "failures": ["social_security_ssi/ssa-ssi-table-7b1-2024 missing"],
+    }
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(json.dumps(payload))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "gate.passed must be true" in failures
+    assert "gate.failures must be empty" in failures
+
+
+def test_us_source_coverage_reviewed_exclusions_need_reasons(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["reviewed_exclusions"] = {"ssa-ssi-table-7b1-2024": ""}
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(json.dumps(payload))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "reviewed_exclusions need non-empty string reasons" in failures
 
 
 def test_all_failures_reported_at_once(release_dir: Path) -> None:

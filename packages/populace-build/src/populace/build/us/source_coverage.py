@@ -9,8 +9,13 @@ diagnostics, or explicit source gaps in a release profile.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
+
+from populace.build.gates import GateResult, source_coverage_gate
 
 __all__ = [
     "ARCH_US_POVERTY_CONTRACT_COMMIT",
@@ -19,6 +24,9 @@ __all__ = [
     "US_POVERTY_NONFILER_SOURCE_COVERAGE",
     "hard_target_package_aliases",
     "source_gap_family_ids",
+    "us_poverty_nonfiler_source_coverage_diagnostics",
+    "us_poverty_nonfiler_source_coverage_gate",
+    "write_us_poverty_nonfiler_source_coverage_diagnostics",
     "validation_only_family_ids",
 ]
 
@@ -249,3 +257,71 @@ def source_gap_family_ids() -> tuple[str, ...]:
         for entry in US_POVERTY_NONFILER_SOURCE_COVERAGE
         if entry.role == "source_gap"
     )
+
+
+def us_poverty_nonfiler_source_coverage_gate(
+    *,
+    active_target_aliases: Iterable[str] = (),
+    active_target_families: Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Build the named US poverty/nonfiler source-coverage release gate."""
+    return source_coverage_gate(
+        US_POVERTY_NONFILER_SOURCE_COVERAGE,
+        active_target_aliases=active_target_aliases,
+        active_target_families=active_target_families,
+        reviewed_exclusions=reviewed_exclusions,
+        name="us_poverty_nonfiler_source_coverage",
+    )
+
+
+def _json_ready(value: object) -> object:
+    return json.loads(json.dumps(value, allow_nan=False))
+
+
+def us_poverty_nonfiler_source_coverage_diagnostics(
+    *,
+    active_target_aliases: Iterable[str] = (),
+    active_target_families: Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Return the US source-coverage diagnostics artifact payload."""
+    result = us_poverty_nonfiler_source_coverage_gate(
+        active_target_aliases=active_target_aliases,
+        active_target_families=active_target_families,
+        reviewed_exclusions=reviewed_exclusions,
+    )
+    details = _json_ready(result.details)
+    if not isinstance(details, dict):  # pragma: no cover - defensive
+        raise TypeError("source coverage details must be a JSON object.")
+    return {
+        "schema_version": 1,
+        "classification": "release_gate",
+        "source_contract": {
+            "name": "us_poverty_nonfiler_source_coverage",
+            "arch_commit": ARCH_US_POVERTY_CONTRACT_COMMIT,
+        },
+        "gate": {
+            "name": result.name,
+            "passed": result.passed,
+            "failures": list(result.failures),
+        },
+        "coverage_summary": details["coverage_summary"],
+        "hard_target_families": details["hard_target_families"],
+        "validation_only_families": details["validation_only_families"],
+        "source_gap_families": details["source_gap_families"],
+        "active_target_aliases": details["active_target_aliases"],
+        "active_target_families": details["active_target_families"],
+        "missing_hard_targets": details["missing_hard_targets"],
+        "reviewed_exclusions": details["reviewed_exclusions"],
+        "validation_only_activated": details["validation_only_activated"],
+    }
+
+
+def write_us_poverty_nonfiler_source_coverage_diagnostics(
+    payload: Mapping[str, object], path: Path | str
+) -> Path:
+    """Write a US source-coverage diagnostics artifact as strict JSON."""
+    path = Path(path)
+    path.write_text(json.dumps(payload, indent=1, allow_nan=False))
+    return path

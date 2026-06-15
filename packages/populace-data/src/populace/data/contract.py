@@ -25,7 +25,9 @@ from pathlib import Path
 __all__ = [
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
+    "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
+    "required_release_files",
     "validate_release_dir",
 ]
 
@@ -44,6 +46,15 @@ REQUIRED_RELEASE_FILES = (
 )
 
 CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 1
+US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_poverty_nonfiler_source_coverage.json"
+SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
+
+
+def required_release_files(release_id: str) -> tuple[str, ...]:
+    """Files required for a release id's country-specific contract."""
+    if release_id.startswith("populace-us-"):
+        return (*REQUIRED_RELEASE_FILES, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
+    return REQUIRED_RELEASE_FILES
 
 
 class ReleaseContractError(ValueError):
@@ -194,6 +205,101 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                     )
 
 
+def _check_source_coverage_diagnostics(
+    diagnostics: Mapping, failures: list[str]
+) -> None:
+    schema_version = diagnostics.get("schema_version")
+    if schema_version is None:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing 'schema_version'."
+        )
+    elif schema_version != SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} 'schema_version' is "
+            f"{schema_version!r}; this library publishes version "
+            f"{SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION}."
+        )
+    if diagnostics.get("classification") != "release_gate":
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} must declare "
+            "'classification'='release_gate'."
+        )
+
+    source_contract = diagnostics.get("source_contract")
+    if not isinstance(source_contract, Mapping):
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing the "
+            "'source_contract' object."
+        )
+    else:
+        if source_contract.get("name") != "us_poverty_nonfiler_source_coverage":
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.name must "
+                "be 'us_poverty_nonfiler_source_coverage'."
+            )
+        arch_commit = source_contract.get("arch_commit")
+        if not isinstance(arch_commit, str) or len(arch_commit) != 40:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.arch_commit "
+                "must be a 40-character commit hash."
+            )
+
+    gate = diagnostics.get("gate")
+    if not isinstance(gate, Mapping):
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing the 'gate' object."
+        )
+    else:
+        if gate.get("name") != "us_poverty_nonfiler_source_coverage":
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.name must be "
+                "'us_poverty_nonfiler_source_coverage'."
+            )
+        if gate.get("passed") is not True:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.passed must be true."
+            )
+        gate_failures = gate.get("failures")
+        if not isinstance(gate_failures, list):
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.failures must be a list."
+            )
+        elif gate_failures:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.failures must be empty."
+            )
+
+    expected_sections = {
+        "coverage_summary": Mapping,
+        "hard_target_families": Mapping,
+        "validation_only_families": Mapping,
+        "source_gap_families": Mapping,
+        "missing_hard_targets": list,
+        "reviewed_exclusions": Mapping,
+        "validation_only_activated": list,
+    }
+    for section, expected_type in expected_sections.items():
+        value = diagnostics.get(section)
+        if not isinstance(value, expected_type):
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing a "
+                f"{section!r} {expected_type.__name__}."
+            )
+
+    reviewed = diagnostics.get("reviewed_exclusions")
+    if isinstance(reviewed, Mapping):
+        bad_reviewed = sorted(
+            str(alias)
+            for alias, reason in reviewed.items()
+            if not isinstance(reason, str) or not reason.strip()
+        )
+        if bad_reviewed:
+            failures.append(
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} reviewed_exclusions "
+                f"need non-empty string reasons for {bad_reviewed}."
+            )
+
+
 def validate_release_dir(release_dir: Path | str) -> None:
     """Check a local release directory against the release contract.
 
@@ -217,7 +323,7 @@ def validate_release_dir(release_dir: Path | str) -> None:
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
 
-    for filename in REQUIRED_RELEASE_FILES:
+    for filename in required_release_files(release_id):
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -238,6 +344,12 @@ def validate_release_dir(release_dir: Path | str) -> None:
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             _check_calibration_diagnostics(diagnostics, failures)
+
+    source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
+    if release_id.startswith("populace-us-") and source_coverage_path.is_file():
+        diagnostics = _load_json(source_coverage_path, failures)
+        if diagnostics is not None:
+            _check_source_coverage_diagnostics(diagnostics, failures)
 
     if failures:
         raise ReleaseContractError(release_dir, failures)

@@ -834,7 +834,8 @@ def source_coverage_gate(
     *,
     active_target_aliases: Iterable[str] = (),
     active_target_families: Iterable[str] = (),
-    reviewed_exclusions: Mapping[str, str] | Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    name: str = "source_coverage",
 ) -> GateResult:
     """Gate source-family coverage for a release target profile.
 
@@ -850,40 +851,75 @@ def source_coverage_gate(
     """
     active_aliases = set(active_target_aliases)
     active_families = set(active_target_families)
-    if isinstance(reviewed_exclusions, Mapping):
-        exclusion_reasons = {
-            str(alias): str(reason) for alias, reason in reviewed_exclusions.items()
-        }
-    else:
-        exclusion_reasons = {
-            str(alias): "reviewed exclusion" for alias in reviewed_exclusions
-        }
+    if not name:
+        raise ValueError("source coverage gate name must be non-empty.")
+
+    reviewed_exclusions = reviewed_exclusions or {}
+    if not isinstance(reviewed_exclusions, Mapping):
+        raise TypeError("reviewed_exclusions must be a mapping from alias to reason.")
+    exclusion_reasons: dict[str, str | object] = {
+        str(alias): reason for alias, reason in reviewed_exclusions.items()
+    }
+    valid_exclusion_reasons: dict[str, str] = {}
 
     failures: list[str] = []
     missing_hard_targets: list[str] = []
     reviewed: dict[str, str] = {}
     validation_misuse: list[str] = []
     source_gaps: dict[str, tuple[str, ...]] = {}
+    hard_target_families: dict[str, dict[str, object]] = {}
+    validation_only_families: dict[str, dict[str, object]] = {}
+    source_gap_families: dict[str, dict[str, object]] = {}
+
+    for alias, reason in sorted(exclusion_reasons.items()):
+        if isinstance(reason, str) and reason.strip():
+            valid_exclusion_reasons[alias] = reason
+        else:
+            failures.append(
+                f"{alias}: reviewed exclusion requires a non-empty string reason."
+            )
 
     for entry in coverage_entries:
         family = str(_coverage_field(entry, "family_id", ""))
         role = str(_coverage_field(entry, "role", ""))
+        label = str(_coverage_field(entry, "label", ""))
         aliases = tuple(
             str(a) for a in (_coverage_field(entry, "package_aliases", ()) or ())
         )
         if role == "hard_target":
+            covered_aliases: list[str] = []
+            missing_aliases: list[str] = []
+            reviewed_aliases: dict[str, str] = {}
             for alias in aliases:
                 if alias in active_aliases:
+                    covered_aliases.append(alias)
                     continue
-                if alias in exclusion_reasons:
-                    reviewed[alias] = exclusion_reasons[alias]
+                if alias in valid_exclusion_reasons:
+                    reviewed[alias] = valid_exclusion_reasons[alias]
+                    reviewed_aliases[alias] = valid_exclusion_reasons[alias]
                     continue
                 missing_hard_targets.append(alias)
+                missing_aliases.append(alias)
                 failures.append(
                     f"{family}/{alias}: hard-target source alias is not active "
                     "and has no reviewed exclusion."
                 )
+            hard_target_families[family] = {
+                "label": label,
+                "package_aliases": aliases,
+                "covered_package_aliases": tuple(sorted(covered_aliases)),
+                "missing_package_aliases": tuple(sorted(missing_aliases)),
+                "reviewed_exclusions": dict(sorted(reviewed_aliases.items())),
+            }
         elif role == "validation_only":
+            activated = family in active_families or any(
+                alias in active_aliases for alias in aliases
+            )
+            validation_only_families[family] = {
+                "label": label,
+                "package_aliases": aliases,
+                "activated_as_hard_target": activated,
+            }
             if family in active_families or any(
                 alias in active_aliases for alias in aliases
             ):
@@ -892,30 +928,69 @@ def source_coverage_gate(
                     f"{family}: validation-only source family activated as a hard target."
                 )
         elif role == "source_gap":
-            source_gaps[family] = tuple(
+            missing_sources = tuple(
                 str(item)
                 for item in (
                     _coverage_field(entry, "missing_source_packages", ()) or ()
                 )
             )
+            source_gaps[family] = missing_sources
+            source_gap_families[family] = {
+                "label": label,
+                "missing_source_packages": missing_sources,
+            }
 
-    unused_exclusions = sorted(set(exclusion_reasons) - set(reviewed))
+    unused_exclusions = sorted(set(valid_exclusion_reasons) - set(reviewed))
     if unused_exclusions:
         failures.append(
             f"Reviewed exclusions not in coverage contract: {unused_exclusions}."
         )
 
+    covered_hard_targets = sorted(
+        alias
+        for summary in hard_target_families.values()
+        for alias in summary["covered_package_aliases"]
+    )
+    reviewed_hard_targets = sorted(reviewed)
+    validation_family_count = len(validation_only_families)
+    source_gap_package_count = sum(len(packages) for packages in source_gaps.values())
+
     return GateResult(
-        name="source_coverage",
+        name=name,
         passed=not failures,
         failures=tuple(failures),
         details={
             "active_target_aliases": sorted(active_aliases),
             "active_target_families": sorted(active_families),
+            "hard_target_families": hard_target_families,
+            "covered_hard_targets": covered_hard_targets,
             "missing_hard_targets": sorted(missing_hard_targets),
             "reviewed_exclusions": reviewed,
+            "validation_only_families": validation_only_families,
             "validation_only_activated": sorted(validation_misuse),
             "source_gaps": source_gaps,
+            "source_gap_families": source_gap_families,
+            "coverage_summary": {
+                "hard_target": {
+                    "families": len(hard_target_families),
+                    "package_aliases": (
+                        len(covered_hard_targets)
+                        + len(missing_hard_targets)
+                        + len(reviewed_hard_targets)
+                    ),
+                    "covered_package_aliases": len(covered_hard_targets),
+                    "missing_package_aliases": len(missing_hard_targets),
+                    "reviewed_excluded_package_aliases": len(reviewed_hard_targets),
+                },
+                "validation_only": {
+                    "families": validation_family_count,
+                    "activated_families": len(validation_misuse),
+                },
+                "source_gap": {
+                    "families": len(source_gaps),
+                    "missing_source_packages": source_gap_package_count,
+                },
+            },
         },
     )
 

@@ -14,7 +14,10 @@ from pathlib import Path
 import pytest
 
 from populace.data import ReleaseContractError
-from populace.data.contract import REQUIRED_RELEASE_FILES
+from populace.data.contract import (
+    US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+    required_release_files,
+)
 from populace.data.release import (
     LATEST_POINTER_PATH,
     LATEST_POINTER_SCHEMA_VERSION,
@@ -43,6 +46,41 @@ def _calibration_diagnostics() -> dict:
                 "within_tolerance": True,
             }
         ],
+    }
+
+
+def _source_coverage_diagnostics() -> dict:
+    return {
+        "schema_version": 1,
+        "classification": "release_gate",
+        "source_contract": {
+            "name": "us_poverty_nonfiler_source_coverage",
+            "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
+        },
+        "gate": {
+            "name": "us_poverty_nonfiler_source_coverage",
+            "passed": True,
+            "failures": [],
+        },
+        "coverage_summary": {
+            "hard_target": {
+                "families": 9,
+                "package_aliases": 38,
+                "covered_package_aliases": 38,
+                "missing_package_aliases": 0,
+                "reviewed_excluded_package_aliases": 0,
+            },
+            "validation_only": {"families": 6, "activated_families": 0},
+            "source_gap": {"families": 6, "missing_source_packages": 11},
+        },
+        "hard_target_families": {"population_age_sex": {}},
+        "validation_only_families": {"census_cps_spm": {}},
+        "source_gap_families": {"usda_wic": {}},
+        "active_target_aliases": ["census-pep-2024-national-age-sex"],
+        "active_target_families": [],
+        "missing_hard_targets": [],
+        "reviewed_exclusions": {},
+        "validation_only_activated": [],
     }
 
 
@@ -110,6 +148,9 @@ def release_dir(tmp_path: Path) -> Path:
     (directory / "calibration_diagnostics.json").write_text(
         json.dumps(_calibration_diagnostics())
     )
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps(_source_coverage_diagnostics())
+    )
     return directory
 
 
@@ -118,11 +159,15 @@ def test_pointer_payload_names_every_contract_file() -> None:
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
     assert payload["release_id"] == RELEASE_ID
     assert set(payload["paths"]) == {
-        name.removesuffix(".json") for name in REQUIRED_RELEASE_FILES
+        name.removesuffix(".json") for name in required_release_files(RELEASE_ID)
     }
     assert (
         payload["paths"]["build_manifest"]
         == f"releases/{RELEASE_ID}/build_manifest.json"
+    )
+    assert (
+        payload["paths"]["us_poverty_nonfiler_source_coverage"]
+        == f"releases/{RELEASE_ID}/{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE}"
     )
 
 
@@ -135,7 +180,7 @@ def test_publish_uploads_pointer_last(hub: FakeHub, release_dir: Path) -> None:
     )
     uploaded_paths = [path for path, _ in hub.uploads]
     assert uploaded_paths[-1] == LATEST_POINTER_PATH
-    for filename in REQUIRED_RELEASE_FILES:
+    for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in uploaded_paths[:-1]
 
 
