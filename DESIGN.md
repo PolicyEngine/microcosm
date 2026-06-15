@@ -225,7 +225,7 @@ risks, not footnotes:
   mandatory, not optional.
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
-  dividends, interest, retirement income; plus poverty/SPM, and the
+  dividends, interest, retirement income; plus SPM, and the
   benefit-program families) with explicit tolerances. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.

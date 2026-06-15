@@ -1,4 +1,4 @@
-"""US source-family coverage for poverty and nonfiler release gates.
+"""US source-family coverage for US release gates.
 
 This is a pinned Populace-side copy of the Arch source coverage contract
 merged in ``PolicyEngine/arch-data`` PR #53
@@ -18,26 +18,26 @@ from typing import Literal
 from populace.build.gates import GateResult, source_coverage_gate
 
 __all__ = [
-    "ARCH_US_POVERTY_CONTRACT_COMMIT",
+    "ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
     "CoverageRole",
     "SourceCoverageEntry",
-    "US_POVERTY_NONFILER_SOURCE_COVERAGE",
+    "US_SOURCE_COVERAGE",
     "hard_target_package_aliases",
     "source_gap_family_ids",
-    "us_poverty_nonfiler_source_coverage_diagnostics",
-    "us_poverty_nonfiler_source_coverage_gate",
-    "write_us_poverty_nonfiler_source_coverage_diagnostics",
+    "us_source_coverage_diagnostics",
+    "us_source_coverage_gate",
+    "write_us_source_coverage_diagnostics",
     "validation_only_family_ids",
 ]
 
-ARCH_US_POVERTY_CONTRACT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 
 CoverageRole = Literal["hard_target", "validation_only", "source_gap"]
 
 
 @dataclass(frozen=True)
 class SourceCoverageEntry:
-    """Coverage status for one source family relevant to US poverty work."""
+    """Coverage status for one source family relevant to US release work."""
 
     family_id: str
     label: str
@@ -47,7 +47,7 @@ class SourceCoverageEntry:
     notes: str = ""
 
 
-US_POVERTY_NONFILER_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
+US_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
     SourceCoverageEntry(
         "population_age_sex",
         "Population by age, sex, state, and congressional district",
@@ -159,7 +159,7 @@ US_POVERTY_NONFILER_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
     ),
     SourceCoverageEntry(
         "census_cps_spm",
-        "Census CPS ASEC SPM poverty, resources, and thresholds",
+        "Census CPS ASEC SPM resources and thresholds",
         "validation_only",
         notes="Validation only; not a hard calibration target.",
     ),
@@ -170,8 +170,8 @@ US_POVERTY_NONFILER_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
         notes="Validation only; not a hard calibration target.",
     ),
     SourceCoverageEntry(
-        "acs_poverty_income_distribution",
-        "ACS poverty and income distributions",
+        "acs_income_distribution",
+        "ACS income distributions",
         "validation_only",
         notes="Validation only; not an SPM hard target.",
     ),
@@ -233,7 +233,7 @@ def hard_target_package_aliases() -> tuple[str, ...]:
         sorted(
             {
                 alias
-                for entry in US_POVERTY_NONFILER_SOURCE_COVERAGE
+                for entry in US_SOURCE_COVERAGE
                 if entry.role == "hard_target"
                 for alias in entry.package_aliases
             }
@@ -245,7 +245,7 @@ def validation_only_family_ids() -> tuple[str, ...]:
     """Source families that can be diagnostics but must not be hard targets."""
     return tuple(
         entry.family_id
-        for entry in US_POVERTY_NONFILER_SOURCE_COVERAGE
+        for entry in US_SOURCE_COVERAGE
         if entry.role == "validation_only"
     )
 
@@ -253,25 +253,23 @@ def validation_only_family_ids() -> tuple[str, ...]:
 def source_gap_family_ids() -> tuple[str, ...]:
     """Source families the release must report as currently unsupported."""
     return tuple(
-        entry.family_id
-        for entry in US_POVERTY_NONFILER_SOURCE_COVERAGE
-        if entry.role == "source_gap"
+        entry.family_id for entry in US_SOURCE_COVERAGE if entry.role == "source_gap"
     )
 
 
-def us_poverty_nonfiler_source_coverage_gate(
+def us_source_coverage_gate(
     *,
     active_target_aliases: Iterable[str] = (),
     active_target_families: Iterable[str] = (),
     reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
-    """Build the named US poverty/nonfiler source-coverage release gate."""
+    """Build the named US source-coverage release gate."""
     return source_coverage_gate(
-        US_POVERTY_NONFILER_SOURCE_COVERAGE,
+        US_SOURCE_COVERAGE,
         active_target_aliases=active_target_aliases,
         active_target_families=active_target_families,
         reviewed_exclusions=reviewed_exclusions,
-        name="us_poverty_nonfiler_source_coverage",
+        name="us_source_coverage",
     )
 
 
@@ -279,14 +277,14 @@ def _json_ready(value: object) -> object:
     return json.loads(json.dumps(value, allow_nan=False))
 
 
-def us_poverty_nonfiler_source_coverage_diagnostics(
+def us_source_coverage_diagnostics(
     *,
     active_target_aliases: Iterable[str] = (),
     active_target_families: Iterable[str] = (),
     reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Return the US source-coverage diagnostics artifact payload."""
-    result = us_poverty_nonfiler_source_coverage_gate(
+    result = us_source_coverage_gate(
         active_target_aliases=active_target_aliases,
         active_target_families=active_target_families,
         reviewed_exclusions=reviewed_exclusions,
@@ -298,8 +296,8 @@ def us_poverty_nonfiler_source_coverage_diagnostics(
         "schema_version": 1,
         "classification": "release_gate",
         "source_contract": {
-            "name": "us_poverty_nonfiler_source_coverage",
-            "arch_commit": ARCH_US_POVERTY_CONTRACT_COMMIT,
+            "name": "us_source_coverage",
+            "arch_commit": ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
         },
         "gate": {
             "name": result.name,
@@ -318,7 +316,7 @@ def us_poverty_nonfiler_source_coverage_diagnostics(
     }
 
 
-def write_us_poverty_nonfiler_source_coverage_diagnostics(
+def write_us_source_coverage_diagnostics(
     payload: Mapping[str, object], path: Path | str
 ) -> Path:
     """Write a US source-coverage diagnostics artifact as strict JSON."""

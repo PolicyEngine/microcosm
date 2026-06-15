@@ -1,4 +1,4 @@
-"""US poverty/SPM release diagnostics.
+"""US SPM release diagnostics.
 
 These helpers summarize modeled SPM resources against thresholds. They are
 validation diagnostics, not calibration targets: official CPS SPM references can
@@ -50,15 +50,15 @@ def spm_resource_diagnostics(
     group_columns: tuple[str, ...] = (),
     validation_references: Mapping[str, object] | None = None,
 ) -> dict:
-    """Return SPM poverty and negative-resource diagnostics for a frame.
+    """Return SPM below-threshold and negative-resource diagnostics for a frame.
 
     Args:
         frame: One row per SPM unit or person, already aligned to resources,
             thresholds, and weights.
         resource_column: Modeled SPM resources.
-        threshold_column: SPM poverty threshold.
+        threshold_column: SPM threshold.
         weight_column: Person or SPM-unit weight.
-        group_columns: Optional subgroup columns for poverty-rate breakdowns.
+        group_columns: Optional subgroup columns for below-threshold-rate breakdowns.
         validation_references: Metadata about official/public validation
             references. These are copied under ``validation_references`` and
             marked validation-only.
@@ -76,10 +76,12 @@ def spm_resource_diagnostics(
     if not np.any(valid):
         raise ValueError("SPM diagnostic frame has no positive-weight finite rows.")
 
-    poverty = (resources < thresholds) & valid
+    below_threshold = (resources < thresholds) & valid
     negative = (resources < 0) & valid
     population = float(weights[valid].sum())
-    poverty_count = _weighted_sum(poverty[valid].astype(float), weights[valid])
+    below_spm_threshold_count = _weighted_sum(
+        below_threshold[valid].astype(float), weights[valid]
+    )
     negative_count = _weighted_sum(negative[valid].astype(float), weights[valid])
 
     groups: dict[str, dict[str, dict[str, float | int | str]]] = {}
@@ -96,16 +98,16 @@ def spm_resource_diagnostics(
             )
             groups[column][str(value)] = {
                 "population": sub["population"],
-                "poverty_count": sub["poverty_count"],
-                "poverty_rate": sub["poverty_rate"],
+                "below_spm_threshold_count": sub["below_spm_threshold_count"],
+                "below_spm_threshold_rate": sub["below_spm_threshold_rate"],
             }
 
     payload = {
         "schema_version": 1,
         "classification": "validation_only",
         "population": population,
-        "poverty_count": poverty_count,
-        "poverty_rate": poverty_count / population,
+        "below_spm_threshold_count": below_spm_threshold_count,
+        "below_spm_threshold_rate": below_spm_threshold_count / population,
         "resource_quantiles": _weighted_quantile(
             resources[valid], weights[valid], (0.1, 0.25, 0.5, 0.75, 0.9)
         ),

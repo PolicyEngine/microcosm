@@ -47,21 +47,21 @@ from populace.build.us.fiscal_targets import (
     SimpleTaxExpenditureReform,
 )
 from populace.build.us.source_coverage import (
-    ARCH_US_POVERTY_CONTRACT_COMMIT,
-    US_POVERTY_NONFILER_SOURCE_COVERAGE,
+    ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
+    US_SOURCE_COVERAGE,
     hard_target_package_aliases,
     source_gap_family_ids,
-    us_poverty_nonfiler_source_coverage_diagnostics,
-    us_poverty_nonfiler_source_coverage_gate,
+    us_source_coverage_diagnostics,
+    us_source_coverage_gate,
     validation_only_family_ids,
-    write_us_poverty_nonfiler_source_coverage_diagnostics,
+    write_us_source_coverage_diagnostics,
 )
 from populace.frame import Frame
 
 __all__ = [
     "BuildConfig",
     "SimpleTaxExpenditureReform",
-    "ARCH_US_POVERTY_CONTRACT_COMMIT",
+    "ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
     "US_DONORS",
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
@@ -73,7 +73,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_NONNEGATIVE_SOURCE_OUTPUTS",
-    "US_POVERTY_NONFILER_SOURCE_COVERAGE",
+    "US_SOURCE_COVERAGE",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOURCE_MANIFEST",
     "US_SOURCE_STAGE_SPECS",
@@ -82,9 +82,9 @@ __all__ = [
     "hard_target_package_aliases",
     "source_gap_family_ids",
     "us_plan",
-    "us_poverty_nonfiler_source_coverage_diagnostics",
-    "us_poverty_nonfiler_source_coverage_gate",
-    "write_us_poverty_nonfiler_source_coverage_diagnostics",
+    "us_source_coverage_diagnostics",
+    "us_source_coverage_gate",
+    "write_us_source_coverage_diagnostics",
     "validation_only_family_ids",
 ]
 
