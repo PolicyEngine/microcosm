@@ -1,7 +1,12 @@
+from dataclasses import asdict
+
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
 from populace.build.us import (
+    US_FISCAL_LEDGER_PARITY_REGISTRY,
+    US_FISCAL_LEDGER_PARITY_REPORT,
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_LEDGER_REFERENCES,
     US_FISCAL_TARGET_REGISTRY,
     US_FISCAL_TARGET_SPECS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
@@ -67,6 +72,33 @@ def test_us_fiscal_target_specs_are_declared_registry() -> None:
         "jct",
         "state_income_tax",
     }
+
+
+def test_us_fiscal_ledger_parity_registry_matches_declared_registry() -> None:
+    assert US_FISCAL_LEDGER_PARITY_REPORT.passed
+    assert not US_FISCAL_LEDGER_PARITY_REPORT.failures
+    assert US_FISCAL_LEDGER_PARITY_REGISTRY.version == US_FISCAL_TARGET_REGISTRY.version
+    assert len(US_FISCAL_TARGET_LEDGER_REFERENCES) == len(US_FISCAL_TARGET_SPECS)
+    assert [asdict(spec) for spec in US_FISCAL_LEDGER_PARITY_REGISTRY.specs] == [
+        asdict(spec) for spec in US_FISCAL_TARGET_REGISTRY.specs
+    ]
+
+
+def test_us_fiscal_ledger_references_preserve_model_and_gate_metadata() -> None:
+    by_name = {
+        reference.name: reference for reference in US_FISCAL_TARGET_LEDGER_REFERENCES
+    }
+    income_tax = by_name["nation/cbo/individual_income_tax"]
+    assert income_tax.ledger_fact_key
+    assert income_tax.entity == "household"
+    assert income_tax.measure == "income_tax"
+    assert income_tax.metadata["target_role"] == "federal_income_tax_total"
+
+    salt = by_name["nation/jct/salt_deduction_expenditure"]
+    assert salt.measure == "nation/jct/salt_deduction_expenditure"
+    assert salt.metadata["kind"] == "neutralize_variable"
+    assert salt.metadata["matrix_row"] == "reform_minus_baseline_income_tax"
+    assert salt.metadata["neutralized_variable"] == "salt_deduction"
 
 
 def test_us_fiscal_target_specs_pass_issue_40_coverage_gate() -> None:

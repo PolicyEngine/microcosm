@@ -15,6 +15,12 @@ from importlib.resources import files
 from typing import Literal
 
 from populace.build.gates import TargetCoverageRequirement
+from populace.build.ledger_targets import (
+    LedgerTargetParityReport,
+    LedgerTargetReference,
+    compile_ledger_target_references,
+    ledger_target_registry_parity_report,
+)
 from populace.calibrate import TargetRegistry, TargetSpec
 
 __all__ = [
@@ -22,6 +28,9 @@ __all__ = [
     "US_FISCAL_TARGET_REGISTRY",
     "US_FISCAL_TARGET_SPECS",
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
+    "US_FISCAL_TARGET_LEDGER_REFERENCES",
+    "US_FISCAL_LEDGER_PARITY_REGISTRY",
+    "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_SPECS",
@@ -125,8 +134,78 @@ def _load_us_fiscal_target_specs() -> tuple[TargetSpec, ...]:
     return tuple(TargetSpec(**raw) for raw in payload["target_specs"])
 
 
+def _ledger_fact_key_for_spec(spec: TargetSpec) -> str:
+    return f"populace.us.fiscal_target.v1:{spec.name}@{spec.period}"
+
+
+def _ledger_reference_from_spec(spec: TargetSpec) -> LedgerTargetReference:
+    ledger_fact_key = _ledger_fact_key_for_spec(spec)
+    return LedgerTargetReference(
+        name=spec.name,
+        ledger_fact_key=ledger_fact_key,
+        ledger_source_record_id=ledger_fact_key,
+        entity=spec.entity,
+        measure=spec.measure,
+        aggregation=spec.aggregation,
+        filter=spec.filter,
+        period=spec.period,
+        source=spec.source,
+        family=spec.family,
+        signed=spec.signed,
+        se=spec.se,
+        tolerance=spec.tolerance,
+        notes=spec.notes,
+        metadata=spec.metadata,
+    )
+
+
+def _ledger_compat_fact_from_spec(spec: TargetSpec) -> dict[str, object]:
+    """Represent the current manifest as Ledger-shaped facts for parity only.
+
+    This is the no-behavior-change bridge: it validates the Populace target
+    registry model against the Ledger reference compiler before any production
+    target loads directly from the Ledger database.
+    """
+
+    ledger_fact_key = _ledger_fact_key_for_spec(spec)
+    return {
+        "aggregate_fact_key": ledger_fact_key,
+        "lineage": {"source_record_id": ledger_fact_key},
+        "value": spec.value,
+        "period": {
+            "type": "tax_year" if isinstance(spec.period, int) else "period",
+            "value": spec.period,
+        },
+        "entity": {"name": spec.entity},
+        "aggregation": {"method": spec.aggregation},
+        "observed_measure": {
+            "source_name": spec.family,
+            "source_table": spec.source,
+            "source_measure_id": spec.measure or spec.name,
+        },
+        "source": {
+            "source_name": spec.family,
+            "source_table": spec.source,
+        },
+    }
+
+
 US_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = _load_us_fiscal_target_specs()
 US_FISCAL_TARGET_REGISTRY = TargetRegistry(US_FISCAL_TARGET_SPECS, country="us")
+US_FISCAL_TARGET_LEDGER_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
+    _ledger_reference_from_spec(spec) for spec in US_FISCAL_TARGET_SPECS
+)
+US_FISCAL_LEDGER_PARITY_REGISTRY = compile_ledger_target_references(
+    (_ledger_compat_fact_from_spec(spec) for spec in US_FISCAL_TARGET_SPECS),
+    US_FISCAL_TARGET_LEDGER_REFERENCES,
+    country="us",
+)
+US_FISCAL_LEDGER_PARITY_REPORT: LedgerTargetParityReport = (
+    ledger_target_registry_parity_report(
+        US_FISCAL_TARGET_REGISTRY,
+        US_FISCAL_LEDGER_PARITY_REGISTRY,
+    )
+)
 US_JCT_TAX_EXPENDITURE_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
     spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "jct"
 )
