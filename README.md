@@ -30,3 +30,7 @@ uv sync --all-packages   # workspace install (all members + dev groups)
 uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
+
+See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
+disk, and CPU footprint of developing and building locally (and what to budget
+on a build machine — RAM is the binding constraint).
