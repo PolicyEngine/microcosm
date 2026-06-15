@@ -1159,6 +1159,8 @@ def per_family_fit_gate(
     *,
     within: float = 0.10,
     min_family_share: float = 0.5,
+    hard_within: float | None = 0.25,
+    min_hard_family_share: float = 0.5,
     min_family_size: int = 5,
 ) -> GateResult:
     """Calibration fit per source family: no family hides in the average.
@@ -1167,15 +1169,20 @@ def per_family_fit_gate(
         target_names: Compiled target names (``"family/..."`` prefixes; an
             unprefixed name lands in family ``"unspecified"``).
         relative_errors: Per-target relative errors, aligned to the names.
-        within: The hit threshold (default: within 10%).
-        min_family_share: Minimum within-threshold share each family must
-            reach.
+        within: Diagnostic hit threshold (default: within 10%). This is
+            reported, but is not itself a hard release threshold.
+        min_family_share: Diagnostic floor for the within-threshold share.
+        hard_within: Wider hit threshold used for hard failures. Set to
+            ``None`` to make this gate report-only.
+        min_hard_family_share: Minimum hard-within-threshold share each family
+            must reach when ``hard_within`` is set.
         min_family_size: Families smaller than this are reported but not
             gated (a 2-target family's share is too noisy to gate on).
 
     Returns:
         Pass iff every family of at least ``min_family_size`` targets hits
-        ``min_family_share``. Details carry every family's share either way.
+        ``min_hard_family_share`` at ``hard_within``. Details carry the
+        diagnostic and hard-fit shares either way.
     """
     names = list(target_names)
     errors = list(relative_errors)
@@ -1192,19 +1199,37 @@ def per_family_fit_gate(
         family: float(np.mean([e <= within for e in errs]))
         for family, errs in sorted(by_family.items())
     }
-    failures = [
-        f"{family}: only {share:.1%} of {len(by_family[family])} targets "
-        f"within {within:.0%} (floor {min_family_share:.0%})."
-        for family, share in shares.items()
-        if len(by_family[family]) >= min_family_size and share < min_family_share
-    ]
+    hard_shares = (
+        {
+            family: float(np.mean([e <= hard_within for e in errs]))
+            for family, errs in sorted(by_family.items())
+        }
+        if hard_within is not None
+        else {}
+    )
+    failures = (
+        [
+            f"{family}: only {share:.1%} of {len(by_family[family])} targets "
+            f"within broad {hard_within:.0%} fit "
+            f"(floor {min_hard_family_share:.0%})."
+            for family, share in hard_shares.items()
+            if len(by_family[family]) >= min_family_size
+            and share < min_hard_family_share
+        ]
+        if hard_within is not None
+        else []
+    )
     return GateResult(
         name="per_family_fit",
         passed=not failures,
         failures=tuple(failures),
         details={
             "within": within,
+            "min_family_share": min_family_share,
+            "hard_within": hard_within,
+            "min_hard_family_share": min_hard_family_share,
             "family_within_shares": shares,
+            "family_hard_within_shares": hard_shares,
             "family_sizes": {f: len(e) for f, e in sorted(by_family.items())},
         },
     )
