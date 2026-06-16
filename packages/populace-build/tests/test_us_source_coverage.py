@@ -4,7 +4,7 @@ import pytest
 
 from populace.build.gates import GateReport
 from populace.build.us.source_coverage import (
-    ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
+    LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     hard_target_package_aliases,
     source_gap_family_ids,
     us_source_coverage_diagnostics,
@@ -15,7 +15,7 @@ from populace.build.us.source_coverage import (
 
 
 def test_us_source_coverage_snapshot_has_expected_roles() -> None:
-    assert len(ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT) == 40
+    assert len(LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT) == 40
     assert "ssa-ssi-table-7b1-2024" in hard_target_package_aliases()
     assert "cms-aca-oep-state-level-2025" in hard_target_package_aliases()
     assert "census_cps_spm" in validation_only_family_ids()
@@ -30,7 +30,7 @@ def test_us_source_coverage_gate_passes_when_hard_aliases_are_active() -> None:
     assert result.name == "us_source_coverage"
     assert result.details["source_gaps"]["hud_assisted_housing"]
     assert result.details["coverage_summary"]["hard_target"] == {
-        "families": 9,
+        "families": 10,
         "package_aliases": len(hard_target_package_aliases()),
         "covered_package_aliases": len(hard_target_package_aliases()),
         "missing_package_aliases": 0,
@@ -144,7 +144,7 @@ def test_us_source_coverage_diagnostics_artifact_contains_summary(
     assert written["classification"] == "release_gate"
     assert written["source_contract"] == {
         "name": "us_source_coverage",
-        "arch_commit": ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
+        "ledger_commit": LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     }
     assert written["gate"] == {
         "name": "us_source_coverage",

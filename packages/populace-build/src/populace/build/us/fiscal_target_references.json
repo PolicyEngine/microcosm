@@ -1,0 +1,94 @@
+{
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "country": "us",
+  "description": "Hand-authored US fiscal target references. Observed values must be resolved from external PolicyEngine Ledger consumer facts; generated IRS, Census, SSA, CMS, SNAP, TANF, and CBO targets are compiled directly from the Ledger fact stream.",
+  "target_references": [
+    {
+      "aggregation": "sum",
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "salt_deduction",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "aggregation": "sum",
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "medical_expense_deduction",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "aggregation": "sum",
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "charitable_deduction",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "aggregation": "sum",
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "deductible_mortgage_interest",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    },
+    {
+      "aggregation": "sum",
+      "entity": "household",
+      "family": "jct",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
+      "metadata": {
+        "kind": "neutralize_variable",
+        "matrix_row": "reform_minus_baseline_income_tax",
+        "neutralized_variable": "qualified_business_income_deduction",
+        "output_variable": "income_tax",
+        "target_role": "jct_tax_expenditure"
+      },
+      "name": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
+      "period": 2024,
+      "value_operation": "identity"
+    }
+  ]
+}

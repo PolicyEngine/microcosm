@@ -17,7 +17,7 @@ from populace.calibrate import TargetRegistry, TargetSpec
 
 def _ledger_fact(**overrides):
     fact = {
-        "fact_key": "arch.fact.v1:abc123",
+        "fact_key": "ledger.fact.v1:abc123",
         "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
         "value": 15_286_017_359_000,
         "period": {"type": "tax_year", "value": 2023},
@@ -33,7 +33,7 @@ def _ledger_fact(**overrides):
             "unit": "usd",
             "source_concept": "irs_soi.adjusted_gross_income",
             "concept_relation": "exact",
-            "concept_authority": "arch-us",
+            "concept_authority": "ledger-us",
             "legal_vintage": "tax_year_2023",
         },
         "aggregation": {"method": "sum"},
@@ -59,11 +59,11 @@ def _ledger_fact(**overrides):
 
 def _consumer_fact_row(**overrides):
     row = {
-        "aggregate_fact_key": "arch.aggregate_fact.v2:abc123",
-        "legacy_fact_key": "arch.fact.v1:abc123",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:abc123",
+        "legacy_fact_key": "ledger.fact.v1:abc123",
         "lineage": {
             "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
-            "source_cell_keys": ["arch.source_cell.v1:cell"],
+            "source_cell_keys": ["ledger.source_cell.v1:cell"],
             "source_row_keys": [],
         },
         "value": 15_286_017_359_000,
@@ -86,7 +86,7 @@ def _consumer_fact_row(**overrides):
             "source_concept": "irs_soi.adjusted_gross_income",
             "canonical_concept": "us:statutes/26/62#adjusted_gross_income",
             "relation": "exact",
-            "authority": "arch-us",
+            "authority": "ledger-us",
             "legal_vintage": "tax_year_2023",
         },
         "aggregation": {"method": "sum"},
@@ -129,11 +129,11 @@ def test__given_supported_ledger_fact__then_populace_target_preserves_lineage() 
     assert not selection.unsupported
     assert len(registry) == 1
     spec = registry.specs[0]
-    assert spec.name == "arch.fact.v1:abc123"
+    assert spec.name == "ledger.fact.v1:abc123"
     assert spec.measure == "adjusted_gross_income"
     assert spec.filter == "is_tax_return"
     assert spec.family == "irs_soi"
-    assert spec.metadata["ledger_source"] == "policyengine_ledger"
+    assert spec.metadata["ledger_source"] == "policyengine-ledger-data"
     assert (
         spec.metadata["ledger_source_record_id"]
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
@@ -158,13 +158,13 @@ def test__given_consumer_contract_row__then_populace_target_preserves_lineage() 
     # Then
     assert not selection.unsupported
     spec = selection.specs[0]
-    assert spec.name == "arch.aggregate_fact.v2:abc123"
+    assert spec.name == "ledger.aggregate_fact.v2:abc123"
     assert spec.measure == "adjusted_gross_income"
     assert (
         spec.metadata["ledger_source_record_id"]
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
-    assert spec.metadata["ledger_fact_key"] == "arch.aggregate_fact.v2:abc123"
+    assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:abc123"
     assert spec.metadata["ledger_source_concept"] == "irs_soi.adjusted_gross_income"
 
 
@@ -187,14 +187,14 @@ def test__given_consumer_contract_jsonl__then_populace_selects_targets(
 
     # Then
     assert not selection.unsupported
-    assert selection.specs[0].name == "arch.aggregate_fact.v2:abc123"
+    assert selection.specs[0].name == "ledger.aggregate_fact.v2:abc123"
 
 
 def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> None:
     # Given
     reference = LedgerTargetReference(
         name="nation/irs/adjusted gross income/total",
-        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure="adjusted_gross_income",
         aggregation="sum",
@@ -222,18 +222,108 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
     assert spec.measure == "adjusted_gross_income"
     assert spec.filter == "is_tax_return"
     assert spec.period == 2024
-    assert spec.source == "IRS SOI Table 1.1"
+    assert spec.source.startswith("irs_soi | Publication 1304 Table 1.1")
     assert spec.metadata["target_role"] == "soi_fiscal_distribution"
     assert spec.metadata["uprating_index"] == "cpi_u"
     assert spec.metadata["uprating_from_period"] == "2023"
     assert spec.metadata["uprating_to_period"] == "2024"
 
 
+def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compiles() -> (
+    None
+):
+    # Given
+    first = _consumer_fact_row(semantic_fact_key="ledger.semantic_fact.v2:shared")
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+        legacy_fact_key="ledger.fact.v1:def456",
+        semantic_fact_key="ledger.semantic_fact.v2:shared",
+        lineage={
+            "source_record_id": "irs_soi.ty2023.table_1_1.all.total_tax",
+            "source_cell_keys": ["ledger.source_cell.v1:cell2"],
+            "source_row_keys": [],
+        },
+        value=2_000_000_000_000,
+        observed_measure={
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.1",
+            "source_measure_id": "total_tax",
+            "source_concept": "irs_soi.total_income_tax",
+            "unit": "usd",
+        },
+        concept_alignment={
+            "source_concept": "irs_soi.total_income_tax",
+            "canonical_concept": "us:statutes/26/1#income_tax",
+            "relation": "exact",
+            "authority": "ledger-us",
+            "legal_vintage": "tax_year_2023",
+        },
+        layout={
+            "record_set_id": "irs_soi.ty2023.table_1_1",
+            "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+            "groupby_value_id": "all",
+            "measure_id": "total_tax",
+        },
+    )
+    reference = LedgerTargetReference(
+        name="nation/irs/total tax/total",
+        ledger_fact_key="ledger.aggregate_fact.v2:def456",
+        entity="tax_unit",
+        measure="income_tax",
+        aggregation="sum",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [first, second],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    assert registry.specs[0].value == 2_000_000_000_000
+    assert (
+        registry.specs[0].metadata["ledger_source_record_id"]
+        == "irs_soi.ty2023.table_1_1.all.total_tax"
+    )
+
+
+def test__given_ambiguous_ledger_reference_identifier__then_compilation_fails() -> None:
+    # Given
+    first = _consumer_fact_row(semantic_fact_key="ledger.semantic_fact.v2:shared")
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+        legacy_fact_key="ledger.fact.v1:def456",
+        semantic_fact_key="ledger.semantic_fact.v2:shared",
+        lineage={
+            "source_record_id": "irs_soi.ty2023.table_1_1.all.total_tax",
+            "source_cell_keys": ["ledger.source_cell.v1:cell2"],
+            "source_row_keys": [],
+        },
+    )
+    reference = LedgerTargetReference(
+        name="ambiguous semantic reference",
+        ledger_fact_key="ledger.semantic_fact.v2:shared",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="matched multiple Ledger facts"):
+        compile_ledger_target_references(
+            [first, second],
+            [reference],
+            country="us",
+        )
+
+
 def test__given_missing_ledger_reference_fact__then_compilation_fails() -> None:
     # Given
     reference = LedgerTargetReference(
         name="missing fact target",
-        ledger_fact_key="arch.aggregate_fact.v2:missing",
+        ledger_fact_key="ledger.aggregate_fact.v2:missing",
         entity="tax_unit",
         measure="adjusted_gross_income",
     )
@@ -252,7 +342,7 @@ def test__given_non_count_reference_without_measure__then_compilation_fails(
     # Given
     reference = LedgerTargetReference(
         name="missing measure target",
-        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure=measure,
         aggregation="sum",
@@ -271,13 +361,13 @@ def test__given_reference_identifiers_match_different_facts__then_compilation_fa
     # Given
     first = _consumer_fact_row()
     second = _consumer_fact_row(
-        aggregate_fact_key="arch.aggregate_fact.v2:def456",
-        legacy_fact_key="arch.fact.v1:def456",
+        aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+        legacy_fact_key="ledger.fact.v1:def456",
         lineage={"source_record_id": "irs_soi.ty2023.table_1_1.all.total_tax"},
     )
     reference = LedgerTargetReference(
         name="inconsistent reference",
-        ledger_fact_key="arch.aggregate_fact.v2:abc123",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         ledger_source_record_id="irs_soi.ty2023.table_1_1.all.total_tax",
         entity="tax_unit",
         measure="adjusted_gross_income",
@@ -570,7 +660,7 @@ def test__given_ledger_target_metadata__then_coverage_gate_uses_structured_field
         label="SOI AGI total",
         accepted_measures=("adjusted_gross_income",),
         required_metadata=(
-            ("ledger_source", "policyengine_ledger"),
+            ("ledger_source", "policyengine-ledger-data"),
             ("ledger_measure_concept", "us:statutes/26/62#adjusted_gross_income"),
             ("ledger_geography_level", "country"),
             ("ledger_filter_income_range", "all"),

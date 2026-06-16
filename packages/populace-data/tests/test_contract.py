@@ -173,7 +173,7 @@ def _source_coverage_diagnostics() -> dict:
         "classification": "release_gate",
         "source_contract": {
             "name": "us_source_coverage",
-            "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
+            "ledger_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
         },
         "gate": {
             "name": "us_source_coverage",
@@ -456,6 +456,21 @@ def test_malformed_us_source_coverage_diagnostics_is_rejected(
     failures = "\n".join(excinfo.value.failures)
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
     assert "coverage_summary" in failures
+
+
+def test_us_source_coverage_rejects_legacy_commit_contract(
+    release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["source_contract"].pop("ledger_commit")
+    payload["source_contract"]["".join(("ar", "ch", "_commit"))] = GIT_COMMIT
+    (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(json.dumps(payload))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "source_contract.ledger_commit" in failures
 
 
 def test_failed_us_source_coverage_diagnostics_is_rejected(

@@ -847,7 +847,7 @@ def source_coverage_gate(
 
     ``coverage_entries`` intentionally accepts either dict-like entries or the
     ``SourceCoverageEntry`` dataclass from ``populace.build.us.source_coverage``
-    so callers can also pass a live Arch coverage contract.
+    so callers can also pass a live Ledger coverage contract.
     """
     active_aliases = set(active_target_aliases)
     active_families = set(active_target_families)

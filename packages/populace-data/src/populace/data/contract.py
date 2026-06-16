@@ -561,10 +561,10 @@ def _check_source_coverage_diagnostics(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.name must "
                 "be 'us_source_coverage'."
             )
-        arch_commit = source_contract.get("arch_commit")
-        if not isinstance(arch_commit, str) or len(arch_commit) != 40:
+        ledger_commit = source_contract.get("ledger_commit")
+        if not isinstance(ledger_commit, str) or len(ledger_commit) != 40:
             failures.append(
-                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.arch_commit "
+                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} source_contract.ledger_commit "
                 "must be a 40-character commit hash."
             )
 

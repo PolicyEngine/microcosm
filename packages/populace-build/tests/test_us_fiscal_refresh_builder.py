@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from populace.calibrate import TargetSpec
 from populace.frame import Frame, WeightKind
 
 
@@ -310,7 +311,7 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame: (
+        lambda frame, target_specs: (
             FakeFrame(),
             FakeRegistry(),
             {"dropped_target_names": []},
@@ -326,11 +327,13 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
         )
     )
 
-    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result)
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
 
     target.observed = 1_990_000_000_000.0
     try:
-        builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result)
+        builder._assert_export_matches_calibration(
+            tmp_path / "candidate.h5", result, ()
+        )
     except RuntimeError as exc:
         assert "Post-export sanity failed" in str(exc)
         assert "nation/cbo/individual_income_tax@2024 exported value" in str(exc)
@@ -346,12 +349,16 @@ def test_post_export_sanity_rejects_dropped_export_targets(
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame: (object(), object(), {"dropped_target_names": ["missing"]}),
+        lambda frame, target_specs: (
+            object(),
+            object(),
+            {"dropped_target_names": ["missing"]},
+        ),
     )
 
     try:
         builder._assert_export_matches_calibration(
-            tmp_path / "candidate.h5", SimpleNamespace(diagnostics=())
+            tmp_path / "candidate.h5", SimpleNamespace(diagnostics=()), ()
         )
     except RuntimeError as exc:
         assert "1 fiscal targets were not materialized after export" in str(exc)
@@ -388,12 +395,48 @@ def test_reviewed_exclusions_fail_when_hard_target_surface_changes(
 
 def test_fiscal_target_source_provenance_covers_active_families() -> None:
     builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="income_tax",
+            entity="household",
+            measure="income_tax",
+            value=1,
+            source="CBO source",
+            family="cbo",
+        ),
+        TargetSpec(
+            name="salt",
+            entity="household",
+            measure="salt",
+            value=1,
+            source="JCT source",
+            family="jct",
+            metadata={"reference_url": "https://example.org/jct"},
+        ),
+        TargetSpec(
+            name="agi",
+            entity="household",
+            measure="agi",
+            value=1,
+            source="SOI source",
+            family="irs_soi",
+        ),
+        TargetSpec(
+            name="state_income_tax",
+            entity="household",
+            measure="state_income_tax",
+            value=1,
+            source="Census source",
+            family="state_income_tax",
+            metadata={"reference_url": "https://example.org/stc"},
+        ),
+    )
 
-    provenance = builder._fiscal_target_source_provenance()
+    provenance = builder._fiscal_target_source_provenance(specs)
 
     assert set(provenance) == {"cbo", "irs_soi", "jct", "state_income_tax"}
     assert provenance["cbo"]["target_count"] == 1
-    assert provenance["jct"]["target_count"] == 5
+    assert provenance["jct"]["target_count"] == 1
     assert provenance["irs_soi"]["sources"]
     assert provenance["state_income_tax"]["reference_urls"]
 
