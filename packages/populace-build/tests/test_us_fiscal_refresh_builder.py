@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,6 +41,39 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
+
+
+def test_export_target_audit_is_opt_in(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert not args.audit_export_targets
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--audit-export-targets",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.audit_export_targets
 
 
 def test_soi_count_rows_count_positive_component_items() -> None:

@@ -180,6 +180,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=0.12)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--audit-export-targets",
+        action="store_true",
+        help=(
+            "After writing the H5, reload it and rematerialize the full fiscal "
+            "target surface. This is a slow audit pass; default release builds "
+            "rely on the writer's H5 round-trip verification and calibration "
+            "diagnostics instead."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1120,7 +1130,8 @@ def main() -> None:
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
-    _assert_export_matches_calibration(dataset_path, result, target_specs)
+    if args.audit_export_targets:
+        _assert_export_matches_calibration(dataset_path, result, target_specs)
 
     calibration_path = artifact_root / CALIBRATION_FILENAME
     _write_npz(calibration_path, result=result, registry=registry)
@@ -1131,6 +1142,7 @@ def main() -> None:
         build={
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
+            "post_export_target_audit": bool(args.audit_export_targets),
         },
     )
 
