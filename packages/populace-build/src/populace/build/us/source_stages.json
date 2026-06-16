@@ -502,7 +502,7 @@
       "operations": [
         {
           "kind": "aggregate_person_to_tax_unit",
-          "inputs": [
+          "aggregates": [
             "has_marketplace_health_coverage_at_interview",
             "reported_has_subsidized_marketplace_health_coverage_at_interview"
           ],
