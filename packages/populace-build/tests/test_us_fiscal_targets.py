@@ -234,7 +234,7 @@ def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
     assert spec.period == 2025
     assert spec.metadata["source_period"] == "2023"
     assert spec.metadata["target_period"] == "2025"
-    assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+    assert spec.metadata["target_role"] == "federal_income_tax_total"
 
 
 def test_static_jct_targets_use_builder_target_period() -> None:
@@ -250,7 +250,7 @@ def test_static_jct_targets_use_builder_target_period() -> None:
     assert spec.metadata["target_role"] == "jct_tax_expenditure"
 
 
-def test_cbo_individual_income_tax_receipts_supply_macro_income_tax_target() -> None:
+def test_cbo_individual_income_tax_receipts_do_not_enter_calibration() -> None:
     source_record_id = "cbo.fy2024.revenues.individual_income_taxes.actual_amount"
 
     registry = compile_us_fiscal_target_registry(
@@ -261,22 +261,10 @@ def test_cbo_individual_income_tax_receipts_supply_macro_income_tax_target() -> 
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
-    spec = specs[source_record_id]
-    assert spec.family == "cbo"
-    assert spec.measure == source_record_id
-    assert spec.period == 2024
-    assert spec.value == 2_426_067_000_000
-    assert spec.metadata["target_role"] == "federal_income_tax_total"
-    assert spec.metadata["base_variable"] == "income_tax"
-    assert spec.metadata["source_period"] == "2024"
-    assert spec.metadata["target_period"] == "2024"
-    assert (
-        spec.metadata["source_concept_bridge"]
-        == "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
-    )
+    assert source_record_id not in specs
 
 
-def test_cbo_actual_and_projected_income_tax_receipts_emit_one_macro_target() -> None:
+def test_cbo_actual_and_projected_income_tax_receipts_emit_no_hard_target() -> None:
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -299,18 +287,10 @@ def test_cbo_actual_and_projected_income_tax_receipts_emit_one_macro_target() ->
         for spec in registry.specs
         if spec.metadata.get("target_role") == "federal_income_tax_total"
     ]
-    assert len(income_tax_specs) == 1
-    spec = income_tax_specs[0]
-    assert spec.value == 2_656_000_000_000
-    assert spec.period == 2025
-    assert spec.metadata["ledger_source_record_id"] == (
-        "cbo.fy2025.revenues.individual_income_taxes.projected_amount"
-    )
-    assert spec.metadata["source_measure_id"] == "projected_amount"
-    assert spec.metadata["source_period"] == "2025"
+    assert income_tax_specs == []
 
 
-def test_soi_income_tax_liability_does_not_supply_macro_income_tax_target() -> None:
+def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -321,7 +301,9 @@ def test_soi_income_tax_liability_does_not_supply_macro_income_tax_target() -> N
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
     spec = specs["irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"]
     assert spec.family == "irs_soi"
-    assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+    assert spec.measure == "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+    assert spec.metadata["target_role"] == "federal_income_tax_total"
+    assert spec.metadata["variable"] == "income_tax"
 
 
 def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> None:
@@ -459,7 +441,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
     assert any("federal_income_tax_total" in failure for failure in result.failures)
 
 
-def test_soi_income_tax_liability_does_not_satisfy_total_tax() -> None:
+def test_soi_income_tax_liability_satisfies_total_tax() -> None:
     targets = [
         {
             "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
@@ -477,8 +459,7 @@ def test_soi_income_tax_liability_does_not_satisfy_total_tax() -> None:
         targets,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    assert not result.passed
-    assert any("federal_income_tax_total" in failure for failure in result.failures)
+    assert result.passed
 
 
 def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
@@ -832,9 +813,9 @@ def complete_coverage_targets() -> list[dict[str, object]]:
 
 def federal_income_tax_total_row() -> dict[str, object]:
     return {
-        "name": "cbo.fy2024.revenues.individual_income_taxes.actual_amount",
-        "measure": "cbo.fy2024.revenues.individual_income_taxes.actual_amount",
-        "family": "cbo",
+        "name": "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount",
+        "measure": "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount",
+        "family": "irs_soi",
         "metadata": {"target_role": "federal_income_tax_total"},
     }
 
