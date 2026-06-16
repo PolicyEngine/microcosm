@@ -149,7 +149,7 @@ SOI_VARIABLE_MAP = {
     "ordinary_dividends": "dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
-    "premium_tax_credit": "premium_tax_credit",
+    "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
     "real_estate_taxes": "real_estate_taxes",
@@ -494,14 +494,24 @@ def _household_values(
     variable: str,
     tax_unit_positions: np.ndarray,
     positive_indicator: bool = False,
+    map_to: str | None = None,
+    filter_variable: str | None = None,
 ) -> np.ndarray:
     entity = _variable_entity(system, variable)
     if entity is None:
         raise KeyError(variable)
+    if map_to is not None:
+        entity = map_to
     if entity == "household":
-        values = _calculate_array(simulation, variable)
+        values = _calculate_array(simulation, variable, map_to=map_to)
+        if filter_variable is not None:
+            filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
+            values = np.where(filter_values > 0, values, 0)
         return (values > 0).astype(np.float64) if positive_indicator else values
-    raw = _calculate_array(simulation, variable)
+    raw = _calculate_array(simulation, variable, map_to=map_to)
+    if filter_variable is not None:
+        filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
+        raw = np.where(filter_values > 0, raw, 0)
     if positive_indicator:
         raw = (raw > 0).astype(np.float64)
     if entity == "tax_unit":
@@ -541,6 +551,8 @@ def _combined_household_values(
     variables: tuple[str, ...],
     tax_unit_positions: np.ndarray,
     positive_indicator: bool = False,
+    map_to: str | None = None,
+    filter_variable: str | None = None,
 ) -> np.ndarray:
     if len(variables) == 1:
         return _household_values(
@@ -550,6 +562,8 @@ def _combined_household_values(
             variable=variables[0],
             tax_unit_positions=tax_unit_positions,
             positive_indicator=positive_indicator,
+            map_to=map_to,
+            filter_variable=filter_variable,
         )
 
     entities = tuple(_variable_entity(system, variable) for variable in variables)
@@ -560,14 +574,16 @@ def _combined_household_values(
     )
     if missing:
         raise KeyError(", ".join(missing))
-    if len(set(entities)) != 1:
+    if map_to is None and len(set(entities)) != 1:
         raise ValueError(
             f"Cannot combine variables from different entities: "
             f"{dict(zip(variables, entities, strict=True))}."
         )
 
     raw_arrays = tuple(
-        np.asarray(_calculate_array(simulation, variable), dtype=np.float64)
+        np.asarray(
+            _calculate_array(simulation, variable, map_to=map_to), dtype=np.float64
+        )
         for variable in variables
     )
     if positive_indicator:
@@ -577,7 +593,11 @@ def _combined_household_values(
     else:
         raw = np.sum(raw_arrays, axis=0, dtype=np.float64)
 
-    entity = entities[0]
+    if filter_variable is not None:
+        filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
+        raw = np.where(filter_values > 0, raw, 0)
+
+    entity = map_to or entities[0]
     if entity == "household":
         return raw
     if entity == "tax_unit":
@@ -713,13 +733,19 @@ def _materialize_target_frame(
         for spec in target_specs
         if spec.metadata.get("materializer") == "policyengine_variable"
     ]
-    direct_value_cache: dict[tuple[tuple[str, ...], str], np.ndarray] = {}
+    direct_value_cache: dict[tuple[tuple[str, ...], str, str, str], np.ndarray] = {}
     for spec in direct_target_specs:
         base_variables = _base_variables_from_metadata(spec.metadata)
         mode = spec.metadata.get("measure_mode", "sum")
-        cache_key = (base_variables, mode)
+        map_to = spec.metadata.get("count_map_to")
+        filter_variable = spec.metadata.get("count_filter_variable")
+        cache_key = (base_variables, mode, map_to or "", filter_variable or "")
         if cache_key not in direct_value_cache:
-            if any(variable not in system.variables for variable in base_variables):
+            variables_to_check = (
+                *base_variables,
+                *(() if filter_variable is None else (filter_variable,)),
+            )
+            if any(variable not in system.variables for variable in variables_to_check):
                 continue
             direct_value_cache[cache_key] = _combined_household_values(
                 frame=base_frame,
@@ -728,6 +754,8 @@ def _materialize_target_frame(
                 variables=base_variables,
                 tax_unit_positions=tax_unit_positions,
                 positive_indicator=mode == "positive_count",
+                map_to=map_to,
+                filter_variable=filter_variable,
             )
         values = direct_value_cache[cache_key]
         state_fips = spec.metadata.get("state_fips")
