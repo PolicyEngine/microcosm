@@ -284,85 +284,6 @@
       ]
     },
     {
-      "stage": "aca_marketplace_inputs",
-      "survey": "CPS ASEC + CMS Marketplace Open Enrollment PUFs",
-      "source": "https://www.cms.gov/marketplace/resources/data/public-use-files",
-      "grain": "tax_unit",
-      "artifacts": [
-        {
-          "kind": "public_microdata",
-          "format": "census_asec",
-          "vintage": "build_year",
-          "locator": "CPS ASEC current coverage and health premium fields"
-        },
-        {
-          "kind": "administrative_table",
-          "format": "cms_public_use_file",
-          "vintage": "build_year_or_latest_available",
-          "locator": "CMS Marketplace OEP state-level, APTC, and metal-level public use files"
-        }
-      ],
-      "operations": [
-        {
-          "kind": "aggregate_person_to_tax_unit",
-          "inputs": [
-            "has_marketplace_health_coverage_at_interview",
-            "reported_has_subsidized_marketplace_health_coverage_at_interview"
-          ],
-          "operation": "any"
-        },
-        {
-          "kind": "assign_binary_from_rate",
-          "output": "takes_up_aca_if_eligible",
-          "draw": "stable_tax_unit_draw",
-          "rate_key": "aca",
-          "reported_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview"
-        },
-        {
-          "kind": "calibrate_binary_assignment",
-          "variable": "takes_up_aca_if_eligible",
-          "targets": [
-            "cms_aca_aptc_recipients_by_state",
-            "cms_aca_marketplace_enrollment_by_state"
-          ],
-          "preserve_true_anchors": true
-        },
-        {
-          "kind": "compute_ratio",
-          "output": "selected_marketplace_plan_benchmark_ratio",
-          "numerator": [
-            "health_insurance_premiums_without_medicare_part_b",
-            "assigned_aca_ptc"
-          ],
-          "denominator": "slcsp",
-          "where": "takes_up_aca_if_eligible"
-        },
-        {
-          "kind": "support_clip",
-          "output": "selected_marketplace_plan_benchmark_ratio",
-          "lower": 0.5,
-          "upper": 1.5,
-          "range": "reviewed_marketplace_plan_ratio"
-        },
-        {
-          "kind": "calibrate_binary_assignment",
-          "variable": "selected_marketplace_plan_benchmark_ratio < 1.0",
-          "targets": [
-            "cms_aca_bronze_aptc_consumers_by_state"
-          ],
-          "domain": "assigned_aca_ptc > 0"
-        }
-      ],
-      "outputs": [
-        "takes_up_aca_if_eligible",
-        "selected_marketplace_plan_benchmark_ratio"
-      ],
-      "nonnegative_outputs": [
-        "selected_marketplace_plan_benchmark_ratio"
-      ],
-      "notes": "When PolicyEngine-US separates observed Marketplace coverage from simulated take-up, this stage should write the simulated take-up input while reported coverage remains a CPS-carried person-level input."
-    },
-    {
       "stage": "prior_year_income",
       "survey": "CPS ASEC (prior year)",
       "source": "https://www.census.gov/programs-surveys/cps.html",
@@ -558,6 +479,85 @@
         "household_vehicles_owned",
         "household_vehicles_value"
       ]
+    },
+    {
+      "stage": "aca_marketplace_inputs",
+      "survey": "CPS ASEC + CMS Marketplace Open Enrollment PUFs",
+      "source": "https://www.cms.gov/marketplace/resources/data/public-use-files",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "CPS ASEC current coverage and health premium fields"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "cms_public_use_file",
+          "vintage": "build_year_or_latest_available",
+          "locator": "CMS Marketplace OEP state-level, APTC, and metal-level public use files"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "aggregate_person_to_tax_unit",
+          "inputs": [
+            "has_marketplace_health_coverage_at_interview",
+            "reported_has_subsidized_marketplace_health_coverage_at_interview"
+          ],
+          "operation": "any"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_aca_if_eligible",
+          "draw": "stable_tax_unit_draw",
+          "rate_key": "aca",
+          "reported_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "takes_up_aca_if_eligible",
+          "targets": [
+            "cms_aca_aptc_recipients_by_state",
+            "cms_aca_marketplace_enrollment_by_state"
+          ],
+          "preserve_true_anchors": true
+        },
+        {
+          "kind": "compute_ratio",
+          "output": "selected_marketplace_plan_benchmark_ratio",
+          "numerator": [
+            "health_insurance_premiums_without_medicare_part_b",
+            "assigned_aca_ptc"
+          ],
+          "denominator": "slcsp",
+          "where": "takes_up_aca_if_eligible"
+        },
+        {
+          "kind": "support_clip",
+          "output": "selected_marketplace_plan_benchmark_ratio",
+          "lower": 0.5,
+          "upper": 1.5,
+          "range": "reviewed_marketplace_plan_ratio"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "selected_marketplace_plan_benchmark_ratio < 1.0",
+          "targets": [
+            "cms_aca_bronze_aptc_consumers_by_state"
+          ],
+          "domain": "assigned_aca_ptc > 0"
+        }
+      ],
+      "outputs": [
+        "takes_up_aca_if_eligible",
+        "selected_marketplace_plan_benchmark_ratio"
+      ],
+      "nonnegative_outputs": [
+        "selected_marketplace_plan_benchmark_ratio"
+      ],
+      "notes": "When PolicyEngine-US separates observed Marketplace coverage from simulated take-up, this stage should write the simulated take-up input while reported coverage remains a CPS-carried person-level input."
     }
   ]
 }
