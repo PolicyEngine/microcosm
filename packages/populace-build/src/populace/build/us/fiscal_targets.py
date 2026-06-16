@@ -870,10 +870,16 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         min_matches=2,
     ),
     TargetCoverageRequirement(
-        requirement_id="medicaid",
-        label="Medicaid spending and enrollment",
+        requirement_id="medicaid_spending",
+        label="Medicaid spending",
         accepted_families=("cms_medicaid",),
-        min_matches=2,
+        required_metadata=(("target_role", "medicaid_spending"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medicaid_enrollment",
+        label="Medicaid enrollment",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "medicaid_enrollment"),),
     ),
     TargetCoverageRequirement(
         requirement_id="medicaid_chip_enrollment",

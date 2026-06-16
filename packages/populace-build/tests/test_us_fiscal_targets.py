@@ -229,7 +229,8 @@ def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
     assert "eitc_total" in ids
     assert "refundable_ctc_total" in ids
     assert "aca_marketplace" in ids
-    assert "medicaid" in ids
+    assert "medicaid_spending" in ids
+    assert "medicaid_enrollment" in ids
     assert "medicaid_chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
     assert "state_income_tax" in ids
@@ -332,6 +333,54 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
 
     assert not result.passed
     assert any("medicaid_chip_enrollment" in failure for failure in result.failures)
+
+
+def test_medicaid_requirements_need_spending_and_enrollment_roles() -> None:
+    base_targets = [
+        {
+            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
+            "measure": "income_tax",
+            "family": "irs_soi",
+            "metadata": {"target_role": "federal_income_tax_total"},
+        },
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *complete_state_income_tax_rows(45),
+        *complete_jct_rows(),
+    ]
+    program_rows = complete_program_rows()
+
+    without_spending = [
+        *base_targets,
+        *[
+            row
+            for row in program_rows
+            if row["metadata"]["target_role"] != "medicaid_spending"
+        ],
+    ]
+    spending_result = target_profile_coverage_gate(
+        without_spending,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert not spending_result.passed
+    assert any("medicaid_spending" in failure for failure in spending_result.failures)
+
+    without_enrollment = [
+        *base_targets,
+        *[
+            row
+            for row in program_rows
+            if row["metadata"]["target_role"] != "medicaid_enrollment"
+        ],
+    ]
+    enrollment_result = target_profile_coverage_gate(
+        without_enrollment,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert not enrollment_result.passed
+    assert any(
+        "medicaid_enrollment" in failure for failure in enrollment_result.failures
+    )
 
 
 def test_macro_realism_bands_cover_issue_40_backstops() -> None:
