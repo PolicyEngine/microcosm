@@ -148,6 +148,45 @@ def test_combined_household_values_unions_positive_person_support(small_frame) -
     assert np.array_equal(summed_values, np.asarray([3.0, 1.0]))
 
 
+def test_combined_household_values_can_count_tax_unit_variable_on_people(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    mapped_values = {
+        "assigned_aca_ptc": np.asarray([5_000.0, 5_000.0, 3_000.0, 0.0]),
+        "is_aca_ptc_eligible": np.asarray([1.0, 0.0, 1.0, 1.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to == "person"
+            return mapped_values[variable]
+
+    system = SimpleNamespace(
+        variables={
+            "assigned_aca_ptc": SimpleNamespace(entity=SimpleNamespace(key="tax_unit")),
+            "is_aca_ptc_eligible": SimpleNamespace(
+                entity=SimpleNamespace(key="person")
+            ),
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("assigned_aca_ptc",),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=True,
+        map_to="person",
+        filter_variable="is_aca_ptc_eligible",
+    )
+
+    assert np.array_equal(values, np.asarray([1.0, 1.0]))
+
+
 def test_release_gate_failures_are_not_unconditional() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(

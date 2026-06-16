@@ -418,6 +418,124 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
     assert spec.period == 2024
 
 
+def test_cms_aca_references_use_current_annual_aca_variables() -> None:
+    marketplace_source_record_id = (
+        "cms_aca.oep2024.state_marketplace.ca.marketplace_enrollment"
+    )
+    aptc_source_record_id = "cms_aca.oep2024.state_marketplace.ca.aptc_recipients"
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=marketplace_source_record_id,
+                source_name="cms_aca",
+                measure_id="marketplace_enrollment",
+                value=1_784_653,
+                geography_level="state",
+                geography_id="0400000US06",
+                groupby_value_id="ca",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=aptc_source_record_id,
+                source_name="cms_aca",
+                measure_id="aptc_recipients",
+                value=1_568_732,
+                geography_level="state",
+                geography_id="0400000US06",
+                groupby_value_id="ca",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    marketplace = specs[marketplace_source_record_id]
+    assert marketplace.family == "cms_aca"
+    assert marketplace.metadata["target_role"] == "aca_enrollment"
+    assert marketplace.metadata["measure_mode"] == "positive_count"
+    assert (
+        marketplace.metadata["base_variable"]
+        == "has_marketplace_health_coverage_at_interview"
+    )
+    assert marketplace.metadata["state_fips"] == "06"
+
+    aptc = specs[aptc_source_record_id]
+    assert aptc.family == "cms_aca"
+    assert aptc.metadata["target_role"] == "aca_ptc_recipients"
+    assert aptc.metadata["measure_mode"] == "positive_count"
+    assert aptc.metadata["base_variable"] == "assigned_aca_ptc"
+    assert aptc.metadata["count_map_to"] == "person"
+    assert aptc.metadata["count_filter_variable"] == "is_aca_ptc_eligible"
+    assert aptc.metadata["state_fips"] == "06"
+
+
+def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=amount_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_amount",
+                value=53_910_175_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=returns_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_returns",
+                value=12_000_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    amount = specs[amount_source_record_id]
+    assert amount.family == "irs_soi"
+    assert amount.metadata["target_role"] == "aca_spending"
+    assert amount.metadata["variable"] == "assigned_aca_ptc"
+    assert "count" not in amount.metadata
+
+    returns = specs[returns_source_record_id]
+    assert returns.family == "irs_soi"
+    assert returns.metadata["variable"] == "assigned_aca_ptc"
+    assert returns.metadata["count"] == "true"
+
+
+def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
+    source_record_id = (
+        "cms_medicare.cy2024.part_b_premium_income."
+        "premiums_from_enrollees.actual_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="cms_medicare",
+                measure_id="actual_amount",
+                groupby_value_id="premiums_from_enrollees",
+                value=139_837_000_000,
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "cms_medicare"
+    assert spec.metadata["target_role"] == "medicare_part_b_premium_total"
+    assert spec.metadata["base_variable"] == "gross_medicare_part_b_premium"
+    assert spec.metadata["source_measure_id"] == "actual_amount"
+
+
 def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
     ids = {req.requirement_id for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS}
     assert "federal_income_tax_total" in ids
@@ -794,6 +912,54 @@ def _cms_medicaid_enrollment_fact(
             "source_file": f"enrollment_{normalized_period}.csv",
             "vintage": f"month_{normalized_period}",
             "url": "https://data.medicaid.gov/",
+        },
+    }
+
+
+def _dynamic_ledger_fact(
+    *,
+    source_record_id: str,
+    source_name: str,
+    measure_id: str,
+    value: float,
+    period_value: int | str = 2024,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    groupby_value_id: str = "all",
+    dimensions: dict[str, object] | None = None,
+    universe_constraints: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    fact_id = _fact_id(source_record_id, period_value)
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{fact_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "calendar_year", "value": period_value},
+        "entity": {"name": "person"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": geography_level, "id": geography_id},
+        "dimensions": dict(dimensions or {}),
+        "universe_constraints": {"constraints": list(universe_constraints or [])},
+        "layout": {
+            "record_set_id": f"{source_name}.record_set",
+            "groupby_dimension": "",
+            "groupby_value_id": groupby_value_id,
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": source_name,
+            "source_table": f"{source_name} table",
+            "source_measure_id": measure_id,
+            "source_concept": measure_id,
+            "unit": "usd",
+        },
+        "source": {
+            "source_name": source_name,
+            "source_table": f"{source_name} table",
+            "vintage": str(period_value),
+            "url": f"https://example.org/{fact_id}",
         },
     }
 

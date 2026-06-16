@@ -119,7 +119,7 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "net_capital_gains_amount": "capital_gains_gross",
     "ordinary_dividends_amount": "ordinary_dividends",
     "partnership_scorp_income_amount": "partnership_and_s_corp_income",
-    "premium_tax_credit_amount": "premium_tax_credit",
+    "premium_tax_credit_amount": "assigned_aca_ptc",
     "qbi_amount": "qualified_business_income_deduction",
     "qualified_dividends_amount": "qualified_dividends",
     "real_estate_taxes_amount": "real_estate_taxes",
@@ -152,7 +152,7 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "net_capital_gains_returns": "capital_gains_gross",
     "ordinary_dividends_returns": "ordinary_dividends",
     "partnership_scorp_income_returns": "partnership_and_s_corp_income",
-    "premium_tax_credit_returns": "premium_tax_credit",
+    "premium_tax_credit_returns": "assigned_aca_ptc",
     "qbi_claims": "qualified_business_income_deduction",
     "qualified_dividends_returns": "qualified_dividends",
     "real_estate_taxes_claims": "real_estate_taxes",
@@ -264,7 +264,7 @@ DIRECT_LEDGER_TARGETS: dict[
         {"target_role": "medicaid_spending"},
     ),
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
-        "medicare_part_b_premium",
+        "gross_medicare_part_b_premium",
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
@@ -272,28 +272,33 @@ DIRECT_LEDGER_TARGETS: dict[
 
 
 CountBaseVariables = str | tuple[str, ...]
+CountLedgerTarget = tuple[CountBaseVariables, str, dict[str, str]]
 
 
-COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[CountBaseVariables, str, str]] = {
+COUNT_LEDGER_TARGETS: dict[tuple[str, str], CountLedgerTarget] = {
     ("cms_aca", "marketplace_enrollment"): (
-        "has_marketplace_health_coverage",
+        "has_marketplace_health_coverage_at_interview",
         "cms_aca",
-        "aca_enrollment",
+        {"target_role": "aca_enrollment"},
     ),
     ("cms_aca", "aptc_recipients"): (
-        "premium_tax_credit",
+        "assigned_aca_ptc",
         "cms_aca",
-        "aca_ptc_recipients",
+        {
+            "target_role": "aca_ptc_recipients",
+            "count_map_to": "person",
+            "count_filter_variable": "is_aca_ptc_eligible",
+        },
     ),
     ("cms_medicaid", "total_medicaid_enrollment"): (
         "medicaid_enrolled",
         "cms_medicaid",
-        "medicaid_enrollment",
+        {"target_role": "medicaid_enrollment"},
     ),
     ("cms_medicaid", "total_medicaid_chip_enrollment"): (
         ("medicaid_enrolled", "chip_enrolled"),
         "cms_medicaid",
-        "medicaid_chip_enrollment",
+        {"target_role": "medicaid_chip_enrollment"},
     ),
 }
 
@@ -534,8 +539,9 @@ def _model_target_key(fact: object) -> tuple[str, ...] | None:
         count_mapping = COUNT_LEDGER_TARGETS.get((source_name, _measure_id(fact)))
         if count_mapping is None:
             return None
-        base_variable, family, target_role = count_mapping
-        measure_mode = "positive_count"
+        base_variable, family, metadata = count_mapping
+        target_role = metadata.get("target_role", "")
+        measure_mode = metadata.get("measure_mode", "positive_count")
     else:
         base_variable, family, metadata = mapping
         target_role = metadata.get("target_role", "")
@@ -548,6 +554,8 @@ def _model_target_key(fact: object) -> tuple[str, ...] | None:
         base_variables,
         target_role,
         measure_mode,
+        metadata.get("count_map_to", ""),
+        metadata.get("count_filter_variable", ""),
         _geography_level(fact),
         _geography_id(fact),
         _state_fips(fact) or "",
@@ -733,8 +741,8 @@ def _direct_reference_from_fact(
         count_mapping = COUNT_LEDGER_TARGETS.get((source_name, measure_id))
         if count_mapping is None:
             return None
-        base_variable, family, target_role = count_mapping
-        metadata = {"target_role": target_role, "measure_mode": "positive_count"}
+        base_variable, family, metadata = count_mapping
+        metadata = {"measure_mode": "positive_count", **metadata}
     else:
         base_variable, family, metadata = mapping
         metadata = dict(metadata)
