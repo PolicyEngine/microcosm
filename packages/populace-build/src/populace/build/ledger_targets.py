@@ -2,7 +2,7 @@
 
 Ledger owns source-backed facts. Populace owns the active subset and the
 model-variable mapping needed to compile a fact into a calibration target.
-This module is intentionally duck-typed against the Ledger/Arch aggregate fact
+This module is intentionally duck-typed against the Ledger aggregate fact
 schema so Populace can consume exported JSONL catalogs without importing the
 Ledger implementation package at runtime.
 """
@@ -59,6 +59,8 @@ class LedgerTargetReference:
     name: str
     ledger_fact_key: str = ""
     ledger_source_record_id: str = ""
+    ledger_selector: Mapping[str, object] = field(default_factory=dict)
+    value_operation: str = "identity"
     entity: str = ""
     measure: str | None = None
     aggregation: str | None = None
@@ -78,10 +80,25 @@ class LedgerTargetReference:
     def __post_init__(self) -> None:
         if not self.name:
             raise ValueError("LedgerTargetReference.name must be non-empty.")
-        if not self.ledger_fact_key and not self.ledger_source_record_id:
+        if (
+            not self.ledger_fact_key
+            and not self.ledger_source_record_id
+            and not self.ledger_selector
+        ):
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: either ledger_fact_key "
-                "or ledger_source_record_id is required."
+                "or ledger_source_record_id or ledger_selector is required."
+            )
+        if self.value_operation != "identity":
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: unsupported value_operation "
+                f"{self.value_operation!r}. Populace currently permits only "
+                "identity resolution from Ledger facts."
+            )
+        if not isinstance(self.ledger_selector, Mapping):
+            raise TypeError(
+                f"LedgerTargetReference {self.name!r}: ledger_selector must be a "
+                f"mapping, got {type(self.ledger_selector).__name__}."
             )
         if not self.entity:
             raise ValueError(
@@ -139,6 +156,15 @@ class LedgerTargetSelection:
         return TargetRegistry(self.specs, country=country)
 
 
+@dataclass(frozen=True)
+class _LedgerFactIndex:
+    facts: tuple[object, ...]
+    by_identifier: Mapping[str, tuple[object, ...]]
+
+    def lookup(self, identifier: str) -> tuple[object, ...]:
+        return self.by_identifier.get(identifier, ())
+
+
 def select_ledger_targets(
     facts: Iterable[object],
     mapping: LedgerTargetMapping,
@@ -148,7 +174,7 @@ def select_ledger_targets(
     """Select the Ledger facts Populace can target.
 
     Args:
-        facts: Ledger/Arch ``AggregateFact`` objects or JSON-like mappings.
+        facts: Ledger ``AggregateFact`` objects or JSON-like mappings.
         mapping: Explicit Populace model-variable mapping.
         period: Optional period override for every resulting target.
 
@@ -252,12 +278,15 @@ def target_spec_from_ledger_reference(
         filter=reference.filter,
         period=period,
         se=reference.se,
-        source=reference.source or _source_citation(fact),
+        source=_source_citation(fact),
         family=reference.family,
         signed=reference.signed,
         tolerance=reference.tolerance,
         notes=reference.notes,
-        metadata=_reference_metadata(reference),
+        metadata={
+            **_ledger_metadata(fact, fact_key=_fact_key(fact)),
+            **_reference_metadata(reference),
+        },
     )
 
 
@@ -428,9 +457,10 @@ def _unsupported(reason: str, fact: object) -> _UnsupportedFactError:
     )
 
 
-def _ledger_fact_index(facts: Iterable[object]) -> dict[str, object]:
-    index: dict[str, object] = {}
-    for fact in facts:
+def _ledger_fact_index(facts: Iterable[object]) -> _LedgerFactIndex:
+    materialized_facts = tuple(facts)
+    buckets: dict[str, list[object]] = {}
+    for fact in materialized_facts:
         keys = (
             _str_at(fact, "aggregate_fact_key"),
             _str_at(fact, "semantic_fact_key"),
@@ -439,23 +469,45 @@ def _ledger_fact_index(facts: Iterable[object]) -> dict[str, object]:
             _source_record_id(fact),
         )
         for key in dict.fromkeys(candidate for candidate in keys if candidate):
-            previous = index.get(key)
-            if previous is not None and previous is not fact:
-                raise ValueError(f"Duplicate Ledger fact identifier {key!r}.")
-            index[key] = fact
-    return index
+            bucket = buckets.setdefault(key, [])
+            if not any(existing is fact for existing in bucket):
+                bucket.append(fact)
+    return _LedgerFactIndex(
+        facts=materialized_facts,
+        by_identifier={key: tuple(value) for key, value in buckets.items()},
+    )
 
 
 def _resolve_reference_fact(
     reference: LedgerTargetReference,
-    fact_index: Mapping[str, object],
+    fact_index: _LedgerFactIndex,
 ) -> object:
     identifiers = tuple(
         key
         for key in (reference.ledger_fact_key, reference.ledger_source_record_id)
         if key
     )
-    resolved = {key: fact_index[key] for key in identifiers if key in fact_index}
+    matches_by_identifier = {
+        key: fact_index.lookup(key) for key in identifiers if fact_index.lookup(key)
+    }
+    ambiguous = {
+        key: matches
+        for key, matches in matches_by_identifier.items()
+        if len(matches) > 1
+    }
+    if ambiguous:
+        examples = {
+            key: [
+                _fact_key(fact) or _source_record_id(fact) or f"fact[{index}]"
+                for index, fact in enumerate(matches[:5])
+            ]
+            for key, matches in ambiguous.items()
+        }
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} matched multiple "
+            f"Ledger facts for identifier(s): {examples!r}."
+        )
+    resolved = {key: matches[0] for key, matches in matches_by_identifier.items()}
     missing = tuple(key for key in identifiers if key not in resolved)
     if resolved and missing:
         raise ValueError(
@@ -470,6 +522,28 @@ def _resolve_reference_fact(
                 "to different Ledger facts."
             )
         return next(iter(resolved.values()))
+    if reference.ledger_selector:
+        matches = [
+            fact
+            for fact in fact_index.facts
+            if _fact_matches_selector(fact, reference.ledger_selector)
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r} did not match a "
+                f"Ledger fact selector: {dict(reference.ledger_selector)!r}."
+            )
+        identifiers = [
+            _fact_key(fact) or _source_record_id(fact) or f"fact[{index}]"
+            for index, fact in enumerate(matches)
+        ]
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} matched multiple "
+            f"Ledger facts for selector {dict(reference.ledger_selector)!r}: "
+            f"{identifiers!r}."
+        )
     raise ValueError(
         f"Ledger target reference {reference.name!r} did not match a Ledger fact "
         f"identifier: {identifiers!r}."
@@ -478,6 +552,12 @@ def _resolve_reference_fact(
 
 def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata = dict(reference.metadata)
+    metadata["ledger_value_operation"] = reference.value_operation
+    for key, value in sorted(reference.ledger_selector.items()):
+        if isinstance(value, Mapping):
+            continue
+        if value is not None and value != "":
+            metadata[f"ledger_selector_{key}"] = str(value)
     if reference.uprating_index is not None:
         metadata["uprating_index"] = str(reference.uprating_index)
     if reference.uprating_from_period is not None:
@@ -530,6 +610,94 @@ def _fact_key(fact: object) -> str:
 def _source_record_id(fact: object) -> str:
     return _str_at(fact, "source_record_id") or _str_at(
         fact, "lineage", "source_record_id"
+    )
+
+
+def _unique_facts(facts: Iterable[object]) -> tuple[object, ...]:
+    unique: list[object] = []
+    seen: set[int] = set()
+    for fact in facts:
+        identity = id(fact)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(fact)
+    return tuple(unique)
+
+
+def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
+    """Return whether a consumer fact satisfies a structured reference selector."""
+
+    for key, expected in selector.items():
+        if key == "dimensions":
+            if not _dimensions_match(fact, expected):
+                return False
+            continue
+        if expected is None or expected == "":
+            continue
+        candidates = _selector_candidates(fact, str(key))
+        if str(expected) not in candidates:
+            return False
+    return True
+
+
+def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
+    if key == "aggregate_fact_key":
+        return (_str_at(fact, "aggregate_fact_key"),)
+    if key == "semantic_fact_key":
+        return (_str_at(fact, "semantic_fact_key"),)
+    if key == "legacy_fact_key":
+        return (_str_at(fact, "legacy_fact_key"),)
+    if key == "source_record_id":
+        return (_source_record_id(fact),)
+    if key == "source_name":
+        return (_source_name(fact),)
+    if key == "source_table":
+        return (
+            _str_at(fact, "source", "source_table"),
+            _str_at(fact, "observed_measure", "source_table"),
+        )
+    if key == "source_measure_id":
+        return (
+            _str_at(fact, "observed_measure", "source_measure_id"),
+            _str_at(fact, "layout", "measure_id"),
+        )
+    if key == "source_concept":
+        return (
+            _source_measure_concept(fact),
+            _primary_measure_concept(fact),
+        )
+    if key == "period_type":
+        return (_str_at(fact, "period", "type"),)
+    if key == "period_value":
+        return (_str_at(fact, "period", "value"),)
+    if key == "geography_level":
+        return (_str_at(fact, "geography", "level"),)
+    if key == "geography_id":
+        return (_str_at(fact, "geography", "id"),)
+    if key == "entity_name":
+        return (_str_at(fact, "entity", "name"),)
+    if key == "aggregation_method":
+        return (_str_at(fact, "aggregation", "method"),)
+    if key == "layout_record_set_id":
+        return (_str_at(fact, "layout", "record_set_id"),)
+    if key == "layout_groupby_dimension":
+        return (_str_at(fact, "layout", "groupby_dimension"),)
+    if key == "layout_groupby_value_id":
+        return (_str_at(fact, "layout", "groupby_value_id"),)
+    if key == "layout_measure_id":
+        return (_str_at(fact, "layout", "measure_id"),)
+    if key == "domain":
+        return (_domain(fact),)
+    raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
+
+
+def _dimensions_match(fact: object, expected: object) -> bool:
+    if not isinstance(expected, Mapping):
+        raise ValueError("Ledger fact selector field 'dimensions' must be a mapping.")
+    dimensions = {str(key): str(value) for key, value in _dimensions(fact).items()}
+    return all(
+        dimensions.get(str(key)) == str(value) for key, value in expected.items()
     )
 
 
@@ -642,7 +810,7 @@ def _source_citation(fact: object) -> str:
 
 def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
     metadata = {
-        "ledger_source": "policyengine_ledger",
+        "ledger_source": "policyengine-ledger-data",
         "ledger_fact_key": fact_key,
         "ledger_source_record_id": _source_record_id(fact),
         "ledger_aggregate_fact_key": _str_at(fact, "aggregate_fact_key"),

@@ -1,10 +1,12 @@
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
+from populace.calibrate import TargetSpec
 from populace.frame import Frame, WeightKind
 
 
@@ -41,6 +43,39 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
     )
 
 
+def test_export_target_audit_is_opt_in(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert not args.audit_export_targets
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--audit-export-targets",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.audit_export_targets
+
+
 def test_soi_count_rows_count_positive_component_items() -> None:
     builder = _load_builder_module()
 
@@ -68,6 +103,49 @@ def test_soi_count_rows_count_positive_component_items() -> None:
         ),
         np.array([1.0, 0.0, 0.0]),
     )
+
+
+def test_combined_household_values_unions_positive_person_support(small_frame) -> None:
+    builder = _load_builder_module()
+
+    variable_values = {
+        "medicaid_enrolled": np.asarray([1.0, 1.0, 0.0, 0.0]),
+        "chip_enrolled": np.asarray([1.0, 0.0, 1.0, 0.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to is None
+            return variable_values[variable]
+
+    person_entity = SimpleNamespace(key="person")
+    system = SimpleNamespace(
+        variables={
+            variable: SimpleNamespace(entity=person_entity)
+            for variable in variable_values
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=True,
+    )
+    assert np.array_equal(values, np.asarray([2.0, 1.0]))
+
+    summed_values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=False,
+    )
+    assert np.array_equal(summed_values, np.asarray([3.0, 1.0]))
 
 
 def test_release_gate_failures_are_not_unconditional() -> None:
@@ -106,6 +184,29 @@ def test_release_gate_failures_are_not_unconditional() -> None:
     )
     assert builder._release_gate_failures(worse, {"dropped_target_names": []}) == [
         "Calibration final loss is worse than the initial loss (10.0 > 5.0)."
+    ]
+
+
+def test_release_gate_failures_include_target_profile_coverage() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(object(),),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    target_profile_gate = builder.GateResult(
+        name="target_profile_coverage",
+        passed=False,
+        failures=("medicaid_chip_enrollment: missing",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_profile_gate,
+    ) == [
+        "Target profile coverage failed: medicaid_chip_enrollment: missing",
     ]
 
 
@@ -206,9 +307,22 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         result=result,
         registry=registry,
         dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["gates"]["target_profile_coverage"]["passed"]
+    assert (
+        build_manifest["gates"]["target_profile_coverage"]["details"][
+            "requirements_checked"
+        ]
+        == 1
+    )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {
@@ -310,7 +424,7 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame: (
+        lambda frame, target_specs: (
             FakeFrame(),
             FakeRegistry(),
             {"dropped_target_names": []},
@@ -326,11 +440,16 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
         )
     )
 
-    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result)
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
+
+    target.observed = 2_000_900_000_000.0
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
 
     target.observed = 1_990_000_000_000.0
     try:
-        builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result)
+        builder._assert_export_matches_calibration(
+            tmp_path / "candidate.h5", result, ()
+        )
     except RuntimeError as exc:
         assert "Post-export sanity failed" in str(exc)
         assert "nation/cbo/individual_income_tax@2024 exported value" in str(exc)
@@ -346,12 +465,16 @@ def test_post_export_sanity_rejects_dropped_export_targets(
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame: (object(), object(), {"dropped_target_names": ["missing"]}),
+        lambda frame, target_specs: (
+            object(),
+            object(),
+            {"dropped_target_names": ["missing"]},
+        ),
     )
 
     try:
         builder._assert_export_matches_calibration(
-            tmp_path / "candidate.h5", SimpleNamespace(diagnostics=())
+            tmp_path / "candidate.h5", SimpleNamespace(diagnostics=()), ()
         )
     except RuntimeError as exc:
         assert "1 fiscal targets were not materialized after export" in str(exc)
@@ -388,12 +511,48 @@ def test_reviewed_exclusions_fail_when_hard_target_surface_changes(
 
 def test_fiscal_target_source_provenance_covers_active_families() -> None:
     builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="income_tax",
+            entity="household",
+            measure="income_tax",
+            value=1,
+            source="CBO source",
+            family="cbo",
+        ),
+        TargetSpec(
+            name="salt",
+            entity="household",
+            measure="salt",
+            value=1,
+            source="JCT source",
+            family="jct",
+            metadata={"reference_url": "https://example.org/jct"},
+        ),
+        TargetSpec(
+            name="agi",
+            entity="household",
+            measure="agi",
+            value=1,
+            source="SOI source",
+            family="irs_soi",
+        ),
+        TargetSpec(
+            name="state_income_tax",
+            entity="household",
+            measure="state_income_tax",
+            value=1,
+            source="Census source",
+            family="state_income_tax",
+            metadata={"reference_url": "https://example.org/stc"},
+        ),
+    )
 
-    provenance = builder._fiscal_target_source_provenance()
+    provenance = builder._fiscal_target_source_provenance(specs)
 
     assert set(provenance) == {"cbo", "irs_soi", "jct", "state_income_tax"}
     assert provenance["cbo"]["target_count"] == 1
-    assert provenance["jct"]["target_count"] == 5
+    assert provenance["jct"]["target_count"] == 1
     assert provenance["irs_soi"]["sources"]
     assert provenance["state_income_tax"]["reference_urls"]
 

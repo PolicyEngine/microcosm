@@ -25,9 +25,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.gates import GateResult, target_profile_coverage_gate
 from populace.build.us import (
-    US_FISCAL_TARGET_SPECS,
+    US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     us_source_coverage_diagnostics,
     write_us_source_coverage_diagnostics,
@@ -45,9 +48,18 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
+POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 
 DIRECT_ACTIVE_ALIASES = (
+    "cms-aca-oep-state-level",
+    "cms-medicaid-chip-monthly-enrollment-dataset",
+    "cms-medicare-trustees-report-2025-part-b-premium-income",
+    "cms-nhe-historical-service-source",
     "census-stc-individual-income-tax",
+    "hhs-acf-tanf-caseload-2024",
+    "hhs-acf-tanf-financial-2024",
+    "jct-tax-expenditures-2024",
     "soi-table-1-1",
     "soi-table-1-2",
     "soi-table-1-4",
@@ -61,6 +73,8 @@ DIRECT_ACTIVE_ALIASES = (
     "soi-historic-table-2-state-broad-2022",
     "soi-historic-table-2-state-eitc-2022",
     "soi-w2-statistics-2020",
+    "ssa-annual-statistical-supplement-2025",
+    "usda-snap-fy69-to-current",
 )
 
 REVIEWED_EXCLUDED_ALIASES = (
@@ -74,27 +88,25 @@ REVIEWED_EXCLUDED_ALIASES = (
     "census-pep-2024-national-age-sex",
     "census-pep-2024-state-age-sex",
     "cms-aca-effectuated-enrollment-2022",
-    "cms-aca-oep-state-level",
     "cms-aca-oep-state-level-2022",
     "cms-aca-oep-state-level-2025",
-    "cms-medicaid-chip-monthly-enrollment-dataset",
     "cms-medicaid-chip-monthly-enrollment-december-2024",
-    "cms-medicare-trustees-report-2025-part-b-premium-income",
-    "cms-nhe-historical-service-source",
     "hhs-acf-liheap-fy2023-national-profile",
     "hhs-acf-liheap-fy2024-national-profile",
-    "hhs-acf-tanf-caseload-2024",
-    "hhs-acf-tanf-financial-2024",
-    "ssa-annual-statistical-supplement-2025",
     "ssa-ssi-table-7b1-2024",
-    "usda-snap-fy69-to-current",
 )
 
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
+    "cms_aca": "CMS ACA marketplace enrollment public use files",
+    "cms_medicaid": "CMS Medicaid enrollment and expenditure sources",
+    "cms_medicare": "CMS Medicare Trustees Report Part B premium income",
+    "hhs_acf_tanf": "HHS ACF TANF administrative data",
     "irs_soi": "IRS Statistics of Income public tables",
     "jct": "Joint Committee on Taxation tax expenditure estimates",
+    "ssa": "Social Security Administration statistical supplement",
     "state_income_tax": "Census State Tax Collections individual income tax",
+    "usda_snap": "USDA SNAP administrative data",
 }
 
 SOI_VARIABLE_MAP = {
@@ -104,17 +116,29 @@ SOI_VARIABLE_MAP = {
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
+    "ctc": "ctc",
     "employment_income": "employment_income",
+    "eitc": "eitc",
     "estate_income": "estate_income",
     "estate_losses": "estate_income",
     "exempt_interest": "tax_exempt_interest_income",
+    "income_tax": "income_tax",
+    "income_tax_before_credits": "income_tax_before_credits",
     "ira_distributions": "taxable_ira_distributions",
+    "medical_expense_deduction": "medical_expense_deduction",
     "ordinary_dividends": "dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    "premium_tax_credit": "premium_tax_credit",
+    "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
+    "real_estate_taxes": "real_estate_taxes",
     "rent_and_royalty_net_income": "rent_and_royalty_net_income",
     "rent_and_royalty_net_losses": "rent_and_royalty_net_income",
+    "refundable_ctc": "refundable_ctc",
+    "salt_deduction": "salt_deduction",
+    "tax_exempt_interest_income": "tax_exempt_interest_income",
+    "taxable_income": "taxable_income",
     "taxable_interest_income": "taxable_interest_income",
     "taxable_pension_income": "taxable_pension_income",
     "taxable_social_security": "tax_unit_taxable_social_security",
@@ -142,12 +166,32 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Existing Populace US H5 to recalibrate. Defaults to HF latest.",
     )
+    parser.add_argument(
+        "--ledger-facts",
+        type=Path,
+        required=True,
+        help=(
+            "PolicyEngine Ledger consumer_facts.jsonl artifact used to "
+            "resolve every fiscal target value. Populace package resources "
+            "declare target references only."
+        ),
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
     parser.add_argument("--epochs", type=int, default=512)
     parser.add_argument("--learning-rate", type=float, default=0.12)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--audit-export-targets",
+        action="store_true",
+        help=(
+            "After writing the H5, reload it and rematerialize the full fiscal "
+            "target surface. This is a slow audit pass; default release builds "
+            "rely on the writer's H5 round-trip verification and calibration "
+            "diagnostics instead."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -218,6 +262,32 @@ def _load_frame(path: Path) -> Frame:
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+
+
+def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
+    if not path.exists():
+        raise FileNotFoundError(f"Ledger facts artifact not found: {path}")
+    facts: list[dict[str, object]] = []
+    with path.open() as file:
+        for line_number, line in enumerate(file, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                row = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"
+                ) from exc
+            if not isinstance(row, dict):
+                raise ValueError(
+                    f"Invalid Ledger facts JSONL row {line_number}: "
+                    f"expected object, got {type(row).__name__}."
+                )
+            facts.append(row)
+    if not facts:
+        raise ValueError(f"Ledger facts artifact is empty: {path}")
+    return tuple(facts)
 
 
 def _with_exportable_formula_inputs(frame: Frame) -> Frame:
@@ -305,36 +375,49 @@ def _calculate_array(
 
 
 def _tax_unit_to_household_positions(frame: Frame) -> np.ndarray:
+    return _group_to_household_positions(frame, "tax_unit")
+
+
+def _group_to_household_positions(frame: Frame, group_entity: str) -> np.ndarray:
     person = frame.table("person")
     household_ids = frame.table("household")["household_id"].to_numpy()
-    tax_unit_ids = frame.table("tax_unit")["tax_unit_id"].to_numpy()
+    group_ids = frame.table(group_entity)[f"{group_entity}_id"].to_numpy()
+    person_group_column = f"person_{group_entity}_id"
 
-    membership = person[["person_tax_unit_id", "person_household_id"]].drop_duplicates()
-    counts = membership.groupby("person_tax_unit_id")["person_household_id"].nunique()
+    membership = person[[person_group_column, "person_household_id"]].drop_duplicates()
+    counts = membership.groupby(person_group_column)["person_household_id"].nunique()
     ambiguous = counts[counts != 1]
     if not ambiguous.empty:
         raise ValueError(
-            "Tax units must be nested in households; ambiguous tax_unit_id "
+            f"{group_entity} units must be nested in households; ambiguous ids "
             f"examples: {ambiguous.index[:5].tolist()}."
         )
-    tax_to_household = (
-        membership.drop_duplicates("person_tax_unit_id")
-        .set_index("person_tax_unit_id")["person_household_id"]
-        .reindex(tax_unit_ids)
+    group_to_household = (
+        membership.drop_duplicates(person_group_column)
+        .set_index(person_group_column)["person_household_id"]
+        .reindex(group_ids)
     )
-    if tax_to_household.isna().any():
-        missing = tax_unit_ids[tax_to_household.isna().to_numpy()][:5].tolist()
-        raise ValueError(f"Tax units with no person membership: {missing}.")
+    if group_to_household.isna().any():
+        missing = group_ids[group_to_household.isna().to_numpy()][:5].tolist()
+        raise ValueError(f"{group_entity} units with no person membership: {missing}.")
     household_positions = pd.Series(
         np.arange(len(household_ids), dtype=np.int64), index=household_ids
     )
-    positions = household_positions.reindex(tax_to_household.to_numpy()).to_numpy()
+    positions = household_positions.reindex(group_to_household.to_numpy()).to_numpy()
     if np.isnan(positions).any():
-        raise ValueError("Tax-unit household ids are not present in household table.")
+        raise ValueError(
+            f"{group_entity} household ids are not present in household table."
+        )
     return positions.astype(np.int64)
 
 
 def _collapse_tax_unit(
+    values: np.ndarray, positions: np.ndarray, n_households: int
+) -> np.ndarray:
+    return _collapse_group(values, positions, n_households)
+
+
+def _collapse_group(
     values: np.ndarray, positions: np.ndarray, n_households: int
 ) -> np.ndarray:
     out = np.zeros(n_households, dtype=np.float64)
@@ -370,21 +453,102 @@ def _household_values(
     system,
     variable: str,
     tax_unit_positions: np.ndarray,
+    positive_indicator: bool = False,
 ) -> np.ndarray:
     entity = _variable_entity(system, variable)
     if entity is None:
         raise KeyError(variable)
     if entity == "household":
-        return _calculate_array(simulation, variable)
+        values = _calculate_array(simulation, variable)
+        return (values > 0).astype(np.float64) if positive_indicator else values
+    raw = _calculate_array(simulation, variable)
+    if positive_indicator:
+        raw = (raw > 0).astype(np.float64)
     if entity == "tax_unit":
         return _collapse_tax_unit(
-            _calculate_array(simulation, variable),
+            raw,
             tax_unit_positions,
             frame.n("household"),
         )
     if entity == "person":
-        return _collapse_person(frame, _calculate_array(simulation, variable))
+        return _collapse_person(frame, raw)
+    if entity in {"spm_unit", "family", "marital_unit"}:
+        return _collapse_group(
+            raw,
+            _group_to_household_positions(frame, entity),
+            frame.n("household"),
+        )
     raise ValueError(f"Unsupported variable entity {entity!r} for {variable!r}.")
+
+
+def _base_variables_from_metadata(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    combined = metadata.get("base_variables")
+    if combined:
+        variables = tuple(
+            variable.strip() for variable in combined.split(",") if variable.strip()
+        )
+        if not variables:
+            raise ValueError("base_variables metadata must name at least one variable.")
+        return variables
+    return (metadata["base_variable"],)
+
+
+def _combined_household_values(
+    *,
+    frame: Frame,
+    simulation,
+    system,
+    variables: tuple[str, ...],
+    tax_unit_positions: np.ndarray,
+    positive_indicator: bool = False,
+) -> np.ndarray:
+    if len(variables) == 1:
+        return _household_values(
+            frame=frame,
+            simulation=simulation,
+            system=system,
+            variable=variables[0],
+            tax_unit_positions=tax_unit_positions,
+            positive_indicator=positive_indicator,
+        )
+
+    entities = tuple(_variable_entity(system, variable) for variable in variables)
+    missing = tuple(
+        variable for variable, entity in zip(variables, entities, strict=True) if entity is None
+    )
+    if missing:
+        raise KeyError(", ".join(missing))
+    if len(set(entities)) != 1:
+        raise ValueError(
+            f"Cannot combine variables from different entities: "
+            f"{dict(zip(variables, entities, strict=True))}."
+        )
+
+    raw_arrays = tuple(
+        np.asarray(_calculate_array(simulation, variable), dtype=np.float64)
+        for variable in variables
+    )
+    if positive_indicator:
+        raw = np.logical_or.reduce([values > 0 for values in raw_arrays]).astype(
+            np.float64
+        )
+    else:
+        raw = np.sum(raw_arrays, axis=0, dtype=np.float64)
+
+    entity = entities[0]
+    if entity == "household":
+        return raw
+    if entity == "tax_unit":
+        return _collapse_tax_unit(raw, tax_unit_positions, frame.n("household"))
+    if entity == "person":
+        return _collapse_person(frame, raw)
+    if entity in {"spm_unit", "family", "marital_unit"}:
+        return _collapse_group(
+            raw,
+            _group_to_household_positions(frame, entity),
+            frame.n("household"),
+        )
+    raise ValueError(f"Unsupported variable entity {entity!r} for {variables!r}.")
 
 
 def _filing_status_names(values: np.ndarray) -> np.ndarray:
@@ -470,6 +634,7 @@ def _make_zero_variable_reform(system, variable_name: str):
 
 def _materialize_target_frame(
     base_frame: Frame,
+    target_specs: tuple,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -489,6 +654,7 @@ def _materialize_target_frame(
     taxable_income_tax_unit = _calculate_array(simulation, "taxable_income")
     agi_tax_unit = _calculate_array(simulation, "adjusted_gross_income")
     filing_status = _filing_status_names(_calculate_array(simulation, "filing_status"))
+    tax_unit_state_fips = household["state_fips"].to_numpy()[tax_unit_positions]
 
     hh["income_tax"] = _collapse_tax_unit(
         income_tax_tax_unit, tax_unit_positions, n_households
@@ -500,8 +666,57 @@ def _materialize_target_frame(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    direct_target_specs = [
+        spec
+        for spec in target_specs
+        if spec.metadata.get("materializer") == "policyengine_variable"
+    ]
+    direct_value_cache: dict[tuple[tuple[str, ...], str], np.ndarray] = {}
+    for spec in direct_target_specs:
+        base_variables = _base_variables_from_metadata(spec.metadata)
+        mode = spec.metadata.get("measure_mode", "sum")
+        cache_key = (base_variables, mode)
+        if cache_key not in direct_value_cache:
+            if any(variable not in system.variables for variable in base_variables):
+                continue
+            direct_value_cache[cache_key] = _combined_household_values(
+                frame=base_frame,
+                simulation=simulation,
+                system=system,
+                variables=base_variables,
+                tax_unit_positions=tax_unit_positions,
+                positive_indicator=mode == "positive_count",
+            )
+        values = direct_value_cache[cache_key]
+        state_fips = spec.metadata.get("state_fips")
+        if state_fips:
+            values = np.where(
+                household["state_fips"].to_numpy() == int(state_fips),
+                values,
+                0.0,
+            )
+        hh[spec.measure] = values
 
-    for spec in US_FISCAL_TARGET_SPECS:
+    direct_measures = {
+        spec.measure
+        for spec in target_specs
+        if spec.measure
+        and spec.family not in {"irs_soi", "jct", "state_income_tax"}
+        and spec.metadata.get("materializer") != "policyengine_variable"
+        and spec.measure not in hh.columns
+    }
+    for measure in sorted(direct_measures):
+        if measure not in system.variables:
+            continue
+        hh[measure] = _household_values(
+            frame=base_frame,
+            simulation=simulation,
+            system=system,
+            variable=measure,
+            tax_unit_positions=tax_unit_positions,
+        )
+
+    for spec in target_specs:
         if spec.family == "state_income_tax":
             state_fips = int(spec.metadata["state_fips"])
             hh[spec.measure] = hh["state_income_tax"].where(
@@ -535,7 +750,7 @@ def _materialize_target_frame(
                 f"SOI variable {pe_name!r} has unsupported entity {entity!r}."
             )
 
-    for spec in US_FISCAL_TARGET_SPECS:
+    for spec in target_specs:
         if spec.family != "irs_soi":
             continue
         source_name = spec.metadata["variable"]
@@ -549,6 +764,8 @@ def _materialize_target_frame(
             mask &= filing_status == status
         elif isinstance(status, set):
             mask &= np.isin(filing_status, sorted(status))
+        if "state_fips" in spec.metadata:
+            mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
         is_count = spec.metadata.get("count") == "true"
         if source_name == "count":
             values = mask.astype(np.float64)
@@ -581,13 +798,11 @@ def _materialize_target_frame(
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
 
     compileable_specs = [
-        spec
-        for spec in US_FISCAL_TARGET_SPECS
-        if spec.measure is None or spec.measure in hh.columns
+        spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
     ]
     registry = TargetRegistry(compileable_specs, country="us")
     dropped = sorted(
-        spec.name for spec in US_FISCAL_TARGET_SPECS if spec not in compileable_specs
+        spec.name for spec in target_specs if spec not in compileable_specs
     )
     target_frame = Frame(
         materialized,
@@ -599,11 +814,17 @@ def _materialize_target_frame(
         target_frame,
         registry,
         {
-            "declared_targets": len(US_FISCAL_TARGET_SPECS),
+            "declared_targets": len(target_specs),
             "compiled_candidate_targets": len(compileable_specs),
             "dropped_target_names": dropped,
         },
     )
+
+
+def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
+    measure_ready = spec.measure is None or spec.measure in household_table.columns
+    filter_ready = spec.filter is None or spec.filter in household_table.columns
+    return measure_ready and filter_ready
 
 
 def _strip_calibration_columns(
@@ -642,8 +863,17 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     )
 
 
-def _release_gate_failures(result, compilation: Mapping[str, object]) -> list[str]:
+def _release_gate_failures(
+    result,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult | None = None,
+) -> list[str]:
     failures: list[str] = []
+    if target_profile_gate is not None and not target_profile_gate.passed:
+        failures.extend(
+            f"Target profile coverage failed: {failure}"
+            for failure in target_profile_gate.failures
+        )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
         failures.append(f"{len(dropped)} fiscal targets were not materialized.")
@@ -677,8 +907,12 @@ def _release_gate_failures(result, compilation: Mapping[str, object]) -> list[st
     return failures
 
 
-def _assert_release_gates(result, compilation: Mapping[str, object]) -> None:
-    failures = _release_gate_failures(result, compilation)
+def _assert_release_gates(
+    result,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult | None = None,
+) -> None:
+    failures = _release_gate_failures(result, compilation, target_profile_gate)
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
 
@@ -701,9 +935,12 @@ def _state_income_tax_target_sum(result) -> float:
     )
 
 
-def _assert_export_matches_calibration(dataset_path: Path, result) -> None:
+def _assert_export_matches_calibration(
+    dataset_path: Path, result, target_specs: tuple
+) -> None:
     target_frame, registry, compilation = _materialize_target_frame(
-        _load_frame(dataset_path)
+        _load_frame(dataset_path),
+        target_specs,
     )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
@@ -724,7 +961,10 @@ def _assert_export_matches_calibration(dataset_path: Path, result) -> None:
         observed = target.achieved_value(
             target_frame, target_frame.weights_for(target.entity).values
         )
-        tolerance = max(abs(expected) * 1e-6, 1_000_000.0)
+        tolerance = max(
+            abs(expected) * POST_EXPORT_RELATIVE_TOLERANCE,
+            POST_EXPORT_ABSOLUTE_TOLERANCE,
+        )
         if abs(observed - expected) > tolerance:
             failures.append(
                 f"{target.row_name} exported value {observed:.6g} differs from "
@@ -753,6 +993,7 @@ def _build_manifests(
     result,
     registry: TargetRegistry,
     dropped: Mapping[str, object],
+    target_profile_gate: GateResult,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -764,7 +1005,7 @@ def _build_manifests(
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
-    gate_failures = _release_gate_failures(result, dropped)
+    gate_failures = _release_gate_failures(result, dropped, target_profile_gate)
 
     commit = _git_output("rev-parse", "HEAD")
     built_at = datetime.now(UTC).isoformat()
@@ -804,6 +1045,11 @@ def _build_manifests(
                 "fraction_within_10pct": diag["fraction_within_10pct"],
             },
             "target_compilation": dropped,
+            "target_profile_coverage": {
+                "passed": target_profile_gate.passed,
+                "failures": list(target_profile_gate.failures),
+                "details": dict(target_profile_gate.details),
+            },
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -891,9 +1137,11 @@ def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
     }
 
 
-def _fiscal_target_source_provenance() -> dict[str, dict[str, object]]:
+def _fiscal_target_source_provenance(
+    target_specs: Iterable[object],
+) -> dict[str, dict[str, object]]:
     provenance: dict[str, dict[str, object]] = {}
-    for spec in US_FISCAL_TARGET_SPECS:
+    for spec in target_specs:
         entry = provenance.setdefault(
             spec.family,
             {
@@ -944,6 +1192,22 @@ def main() -> None:
         or f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
     )
     _assert_us_release_id(release_id)
+    target_registry = compile_us_fiscal_target_registry(
+        _load_ledger_facts(args.ledger_facts)
+    )
+    target_specs = target_registry.specs
+    target_profile_gate = target_profile_coverage_gate(
+        target_specs,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    if not target_profile_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Target profile coverage failed: {failure}"
+                for failure in target_profile_gate.failures
+            )
+        )
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
@@ -951,7 +1215,10 @@ def main() -> None:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     base_frame = _load_frame(base_h5)
-    target_frame, registry, compilation = _materialize_target_frame(base_frame)
+    target_frame, registry, compilation = _materialize_target_frame(
+        base_frame,
+        target_specs,
+    )
     result = calibrate(
         target_frame,
         registry.to_target_set(),
@@ -961,12 +1228,13 @@ def main() -> None:
         seed=args.seed,
         mass="conserve",
     )
-    _assert_release_gates(result, compilation)
+    _assert_release_gates(result, compilation, target_profile_gate)
 
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
-    _assert_export_matches_calibration(dataset_path, result)
+    if args.audit_export_targets:
+        _assert_export_matches_calibration(dataset_path, result, target_specs)
 
     calibration_path = artifact_root / CALIBRATION_FILENAME
     _write_npz(calibration_path, result=result, registry=registry)
@@ -977,6 +1245,12 @@ def main() -> None:
         build={
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
+            "target_profile_coverage": {
+                "passed": target_profile_gate.passed,
+                "failures": list(target_profile_gate.failures),
+                "details": dict(target_profile_gate.details),
+            },
+            "post_export_target_audit": bool(args.audit_export_targets),
         },
     )
 
@@ -985,7 +1259,13 @@ def main() -> None:
         active_target_aliases=active_aliases,
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
-    coverage["fiscal_target_sources"] = _fiscal_target_source_provenance()
+    coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    coverage["fiscal_target_support_exclusions"] = [
+        {"source_record_id": source_record_id, "reason": reason}
+        for source_record_id, reason in sorted(
+            US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+        )
+    ]
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -996,6 +1276,7 @@ def main() -> None:
         result=result,
         registry=registry,
         dropped=compilation,
+        target_profile_gate=target_profile_gate,
     )
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.

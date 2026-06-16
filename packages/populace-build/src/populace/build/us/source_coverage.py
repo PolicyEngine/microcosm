@@ -1,8 +1,8 @@
 """US source-family coverage for US release gates.
 
-This is a pinned Populace-side copy of the Arch source coverage contract
-merged in ``PolicyEngine/arch-data`` PR #53
-(``5fa48f07436a806ad75ff76fd22cfb8613bddbe0``). Arch owns source packages;
+This is a pinned Populace-side copy of the Ledger source coverage contract
+merged in ``PolicyEngine/ledger-data`` PR #53
+(``5fa48f07436a806ad75ff76fd22cfb8613bddbe0``). Ledger owns source packages;
 Populace owns whether source families are active hard targets, validation-only
 diagnostics, or explicit source gaps in a release profile.
 """
@@ -18,7 +18,7 @@ from typing import Literal
 from populace.build.gates import GateResult, source_coverage_gate
 
 __all__ = [
-    "ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
+    "LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
     "CoverageRole",
     "SourceCoverageEntry",
     "US_SOURCE_COVERAGE",
@@ -30,7 +30,7 @@ __all__ = [
     "validation_only_family_ids",
 ]
 
-ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 
 CoverageRole = Literal["hard_target", "validation_only", "source_gap"]
 
@@ -140,6 +140,12 @@ US_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
         ("census-stc-individual-income-tax",),
     ),
     SourceCoverageEntry(
+        "tax_expenditures",
+        "JCT tax expenditure revenue-loss estimates",
+        "hard_target",
+        ("jct-tax-expenditures-2024",),
+    ),
+    SourceCoverageEntry(
         "snap_local_proxy",
         "SNAP congressional district household estimates",
         "validation_only",
@@ -228,7 +234,7 @@ US_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
 
 
 def hard_target_package_aliases() -> tuple[str, ...]:
-    """Arch package aliases required for hard-target source coverage."""
+    """Ledger package aliases required for hard-target source coverage."""
     return tuple(
         sorted(
             {
@@ -297,7 +303,7 @@ def us_source_coverage_diagnostics(
         "classification": "release_gate",
         "source_contract": {
             "name": "us_source_coverage",
-            "arch_commit": ARCH_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
+            "ledger_commit": LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
         },
         "gate": {
             "name": result.name,

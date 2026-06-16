@@ -86,7 +86,7 @@ def _source_coverage_diagnostics() -> dict:
         "classification": "release_gate",
         "source_contract": {
             "name": "us_source_coverage",
-            "arch_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
+            "ledger_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
         },
         "gate": {
             "name": "us_source_coverage",

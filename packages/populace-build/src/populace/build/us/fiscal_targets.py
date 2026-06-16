@@ -12,14 +12,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from importlib.resources import files
-from typing import Literal
+from typing import Any, Literal
 
 from populace.build.gates import TargetCoverageRequirement
 from populace.build.ledger_targets import (
     LedgerTargetParityReport,
     LedgerTargetReference,
     compile_ledger_target_references,
-    ledger_target_registry_parity_report,
 )
 from populace.calibrate import TargetRegistry, TargetSpec
 
@@ -29,17 +28,303 @@ __all__ = [
     "US_FISCAL_TARGET_SPECS",
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
     "US_FISCAL_TARGET_LEDGER_REFERENCES",
+    "US_FISCAL_TARGET_REFERENCES",
+    "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
+    "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
     "US_SOI_FISCAL_TARGET_SPECS",
+    "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
+    "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "SimpleTaxExpenditureReform",
+    "compile_us_fiscal_target_registry",
 ]
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
 TaxExpenditureMatrixRow = Literal["reform_minus_baseline_income_tax"]
+
+
+STATE_FIPS_TO_POSTAL: dict[str, str] = {
+    "01": "AL",
+    "02": "AK",
+    "04": "AZ",
+    "05": "AR",
+    "06": "CA",
+    "08": "CO",
+    "09": "CT",
+    "10": "DE",
+    "11": "DC",
+    "12": "FL",
+    "13": "GA",
+    "15": "HI",
+    "16": "ID",
+    "17": "IL",
+    "18": "IN",
+    "19": "IA",
+    "20": "KS",
+    "21": "KY",
+    "22": "LA",
+    "23": "ME",
+    "24": "MD",
+    "25": "MA",
+    "26": "MI",
+    "27": "MN",
+    "28": "MS",
+    "29": "MO",
+    "30": "MT",
+    "31": "NE",
+    "32": "NV",
+    "33": "NH",
+    "34": "NJ",
+    "35": "NM",
+    "36": "NY",
+    "37": "NC",
+    "38": "ND",
+    "39": "OH",
+    "40": "OK",
+    "41": "OR",
+    "42": "PA",
+    "44": "RI",
+    "45": "SC",
+    "46": "SD",
+    "47": "TN",
+    "48": "TX",
+    "49": "UT",
+    "50": "VT",
+    "51": "VA",
+    "53": "WA",
+    "54": "WV",
+    "55": "WI",
+    "56": "WY",
+}
+
+
+SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
+    "adjusted_gross_income": "adjusted_gross_income",
+    "actc_amount": "refundable_ctc",
+    "ctc_amount": "ctc",
+    "eitc_amount": "eitc",
+    "eitc_no_children_amount": "eitc",
+    "eitc_one_child_amount": "eitc",
+    "eitc_three_or_more_children_amount": "eitc",
+    "eitc_total": "eitc",
+    "eitc_two_children_amount": "eitc",
+    "income_tax_before_credits_amount": "income_tax_before_credits",
+    "income_tax_liability_amount": "income_tax",
+    "limited_state_local_taxes_amount": "salt_deduction",
+    "medical_dental_expense_amount": "medical_expense_deduction",
+    "net_capital_gains_amount": "capital_gains_gross",
+    "ordinary_dividends_amount": "ordinary_dividends",
+    "partnership_scorp_income_amount": "partnership_and_s_corp_income",
+    "premium_tax_credit_amount": "premium_tax_credit",
+    "qbi_amount": "qualified_business_income_deduction",
+    "qualified_dividends_amount": "qualified_dividends",
+    "real_estate_taxes_amount": "real_estate_taxes",
+    "rental_royalty_income_amount": "rent_and_royalty_net_income",
+    "schedule_c_income_amount": "business_net_profits",
+    "tax_exempt_interest_amount": "tax_exempt_interest_income",
+    "taxable_income_amount": "taxable_income",
+    "taxable_interest_amount": "taxable_interest_income",
+    "taxable_ira_distributions_amount": "ira_distributions",
+    "taxable_pension_income_amount": "taxable_pension_income",
+    "taxable_social_security_amount": "taxable_social_security",
+    "unemployment_compensation_amount": "unemployment_compensation",
+    "wages_salaries_amount": "employment_income",
+}
+
+
+SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
+    "actc_claims": "refundable_ctc",
+    "ctc_claims": "ctc",
+    "eitc_claims": "eitc",
+    "eitc_no_children_claims": "eitc",
+    "eitc_one_child_claims": "eitc",
+    "eitc_returns": "eitc",
+    "eitc_three_or_more_children_claims": "eitc",
+    "eitc_two_children_claims": "eitc",
+    "income_tax_before_credits_returns": "income_tax_before_credits",
+    "income_tax_liability_returns": "income_tax",
+    "limited_state_local_taxes_returns": "salt_deduction",
+    "medical_dental_expense_returns": "medical_expense_deduction",
+    "net_capital_gains_returns": "capital_gains_gross",
+    "ordinary_dividends_returns": "ordinary_dividends",
+    "partnership_scorp_income_returns": "partnership_and_s_corp_income",
+    "premium_tax_credit_returns": "premium_tax_credit",
+    "qbi_claims": "qualified_business_income_deduction",
+    "qualified_dividends_returns": "qualified_dividends",
+    "real_estate_taxes_claims": "real_estate_taxes",
+    "rental_royalty_income_returns": "rent_and_royalty_net_income",
+    "return_count": "count",
+    "schedule_c_income_returns": "business_net_profits",
+    "tax_exempt_interest_returns": "tax_exempt_interest_income",
+    "taxable_income_returns": "taxable_income",
+    "taxable_interest_returns": "taxable_interest_income",
+    "taxable_ira_distributions_returns": "ira_distributions",
+    "taxable_pension_income_returns": "taxable_pension_income",
+    "taxable_social_security_returns": "taxable_social_security",
+    "unemployment_compensation_returns": "unemployment_compensation",
+    "wages_salaries_returns": "employment_income",
+}
+
+
+DIRECT_LEDGER_TARGETS: dict[
+    tuple[str, str, str | None], tuple[str, str, dict[str, str]]
+] = {
+    ("cbo", "projected_amount", "adjusted_gross_income"): (
+        "adjusted_gross_income",
+        "cbo",
+        {"target_role": "cbo_adjusted_gross_income"},
+    ),
+    ("cbo", "projected_amount", "wages_and_salaries"): (
+        "employment_income",
+        "cbo",
+        {"target_role": "cbo_wages_and_salaries"},
+    ),
+    ("cbo", "projected_amount", "qualified_dividend_income"): (
+        "qualified_dividend_income",
+        "cbo",
+        {"target_role": "cbo_qualified_dividend_income"},
+    ),
+    ("cbo", "projected_amount", "net_capital_gain"): (
+        "capital_gains",
+        "cbo",
+        {"target_role": "cbo_net_capital_gain"},
+    ),
+    ("cbo", "projected_amount", "net_business_income"): (
+        "self_employment_income",
+        "cbo",
+        {"target_role": "cbo_net_business_income"},
+    ),
+    ("ssa", "payment_amount", "social_security_benefits"): (
+        "social_security",
+        "ssa",
+        {"target_role": "social_security_total"},
+    ),
+    ("ssa", "payment_amount", "social_security_retirement_benefits"): (
+        "social_security_retirement",
+        "ssa",
+        {"target_role": "ssa_retirement_total"},
+    ),
+    ("ssa", "payment_amount", "social_security_disability_benefits"): (
+        "social_security_disability",
+        "ssa",
+        {"target_role": "ssa_disability_total"},
+    ),
+    ("ssa", "payment_amount", "social_security_survivors_benefits"): (
+        "social_security_survivors",
+        "ssa",
+        {"target_role": "ssa_survivors_total"},
+    ),
+    ("ssa", "payment_amount", "social_security_dependents_benefits"): (
+        "social_security_dependents",
+        "ssa",
+        {"target_role": "ssa_dependents_total"},
+    ),
+    ("ssa", "payment_amount", "ssi_payments"): (
+        "ssi",
+        "ssa",
+        {"target_role": "ssi_total"},
+    ),
+    ("usda_snap", "total_benefits", None): (
+        "snap",
+        "usda_snap",
+        {"target_role": "snap_total"},
+    ),
+    ("hhs_acf_tanf", "all_funds", None): (
+        "tanf",
+        "hhs_acf_tanf",
+        {"target_role": "tanf_total"},
+    ),
+    ("cms_nhe", "expenditure_amount", "medicaid_title_xix"): (
+        "medicaid",
+        "cms_medicaid",
+        {"target_role": "medicaid_spending"},
+    ),
+    ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
+        "medicare_part_b_premium",
+        "cms_medicare",
+        {"target_role": "medicare_part_b_premium_total"},
+    ),
+}
+
+
+CountBaseVariables = str | tuple[str, ...]
+
+
+COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[CountBaseVariables, str, str]] = {
+    ("cms_aca", "marketplace_enrollment"): (
+        "has_marketplace_health_coverage",
+        "cms_aca",
+        "aca_enrollment",
+    ),
+    ("cms_aca", "aptc_recipients"): (
+        "premium_tax_credit",
+        "cms_aca",
+        "aca_ptc_recipients",
+    ),
+    ("cms_medicaid", "total_medicaid_enrollment"): (
+        "medicaid_enrolled",
+        "cms_medicaid",
+        "medicaid_enrollment",
+    ),
+    ("cms_medicaid", "total_medicaid_chip_enrollment"): (
+        ("medicaid_enrolled", "chip_enrolled"),
+        "cms_medicaid",
+        "medicaid_chip_enrollment",
+    ),
+}
+
+
+US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "census_stc.fy2024.individual_income_tax_collections.tn.t40.collections": (
+        "Tennessee has no modeled 2024 state individual income tax support in "
+        "PolicyEngine-US; this STC residual collection row cannot be estimated "
+        "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_claims": (
+        "Current 2024 base microdata have zero positive qualified business "
+        "income deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_amount": (
+        "Current 2024 base microdata have zero qualified business income "
+        "deduction amount support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_returns": (
+        "Current 2024 base microdata have zero positive taxable-income support "
+        "in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_amount": (
+        "Current 2024 base microdata have zero taxable-income amount support "
+        "in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_claims": (
+        "Current 2024 base microdata have zero positive qualified business "
+        "income deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_amount": (
+        "Current 2024 base microdata have zero qualified business income "
+        "deduction amount support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_claims": (
+        "Current-law PolicyEngine-US refundable CTC support is zero in this "
+        "high-income SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_amount": (
+        "Current-law PolicyEngine-US refundable CTC amount support is zero in "
+        "this high-income SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1m_plus.medical_dental_expense_returns": (
+        "Current 2024 base microdata have zero positive medical-expense "
+        "deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1m_plus.medical_dental_expense_amount": (
+        "Current 2024 base microdata have zero medical-expense deduction "
+        "amount support in this SOI AGI bin."
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -54,27 +339,27 @@ class SimpleTaxExpenditureReform:
 
     target_name: str
     neutralized_variable: str
-    value: float
-    source: str
     measure: str
     period: int | str
+    source: str = ""
     kind: TaxExpenditureReformKind = "neutralize_variable"
     output_variable: str = "income_tax"
     matrix_row: TaxExpenditureMatrixRow = "reform_minus_baseline_income_tax"
 
     @classmethod
-    def from_target_spec(cls, spec: TargetSpec) -> SimpleTaxExpenditureReform:
+    def from_target_reference(
+        cls, reference: LedgerTargetReference
+    ) -> SimpleTaxExpenditureReform:
         """Build the reform contract from a declared JCT target row."""
         return cls(
-            target_name=spec.name,
-            neutralized_variable=spec.metadata.get("neutralized_variable", ""),
-            value=spec.value,
-            source=spec.source,
-            measure=spec.measure or "",
-            period=spec.period,
-            kind=spec.metadata.get("kind", ""),
-            output_variable=spec.metadata.get("output_variable", ""),
-            matrix_row=spec.metadata.get("matrix_row", ""),
+            target_name=reference.name,
+            neutralized_variable=reference.metadata.get("neutralized_variable", ""),
+            source=reference.source or "",
+            measure=reference.measure or "",
+            period=reference.period or 0,
+            kind=reference.metadata.get("kind", ""),
+            output_variable=reference.metadata.get("output_variable", ""),
+            matrix_row=reference.metadata.get("matrix_row", ""),
         )
 
     def __post_init__(self) -> None:
@@ -82,10 +367,6 @@ class SimpleTaxExpenditureReform:
             raise ValueError("target_name is required.")
         if not self.neutralized_variable:
             raise ValueError(f"{self.target_name}: neutralized_variable is required.")
-        if not self.value > 0:
-            raise ValueError(f"{self.target_name}: value must be positive.")
-        if not self.source:
-            raise ValueError(f"{self.target_name}: source is required.")
         if self.measure != self.target_name:
             raise ValueError(
                 f"{self.target_name}: JCT targets must use a precomputed "
@@ -127,119 +408,360 @@ class SimpleTaxExpenditureReform:
         )
 
 
-def _load_us_fiscal_target_specs() -> tuple[TargetSpec, ...]:
-    payload = json.loads(files(__package__).joinpath("fiscal_targets.json").read_text())
+def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
+    payload = json.loads(
+        files(__package__).joinpath("fiscal_target_references.json").read_text()
+    )
     if payload.get("country") != "us":
         raise ValueError("US fiscal target manifest must declare country='us'.")
-    return tuple(TargetSpec(**raw) for raw in payload["target_specs"])
+    allowed_operations = set(payload.get("allowed_value_operations") or ())
+    if allowed_operations != {"identity"}:
+        raise ValueError(
+            "US fiscal target references currently permit only identity value "
+            f"resolution from Ledger facts; got {sorted(allowed_operations)!r}."
+        )
+    return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
 
 
-def _ledger_fact_key_for_spec(spec: TargetSpec) -> str:
-    return f"populace.us.fiscal_target.v1:{spec.name}@{spec.period}"
-
-
-def _ledger_reference_from_spec(spec: TargetSpec) -> LedgerTargetReference:
-    ledger_fact_key = _ledger_fact_key_for_spec(spec)
-    return LedgerTargetReference(
-        name=spec.name,
-        ledger_fact_key=ledger_fact_key,
-        ledger_source_record_id=ledger_fact_key,
-        entity=spec.entity,
-        measure=spec.measure,
-        aggregation=spec.aggregation,
-        filter=spec.filter,
-        period=spec.period,
-        source=spec.source,
-        family=spec.family,
-        signed=spec.signed,
-        se=spec.se,
-        tolerance=spec.tolerance,
-        notes=spec.notes,
-        metadata=spec.metadata,
+def compile_us_fiscal_target_registry(facts: object) -> TargetRegistry:
+    """Resolve US fiscal targets from an external Ledger fact feed."""
+    materialized_facts = tuple(facts)
+    references = (
+        *_dynamic_us_fiscal_target_references(materialized_facts),
+        *US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
+    )
+    return compile_ledger_target_references(
+        materialized_facts,
+        references,
+        country="us",
     )
 
 
-def _ledger_compat_fact_from_spec(spec: TargetSpec) -> dict[str, object]:
-    """Represent the current manifest as Ledger-shaped facts for parity only.
+def _dynamic_us_fiscal_target_references(
+    facts: tuple[object, ...],
+) -> tuple[LedgerTargetReference, ...]:
+    references: list[LedgerTargetReference] = []
+    for fact in facts:
+        reference = _reference_from_ledger_fact(fact)
+        if reference is not None:
+            references.append(reference)
+    return tuple(references)
 
-    This is the no-behavior-change bridge: it validates the Populace target
-    registry model against the Ledger reference compiler before any production
-    target loads directly from the Ledger database.
-    """
 
-    ledger_fact_key = _ledger_fact_key_for_spec(spec)
-    return {
-        "aggregate_fact_key": ledger_fact_key,
-        "lineage": {"source_record_id": ledger_fact_key},
-        "value": spec.value,
-        "period": {
-            "type": "tax_year" if isinstance(spec.period, int) else "period",
-            "value": spec.period,
-        },
-        "entity": {"name": spec.entity},
-        "aggregation": {"method": spec.aggregation},
-        "observed_measure": {
-            "source_name": spec.family,
-            "source_table": spec.source,
-            "source_measure_id": spec.measure or spec.name,
-        },
-        "source": {
-            "source_name": spec.family,
-            "source_table": spec.source,
-        },
+def _reference_from_ledger_fact(fact: object) -> LedgerTargetReference | None:
+    source_record_id = _source_record_id(fact)
+    if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        return None
+    source_name = _source_name(fact)
+    if source_name == "irs_soi":
+        return _soi_reference_from_fact(fact)
+    if source_name == "census_stc":
+        return _state_income_tax_reference_from_fact(fact)
+    if source_name == "jct":
+        return None
+    return _direct_reference_from_fact(fact)
+
+
+def _soi_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+    if _geography_level(fact) not in {"country", "state"}:
+        return None
+    measure_id = _measure_id(fact)
+    variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
+    is_count = False
+    if variable is None:
+        variable = SOI_RETURN_MEASURE_VARIABLES.get(measure_id)
+        is_count = variable is not None
+    if variable is None:
+        return None
+
+    lower, upper = _agi_bounds(fact)
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+    metadata = {
+        "source_measure_id": measure_id,
+        "source_period": str(_period_value(fact)),
+        "target_role": _soi_target_role(fact, measure_id),
+        "variable": variable,
+        "agi_lower_bound": lower,
+        "agi_upper_bound": upper,
+        "filing_status": status,
     }
-
-
-US_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = _load_us_fiscal_target_specs()
-US_FISCAL_TARGET_REGISTRY = TargetRegistry(US_FISCAL_TARGET_SPECS, country="us")
-US_FISCAL_TARGET_LEDGER_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
-    _ledger_reference_from_spec(spec) for spec in US_FISCAL_TARGET_SPECS
-)
-US_FISCAL_LEDGER_PARITY_REGISTRY = compile_ledger_target_references(
-    (_ledger_compat_fact_from_spec(spec) for spec in US_FISCAL_TARGET_SPECS),
-    US_FISCAL_TARGET_LEDGER_REFERENCES,
-    country="us",
-)
-US_FISCAL_LEDGER_PARITY_REPORT: LedgerTargetParityReport = (
-    ledger_target_registry_parity_report(
-        US_FISCAL_TARGET_REGISTRY,
-        US_FISCAL_LEDGER_PARITY_REGISTRY,
+    if is_count:
+        metadata["count"] = "true"
+    state_fips = _state_fips(fact)
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        aggregation="sum",
+        period=2024,
+        family="irs_soi",
+        signed=_numeric_value(fact) < 0,
+        metadata=metadata,
     )
+
+
+def _state_income_tax_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+    if _measure_id(fact) != "collections" or _geography_level(fact) != "state":
+        return None
+    state_fips = _state_fips(fact)
+    source_record_id = _source_record_id(fact)
+    if not state_fips or not source_record_id:
+        return None
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        aggregation="sum",
+        period=2024,
+        family="state_income_tax",
+        metadata={
+            "source_measure_id": "collections",
+            "source_period": str(_period_value(fact)),
+            "state_fips": state_fips,
+            "target_role": "state_income_tax",
+        },
+    )
+
+
+def _direct_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+    source_name = _source_name(fact)
+    measure_id = _measure_id(fact)
+    group_value = _str_at(fact, "layout", "groupby_value_id") or None
+    mapping = DIRECT_LEDGER_TARGETS.get(
+        (source_name, measure_id, group_value)
+    ) or DIRECT_LEDGER_TARGETS.get((source_name, measure_id, None))
+    measure_mode = "sum"
+    if mapping is None:
+        count_mapping = COUNT_LEDGER_TARGETS.get((source_name, measure_id))
+        if count_mapping is None:
+            return None
+        base_variable, family, target_role = count_mapping
+        metadata = {"target_role": target_role, "measure_mode": "positive_count"}
+    else:
+        base_variable, family, metadata = mapping
+        metadata = dict(metadata)
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+    if _geography_level(fact) == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+    elif _geography_level(fact) != "country":
+        return None
+    else:
+        state_fips = None
+
+    metadata = {
+        **metadata,
+        "materializer": "policyengine_variable",
+        "measure_mode": metadata.get("measure_mode", measure_mode),
+        "source_measure_id": measure_id,
+        "source_period": str(_period_value(fact)),
+    }
+    if isinstance(base_variable, tuple):
+        metadata["base_variables"] = ",".join(base_variable)
+    else:
+        metadata["base_variable"] = base_variable
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        aggregation="sum",
+        period=2024,
+        family=family,
+        signed=_numeric_value(fact) < 0,
+        metadata=metadata,
+    )
+
+
+def _soi_target_role(fact: object, measure_id: str) -> str:
+    if _geography_level(fact) == "country" and _is_all_income_range(fact):
+        roles = {
+            "income_tax_liability_amount": "federal_income_tax_total",
+            "income_tax_before_credits_amount": "income_tax_before_credits_total",
+            "eitc_amount": "eitc_total",
+            "actc_amount": "refundable_ctc_total",
+            "ctc_amount": "ctc_total",
+            "premium_tax_credit_amount": "aca_spending",
+            "unemployment_compensation_amount": "unemployment_compensation_total",
+        }
+        if measure_id in roles:
+            return roles[measure_id]
+    return "soi_fiscal_distribution"
+
+
+def _is_all_income_range(fact: object) -> bool:
+    dimensions = _dimensions(fact)
+    return (
+        str(dimensions.get("income_range", "all")) == "all"
+        and str(dimensions.get("filing_status", "all")) == "all"
+    )
+
+
+def _agi_bounds(fact: object) -> tuple[str, str]:
+    lower = "-inf"
+    upper = "inf"
+    constraints = _at(fact, "universe_constraints", "constraints") or ()
+    if not isinstance(constraints, list):
+        constraints = ()
+    for constraint in constraints:
+        if not isinstance(constraint, dict):
+            continue
+        variable = str(constraint.get("variable") or "")
+        if "adjusted_gross_income" not in variable:
+            continue
+        operator = str(constraint.get("operator") or "")
+        value = constraint.get("value")
+        if value is None:
+            continue
+        if operator in {">", ">="}:
+            lower = str(float(value))
+        elif operator in {"<", "<="}:
+            upper = str(float(value))
+    return lower, upper
+
+
+def _filing_status_label(value: object) -> str | None:
+    raw = str(value or "all").lower()
+    labels = {
+        "all": "All",
+        "head_of_household": "Head of Household",
+        "married_filing_jointly_surviving_spouse": (
+            "Married Filing Jointly/Surviving Spouse"
+        ),
+        "married_filing_separately": "Married Filing Separately",
+        "single": "Single",
+    }
+    return labels.get(raw)
+
+
+def _state_fips(fact: object) -> str | None:
+    geoid = _geography_id(fact)
+    if not geoid.startswith("0400000US"):
+        return None
+    fips = geoid.removeprefix("0400000US")
+    if fips not in STATE_FIPS_TO_POSTAL:
+        return None
+    return fips
+
+
+def _numeric_value(fact: object) -> float:
+    value = _at(fact, "value")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _source_name(fact: object) -> str:
+    return _str_at(fact, "observed_measure", "source_name") or _str_at(
+        fact, "source", "source_name"
+    )
+
+
+def _measure_id(fact: object) -> str:
+    return _str_at(fact, "observed_measure", "source_measure_id") or _str_at(
+        fact, "layout", "measure_id"
+    )
+
+
+def _source_record_id(fact: object) -> str:
+    return _str_at(fact, "lineage", "source_record_id")
+
+
+def _period_value(fact: object) -> object:
+    return _at(fact, "period", "value")
+
+
+def _geography_level(fact: object) -> str:
+    return _str_at(fact, "geography", "level")
+
+
+def _geography_id(fact: object) -> str:
+    return _str_at(fact, "geography", "id")
+
+
+def _dimensions(fact: object) -> dict[str, object]:
+    dimensions = _at(fact, "dimensions")
+    return dict(dimensions) if isinstance(dimensions, dict) else {}
+
+
+def _at(obj: object, *path: str) -> Any:
+    current = obj
+    for key in path:
+        if current is None:
+            return None
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+    return current
+
+
+def _str_at(obj: object, *path: str) -> str:
+    value = _at(obj, *path)
+    return "" if value is None else str(value)
+
+
+US_FISCAL_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = (
+    _load_us_fiscal_target_references()
 )
-US_JCT_TAX_EXPENDITURE_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
-    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "jct"
+US_FISCAL_TARGET_LEDGER_REFERENCES: tuple[LedgerTargetReference, ...] = (
+    US_FISCAL_TARGET_REFERENCES
+)
+# Compatibility constants only: target values are no longer packaged in
+# Populace. Release builds must call compile_us_fiscal_target_registry() with an
+# external Ledger consumer-facts artifact.
+US_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = ()
+US_FISCAL_TARGET_REGISTRY = TargetRegistry(US_FISCAL_TARGET_SPECS, country="us")
+US_FISCAL_LEDGER_PARITY_REGISTRY = TargetRegistry((), country="us")
+US_FISCAL_LEDGER_PARITY_REPORT: LedgerTargetParityReport = LedgerTargetParityReport(
+    passed=True,
+    failures=(),
+    details={"mode": "value-free references require external Ledger facts"},
+)
+US_JCT_TAX_EXPENDITURE_TARGET_SPECS: tuple[TargetSpec, ...] = ()
+US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
+    reference for reference in US_FISCAL_TARGET_REFERENCES if reference.family == "jct"
 )
 US_JCT_TAX_EXPENDITURE_REFORMS: tuple[SimpleTaxExpenditureReform, ...] = tuple(
-    SimpleTaxExpenditureReform.from_target_spec(spec)
-    for spec in US_JCT_TAX_EXPENDITURE_TARGET_SPECS
+    SimpleTaxExpenditureReform.from_target_reference(reference)
+    for reference in US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES
 )
-US_STATE_INCOME_TAX_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
-    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "state_income_tax"
+US_STATE_INCOME_TAX_TARGET_SPECS: tuple[TargetSpec, ...] = ()
+US_STATE_INCOME_TAX_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
+    reference
+    for reference in US_FISCAL_TARGET_REFERENCES
+    if reference.family == "state_income_tax"
 )
-US_SOI_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = tuple(
-    spec for spec in US_FISCAL_TARGET_SPECS if spec.family == "irs_soi"
+US_SOI_FISCAL_TARGET_SPECS: tuple[TargetSpec, ...] = ()
+US_SOI_FISCAL_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
+    reference
+    for reference in US_FISCAL_TARGET_REFERENCES
+    if reference.family == "irs_soi"
 )
 
 US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (
     TargetCoverageRequirement(
         requirement_id="federal_income_tax_total",
         label="Federal individual income tax total",
-        accepted_names=(
-            "nation/cbo/individual_income_tax",
-            "nation/treasury/individual_income_tax",
-            "nation/treasury/individual income tax",
-            "nation/irs/income_tax_total",
-            "nation/irs/total_income_tax",
-            "nation/irs/total income tax",
-        ),
-        accepted_name_prefixes=(
-            "nation/cbo/individual_income_tax/",
-            "nation/treasury/individual_income_tax/",
-            "nation/treasury/individual income tax/",
-            "nation/irs/income_tax_total/",
-            "nation/irs/total_income_tax/",
-            "nation/irs/total income tax/",
-        ),
+        accepted_families=("cbo", "irs_soi"),
+        required_metadata=(("target_role", "federal_income_tax_total"),),
         notes=(
             "A positive-income-tax diagnostic is not enough; the profile needs "
             "the total federal income tax aggregate used by downstream netting."
@@ -248,67 +770,135 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
     TargetCoverageRequirement(
         requirement_id="irs_agi_distribution",
         label="SOI AGI distribution and top-tail controls",
-        accepted_name_substrings=("/irs/adjusted gross income/",),
+        accepted_name_substrings=(".adjusted_gross_income",),
         min_matches=20,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_wages_distribution",
         label="SOI wages by AGI bracket",
-        accepted_name_substrings=(
-            "/irs/salaries and wages/",
-            "/irs/employment income/",
-        ),
+        accepted_name_substrings=(".wages_salaries_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_business_income_distribution",
         label="SOI business income by AGI bracket",
-        accepted_name_substrings=("/irs/business net ",),
+        accepted_name_substrings=(".schedule_c_income_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_partnership_s_corp_distribution",
         label="SOI partnership and S-corp income by AGI bracket",
-        accepted_name_substrings=("/irs/partnership and s corp income/",),
+        accepted_name_substrings=(".partnership_scorp_income_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_capital_gains_distribution",
         label="SOI capital gains by AGI bracket",
-        accepted_name_substrings=("/irs/capital gains gross/",),
+        accepted_name_substrings=(".net_capital_gains_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_dividends_distribution",
         label="SOI dividends by AGI bracket",
-        accepted_name_substrings=("/irs/ordinary dividends/",),
+        accepted_name_substrings=(".ordinary_dividends_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_interest_distribution",
         label="SOI taxable interest by AGI bracket",
-        accepted_name_substrings=("/irs/taxable interest income/",),
+        accepted_name_substrings=(".taxable_interest_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_pension_distribution",
         label="SOI pension income by AGI bracket",
-        accepted_name_substrings=("/irs/total pension income/",),
+        accepted_name_substrings=(".taxable_pension_income_amount",),
         min_matches=5,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_social_security_distribution",
         label="SOI Social Security by AGI bracket",
-        accepted_name_substrings=("/irs/total social security/",),
+        accepted_name_substrings=(".taxable_social_security_amount",),
         min_matches=5,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="social_security_total",
+        label="SSA Social Security total",
+        accepted_families=("ssa",),
+        required_metadata=(("target_role", "social_security_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="ssi_total",
+        label="SSA SSI total",
+        accepted_families=("ssa",),
+        required_metadata=(("target_role", "ssi_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="snap_total",
+        label="USDA SNAP total",
+        accepted_families=("usda_snap",),
+        required_metadata=(("target_role", "snap_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="unemployment_compensation_total",
+        label="SOI unemployment compensation total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "unemployment_compensation_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="ssa_social_security_components",
+        label="SSA Social Security component totals",
+        accepted_families=("ssa",),
+        min_matches=4,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="eitc_total",
+        label="SOI EITC total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "eitc_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="refundable_ctc_total",
+        label="Refundable CTC total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "refundable_ctc_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="aca_marketplace",
+        label="ACA marketplace spending and enrollment",
+        accepted_families=("cms_aca",),
+        min_matches=2,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medicaid_spending",
+        label="Medicaid spending",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "medicaid_spending"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medicaid_enrollment",
+        label="Medicaid enrollment",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "medicaid_enrollment"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medicaid_chip_enrollment",
+        label="Medicaid and CHIP combined enrollment",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "medicaid_chip_enrollment"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medicare_part_b_premium_total",
+        label="Medicare Part B premium income from enrollees",
+        accepted_families=("cms_medicare",),
+        required_metadata=(("target_role", "medicare_part_b_premium_total"),),
     ),
     TargetCoverageRequirement(
         requirement_id="state_income_tax",
         label="State individual income tax collections",
-        accepted_name_prefixes=("state/",),
         accepted_families=("state_income_tax",),
         required_metadata=(("target_role", "state_income_tax"),),
-        min_matches=51,
+        min_matches=44,
     ),
     *(spec.coverage_requirement() for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
 )
