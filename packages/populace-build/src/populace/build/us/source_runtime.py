@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -18,7 +20,12 @@ from populace.build.us.puf_aggregate_records import (
 )
 
 __all__ = [
+    "aggregate_us_person_to_tax_unit_from_manifest",
+    "assign_us_binary_from_rate_from_manifest",
+    "calibrate_us_binary_assignment_from_manifest",
+    "compute_us_ratio_from_manifest",
     "disaggregate_us_puf_aggregate_records_from_manifest",
+    "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
 ]
 
@@ -33,15 +40,448 @@ _PUF_AGGREGATE_DISAGGREGATION_PARAMETER_KEYS = frozenset(
     }
 )
 
+_ACA_AGGREGATE_PERSON_TO_TAX_UNIT_PARAMETER_KEYS = frozenset(
+    {
+        "person_table",
+        "tax_unit_table",
+        "person_tax_unit_id",
+        "tax_unit_id",
+        "aggregates",
+        "operation",
+    }
+)
+
+_ACA_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS = frozenset(
+    {
+        "output",
+        "draw",
+        "rate_key",
+        "rate_column",
+        "eligibility",
+        "reported_true_anchor",
+    }
+)
+
+_ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS = frozenset(
+    {
+        "variable",
+        "targets",
+        "preserve_true_anchors",
+        "preserve_true_anchor",
+        "domain",
+        "group_by",
+        "weight",
+        "draw",
+    }
+)
+
+_ACA_COMPUTE_RATIO_PARAMETER_KEYS = frozenset(
+    {
+        "output",
+        "numerator",
+        "denominator",
+        "where",
+    }
+)
+
+_SOURCE_SUPPORT_CLIP_PARAMETER_KEYS = frozenset(
+    {
+        "output",
+        "lower",
+        "upper",
+        "range",
+    }
+)
+
+_TARGET_VALUE_COLUMNS = ("target", "value", "count", "n")
+
+
+@dataclass(frozen=True)
+class _BinaryCalibrationValueState:
+    """A boolean calibration target backed by a column or simple comparison."""
+
+    column: str
+    less_than_threshold: float | None = None
+
+    def values(self, frame: pd.DataFrame) -> pd.Series:
+        if self.less_than_threshold is None:
+            return frame[self.column].fillna(False).astype(bool)
+        numeric = pd.to_numeric(frame[self.column], errors="coerce").fillna(
+            self.less_than_threshold
+        )
+        return numeric < self.less_than_threshold
+
+    def write(
+        self,
+        frame: pd.DataFrame,
+        values: pd.Series,
+        domain: pd.Series,
+    ) -> pd.DataFrame:
+        result = frame.copy(deep=True)
+        if self.less_than_threshold is None:
+            result[self.column] = values.astype(bool)
+            return result
+
+        threshold = self.less_than_threshold
+        epsilon = 1e-6
+        numeric = pd.to_numeric(result[self.column], errors="coerce").fillna(threshold)
+        make_true = values & domain
+        make_false = (~values) & domain
+        numeric.loc[make_true & ~(numeric < threshold)] = threshold - epsilon
+        numeric.loc[make_false & (numeric < threshold)] = threshold
+        result[self.column] = numeric
+        return result
+
 
 def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
     """Return US handlers keyed by manifest operation kind."""
 
     return {
+        "aggregate_person_to_tax_unit": aggregate_us_person_to_tax_unit_from_manifest,
+        "assign_binary_from_rate": assign_us_binary_from_rate_from_manifest,
+        "calibrate_binary_assignment": (calibrate_us_binary_assignment_from_manifest),
+        "compute_ratio": compute_us_ratio_from_manifest,
         "disaggregate_aggregate_records": (
             disaggregate_us_puf_aggregate_records_from_manifest
         ),
+        "support_clip": support_clip_us_source_output_from_manifest,
     }
+
+
+def aggregate_us_person_to_tax_unit_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Aggregate CPS person Marketplace coverage fields to tax units."""
+
+    if operation.kind != "aggregate_person_to_tax_unit":
+        raise SourceRuntimeError(
+            "ACA tax-unit aggregation received unexpected operation "
+            f"{operation.kind!r}."
+        )
+    if frame is not None:
+        raise SourceRuntimeError(
+            "ACA tax-unit aggregation must be the first operation in the stage."
+        )
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_ACA_AGGREGATE_PERSON_TO_TAX_UNIT_PARAMETER_KEYS,
+        label="ACA tax-unit aggregation",
+    )
+    if params.get("operation") != "any":
+        raise SourceRuntimeError(
+            "ACA tax-unit aggregation currently supports only operation='any'."
+        )
+    person_table = _required_string_param(
+        params,
+        "person_table",
+        label="ACA tax-unit aggregation",
+    )
+    tax_unit_table = _required_string_param(
+        params,
+        "tax_unit_table",
+        label="ACA tax-unit aggregation",
+    )
+    person_tax_unit_id = _required_string_param(
+        params,
+        "person_tax_unit_id",
+        label="ACA tax-unit aggregation",
+    )
+    tax_unit_id = _required_string_param(
+        params,
+        "tax_unit_id",
+        label="ACA tax-unit aggregation",
+    )
+    aggregates = _required_string_sequence_param(
+        params,
+        "aggregates",
+        label="ACA tax-unit aggregation",
+    )
+
+    people = context.read_table(person_table)
+    tax_units = context.read_table(tax_unit_table)
+    _require_columns(
+        people,
+        [person_tax_unit_id, *aggregates],
+        label=person_table,
+    )
+    _require_columns(tax_units, [tax_unit_id], label=tax_unit_table)
+
+    grouped = (
+        people.assign(
+            **{name: people[name].fillna(False).astype(bool) for name in aggregates}
+        )
+        .groupby(person_tax_unit_id, sort=False)[list(aggregates)]
+        .any()
+        .reset_index()
+        .rename(columns={person_tax_unit_id: tax_unit_id})
+    )
+    result = tax_units.drop(columns=[c for c in aggregates if c in tax_units])
+    result = result.merge(grouped, on=tax_unit_id, how="left")
+    for name in aggregates:
+        result[name] = result[name].fillna(False).astype(bool)
+    return result
+
+
+def assign_us_binary_from_rate_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Assign a seeded ACA take-up indicator from rates and reported anchors."""
+
+    if operation.kind != "assign_binary_from_rate":
+        raise SourceRuntimeError(
+            f"ACA binary assignment received unexpected operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("ACA binary assignment requires a current frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_ACA_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS,
+        label="ACA binary assignment",
+    )
+    output = _required_string_param(params, "output", label="ACA binary assignment")
+    draw_column = _required_string_param(params, "draw", label="ACA binary assignment")
+    rate_key = _required_string_param(params, "rate_key", label="ACA binary assignment")
+    rate_column = params.get("rate_column", f"{rate_key}_take_up_rate")
+    if not isinstance(rate_column, str) or not rate_column:
+        raise SourceRuntimeError("ACA binary assignment requires a rate column.")
+    _require_columns(frame, [rate_column], label="ACA binary assignment frame")
+
+    result = frame.copy(deep=True)
+    if draw_column in result:
+        draws = pd.to_numeric(result[draw_column], errors="coerce")
+        if draws.isna().any():
+            raise SourceRuntimeError(
+                f"ACA binary assignment draw column {draw_column!r} contains nulls."
+            )
+        draws = draws.clip(lower=0.0, upper=1.0)
+    else:
+        draws = _stable_draws(
+            result,
+            seed=int(context.config.seed),
+            salt=f"aca:{output}",
+        )
+        result[draw_column] = draws
+
+    rates = pd.to_numeric(result[rate_column], errors="coerce").fillna(0.0)
+    assigned = draws < rates.clip(lower=0.0, upper=1.0)
+
+    eligibility = params.get("eligibility")
+    if isinstance(eligibility, str) and eligibility:
+        _require_columns(result, [eligibility], label="ACA binary assignment frame")
+        eligibility_mask = result[eligibility].fillna(False).astype(bool)
+        assigned = assigned & eligibility_mask
+    else:
+        eligibility_mask = pd.Series(True, index=result.index)
+
+    anchor = params.get("reported_true_anchor")
+    if isinstance(anchor, str) and anchor:
+        _require_columns(result, [anchor], label="ACA binary assignment frame")
+        assigned = assigned | (
+            result[anchor].fillna(False).astype(bool) & eligibility_mask
+        )
+
+    result[output] = assigned.astype(bool)
+    return result
+
+
+def calibrate_us_binary_assignment_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Greedily calibrate a boolean ACA assignment to count targets."""
+
+    if operation.kind != "calibrate_binary_assignment":
+        raise SourceRuntimeError(
+            f"ACA binary calibration received unexpected operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("ACA binary calibration requires a current frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS,
+        label="ACA binary calibration",
+    )
+    variable = _required_string_param(
+        params,
+        "variable",
+        label="ACA binary calibration",
+    )
+    targets = _required_string_sequence_param(
+        params,
+        "targets",
+        label="ACA binary calibration",
+    )
+    value_state = _binary_calibration_value_state(frame, variable)
+
+    target_table_name, target_table = _first_available_target_table(targets, context)
+    value_column = _target_value_column(target_table, label=target_table_name)
+    group_by = _group_columns(params.get("group_by"), target_table, frame)
+    weight_column = params.get("weight")
+    draw_column = params.get("draw", "stable_tax_unit_draw")
+    if not isinstance(weight_column, str) or not weight_column:
+        raise SourceRuntimeError(
+            "ACA binary calibration requires an explicit weight column."
+        )
+    if not isinstance(draw_column, str) or not draw_column:
+        raise SourceRuntimeError("ACA binary calibration requires a draw column.")
+
+    result = frame.copy(deep=True)
+    _require_columns(result, [weight_column], label="ACA binary calibration frame")
+    weights = pd.to_numeric(result[weight_column], errors="coerce").fillna(0.0)
+    if draw_column not in result:
+        result[draw_column] = _stable_draws(
+            result,
+            seed=int(context.config.seed),
+            salt=f"calibrate:{variable}",
+        )
+    draws = pd.to_numeric(result[draw_column], errors="coerce").fillna(1.0)
+
+    values = value_state.values(result)
+    preserved = _preserved_true_mask(result, params)
+    domain = _domain_mask(result, params.get("domain"))
+    candidate_mask = (~preserved) & domain
+
+    target_rows = target_table.copy(deep=True)
+    if not group_by:
+        target_rows = target_rows.assign(__all__="all")
+        result = result.assign(__all__="all")
+        group_by = ("__all__",)
+
+    _require_columns(target_rows, [*group_by, value_column], label=target_table_name)
+    _require_columns(result, group_by, label="ACA binary calibration frame")
+
+    calibrated = values.copy()
+    for _, target_row in target_rows.iterrows():
+        group_mask = pd.Series(True, index=result.index)
+        for column in group_by:
+            group_mask &= result[column] == target_row[column]
+        target_value = float(target_row[value_column])
+        active_group = group_mask & domain
+        existing = float(weights[active_group & calibrated].sum())
+        remaining = target_value - existing
+        if remaining > 0:
+            eligible = result.index[active_group & candidate_mask & (~calibrated)]
+            ordered = sorted(
+                eligible, key=lambda idx: (float(draws.loc[idx]), str(idx))
+            )
+            added = 0.0
+            for idx in ordered:
+                if added >= remaining:
+                    break
+                calibrated.loc[idx] = True
+                added += float(weights.loc[idx])
+            continue
+
+        excess = -remaining
+        if excess <= 0:
+            continue
+        eligible = result.index[active_group & candidate_mask & calibrated]
+        ordered = sorted(eligible, key=lambda idx: (-float(draws.loc[idx]), str(idx)))
+        removed = 0.0
+        for idx in ordered:
+            if removed >= excess:
+                break
+            calibrated.loc[idx] = False
+            removed += float(weights.loc[idx])
+
+    result = value_state.write(result, calibrated, domain)
+    if "__all__" in result.columns:
+        result = result.drop(columns=["__all__"])
+    return result
+
+
+def compute_us_ratio_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    _context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Compute a declared source ratio with neutral defaults off-domain."""
+
+    if operation.kind != "compute_ratio":
+        raise SourceRuntimeError(
+            f"US ratio computation received unexpected operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("US ratio computation requires a current frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_ACA_COMPUTE_RATIO_PARAMETER_KEYS,
+        label="US ratio computation",
+    )
+    output = _required_string_param(params, "output", label="US ratio computation")
+    denominator = _required_string_param(
+        params,
+        "denominator",
+        label="US ratio computation",
+    )
+    numerator = _required_string_sequence_param(
+        params,
+        "numerator",
+        label="US ratio computation",
+    )
+    where = params.get("where")
+    if not isinstance(where, str) or not where:
+        raise SourceRuntimeError(
+            "US ratio computation requires a boolean where column."
+        )
+
+    _require_columns(frame, [*numerator, denominator, where], label="ratio frame")
+    result = frame.copy(deep=True)
+    numerator_values = sum(
+        pd.to_numeric(result[column], errors="coerce").fillna(0.0)
+        for column in numerator
+    )
+    denominator_values = pd.to_numeric(result[denominator], errors="coerce").fillna(0.0)
+    domain = result[where].fillna(False).astype(bool) & (denominator_values > 0.0)
+    ratio = pd.Series(1.0, index=result.index, dtype=float)
+    ratio.loc[domain] = numerator_values.loc[domain] / denominator_values.loc[domain]
+    result[output] = ratio
+    return result
+
+
+def support_clip_us_source_output_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    _context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Clip a declared source output to a reviewed support interval."""
+
+    if operation.kind != "support_clip":
+        raise SourceRuntimeError(
+            f"US support clip received unexpected operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("US support clip requires a current frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_SOURCE_SUPPORT_CLIP_PARAMETER_KEYS,
+        label="US support clip",
+    )
+    output = _required_string_param(params, "output", label="US support clip")
+    lower = params.get("lower")
+    upper = params.get("upper")
+    if not isinstance(lower, int | float) or not isinstance(upper, int | float):
+        raise SourceRuntimeError("US support clip requires numeric lower and upper.")
+    if lower > upper:
+        raise SourceRuntimeError("US support clip lower bound exceeds upper bound.")
+    _require_columns(frame, [output], label="support-clip frame")
+
+    result = frame.copy(deep=True)
+    result[output] = pd.to_numeric(result[output], errors="coerce").clip(
+        lower=float(lower),
+        upper=float(upper),
+    )
+    return result
 
 
 def disaggregate_us_puf_aggregate_records_from_manifest(
@@ -105,4 +545,197 @@ def disaggregate_us_puf_aggregate_records_from_manifest(
         frame,
         seed=int(context.config.seed),
         spec=spec,
+    )
+
+
+def _reject_unexpected_parameters(
+    params: Mapping[str, object],
+    *,
+    allowed: frozenset[str],
+    label: str,
+) -> None:
+    unexpected = sorted(set(params) - allowed)
+    if unexpected:
+        raise SourceRuntimeError(
+            f"{label} received unsupported parameter(s): {unexpected}."
+        )
+
+
+def _required_string_param(
+    params: Mapping[str, object],
+    key: str,
+    *,
+    label: str,
+) -> str:
+    value = params.get(key)
+    if not isinstance(value, str) or not value:
+        raise SourceRuntimeError(f"{label} requires a non-empty {key!r} parameter.")
+    return value
+
+
+def _required_string_sequence_param(
+    params: Mapping[str, object],
+    key: str,
+    *,
+    label: str,
+) -> tuple[str, ...]:
+    value = params.get(key)
+    if (
+        not isinstance(value, list | tuple)
+        or isinstance(value, str | bytes | bytearray)
+        or not value
+    ):
+        raise SourceRuntimeError(
+            f"{label} requires {key!r} to be a non-empty list of strings."
+        )
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item:
+            raise SourceRuntimeError(
+                f"{label} requires {key!r} to contain only non-empty strings."
+            )
+        result.append(item)
+    return tuple(result)
+
+
+def _require_columns(
+    frame: pd.DataFrame,
+    columns: tuple[str, ...] | list[str],
+    *,
+    label: str,
+) -> None:
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        raise SourceRuntimeError(f"{label} is missing required column(s): {missing}.")
+
+
+def _binary_calibration_value_state(
+    frame: pd.DataFrame,
+    variable: str,
+) -> _BinaryCalibrationValueState:
+    if variable.isidentifier():
+        _require_columns(frame, [variable], label="ACA binary calibration frame")
+        return _BinaryCalibrationValueState(column=variable)
+
+    if "<" in variable and "<=" not in variable:
+        column, raw_threshold = [piece.strip() for piece in variable.split("<", 1)]
+        if not column:
+            raise SourceRuntimeError(
+                f"ACA binary calibration has an invalid comparison {variable!r}."
+            )
+        _require_columns(frame, [column], label="ACA binary calibration frame")
+        try:
+            threshold = float(raw_threshold)
+        except ValueError as exc:
+            raise SourceRuntimeError(
+                f"ACA binary calibration comparison has a nonnumeric threshold: "
+                f"{variable!r}."
+            ) from exc
+        return _BinaryCalibrationValueState(
+            column=column,
+            less_than_threshold=threshold,
+        )
+
+    raise SourceRuntimeError(
+        "ACA binary calibration requires a stored boolean column or simple "
+        f"'column < number' expression, got {variable!r}."
+    )
+
+
+def _preserved_true_mask(
+    frame: pd.DataFrame,
+    params: Mapping[str, object],
+) -> pd.Series:
+    if not bool(params.get("preserve_true_anchors", False)):
+        return pd.Series(False, index=frame.index)
+    anchor = params.get("preserve_true_anchor")
+    if not isinstance(anchor, str) or not anchor:
+        raise SourceRuntimeError(
+            "ACA binary calibration preserve_true_anchors requires a "
+            "preserve_true_anchor column."
+        )
+    _require_columns(frame, [anchor], label="ACA binary calibration frame")
+    return frame[anchor].fillna(False).astype(bool)
+
+
+def _stable_draws(frame: pd.DataFrame, *, seed: int, salt: str) -> pd.Series:
+    if "tax_unit_id" in frame:
+        keys = frame["tax_unit_id"]
+    else:
+        keys = pd.Series(frame.index, index=frame.index)
+    denominator = float(2**64)
+    draws = [
+        int.from_bytes(
+            hashlib.blake2b(
+                f"{seed}:{salt}:{key}".encode(),
+                digest_size=8,
+            ).digest(),
+            byteorder="big",
+            signed=False,
+        )
+        / denominator
+        for key in keys
+    ]
+    return pd.Series(draws, index=frame.index, dtype=float)
+
+
+def _first_available_target_table(
+    target_names: tuple[str, ...],
+    context: SourceRuntimeContext,
+) -> tuple[str, pd.DataFrame]:
+    for target_name in target_names:
+        if target_name in context.tables:
+            return target_name, context.read_table(target_name)
+    raise SourceRuntimeError(
+        "ACA binary calibration requires one provided target table from "
+        f"{list(target_names)}; available tables: {sorted(context.tables)}."
+    )
+
+
+def _target_value_column(targets: pd.DataFrame, *, label: str) -> str:
+    for column in _TARGET_VALUE_COLUMNS:
+        if column in targets.columns:
+            return column
+    raise SourceRuntimeError(
+        f"{label} must include one target-value column from "
+        f"{list(_TARGET_VALUE_COLUMNS)}."
+    )
+
+
+def _group_columns(
+    declared: object,
+    targets: pd.DataFrame,
+    frame: pd.DataFrame,
+) -> tuple[str, ...]:
+    if declared is not None:
+        if isinstance(declared, str):
+            return (declared,)
+        if isinstance(declared, list | tuple) and not isinstance(
+            declared,
+            str | bytes | bytearray,
+        ):
+            return tuple(str(item) for item in declared)
+        raise SourceRuntimeError(
+            "ACA binary calibration group_by must be a string or list of strings."
+        )
+    return tuple(
+        column
+        for column in ("state_fips",)
+        if column in targets.columns and column in frame.columns
+    )
+
+
+def _domain_mask(frame: pd.DataFrame, domain: object) -> pd.Series:
+    if domain is None:
+        return pd.Series(True, index=frame.index)
+    if isinstance(domain, str) and domain in frame.columns:
+        return frame[domain].fillna(False).astype(bool)
+    if isinstance(domain, str) and ">" in domain:
+        column, raw_threshold = [piece.strip() for piece in domain.split(">", 1)]
+        if column in frame.columns:
+            threshold = float(raw_threshold)
+            return pd.to_numeric(frame[column], errors="coerce").fillna(0.0) > threshold
+    raise SourceRuntimeError(
+        "ACA binary calibration domain must be a boolean column or a simple "
+        f"'column > number' expression, got {domain!r}."
     )

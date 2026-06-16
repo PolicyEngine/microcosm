@@ -502,6 +502,10 @@
       "operations": [
         {
           "kind": "aggregate_person_to_tax_unit",
+          "person_table": "cps_person",
+          "tax_unit_table": "tax_unit",
+          "person_tax_unit_id": "tax_unit_id",
+          "tax_unit_id": "tax_unit_id",
           "aggregates": [
             "has_marketplace_health_coverage_at_interview",
             "reported_has_subsidized_marketplace_health_coverage_at_interview"
@@ -513,6 +517,8 @@
           "output": "takes_up_aca_if_eligible",
           "draw": "stable_tax_unit_draw",
           "rate_key": "aca",
+          "rate_column": "aca_take_up_rate",
+          "eligibility": "is_aca_ptc_eligible",
           "reported_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview"
         },
         {
@@ -522,7 +528,10 @@
             "cms_aca_aptc_recipients_by_state",
             "cms_aca_marketplace_enrollment_by_state"
           ],
-          "preserve_true_anchors": true
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
+          "domain": "is_aca_ptc_eligible",
+          "weight": "tax_unit_weight"
         },
         {
           "kind": "compute_ratio",
@@ -547,7 +556,8 @@
           "targets": [
             "cms_aca_bronze_aptc_consumers_by_state"
           ],
-          "domain": "assigned_aca_ptc > 0"
+          "domain": "assigned_aca_ptc > 0",
+          "weight": "tax_unit_weight"
         }
       ],
       "outputs": [
