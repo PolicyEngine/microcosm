@@ -261,6 +261,11 @@ COUNT_LEDGER_TARGETS: dict[tuple[str, str], CountLedgerTarget] = {
         "cms_aca",
         {"target_role": "aca_enrollment"},
     ),
+    # CMS counts APTC recipients as people. We proxy this as eligible people
+    # (count_filter_variable) in tax units with positive assigned PTC: the
+    # tax-unit assigned_aca_ptc is projected to person grain (count_map_to) and
+    # filtered to is_aca_ptc_eligible before the positive count. Validated at
+    # 20.24M vs the 19.74M CMS target (+2.5%); see PR #68.
     ("cms_aca", "aptc_recipients"): (
         "assigned_aca_ptc",
         "cms_aca",
