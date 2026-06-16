@@ -12,10 +12,10 @@ explicitly, and the function says why that is the only escape hatch. `weights`
 selects which typed weight vector to use — by default the **design** weights of
 the entity that owns the predictors and targets.
 
-This closes the 2026-06 microimpute landmine, where a silently-ignored
-`weight_col` reproduced a high-income regime's mass at the wrong scale. Here the
-weights are materialized into the fit by **weighted bootstrap**: training rows
-are importance-resampled by weight before each forest is grown, so leaf
+This closes the 2026-06 weight-handling failure mode where a silently ignored
+weight column reproduced a high-income regime's mass at the wrong scale. Here
+the weights are materialized into the fit by **weighted bootstrap**: training
+rows are importance-resampled by weight before each forest is grown, so leaf
 distributions — and every value drawn from them — reflect the weighted
 population, not the unweighted sample.
 

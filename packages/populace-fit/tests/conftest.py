@@ -1,9 +1,9 @@
 """Shared fixtures for the populace-fit suite.
 
 The builders here construct small, seeded frames whose *weighted* conditional
-distribution differs sharply from the unweighted one — the microimpute#196
-shape — so the behavioral contracts can assert that weighting actually moves the
-draws. Everything is sized for CI speed (n=5000, small forests).
+distribution differs sharply from the unweighted one, so the behavioral
+contracts can assert that weighting actually moves the draws. Everything is
+sized for CI speed (n=5000, small forests).
 """
 
 from __future__ import annotations
@@ -80,12 +80,12 @@ def make_person_frame():
 def weight_correlated_frame():
     """Factory: a frame whose target is large exactly where weight is small.
 
-    The microimpute#196 repro. About 20% of rows are a "low-weight, huge-value"
-    regime: their target is ~15x the bulk and they carry a small design weight,
-    so the *unweighted* mean is dominated by them while the *weighted* mean is
-    not. A fit that honors weights must reproduce the weighted mean; one that
-    ignores them reproduces the unweighted mean. The two truths differ by well
-    over 3x, so the contract can separate them cleanly.
+    About 20% of rows are a "low-weight, huge-value" regime: their target is
+    ~15x the bulk and they carry a small design weight, so the *unweighted* mean
+    is dominated by them while the *weighted* mean is not. A fit that honors
+    weights must reproduce the weighted mean; one that ignores them reproduces
+    the unweighted mean. The two truths differ by well over 3x, so the contract
+    can separate them cleanly.
 
     Crucially, the predictors (``age``, ``is_male``) are drawn *independently*
     of the regime, so they do not reveal which rows are the huge-value ones.

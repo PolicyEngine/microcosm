@@ -62,8 +62,8 @@ def test_none_is_the_only_unweighted_path_typo_raises(
     """A misspelled weights kind raises — it never silently fits unweighted.
 
     This is the core safety property. ``"nonе"`` (or any unknown spelling) must
-    not degrade into an unweighted fit the way a forgotten ``weight_col`` did in
-    microimpute; it must raise and point the caller at ``weights="none"``.
+    not degrade into an unweighted fit the way a forgotten weight column can; it
+    must raise and point the caller at ``weights="none"``.
     """
     frame, _, _ = weight_correlated_frame(seed=0, n=200)
     with pytest.raises(ValueError, match="Unknown weights spec"):

@@ -8,7 +8,7 @@ will pin the constellation.
 | package | import | role | succeeds |
 |---|---|---|---|
 | `populace-frame` | `populace.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
-| `populace-fit` | `populace.fit` | conditional models (weight-aware by construction) | microimpute |
+| `populace-fit` | `populace.fit` | conditional models (weight-aware by construction) | ad hoc imputation scripts |
 | `populace-calibrate` | `populace.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
 | `populace-build` | `populace.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
 | `populace-data` | `populace.data` | published population registry and lazy engine loaders | country-specific data packages |

@@ -1,7 +1,7 @@
 """The canonical conditional model: a regime-gated, chained, weighted QRF.
 
-This is the from-scratch successor to microimpute's regime-gated QRF imputer,
-reimplemented against the :class:`~populace.frame.Frame`. Three ideas combine:
+This is Populace's from-scratch regime-gated QRF imputer, implemented against
+the :class:`~populace.frame.Frame`. Three ideas combine:
 
 **Weighted bootstrap (forests only).** ``quantile_forest`` (and random forests
 generally) cannot honor a ``sample_weight`` in their *predictive* distribution:
@@ -10,8 +10,8 @@ the value a draw reads out, and the backend uses ``sample_weight`` only as a
 zero-weight filter on leaf membership. So weights are materialized *into the
 data*: before each forest is grown, training rows are drawn with replacement
 with probability proportional to weight (:func:`_weighted_bootstrap`). The leaf
-distributions then reflect the weighted population. This is the microimpute#196
-fix — the mechanism that makes a weighted fit actually shift the draws.
+distributions then reflect the weighted population. This is the weighting fix
+that makes a weighted fit actually shift the draws.
 
 **Regime gates.** A numeric target's sign support — which of
 {negative, zero, positive} appear in training — defines its *regime*. A single
@@ -178,8 +178,8 @@ def _weighted_bootstrap(
     Draws ``len(x)`` rows with replacement with probability proportional to
     weight, so the resampled data carries the weighted distribution. With
     ``weights=None`` the data is returned unchanged (the explicit unweighted
-    path). This is the operative half of the microimpute#196 fix: it is what
-    makes leaf distributions — and the values drawn from them — weighted.
+    path). This is the operative half of the weighting fix: it is what makes
+    leaf distributions — and the values drawn from them — weighted.
 
     Args:
         x: Feature matrix, one row per training record.

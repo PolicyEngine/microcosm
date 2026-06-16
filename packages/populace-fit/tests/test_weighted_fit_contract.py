@@ -3,9 +3,9 @@
 This is the real realization of the placeholder the kernel left skipped in
 ``packages/populace-frame/tests/test_contracts.py``
 (``test_weighted_fit_shifts_draws_toward_weighted_truth``). It is the test
-DESIGN.md names as the one that would have caught the 2026-06 microimpute
-landmine: a ten-line behavioral check that a weighted fit moves the draws toward
-the *weighted* population, and that an unweighted fit is impossible to express
+DESIGN.md names as the one that catches a silent weight-handling failure: a
+ten-line behavioral check that a weighted fit moves the draws toward the
+*weighted* population, and that an unweighted fit is impossible to express
 without writing ``weights="none"`` and meaning it.
 
 The frame's donor has a weight-correlated target — about 20% of rows are a

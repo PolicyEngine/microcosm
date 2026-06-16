@@ -32,7 +32,7 @@ packages/
                        accounting (absorbs microdf) + unit structure
                        (absorbs microunit) + the RulesEngine protocol
   populace-fit/        conditional-models operator (import populace.fit;
-                       succeeds microimpute)
+                       succeeds ad hoc imputation scripts)
   populace-calibrate/  representation operator (import populace.calibrate;
                        succeeds microcalibrate)
   populace-build/      typed build plans, donor graphs, stage contracts,
@@ -152,8 +152,8 @@ extension, not a rewrite (the kernel must grow these hooks before then).
 1. **Behavioral contract tests in CI from day 1.** Not import tests — behavior:
    weighted fits shift draws toward the weighted truth; calibration conserves
    declared mass; unit assignment partitions exactly; export round-trips
-   through the rules adapter. The 2026-06 microimpute bug would have been
-   caught by a ten-line test of this kind.
+   through the rules adapter. The 2026-06 weight-handling failure would have
+   been caught by a ten-line test of this kind.
 2. **Constellation versioning.** The workspace releases packages in lockstep
    with a compatibility matrix; consumers pin the constellation, not ad-hoc
    git SHAs. (pip ignoring `[tool.uv.sources]` cost a month of broken CI in
@@ -173,9 +173,8 @@ distributions — `populace-frame`, `populace-fit`, `populace-calibrate` —
 imported as `populace.frame`, `populace.fit`, `populace.calibrate`. No shard
 ships a top-level `populace/__init__.py` (implicit namespace), so the shards
 install side by side, and a `populace` metapackage pins the constellation in
-one line. New names mean legacy pins (`microimpute`, `microcalibrate`,
-`microdf`, `microunit`) coexist without version gymnastics during the
-transition.
+one line. New names let legacy package pins coexist without version gymnastics
+during the transition.
 
 **Why shards rather than one package with extras.** The justification is
 *independent heavy dependencies*, not modularity for its own sake:
