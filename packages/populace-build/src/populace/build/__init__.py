@@ -86,6 +86,13 @@ from populace.build.plan import (  # noqa: E402 - after the compat gate
     StagePlan,
     StageRecord,
 )
+from populace.build.source_runtime import (  # noqa: E402 - after the compat gate
+    SourceRuntimeConfig,
+    SourceRuntimeContext,
+    SourceRuntimeError,
+    UnsupportedSourceOperationError,
+    run_source_stage,
+)
 
 __version__ = "0.1.0"
 
@@ -96,6 +103,9 @@ __all__ = [
     "Stage",
     "StagePlan",
     "StageRecord",
+    "SourceRuntimeConfig",
+    "SourceRuntimeContext",
+    "SourceRuntimeError",
     "TargetCoverageRequirement",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
@@ -119,5 +129,7 @@ __all__ = [
     "target_spec_from_ledger_fact",
     "target_surface_gate",
     "UnsupportedLedgerTarget",
+    "UnsupportedSourceOperationError",
+    "run_source_stage",
     "__version__",
 ]
