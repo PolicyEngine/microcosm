@@ -403,6 +403,7 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
     assert spec.metadata["source_period"] == "2024-12"
     assert spec.period == 2024
 
+
 def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     marketplace_source_record_id = (
         "cms_aca.oep2024.state_marketplace.ca.marketplace_enrollment"
