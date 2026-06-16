@@ -35,6 +35,11 @@ from populace.build.us import (
     us_source_coverage_diagnostics,
     write_us_source_coverage_diagnostics,
 )
+from populace.build.us.demographics import (
+    demographics_payload,
+    population_by_age_from_sim,
+    write_demographics,
+)
 from populace.build.us.reform_validation import (
     default_simulate_factory,
     load_default_reform_specs,
@@ -212,6 +217,11 @@ def _parse_args() -> argparse.Namespace:
             "OBBBA simulations. Faster; useful when policyengine-us microsim runs "
             "are not wanted in the build."
         ),
+    )
+    parser.add_argument(
+        "--skip-demographics",
+        action="store_true",
+        help="Do not emit demographics.json (weighted population by age) for this release.",
     )
     return parser.parse_args()
 
@@ -1064,6 +1074,26 @@ def _write_reform_validation(
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
 
+def _write_demographics(
+    *,
+    release_dir: Path,
+    dataset_path: Path,
+    release_id: str,
+) -> None:
+    """Emit demographics.json: the dataset's weighted population by age band.
+
+    The fiscal-refresh release does not calibrate the age distribution, so this
+    is published as an emergent diagnostic (populace vs the Census age structure).
+    """
+    from policyengine_us import Microsimulation
+    from policyengine_us.data import USSingleYearDataset
+
+    sim = Microsimulation(dataset=USSingleYearDataset(file_path=str(dataset_path)))
+    ages, weights = population_by_age_from_sim(sim, PERIOD)
+    payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
+    write_demographics(payload, release_dir / "demographics.json")
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -1189,6 +1219,18 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "reform_validation.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "demographics": _artifact_entry(
+                        "demographics.json",
+                        _sha256(release_dir / "demographics.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "demographics.json").exists()
                 else {}
             ),
         },
@@ -1353,6 +1395,13 @@ def main() -> None:
             registry=registry,
             release_id=release_id,
             simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+        )
+
+    if not args.skip_demographics:
+        _write_demographics(
+            release_dir=release_dir,
+            dataset_path=dataset_path,
+            release_id=release_id,
         )
 
     active_aliases = DIRECT_ACTIVE_ALIASES
