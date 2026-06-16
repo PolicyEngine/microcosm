@@ -545,7 +545,9 @@ def _combined_household_values(
 
     entities = tuple(_variable_entity(system, variable) for variable in variables)
     missing = tuple(
-        variable for variable, entity in zip(variables, entities, strict=True) if entity is None
+        variable
+        for variable, entity in zip(variables, entities, strict=True)
+        if entity is None
     )
     if missing:
         raise KeyError(", ".join(missing))
@@ -1326,7 +1328,8 @@ def main() -> None:
     )
     _assert_us_release_id(release_id)
     target_registry = compile_us_fiscal_target_registry(
-        _load_ledger_facts(args.ledger_facts)
+        _load_ledger_facts(args.ledger_facts),
+        target_period=PERIOD,
     )
     target_specs = target_registry.specs
     target_profile_gate = target_profile_coverage_gate(

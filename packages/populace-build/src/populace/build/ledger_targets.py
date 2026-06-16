@@ -528,16 +528,27 @@ def _resolve_reference_fact(
             for fact in fact_index.facts
             if _fact_matches_selector(fact, reference.ledger_selector)
         ]
-        if len(matches) == 1:
-            return matches[0]
+        eligible_matches = _eligible_selector_matches(reference, matches)
+        if len(eligible_matches) == 1:
+            return eligible_matches[0]
+        latest_match = _latest_period_selector_match(reference, eligible_matches)
+        if latest_match is not None:
+            return latest_match
         if not matches:
             raise ValueError(
                 f"Ledger target reference {reference.name!r} did not match a "
                 f"Ledger fact selector: {dict(reference.ledger_selector)!r}."
             )
+        if not eligible_matches:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r} did not match a "
+                "Ledger fact at or before target period "
+                f"{reference.period!r} for selector: "
+                f"{dict(reference.ledger_selector)!r}."
+            )
         identifiers = [
             _fact_key(fact) or _source_record_id(fact) or f"fact[{index}]"
-            for index, fact in enumerate(matches)
+            for index, fact in enumerate(eligible_matches)
         ]
         raise ValueError(
             f"Ledger target reference {reference.name!r} matched multiple "
@@ -548,6 +559,130 @@ def _resolve_reference_fact(
         f"Ledger target reference {reference.name!r} did not match a Ledger fact "
         f"identifier: {identifiers!r}."
     )
+
+
+def _eligible_selector_matches(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> list[object]:
+    target_period_key = _period_key_from_value(reference.period)
+    return [
+        fact
+        for fact in matches
+        if _not_after_target_period(_period_key(fact), target_period_key)
+    ]
+
+
+def _latest_period_selector_match(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> object | None:
+    if len(matches) < 2:
+        return None
+    semantic_keys = {_selector_period_invariant_key(fact) for fact in matches}
+    if len(semantic_keys) != 1:
+        return None
+
+    target_period_key = _period_key_from_value(reference.period)
+    best: tuple[int, int, str] | None = None
+    best_matches: list[object] = []
+    for fact in matches:
+        period_key = _period_key(fact)
+        if best is None or _prefer_period_candidate(
+            period_key,
+            best,
+            target_period_key=target_period_key,
+        ):
+            best = period_key
+            best_matches = [fact]
+        elif period_key == best:
+            best_matches.append(fact)
+    if len(best_matches) == 1:
+        return best_matches[0]
+    return None
+
+
+def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
+    return (
+        _source_name(fact),
+        _str_at(fact, "observed_measure", "source_measure_id")
+        or _str_at(fact, "layout", "measure_id"),
+        _source_measure_concept(fact),
+        _str_at(fact, "geography", "level"),
+        _str_at(fact, "geography", "id"),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "aggregation", "method"),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _str_at(fact, "layout", "groupby_dimension"),
+        _str_at(fact, "layout", "groupby_value_id"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+        _domain(fact),
+    )
+
+
+def _normalized_record_set_id(record_set_id: str) -> str:
+    if not record_set_id:
+        return ""
+    return ".".join(
+        part for part in record_set_id.split(".") if not _is_period_token(part)
+    )
+
+
+def _is_period_token(value: str) -> bool:
+    normalized = value.lower().replace("-", "_")
+    if normalized.startswith("month"):
+        normalized = normalized[len("month") :]
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
+    if normalized[:2] in {"ty", "cy", "fy"}:
+        normalized = normalized[2:]
+    return normalized.isdigit() and len(normalized) == 4
+
+
+def _period_key(fact: object) -> tuple[int, int, str]:
+    return _period_key_from_value(_at(fact, "period", "value"))
+
+
+def _period_key_from_value(value: object) -> tuple[int, int, str]:
+    label = "" if value is None else str(value)
+    normalized = label.lower().replace("-", "_")
+    for prefix in ("month", "tax_year_", "calendar_year_", "fiscal_year_"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+            break
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2:
+        year, month = parts
+        if year.isdigit() and month.isdigit():
+            return (1, int(year) * 100 + int(month), label)
+    try:
+        return (1, int(normalized) * 100 + 99, label)
+    except ValueError:
+        return (0, 0, label)
+
+
+def _prefer_period_candidate(
+    candidate: tuple[int, int, str],
+    current: tuple[int, int, str],
+    *,
+    target_period_key: tuple[int, int, str],
+) -> bool:
+    candidate_is_eligible = _not_after_target_period(candidate, target_period_key)
+    current_is_eligible = _not_after_target_period(current, target_period_key)
+    if candidate_is_eligible != current_is_eligible:
+        return candidate_is_eligible
+    return candidate > current
+
+
+def _not_after_target_period(
+    source_period_key: tuple[int, int, str],
+    target_period_key: tuple[int, int, str],
+) -> bool:
+    if not source_period_key[0] or not target_period_key[0]:
+        return True
+    return source_period_key[1] <= target_period_key[1]
 
 
 def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
