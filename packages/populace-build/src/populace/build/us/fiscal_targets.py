@@ -10,7 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from typing import Any, Literal
 
@@ -173,6 +173,26 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
 DIRECT_LEDGER_TARGETS: dict[
     tuple[str, str, str | None], tuple[str, str, dict[str, str]]
 ] = {
+    ("cbo", "actual_amount", "individual_income_taxes"): (
+        "income_tax",
+        "cbo",
+        {
+            "target_role": "federal_income_tax_total",
+            "source_concept_bridge": (
+                "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
+            ),
+        },
+    ),
+    ("cbo", "projected_amount", "individual_income_taxes"): (
+        "income_tax",
+        "cbo",
+        {
+            "target_role": "federal_income_tax_total",
+            "source_concept_bridge": (
+                "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
+            ),
+        },
+    ),
     ("cbo", "projected_amount", "adjusted_gross_income"): (
         "adjusted_gross_income",
         "cbo",
@@ -423,12 +443,22 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
     return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
 
 
-def compile_us_fiscal_target_registry(facts: object) -> TargetRegistry:
+def compile_us_fiscal_target_registry(
+    facts: object,
+    *,
+    target_period: int | str = 2024,
+) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed."""
     materialized_facts = tuple(facts)
     references = (
-        *_dynamic_us_fiscal_target_references(materialized_facts),
-        *US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
+        *_dynamic_us_fiscal_target_references(
+            materialized_facts,
+            target_period=target_period,
+        ),
+        *_references_for_target_period(
+            US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
+            target_period=target_period,
+        ),
     )
     return compile_ledger_target_references(
         materialized_facts,
@@ -439,30 +469,181 @@ def compile_us_fiscal_target_registry(facts: object) -> TargetRegistry:
 
 def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
+    *,
+    target_period: int | str,
 ) -> tuple[LedgerTargetReference, ...]:
-    references: list[LedgerTargetReference] = []
+    candidates: list[
+        tuple[tuple[str, ...], tuple[int, int, str], LedgerTargetReference]
+    ] = []
     for fact in facts:
-        reference = _reference_from_ledger_fact(fact)
+        reference = _reference_from_ledger_fact(fact, target_period=target_period)
         if reference is not None:
-            references.append(reference)
-    return tuple(references)
+            candidates.append((_dynamic_target_key(fact), _period_key(fact), reference))
+    latest: dict[
+        tuple[str, ...], tuple[tuple[int, int, str], LedgerTargetReference]
+    ] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for key, period_key, reference in candidates:
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        current = latest.get(key)
+        if current is None:
+            latest[key] = (period_key, reference)
+            continue
+        if _prefer_candidate(
+            period_key,
+            current[0],
+            target_period_key=target_period_key,
+        ):
+            latest[key] = (period_key, reference)
+    return tuple(reference for _, reference in latest.values())
 
 
-def _reference_from_ledger_fact(fact: object) -> LedgerTargetReference | None:
+def _dynamic_target_key(fact: object) -> tuple[str, ...]:
+    """Semantic identity for generated fiscal targets, excluding source period.
+
+    Ledger should retain old source years. A Populace build should activate only
+    one fact for each model target shape, choosing the latest source period
+    separately. The key therefore includes source, measure, geography, layout,
+    dimensions, and universe constraints, but strips period-like tokens from
+    record-set identifiers such as ``irs_soi.ty2023.table_1_1``.
+    """
+
+    model_target_key = _model_target_key(fact)
+    if model_target_key is not None:
+        return model_target_key
+    return (
+        _source_name(fact),
+        _measure_id(fact),
+        _geography_level(fact),
+        _geography_id(fact),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "aggregation", "method"),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _str_at(fact, "layout", "groupby_dimension"),
+        _str_at(fact, "layout", "groupby_value_id"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _model_target_key(fact: object) -> tuple[str, ...] | None:
+    source_name = _source_name(fact)
+    mapping = _direct_target_mapping(fact)
+    if mapping is None:
+        count_mapping = COUNT_LEDGER_TARGETS.get((source_name, _measure_id(fact)))
+        if count_mapping is None:
+            return None
+        base_variable, family, target_role = count_mapping
+        measure_mode = "positive_count"
+    else:
+        base_variable, family, metadata = mapping
+        target_role = metadata.get("target_role", "")
+        measure_mode = metadata.get("measure_mode", "sum")
+    base_variables = (
+        ",".join(base_variable) if isinstance(base_variable, tuple) else base_variable
+    )
+    return (
+        family,
+        base_variables,
+        target_role,
+        measure_mode,
+        _geography_level(fact),
+        _geography_id(fact),
+        _state_fips(fact) or "",
+        _str_at(fact, "layout", "groupby_value_id"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _normalized_record_set_id(record_set_id: str) -> str:
+    if not record_set_id:
+        return ""
+    return ".".join(
+        part for part in record_set_id.split(".") if not _is_period_token(part)
+    )
+
+
+def _is_period_token(value: str) -> bool:
+    normalized = value.lower().replace("-", "_")
+    if normalized.startswith("month"):
+        normalized = normalized[len("month") :]
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
+    if normalized[:2] in {"ty", "cy", "fy"}:
+        normalized = normalized[2:]
+    return normalized.isdigit() and len(normalized) == 4
+
+
+def _period_key(fact: object) -> tuple[int, int, str]:
+    return _period_key_from_value(_period_value(fact))
+
+
+def _period_key_from_value(value: object) -> tuple[int, int, str]:
+    label = "" if value is None else str(value)
+    normalized = label.lower().replace("-", "_")
+    for prefix in ("month", "tax_year_", "calendar_year_", "fiscal_year_"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+            break
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2:
+        year, month = parts
+        if year.isdigit() and month.isdigit():
+            return (1, int(year) * 100 + int(month), label)
+    try:
+        return (1, int(normalized) * 100 + 99, label)
+    except ValueError:
+        return (0, 0, label)
+
+
+def _prefer_candidate(
+    candidate: tuple[int, int, str],
+    current: tuple[int, int, str],
+    *,
+    target_period_key: tuple[int, int, str],
+) -> bool:
+    candidate_is_eligible = _not_after_target_period(candidate, target_period_key)
+    current_is_eligible = _not_after_target_period(current, target_period_key)
+    if candidate_is_eligible != current_is_eligible:
+        return candidate_is_eligible
+    return candidate > current
+
+
+def _not_after_target_period(
+    source_period_key: tuple[int, int, str],
+    target_period_key: tuple[int, int, str],
+) -> bool:
+    if not source_period_key[0] or not target_period_key[0]:
+        return True
+    return source_period_key[1] <= target_period_key[1]
+
+
+def _reference_from_ledger_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
-        return _soi_reference_from_fact(fact)
+        return _soi_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_stc":
-        return _state_income_tax_reference_from_fact(fact)
+        return _state_income_tax_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
         return None
-    return _direct_reference_from_fact(fact)
+    return _direct_reference_from_fact(fact, target_period=target_period)
 
 
-def _soi_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+def _soi_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
     if _geography_level(fact) not in {"country", "state"}:
         return None
     measure_id = _measure_id(fact)
@@ -485,6 +666,7 @@ def _soi_reference_from_fact(fact: object) -> LedgerTargetReference | None:
     metadata = {
         "source_measure_id": measure_id,
         "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
         "target_role": _soi_target_role(fact, measure_id),
         "variable": variable,
         "agi_lower_bound": lower,
@@ -502,14 +684,18 @@ def _soi_reference_from_fact(fact: object) -> LedgerTargetReference | None:
         entity="household",
         measure=source_record_id,
         aggregation="sum",
-        period=2024,
+        period=target_period,
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
     )
 
 
-def _state_income_tax_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+def _state_income_tax_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
     if _measure_id(fact) != "collections" or _geography_level(fact) != "state":
         return None
     state_fips = _state_fips(fact)
@@ -522,24 +708,26 @@ def _state_income_tax_reference_from_fact(fact: object) -> LedgerTargetReference
         entity="household",
         measure=source_record_id,
         aggregation="sum",
-        period=2024,
+        period=target_period,
         family="state_income_tax",
         metadata={
             "source_measure_id": "collections",
             "source_period": str(_period_value(fact)),
+            "target_period": str(target_period),
             "state_fips": state_fips,
             "target_role": "state_income_tax",
         },
     )
 
 
-def _direct_reference_from_fact(fact: object) -> LedgerTargetReference | None:
+def _direct_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
     source_name = _source_name(fact)
     measure_id = _measure_id(fact)
-    group_value = _str_at(fact, "layout", "groupby_value_id") or None
-    mapping = DIRECT_LEDGER_TARGETS.get(
-        (source_name, measure_id, group_value)
-    ) or DIRECT_LEDGER_TARGETS.get((source_name, measure_id, None))
+    mapping = _direct_target_mapping(fact)
     measure_mode = "sum"
     if mapping is None:
         count_mapping = COUNT_LEDGER_TARGETS.get((source_name, measure_id))
@@ -569,6 +757,7 @@ def _direct_reference_from_fact(fact: object) -> LedgerTargetReference | None:
         "measure_mode": metadata.get("measure_mode", measure_mode),
         "source_measure_id": measure_id,
         "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
     }
     if isinstance(base_variable, tuple):
         metadata["base_variables"] = ",".join(base_variable)
@@ -582,17 +771,45 @@ def _direct_reference_from_fact(fact: object) -> LedgerTargetReference | None:
         entity="household",
         measure=source_record_id,
         aggregation="sum",
-        period=2024,
+        period=target_period,
         family=family,
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
     )
 
 
+def _direct_target_mapping(
+    fact: object,
+) -> tuple[str | tuple[str, ...], str, dict[str, str]] | None:
+    source_name = _source_name(fact)
+    measure_id = _measure_id(fact)
+    group_value = _str_at(fact, "layout", "groupby_value_id") or None
+    return DIRECT_LEDGER_TARGETS.get(
+        (source_name, measure_id, group_value)
+    ) or DIRECT_LEDGER_TARGETS.get((source_name, measure_id, None))
+
+
+def _references_for_target_period(
+    references: tuple[LedgerTargetReference, ...],
+    *,
+    target_period: int | str,
+) -> tuple[LedgerTargetReference, ...]:
+    return tuple(
+        replace(
+            reference,
+            period=target_period,
+            metadata={
+                **dict(reference.metadata),
+                "target_period": str(target_period),
+            },
+        )
+        for reference in references
+    )
+
+
 def _soi_target_role(fact: object, measure_id: str) -> str:
     if _geography_level(fact) == "country" and _is_all_income_range(fact):
         roles = {
-            "income_tax_liability_amount": "federal_income_tax_total",
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
             "eitc_amount": "eitc_total",
             "actc_amount": "refundable_ctc_total",
@@ -701,6 +918,16 @@ def _dimensions(fact: object) -> dict[str, object]:
     return dict(dimensions) if isinstance(dimensions, dict) else {}
 
 
+def _constraint_rows(fact: object) -> tuple[object, ...]:
+    constraints = _at(fact, "constraints")
+    if isinstance(constraints, list | tuple):
+        return tuple(constraints)
+    universe_constraints = _at(fact, "universe_constraints", "constraints")
+    if isinstance(universe_constraints, list | tuple):
+        return tuple(universe_constraints)
+    return ()
+
+
 def _at(obj: object, *path: str) -> Any:
     current = obj
     for key in path:
@@ -760,11 +987,12 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
     TargetCoverageRequirement(
         requirement_id="federal_income_tax_total",
         label="Federal individual income tax total",
-        accepted_families=("cbo", "irs_soi"),
+        accepted_families=("cbo",),
         required_metadata=(("target_role", "federal_income_tax_total"),),
         notes=(
-            "A positive-income-tax diagnostic is not enough; the profile needs "
-            "the total federal income tax aggregate used by downstream netting."
+            "Must be the CBO individual income tax receipts macro control. "
+            "IRS SOI liability rows remain distributional targets, not the "
+            "top-line receipts control."
         ),
     ),
     TargetCoverageRequirement(

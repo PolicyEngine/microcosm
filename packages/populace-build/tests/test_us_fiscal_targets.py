@@ -206,7 +206,7 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                     "source_name": "cms_medicaid",
                     "source_measure_id": "total_medicaid_chip_enrollment",
                 },
-            }
+            },
         ]
     )
 
@@ -216,6 +216,206 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
     assert spec.metadata["target_role"] == "medicaid_chip_enrollment"
     assert spec.metadata["base_variables"] == "medicaid_enrolled,chip_enrolled"
     assert "base_variable" not in spec.metadata
+
+
+def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
+    source_record_id = "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_income_tax_fact(2023, value=2_100_000_000_000),
+        ],
+        target_period=2025,
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.period == 2025
+    assert spec.metadata["source_period"] == "2023"
+    assert spec.metadata["target_period"] == "2025"
+    assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+
+
+def test_static_jct_targets_use_builder_target_period() -> None:
+    registry = compile_us_fiscal_target_registry(
+        packaged_reference_facts(),
+        target_period=2025,
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs[ECPS_JCT_TAX_EXPENDITURE_TARGETS["salt_deduction"]]
+    assert spec.period == 2025
+    assert spec.metadata["target_period"] == "2025"
+    assert spec.metadata["target_role"] == "jct_tax_expenditure"
+
+
+def test_cbo_individual_income_tax_receipts_supply_macro_income_tax_target() -> None:
+    source_record_id = "cbo.fy2024.revenues.individual_income_taxes.actual_amount"
+
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cbo_income_tax_fact(2024, value=2_426_067_000_000),
+        ]
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "cbo"
+    assert spec.measure == source_record_id
+    assert spec.period == 2024
+    assert spec.value == 2_426_067_000_000
+    assert spec.metadata["target_role"] == "federal_income_tax_total"
+    assert spec.metadata["base_variable"] == "income_tax"
+    assert spec.metadata["source_period"] == "2024"
+    assert spec.metadata["target_period"] == "2024"
+    assert (
+        spec.metadata["source_concept_bridge"]
+        == "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
+    )
+
+
+def test_cbo_actual_and_projected_income_tax_receipts_emit_one_macro_target() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cbo_income_tax_fact(
+                2024,
+                value=2_426_067_000_000,
+                measure_id="actual_amount",
+            ),
+            _cbo_income_tax_fact(
+                2025,
+                value=2_656_000_000_000,
+                measure_id="projected_amount",
+            ),
+        ],
+        target_period=2025,
+    )
+
+    income_tax_specs = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "federal_income_tax_total"
+    ]
+    assert len(income_tax_specs) == 1
+    spec = income_tax_specs[0]
+    assert spec.value == 2_656_000_000_000
+    assert spec.period == 2025
+    assert spec.metadata["ledger_source_record_id"] == (
+        "cbo.fy2025.revenues.individual_income_taxes.projected_amount"
+    )
+    assert spec.metadata["source_measure_id"] == "projected_amount"
+    assert spec.metadata["source_period"] == "2025"
+
+
+def test_soi_income_tax_liability_does_not_supply_macro_income_tax_target() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_income_tax_fact(2023, value=2_100_000_000_000),
+        ]
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs["irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["target_role"] == "soi_fiscal_distribution"
+
+
+def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_income_tax_fact(2022, value=2_000_000_000_000),
+            _soi_income_tax_fact(2023, value=2_100_000_000_000),
+        ]
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert "irs_soi.ty2022.table_3_3.us.all.income_tax_liability_amount" not in (
+        by_source_record_id
+    )
+    spec = by_source_record_id[
+        "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+    ]
+    assert spec.value == 2_100_000_000_000
+    assert spec.metadata["source_period"] == "2023"
+    assert spec.metadata["target_period"] == "2024"
+
+
+def test_dynamic_us_fiscal_targets_do_not_prefer_future_observed_years() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_income_tax_fact(2023, value=2_100_000_000_000),
+            _soi_income_tax_fact(2025, value=2_600_000_000_000),
+        ],
+        target_period=2024,
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert "irs_soi.ty2025.table_3_3.us.all.income_tax_liability_amount" not in (
+        by_source_record_id
+    )
+    spec = by_source_record_id[
+        "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+    ]
+    assert spec.value == 2_100_000_000_000
+    assert spec.period == 2024
+
+
+def test_dynamic_us_fiscal_targets_skip_future_only_source_periods() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_income_tax_fact(2025, value=2_600_000_000_000),
+        ],
+        target_period=2024,
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert "irs_soi.ty2025.table_3_3.us.all.income_tax_liability_amount" not in (
+        by_source_record_id
+    )
+
+
+def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=80_000_000,
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2025-12",
+                value=82_000_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert (
+        "cms_medicaid.month2025_12.us.total_medicaid_chip_enrollment"
+        not in by_source_record_id
+    )
+    spec = by_source_record_id[
+        "cms_medicaid.month2024_12.us.total_medicaid_chip_enrollment"
+    ]
+    assert spec.value == 80_000_000
+    assert spec.metadata["source_period"] == "2024-12"
+    assert spec.period == 2024
 
 
 def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
@@ -259,7 +459,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
     assert any("federal_income_tax_total" in failure for failure in result.failures)
 
 
-def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
+def test_soi_income_tax_liability_does_not_satisfy_total_tax() -> None:
     targets = [
         {
             "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
@@ -267,6 +467,23 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
             "family": "irs_soi",
             "metadata": {"target_role": "federal_income_tax_total"},
         },
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *complete_program_rows(),
+        *complete_state_income_tax_rows(45),
+        *complete_jct_rows(),
+    ]
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    assert not result.passed
+    assert any("federal_income_tax_total" in failure for failure in result.failures)
+
+
+def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
+    targets = [
+        federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_program_rows(),
@@ -287,12 +504,7 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
 
 def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
     targets = [
-        {
-            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
-            "measure": "income_tax",
-            "family": "irs_soi",
-            "metadata": {"target_role": "federal_income_tax_total"},
-        },
+        federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_program_rows(),
@@ -309,12 +521,7 @@ def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
 
 def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
     targets = [
-        {
-            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
-            "measure": "income_tax",
-            "family": "irs_soi",
-            "metadata": {"target_role": "federal_income_tax_total"},
-        },
+        federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *[
@@ -337,12 +544,7 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
 
 def test_medicaid_requirements_need_spending_and_enrollment_roles() -> None:
     base_targets = [
-        {
-            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
-            "measure": "income_tax",
-            "family": "irs_soi",
-            "metadata": {"target_role": "federal_income_tax_total"},
-        },
+        federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_state_income_tax_rows(45),
@@ -454,6 +656,148 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     }
 
 
+def packaged_reference_facts() -> list[dict[str, object]]:
+    return [
+        _ledger_fact_for_reference(reference, value=index + 1)
+        for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
+    ]
+
+
+def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty{source_period}.table_3_3.us.all.income_tax_liability_amount"
+    )
+    return {
+        "aggregate_fact_key": (
+            f"ledger.aggregate_fact.v2:income-tax-liability-{source_period}"
+        ),
+        "semantic_fact_key": (
+            f"ledger.semantic_fact.v2:income-tax-liability-{source_period}"
+        ),
+        "legacy_fact_key": f"ledger.fact.v1:income-tax-liability-{source_period}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "tax_year", "value": source_period},
+        "entity": {"name": "tax_unit"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US"},
+        "dimensions": {"income_range": "all", "filing_status": "all"},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": f"irs_soi.ty{source_period}.table_3_3",
+            "groupby_dimension": "adjusted_gross_income",
+            "groupby_value_id": "all",
+            "measure_id": "income_tax_liability_amount",
+        },
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 3.3",
+            "source_measure_id": "income_tax_liability_amount",
+            "source_concept": "irs_soi.income_tax_liability_amount",
+            "unit": "usd",
+        },
+        "source": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 3.3",
+            "source_file": f"{str(source_period)[-2:]}in33ar.xls",
+            "vintage": f"tax_year_{source_period}",
+            "url": f"https://www.irs.gov/pub/irs-soi/{str(source_period)[-2:]}in33ar.xls",
+        },
+    }
+
+
+def _cbo_income_tax_fact(
+    source_period: int,
+    *,
+    value: float,
+    measure_id: str = "actual_amount",
+) -> dict[str, object]:
+    source_record_id = (
+        f"cbo.fy{source_period}.revenues.individual_income_taxes.{measure_id}"
+    )
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:cbo-income-tax-{source_period}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:cbo-income-tax-{source_period}",
+        "legacy_fact_key": f"ledger.fact.v1:cbo-income-tax-{source_period}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "fiscal_year", "value": source_period},
+        "entity": {"name": "household"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US"},
+        "dimensions": {},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": f"cbo.fy{source_period}.revenues",
+            "groupby_dimension": "revenue_source",
+            "groupby_value_id": "individual_income_taxes",
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": "cbo",
+            "source_table": "Historical Budget Data",
+            "source_measure_id": measure_id,
+            "source_concept": "cbo.individual_income_tax_receipts",
+            "unit": "usd",
+        },
+        "source": {
+            "source_name": "cbo",
+            "source_table": "Historical Budget Data",
+            "source_file": "revenue.xlsx",
+            "vintage": f"fiscal_year_{source_period}",
+            "url": "https://www.cbo.gov/data/budget-economic-data",
+        },
+    }
+
+
+def _cms_medicaid_enrollment_fact(
+    source_period: str,
+    *,
+    value: float,
+) -> dict[str, object]:
+    normalized_period = source_period.replace("-", "_")
+    source_record_id = (
+        f"cms_medicaid.month{normalized_period}.us.total_medicaid_chip_enrollment"
+    )
+    return {
+        "aggregate_fact_key": (
+            f"ledger.aggregate_fact.v2:cms-medicaid-{normalized_period}"
+        ),
+        "semantic_fact_key": (
+            f"ledger.semantic_fact.v2:cms-medicaid-{normalized_period}"
+        ),
+        "legacy_fact_key": f"ledger.fact.v1:cms-medicaid-{normalized_period}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "month", "value": source_period},
+        "entity": {"name": "person"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US"},
+        "dimensions": {},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": f"cms_medicaid.month{normalized_period}",
+            "groupby_dimension": "program",
+            "groupby_value_id": "total_medicaid_chip_enrollment",
+            "measure_id": "total_medicaid_chip_enrollment",
+        },
+        "observed_measure": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "source_concept": "cms.total_medicaid_chip_enrollment",
+            "unit": "people",
+        },
+        "source": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "source_file": f"enrollment_{normalized_period}.csv",
+            "vintage": f"month_{normalized_period}",
+            "url": "https://data.medicaid.gov/",
+        },
+    }
+
+
 def _fact_id(name: str, period: object) -> str:
     slug = (
         str(name)
@@ -477,18 +821,22 @@ def reference_source_record_id(reference) -> str:
 
 def complete_coverage_targets() -> list[dict[str, object]]:
     return [
-        {
-            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
-            "measure": "income_tax",
-            "family": "irs_soi",
-            "metadata": {"target_role": "federal_income_tax_total"},
-        },
+        federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
         *complete_jct_rows(),
     ]
+
+
+def federal_income_tax_total_row() -> dict[str, object]:
+    return {
+        "name": "cbo.fy2024.revenues.individual_income_taxes.actual_amount",
+        "measure": "cbo.fy2024.revenues.individual_income_taxes.actual_amount",
+        "family": "cbo",
+        "metadata": {"target_role": "federal_income_tax_total"},
+    }
 
 
 def complete_agi_distribution_rows() -> list[dict[str, object]]:

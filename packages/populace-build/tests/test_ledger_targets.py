@@ -110,6 +110,75 @@ def _consumer_fact_row(**overrides):
     return row
 
 
+def _consumer_fact_row_for_period(source_period: int, *, value: float):
+    return _consumer_fact_row(
+        aggregate_fact_key=f"ledger.aggregate_fact.v2:agi-{source_period}",
+        legacy_fact_key=f"ledger.fact.v1:agi-{source_period}",
+        semantic_fact_key=f"ledger.semantic_fact.v2:agi-{source_period}",
+        lineage={
+            "source_record_id": (
+                f"irs_soi.ty{source_period}.table_1_1.all.adjusted_gross_income"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:cell"],
+            "source_row_keys": [],
+        },
+        value=value,
+        period={"type": "tax_year", "value": source_period},
+        source={
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.1",
+            "source_file": f"{str(source_period)[-2:]}in11si.xls",
+            "url": f"https://www.irs.gov/pub/irs-soi/{str(source_period)[-2:]}in11si.xls",
+            "vintage": f"tax_year_{source_period}",
+        },
+        layout={
+            "record_set_id": f"irs_soi.ty{source_period}.table_1_1",
+            "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+            "groupby_value_id": "all",
+            "measure_id": "adjusted_gross_income",
+        },
+    )
+
+
+def _monthly_consumer_fact_row(source_period: str, *, value: float):
+    normalized_period = source_period.replace("-", "_")
+    return _consumer_fact_row(
+        aggregate_fact_key=f"ledger.aggregate_fact.v2:medicaid-{normalized_period}",
+        legacy_fact_key=f"ledger.fact.v1:medicaid-{normalized_period}",
+        semantic_fact_key=f"ledger.semantic_fact.v2:medicaid-{normalized_period}",
+        lineage={
+            "source_record_id": (
+                f"cms_medicaid.month{normalized_period}."
+                "us.total_medicaid_chip_enrollment"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:cell"],
+            "source_row_keys": [],
+        },
+        value=value,
+        period={"type": "month", "value": source_period},
+        source={
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "source_file": f"enrollment_{normalized_period}.csv",
+            "url": "https://data.medicaid.gov/",
+            "vintage": f"month_{normalized_period}",
+        },
+        entity={"name": "person"},
+        layout={
+            "record_set_id": f"cms_medicaid.month{normalized_period}",
+            "groupby_dimension": "program",
+            "groupby_value_id": "total_medicaid_chip_enrollment",
+            "measure_id": "total_medicaid_chip_enrollment",
+        },
+        observed_measure={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "source_concept": "cms.total_medicaid_chip_enrollment",
+            "unit": "people",
+        },
+    )
+
+
 def test__given_supported_ledger_fact__then_populace_target_preserves_lineage() -> None:
     # Given
     mapping = LedgerTargetMapping(
@@ -332,6 +401,199 @@ def test__given_missing_ledger_reference_fact__then_compilation_fails() -> None:
     with pytest.raises(ValueError, match="did not match a Ledger fact identifier"):
         compile_ledger_target_references(
             [_consumer_fact_row()], [reference], country="us"
+        )
+
+
+def test__given_selector_matches_multiple_years__then_latest_source_period_is_used() -> (
+    None
+):
+    # Given
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "aggregation_method": "sum",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        aggregation="sum",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _consumer_fact_row_for_period(2022, value=14_000_000_000_000),
+            _consumer_fact_row_for_period(2023, value=15_000_000_000_000),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.value == 15_000_000_000_000
+    assert (
+        spec.metadata["ledger_source_record_id"]
+        == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
+    )
+
+
+def test__given_selector_matches_future_year__then_latest_eligible_period_is_used() -> (
+    None
+):
+    # Given
+    reference = LedgerTargetReference(
+        name="latest eligible SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "aggregation_method": "sum",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        aggregation="sum",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _consumer_fact_row_for_period(2023, value=15_000_000_000_000),
+            _consumer_fact_row_for_period(2025, value=17_000_000_000_000),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.value == 15_000_000_000_000
+    assert (
+        spec.metadata["ledger_source_record_id"]
+        == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
+    )
+
+
+def test__given_selector_matches_future_month__then_latest_eligible_period_is_used() -> (
+    None
+):
+    # Given
+    reference = LedgerTargetReference(
+        name="latest eligible Medicaid enrollment",
+        ledger_selector={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "person",
+            "aggregation_method": "sum",
+            "layout_groupby_value_id": "total_medicaid_chip_enrollment",
+        },
+        entity="person",
+        measure="total_medicaid_chip_enrollment",
+        aggregation="sum",
+        period=2024,
+        family="cms_medicaid",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _monthly_consumer_fact_row("2024-12", value=80_000_000),
+            _monthly_consumer_fact_row("2025-12", value=82_000_000),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.value == 80_000_000
+    assert (
+        spec.metadata["ledger_source_record_id"]
+        == "cms_medicaid.month2024_12.us.total_medicaid_chip_enrollment"
+    )
+
+
+def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_used() -> (
+    None
+):
+    # Given
+    reference = LedgerTargetReference(
+        name="latest eligible Medicaid enrollment",
+        ledger_selector={
+            "source_name": "cms_medicaid",
+            "source_measure_id": "total_medicaid_chip_enrollment",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "person",
+            "aggregation_method": "sum",
+            "layout_groupby_value_id": "total_medicaid_chip_enrollment",
+        },
+        entity="person",
+        measure="total_medicaid_chip_enrollment",
+        aggregation="sum",
+        period=2024,
+        family="cms_medicaid",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _monthly_consumer_fact_row("2024-11", value=79_000_000),
+            _monthly_consumer_fact_row("2024-12", value=80_000_000),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.value == 80_000_000
+    assert (
+        spec.metadata["ledger_source_record_id"]
+        == "cms_medicaid.month2024_12.us.total_medicaid_chip_enrollment"
+    )
+
+
+def test__given_selector_matches_only_future_year__then_compilation_fails() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="latest eligible SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "aggregation_method": "sum",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        aggregation="sum",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="at or before target period"):
+        compile_ledger_target_references(
+            [_consumer_fact_row_for_period(2025, value=17_000_000_000_000)],
+            [reference],
+            country="us",
         )
 
 
