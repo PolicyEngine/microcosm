@@ -17,7 +17,7 @@ from populace.build.us import (
 )
 from populace.build.us.fiscal_targets import US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES
 
-ECPS_JCT_TAX_EXPENDITURE_TARGETS = {
+REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
     "medical_expense_deduction": (
         "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss"
@@ -33,7 +33,7 @@ ECPS_JCT_TAX_EXPENDITURE_TARGETS = {
     ),
 }
 
-ECPS_PARITY_TARGET_ROLES = {
+REFERENCE_PROGRAM_TARGET_ROLES = {
     "federal_income_tax_total",
     "social_security_total",
     "ssi_total",
@@ -79,12 +79,14 @@ def test_legacy_us_fiscal_value_manifest_is_not_packaged() -> None:
 
 
 def test_us_fiscal_target_references_are_declared_registry() -> None:
-    assert len(US_FISCAL_TARGET_REFERENCES) == len(ECPS_JCT_TAX_EXPENDITURE_TARGETS)
+    assert len(US_FISCAL_TARGET_REFERENCES) == len(
+        REFERENCE_JCT_TAX_EXPENDITURE_TARGETS
+    )
     assert {reference.family for reference in US_FISCAL_TARGET_REFERENCES} == {"jct"}
     assert len(US_SOI_FISCAL_TARGET_REFERENCES) == 0
     assert len(US_STATE_INCOME_TAX_TARGET_REFERENCES) == 0
     assert len(US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES) == len(
-        ECPS_JCT_TAX_EXPENDITURE_TARGETS
+        REFERENCE_JCT_TAX_EXPENDITURE_TARGETS
     )
     for reference in US_FISCAL_TARGET_REFERENCES:
         assert reference.value_operation == "identity"
@@ -145,13 +147,15 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
 
 
 def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:
-    assert len(US_JCT_TAX_EXPENDITURE_REFORMS) == len(ECPS_JCT_TAX_EXPENDITURE_TARGETS)
+    assert len(US_JCT_TAX_EXPENDITURE_REFORMS) == len(
+        REFERENCE_JCT_TAX_EXPENDITURE_TARGETS
+    )
     by_variable = {
         spec.neutralized_variable: spec for spec in US_JCT_TAX_EXPENDITURE_REFORMS
     }
     assert {
         variable: spec.target_name for variable, spec in by_variable.items()
-    } == ECPS_JCT_TAX_EXPENDITURE_TARGETS
+    } == REFERENCE_JCT_TAX_EXPENDITURE_TARGETS
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         assert isinstance(spec, SimpleTaxExpenditureReform)
         assert spec.measure == spec.target_name
@@ -175,13 +179,13 @@ def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
     assert result.passed
 
 
-def test_us_fiscal_target_references_cover_ecps_program_surface() -> None:
+def test_us_fiscal_target_references_cover_reference_program_surface() -> None:
     roles = {
         (target.get("metadata") or {}).get("target_role")
         for target in complete_coverage_targets()
         if isinstance(target, dict)
     }
-    assert ECPS_PARITY_TARGET_ROLES <= roles
+    assert REFERENCE_PROGRAM_TARGET_ROLES <= roles
 
 
 def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> None:
@@ -244,7 +248,7 @@ def test_static_jct_targets_use_builder_target_period() -> None:
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
-    spec = specs[ECPS_JCT_TAX_EXPENDITURE_TARGETS["salt_deduction"]]
+    spec = specs[REFERENCE_JCT_TAX_EXPENDITURE_TARGETS["salt_deduction"]]
     assert spec.period == 2025
     assert spec.metadata["target_period"] == "2025"
     assert spec.metadata["target_role"] == "jct_tax_expenditure"
@@ -400,7 +404,7 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
     assert spec.period == 2024
 
 
-def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
+def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> None:
     ids = {req.requirement_id for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS}
     assert "federal_income_tax_total" in ids
     assert "social_security_total" in ids
@@ -855,7 +859,7 @@ def complete_income_source_rows() -> list[dict[str, object]]:
 
 def complete_program_rows() -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for role in ECPS_PARITY_TARGET_ROLES:
+    for role in REFERENCE_PROGRAM_TARGET_ROLES:
         if role == "federal_income_tax_total":
             continue
         if role.startswith("ssa_") or role in {
