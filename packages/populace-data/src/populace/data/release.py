@@ -161,9 +161,8 @@ def publish_release(
     artifact_root = Path(artifact_root) if artifact_root is not None else None
 
     contract_files = required_release_files(release_id)
-    filenames = list(contract_files) + [
-        name for name in extra_files if name not in contract_files
-    ]
+    release_artifacts = _release_manifest_release_artifacts(release_dir)
+    filenames = _ordered_unique((*contract_files, *release_artifacts, *extra_files))
     for filename in filenames:
         local = release_dir / filename
         if not local.is_file():
@@ -271,9 +270,38 @@ def _release_manifest_root_artifacts(release_dir: Path) -> dict[str, str]:
             continue
         if path.startswith("releases/"):
             continue
+        if (release_dir / path).is_file():
+            continue
         if isinstance(sha, str):
             root_artifacts[path] = sha
     return root_artifacts
+
+
+def _release_manifest_release_artifacts(release_dir: Path) -> tuple[str, ...]:
+    """Non-contract release-dir artifacts declared by the release manifest."""
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    artifacts = manifest.get("artifacts", {})
+    if not isinstance(artifacts, dict):  # pragma: no cover - validated already
+        return ()
+    contract_files = set(required_release_files(release_dir.name))
+    filenames: list[str] = []
+    for artifact in artifacts.values():
+        if not isinstance(artifact, dict):  # pragma: no cover - validated already
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path:
+            continue
+        filename = path
+        release_prefix = f"releases/{release_dir.name}/"
+        if filename.startswith(release_prefix):
+            filename = filename.removeprefix(release_prefix)
+        if filename in contract_files:
+            continue
+        if "/" in filename:
+            continue
+        if (release_dir / filename).is_file():
+            filenames.append(filename)
+    return tuple(filenames)
 
 
 def _release_manifest_artifact_paths(release_dir: Path) -> dict[str, str]:
@@ -301,6 +329,17 @@ def _release_manifest_artifact_paths(release_dir: Path) -> dict[str, str]:
             continue
         paths[str(key)] = path
     return paths
+
+
+def _ordered_unique(names: tuple[str, ...]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
 
 
 def _release_manifest_artifact_revisions(release_dir: Path) -> set[str]:
