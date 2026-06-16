@@ -212,6 +212,24 @@ class TestUsSources:
         }
         assert "forbes" not in str(operation.parameters).lower()
 
+    def test_aca_stage_declares_marketplace_input_surface(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+        outputs = set(stage.outputs)
+        assert stage.grain == "tax_unit"
+        assert "takes_up_aca_if_eligible" in outputs
+        assert "selected_marketplace_plan_benchmark_ratio" in outputs
+        assert any(
+            operation.kind == "calibrate_binary_assignment"
+            and operation.parameters.get("variable") == "takes_up_aca_if_eligible"
+            for operation in stage.operations
+        )
+        assert any(
+            operation.kind == "compute_ratio"
+            and operation.parameters.get("output")
+            == "selected_marketplace_plan_benchmark_ratio"
+            for operation in stage.operations
+        )
+
     def test_no_incumbent_data_package_references_in_live_tree(self) -> None:
         forbidden = (
             "policyengine_" + "us_data",

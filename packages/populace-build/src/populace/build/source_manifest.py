@@ -36,8 +36,12 @@ FORBIDDEN_SOURCE_DEPENDENCIES = (
 ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
     {
         "aggregate_person_to_household",
+        "aggregate_person_to_tax_unit",
         "assign_by_plan_type",
+        "assign_binary_from_rate",
+        "calibrate_binary_assignment",
         "convert_interest_to_structural_mortgage_inputs",
+        "compute_ratio",
         "derive",
         "derive_mortgage_balance_hints",
         "disaggregate_aggregate_records",
