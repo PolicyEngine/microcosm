@@ -149,9 +149,13 @@ def in_sample_reform_specs(
                 category="JCT tax expenditure",
                 in_sample=True,
                 period=int(period),
-                jct_score=float(reform.value),
+                # The JCT figure for an in-sample reform is the calibration
+                # target's own value, supplied at payload time via
+                # in_sample_targets — it lives in the ledger now, not on the
+                # reform object.
+                jct_score=None,
                 jct_window="annual",
-                jct_source=reform.source,
+                jct_source=reform.source or "JCT tax-expenditure (calibration target)",
                 jct_source_url="",
                 budget_measure=reform.output_variable or DEFAULT_BUDGET_MEASURE,
                 neutralized_variable=reform.neutralized_variable,
@@ -294,6 +298,7 @@ def reform_validation_payload(
     period: int,
     simulate: SimulateFn | None = None,
     in_sample_estimates: dict[str, float] | None = None,
+    in_sample_targets: dict[str, float] | None = None,
     release_id: str | None = None,
 ) -> dict[str, Any]:
     """Score each reform on the dataset and render the JSON-stable payload.
@@ -311,6 +316,7 @@ def reform_validation_payload(
     calibration-diagnostics dashboard's reform_validation reader.
     """
     estimates = in_sample_estimates or {}
+    targets = in_sample_targets or {}
     baseline: Any = None
     baseline_totals: dict[tuple[int, str], float] = {}
 
@@ -341,6 +347,10 @@ def reform_validation_payload(
             reform_total: float | None = None
         else:
             effect, base_total, reform_total = simulated_effect(spec)
+        # In-sample reforms get their JCT figure from the calibration target.
+        effective_jct = spec.jct_score
+        if effective_jct is None and spec.in_sample and spec.id in targets:
+            effective_jct = targets[spec.id]
         rows.append(
             {
                 "id": spec.id,
@@ -350,7 +360,7 @@ def reform_validation_payload(
                 "period": spec.period,
                 "description": spec.description or None,
                 "jct": {
-                    "score": None if spec.jct_score is None else _finite(spec.jct_score),
+                    "score": None if effective_jct is None else _finite(effective_jct),
                     "score_type": spec.jct_score_type,
                     "window": spec.jct_window or None,
                     "source": spec.jct_source or None,

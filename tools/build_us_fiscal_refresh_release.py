@@ -1021,6 +1021,20 @@ def _in_sample_estimates(result) -> dict[str, float]:
     return estimates
 
 
+def _in_sample_targets(result) -> dict[str, float]:
+    """Calibration target value (the JCT figure) per target, keyed by name.
+
+    In-sample reforms are JCT tax-expenditure calibration targets, so their JCT
+    figure is the target's own value the calibration fit against.
+    """
+    targets: dict[str, float] = {}
+    for diagnostic, target in zip(result.diagnostics, result.problem.targets, strict=True):
+        value = diagnostic.target
+        if value is not None and math.isfinite(float(value)):
+            targets[target.name] = float(value)
+    return targets
+
+
 def _write_reform_validation(
     *,
     release_dir: Path,
@@ -1044,6 +1058,7 @@ def _write_reform_validation(
         period=PERIOD,
         simulate=simulate,
         in_sample_estimates=_in_sample_estimates(result),
+        in_sample_targets=_in_sample_targets(result),
         release_id=release_id,
     )
     write_reform_validation(payload, release_dir / "reform_validation.json")
