@@ -23,6 +23,15 @@
           "weight": "s006"
         },
         {
+          "kind": "disaggregate_aggregate_records",
+          "method": "donor_template_calibration",
+          "spec": "puf_aggregate_record_disaggregation",
+          "replace_records": [999996, 999997, 999998, 999999],
+          "weight": "s006",
+          "amount_columns": "irs_puf_amount_columns",
+          "seed_from_build_config": true
+        },
+        {
           "kind": "uprate",
           "from_year": 2015,
           "to_year_from_build_config": true
@@ -60,7 +69,7 @@
         "charitable_deduction",
         "interest_deduction"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled."
     },
     {
       "stage": "scf_wealth",
