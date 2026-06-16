@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 
 from populace.calibrate import TargetSpec
 from populace.frame import Frame, WeightKind
@@ -210,6 +211,29 @@ def test_release_gate_failures_include_target_profile_coverage() -> None:
     ]
 
 
+def test_release_gate_failures_include_health_input_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(object(),),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    health_input_gate = builder.GateResult(
+        name="health_input_signal",
+        passed=False,
+        failures=("takes_up_aca_if_eligible: constant",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        health_input_gate=health_input_gate,
+    ) == [
+        "Health input signal failed: takes_up_aca_if_eligible: constant",
+    ]
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -236,6 +260,53 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
         "1 positive fiscal targets have zero materialized support "
         f"(examples: nation/irs/zero@{builder.PERIOD})."
     ]
+
+
+def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:
+    builder = _load_builder_module()
+
+    class FakeFrame:
+        def table(self, name):
+            assert name == "tax_unit"
+            return pd.DataFrame(
+                {
+                    "takes_up_aca_if_eligible": [True, True, True],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0, 1.0],
+                }
+            )
+
+    gate = builder._health_input_signal_gate(FakeFrame())
+
+    assert not gate.passed
+    assert gate.name == "health_input_signal"
+    assert len(gate.failures) == 2
+    assert any("takes_up_aca_if_eligible" in failure for failure in gate.failures)
+    assert any(
+        "selected_marketplace_plan_benchmark_ratio" in failure
+        for failure in gate.failures
+    )
+
+
+def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
+    builder = _load_builder_module()
+
+    class FakeFrame:
+        def table(self, name):
+            assert name == "tax_unit"
+            return pd.DataFrame(
+                {
+                    "takes_up_aca_if_eligible": [True, False, True],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 0.8, 1.2],
+                }
+            )
+
+    gate = builder._health_input_signal_gate(FakeFrame())
+
+    assert gate.passed
+    assert gate.details["unique_counts"] == {
+        "selected_marketplace_plan_benchmark_ratio": 3,
+        "takes_up_aca_if_eligible": 2,
+    }
 
 
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
@@ -312,6 +383,16 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             passed=True,
             details={"requirements_checked": 1},
         ),
+        health_input_gate=builder.GateResult(
+            name="health_input_signal",
+            passed=True,
+            details={
+                "unique_counts": {
+                    "takes_up_aca_if_eligible": 2,
+                    "selected_marketplace_plan_benchmark_ratio": 3,
+                }
+            },
+        ),
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -323,6 +404,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         ]
         == 1
     )
+    assert build_manifest["gates"]["health_input_signal"]["passed"]
+    assert build_manifest["gates"]["health_input_signal"]["details"][
+        "unique_counts"
+    ] == {
+        "takes_up_aca_if_eligible": 2,
+        "selected_marketplace_plan_benchmark_ratio": 3,
+    }
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {

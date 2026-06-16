@@ -49,6 +49,7 @@ __all__ = [
     "formula_owned_export_gate",
     "exported_nonzero_gate",
     "macro_realism_gate",
+    "nonconstant_columns_gate",
     "nonnegative_columns_gate",
     "parity_gate",
     "support_gate",
@@ -443,6 +444,115 @@ def exported_nonzero_gate(
                 if name in column_shares
             },
             "unused_exemptions": unused,
+        },
+    )
+
+
+def _observed_column_values(values: Iterable[object]) -> np.ndarray:
+    arr = np.asarray(values)
+    if arr.ndim == 0:
+        arr = arr.reshape(1)
+    else:
+        arr = arr.reshape(-1)
+    if arr.dtype.kind == "f":
+        return arr[np.isfinite(arr)]
+    if arr.dtype.kind in {"b", "i", "u", "S", "U"}:
+        return arr
+    observed = []
+    for value in arr.astype(object):
+        if value is None:
+            continue
+        if isinstance(value, (float, np.floating)) and not np.isfinite(float(value)):
+            continue
+        observed.append(value)
+    return np.asarray(observed, dtype=object)
+
+
+def _json_scalar(value: object) -> object:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        return value.decode()
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    return str(value)
+
+
+def _unique_observed_values(values: np.ndarray) -> np.ndarray:
+    try:
+        return np.unique(values)
+    except TypeError:
+        return np.asarray(sorted({repr(value) for value in values}), dtype=object)
+
+
+def nonconstant_columns_gate(
+    column_values: Mapping[str, Iterable[object]],
+    required_nonconstant: Iterable[str],
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Require selected release-input columns to carry distributional signal.
+
+    This catches a different failure mode than an all-zero check: a boolean
+    take-up input can be populated but all ``True``, or a plan-choice scalar
+    can be populated but exactly ``1.0`` for every record. Those columns pass
+    presence and non-zero gates while still masking the intended stochastic or
+    imputed source signal.
+    """
+
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    required = {str(name) for name in required_nonconstant}
+    failures: list[str] = []
+    unique_counts: dict[str, int] = {}
+    observed_counts: dict[str, int] = {}
+    unique_examples: dict[str, list[object]] = {}
+    constant_values: dict[str, object] = {}
+
+    for name in sorted(required):
+        if name in exclusions:
+            continue
+        if name not in column_values:
+            failures.append(f"{name}: required nonconstant column missing.")
+            observed_counts[name] = 0
+            unique_counts[name] = 0
+            unique_examples[name] = []
+            continue
+        observed = _observed_column_values(column_values[name])
+        observed_counts[name] = int(observed.size)
+        if observed.size == 0:
+            failures.append(f"{name}: required nonconstant column has no values.")
+            unique_counts[name] = 0
+            unique_examples[name] = []
+            continue
+        unique = _unique_observed_values(observed)
+        unique_counts[name] = int(unique.size)
+        examples = [_json_scalar(value) for value in unique[:5]]
+        unique_examples[name] = examples
+        if unique.size < 2:
+            constant = examples[0] if examples else None
+            constant_values[name] = constant
+            failures.append(
+                f"{name}: required nonconstant column has one observed value "
+                f"({constant!r}); regenerate upstream source inputs before release."
+            )
+
+    unused = sorted(set(exclusions) - required)
+    return GateResult(
+        name="nonconstant_columns",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": len(required),
+            "observed_counts": observed_counts,
+            "unique_counts": unique_counts,
+            "unique_examples": unique_examples,
+            "constant_values": constant_values,
+            "reviewed_exclusions": {
+                name: reason
+                for name, reason in sorted(exclusions.items())
+                if name in required
+            },
+            "unused_exclusions": unused,
         },
     )
 
