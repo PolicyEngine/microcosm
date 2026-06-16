@@ -111,12 +111,13 @@ def test_out_of_sample_budget_effect_is_reform_minus_baseline(monkeypatch):
     assert row["jct"]["score"] == pytest.approx(-60e9)
 
 
-def test_counterfactual_revert_flips_sign():
+def test_counterfactual_revert_flips_sign(monkeypatch):
     # A revert reform: baseline (provision on) income tax 2.0e12; reverting the
     # provision (reform) raises it to 2.033e12. The provision's effect is
     # baseline − reform = −33e9 (a cost), matching the JCT enactment sign.
     spec = _oos_spec(score=-33e9)
     object.__setattr__(spec, "effect_direction", "baseline_minus_reform")
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
 
     def simulate(reform):
         total = 2.033e12 if reform is not None else 2.0e12
@@ -149,12 +150,13 @@ def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     assert std.jct_score is None  # baseline in both JCT and Treasury — no benchmark
 
 
-def test_null_benchmark_row_publishes_magnitude_only():
+def test_null_benchmark_row_publishes_magnitude_only(monkeypatch):
     spec = ReformValidationSpec(
         id="te_std", name="Standard deduction", category="Tax expenditure",
         in_sample=False, period=2024, jct_score=None, jct_window="FY2024",
         jct_source="not scored", jct_source_url="", neutralized_variable="standard_deduction",
     )
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
 
     def simulate(reform):
         return _FakeSim({"income_tax": 2.28e12 if reform is not None else 2.0e12})
