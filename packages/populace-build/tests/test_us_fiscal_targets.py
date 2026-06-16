@@ -183,6 +183,40 @@ def test_us_fiscal_target_references_cover_ecps_program_surface() -> None:
     assert ECPS_PARITY_TARGET_ROLES <= roles
 
 
+def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> None:
+    medicaid_chip_source_record_id = (
+        "cms_medicaid.fy2024.us.total_medicaid_chip_enrollment"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *[
+                _ledger_fact_for_reference(reference, value=index + 1)
+                for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
+            ],
+            {
+                "lineage": {
+                    "source_record_id": medicaid_chip_source_record_id,
+                },
+                "value": 90_000_000,
+                "period": {"value": 2024},
+                "geography": {"level": "country", "id": "0100000US"},
+                "layout": {"measure_id": "total_medicaid_chip_enrollment"},
+                "observed_measure": {
+                    "source_name": "cms_medicaid",
+                    "source_measure_id": "total_medicaid_chip_enrollment",
+                },
+            }
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[medicaid_chip_source_record_id]
+    assert spec.family == "cms_medicaid"
+    assert spec.metadata["target_role"] == "medicaid_chip_enrollment"
+    assert spec.metadata["base_variables"] == "medicaid_enrolled,chip_enrolled"
+    assert "base_variable" not in spec.metadata
+
+
 def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
     ids = {req.requirement_id for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS}
     assert "federal_income_tax_total" in ids

@@ -105,6 +105,49 @@ def test_soi_count_rows_count_positive_component_items() -> None:
     )
 
 
+def test_combined_household_values_unions_positive_person_support(small_frame) -> None:
+    builder = _load_builder_module()
+
+    variable_values = {
+        "medicaid_enrolled": np.asarray([1.0, 1.0, 0.0, 0.0]),
+        "chip_enrolled": np.asarray([1.0, 0.0, 1.0, 0.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to is None
+            return variable_values[variable]
+
+    person_entity = SimpleNamespace(key="person")
+    system = SimpleNamespace(
+        variables={
+            variable: SimpleNamespace(entity=person_entity)
+            for variable in variable_values
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=True,
+    )
+    assert np.array_equal(values, np.asarray([2.0, 1.0]))
+
+    summed_values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=False,
+    )
+    assert np.array_equal(summed_values, np.asarray([3.0, 1.0]))
+
+
 def test_release_gate_failures_are_not_unconditional() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(

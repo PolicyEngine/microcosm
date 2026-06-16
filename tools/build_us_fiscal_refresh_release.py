@@ -479,6 +479,76 @@ def _household_values(
     raise ValueError(f"Unsupported variable entity {entity!r} for {variable!r}.")
 
 
+def _base_variables_from_metadata(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    combined = metadata.get("base_variables")
+    if combined:
+        variables = tuple(
+            variable.strip() for variable in combined.split(",") if variable.strip()
+        )
+        if not variables:
+            raise ValueError("base_variables metadata must name at least one variable.")
+        return variables
+    return (metadata["base_variable"],)
+
+
+def _combined_household_values(
+    *,
+    frame: Frame,
+    simulation,
+    system,
+    variables: tuple[str, ...],
+    tax_unit_positions: np.ndarray,
+    positive_indicator: bool = False,
+) -> np.ndarray:
+    if len(variables) == 1:
+        return _household_values(
+            frame=frame,
+            simulation=simulation,
+            system=system,
+            variable=variables[0],
+            tax_unit_positions=tax_unit_positions,
+            positive_indicator=positive_indicator,
+        )
+
+    entities = tuple(_variable_entity(system, variable) for variable in variables)
+    missing = tuple(
+        variable for variable, entity in zip(variables, entities, strict=True) if entity is None
+    )
+    if missing:
+        raise KeyError(", ".join(missing))
+    if len(set(entities)) != 1:
+        raise ValueError(
+            f"Cannot combine variables from different entities: "
+            f"{dict(zip(variables, entities, strict=True))}."
+        )
+
+    raw_arrays = tuple(
+        np.asarray(_calculate_array(simulation, variable), dtype=np.float64)
+        for variable in variables
+    )
+    if positive_indicator:
+        raw = np.logical_or.reduce([values > 0 for values in raw_arrays]).astype(
+            np.float64
+        )
+    else:
+        raw = np.sum(raw_arrays, axis=0, dtype=np.float64)
+
+    entity = entities[0]
+    if entity == "household":
+        return raw
+    if entity == "tax_unit":
+        return _collapse_tax_unit(raw, tax_unit_positions, frame.n("household"))
+    if entity == "person":
+        return _collapse_person(frame, raw)
+    if entity in {"spm_unit", "family", "marital_unit"}:
+        return _collapse_group(
+            raw,
+            _group_to_household_positions(frame, entity),
+            frame.n("household"),
+        )
+    raise ValueError(f"Unsupported variable entity {entity!r} for {variables!r}.")
+
+
 def _filing_status_names(values: np.ndarray) -> np.ndarray:
     return np.asarray(
         [getattr(value, "name", str(value)) for value in values], dtype=object
@@ -599,19 +669,19 @@ def _materialize_target_frame(
         for spec in target_specs
         if spec.metadata.get("materializer") == "policyengine_variable"
     ]
-    direct_value_cache: dict[tuple[str, str], np.ndarray] = {}
+    direct_value_cache: dict[tuple[tuple[str, ...], str], np.ndarray] = {}
     for spec in direct_target_specs:
-        base_variable = spec.metadata["base_variable"]
+        base_variables = _base_variables_from_metadata(spec.metadata)
         mode = spec.metadata.get("measure_mode", "sum")
-        cache_key = (base_variable, mode)
+        cache_key = (base_variables, mode)
         if cache_key not in direct_value_cache:
-            if base_variable not in system.variables:
+            if any(variable not in system.variables for variable in base_variables):
                 continue
-            direct_value_cache[cache_key] = _household_values(
+            direct_value_cache[cache_key] = _combined_household_values(
                 frame=base_frame,
                 simulation=simulation,
                 system=system,
-                variable=base_variable,
+                variables=base_variables,
                 tax_unit_positions=tax_unit_positions,
                 positive_indicator=mode == "positive_count",
             )

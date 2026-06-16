@@ -251,7 +251,10 @@ DIRECT_LEDGER_TARGETS: dict[
 }
 
 
-COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[str, str, str]] = {
+CountBaseVariables = str | tuple[str, ...]
+
+
+COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[CountBaseVariables, str, str]] = {
     ("cms_aca", "marketplace_enrollment"): (
         "has_marketplace_health_coverage",
         "cms_aca",
@@ -268,7 +271,7 @@ COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[str, str, str]] = {
         "medicaid_enrollment",
     ),
     ("cms_medicaid", "total_medicaid_chip_enrollment"): (
-        "medicaid_enrolled",
+        ("medicaid_enrolled", "chip_enrolled"),
         "cms_medicaid",
         "medicaid_chip_enrollment",
     ),
@@ -562,12 +565,15 @@ def _direct_reference_from_fact(fact: object) -> LedgerTargetReference | None:
 
     metadata = {
         **metadata,
-        "base_variable": base_variable,
         "materializer": "policyengine_variable",
         "measure_mode": metadata.get("measure_mode", measure_mode),
         "source_measure_id": measure_id,
         "source_period": str(_period_value(fact)),
     }
+    if isinstance(base_variable, tuple):
+        metadata["base_variables"] = ",".join(base_variable)
+    else:
+        metadata["base_variable"] = base_variable
     if state_fips:
         metadata["state_fips"] = state_fips
     return LedgerTargetReference(
