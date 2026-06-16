@@ -18,6 +18,7 @@ from populace.build.us.puf_aggregate_records import (
     disaggregate_puf_aggregate_records,
 )
 from populace.build.us.source_runtime import (
+    aggregate_us_person_to_tax_unit_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
@@ -92,6 +93,74 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _make_aca_people() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5, 6, 7],
+            "tax_unit_id": [10, 10, 20, 30, 40, 50, 60],
+            "has_marketplace_health_coverage_at_interview": [
+                False,
+                False,
+                True,
+                False,
+                False,
+                False,
+                False,
+            ],
+            "reported_has_subsidized_marketplace_health_coverage_at_interview": [
+                False,
+                False,
+                True,
+                False,
+                False,
+                False,
+                False,
+            ],
+        }
+    )
+
+
+def _make_aca_tax_units() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20, 30, 40, 50, 60],
+            "state_fips": ["01", "01", "01", "01", "02", "02"],
+            "tax_unit_weight": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "stable_tax_unit_draw": [0.90, 0.95, 0.10, 0.20, 0.80, 0.30],
+            "aca_take_up_rate": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "is_aca_ptc_eligible": [True, True, True, True, True, True],
+            "health_insurance_premiums_without_medicare_part_b": [
+                0.0,
+                300.0,
+                200.0,
+                0.0,
+                500.0,
+                100.0,
+            ],
+            "assigned_aca_ptc": [0.0, 200.0, 200.0, 0.0, 0.0, 100.0],
+            "slcsp": [0.0, 500.0, 500.0, 500.0, 0.0, 500.0],
+        }
+    )
+
+
+def _make_aca_state_targets() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "state_fips": ["01", "02"],
+            "target": [2.0, 1.0],
+        }
+    )
+
+
+def _make_aca_bronze_targets() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "state_fips": ["01", "02"],
+            "target": [1.0, 1.0],
+        }
+    )
 
 
 def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
@@ -205,5 +274,276 @@ def test_us_puf_handler_requires_build_seed() -> None:
             context=SourceRuntimeContext(
                 config=SourceRuntimeConfig(seed=42),
                 tables={},
+            ),
+        )
+
+
+def test_us_aca_take_up_manifest_prefix_aggregates_assigns_and_calibrates() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": _make_aca_tax_units(),
+            "cms_aca_aptc_recipients_by_state": _make_aca_state_targets(),
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="calibrate_binary_assignment",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[20]) is True
+    assert bool(assigned.loc[30]) is True
+    assert bool(assigned.loc[60]) is True
+    assert assigned.sum() == 3
+    assert result.groupby("state_fips")["takes_up_aca_if_eligible"].sum().to_dict() == {
+        "01": 2,
+        "02": 1,
+    }
+    assert result["takes_up_aca_if_eligible"].nunique() == 2
+
+
+def test_us_aca_take_up_assignment_is_seed_stable_without_draw_column() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units().drop(columns=["stable_tax_unit_draw"])
+    tax_units["aca_take_up_rate"] = 0.5
+
+    first = run_source_stage(
+        stage,
+        tables={"cps_person": _make_aca_people(), "tax_unit": tax_units},
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=1, target_year=2024),
+        stop_after="assign_binary_from_rate",
+    )
+    second = run_source_stage(
+        stage,
+        tables={"cps_person": _make_aca_people(), "tax_unit": tax_units},
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=1, target_year=2024),
+        stop_after="assign_binary_from_rate",
+    )
+    different_seed = run_source_stage(
+        stage,
+        tables={"cps_person": _make_aca_people(), "tax_unit": tax_units},
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=2, target_year=2024),
+        stop_after="assign_binary_from_rate",
+    )
+
+    pd.testing.assert_series_equal(
+        first["stable_tax_unit_draw"],
+        second["stable_tax_unit_draw"],
+    )
+    assert not first["stable_tax_unit_draw"].equals(
+        different_seed["stable_tax_unit_draw"]
+    )
+
+
+def test_us_aca_selected_plan_ratio_uses_neutral_defaults_and_clips() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": _make_aca_tax_units(),
+            "cms_aca_aptc_recipients_by_state": _make_aca_state_targets(),
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="support_clip",
+    )
+
+    ratios = result.set_index("tax_unit_id")[
+        "selected_marketplace_plan_benchmark_ratio"
+    ]
+    assert ratios.loc[10] == 1.0
+    assert ratios.loc[20] == 1.0
+    assert ratios.loc[30] == 0.8
+    assert ratios.loc[50] == 1.0
+    assert ratios.loc[60] == 0.5
+    assert ratios.nunique() > 1
+
+
+def test_us_aca_marketplace_stage_runs_through_expression_calibration() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": _make_aca_tax_units(),
+            "cms_aca_aptc_recipients_by_state": _make_aca_state_targets(),
+            "cms_aca_bronze_aptc_consumers_by_state": _make_aca_bronze_targets(),
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+    )
+
+    below_benchmark = (result["selected_marketplace_plan_benchmark_ratio"] < 1.0) & (
+        result["assigned_aca_ptc"] > 0
+    )
+    assert below_benchmark.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 1,
+        "02": 1,
+    }
+
+
+def test_us_aca_take_up_calibration_can_remove_non_anchor_assignments() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units()
+    tax_units["aca_take_up_rate"] = 1.0
+    targets = pd.DataFrame({"state_fips": ["01", "02"], "target": [1.0, 0.0]})
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": tax_units,
+            "cms_aca_aptc_recipients_by_state": targets,
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="calibrate_binary_assignment",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[20]) is True
+    assert result.groupby("state_fips")["takes_up_aca_if_eligible"].sum().to_dict() == {
+        "01": 1,
+        "02": 0,
+    }
+
+
+def test_us_aca_take_up_calibration_respects_eligibility_domain() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units()
+    tax_units["stable_tax_unit_draw"] = [0.01, 0.95, 0.10, 0.20, 0.80, 0.30]
+    tax_units["is_aca_ptc_eligible"] = [False, True, True, True, True, True]
+    targets = pd.DataFrame({"state_fips": ["01", "02"], "target": [2.0, 1.0]})
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": tax_units,
+            "cms_aca_aptc_recipients_by_state": targets,
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="calibrate_binary_assignment",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[10]) is False
+    assert result.groupby("state_fips")["takes_up_aca_if_eligible"].sum().to_dict() == {
+        "01": 2,
+        "02": 1,
+    }
+
+
+def test_us_aca_take_up_calibration_uses_declared_weights() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units()
+    tax_units["tax_unit_weight"] = [3.0, 1.0, 2.0, 1.0, 5.0, 2.0]
+    tax_units["stable_tax_unit_draw"] = [0.99, 0.95, 0.10, 0.20, 0.80, 0.30]
+    targets = pd.DataFrame({"state_fips": ["01", "02"], "target": [3.0, 2.0]})
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": _make_aca_people(),
+            "tax_unit": tax_units,
+            "cms_aca_aptc_recipients_by_state": targets,
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="calibrate_binary_assignment",
+    )
+
+    weighted = (
+        result["takes_up_aca_if_eligible"].astype(float) * result["tax_unit_weight"]
+    )
+    assert weighted.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 3.0,
+        "02": 2.0,
+    }
+
+
+def test_us_aca_take_up_calibration_requires_declared_weight_column() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units().drop(columns=["tax_unit_weight"])
+
+    with pytest.raises(SourceRuntimeError, match="tax_unit_weight"):
+        run_source_stage(
+            stage,
+            tables={
+                "cps_person": _make_aca_people(),
+                "tax_unit": tax_units,
+                "cms_aca_aptc_recipients_by_state": _make_aca_state_targets(),
+            },
+            operation_handlers=us_source_operation_handlers(),
+            config=SourceRuntimeConfig(seed=42, target_year=2024),
+            stop_after="calibrate_binary_assignment",
+        )
+
+
+def test_us_aca_reported_anchor_does_not_override_ineligibility() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    people = _make_aca_people()
+    tax_units = _make_aca_tax_units()
+    tax_units.loc[tax_units["tax_unit_id"] == 20, "is_aca_ptc_eligible"] = False
+
+    result = run_source_stage(
+        stage,
+        tables={"cps_person": people, "tax_unit": tax_units},
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="assign_binary_from_rate",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[20]) is False
+
+
+def test_us_aca_take_up_assignment_requires_declared_eligibility_column() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    tax_units = _make_aca_tax_units().drop(columns=["is_aca_ptc_eligible"])
+
+    with pytest.raises(SourceRuntimeError, match="is_aca_ptc_eligible"):
+        run_source_stage(
+            stage,
+            tables={"cps_person": _make_aca_people(), "tax_unit": tax_units},
+            operation_handlers=us_source_operation_handlers(),
+            config=SourceRuntimeConfig(seed=42, target_year=2024),
+            stop_after="assign_binary_from_rate",
+        )
+
+
+def test_us_aca_tax_unit_aggregation_rejects_wrong_operation() -> None:
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "aggregate_person_to_tax_unit",
+            "person_table": "cps_person",
+            "tax_unit_table": "tax_unit",
+            "person_tax_unit_id": "tax_unit_id",
+            "tax_unit_id": "tax_unit_id",
+            "aggregates": ["has_marketplace_health_coverage_at_interview"],
+            "operation": "sum",
+        }
+    )
+
+    with pytest.raises(SourceRuntimeError, match="operation='any'"):
+        aggregate_us_person_to_tax_unit_from_manifest(
+            None,
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={
+                    "cps_person": _make_aca_people(),
+                    "tax_unit": _make_aca_tax_units(),
+                },
             ),
         )
