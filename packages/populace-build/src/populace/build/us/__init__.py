@@ -219,6 +219,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
         notes="Employer-sponsored insurance premium parameters.",
     ),
+    "aca_marketplace_inputs": DonorSpec(
+        survey="CPS ASEC + CMS Marketplace Open Enrollment PUFs",
+        source="https://www.cms.gov/marketplace/resources/data/public-use-files",
+        notes=(
+            "Marketplace take-up and selected-plan inputs: CPS reported "
+            "Marketplace coverage and premium reports anchor the records; "
+            "CMS OEP enrollment, APTC, and metal-level tables provide the "
+            "calibration targets."
+        ),
+    ),
     "prior_year_income": DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -266,6 +276,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "acs_rent",
     "vehicle_assets",
     "entity_placement",
+    "aca_marketplace_inputs",
     "export",
 )
 
