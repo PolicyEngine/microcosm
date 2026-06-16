@@ -40,6 +40,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "convert_interest_to_structural_mortgage_inputs",
         "derive",
         "derive_mortgage_balance_hints",
+        "disaggregate_aggregate_records",
         "fit_labor_market_models",
         "fit_tip_income_model",
         "fit_vehicle_model",

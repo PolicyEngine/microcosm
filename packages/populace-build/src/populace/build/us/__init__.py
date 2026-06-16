@@ -223,7 +223,9 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Itemized-deduction detail, QBI components, partnership SE, "
-            "mortgage-interest split; support clipped to the PUF's own "
+            "mortgage-interest split; IRS disclosure aggregate rows are "
+            "disaggregated from raw PUF totals before uprating, with Forbes "
+            "top-tail synthesis disabled; support clipped to the PUF's own "
             "realized ranges."
         ),
     ),

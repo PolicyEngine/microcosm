@@ -192,6 +192,26 @@ class TestUsSources:
         assert "partnership_s_corp_income" not in outputs
         assert "partnership_se_income" not in outputs
 
+    def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
+        operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
+        kinds = [operation.kind for operation in operations]
+        assert (
+            kinds.index("read_table")
+            < kinds.index("disaggregate_aggregate_records")
+            < kinds.index("uprate")
+        )
+
+        operation = operations[kinds.index("disaggregate_aggregate_records")]
+        assert operation.parameters == {
+            "method": "donor_template_calibration",
+            "spec": "puf_aggregate_record_disaggregation",
+            "replace_records": [999996, 999997, 999998, 999999],
+            "weight": "s006",
+            "amount_columns": "irs_puf_amount_columns",
+            "seed_from_build_config": True,
+        }
+        assert "forbes" not in str(operation.parameters).lower()
+
     def test_no_incumbent_data_package_references_in_live_tree(self) -> None:
         forbidden = (
             "policyengine_" + "us_data",
