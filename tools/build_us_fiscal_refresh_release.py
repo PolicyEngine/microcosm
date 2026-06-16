@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build.us import (
+    US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
@@ -1134,6 +1135,12 @@ def main() -> None:
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    coverage["fiscal_target_support_exclusions"] = [
+        {"source_record_id": source_record_id, "reason": reason}
+        for source_record_id, reason in sorted(
+            US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+        )
+    ]
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )

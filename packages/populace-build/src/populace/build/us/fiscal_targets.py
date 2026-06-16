@@ -29,6 +29,7 @@ __all__ = [
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
     "US_FISCAL_TARGET_LEDGER_REFERENCES",
     "US_FISCAL_TARGET_REFERENCES",
+    "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -274,6 +275,55 @@ COUNT_LEDGER_TARGETS: dict[tuple[str, str], tuple[str, str, str]] = {
 }
 
 
+US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "census_stc.fy2024.individual_income_tax_collections.tn.t40.collections": (
+        "Tennessee has no modeled 2024 state individual income tax support in "
+        "PolicyEngine-US; this STC residual collection row cannot be estimated "
+        "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_claims": (
+        "Current 2024 base microdata have zero positive qualified business "
+        "income deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_amount": (
+        "Current 2024 base microdata have zero qualified business income "
+        "deduction amount support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_returns": (
+        "Current 2024 base microdata have zero positive taxable-income support "
+        "in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_amount": (
+        "Current 2024 base microdata have zero taxable-income amount support "
+        "in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_claims": (
+        "Current 2024 base microdata have zero positive qualified business "
+        "income deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_amount": (
+        "Current 2024 base microdata have zero qualified business income "
+        "deduction amount support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_claims": (
+        "Current-law PolicyEngine-US refundable CTC support is zero in this "
+        "high-income SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_amount": (
+        "Current-law PolicyEngine-US refundable CTC amount support is zero in "
+        "this high-income SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1m_plus.medical_dental_expense_returns": (
+        "Current 2024 base microdata have zero positive medical-expense "
+        "deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.1m_plus.medical_dental_expense_amount": (
+        "Current 2024 base microdata have zero medical-expense deduction "
+        "amount support in this SOI AGI bin."
+    ),
+}
+
+
 @dataclass(frozen=True)
 class SimpleTaxExpenditureReform:
     """A JCT target row backed by one simple neutralization reform.
@@ -396,6 +446,9 @@ def _dynamic_us_fiscal_target_references(
 
 
 def _reference_from_ledger_fact(fact: object) -> LedgerTargetReference | None:
+    source_record_id = _source_record_id(fact)
+    if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
         return _soi_reference_from_fact(fact)
@@ -827,7 +880,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="State individual income tax collections",
         accepted_families=("state_income_tax",),
         required_metadata=(("target_role", "state_income_tax"),),
-        min_matches=45,
+        min_matches=44,
     ),
     *(spec.coverage_requirement() for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
 )

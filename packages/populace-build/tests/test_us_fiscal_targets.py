@@ -7,6 +7,7 @@ from populace.build.us import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_REFERENCES,
+    US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_SOI_FISCAL_TARGET_REFERENCES,
@@ -114,6 +115,32 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
     ]
 
     compile_us_fiscal_target_registry(facts)
+
+
+def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 11
+    assert all(
+        source_record_id.startswith(("census_stc.", "irs_soi."))
+        for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    )
+    assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
+
+
+def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
+    facts = [
+        {"lineage": {"source_record_id": source_record_id}}
+        for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    ]
+    facts.extend(
+        _ledger_fact_for_reference(reference, value=index + 1)
+        for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
+    )
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    names = {spec.name for spec in registry.specs}
+    assert len(registry) == len(US_FISCAL_TARGET_REFERENCES)
+    assert names.isdisjoint(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS)
 
 
 def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:
@@ -232,7 +259,7 @@ def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_program_rows(),
-        *complete_state_income_tax_rows(44),
+        *complete_state_income_tax_rows(43),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
