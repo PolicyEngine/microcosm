@@ -79,6 +79,10 @@ from populace.build.us.source_coverage import (
     validation_only_family_ids,
     write_us_source_coverage_diagnostics,
 )
+from populace.build.us.source_runtime import (
+    disaggregate_us_puf_aggregate_records_from_manifest,
+    us_source_operation_handlers,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -116,6 +120,7 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
     "in_sample_reform_specs",
     "load_default_reform_specs",
@@ -123,6 +128,7 @@ __all__ = [
     "reform_validation_payload",
     "source_gap_family_ids",
     "us_plan",
+    "us_source_operation_handlers",
     "write_reform_validation",
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",
