@@ -187,6 +187,29 @@ def test_release_gate_failures_are_not_unconditional() -> None:
     ]
 
 
+def test_release_gate_failures_include_target_profile_coverage() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(object(),),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    target_profile_gate = builder.GateResult(
+        name="target_profile_coverage",
+        passed=False,
+        failures=("medicaid_chip_enrollment: missing",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_profile_gate,
+    ) == [
+        "Target profile coverage failed: medicaid_chip_enrollment: missing",
+    ]
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -284,9 +307,22 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         result=result,
         registry=registry,
         dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["gates"]["target_profile_coverage"]["passed"]
+    assert (
+        build_manifest["gates"]["target_profile_coverage"]["details"][
+            "requirements_checked"
+        ]
+        == 1
+    )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {

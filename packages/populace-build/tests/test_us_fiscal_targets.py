@@ -49,6 +49,7 @@ ECPS_PARITY_TARGET_ROLES = {
     "aca_enrollment",
     "medicaid_spending",
     "medicaid_enrollment",
+    "medicaid_chip_enrollment",
     "medicare_part_b_premium_total",
 }
 
@@ -229,6 +230,7 @@ def test_us_fiscal_requirements_include_ecps_program_and_tax_controls() -> None:
     assert "refundable_ctc_total" in ids
     assert "aca_marketplace" in ids
     assert "medicaid" in ids
+    assert "medicaid_chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
     assert "state_income_tax" in ids
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
@@ -302,6 +304,34 @@ def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
     )
     assert not result.passed
     assert any("state_income_tax" in failure for failure in result.failures)
+
+
+def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
+    targets = [
+        {
+            "name": "irs_soi.cy2024.table_1_1.income_tax_liability_amount",
+            "measure": "income_tax",
+            "family": "irs_soi",
+            "metadata": {"target_role": "federal_income_tax_total"},
+        },
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *[
+            row
+            for row in complete_program_rows()
+            if row["metadata"]["target_role"] != "medicaid_chip_enrollment"
+        ],
+        *complete_state_income_tax_rows(45),
+        *complete_jct_rows(),
+    ]
+
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    assert any("medicaid_chip_enrollment" in failure for failure in result.failures)
 
 
 def test_macro_realism_bands_cover_issue_40_backstops() -> None:
@@ -463,7 +493,11 @@ def complete_program_rows() -> list[dict[str, object]]:
             family = "irs_soi"
         elif role in {"aca_spending", "aca_enrollment"}:
             family = "cms_aca"
-        elif role in {"medicaid_spending", "medicaid_enrollment"}:
+        elif role in {
+            "medicaid_spending",
+            "medicaid_enrollment",
+            "medicaid_chip_enrollment",
+        }:
             family = "cms_medicaid"
         elif role == "medicare_part_b_premium_total":
             family = "cms_medicare"

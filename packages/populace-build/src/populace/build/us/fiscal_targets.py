@@ -876,6 +876,12 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         min_matches=2,
     ),
     TargetCoverageRequirement(
+        requirement_id="medicaid_chip_enrollment",
+        label="Medicaid and CHIP combined enrollment",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "medicaid_chip_enrollment"),),
+    ),
+    TargetCoverageRequirement(
         requirement_id="medicare_part_b_premium_total",
         label="Medicare Part B premium income from enrollees",
         accepted_families=("cms_medicare",),

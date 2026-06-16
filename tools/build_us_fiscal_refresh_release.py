@@ -25,7 +25,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.gates import GateResult, target_profile_coverage_gate
 from populace.build.us import (
+    US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     compile_us_fiscal_target_registry,
@@ -861,8 +863,17 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     )
 
 
-def _release_gate_failures(result, compilation: Mapping[str, object]) -> list[str]:
+def _release_gate_failures(
+    result,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult | None = None,
+) -> list[str]:
     failures: list[str] = []
+    if target_profile_gate is not None and not target_profile_gate.passed:
+        failures.extend(
+            f"Target profile coverage failed: {failure}"
+            for failure in target_profile_gate.failures
+        )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
         failures.append(f"{len(dropped)} fiscal targets were not materialized.")
@@ -896,8 +907,12 @@ def _release_gate_failures(result, compilation: Mapping[str, object]) -> list[st
     return failures
 
 
-def _assert_release_gates(result, compilation: Mapping[str, object]) -> None:
-    failures = _release_gate_failures(result, compilation)
+def _assert_release_gates(
+    result,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult | None = None,
+) -> None:
+    failures = _release_gate_failures(result, compilation, target_profile_gate)
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
 
@@ -978,6 +993,7 @@ def _build_manifests(
     result,
     registry: TargetRegistry,
     dropped: Mapping[str, object],
+    target_profile_gate: GateResult,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -989,7 +1005,7 @@ def _build_manifests(
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
-    gate_failures = _release_gate_failures(result, dropped)
+    gate_failures = _release_gate_failures(result, dropped, target_profile_gate)
 
     commit = _git_output("rev-parse", "HEAD")
     built_at = datetime.now(UTC).isoformat()
@@ -1029,6 +1045,11 @@ def _build_manifests(
                 "fraction_within_10pct": diag["fraction_within_10pct"],
             },
             "target_compilation": dropped,
+            "target_profile_coverage": {
+                "passed": target_profile_gate.passed,
+                "failures": list(target_profile_gate.failures),
+                "details": dict(target_profile_gate.details),
+            },
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -1175,6 +1196,18 @@ def main() -> None:
         _load_ledger_facts(args.ledger_facts)
     )
     target_specs = target_registry.specs
+    target_profile_gate = target_profile_coverage_gate(
+        target_specs,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    if not target_profile_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Target profile coverage failed: {failure}"
+                for failure in target_profile_gate.failures
+            )
+        )
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
@@ -1195,7 +1228,7 @@ def main() -> None:
         seed=args.seed,
         mass="conserve",
     )
-    _assert_release_gates(result, compilation)
+    _assert_release_gates(result, compilation, target_profile_gate)
 
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
@@ -1212,6 +1245,11 @@ def main() -> None:
         build={
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
+            "target_profile_coverage": {
+                "passed": target_profile_gate.passed,
+                "failures": list(target_profile_gate.failures),
+                "details": dict(target_profile_gate.details),
+            },
             "post_export_target_audit": bool(args.audit_export_targets),
         },
     )
@@ -1238,6 +1276,7 @@ def main() -> None:
         result=result,
         registry=registry,
         dropped=compilation,
+        target_profile_gate=target_profile_gate,
     )
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
