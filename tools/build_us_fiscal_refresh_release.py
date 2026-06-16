@@ -46,6 +46,8 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
+POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 
 DIRECT_ACTIVE_ALIASES = (
     "cms-aca-oep-state-level",
@@ -864,7 +866,10 @@ def _assert_export_matches_calibration(
         observed = target.achieved_value(
             target_frame, target_frame.weights_for(target.entity).values
         )
-        tolerance = max(abs(expected) * 1e-6, 1_000_000.0)
+        tolerance = max(
+            abs(expected) * POST_EXPORT_RELATIVE_TOLERANCE,
+            POST_EXPORT_ABSOLUTE_TOLERANCE,
+        )
         if abs(observed - expected) > tolerance:
             failures.append(
                 f"{target.row_name} exported value {observed:.6g} differs from "

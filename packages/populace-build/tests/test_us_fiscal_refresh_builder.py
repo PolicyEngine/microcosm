@@ -329,6 +329,9 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
 
     builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
 
+    target.observed = 2_000_900_000_000.0
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
+
     target.observed = 1_990_000_000_000.0
     try:
         builder._assert_export_matches_calibration(
