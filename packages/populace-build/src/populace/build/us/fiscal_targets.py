@@ -173,26 +173,6 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
 DIRECT_LEDGER_TARGETS: dict[
     tuple[str, str, str | None], tuple[str, str, dict[str, str]]
 ] = {
-    ("cbo", "actual_amount", "individual_income_taxes"): (
-        "income_tax",
-        "cbo",
-        {
-            "target_role": "federal_income_tax_total",
-            "source_concept_bridge": (
-                "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
-            ),
-        },
-    ),
-    ("cbo", "projected_amount", "individual_income_taxes"): (
-        "income_tax",
-        "cbo",
-        {
-            "target_role": "federal_income_tax_total",
-            "source_concept_bridge": (
-                "fiscal_year_individual_income_tax_receipts_to_policyengine_income_tax"
-            ),
-        },
-    ),
     ("cbo", "projected_amount", "adjusted_gross_income"): (
         "adjusted_gross_income",
         "cbo",
@@ -811,6 +791,7 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
     if _geography_level(fact) == "country" and _is_all_income_range(fact):
         roles = {
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
+            "income_tax_liability_amount": "federal_income_tax_total",
             "eitc_amount": "eitc_total",
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
@@ -986,13 +967,14 @@ US_SOI_FISCAL_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
 US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (
     TargetCoverageRequirement(
         requirement_id="federal_income_tax_total",
-        label="Federal individual income tax total",
-        accepted_families=("cbo",),
+        label="Federal individual income tax return liability total",
+        accepted_families=("irs_soi",),
         required_metadata=(("target_role", "federal_income_tax_total"),),
         notes=(
-            "Must be the CBO individual income tax receipts macro control. "
-            "IRS SOI liability rows remain distributional targets, not the "
-            "top-line receipts control."
+            "Must be the IRS SOI return-level income tax liability total. "
+            "CBO individual income tax receipts are macro cash receipts and "
+            "remain reference diagnostics, not hard return-level calibration "
+            "targets."
         ),
     ),
     TargetCoverageRequirement(
