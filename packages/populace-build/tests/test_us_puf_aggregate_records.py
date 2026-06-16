@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import numpy as np
@@ -15,9 +16,11 @@ from populace.build.us.puf_aggregate_records import (
     _assign_s006_values,
     _choose_n_synthetic,
     _get_amount_columns,
+    audit_puf_aggregate_disaggregation,
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
+from populace.calibrate import relative_error_loss
 
 
 def _make_regular_rows() -> list[dict]:
@@ -326,3 +329,94 @@ def test_reproducible_by_seed(mini_puf: pd.DataFrame) -> None:
         first[first["RECID"] >= SYNTHETIC_RECID_START]["E00100"],
         different[different["RECID"] >= SYNTHETIC_RECID_START]["E00100"],
     )
+
+
+def test_audit_reports_source_reconstruction_recovery(
+    mini_puf: pd.DataFrame,
+) -> None:
+    audit = audit_puf_aggregate_disaggregation(mini_puf, seed=42)
+
+    assert audit["forbes_top_tail"] is False
+    assert audit["raw_rows"] == len(mini_puf)
+    assert audit["raw_aggregate_rows"] == len(AGGREGATE_RECIDS)
+    assert audit["aggregate_rows_after"] == 0
+    assert audit["synthetic_rows"] > len(AGGREGATE_RECIDS)
+    assert audit["raw_aggregate_s006"] == pytest.approx(audit["synthetic_s006"])
+
+    old_loss = audit["source_reconstruction_loss"]["old_drop_aggregate"]
+    disaggregated_loss = audit["source_reconstruction_loss"]["disaggregated"]
+    assert old_loss["loss"] > 0
+    assert old_loss["loss_formula"] == "mean(((estimate - target) / (target + 1)) ** 2)"
+    subset_audit = audit_puf_aggregate_disaggregation(
+        mini_puf,
+        seed=42,
+        columns=["E00100", "P23250"],
+    )
+    subset_rows = subset_audit["source_reconstruction_loss"]["old_drop_aggregate"][
+        "worst_columns"
+    ]
+    assert len(subset_rows) == 2
+    assert subset_audit["source_reconstruction_loss"]["old_drop_aggregate"][
+        "loss"
+    ] == pytest.approx(
+        relative_error_loss(
+            np.asarray([row["estimate_total"] for row in subset_rows]),
+            np.asarray([row["target_total"] for row in subset_rows]),
+        )
+    )
+    assert old_loss["within_10pct"] < 1.0
+    assert disaggregated_loss["loss"] < 1e-18
+    assert disaggregated_loss["within_10pct"] == pytest.approx(1.0)
+
+    agi = next(
+        row
+        for row in audit["field_totals"]
+        if row["attribute"] == "adjusted_gross_income"
+    )
+    assert agi["source_column"] == "E00100"
+    assert agi["aggregate_row_total"] != 0
+    assert abs(agi["old_relative_error"]) > 0
+    assert abs(agi["disaggregated_relative_error"]) < 1e-12
+
+    capital_gains = next(
+        row
+        for row in audit["field_totals"]
+        if row["attribute"] == "capital_gains_proxy"
+    )
+    assert set(capital_gains["source_columns"]) == {"P22250", "P23250"}
+
+    assert len(audit["bucket_summaries"]) == len(AGGREGATE_RECIDS)
+    assert (
+        max(
+            summary["max_abs_weighted_total_delta"]
+            for summary in audit["bucket_summaries"]
+        )
+        < 1e-5
+    )
+    assert "forbes" not in json.dumps(audit["field_totals"]).lower()
+    json.dumps(audit, allow_nan=False)
+
+
+def test_audit_requires_raw_aggregate_rows(mini_puf: pd.DataFrame) -> None:
+    transformed = disaggregate_puf_aggregate_records(mini_puf, seed=42)
+
+    with pytest.raises(ValueError, match="requires the raw IRS aggregate RECIDs"):
+        audit_puf_aggregate_disaggregation(transformed, seed=42)
+
+
+def test_audit_rejects_missing_or_non_amount_columns(
+    mini_puf: pd.DataFrame,
+) -> None:
+    with pytest.raises(ValueError, match="missing"):
+        audit_puf_aggregate_disaggregation(
+            mini_puf,
+            seed=42,
+            columns=["E00100", "NOT_A_COLUMN"],
+        )
+
+    with pytest.raises(ValueError, match="amount columns"):
+        audit_puf_aggregate_disaggregation(
+            mini_puf,
+            seed=42,
+            columns=["E00100", "age"],
+        )

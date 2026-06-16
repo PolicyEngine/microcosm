@@ -1,11 +1,10 @@
 """The conditional-model protocol and the weight-resolution it enforces.
 
 A conditional model fits ``P(y | x)`` over a :class:`~populace.frame.Frame` and
-draws from it. The defining property of this operator — the one the 2026-06
-microimpute landmine violated — is that fitting is **weight-aware by
-construction**: the weights come from the Frame's typed weight vectors, never
-from a raw array a caller might forget to pass, and an unweighted fit is
-impossible to request without writing ``weights="none"`` and meaning it.
+draws from it. The defining property of this operator is that fitting is
+**weight-aware by construction**: the weights come from the Frame's typed weight
+vectors, never from a raw array a caller might forget to pass, and an unweighted
+fit is impossible to request without writing ``weights="none"`` and meaning it.
 
 :func:`resolve_fit_weights` is the single authority for that rule. Every model
 in :mod:`populace.fit` routes its weight handling through it, so "no silent

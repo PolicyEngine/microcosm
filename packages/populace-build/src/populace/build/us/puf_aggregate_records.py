@@ -17,10 +17,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.calibrate import relative_error_loss
+
 __all__ = [
     "AGGREGATE_RECIDS",
     "SYNTHETIC_RECID_START",
     "PufAggregateDisaggregationSpec",
+    "audit_puf_aggregate_disaggregation",
     "compute_aggregate_eligibility_scores",
     "disaggregate_puf_aggregate_records",
     "load_default_puf_aggregate_disaggregation_spec",
@@ -51,6 +54,39 @@ _BUCKET_ALLOWED_KEYS = {
     "agi_lower",
     "agi_upper",
     "synthetic_agi_upper",
+}
+_SOURCE_FIELD_ATTRIBUTES = {
+    "E00100": "adjusted_gross_income",
+    "E00200": "employment_income",
+    "E00300": "taxable_interest_income",
+    "E00400": "tax_exempt_interest_income",
+    "E00600": "ordinary_dividends",
+    "E00650": "qualified_dividends",
+    "E00900": "business_net_profits",
+    "E01100": "capital_gains_distributions",
+    "E01400": "ira_distributions",
+    "E01500": "total_pension_income",
+    "E01700": "taxable_pension_income",
+    "E02300": "unemployment_compensation",
+    "E02400": "total_social_security",
+    "E02500": "taxable_social_security",
+    "E03210": "student_loan_interest",
+    "E17500": "medical_expense_deduction",
+    "E18400": "state_income_tax_paid",
+    "E18500": "real_estate_taxes_paid",
+    "E19200": "mortgage_interest_paid",
+    "E19800": "charitable_cash_contributions",
+    "E20100": "charitable_noncash_contributions",
+    "P22250": "short_term_capital_gains",
+    "P23250": "long_term_capital_gains",
+    "E24515": "unrecaptured_section_1250_gain",
+    "E24518": "collectibles_capital_gains",
+    "E26270": "partnership_and_s_corp_income",
+    "E87521": "net_investment_income_tax",
+}
+_COMBINED_SOURCE_FIELDS = {
+    "capital_gains_proxy": ("P22250", "P23250", "E01100"),
+    "charitable_contributions": ("E19800", "E20100"),
 }
 
 
@@ -206,6 +242,73 @@ def disaggregate_puf_aggregate_records(
     return pd.concat([regular, synthetic_df], ignore_index=True)
 
 
+def audit_puf_aggregate_disaggregation(
+    puf: pd.DataFrame,
+    *,
+    seed: int = 42,
+    spec: PufAggregateDisaggregationSpec | None = None,
+    columns: list[str] | None = None,
+) -> dict[str, Any]:
+    """Measure source-level recovery from replacing PUF aggregate rows.
+
+    The target surface here is the raw PUF itself, including the four IRS
+    aggregate disclosure rows. The old source support drops those rows; the new
+    support replaces them with synthetic records. This audit is therefore a
+    deterministic source-reconstruction check, not a calibrated release
+    benchmark.
+    """
+
+    spec = spec or load_default_puf_aggregate_disaggregation_spec()
+    _require_columns(puf, ["RECID", "S006", "E00100"])
+
+    aggregate_mask = puf["RECID"].isin(spec.aggregate_recids)
+    _require_raw_aggregate_rows(puf, spec)
+    regular = puf.loc[~aggregate_mask].copy()
+    result = disaggregate_puf_aggregate_records(puf, seed=seed, spec=spec)
+    synthetic = result.loc[result["RECID"] >= spec.synthetic_recid_start].copy()
+    amount_columns = _audit_amount_columns(puf, requested_columns=columns)
+
+    target_totals = {column: _weighted_sum(puf, column) for column in amount_columns}
+    old_totals = {column: _weighted_sum(regular, column) for column in amount_columns}
+    disaggregated_totals = {
+        column: _weighted_sum(result, column) for column in amount_columns
+    }
+
+    return {
+        "source": spec.source,
+        "method": "donor_template_calibration",
+        "seed": int(seed),
+        "forbes_top_tail": bool(spec.forbes_top_tail),
+        "raw_rows": int(len(puf)),
+        "regular_rows": int(len(regular)),
+        "raw_aggregate_rows": int(aggregate_mask.sum()),
+        "result_rows": int(len(result)),
+        "synthetic_rows": int(len(synthetic)),
+        "aggregate_rows_after": int(result["RECID"].isin(spec.aggregate_recids).sum()),
+        "raw_aggregate_s006": _s006_sum(puf.loc[aggregate_mask]),
+        "synthetic_s006": _s006_sum(synthetic),
+        "raw_aggregate_weight": _s006_weight_total(puf.loc[aggregate_mask]),
+        "synthetic_weight": _s006_weight_total(synthetic),
+        "synthetic_mars_counts": _value_counts(synthetic, "MARS"),
+        "amount_column_count": int(len(amount_columns)),
+        "source_reconstruction_loss": {
+            "old_drop_aggregate": _source_loss(old_totals, target_totals),
+            "disaggregated": _source_loss(disaggregated_totals, target_totals),
+        },
+        "field_totals": _audit_field_totals(
+            puf=puf,
+            old=regular,
+            disaggregated=result,
+        ),
+        "bucket_summaries": _audit_bucket_summaries(
+            puf=puf,
+            disaggregated=result,
+            amount_columns=amount_columns,
+            spec=spec,
+        ),
+    }
+
+
 def compute_aggregate_eligibility_scores(
     df: pd.DataFrame,
     *,
@@ -257,6 +360,291 @@ def compute_aggregate_eligibility_scores(
         max_scores = np.maximum(max_scores, field_scores)
 
     return pd.Series(max_scores, index=df.index, dtype=float)
+
+
+def _source_loss(
+    estimates: dict[str, float],
+    targets: dict[str, float],
+) -> dict[str, Any]:
+    errors = [
+        {
+            "source_column": column,
+            "target_total": _json_float(target),
+            "estimate_total": _json_float(estimates.get(column, 0.0)),
+            "relative_error": _json_float(
+                _relative_error(estimates.get(column, 0.0), target)
+            ),
+        }
+        for column, target in targets.items()
+    ]
+    if not errors:
+        return {
+            "loss": 0.0,
+            "loss_formula": "mean(((estimate - target) / (target + 1)) ** 2)",
+            "n_columns": 0,
+            "within_10pct": 1.0,
+            "max_abs_relative_error": 0.0,
+            "max_abs_relative_error_column": None,
+            "worst_columns": [],
+        }
+
+    ranked = sorted(
+        errors,
+        key=lambda error: abs(error["relative_error"]),
+        reverse=True,
+    )
+    worst = ranked[0]
+    return {
+        "loss": _json_float(
+            relative_error_loss(
+                np.asarray([error["estimate_total"] for error in errors]),
+                np.asarray([error["target_total"] for error in errors]),
+            )
+        ),
+        "loss_formula": "mean(((estimate - target) / (target + 1)) ** 2)",
+        "n_columns": int(len(errors)),
+        "within_10pct": _json_float(
+            float(np.mean([abs(error["relative_error"]) <= 0.10 for error in errors]))
+        ),
+        "max_abs_relative_error": _json_float(abs(worst["relative_error"])),
+        "max_abs_relative_error_column": worst["source_column"],
+        "worst_columns": ranked[:20],
+    }
+
+
+def _audit_field_totals(
+    *,
+    puf: pd.DataFrame,
+    old: pd.DataFrame,
+    disaggregated: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    fields: list[tuple[str, tuple[str, ...]]] = [
+        (attribute, (column,))
+        for column, attribute in _SOURCE_FIELD_ATTRIBUTES.items()
+        if column in puf.columns
+    ]
+    fields.extend(
+        (attribute, tuple(column for column in columns if column in puf.columns))
+        for attribute, columns in _COMBINED_SOURCE_FIELDS.items()
+        if any(column in puf.columns for column in columns)
+    )
+
+    results: list[dict[str, Any]] = []
+    for attribute, columns in fields:
+        target_total = _weighted_sum_columns(puf, columns)
+        old_total = _weighted_sum_columns(old, columns)
+        disaggregated_total = _weighted_sum_columns(disaggregated, columns)
+        row: dict[str, Any] = {
+            "attribute": attribute,
+            "source_columns": list(columns),
+            "target_total": _json_float(target_total),
+            "old_drop_aggregate_total": _json_float(old_total),
+            "disaggregated_total": _json_float(disaggregated_total),
+            "aggregate_row_total": _json_float(target_total - old_total),
+            "recovered_total": _json_float(disaggregated_total - old_total),
+            "old_relative_error": _json_float(_relative_error(old_total, target_total)),
+            "disaggregated_relative_error": _json_float(
+                _relative_error(disaggregated_total, target_total)
+            ),
+        }
+        if len(columns) == 1:
+            row["source_column"] = columns[0]
+        results.append(row)
+    return results
+
+
+def _audit_bucket_summaries(
+    *,
+    puf: pd.DataFrame,
+    disaggregated: pd.DataFrame,
+    amount_columns: list[str],
+    spec: PufAggregateDisaggregationSpec,
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    next_recid = spec.synthetic_recid_start
+    key_columns = [
+        column
+        for column in ("E00100", "P23250", "P22250", "E26270", "E00900")
+        if column in amount_columns
+    ]
+
+    for recid in spec.aggregate_recids:
+        matching = puf.loc[puf["RECID"] == recid]
+        if matching.empty:
+            continue
+        row = matching.iloc[0]
+        pop_weight, _, _ = _get_bucket_targets(row)
+        total_s006 = int(round(_finite_float(row["S006"])))
+        n_synthetic = min(_choose_n_synthetic(pop_weight), max(total_s006, 1))
+        start = next_recid
+        end = start + n_synthetic
+        next_recid = end
+        bucket = disaggregated.loc[
+            (disaggregated["RECID"] >= start) & (disaggregated["RECID"] < end)
+        ]
+
+        column_deltas = []
+        for column in amount_columns:
+            target = pop_weight * _finite_float(row.get(column, 0.0))
+            achieved = _weighted_sum(bucket, column)
+            column_deltas.append(
+                {
+                    "source_column": column,
+                    "target_total": _json_float(target),
+                    "achieved_total": _json_float(achieved),
+                    "delta": _json_float(achieved - target),
+                }
+            )
+        ranked = sorted(
+            column_deltas,
+            key=lambda item: abs(item["delta"]),
+            reverse=True,
+        )
+        worst = ranked[0] if ranked else None
+        summaries.append(
+            {
+                "recid": int(recid),
+                "description": spec.buckets[recid].description,
+                "synthetic_recid_start": int(start),
+                "synthetic_recid_end_exclusive": int(end),
+                "synthetic_rows": int(len(bucket)),
+                "target_s006": _json_float(_finite_float(row["S006"])),
+                "synthetic_s006": _s006_sum(bucket),
+                "target_weight": _json_float(pop_weight),
+                "synthetic_weight": _s006_weight_total(bucket),
+                "max_abs_weighted_total_delta": _json_float(
+                    abs(worst["delta"]) if worst else 0.0
+                ),
+                "max_delta_column": worst["source_column"] if worst else None,
+                "key_column_totals": [
+                    _audit_column_total(
+                        source_column=column,
+                        target_total=pop_weight * _finite_float(row.get(column, 0.0)),
+                        achieved_total=_weighted_sum(bucket, column),
+                    )
+                    for column in key_columns
+                ],
+                "largest_column_deltas": ranked[:10],
+            }
+        )
+    return summaries
+
+
+def _require_raw_aggregate_rows(
+    puf: pd.DataFrame,
+    spec: PufAggregateDisaggregationSpec,
+) -> None:
+    found = sorted(
+        set(pd.to_numeric(puf["RECID"], errors="coerce").dropna().astype(int).tolist())
+        & set(spec.aggregate_recids)
+    )
+    expected = sorted(spec.aggregate_recids)
+    if found != expected:
+        raise ValueError(
+            "PUF aggregate disaggregation audit requires the raw IRS aggregate "
+            f"RECIDs {expected}; found {found}. Run it on the raw PUF, not an "
+            "already-disaggregated source file."
+        )
+
+
+def _audit_amount_columns(
+    puf: pd.DataFrame,
+    *,
+    requested_columns: list[str] | None,
+) -> list[str]:
+    if requested_columns is None:
+        amount_columns = _get_amount_columns(puf.columns)
+    else:
+        missing = [column for column in requested_columns if column not in puf.columns]
+        if missing:
+            raise ValueError(f"Requested PUF audit columns are missing: {missing}.")
+        non_amount = [
+            column
+            for column in requested_columns
+            if not _AMOUNT_COLUMN_PATTERN.match(column)
+        ]
+        if non_amount:
+            raise ValueError(
+                "Requested PUF audit columns must be PUF amount columns matching "
+                f"{_AMOUNT_COLUMN_PATTERN.pattern!r}; got {non_amount}."
+            )
+        amount_columns = list(requested_columns)
+    if not amount_columns:
+        raise ValueError("PUF aggregate disaggregation audit has no amount columns.")
+    return amount_columns
+
+
+def _audit_column_total(
+    *,
+    source_column: str,
+    target_total: float,
+    achieved_total: float,
+) -> dict[str, Any]:
+    return {
+        "source_column": source_column,
+        "target_total": _json_float(target_total),
+        "achieved_total": _json_float(achieved_total),
+        "delta": _json_float(achieved_total - target_total),
+        "relative_error": _json_float(_relative_error(achieved_total, target_total)),
+    }
+
+
+def _weighted_sum_columns(df: pd.DataFrame, columns: tuple[str, ...]) -> float:
+    return float(sum(_weighted_sum(df, column) for column in columns))
+
+
+def _weighted_sum(df: pd.DataFrame, column: str) -> float:
+    if df.empty or column not in df.columns:
+        return 0.0
+    values = (
+        pd.to_numeric(df[column], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    weights = (
+        pd.to_numeric(df["S006"], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+        / 100.0
+    )
+    return _json_float(float(np.dot(values, weights)))
+
+
+def _s006_sum(df: pd.DataFrame) -> float:
+    if df.empty or "S006" not in df.columns:
+        return 0.0
+    total = (
+        pd.to_numeric(df["S006"], errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .sum()
+    )
+    return _json_float(float(total))
+
+
+def _s006_weight_total(df: pd.DataFrame) -> float:
+    return _json_float(_s006_sum(df) / 100.0)
+
+
+def _relative_error(estimate: float, target: float) -> float:
+    denominator = max(abs(float(target)), 1.0)
+    return float((float(estimate) - float(target)) / denominator)
+
+
+def _value_counts(df: pd.DataFrame, column: str) -> dict[str, int]:
+    if df.empty or column not in df.columns:
+        return {}
+    counts = df[column].value_counts(dropna=False).sort_index()
+    return {str(key): int(value) for key, value in counts.items()}
+
+
+def _json_float(value: float) -> float:
+    result = float(value)
+    if not np.isfinite(result):
+        raise ValueError(f"Audit value must be finite for JSON output: {value!r}.")
+    return result
 
 
 def _optional_float(value: object) -> float | None:
