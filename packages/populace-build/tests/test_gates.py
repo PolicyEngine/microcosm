@@ -18,6 +18,7 @@ from populace.build import (
     export_surface_gate,
     formula_owned_export_gate,
     macro_realism_gate,
+    nonconstant_columns_gate,
     nonnegative_columns_gate,
     parity_gate,
     per_family_fit_gate,
@@ -271,6 +272,48 @@ class TestExportedNonzeroGate:
         )
         assert result.passed
         assert result.details["unused_exemptions"] == ["gone_var"]
+
+
+class TestNonconstantColumnsGate:
+    def test_constant_bool_column_fails_with_remedy_named(self) -> None:
+        result = nonconstant_columns_gate(
+            {"takes_up_aca_if_eligible": np.asarray([True, True, True])},
+            ["takes_up_aca_if_eligible"],
+        )
+        assert not result.passed
+        assert "takes_up_aca_if_eligible" in result.failures[0]
+        assert "regenerate upstream source inputs" in result.failures[0]
+        assert result.details["constant_values"] == {"takes_up_aca_if_eligible": True}
+
+    def test_nonconstant_columns_pass(self) -> None:
+        result = nonconstant_columns_gate(
+            {
+                "takes_up_aca_if_eligible": np.asarray([True, False]),
+                "selected_marketplace_plan_benchmark_ratio": np.asarray([1.0, 0.7]),
+            },
+            [
+                "takes_up_aca_if_eligible",
+                "selected_marketplace_plan_benchmark_ratio",
+            ],
+        )
+        assert result.passed
+        assert result.details["unique_counts"] == {
+            "selected_marketplace_plan_benchmark_ratio": 2,
+            "takes_up_aca_if_eligible": 2,
+        }
+
+    def test_missing_required_column_fails(self) -> None:
+        result = nonconstant_columns_gate({}, ["takes_up_aca_if_eligible"])
+        assert not result.passed
+        assert "required nonconstant column missing" in result.failures[0]
+
+    def test_reviewed_exclusion_needs_mapping_reason(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            nonconstant_columns_gate(
+                {},
+                ["takes_up_aca_if_eligible"],
+                reviewed_exclusions=["takes_up_aca_if_eligible"],  # type: ignore[arg-type]
+            )
 
 
 class TestNonnegativeColumnsGate:

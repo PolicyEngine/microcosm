@@ -25,7 +25,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.gates import GateResult, target_profile_coverage_gate
+from populace.build.gates import (
+    GateResult,
+    nonconstant_columns_gate,
+    target_profile_coverage_gate,
+)
 from populace.build.us import (
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -119,6 +123,11 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "state_income_tax": "Census State Tax Collections individual income tax",
     "usda_snap": "USDA SNAP administrative data",
 }
+
+US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
+    "takes_up_aca_if_eligible",
+    "selected_marketplace_plan_benchmark_ratio",
+)
 
 SOI_VARIABLE_MAP = {
     "adjusted_gross_income": "adjusted_gross_income",
@@ -874,6 +883,24 @@ def _strip_calibration_columns(
     )
 
 
+def _health_input_signal_gate(frame: Frame) -> GateResult:
+    tax_unit = frame.table("tax_unit")
+    gate = nonconstant_columns_gate(
+        {
+            column: tax_unit[column].to_numpy()
+            for column in US_HEALTH_INPUT_NONCONSTANT_COLUMNS
+            if column in tax_unit.columns
+        },
+        US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    )
+    return GateResult(
+        name="health_input_signal",
+        passed=gate.passed,
+        failures=gate.failures,
+        details=gate.details,
+    )
+
+
 def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     np.savez_compressed(
         path,
@@ -900,12 +927,18 @@ def _release_gate_failures(
     result,
     compilation: Mapping[str, object],
     target_profile_gate: GateResult | None = None,
+    health_input_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
         failures.extend(
             f"Target profile coverage failed: {failure}"
             for failure in target_profile_gate.failures
+        )
+    if health_input_gate is not None and not health_input_gate.passed:
+        failures.extend(
+            f"Health input signal failed: {failure}"
+            for failure in health_input_gate.failures
         )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
@@ -944,8 +977,14 @@ def _assert_release_gates(
     result,
     compilation: Mapping[str, object],
     target_profile_gate: GateResult | None = None,
+    health_input_gate: GateResult | None = None,
 ) -> None:
-    failures = _release_gate_failures(result, compilation, target_profile_gate)
+    failures = _release_gate_failures(
+        result,
+        compilation,
+        target_profile_gate,
+        health_input_gate,
+    )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
 
@@ -1026,7 +1065,9 @@ def _in_sample_estimates(result) -> dict[str, float]:
     simulation is run for them.
     """
     estimates: dict[str, float] = {}
-    for diagnostic, target in zip(result.diagnostics, result.problem.targets, strict=True):
+    for diagnostic, target in zip(
+        result.diagnostics, result.problem.targets, strict=True
+    ):
         value = diagnostic.final_estimate
         if value is not None and math.isfinite(float(value)):
             estimates[target.name] = float(value)
@@ -1040,7 +1081,9 @@ def _in_sample_targets(result) -> dict[str, float]:
     figure is the target's own value the calibration fit against.
     """
     targets: dict[str, float] = {}
-    for diagnostic, target in zip(result.diagnostics, result.problem.targets, strict=True):
+    for diagnostic, target in zip(
+        result.diagnostics, result.problem.targets, strict=True
+    ):
         value = diagnostic.target
         if value is not None and math.isfinite(float(value)):
             targets[target.name] = float(value)
@@ -1064,7 +1107,9 @@ def _write_reform_validation(
     diagnostics-only build).
     """
     specs = load_default_reform_specs(period=PERIOD)
-    simulate = default_simulate_factory(dataset_path) if simulate_out_of_sample else None
+    simulate = (
+        default_simulate_factory(dataset_path) if simulate_out_of_sample else None
+    )
     payload = reform_validation_payload(
         specs,
         period=PERIOD,
@@ -1105,6 +1150,7 @@ def _build_manifests(
     registry: TargetRegistry,
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
+    health_input_gate: GateResult | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -1116,7 +1162,12 @@ def _build_manifests(
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
-    gate_failures = _release_gate_failures(result, dropped, target_profile_gate)
+    gate_failures = _release_gate_failures(
+        result,
+        dropped,
+        target_profile_gate,
+        health_input_gate,
+    )
 
     commit = _git_output("rev-parse", "HEAD")
     built_at = datetime.now(UTC).isoformat()
@@ -1161,6 +1212,17 @@ def _build_manifests(
                 "failures": list(target_profile_gate.failures),
                 "details": dict(target_profile_gate.details),
             },
+            **(
+                {
+                    "health_input_signal": {
+                        "passed": health_input_gate.passed,
+                        "failures": list(health_input_gate.failures),
+                        "details": dict(health_input_gate.details),
+                    }
+                }
+                if health_input_gate is not None
+                else {}
+            ),
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -1351,6 +1413,15 @@ def main() -> None:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     base_frame = _load_frame(base_h5)
+    health_input_gate = _health_input_signal_gate(base_frame)
+    if not health_input_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Health input signal failed: {failure}"
+                for failure in health_input_gate.failures
+            )
+        )
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
         target_specs,
@@ -1364,7 +1435,12 @@ def main() -> None:
         seed=args.seed,
         mass="conserve",
     )
-    _assert_release_gates(result, compilation, target_profile_gate)
+    _assert_release_gates(
+        result,
+        compilation,
+        target_profile_gate,
+        health_input_gate,
+    )
 
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
@@ -1430,6 +1506,7 @@ def main() -> None:
         registry=registry,
         dropped=compilation,
         target_profile_gate=target_profile_gate,
+        health_input_gate=health_input_gate,
     )
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
