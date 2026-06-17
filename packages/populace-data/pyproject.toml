@@ -12,6 +12,7 @@ dependencies = [
     # no engine). h5py is the artifact format and a cheap integrity check.
     "huggingface_hub>=0.20",
     "h5py>=3",
+    "packaging>=24",
 ]
 
 [project.scripts]

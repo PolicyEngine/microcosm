@@ -456,6 +456,12 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "name": "policyengine-us",
         "version": "1.729.0",
     }
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.26.11"}
+    ]
+    assert manifest["compatible_model_packages"] == [
+        {"name": "policyengine-us", "specifier": "==1.729.0"}
+    ]
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id

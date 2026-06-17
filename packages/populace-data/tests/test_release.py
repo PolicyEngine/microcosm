@@ -227,6 +227,12 @@ def release_dir(tmp_path: Path) -> Path:
                         "version": "1.729.0",
                     },
                 },
+                "compatible_core_packages": [
+                    {"name": "policyengine-core", "specifier": "==3.19.0"}
+                ],
+                "compatible_model_packages": [
+                    {"name": "policyengine-us", "specifier": "==1.729.0"}
+                ],
                 "artifacts": {
                     "populace_us_2024": {
                         "kind": "microdata",

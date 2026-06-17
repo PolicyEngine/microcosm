@@ -87,6 +87,12 @@ def _release_manifest(
                 "version": model_version,
             },
         },
+        "compatible_core_packages": [
+            {"name": "policyengine-core", "specifier": "==3.19.0"}
+        ],
+        "compatible_model_packages": [
+            {"name": model_package, "specifier": f"=={model_version}"}
+        ],
         "artifacts": {
             "populace_us_2024": {
                 "kind": "microdata",
@@ -605,6 +611,7 @@ def test_release_manifest_requires_policyengine_certification_shape(
     del manifest["data_package"]
     del manifest["default_datasets"]
     del manifest["build"]["built_with_model_package"]
+    del manifest["compatible_model_packages"]
     del manifest["artifacts"]["populace_us_2024"]["revision"]
     (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ReleaseContractError) as excinfo:
@@ -613,7 +620,68 @@ def test_release_manifest_requires_policyengine_certification_shape(
     assert "data_package" in failures
     assert "default_datasets" in failures
     assert "build.built_with_model_package" in failures
+    assert "compatible_model_packages" in failures
     assert "artifact 'populace_us_2024' is missing 'revision'" in failures
+
+
+def test_release_manifest_requires_compatible_core_package(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    del manifest["compatible_core_packages"]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "compatible_core_packages" in failures
+
+
+def test_release_manifest_compatible_specifier_must_be_valid(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["compatible_model_packages"][0]["specifier"] = "not a specifier"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "valid PEP 440 specifier" in failures
+
+
+def test_release_manifest_compatible_model_package_must_cover_build_version(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["compatible_model_packages"] = [
+        {"name": "policyengine-us", "specifier": "==1.728.0"}
+    ]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "built policyengine-us version '1.729.0'" in failures
+
+
+def test_release_manifest_compatible_core_package_must_cover_build_version(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["compatible_core_packages"] = [
+        {"name": "policyengine-core", "specifier": "==3.18.0"}
+    ]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "built policyengine-core version '3.19.0'" in failures
 
 
 def test_release_manifest_default_dataset_must_name_artifact(
