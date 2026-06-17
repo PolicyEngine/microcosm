@@ -213,9 +213,30 @@ class TestRelativeErrorLoss:
         expected = (((est - tgt) / (tgt + 1.0)) ** 2).mean()
         assert relative_error_loss(est, tgt) == pytest.approx(expected)
 
+    def test_accepts_target_loss_weights(self) -> None:
+        est = np.asarray([110.0, 90.0])
+        tgt = np.asarray([100.0, 100.0])
+        weights = np.asarray([10.0, 1.0])
+        residual = ((est - tgt) / (tgt + 1.0)) ** 2
+        expected = np.average(residual, weights=weights)
+
+        assert relative_error_loss(
+            est,
+            tgt,
+            target_loss_weights=weights,
+        ) == pytest.approx(expected)
+
     def test_shape_mismatch_is_refused(self) -> None:
         with pytest.raises(ValueError, match="must align"):
             relative_error_loss(np.zeros(2), np.zeros(3))
+
+    def test_weight_shape_mismatch_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="target_loss_weights"):
+            relative_error_loss(
+                np.zeros(2),
+                np.zeros(2),
+                target_loss_weights=np.zeros(3),
+            )
 
 
 class TestZeroValuedAnchor:

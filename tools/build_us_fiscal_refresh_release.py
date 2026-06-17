@@ -68,6 +68,7 @@ DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
+US_FISCAL_TARGET_LOSS_WEIGHTING = "absolute_target_value"
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -1275,6 +1276,12 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     )
 
 
+def _target_value_loss_weights(registry: TargetRegistry) -> np.ndarray:
+    values = np.asarray([abs(spec.value) for spec in registry.specs], dtype=np.float64)
+    weights = np.maximum(values, 1.0)
+    return weights / weights.mean()
+
+
 def _release_gate_failures(
     result,
     compilation: Mapping[str, object],
@@ -1882,6 +1889,7 @@ def main() -> None:
         max_weight_ratio=args.max_weight_ratio,
         seed=args.seed,
         mass="conserve",
+        target_loss_weights=_target_value_loss_weights(registry),
     )
     _assert_release_gates(
         result,
@@ -1905,6 +1913,7 @@ def main() -> None:
         build={
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
+            "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),

@@ -9,6 +9,7 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from populace.calibrate import Target, TargetSet, calibrate
@@ -69,6 +70,94 @@ def test_conserve_mass_holds_total_free_mass_moves(feasible_frame) -> None:
     conserved = calibrate(frame, targets, epochs=300, seed=0, mass="conserve")
     conserved_total = conserved.frame.resolve_weights("household").values.sum()
     assert abs(conserved_total - initial_total) / initial_total < 1e-6
+
+
+def test_target_loss_weights_prioritize_conflicting_targets(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    low = truths["population"] * 0.5
+    high = truths["population"] * 1.5
+    targets = TargetSet(
+        (
+            Target(
+                name="population_low",
+                entity="household",
+                aggregation="count",
+                value=low,
+            ),
+            Target(
+                name="population_high",
+                entity="household",
+                aggregation="count",
+                value=high,
+            ),
+        )
+    )
+
+    uniform = calibrate(frame, targets, epochs=300, seed=0)
+    prioritized = calibrate(
+        frame,
+        targets,
+        epochs=300,
+        seed=0,
+        target_loss_weights=np.asarray([1.0, 1_000.0]),
+    )
+
+    uniform_total = uniform.weights.sum()
+    prioritized_total = prioritized.weights.sum()
+    assert abs(prioritized_total - high) < abs(uniform_total - high)
+    assert prioritized.options["target_loss_weights"]["kind"] == "provided"
+
+
+def test_target_loss_weights_follow_skipped_targets(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="missing_measure",
+                entity="household",
+                aggregation="sum",
+                value=1.0,
+                measure="missing_measure",
+            ),
+            _population_target(truths["population"], 1.0),
+        )
+    )
+
+    result = calibrate(
+        frame,
+        targets,
+        epochs=50,
+        seed=0,
+        target_loss_weights=np.asarray([1_000.0, 1.0]),
+    )
+
+    assert [skip.target.name for skip in result.skipped] == ["missing_measure"]
+    assert result.options["target_loss_weights"]["n"] == 1
+
+
+def test_target_loss_weights_must_survive_skipped_targets(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="missing_measure",
+                entity="household",
+                aggregation="sum",
+                value=1.0,
+                measure="missing_measure",
+            ),
+            _population_target(truths["population"], 1.0),
+        )
+    )
+
+    with pytest.raises(ValueError, match="positive total weight"):
+        calibrate(
+            frame,
+            targets,
+            epochs=50,
+            seed=0,
+            target_loss_weights=np.asarray([1.0, 0.0]),
+        )
 
 
 def test_max_weight_ratio_is_respected(feasible_frame) -> None:
