@@ -69,7 +69,7 @@ CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
-    "semantic_weighted_mape_initial_or_target_scale_cap_1000pct"
+    "semantic_value_weighted_mape_by_measure_basis_target_scale_cap_1000pct"
 )
 US_FISCAL_TARGET_LOSS_CAP = 10.0
 US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER = 25.0
@@ -1301,7 +1301,7 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
 
 
 def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
-    weights = np.ones(len(registry.specs), dtype=np.float64)
+    basis_weights = _fiscal_target_value_basis_weights(registry)
     state_multipliers = np.asarray(
         [
             US_STATE_TARGET_LOSS_MULTIPLIER if spec.metadata.get("state_fips") else 1.0
@@ -1323,9 +1323,61 @@ def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
         ],
         dtype=np.float64,
     )
+    weights = basis_weights
     weights *= state_multipliers
     weights *= multipliers
     return weights / weights.mean()
+
+
+def _fiscal_target_value_basis_weights(registry: TargetRegistry) -> np.ndarray:
+    weights = np.ones(len(registry.specs), dtype=np.float64)
+    bases = np.asarray(
+        [_fiscal_target_value_basis(spec) for spec in registry.specs],
+        dtype=object,
+    )
+    values = np.asarray(
+        [max(abs(float(spec.value)), 1.0) for spec in registry.specs],
+        dtype=np.float64,
+    )
+    for basis in sorted(set(bases.tolist())):
+        mask = bases == basis
+        mean_value = values[mask].mean()
+        if mean_value > 0:
+            weights[mask] = values[mask] / mean_value
+    return weights
+
+
+def _fiscal_target_value_basis(spec) -> str:
+    metadata = spec.metadata
+    measure_mode = metadata.get("measure_mode", "")
+    source_measure_id = metadata.get("source_measure_id", "")
+    target_role = metadata.get("target_role", "")
+    if metadata.get("count") == "true":
+        return (
+            "return_count"
+            if _fiscal_target_is_return_count_measure(source_measure_id)
+            else "count"
+        )
+    if measure_mode in {"count", "positive_count"}:
+        if metadata.get("count_map_to") == "person" or target_role in {
+            "aca_enrollment",
+            "aca_ptc_recipients",
+            "medicaid_enrollment",
+            "medicaid_chip_enrollment",
+        }:
+            return "person_count"
+        return "count"
+    if "enrollment" in source_measure_id or "recipients" in source_measure_id:
+        return "person_count"
+    if "return" in source_measure_id and "count" in source_measure_id:
+        return "return_count"
+    return "amount"
+
+
+def _fiscal_target_is_return_count_measure(source_measure_id: str) -> bool:
+    return source_measure_id == "return_count" or source_measure_id.endswith(
+        ("_returns", "_claims")
+    )
 
 
 def _release_gate_failures(

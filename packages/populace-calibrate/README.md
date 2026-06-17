@@ -23,7 +23,7 @@ reproduces them.
 3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
    the log-weights with torch Adam to minimize **capped weighted MAPE**:
    `weighted_mean(min(abs((A @ w - b) / scale), cap))`. By default
-   `scale = max(abs(target), abs(initial_estimate), 1)` and `cap = 10`
+   `scale = max(abs(target), 1)` and `cap = 10`
    (1000%). Weights stay strictly positive by construction (`w = exp(log_w)`).
    The result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.

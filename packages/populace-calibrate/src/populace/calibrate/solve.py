@@ -8,9 +8,8 @@ the weight vector of ``weight_entity`` to minimize fixed-scale weighted MAPE
     ``weighted_mean(abs((A @ w - b) / s))``
 
 where ``s`` is a per-target scale fixed before optimization. By default,
-``s = max(abs(b), abs(A @ w0), 1)``: zero-valued or tiny targets can no longer
-dominate the objective merely because their denominator is near zero, while
-large national aggregates remain measured as proportional misses.
+``s = max(abs(b), 1)``: the loss is measured against the administrative target
+value, while zero-valued targets use one unit in their measure basis.
 
 with torch's Adam over the **log-weights** (so weights stay strictly positive by
 construction). It returns a
@@ -263,12 +262,12 @@ def relative_error_loss(
     non-finite inputs: a NaN estimate is a harness bug, not a large miss.
 
     ``target_loss_scales`` is the row denominator ``s`` in
-    ``abs((estimate - target) / s)``. If omitted, the diagnostic helper uses
-    ``max(abs(target), 1)``; :func:`calibrate` supplies the stronger production
-    default ``max(abs(target), abs(initial_estimate), 1)`` once it has compiled
-    the target matrix. Target weights are normalized by their own sum, so
-    multiplying all weights by a constant does not change the objective. Each
-    row's scaled absolute miss is capped by ``target_loss_cap``.
+    ``abs((estimate - target) / s)``. If omitted, rows use
+    ``max(abs(target), 1)`` so the target surface, not the starting estimate,
+    defines the permanent scale. Target weights are normalized by their own
+    sum, so multiplying all weights by a constant does not change the
+    objective. Each row's scaled absolute miss is capped by
+    ``target_loss_cap``.
     """
     estimates = np.asarray(estimates, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
@@ -324,34 +323,29 @@ def _validate_target_loss_cap(target_loss_cap: float) -> float:
 
 def default_target_loss_scales(
     targets: np.ndarray,
-    initial_estimates: np.ndarray,
+    initial_estimates: np.ndarray | None = None,
 ) -> np.ndarray:
     """Default fixed row scales for calibration.
 
     The old objective used ``target + 1`` as the denominator. That makes a
     zero-valued target with a large starting estimate dominate the loss by many
-    orders of magnitude. The production scale is instead the largest meaningful
-    size already known before optimization: the absolute target, the absolute
-    starting estimate, or one unit.
+    orders of magnitude. The production scale is instead target-defined:
+    the absolute target or one unit in the row's measure basis. Starting
+    estimates are deliberately excluded; they describe the baseline, not the
+    administrative fact we are trying to hit. ``initial_estimates`` is accepted
+    only for compatibility with callers of the earlier helper signature.
     """
     targets = np.asarray(targets, dtype=np.float64)
-    initial_estimates = np.asarray(initial_estimates, dtype=np.float64)
-    if targets.shape != initial_estimates.shape:
-        raise ValueError(
-            "targets and initial_estimates must align, got shapes "
-            f"{targets.shape} vs {initial_estimates.shape}."
-        )
-    if not (np.isfinite(targets).all() and np.isfinite(initial_estimates).all()):
-        raise ValueError(
-            "default_target_loss_scales requires finite targets and estimates."
-        )
-    return np.maximum.reduce(
-        [
-            np.abs(targets),
-            np.abs(initial_estimates),
-            np.ones_like(targets, dtype=np.float64),
-        ]
-    )
+    if initial_estimates is not None:
+        initial_estimates = np.asarray(initial_estimates, dtype=np.float64)
+        if targets.shape != initial_estimates.shape:
+            raise ValueError(
+                "targets and initial_estimates must align, got shapes "
+                f"{targets.shape} vs {initial_estimates.shape}."
+            )
+    if not np.isfinite(targets).all():
+        raise ValueError("default_target_loss_scales requires finite targets.")
+    return np.maximum(np.abs(targets), np.ones_like(targets, dtype=np.float64))
 
 
 def _validate_target_loss_weights(
@@ -900,7 +894,7 @@ def calibrate(
             their sum.
         target_loss_scales: Optional positive row scales aligned to the supplied
             :class:`TargetSet`. When omitted, compiled rows use
-            :func:`default_target_loss_scales`, fixed from the input weights.
+            :func:`default_target_loss_scales`, fixed from target values only.
             Supplying scales is mainly for harnesses and specialized releases.
         target_loss_cap: Positive per-row cap on scaled absolute misses. The
             default caps each target's objective contribution at 1000%.
@@ -975,7 +969,7 @@ def calibrate(
     targets_t = torch.tensor(problem.target_vector, dtype=torch.float32)
     target_loss_weights_np: np.ndarray | None = None
     target_loss_scales_np: np.ndarray
-    target_loss_scale_kind = "default_initial_or_target"
+    target_loss_scale_kind = "default_target"
     if target_loss_weights_input is not None:
         weights_by_key = {
             target.key: weight
@@ -1005,10 +999,7 @@ def calibrate(
         )
         target_loss_scale_kind = "provided"
     else:
-        target_loss_scales_np = default_target_loss_scales(
-            problem.target_vector,
-            problem.estimates(w0),
-        )
+        target_loss_scales_np = default_target_loss_scales(problem.target_vector)
     target_loss_weights_t = (
         torch.tensor(target_loss_weights_np, dtype=torch.float32)
         if target_loss_weights_np is not None

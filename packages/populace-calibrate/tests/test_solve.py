@@ -527,10 +527,7 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
     # Recompute the capped weighted-MAPE loss on the returned weights directly.
     # final_loss is a float64 closing eval, so it matches to machine epsilon.
     b = result.problem.target_vector
-    scales = default_target_loss_scales(
-        b,
-        result.problem.estimates(result.initial_weights),
-    )
+    scales = default_target_loss_scales(b)
     est = result.problem.estimates(result.weights)
     true_loss = relative_error_loss(est, b, target_loss_scales=scales)
     assert abs(result.final_loss - true_loss) < 1e-9
@@ -542,6 +539,24 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
     est0 = result.problem.estimates(result.initial_weights)
     true_initial = relative_error_loss(est0, b, target_loss_scales=scales)
     assert abs(result.initial_loss - true_initial) < 1e-5
+
+
+def test_default_target_loss_scales_ignore_initial_estimates() -> None:
+    targets = np.asarray([0.0, 10.0, 1_000.0])
+    initial_estimates = np.asarray([1_000_000.0, 20_000.0, 1.0])
+
+    scales = default_target_loss_scales(targets, initial_estimates)
+
+    np.testing.assert_allclose(scales, np.asarray([1.0, 10.0, 1_000.0]))
+
+
+def test_default_target_loss_scales_ignore_nonfinite_initial_estimates() -> None:
+    targets = np.asarray([0.0, 10.0, 1_000.0])
+    initial_estimates = np.asarray([np.inf, np.nan, -np.inf])
+
+    scales = default_target_loss_scales(targets, initial_estimates)
+
+    np.testing.assert_allclose(scales, np.asarray([1.0, 10.0, 1_000.0]))
 
 
 def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None:
