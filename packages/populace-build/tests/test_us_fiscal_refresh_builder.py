@@ -348,6 +348,131 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
     }
 
 
+def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "has_marketplace_health_coverage_at_interview": [False, False, True],
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([1, 1]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2],
+                    "takes_up_aca_if_eligible": [True, True],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.al.aptc_recipients",
+            entity="household",
+            measure="takes_up_aca_if_eligible",
+            value=2.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={"target_role": "aca_ptc_recipients", "state_fips": "01"},
+        ),
+    )
+    values = {
+        "is_aca_ptc_eligible": np.asarray([1.0, 1.0]),
+        "is_aca_ptc_eligible:person": np.asarray([1.0, 1.0, 1.0]),
+        "health_insurance_premiums_without_medicare_part_b": np.asarray(
+            [400.0, 1200.0]
+        ),
+        "assigned_aca_ptc": np.asarray([100.0, 0.0]),
+        "slcsp": np.asarray([1000.0, 1000.0]),
+    }
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        assert simulation is fake_simulation
+        assert map_to in {"tax_unit", "person"}
+        if map_to == "person":
+            return values[f"{variable}:person"]
+        return values[variable]
+
+    fake_simulation = object()
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    refreshed = builder._with_aca_marketplace_source_outputs(
+        frame,
+        specs,
+        seed=42,
+        simulation=fake_simulation,
+    )
+
+    tax_unit = refreshed.table("tax_unit")
+    assigned = tax_unit.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[10]) is True
+    assert bool(assigned.loc[20]) is False
+    assert tax_unit["takes_up_aca_if_eligible"].nunique() == 2
+    assert tax_unit["selected_marketplace_plan_benchmark_ratio"].nunique() == 2
+    person_counts = person.assign(
+        assigned=person["person_tax_unit_id"].map(assigned).fillna(False)
+    )
+    assert float(person_counts["assigned"].sum()) == 2.0
+    assert builder._health_input_signal_gate(refreshed).passed
+    assert frame.table("tax_unit")["takes_up_aca_if_eligible"].nunique() == 1
+    assert (
+        frame.table("tax_unit")["selected_marketplace_plan_benchmark_ratio"].nunique()
+        == 1
+    )
+
+
+def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.al.marketplace_enrollment",
+            entity="household",
+            measure="has_marketplace_health_coverage_at_interview",
+            value=2.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={"target_role": "aca_enrollment", "state_fips": "01"},
+        ),
+    )
+
+    try:
+        builder._with_aca_marketplace_source_outputs(
+            object(),
+            specs,
+            seed=42,
+            simulation=object(),
+        )
+    except RuntimeError as exc:
+        assert "requires an APTC-recipient target" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected enrollment-only ACA source refresh to fail.")
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:

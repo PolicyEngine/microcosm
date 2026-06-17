@@ -30,13 +30,16 @@ from populace.build.gates import (
     nonconstant_columns_gate,
     target_profile_coverage_gate,
 )
+from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.us import (
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    US_SOURCE_MANIFEST,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     us_source_coverage_diagnostics,
+    us_source_operation_handlers,
     write_us_source_coverage_diagnostics,
 )
 from populace.build.us.demographics import (
@@ -127,6 +130,25 @@ FISCAL_TARGET_SOURCE_KEYS = {
 US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
+)
+US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
+US_ACA_SOURCE_OUTPUT_COLUMNS = US_HEALTH_INPUT_NONCONSTANT_COLUMNS
+US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
+    "reported_has_subsidized_marketplace_health_coverage_at_interview"
+)
+US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
+US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
+US_ACA_TARGET_ROLE_TABLES = {
+    "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
+    "aca_bronze_aptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
+    "aca_bronze_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
+    "aca_below_benchmark_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
+}
+US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
+    {
+        US_ACA_APTC_TARGET_TABLE,
+        "cms_aca_bronze_aptc_consumers_by_state",
+    }
 )
 
 SOI_VARIABLE_MAP = {
@@ -301,6 +323,275 @@ def _load_frame(path: Path) -> Frame:
         tables,
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
+    )
+
+
+def _state_fips_text(values: Iterable[object]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                result.append(stripped.zfill(2))
+                continue
+        if isinstance(value, bytes):
+            stripped = value.decode().strip()
+            if stripped:
+                result.append(stripped.zfill(2))
+                continue
+        if pd.isna(value):
+            raise ValueError("state_fips contains missing values.")
+        result.append(f"{int(value):02d}")
+    return result
+
+
+def _aca_source_target_tables(target_specs: tuple) -> dict[str, pd.DataFrame]:
+    rows_by_table: dict[str, list[dict[str, object]]] = {}
+    for spec in target_specs:
+        if spec.family != "cms_aca":
+            continue
+        state_fips = spec.metadata.get("state_fips")
+        if not state_fips:
+            continue
+        table_name = US_ACA_TARGET_ROLE_TABLES.get(spec.metadata.get("target_role"))
+        if table_name is None:
+            continue
+        rows_by_table.setdefault(table_name, []).append(
+            {
+                "state_fips": str(state_fips).zfill(2),
+                "target": float(spec.value),
+                "source_record_id": spec.name,
+            }
+        )
+
+    return {
+        table_name: pd.DataFrame(rows)
+        for table_name, rows in sorted(rows_by_table.items())
+    }
+
+
+def _with_state_take_up_rates(
+    tax_unit: pd.DataFrame,
+    target_tables: Mapping[str, pd.DataFrame],
+) -> pd.DataFrame:
+    result = tax_unit.copy(deep=True)
+    source = target_tables.get(US_ACA_APTC_TARGET_TABLE)
+    if source is None or source.empty:
+        result["aca_take_up_rate"] = 0.0
+        return result
+
+    eligible = result["is_aca_ptc_eligible"].fillna(False).astype(bool)
+    weighted_eligible = (
+        result.loc[eligible]
+        .groupby("state_fips")["tax_unit_weight"]
+        .sum()
+        .astype(float)
+    )
+    targets = source.groupby("state_fips")["target"].sum().astype(float)
+    rates = (targets / weighted_eligible).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    result["aca_take_up_rate"] = (
+        result["state_fips"].map(rates).fillna(0.0).clip(lower=0.0, upper=1.0)
+    )
+    return result
+
+
+def _tax_unit_person_count_weights(
+    frame: Frame,
+    *,
+    person_filter: np.ndarray | None = None,
+) -> np.ndarray:
+    person = frame.table("person")
+    household_ids = frame.table("household")["household_id"].to_numpy()
+    tax_unit_ids = frame.table("tax_unit")["tax_unit_id"].to_numpy()
+
+    household_positions = pd.Series(
+        np.arange(len(household_ids), dtype=np.int64),
+        index=household_ids,
+    )
+    person_household_positions = household_positions.reindex(
+        person["person_household_id"].to_numpy()
+    ).to_numpy()
+    if np.isnan(person_household_positions).any():
+        raise ValueError(
+            "Person rows reference household ids not present in household."
+        )
+
+    tax_unit_positions = pd.Series(
+        np.arange(len(tax_unit_ids), dtype=np.int64),
+        index=tax_unit_ids,
+    ).reindex(person["person_tax_unit_id"].to_numpy())
+    if np.isnan(tax_unit_positions).any():
+        raise ValueError("Person rows reference tax_unit ids not present in tax_unit.")
+
+    person_weights = frame.weights_for("household").values[
+        person_household_positions.astype(np.int64)
+    ]
+    if person_filter is not None:
+        if len(person_filter) != len(person):
+            raise ValueError(
+                "Person filter length does not match the person table: "
+                f"{len(person_filter)} != {len(person)}."
+            )
+        person_weights = np.where(
+            np.asarray(person_filter, dtype=bool), person_weights, 0.0
+        )
+
+    out = np.zeros(len(tax_unit_ids), dtype=np.float64)
+    np.add.at(out, tax_unit_positions.astype(np.int64), person_weights)
+    return out
+
+
+def _aca_source_person_table(frame: Frame) -> pd.DataFrame:
+    person = frame.table("person").copy()
+    if "person_tax_unit_id" not in person:
+        raise RuntimeError(
+            "ACA source runtime requires person_tax_unit_id in the person table."
+        )
+    if US_ACA_REPORTED_MARKETPLACE_COVERAGE not in person:
+        if "has_marketplace_health_coverage" not in person:
+            raise RuntimeError(
+                "ACA source runtime requires observed Marketplace coverage in "
+                f"{US_ACA_REPORTED_MARKETPLACE_COVERAGE!r} or "
+                "'has_marketplace_health_coverage'."
+            )
+        person[US_ACA_REPORTED_MARKETPLACE_COVERAGE] = person[
+            "has_marketplace_health_coverage"
+        ]
+
+    person["tax_unit_id"] = person["person_tax_unit_id"]
+    if US_ACA_REPORTED_SUBSIDIZED_ANCHOR not in person:
+        # Observed Marketplace coverage is broader than subsidized coverage.
+        # When the narrower anchor is unavailable, leave no preserved APTC
+        # anchor rather than freezing unsubsidized observations as recipients.
+        person[US_ACA_REPORTED_SUBSIDIZED_ANCHOR] = False
+    return person
+
+
+def _aca_source_tax_unit_table(
+    frame: Frame,
+    target_tables: Mapping[str, pd.DataFrame],
+    *,
+    simulation,
+) -> pd.DataFrame:
+    tax_unit = frame.table("tax_unit").copy()
+    household = frame.table("household")
+    positions = _tax_unit_to_household_positions(frame)
+    state_fips = np.asarray(household["state_fips"].to_numpy())[positions]
+    has_person_count_targets = any(
+        table_name in target_tables for table_name in US_ACA_PERSON_COUNT_TARGET_TABLES
+    )
+
+    tax_unit["state_fips"] = _state_fips_text(state_fips)
+    is_aca_ptc_eligible = (
+        _calculate_array(
+            simulation,
+            "is_aca_ptc_eligible",
+            map_to="tax_unit",
+        )
+        > 0
+    )
+    if has_person_count_targets:
+        eligible_people = (
+            _calculate_array(
+                simulation,
+                "is_aca_ptc_eligible",
+                map_to="person",
+            )
+            > 0
+        )
+        tax_unit["tax_unit_weight"] = _tax_unit_person_count_weights(
+            frame,
+            person_filter=eligible_people,
+        )
+        tax_unit["is_aca_ptc_eligible"] = tax_unit["tax_unit_weight"] > 0
+    else:
+        tax_unit["tax_unit_weight"] = frame.weights_for("household").values[positions]
+        tax_unit["is_aca_ptc_eligible"] = is_aca_ptc_eligible
+    tax_unit["health_insurance_premiums_without_medicare_part_b"] = _calculate_array(
+        simulation,
+        "health_insurance_premiums_without_medicare_part_b",
+        map_to="tax_unit",
+    )
+    tax_unit["assigned_aca_ptc"] = _calculate_array(
+        simulation,
+        "assigned_aca_ptc",
+        map_to="tax_unit",
+    )
+    tax_unit["slcsp"] = _calculate_array(simulation, "slcsp", map_to="tax_unit")
+    return _with_state_take_up_rates(tax_unit, target_tables)
+
+
+def _with_aca_marketplace_source_outputs(
+    frame: Frame,
+    target_specs: tuple,
+    *,
+    seed: int,
+    simulation=None,
+) -> Frame:
+    from policyengine_us import Microsimulation
+
+    simulation = simulation or Microsimulation(dataset=_dataset_from_frame(frame))
+    target_tables = _aca_source_target_tables(target_specs)
+    if US_ACA_APTC_TARGET_TABLE not in target_tables:
+        raise RuntimeError(
+            "ACA Marketplace source refresh requires an APTC-recipient target. "
+            "The Marketplace enrollment target is observed person coverage and "
+            "must not be used as a simulated PTC take-up fallback."
+        )
+    stage = US_SOURCE_MANIFEST.stage_map()[US_ACA_MARKETPLACE_STAGE]
+    stop_after = (
+        None
+        if "cms_aca_bronze_aptc_consumers_by_state" in target_tables
+        else "support_clip"
+    )
+    tables = {
+        "cps_person": _aca_source_person_table(frame),
+        "tax_unit": _aca_source_tax_unit_table(
+            frame,
+            target_tables,
+            simulation=simulation,
+        ),
+        **target_tables,
+    }
+    source_output = run_source_stage(
+        stage,
+        tables=tables,
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=seed, target_year=PERIOD),
+        stop_after=stop_after,
+    )
+
+    if "tax_unit_id" not in source_output:
+        raise RuntimeError("ACA source runtime output is missing tax_unit_id.")
+    missing_outputs = [
+        column
+        for column in US_ACA_SOURCE_OUTPUT_COLUMNS
+        if column not in source_output.columns
+    ]
+    if missing_outputs:
+        raise RuntimeError(
+            "ACA source runtime output is missing declared column(s): "
+            f"{missing_outputs}."
+        )
+
+    tax_unit = frame.table("tax_unit").copy()
+    output_by_id = source_output.set_index("tax_unit_id")
+    aligned = output_by_id.reindex(tax_unit["tax_unit_id"])
+    if aligned[list(US_ACA_SOURCE_OUTPUT_COLUMNS)].isna().any().any():
+        raise RuntimeError(
+            "ACA source runtime output does not cover every tax_unit_id in the "
+            "release frame."
+        )
+    for column in US_ACA_SOURCE_OUTPUT_COLUMNS:
+        tax_unit[column] = aligned[column].to_numpy()
+
+    tables_out = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables_out["tax_unit"] = tax_unit
+    return Frame(
+        tables_out,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
     )
 
 
@@ -1453,6 +1744,11 @@ def main() -> None:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     base_frame = _load_frame(base_h5)
+    base_frame = _with_aca_marketplace_source_outputs(
+        base_frame,
+        target_specs,
+        seed=args.seed,
+    )
     health_input_gate = _health_input_signal_gate(base_frame)
     if not health_input_gate.passed:
         raise RuntimeError(
