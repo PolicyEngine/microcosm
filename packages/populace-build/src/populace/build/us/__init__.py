@@ -41,6 +41,7 @@ from populace.build.us.demographics import (
     write_demographics,
 )
 from populace.build.us.fiscal_targets import (
+    SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
     US_FISCAL_LEDGER_PARITY_REPORT,
     US_FISCAL_MACRO_REALISM_BANDS,
@@ -110,6 +111,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
+    "SOI_VARIABLE_MAP",
     "US_NONNEGATIVE_SOURCE_OUTPUTS",
     "US_SOURCE_COVERAGE",
     "US_SOI_FISCAL_TARGET_SPECS",

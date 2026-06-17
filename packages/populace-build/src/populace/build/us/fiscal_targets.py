@@ -35,6 +35,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
+    "SOI_VARIABLE_MAP",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
@@ -167,6 +168,50 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "taxable_social_security_returns": "taxable_social_security",
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
+}
+
+
+SOI_VARIABLE_MAP: dict[str, str] = {
+    "adjusted_gross_income": "adjusted_gross_income",
+    "business_net_profits": "self_employment_income",
+    "business_net_losses": "self_employment_income",
+    "capital_gains_distributions": "capital_gains",
+    "capital_gains_gross": "capital_gains",
+    "capital_gains_losses": "capital_losses",
+    "ctc": "ctc",
+    "employment_income": "employment_income",
+    "eitc": "eitc",
+    "estate_income": "estate_income",
+    "estate_losses": "estate_income",
+    "exempt_interest": "tax_exempt_interest_income",
+    "income_tax": "income_tax",
+    "income_tax_before_credits": "income_tax_before_credits",
+    "ira_distributions": "taxable_ira_distributions",
+    "medical_expense_deduction": "medical_expense_deduction",
+    "ordinary_dividends": "dividend_income",
+    "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
+    "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    "assigned_aca_ptc": "assigned_aca_ptc",
+    "qualified_business_income_deduction": "qualified_business_income_deduction",
+    "qualified_dividends": "qualified_dividend_income",
+    "real_estate_taxes": "real_estate_taxes",
+    "rent_and_royalty_net_income": "rent_and_royalty_net_income",
+    "rent_and_royalty_net_losses": "rent_and_royalty_net_income",
+    "refundable_ctc": "refundable_ctc",
+    "salt_deduction": "salt_deduction",
+    "tax_exempt_interest_income": "tax_exempt_interest_income",
+    "taxable_income": "taxable_income",
+    "taxable_interest_income": "taxable_interest_income",
+    "taxable_pension_income": "taxable_pension_income",
+    "taxable_social_security": "tax_unit_taxable_social_security",
+    "total_pension_income": "pension_income",
+    "total_social_security": "tax_unit_social_security",
+    "unemployment_compensation": "unemployment_compensation",
+}
+
+_SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
+    "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
 
 
@@ -787,10 +832,17 @@ def _soi_reference_from_fact(
         "target_period": str(target_period),
         "target_role": _soi_target_role(fact, measure_id),
         "variable": variable,
+        "materializer": "irs_soi_slice",
+        "measure_mode": _soi_measure_mode(variable, is_count=is_count),
         "agi_lower_bound": lower,
         "agi_upper_bound": upper,
         "filing_status": status,
     }
+    base_variables = _soi_base_variables(variable)
+    if len(base_variables) == 1:
+        metadata["base_variable"] = base_variables[0]
+    elif len(base_variables) > 1:
+        metadata["base_variables"] = ",".join(base_variables)
     if is_count:
         metadata["count"] = "true"
     state_fips = _state_fips(fact)
@@ -807,6 +859,20 @@ def _soi_reference_from_fact(
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
     )
+
+
+def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
+    if variable == "count":
+        return "count"
+    if is_count:
+        return "positive_count"
+    return "sum"
+
+
+def _soi_base_variables(variable: str) -> tuple[str, ...]:
+    if variable == "count":
+        return ()
+    return _SOI_BASE_VARIABLE_OVERRIDES.get(variable, (SOI_VARIABLE_MAP[variable],))
 
 
 def _state_income_tax_reference_from_fact(
