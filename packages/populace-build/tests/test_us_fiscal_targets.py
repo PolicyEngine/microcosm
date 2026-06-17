@@ -121,29 +121,61 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 11
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 40
     assert all(
-        source_record_id.startswith(("census_stc.", "irs_soi."))
+        source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     )
     assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
-    facts = [
-        {"lineage": {"source_record_id": source_record_id}}
-        for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
-    ]
-    facts.extend(
-        _ledger_fact_for_reference(reference, value=index + 1)
-        for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
+    excluded_source_record_id = (
+        "hhs_acf_tanf.fy2024.cash_assistance.ar."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
     )
+    control_source_record_id = (
+        "hhs_acf_tanf.fy2024.cash_assistance.ca."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=excluded_source_record_id,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=123_000_000,
+            geography_level="state",
+            geography_id="0400000US05",
+            groupby_value_id="ar",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=control_source_record_id,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=456_000_000,
+            geography_level="state",
+            geography_id="0400000US06",
+            groupby_value_id="ca",
+        ),
+    ]
 
     registry = compile_us_fiscal_target_registry(facts)
 
-    names = {spec.name for spec in registry.specs}
-    assert len(registry) == len(US_FISCAL_TARGET_REFERENCES)
-    assert names.isdisjoint(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS)
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert excluded_source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    assert excluded_source_record_id not in by_source_record_id
+    assert control_source_record_id in by_source_record_id
+    control = by_source_record_id[control_source_record_id]
+    assert control.family == "hhs_acf_tanf"
+    assert control.metadata["target_role"] == "tanf_total"
+    assert control.metadata["base_variable"] == "tanf"
+    assert control.metadata["state_fips"] == "06"
+    assert control.value == 456_000_000
 
 
 def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:

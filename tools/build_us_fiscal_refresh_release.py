@@ -490,6 +490,14 @@ def _aca_source_tax_unit_table(
         )
         > 0
     )
+    # Source-runtime support must ignore pre-refresh take-up flags:
+    # assigned_aca_ptc is aca_ptc multiplied by takes_up_aca_if_eligible.
+    potential_aca_ptc = _calculate_array(
+        simulation,
+        "aca_ptc",
+        map_to="tax_unit",
+    )
+    has_potential_ptc = potential_aca_ptc > 0
     if has_person_count_targets:
         eligible_people = (
             _calculate_array(
@@ -503,20 +511,18 @@ def _aca_source_tax_unit_table(
             frame,
             person_filter=eligible_people,
         )
-        tax_unit["is_aca_ptc_eligible"] = tax_unit["tax_unit_weight"] > 0
+        tax_unit["is_aca_ptc_eligible"] = (
+            tax_unit["tax_unit_weight"] > 0
+        ) & has_potential_ptc
     else:
         tax_unit["tax_unit_weight"] = frame.weights_for("household").values[positions]
-        tax_unit["is_aca_ptc_eligible"] = is_aca_ptc_eligible
+        tax_unit["is_aca_ptc_eligible"] = is_aca_ptc_eligible & has_potential_ptc
     tax_unit["health_insurance_premiums_without_medicare_part_b"] = _calculate_array(
         simulation,
         "health_insurance_premiums_without_medicare_part_b",
         map_to="tax_unit",
     )
-    tax_unit["assigned_aca_ptc"] = _calculate_array(
-        simulation,
-        "assigned_aca_ptc",
-        map_to="tax_unit",
-    )
+    tax_unit["assigned_aca_ptc"] = potential_aca_ptc
     tax_unit["slcsp"] = _calculate_array(simulation, "slcsp", map_to="tax_unit")
     return _with_state_take_up_rates(tax_unit, target_tables)
 

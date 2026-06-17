@@ -374,7 +374,7 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
                 {
                     "tax_unit_id": np.asarray([10, 20], dtype="int64"),
                     "stable_tax_unit_draw": [0.1, 0.2],
-                    "takes_up_aca_if_eligible": [True, True],
+                    "takes_up_aca_if_eligible": [False, False],
                     "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
                 }
             ),
@@ -395,7 +395,7 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
             name="cms_aca.oep2024.state_marketplace.al.aptc_recipients",
             entity="household",
             measure="takes_up_aca_if_eligible",
-            value=2.0,
+            value=3.0,
             source="CMS Marketplace OEP",
             family="cms_aca",
             metadata={"target_role": "aca_ptc_recipients", "state_fips": "01"},
@@ -407,7 +407,8 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         "health_insurance_premiums_without_medicare_part_b": np.asarray(
             [400.0, 1200.0]
         ),
-        "assigned_aca_ptc": np.asarray([100.0, 0.0]),
+        "assigned_aca_ptc": np.asarray([0.0, 0.0]),
+        "aca_ptc": np.asarray([100.0, 0.0]),
         "slcsp": np.asarray([1000.0, 1000.0]),
     }
 

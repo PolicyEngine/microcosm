@@ -294,6 +294,114 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
         "from the current state_income_tax variable."
     ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Arkansas under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.az.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Arizona under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.co.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Colorado under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ct.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Connecticut under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.de.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Delaware under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ga.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Georgia under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.id.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Idaho under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.in.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Indiana under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ks.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Kansas under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ky.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Kentucky under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.me.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Maine under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.mi.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Michigan under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.mt.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Montana under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.nm.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in New Mexico under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.nv.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Nevada under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.ok.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Oklahoma under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.or.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Oregon under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.pa.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Pennsylvania under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.sd.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in South Dakota under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.tx.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Texas under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.vt.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in Vermont under PolicyEngine-US state TANF formulas."
+    ),
+    "hhs_acf_tanf.fy2024.cash_assistance.wv.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
+        "Current 2024 base microdata have zero positive TANF benefit support "
+        "in West Virginia under PolicyEngine-US state TANF formulas."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ak.under_1.return_count": (
+        "Current 2024 base microdata have zero Alaska return-count support in "
+        "the SOI under-$1 AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.income_tax_before_credits_returns": (
+        "Current 2024 base microdata have zero positive income-tax-before-"
+        "credits support in the SOI under-$1 AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.income_tax_before_credits_amount": (
+        "Current 2024 base microdata have zero income-tax-before-credits "
+        "amount support in the SOI under-$1 AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.income_tax_liability_returns": (
+        "Current 2024 base microdata have zero positive income-tax-liability "
+        "support in the SOI under-$1 AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.under_1.income_tax_liability_amount": (
+        "Current 2024 base microdata have zero income-tax-liability amount "
+        "support in the SOI under-$1 AGI bin."
+    ),
     "irs_soi.ty2022.historic_table_2.us.under_1.qbi_claims": (
         "Current 2024 base microdata have zero positive qualified business "
         "income deduction support in this SOI AGI bin."
@@ -325,6 +433,14 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
     "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_amount": (
         "Current-law PolicyEngine-US refundable CTC amount support is zero in "
         "this high-income SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.medical_dental_expense_returns": (
+        "Current 2024 base microdata have zero positive medical-expense "
+        "deduction support in this SOI AGI bin."
+    ),
+    "irs_soi.ty2022.historic_table_2.us.500k_to_1m.medical_dental_expense_amount": (
+        "Current 2024 base microdata have zero medical-expense deduction "
+        "amount support in this SOI AGI bin."
     ),
     "irs_soi.ty2022.historic_table_2.us.1m_plus.medical_dental_expense_returns": (
         "Current 2024 base microdata have zero positive medical-expense "
