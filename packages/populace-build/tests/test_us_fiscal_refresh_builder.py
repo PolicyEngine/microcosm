@@ -942,6 +942,19 @@ def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:
     assert tuple(exclusions) == builder.REVIEWED_EXCLUDED_ALIASES
 
 
+def test_fiscal_refresh_uses_target_period_medicaid_source() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        "cms-medicaid-chip-monthly-enrollment-december-2024"
+        in builder.DIRECT_ACTIVE_ALIASES
+    )
+    assert (
+        "cms-medicaid-chip-monthly-enrollment-dataset"
+        in builder.REVIEWED_EXCLUDED_ALIASES
+    )
+
+
 def test_reviewed_exclusions_fail_when_hard_target_surface_changes(
     monkeypatch,
 ) -> None:

@@ -107,7 +107,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
 
 DIRECT_ACTIVE_ALIASES = (
     "cms-aca-oep-state-level",
-    "cms-medicaid-chip-monthly-enrollment-dataset",
+    "cms-medicaid-chip-monthly-enrollment-december-2024",
     "cms-medicare-trustees-report-2025-part-b-premium-income",
     "census-stc-individual-income-tax",
     "hhs-acf-tanf-caseload-2024",
@@ -143,7 +143,7 @@ REVIEWED_EXCLUDED_ALIASES = (
     "cms-aca-effectuated-enrollment-2022",
     "cms-aca-oep-state-level-2022",
     "cms-aca-oep-state-level-2025",
-    "cms-medicaid-chip-monthly-enrollment-december-2024",
+    "cms-medicaid-chip-monthly-enrollment-dataset",
     "cms-nhe-historical-service-source",
     "hhs-acf-liheap-fy2023-national-profile",
     "hhs-acf-liheap-fy2024-national-profile",
