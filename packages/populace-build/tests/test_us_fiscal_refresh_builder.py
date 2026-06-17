@@ -152,6 +152,122 @@ def test_soi_count_rows_count_positive_component_items() -> None:
     )
 
 
+def test_soi_eitc_child_count_filter_uses_ledger_filter_first() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_filter_eitc_child_count": "2",
+                "source_measure_id": "eitc_no_children_amount",
+            }
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_no_children_amount"}
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_one_child_claims"}
+        )
+        == "1"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_two_children_amount"}
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_three_or_more_children_claims"}
+        )
+        == "3+"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "3+"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter({"source_measure_id": "eitc_total"})
+        is None
+    )
+
+
+def test_unsupported_soi_ledger_filters_require_materializer_support() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_income_range": "25k_to_30k",
+                "ledger_filter_filing_status": "all",
+                "ledger_filter_eitc_child_count": "1",
+            }
+        )
+        == ()
+    )
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_new_dimension": "all",
+            }
+        )
+        == ()
+    )
+    assert builder._unsupported_soi_ledger_filters(
+        {
+            "ledger_filter_new_dimension": "specific_slice",
+        }
+    ) == ("ledger_filter_new_dimension",)
+
+
+def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
+    builder = _load_builder_module()
+    counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
+
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "0"),
+        np.asarray([True, False, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "1"),
+        np.asarray([False, True, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "2"),
+        np.asarray([False, False, True, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "3+"),
+        np.asarray([False, False, False, True, True]),
+    )
+
+
 def test_combined_household_values_unions_positive_person_support(small_frame) -> None:
     builder = _load_builder_module()
 
