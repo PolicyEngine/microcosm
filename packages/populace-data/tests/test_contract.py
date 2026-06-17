@@ -30,6 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
+TARGET_COUNT = 4
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
@@ -58,8 +59,8 @@ def _build_manifest(release_id: str = RELEASE_ID) -> dict:
         "calibration": {
             "filename": "populace_us_2024_calibration.npz",
             "sha256": CALIBRATION_SHA,
-            "target_surface": {"sha256": TARGET_SURFACE_SHA, "n_targets": 1},
-            "target_registry": {"version": REGISTRY_VERSION, "n_specs": 1},
+            "target_surface": {"sha256": TARGET_SURFACE_SHA, "n_targets": TARGET_COUNT},
+            "target_registry": {"version": REGISTRY_VERSION, "n_specs": TARGET_COUNT},
         },
         "gates": {"exported_nonzero": {"passed": True}},
     }
@@ -136,7 +137,7 @@ def _calibration_diagnostics() -> dict:
         "target_surface": {
             "schema_version": 1,
             "weight_entity": "household",
-            "n_targets": 1,
+            "n_targets": TARGET_COUNT,
             "n_records": 2,
             "constraint_matrix": {"rows": 1, "columns": 2, "nnz": 2},
             "sha256": TARGET_SURFACE_SHA,
@@ -146,30 +147,93 @@ def _calibration_diagnostics() -> dict:
         "target_registry": {
             "country": "us",
             "version": REGISTRY_VERSION,
-            "n_specs": 1,
+            "n_specs": TARGET_COUNT,
         },
         "loss_trajectory": [1.0, 0.5],
         "skipped": [],
         "targets": [
-            {
-                "name": "population@2024",
-                "target_name": "population",
-                "period": 2024,
-                "entity": "household",
-                "aggregation": "count",
-                "measure": None,
-                "filter": None,
-                "source": "Census PEP 2024",
-                "metadata": {},
-                "target": 1.0,
-                "compiled_target": 1.0,
-                "initial_estimate": 0.8,
-                "final_estimate": 1.0,
-                "relative_error": 0.0,
-                "within_tolerance": True,
-                "registry": {"family": "cbo"},
-            }
+            _target_row(
+                "population@2024",
+                target_name="population",
+                target=1.0,
+                initial_estimate=0.8,
+                final_estimate=1.0,
+                relative_error=0.0,
+                family="cbo",
+            ),
+            _target_row(
+                "irs_soi.ty2022.historic_table_2.us.all."
+                "income_tax_liability_amount@2024",
+                target_name=(
+                    "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount"
+                ),
+                target=2_105_345_646_000.0,
+                initial_estimate=2_000_000_000_000.0,
+                final_estimate=2_067_762_165_736.424,
+                relative_error=-0.0178514536722185,
+                family="irs_soi",
+                target_role="federal_income_tax_total",
+            ),
+            _target_row(
+                "irs_soi.ty2022.historic_table_2.us.all."
+                "income_tax_liability_returns@2024",
+                target_name=(
+                    "irs_soi.ty2022.historic_table_2.us.all."
+                    "income_tax_liability_returns"
+                ),
+                target=113_562_590.0,
+                initial_estimate=105_421_734.40619682,
+                final_estimate=105_437_267.69738781,
+                relative_error=-0.07154928663226319,
+                family="irs_soi",
+            ),
+            _target_row(
+                "ssa_supplement.cy2024.oasdi_ssi_payments."
+                "social_security_benefits.payment_amount@2024",
+                target_name=(
+                    "ssa_supplement.cy2024.oasdi_ssi_payments."
+                    "social_security_benefits.payment_amount"
+                ),
+                target=1_471_195_000_000.0,
+                initial_estimate=1_541_646_703_291.2527,
+                final_estimate=1_541_540_768_722.367,
+                relative_error=0.047815394099604024,
+                family="ssa",
+                target_role="social_security_total",
+            ),
         ],
+    }
+
+
+def _target_row(
+    name: str,
+    *,
+    target_name: str,
+    target: float,
+    initial_estimate: float,
+    final_estimate: float,
+    relative_error: float,
+    family: str,
+    target_role: str | None = None,
+) -> dict:
+    metadata = {"target_role": target_role} if target_role else {}
+    return {
+        "name": name,
+        "target_name": target_name,
+        "period": 2024,
+        "entity": "household",
+        "aggregation": "sum",
+        "measure": None,
+        "filter": None,
+        "source": "Fixture admin target",
+        "metadata": metadata,
+        "target": target,
+        "compiled_target": target,
+        "initial_estimate": initial_estimate,
+        "final_estimate": final_estimate,
+        "relative_error": relative_error,
+        "within_tolerance": None,
+        "registry": {"family": family},
     }
 
 
@@ -211,7 +275,19 @@ def _source_coverage_diagnostics() -> dict:
                 "target_count": 1,
                 "sources": ["Census PEP 2024"],
                 "reference_urls": ["https://example.test/source"],
-            }
+            },
+            "irs_soi": {
+                "label": "IRS Statistics of Income",
+                "target_count": 2,
+                "sources": ["IRS SOI Historic Table 2"],
+                "reference_urls": ["https://example.test/soi"],
+            },
+            "ssa": {
+                "label": "Social Security Administration",
+                "target_count": 1,
+                "sources": ["SSA Annual Statistical Supplement"],
+                "reference_urls": ["https://example.test/ssa"],
+            },
         },
     }
 
@@ -261,6 +337,92 @@ def _write_json_and_refresh_manifest_hash(
 
 def test_a_complete_release_passes(release_dir: Path) -> None:
     validate_release_dir(release_dir)
+
+
+def test_us_release_rejects_bad_critical_target_fit(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all."
+        "income_tax_liability_amount@2024"
+    )
+    target["final_estimate"] = 735_173_331_468.564
+    target["relative_error"] = -0.6508063496056629
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "federal income tax liability amount" in failures
+    assert "relative_error=-0.650806" in failures
+
+
+def test_us_release_recomputes_critical_target_fit(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all."
+        "income_tax_liability_amount@2024"
+    )
+    target["final_estimate"] = 735_173_331_468.564
+    target["relative_error"] = 0.0
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "stale relative_error" in failures
+    assert "relative_error=-0.650806" in failures
+
+
+def test_us_release_requires_critical_targets(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["targets"] = [
+        row
+        for row in diagnostics["targets"]
+        if row["name"] != "ssa_supplement.cy2024.oasdi_ssi_payments."
+        "social_security_benefits.payment_amount@2024"
+    ]
+    diagnostics["target_surface"]["n_targets"] = len(diagnostics["targets"])
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+    source_coverage = _source_coverage_diagnostics()
+    source_coverage["fiscal_target_sources"].pop("ssa")
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=source_coverage,
+    )
+    build_manifest = _build_manifest()
+    build_manifest["calibration"]["target_surface"]["n_targets"] = len(
+        diagnostics["targets"]
+    )
+    (release_dir / "build_manifest.json").write_text(json.dumps(build_manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "social_security_benefits" in failures
 
 
 @pytest.mark.parametrize("filename", required_release_files(RELEASE_ID))
@@ -536,11 +698,11 @@ def test_us_source_coverage_must_not_claim_uncalibrated_families(
     release_dir: Path,
 ) -> None:
     payload = _source_coverage_diagnostics()
-    payload["fiscal_target_sources"]["irs_soi"] = {
-        "label": "Internal Revenue Service Statistics of Income",
+    payload["fiscal_target_sources"]["jct"] = {
+        "label": "Joint Committee on Taxation",
         "target_count": 1,
-        "sources": ["SOI publication"],
-        "reference_urls": ["https://example.test/soi"],
+        "sources": ["JCT tax expenditures"],
+        "reference_urls": ["https://example.test/jct"],
     }
     _write_json_and_refresh_manifest_hash(
         release_dir,
@@ -551,7 +713,7 @@ def test_us_source_coverage_must_not_claim_uncalibrated_families(
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(release_dir)
     failures = "\n".join(excinfo.value.failures)
-    assert "unexpected ['irs_soi']" in failures
+    assert "unexpected ['jct']" in failures
 
 
 def test_us_source_coverage_target_counts_match_calibration(
