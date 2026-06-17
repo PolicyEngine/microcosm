@@ -971,6 +971,140 @@ def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
         raise AssertionError("Expected enrollment-only ACA source refresh to fail.")
 
 
+def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 36], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([100, 200], dtype="int64")}
+            ),
+            "family": pd.DataFrame(
+                {"family_id": np.asarray([1000, 2000], dtype="int64")}
+            ),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000], dtype="int64")}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+    target = TargetSpec(
+        name=f"jct.mock_tax_expenditure@{builder.PERIOD}",
+        entity="household",
+        measure="jct_mock_tax_expenditure",
+        value=-45.0,
+        source="Mock JCT",
+        family="jct",
+        signed=True,
+    )
+    reform_spec = SimpleNamespace(
+        neutralized_variable="mock_credit", measure="jct_mock_tax_expenditure"
+    )
+    datasets = []
+    simulations = []
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            "state_income_tax": FakeVariable(),
+            "mock_credit": FakeVariable(),
+        }
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.cache_invalidations = 0
+            simulations.append(self)
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            if self.reform is not None:
+                assert variable == "income_tax"
+                assert kwargs == {}
+                return np.asarray([90.0, 25.0, 40.0])
+            arrays = {
+                "income_tax": np.asarray([100.0, 30.0, 70.0]),
+                "taxable_income": np.asarray([1000.0, 2000.0, 3000.0]),
+                "adjusted_gross_income": np.asarray([1100.0, 2100.0, 3100.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([5.0, 6.0, 7.0]),
+            }
+            assert kwargs == {}
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            self.cache_invalidations += 1
+
+    def fake_dataset_from_frame(frame_arg, *, zero_variables=(), system=None):
+        datasets.append((frame_arg, tuple(zero_variables), system))
+        return {"zero_variables": tuple(zero_variables)}
+
+    def fake_make_zero_variable_reform(system, variable_name):
+        assert isinstance(system, FakeSystem)
+        assert variable_name == "mock_credit"
+        return object()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(
+        builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (reform_spec,))
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+
+    target_frame, registry, dropped = builder._materialize_target_frame(
+        frame, (target,)
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["income_tax"], np.asarray([130.0, 70.0]))
+    assert np.array_equal(
+        household["jct_mock_tax_expenditure"], np.asarray([-15.0, -30.0])
+    )
+    assert len(registry) == 1
+    assert dropped["dropped_target_names"] == []
+    assert [dataset[1] for dataset in datasets] == [(), ("mock_credit",)]
+    assert len(simulations) == 2
+    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1]
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:
