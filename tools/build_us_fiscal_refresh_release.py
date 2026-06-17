@@ -69,25 +69,10 @@ CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
-    "semantic_value_weighted_mape_by_measure_basis_target_scale_cap_1000pct"
+    "sqrt_value_weighted_mape_50_50_amount_count_target_scale_cap_1000pct"
 )
+US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 10.0
-US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER = 25.0
-US_STATE_TARGET_LOSS_MULTIPLIER = 0.25
-US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS = {
-    "aca_spending": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "ctc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "eitc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "federal_income_tax_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "income_tax_before_credits_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "medicare_part_b_premium_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "refundable_ctc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "snap_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "social_security_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "ssi_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "tanf_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-    "unemployment_compensation_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
-}
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -1301,31 +1286,20 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
 
 
 def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
-    basis_weights = _fiscal_target_value_basis_weights(registry)
-    state_multipliers = np.asarray(
-        [
-            US_STATE_TARGET_LOSS_MULTIPLIER if spec.metadata.get("state_fips") else 1.0
-            for spec in registry.specs
-        ],
-        dtype=np.float64,
+    weights = _fiscal_target_value_basis_weights(registry)
+    bases = np.asarray(
+        [_fiscal_target_value_basis(spec) for spec in registry.specs],
+        dtype=object,
     )
-    multipliers = np.asarray(
-        [
-            (
-                1.0
-                if spec.metadata.get("state_fips")
-                else US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS.get(
-                    spec.metadata.get("target_role", ""),
-                    1.0,
-                )
-            )
-            for spec in registry.specs
-        ],
-        dtype=np.float64,
-    )
-    weights = basis_weights
-    weights *= state_multipliers
-    weights *= multipliers
+    unique_bases = sorted(set(bases.tolist()))
+    if not unique_bases:
+        return weights
+    basis_total = len(weights) / len(unique_bases)
+    for basis in unique_bases:
+        mask = bases == basis
+        current_total = weights[mask].sum()
+        if current_total > 0:
+            weights[mask] *= basis_total / current_total
     return weights / weights.mean()
 
 
@@ -1339,11 +1313,12 @@ def _fiscal_target_value_basis_weights(registry: TargetRegistry) -> np.ndarray:
         [max(abs(float(spec.value)), 1.0) for spec in registry.specs],
         dtype=np.float64,
     )
+    raw_weights = values**US_FISCAL_TARGET_VALUE_WEIGHT_POWER
     for basis in sorted(set(bases.tolist())):
         mask = bases == basis
-        mean_value = values[mask].mean()
+        mean_value = raw_weights[mask].mean()
         if mean_value > 0:
-            weights[mask] = values[mask] / mean_value
+            weights[mask] = raw_weights[mask] / mean_value
     return weights
 
 
@@ -1351,33 +1326,15 @@ def _fiscal_target_value_basis(spec) -> str:
     metadata = spec.metadata
     measure_mode = metadata.get("measure_mode", "")
     source_measure_id = metadata.get("source_measure_id", "")
-    target_role = metadata.get("target_role", "")
     if metadata.get("count") == "true":
-        return (
-            "return_count"
-            if _fiscal_target_is_return_count_measure(source_measure_id)
-            else "count"
-        )
+        return "count"
     if measure_mode in {"count", "positive_count"}:
-        if metadata.get("count_map_to") == "person" or target_role in {
-            "aca_enrollment",
-            "aca_ptc_recipients",
-            "medicaid_enrollment",
-            "medicaid_chip_enrollment",
-        }:
-            return "person_count"
         return "count"
     if "enrollment" in source_measure_id or "recipients" in source_measure_id:
-        return "person_count"
+        return "count"
     if "return" in source_measure_id and "count" in source_measure_id:
-        return "return_count"
+        return "count"
     return "amount"
-
-
-def _fiscal_target_is_return_count_measure(source_measure_id: str) -> bool:
-    return source_measure_id == "return_count" or source_measure_id.endswith(
-        ("_returns", "_claims")
-    )
 
 
 def _release_gate_failures(
@@ -1523,6 +1480,52 @@ def _assert_release_gates(
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
+
+
+def _write_release_calibration_diagnostics(
+    *,
+    result,
+    release_dir: Path,
+    registry: TargetRegistry,
+    base_h5: Path,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult,
+    health_input_gate: GateResult | None,
+    audit_export_targets: bool,
+    gate_failures: Iterable[str],
+) -> None:
+    """Write calibration diagnostics even when hard release gates fail."""
+    failures = list(gate_failures)
+    write_calibration_diagnostics(
+        result,
+        release_dir / "calibration_diagnostics.json",
+        target_registry=registry,
+        build={
+            "base_dataset_sha256": _sha256(base_h5),
+            "target_compilation": compilation,
+            "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            "target_profile_coverage": {
+                "passed": target_profile_gate.passed,
+                "failures": list(target_profile_gate.failures),
+                "details": dict(target_profile_gate.details),
+            },
+            "health_input_signal": (
+                {
+                    "passed": health_input_gate.passed,
+                    "failures": list(health_input_gate.failures),
+                    "details": dict(health_input_gate.details),
+                }
+                if health_input_gate is not None
+                else None
+            ),
+            "release_gates": {
+                "passed": not failures,
+                "failures": failures,
+            },
+            "post_export_target_audit": bool(audit_export_targets),
+        },
+    )
 
 
 def _target_final_estimate(result, target_name: str) -> float:
@@ -1990,12 +1993,25 @@ def main() -> None:
         target_loss_weights=_fiscal_target_loss_weights(registry),
         target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
     )
-    _assert_release_gates(
+    gate_failures = _release_gate_failures(
         result,
         compilation,
         target_profile_gate,
         health_input_gate,
     )
+    _write_release_calibration_diagnostics(
+        result=result,
+        release_dir=release_dir,
+        registry=registry,
+        base_h5=base_h5,
+        compilation=compilation,
+        target_profile_gate=target_profile_gate,
+        health_input_gate=health_input_gate,
+        audit_export_targets=bool(args.audit_export_targets),
+        gate_failures=gate_failures,
+    )
+    if gate_failures:
+        raise RuntimeError("Release gates failed: " + "; ".join(gate_failures))
 
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
@@ -2005,23 +2021,6 @@ def main() -> None:
 
     calibration_path = artifact_root / CALIBRATION_FILENAME
     _write_npz(calibration_path, result=result, registry=registry)
-    write_calibration_diagnostics(
-        result,
-        release_dir / "calibration_diagnostics.json",
-        target_registry=registry,
-        build={
-            "base_dataset_sha256": _sha256(base_h5),
-            "target_compilation": compilation,
-            "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
-            "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
-            "target_profile_coverage": {
-                "passed": target_profile_gate.passed,
-                "failures": list(target_profile_gate.failures),
-                "details": dict(target_profile_gate.details),
-            },
-            "post_export_target_audit": bool(args.audit_export_targets),
-        },
-    )
 
     if not args.skip_reform_validation:
         _write_reform_validation(
