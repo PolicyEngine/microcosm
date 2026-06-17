@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -55,6 +56,39 @@ US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
+    {
+        "requirement_id": "federal_income_tax_amount",
+        "label": "federal income tax liability amount",
+        "max_abs_relative_error": 0.05,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("federal_income_tax_total",),
+    },
+    {
+        "requirement_id": "income_tax_liability_returns",
+        "label": "income tax liability returns",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "social_security_benefits",
+        "label": "Social Security benefits",
+        "max_abs_relative_error": 0.05,
+        "names": (
+            "ssa_supplement.cy2024.oasdi_ssi_payments."
+            "social_security_benefits.payment_amount@2024",
+        ),
+        "families": ("ssa",),
+        "target_roles": ("social_security_total",),
+    },
+)
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -622,6 +656,104 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 )
 
 
+def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> None:
+    targets = diagnostics.get("targets")
+    if not isinstance(targets, list):
+        return
+    for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS:
+        names = set(requirement["names"])
+        target_roles = set(requirement["target_roles"])
+        families = set(requirement["families"])
+        matches = [
+            target
+            for target in targets
+            if isinstance(target, Mapping)
+            and (
+                target.get("name") in names
+                or (
+                    isinstance(target.get("metadata"), Mapping)
+                    and target["metadata"].get("target_role") in target_roles
+                    and _target_registry_family(target) in families
+                )
+            )
+        ]
+        if not matches:
+            failures.append(
+                "calibration_diagnostics.json is missing required US critical "
+                f"target {requirement['requirement_id']!r} "
+                f"({requirement['label']})."
+            )
+            continue
+        for target in matches:
+            relative_error = target.get("relative_error")
+            computed_relative_error = _target_relative_error(target, failures)
+            if computed_relative_error is None:
+                continue
+            if not isinstance(relative_error, int | float):
+                failures.append(
+                    "calibration_diagnostics.json critical target "
+                    f"{target.get('name')!r} has non-numeric relative_error "
+                    f"{relative_error!r}."
+                )
+            elif not math.isclose(
+                float(relative_error),
+                computed_relative_error,
+                rel_tol=1e-9,
+                abs_tol=1e-9,
+            ):
+                failures.append(
+                    "calibration_diagnostics.json critical target "
+                    f"{target.get('name')!r} has stale relative_error "
+                    f"{relative_error!r}; computed "
+                    f"{computed_relative_error:.6g} from target and "
+                    "final_estimate."
+                )
+            max_abs = float(requirement["max_abs_relative_error"])
+            if abs(computed_relative_error) > max_abs:
+                failures.append(
+                    "calibration_diagnostics.json critical target "
+                    f"{target.get('name')!r} ({requirement['label']}) has "
+                    f"relative_error={computed_relative_error:.6g}, exceeding "
+                    f"{max_abs:.6g}; target={target.get('target')!r}, "
+                    f"final_estimate={target.get('final_estimate')!r}."
+                )
+
+
+def _target_relative_error(target: Mapping, failures: list[str]) -> float | None:
+    target_value = target.get("target")
+    final_estimate = target.get("final_estimate")
+    if not isinstance(target_value, int | float) or not isinstance(
+        final_estimate, int | float
+    ):
+        failures.append(
+            "calibration_diagnostics.json critical target "
+            f"{target.get('name')!r} has non-numeric target/final_estimate: "
+            f"target={target_value!r}, final_estimate={final_estimate!r}."
+        )
+        return None
+    target_value = float(target_value)
+    final_estimate = float(final_estimate)
+    if not math.isfinite(target_value) or not math.isfinite(final_estimate):
+        failures.append(
+            "calibration_diagnostics.json critical target "
+            f"{target.get('name')!r} has non-finite target/final_estimate: "
+            f"target={target_value!r}, final_estimate={final_estimate!r}."
+        )
+        return None
+    if target_value == 0.0:
+        return final_estimate - target_value
+    return (final_estimate - target_value) / target_value
+
+
+def _target_registry_family(target: Mapping) -> str:
+    registry = target.get("registry")
+    if isinstance(registry, Mapping):
+        family = registry.get("family")
+        if family is not None:
+            return str(family)
+    return ""
+
+
 def _check_source_coverage_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
@@ -806,6 +938,8 @@ def validate_release_dir(release_dir: Path | str) -> None:
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
             _check_calibration_diagnostics(diagnostics, failures)
+            if release_id.startswith("populace-us-"):
+                _check_us_critical_target_fit(diagnostics, failures)
 
     _check_cross_manifest_consistency(
         build_manifest,

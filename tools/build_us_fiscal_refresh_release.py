@@ -68,6 +68,32 @@ DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
+US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
+    {
+        "name": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            f"income_tax_liability_amount@{PERIOD}"
+        ),
+        "label": "federal income tax liability amount",
+        "max_abs_relative_error": 0.05,
+    },
+    {
+        "name": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            f"income_tax_liability_returns@{PERIOD}"
+        ),
+        "label": "income tax liability returns",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (
+            "ssa_supplement.cy2024.oasdi_ssi_payments."
+            f"social_security_benefits.payment_amount@{PERIOD}"
+        ),
+        "label": "Social Security benefits",
+        "max_abs_relative_error": 0.05,
+    },
+)
 
 DIRECT_ACTIVE_ALIASES = (
     "cms-aca-oep-state-level",
@@ -1289,6 +1315,7 @@ def _release_gate_failures(
             f"{len(zero_support)} positive fiscal targets have zero "
             f"materialized support (examples: {examples}{suffix})."
         )
+    failures.extend(_critical_target_fit_failures(result))
     if not math.isfinite(result.initial_loss) or not math.isfinite(result.final_loss):
         failures.append("Calibration loss is non-finite.")
     elif result.final_loss > result.initial_loss:
@@ -1297,6 +1324,84 @@ def _release_gate_failures(
             f"({result.final_loss} > {result.initial_loss})."
         )
     return failures
+
+
+def _critical_target_fit_failures(result) -> list[str]:
+    diagnostics_by_name = {
+        getattr(diagnostic, "name", None): diagnostic
+        for diagnostic in getattr(result, "diagnostics", ())
+    }
+    failures: list[str] = []
+    for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
+        diagnostic = diagnostics_by_name.get(requirement["name"])
+        if diagnostic is None:
+            failures.append(
+                "Critical fiscal target "
+                f"{requirement['name']!r} ({requirement['label']}) is missing "
+                "from calibration diagnostics."
+            )
+            continue
+        relative_error = getattr(diagnostic, "relative_error", None)
+        computed_relative_error = _diagnostic_relative_error(diagnostic, failures)
+        if computed_relative_error is None:
+            continue
+        if not isinstance(relative_error, int | float):
+            failures.append(
+                "Critical fiscal target "
+                f"{requirement['name']!r} ({requirement['label']}) has "
+                f"non-numeric relative_error {relative_error!r}."
+            )
+        elif not math.isclose(
+            float(relative_error),
+            computed_relative_error,
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ):
+            failures.append(
+                "Critical fiscal target "
+                f"{requirement['name']!r} ({requirement['label']}) has "
+                f"stale relative_error {relative_error!r}; computed "
+                f"{computed_relative_error:.6g} from target and final_estimate."
+            )
+        max_abs = float(requirement["max_abs_relative_error"])
+        if abs(computed_relative_error) > max_abs:
+            failures.append(
+                "Critical fiscal target "
+                f"{requirement['name']!r} ({requirement['label']}) has "
+                f"relative_error={computed_relative_error:.6g}, exceeding "
+                f"{max_abs:.6g}; target={getattr(diagnostic, 'target', None)!r}, "
+                "final_estimate="
+                f"{getattr(diagnostic, 'final_estimate', None)!r}."
+            )
+    return failures
+
+
+def _diagnostic_relative_error(diagnostic, failures: list[str]) -> float | None:
+    target_value = getattr(diagnostic, "target", None)
+    final_estimate = getattr(diagnostic, "final_estimate", None)
+    if not isinstance(target_value, int | float) or not isinstance(
+        final_estimate, int | float
+    ):
+        failures.append(
+            "Critical fiscal target "
+            f"{getattr(diagnostic, 'name', None)!r} has non-numeric "
+            f"target/final_estimate: target={target_value!r}, "
+            f"final_estimate={final_estimate!r}."
+        )
+        return None
+    target_value = float(target_value)
+    final_estimate = float(final_estimate)
+    if not math.isfinite(target_value) or not math.isfinite(final_estimate):
+        failures.append(
+            "Critical fiscal target "
+            f"{getattr(diagnostic, 'name', None)!r} has non-finite "
+            f"target/final_estimate: target={target_value!r}, "
+            f"final_estimate={final_estimate!r}."
+        )
+        return None
+    if target_value == 0.0:
+        return final_estimate - target_value
+    return (final_estimate - target_value) / target_value
 
 
 def _assert_release_gates(

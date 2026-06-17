@@ -23,6 +23,41 @@ def _load_builder_module():
     return module
 
 
+def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
+    return (
+        SimpleNamespace(
+            name=(
+                "irs_soi.ty2022.historic_table_2.us.all."
+                f"income_tax_liability_amount@{builder.PERIOD}"
+            ),
+            target=2_105_345_646_000.0,
+            initial_estimate=2_000_000_000_000.0,
+            final_estimate=2_067_762_165_736.424,
+            relative_error=-0.0178514536722185,
+        ),
+        SimpleNamespace(
+            name=(
+                "irs_soi.ty2022.historic_table_2.us.all."
+                f"income_tax_liability_returns@{builder.PERIOD}"
+            ),
+            target=113_562_590.0,
+            initial_estimate=105_421_734.40619682,
+            final_estimate=105_437_267.69738781,
+            relative_error=-0.07154928663226319,
+        ),
+        SimpleNamespace(
+            name=(
+                "ssa_supplement.cy2024.oasdi_ssi_payments."
+                f"social_security_benefits.payment_amount@{builder.PERIOD}"
+            ),
+            target=1_471_195_000_000.0,
+            initial_estimate=1_541_646_703_291.2527,
+            final_estimate=1_541_540_768_722.367,
+            relative_error=0.047815394099604024,
+        ),
+    )
+
+
 def test_soi_component_amounts_use_source_specific_signs() -> None:
     builder = _load_builder_module()
 
@@ -192,7 +227,7 @@ def test_release_gate_failures_are_not_unconditional() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
         skipped=(),
-        diagnostics=(object(),),
+        diagnostics=_passing_critical_diagnostics(builder),
         initial_loss=10.0,
         final_loss=5.0,
     )
@@ -207,7 +242,7 @@ def test_release_gate_failures_are_not_unconditional() -> None:
     skipped = SimpleNamespace(target=SimpleNamespace(name="skipped"), reason="bad")
     with_skipped = SimpleNamespace(
         skipped=(skipped,),
-        diagnostics=(object(),),
+        diagnostics=_passing_critical_diagnostics(builder),
         initial_loss=10.0,
         final_loss=5.0,
     )
@@ -218,7 +253,7 @@ def test_release_gate_failures_are_not_unconditional() -> None:
 
     worse = SimpleNamespace(
         skipped=(),
-        diagnostics=(object(),),
+        diagnostics=_passing_critical_diagnostics(builder),
         initial_loss=5.0,
         final_loss=10.0,
     )
@@ -231,7 +266,7 @@ def test_release_gate_failures_include_target_profile_coverage() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
         skipped=(),
-        diagnostics=(object(),),
+        diagnostics=_passing_critical_diagnostics(builder),
         initial_loss=10.0,
         final_loss=5.0,
     )
@@ -254,7 +289,7 @@ def test_release_gate_failures_include_health_input_signal() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
         skipped=(),
-        diagnostics=(object(),),
+        diagnostics=_passing_critical_diagnostics(builder),
         initial_loss=10.0,
         final_loss=5.0,
     )
@@ -290,6 +325,7 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
                 initial_estimate=10.0,
                 final_estimate=20.0,
             ),
+            *_passing_critical_diagnostics(builder),
         ),
         initial_loss=10.0,
         final_loss=5.0,
@@ -298,6 +334,61 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     assert builder._release_gate_failures(result, {"dropped_target_names": []}) == [
         "1 positive fiscal targets have zero materialized support "
         f"(examples: nation/irs/zero@{builder.PERIOD})."
+    ]
+
+
+def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=(
+                    "irs_soi.ty2022.historic_table_2.us.all."
+                    f"income_tax_liability_amount@{builder.PERIOD}"
+                ),
+                target=2_105_345_646_000.0,
+                initial_estimate=2_000_000_000_000.0,
+                final_estimate=735_173_331_468.564,
+                relative_error=0.0,
+            ),
+            *_passing_critical_diagnostics(builder)[1:],
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+    )
+
+    assert len(failures) == 2
+    assert "stale relative_error" in failures[0]
+    assert "federal income tax liability amount" in failures[1]
+    assert "relative_error=-0.650806" in failures[1]
+
+
+def test_release_gate_failures_reject_missing_critical_targets() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder)[1:],
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+    )
+
+    assert failures == [
+        "Critical fiscal target "
+        "'irs_soi.ty2022.historic_table_2.us.all."
+        f"income_tax_liability_amount@{builder.PERIOD}' "
+        "(federal income tax liability amount) is missing from calibration "
+        "diagnostics."
     ]
 
 
