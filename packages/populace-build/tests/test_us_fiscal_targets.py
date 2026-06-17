@@ -385,6 +385,9 @@ def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
     assert spec.measure == "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
     assert spec.metadata["target_role"] == "federal_income_tax_total"
     assert spec.metadata["variable"] == "income_tax"
+    assert spec.metadata["materializer"] == "irs_soi_slice"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "income_tax"
 
 
 def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> None:
@@ -565,11 +568,17 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     assert amount.family == "irs_soi"
     assert amount.metadata["target_role"] == "aca_spending"
     assert amount.metadata["variable"] == "assigned_aca_ptc"
+    assert amount.metadata["materializer"] == "irs_soi_slice"
+    assert amount.metadata["measure_mode"] == "sum"
+    assert amount.metadata["base_variable"] == "assigned_aca_ptc"
     assert "count" not in amount.metadata
 
     returns = specs[returns_source_record_id]
     assert returns.family == "irs_soi"
     assert returns.metadata["variable"] == "assigned_aca_ptc"
+    assert returns.metadata["materializer"] == "irs_soi_slice"
+    assert returns.metadata["measure_mode"] == "positive_count"
+    assert returns.metadata["base_variable"] == "assigned_aca_ptc"
     assert returns.metadata["count"] == "true"
 
 
@@ -618,6 +627,58 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     assert spec.metadata["ledger_layout_record_set_id"] == (
         "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children"
     )
+
+
+def test_soi_alias_targets_expose_policyengine_base_variable() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="ordinary_dividends_amount",
+                value=300_000_000_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "ordinary_dividends"
+    assert spec.metadata["base_variable"] == "dividend_income"
+    assert spec.metadata["measure_mode"] == "sum"
+
+
+def test_soi_return_count_targets_expose_count_mode_without_base_variable() -> None:
+    source_record_id = "irs_soi.ty2022.historic_table_2.us.all.return_count"
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="return_count",
+                value=160_000_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "count"
+    assert spec.metadata["count"] == "true"
+    assert spec.metadata["measure_mode"] == "count"
+    assert "base_variable" not in spec.metadata
+    assert "base_variables" not in spec.metadata
 
 
 def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:

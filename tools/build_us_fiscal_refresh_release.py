@@ -33,6 +33,7 @@ from populace.build.gates import (
 )
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.us import (
+    SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
@@ -203,44 +204,6 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
         "cms_aca_bronze_aptc_consumers_by_state",
     }
 )
-
-SOI_VARIABLE_MAP = {
-    "adjusted_gross_income": "adjusted_gross_income",
-    "business_net_profits": "self_employment_income",
-    "business_net_losses": "self_employment_income",
-    "capital_gains_distributions": "capital_gains",
-    "capital_gains_gross": "capital_gains",
-    "capital_gains_losses": "capital_losses",
-    "ctc": "non_refundable_ctc",
-    "employment_income": "employment_income",
-    "eitc": "eitc",
-    "estate_income": "estate_income",
-    "estate_losses": "estate_income",
-    "exempt_interest": "tax_exempt_interest_income",
-    "income_tax": "income_tax",
-    "income_tax_before_credits": "income_tax_before_credits",
-    "ira_distributions": "taxable_ira_distributions",
-    "medical_expense_deduction": "medical_expense_deduction",
-    "ordinary_dividends": "dividend_income",
-    "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
-    "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
-    "assigned_aca_ptc": "assigned_aca_ptc",
-    "qualified_business_income_deduction": "qualified_business_income_deduction",
-    "qualified_dividends": "qualified_dividend_income",
-    "real_estate_taxes": "real_estate_taxes",
-    "rent_and_royalty_net_income": "rent_and_royalty_net_income",
-    "rent_and_royalty_net_losses": "rent_and_royalty_net_income",
-    "refundable_ctc": "refundable_ctc",
-    "salt_deduction": "salt_deduction",
-    "tax_exempt_interest_income": "tax_exempt_interest_income",
-    "taxable_income": "taxable_income",
-    "taxable_interest_income": "taxable_interest_income",
-    "taxable_pension_income": "taxable_pension_income",
-    "taxable_social_security": "tax_unit_taxable_social_security",
-    "total_pension_income": "pension_income",
-    "total_social_security": "tax_unit_social_security",
-    "unemployment_compensation": "unemployment_compensation",
-}
 
 FILING_STATUS_MAP = {
     "All": None,
