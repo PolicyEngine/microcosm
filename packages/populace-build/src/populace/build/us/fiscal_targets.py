@@ -1214,6 +1214,12 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         required_metadata=(("target_role", "refundable_ctc_total"),),
     ),
     TargetCoverageRequirement(
+        requirement_id="ctc_total",
+        label="Child Tax Credit total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "ctc_total"),),
+    ),
+    TargetCoverageRequirement(
         requirement_id="aca_marketplace",
         label="ACA marketplace spending and enrollment",
         accepted_families=("cms_aca",),

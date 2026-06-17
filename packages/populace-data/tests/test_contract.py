@@ -30,7 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 4
+TARGET_COUNT = 5
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
@@ -201,6 +201,16 @@ def _calibration_diagnostics() -> dict:
                 family="ssa",
                 target_role="social_security_total",
             ),
+            _target_row(
+                "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",
+                target_name="irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+                target=82_863_353_000.0,
+                initial_estimate=132_000_000_000.0,
+                final_estimate=92_000_000_000.0,
+                relative_error=(92_000_000_000.0 - 82_863_353_000.0) / 82_863_353_000.0,
+                family="irs_soi",
+                target_role="ctc_total",
+            ),
         ],
     }
 
@@ -278,7 +288,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 2,
+                "target_count": 3,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },
@@ -387,6 +397,32 @@ def test_us_release_recomputes_critical_target_fit(release_dir: Path) -> None:
     failures = "\n".join(excinfo.value.failures)
     assert "stale relative_error" in failures
     assert "relative_error=-0.650806" in failures
+
+
+def test_us_release_rejects_bad_ctc_fit(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024"
+    )
+    ctc_target = 82_863_353_000.0
+    ctc_final = 132_511_000_000.0
+    target["final_estimate"] = ctc_final
+    target["relative_error"] = (ctc_final - ctc_target) / ctc_target
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "Child Tax Credit amount" in failures
+    assert "relative_error=0.599151" in failures
 
 
 def test_us_release_requires_critical_targets(release_dir: Path) -> None:

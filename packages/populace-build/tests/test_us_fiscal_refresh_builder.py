@@ -24,6 +24,8 @@ def _load_builder_module():
 
 
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
+    ctc_target = 82_863_353_000.0
+    ctc_final = 92_000_000_000.0
     return (
         SimpleNamespace(
             name=(
@@ -54,6 +56,15 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             initial_estimate=1_541_646_703_291.2527,
             final_estimate=1_541_540_768_722.367,
             relative_error=0.047815394099604024,
+        ),
+        SimpleNamespace(
+            name=(
+                f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+            ),
+            target=ctc_target,
+            initial_estimate=132_000_000_000.0,
+            final_estimate=ctc_final,
+            relative_error=(ctc_final - ctc_target) / ctc_target,
         ),
     )
 
@@ -417,6 +428,70 @@ def test_target_value_loss_weights_prioritize_large_targets() -> None:
     assert weights.shape == (2,)
     assert weights.mean() == 1.0
     assert weights[1] > weights[0] * 10_000
+
+
+def test_target_value_loss_weights_boost_ctc_total_role() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="ctc_total",
+                entity="tax_unit",
+                value=100.0,
+                source="fixture",
+                metadata={"target_role": "ctc_total"},
+            ),
+            TargetSpec(
+                name="other_same_value",
+                entity="tax_unit",
+                value=100.0,
+                source="fixture",
+                metadata={"target_role": "eitc_total"},
+            ),
+            TargetSpec(
+                name="legacy_named_ctc_without_role",
+                entity="tax_unit",
+                value=100.0,
+                source="fixture",
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._target_value_loss_weights(registry)
+
+    assert weights.mean() == 1.0
+    assert weights[0] == weights[1] * builder.US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER
+    assert weights[2] == weights[1]
+
+
+def test_release_gate_failures_reject_bad_ctc_fit() -> None:
+    builder = _load_builder_module()
+    ctc_target = 82_863_353_000.0
+    ctc_final = 132_511_000_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    diagnostics[-1] = SimpleNamespace(
+        name=(f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"),
+        target=ctc_target,
+        initial_estimate=132_000_000_000.0,
+        final_estimate=ctc_final,
+        relative_error=(ctc_final - ctc_target) / ctc_target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+    )
+
+    assert len(failures) == 1
+    assert "Child Tax Credit amount" in failures[0]
+    assert "relative_error=0.599151" in failures[0]
 
 
 def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:

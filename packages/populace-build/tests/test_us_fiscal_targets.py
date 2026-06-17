@@ -45,6 +45,7 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "ssa_dependents_total",
     "eitc_total",
     "refundable_ctc_total",
+    "ctc_total",
     "aca_spending",
     "aca_enrollment",
     "medicaid_enrollment",
@@ -587,6 +588,7 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "ssa_social_security_components" in ids
     assert "eitc_total" in ids
     assert "refundable_ctc_total" in ids
+    assert "ctc_total" in ids
     assert "aca_marketplace" in ids
     assert "medicaid_spending" not in ids
     assert "medicaid_enrollment" in ids
