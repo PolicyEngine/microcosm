@@ -234,6 +234,44 @@ def test_combined_household_values_can_count_tax_unit_variable_on_people(
     assert np.array_equal(values, np.asarray([1.0, 1.0]))
 
 
+def test_combined_household_values_threshold_count_keeps_domain_filter(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    mapped_values = {
+        "selected_marketplace_plan_benchmark_ratio": np.asarray([0.8, 1.2, 0.7]),
+        "assigned_aca_ptc": np.asarray([500.0, 500.0, 0.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to is None
+            return mapped_values[variable]
+
+    system = SimpleNamespace(
+        variables={
+            "selected_marketplace_plan_benchmark_ratio": SimpleNamespace(
+                entity=SimpleNamespace(key="tax_unit")
+            ),
+            "assigned_aca_ptc": SimpleNamespace(entity=SimpleNamespace(key="tax_unit")),
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("selected_marketplace_plan_benchmark_ratio",),
+        tax_unit_positions=np.asarray([0, 0, 1], dtype=np.int64),
+        filter_variable="assigned_aca_ptc",
+        less_than=1.0,
+    )
+
+    assert np.array_equal(values, np.asarray([1.0, 0.0]))
+
+
 def test_release_gate_failures_are_not_unconditional() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
