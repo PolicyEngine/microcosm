@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from populace.calibrate import TargetSpec
+from populace.calibrate import TargetRegistry, TargetSpec
 from populace.frame import Frame, WeightKind
 
 
@@ -390,6 +390,33 @@ def test_release_gate_failures_reject_missing_critical_targets() -> None:
         "(federal income tax liability amount) is missing from calibration "
         "diagnostics."
     ]
+
+
+def test_target_value_loss_weights_prioritize_large_targets() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="small_count",
+                entity="household",
+                value=10.0,
+                source="fixture",
+            ),
+            TargetSpec(
+                name="large_amount",
+                entity="household",
+                value=1_000_000.0,
+                source="fixture",
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._target_value_loss_weights(registry)
+
+    assert weights.shape == (2,)
+    assert weights.mean() == 1.0
+    assert weights[1] > weights[0] * 10_000
 
 
 def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:

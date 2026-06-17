@@ -237,13 +237,22 @@ def _apply_constraint(matrix: torch.Tensor, weights: torch.Tensor) -> torch.Tens
     return matrix @ weights
 
 
-def relative_error_loss(estimates: np.ndarray, targets: np.ndarray) -> float:
-    """THE loss, in numpy: ``mean(((est - tgt)/(tgt + 1))**2)``.
+def relative_error_loss(
+    estimates: np.ndarray,
+    targets: np.ndarray,
+    *,
+    target_loss_weights: np.ndarray | None = None,
+) -> float:
+    """THE loss, in numpy: weighted ``((est - tgt)/(tgt + 1))**2``.
 
     The single canonical definition every measurement imports — the solver's
     closing loss, the acceptance gates, and scorers all call this function
     (the torch twin below is the autograd path of the same formula). Refuses
     non-finite inputs: a NaN estimate is a harness bug, not a large miss.
+    When ``target_loss_weights`` is omitted, this is the historical unweighted
+    mean. When supplied, weights must align to targets and are normalized by
+    their own sum, so multiplying all weights by a constant does not change the
+    objective.
     """
     estimates = np.asarray(estimates, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
@@ -258,11 +267,19 @@ def relative_error_loss(estimates: np.ndarray, targets: np.ndarray) -> float:
             "estimate or target values."
         )
     rel = (estimates - targets) / (targets + 1.0)
-    return float((rel**2).mean())
+    loss = rel**2
+    weights = _validate_target_loss_weights(target_loss_weights, targets.shape)
+    if weights is None:
+        return float(loss.mean())
+    return float(np.average(loss, weights=weights))
 
 
-def _relative_error_loss(estimate: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    """The relative-error loss ``mean(((est - tgt)/(tgt + 1))**2)``.
+def _relative_error_loss(
+    estimate: torch.Tensor,
+    targets: torch.Tensor,
+    target_loss_weights: torch.Tensor | None,
+) -> torch.Tensor:
+    """The relative-error loss, optionally averaged with target row weights.
 
     The ``+1`` in the *denominator* is the regularizer: it keeps the loss finite
     and well-scaled for targets near zero (a zero-valued count target then
@@ -275,7 +292,46 @@ def _relative_error_loss(estimate: torch.Tensor, targets: torch.Tensor) -> torch
     also the loss this docstring has always described.
     """
     rel_error = (estimate - targets) / (targets + 1.0)
-    return (rel_error**2).mean()
+    loss = rel_error**2
+    if target_loss_weights is None:
+        return loss.mean()
+    return (loss * target_loss_weights).sum() / target_loss_weights.sum()
+
+
+def _validate_target_loss_weights(
+    target_loss_weights: np.ndarray | None,
+    shape: tuple[int, ...],
+) -> np.ndarray | None:
+    if target_loss_weights is None:
+        return None
+    weights = np.asarray(target_loss_weights, dtype=np.float64)
+    if weights.shape != shape:
+        raise ValueError(
+            "target_loss_weights must align with targets, got shapes "
+            f"{weights.shape} vs {shape}."
+        )
+    if not np.isfinite(weights).all():
+        raise ValueError("target_loss_weights must be finite.")
+    if (weights < 0).any():
+        raise ValueError("target_loss_weights must be non-negative.")
+    if float(weights.sum()) <= 0.0:
+        raise ValueError("target_loss_weights must have positive total weight.")
+    return weights
+
+
+def _target_loss_weight_options(
+    target_loss_weights: np.ndarray | None,
+) -> Mapping[str, object]:
+    if target_loss_weights is None:
+        return {"kind": "uniform"}
+    weights = np.asarray(target_loss_weights, dtype=np.float64)
+    return {
+        "kind": "provided",
+        "n": int(weights.shape[0]),
+        "sum": float(weights.sum()),
+        "min": float(weights.min()),
+        "max": float(weights.max()),
+    }
 
 
 def _build_diagnostics(
@@ -341,6 +397,7 @@ def _build_diagnostics(
 def _optimize(
     matrix: torch.Tensor,
     targets: torch.Tensor,
+    target_loss_weights: torch.Tensor | None,
     initial_weights: np.ndarray,
     *,
     epochs: int,
@@ -387,7 +444,7 @@ def _optimize(
         if gates is not None:
             weights = weights * gates()
         estimate = _apply_constraint(matrix, weights)
-        loss = _relative_error_loss(estimate, targets)
+        loss = _relative_error_loss(estimate, targets, target_loss_weights)
         penalty = (
             l0_lambda * gates.get_penalty()
             if (gates is not None and l0_lambda > 0.0)
@@ -451,6 +508,7 @@ def _optimize(
 def _search_l0_lambda_for_budget(
     matrix: torch.Tensor,
     targets: torch.Tensor,
+    target_loss_weights: torch.Tensor | None,
     initial_weights: np.ndarray,
     *,
     target_records: int,
@@ -508,6 +566,7 @@ def _search_l0_lambda_for_budget(
         weights, trajectory = _optimize(
             matrix,
             targets,
+            target_loss_weights,
             initial_weights,
             epochs=epochs,
             learning_rate=learning_rate,
@@ -676,6 +735,7 @@ def calibrate(
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     seed: int = 0,
+    target_loss_weights: np.ndarray | None = None,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -721,6 +781,12 @@ def calibrate(
             may spend bisecting ``l0_lambda`` (only used when ``target_records``
             is set). Higher resolves the budget finer at a proportional cost.
         seed: Seed for torch's RNG (the gate sampling), for reproducibility.
+        target_loss_weights: Optional non-negative row weights aligned to the
+            supplied :class:`TargetSet`. When omitted, every compiled target row
+            contributes equally (historical behavior). When supplied, the weights
+            for skipped targets are dropped with those targets, and the squared
+            bounded relative errors for compiled rows are averaged with the
+            remaining weights, normalized by their sum.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -768,6 +834,10 @@ def calibrate(
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
 
+    target_loss_weights_input = _validate_target_loss_weights(
+        target_loss_weights,
+        (len(targets),),
+    )
     problem = build_constraint_matrix(frame, targets, weight_entity)
     initial = problem.initial_weights
     w0 = initial.values
@@ -776,6 +846,25 @@ def calibrate(
     torch.manual_seed(seed)
     matrix_t = _torch_constraint_matrix(problem.matrix)
     targets_t = torch.tensor(problem.target_vector, dtype=torch.float32)
+    target_loss_weights_np: np.ndarray | None = None
+    if target_loss_weights_input is not None:
+        weights_by_key = {
+            target.key: weight
+            for target, weight in zip(targets, target_loss_weights_input, strict=True)
+        }
+        target_loss_weights_np = np.asarray(
+            [weights_by_key[target.key] for target in problem.targets],
+            dtype=np.float64,
+        )
+        target_loss_weights_np = _validate_target_loss_weights(
+            target_loss_weights_np,
+            problem.target_vector.shape,
+        )
+    target_loss_weights_t = (
+        torch.tensor(target_loss_weights_np, dtype=torch.float32)
+        if target_loss_weights_np is not None
+        else None
+    )
 
     if target_records is not None:
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
@@ -785,6 +874,7 @@ def calibrate(
             _search_l0_lambda_for_budget(
                 matrix_t,
                 targets_t,
+                target_loss_weights_t,
                 w0,
                 target_records=target_records,
                 epochs=epochs,
@@ -804,6 +894,7 @@ def calibrate(
         final_weights, trajectory = _optimize(
             matrix_t,
             targets_t,
+            target_loss_weights_t,
             w0,
             epochs=epochs,
             learning_rate=learning_rate,
@@ -838,7 +929,9 @@ def calibrate(
     # evaluated after the closing mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
     closing_loss = relative_error_loss(
-        problem.estimates(final_weights), problem.target_vector
+        problem.estimates(final_weights),
+        problem.target_vector,
+        target_loss_weights=target_loss_weights_np,
     )
 
     return CalibrationResult(
@@ -861,6 +954,7 @@ def calibrate(
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
             "seed": seed,
+            "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "matrix_format": (
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
