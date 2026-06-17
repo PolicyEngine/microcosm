@@ -1,7 +1,7 @@
 [project]
 name = "populace-calibrate"
 version = "0.1.0"
-description = "The populace representation operator: compile targets into a sparse constraint system over a Frame and solve for calibrated weights (bounded relative-error loss, torch on log-weights, hard max-weight-ratio guard, optional L0 hard-concrete pruning)"
+description = "The populace representation operator: compile targets into a sparse constraint system over a Frame and solve for calibrated weights (capped weighted-MAPE loss, torch on log-weights, hard max-weight-ratio guard, optional L0 hard-concrete pruning)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

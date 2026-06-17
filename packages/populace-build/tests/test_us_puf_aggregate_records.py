@@ -346,7 +346,9 @@ def test_audit_reports_source_reconstruction_recovery(
     old_loss = audit["source_reconstruction_loss"]["old_drop_aggregate"]
     disaggregated_loss = audit["source_reconstruction_loss"]["disaggregated"]
     assert old_loss["loss"] > 0
-    assert old_loss["loss_formula"] == "mean(((estimate - target) / (target + 1)) ** 2)"
+    assert old_loss["loss_formula"] == (
+        "mean(min(abs((estimate - target) / max(abs(target), 1)), 10))"
+    )
     subset_audit = audit_puf_aggregate_disaggregation(
         mini_puf,
         seed=42,
@@ -365,7 +367,7 @@ def test_audit_reports_source_reconstruction_recovery(
         )
     )
     assert old_loss["within_10pct"] < 1.0
-    assert disaggregated_loss["loss"] < 1e-18
+    assert disaggregated_loss["loss"] < 1e-12
     assert disaggregated_loss["within_10pct"] == pytest.approx(1.0)
 
     agi = next(

@@ -169,7 +169,7 @@ class TestEndToEnd:
             country="us",
         )
         result = calibrate(frame, registry.to_target_set(), epochs=300, seed=0)
-        assert result.final_loss < result.initial_loss * 1e-2
+        assert result.final_loss < result.initial_loss * 0.05
         for diag in result.diagnostics:
             assert abs(diag.relative_error) < 0.02
 

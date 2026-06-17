@@ -43,8 +43,8 @@ A US build is two heavy phases over a sampling Frame, plus loaders:
    which is what the imputation benchmark below measures directly.
 2. **Calibration** (`populace.calibrate`) — compile targets (national + county
    control totals) into a sparse constraint matrix over the pool's weight
-   vector, then optimize log-weights with torch Adam (the bounded relative-error
-   loss), optionally with L0 generate-big-then-prune. See
+   vector, then optimize log-weights with torch Adam (capped weighted MAPE),
+   optionally with L0 generate-big-then-prune. See
    `packages/populace-calibrate/src/populace/calibrate/solve.py`.
 3. **Loaders** (`populace.data`) — pull a published population artifact from the
    Hugging Face Hub and return it as a policyengine engine dataset.

@@ -21,10 +21,11 @@ reproduces them.
    Uncompilable targets (missing column, zero `mean` denominator) are **skipped
    and reported**, never dropped silently.
 3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
-   the log-weights with torch Adam to minimize the **bounded relative-error
-   loss** `mean(((A @ w - b)/(b + 1))**2)`. Weights stay strictly positive by
-   construction (`w = exp(log_w)`). The
-   result carries a new `Frame` with `CALIBRATED` weights, per-target
+   the log-weights with torch Adam to minimize **capped weighted MAPE**:
+   `weighted_mean(min(abs((A @ w - b) / scale), cap))`. By default
+   `scale = max(abs(target), abs(initial_estimate), 1)` and `cap = 10`
+   (1000%). Weights stay strictly positive by construction (`w = exp(log_w)`).
+   The result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.
 
 ## Load-bearing options

@@ -12,7 +12,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from populace.calibrate import Target, TargetSet, calibrate
+from populace.calibrate import (
+    Target,
+    TargetSet,
+    calibrate,
+    default_target_loss_scales,
+    relative_error_loss,
+)
 from populace.frame import WeightKind
 
 
@@ -45,7 +51,7 @@ def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> N
         )
     )
     result = calibrate(frame, targets, epochs=400, seed=0)
-    assert result.final_loss < result.initial_loss * 1e-3
+    assert result.final_loss < result.initial_loss * 0.01
     for diag in result.diagnostics:
         assert abs(diag.relative_error) < 0.01  # within 1%
 
@@ -157,6 +163,61 @@ def test_target_loss_weights_must_survive_skipped_targets(feasible_frame) -> Non
             epochs=50,
             seed=0,
             target_loss_weights=np.asarray([1.0, 0.0]),
+        )
+
+
+def test_target_loss_scales_follow_skipped_targets(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="missing_measure",
+                entity="household",
+                aggregation="sum",
+                value=1.0,
+                measure="missing_measure",
+            ),
+            _population_target(truths["population"], 1.0),
+        )
+    )
+
+    result = calibrate(
+        frame,
+        targets,
+        epochs=50,
+        seed=0,
+        target_loss_scales=np.asarray([10.0, 20.0]),
+    )
+
+    assert [skip.target.name for skip in result.skipped] == ["missing_measure"]
+    assert result.options["target_loss_scales"]["kind"] == "provided"
+    assert result.options["target_loss_scales"]["n"] == 1
+    assert result.options["target_loss_scales"]["min"] == pytest.approx(20.0)
+    assert result.options["target_loss_scales"]["max"] == pytest.approx(20.0)
+
+
+def test_target_loss_scales_must_survive_skipped_targets(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="missing_measure",
+                entity="household",
+                aggregation="sum",
+                value=1.0,
+                measure="missing_measure",
+            ),
+            _population_target(truths["population"], 1.0),
+        )
+    )
+
+    with pytest.raises(ValueError, match="target_loss_scales"):
+        calibrate(
+            frame,
+            targets,
+            epochs=50,
+            seed=0,
+            target_loss_scales=np.asarray([10.0, 0.0]),
         )
 
 
@@ -348,7 +409,7 @@ def test_prune_with_conserve_and_cap_keeps_pruned_records_pruned(
             _income_target(truths["income"], 1.0),
         )
     )
-    free = calibrate(frame, targets, epochs=400, seed=0, l0_lambda=3e-3)
+    free = calibrate(frame, targets, epochs=400, seed=0, l0_lambda=3e-2)
     free_nonzero = int((free.frame.resolve_weights("household").values > 1e-6).sum())
     assert free_nonzero < 100  # free mass prunes hard
 
@@ -461,12 +522,17 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
         seed=0,
         mass="conserve",
         max_weight_ratio=2.0,
+        learning_rate=0.1,
     )
-    # Recompute the bounded relative-error loss on the returned weights directly.
+    # Recompute the capped weighted-MAPE loss on the returned weights directly.
     # final_loss is a float64 closing eval, so it matches to machine epsilon.
     b = result.problem.target_vector
+    scales = default_target_loss_scales(
+        b,
+        result.problem.estimates(result.initial_weights),
+    )
     est = result.problem.estimates(result.weights)
-    true_loss = float((((est - b) / (b + 1.0)) ** 2).mean())
+    true_loss = relative_error_loss(est, b, target_loss_scales=scales)
     assert abs(result.final_loss - true_loss) < 1e-9
     # final_loss is NOT merely the trajectory tail (which is pre-projection): on
     # this conserve+cap run they differ materially.
@@ -474,7 +540,7 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
     # initial_loss still describes the input weights (the trajectory head),
     # to float32 precision since the trajectory is computed in float32 torch.
     est0 = result.problem.estimates(result.initial_weights)
-    true_initial = float((((est0 - b) / (b + 1.0)) ** 2).mean())
+    true_initial = relative_error_loss(est0, b, target_loss_scales=scales)
     assert abs(result.initial_loss - true_initial) < 1e-5
 
 

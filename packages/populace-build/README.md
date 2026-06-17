@@ -26,9 +26,9 @@ names its donor survey and fails loudly — no silent fallbacks), and the
 - **rotated holdout** — deterministic target folds so *every* target is held
   out exactly once across rotations, instead of one lucky split.
 
-All gate losses use the calibrator's bounded relative-error loss
-`mean(((est − target)/(target + 1))²)` — scorers consume the same functions,
-so there is no calibrator-vs-scorer objective mismatch.
+All gate losses use the calibrator's capped weighted-MAPE helper
+`weighted_mean(min(abs((estimate − target) / scale), cap))` — scorers consume
+the same functions, so there is no calibrator-vs-scorer objective mismatch.
 
 The `us` extra adds the rules engine for formula/export checks. Country source
 loaders are not Python dependencies: source stages are declared in packaged
