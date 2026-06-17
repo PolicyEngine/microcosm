@@ -88,6 +88,14 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "families": ("ssa",),
         "target_roles": ("social_security_total",),
     },
+    {
+        "requirement_id": "ctc_amount",
+        "label": "Child Tax Credit amount",
+        "max_abs_relative_error": 0.20,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
+        "families": ("irs_soi",),
+        "target_roles": ("ctc_total",),
+    },
 )
 
 

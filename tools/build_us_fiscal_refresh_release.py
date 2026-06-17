@@ -68,7 +68,11 @@ DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
-US_FISCAL_TARGET_LOSS_WEIGHTING = "absolute_target_value"
+US_FISCAL_TARGET_LOSS_WEIGHTING = "absolute_target_value_with_ctc_priority"
+US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER = 10.0
+US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS = {
+    "ctc_total": US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER,
+}
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -93,6 +97,11 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         ),
         "label": "Social Security benefits",
         "max_abs_relative_error": 0.05,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{PERIOD}"),
+        "label": "Child Tax Credit amount",
+        "max_abs_relative_error": 0.20,
     },
 )
 
@@ -1279,6 +1288,17 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
 def _target_value_loss_weights(registry: TargetRegistry) -> np.ndarray:
     values = np.asarray([abs(spec.value) for spec in registry.specs], dtype=np.float64)
     weights = np.maximum(values, 1.0)
+    multipliers = np.asarray(
+        [
+            US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS.get(
+                spec.metadata.get("target_role", ""),
+                1.0,
+            )
+            for spec in registry.specs
+        ],
+        dtype=np.float64,
+    )
+    weights *= multipliers
     return weights / weights.mean()
 
 
