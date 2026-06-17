@@ -1276,6 +1276,18 @@ def _build_manifests(
                 "version": runtime["policyengine-us"],
             },
         },
+        "compatible_core_packages": [
+            {
+                "name": "policyengine-core",
+                "specifier": f"=={runtime['policyengine-core']}",
+            }
+        ],
+        "compatible_model_packages": [
+            {
+                "name": "policyengine-us",
+                "specifier": f"=={runtime['policyengine-us']}",
+            }
+        ],
         "artifacts": {
             "populace_us_2024": _artifact_entry(
                 DATASET_FILENAME,

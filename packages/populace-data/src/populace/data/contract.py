@@ -24,6 +24,9 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import InvalidVersion, Version
+
 __all__ = [
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
@@ -281,16 +284,32 @@ def _check_release_manifest(
             f"{release_id!r}."
         )
     if isinstance(build, Mapping):
+        built_with_core_package = build.get("built_with_core_package")
+        built_with_model_package = build.get("built_with_model_package")
         _check_release_manifest_package(
-            build.get("built_with_core_package"),
+            built_with_core_package,
             field="build.built_with_core_package",
             expected_name="policyengine-core",
             failures=failures,
         )
         _check_release_manifest_package(
-            build.get("built_with_model_package"),
+            built_with_model_package,
             field="build.built_with_model_package",
             expected_name=_expected_model_package(release_id),
+            failures=failures,
+        )
+        _check_compatible_package_entries(
+            manifest.get("compatible_core_packages"),
+            field="compatible_core_packages",
+            expected_name="policyengine-core",
+            built_with_package=built_with_core_package,
+            failures=failures,
+        )
+        _check_compatible_package_entries(
+            manifest.get("compatible_model_packages"),
+            field="compatible_model_packages",
+            expected_name=_expected_model_package(release_id),
+            built_with_package=built_with_model_package,
             failures=failures,
         )
     data_package = manifest.get("data_package")
@@ -397,6 +416,80 @@ def _check_release_manifest_package(
         failures.append(f"release_manifest.json '{field}.name' is required.")
     if not package.get("version"):
         failures.append(f"release_manifest.json '{field}.version' is required.")
+
+
+def _check_compatible_package_entries(
+    entries: object,
+    *,
+    field: str,
+    expected_name: str | None,
+    built_with_package: object,
+    failures: list[str],
+) -> None:
+    if expected_name is None:
+        return
+    if not isinstance(entries, list) or not entries:
+        failures.append(
+            f"release_manifest.json must declare a non-empty '{field}' list."
+        )
+        return
+
+    matching_specifiers: list[str] = []
+    for index, entry in enumerate(entries):
+        owner = f"release_manifest.json {field}[{index}]"
+        if not isinstance(entry, Mapping):
+            failures.append(f"{owner} must be an object.")
+            continue
+        name = entry.get("name")
+        specifier = entry.get("specifier")
+        if not isinstance(name, str) or not name:
+            failures.append(f"{owner}.name is required.")
+        if not isinstance(specifier, str) or not specifier.strip():
+            failures.append(f"{owner}.specifier is required.")
+            continue
+        try:
+            SpecifierSet(specifier)
+        except InvalidSpecifier:
+            failures.append(
+                f"{owner}.specifier {specifier!r} is not a valid PEP 440 specifier."
+            )
+            continue
+        if name == expected_name:
+            matching_specifiers.append(specifier)
+
+    if not matching_specifiers:
+        failures.append(
+            f"release_manifest.json '{field}' must include {expected_name!r}."
+        )
+        return
+
+    built_version = (
+        built_with_package.get("version")
+        if isinstance(built_with_package, Mapping)
+        and built_with_package.get("name") == expected_name
+        else None
+    )
+    if not isinstance(built_version, str) or not built_version:
+        return
+    try:
+        version = Version(built_version)
+    except InvalidVersion:
+        built_field = (
+            "build.built_with_core_package"
+            if field == "compatible_core_packages"
+            else "build.built_with_model_package"
+        )
+        failures.append(
+            "release_manifest.json "
+            f"{built_field}.version {built_version!r} is not a valid PEP 440 "
+            "version."
+        )
+        return
+    if not any(version in SpecifierSet(specifier) for specifier in matching_specifiers):
+        failures.append(
+            f"release_manifest.json '{field}' must include the built "
+            f"{expected_name} version {built_version!r}."
+        )
 
 
 def _expected_model_package(release_id: str) -> str | None:

@@ -49,3 +49,16 @@ administrative target surface with a hard per-record weight bound. Its
 strengths and gaps are documented on the dataset card and the
 [populace.dev dashboard](https://populace.dev/dashboard). Historical incumbent
 benchmark comparisons live outside this package.
+
+## Release Contract
+
+Published releases live under `releases/<release_id>/` in the Hub dataset repo.
+Each release must include `build_manifest.json`, `release_manifest.json`, and
+`calibration_diagnostics.json`; US releases must also include
+`us_source_coverage.json`. The release manifest records the build environment
+under `build.built_with_*_package` and separately records certified runtime
+compatibility through `compatible_model_packages` and `compatible_core_packages`
+using PEP 440 specifiers.
+
+Use `latest.json` to discover the current release and its contract file paths;
+use the release id/tag in artifact revisions when loading an immutable release.

@@ -1232,6 +1232,7 @@ source = { editable = "packages/populace-data" }
 dependencies = [
     { name = "h5py" },
     { name = "huggingface-hub" },
+    { name = "packaging" },
 ]
 
 [package.optional-dependencies]
@@ -1251,6 +1252,7 @@ dev = [
 requires-dist = [
     { name = "h5py", specifier = ">=3" },
     { name = "huggingface-hub", specifier = ">=0.20" },
+    { name = "packaging", specifier = ">=24" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.729,<2" },
 ]
