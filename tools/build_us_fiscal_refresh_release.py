@@ -1566,7 +1566,7 @@ def _fiscal_target_value_basis(spec) -> str:
     source_measure_id = metadata.get("source_measure_id", "")
     if metadata.get("count") == "true":
         return "count"
-    if measure_mode in {"count", "positive_count"}:
+    if measure_mode in {"count", "positive_count", "less_than_count"}:
         return "count"
     if "enrollment" in source_measure_id or "recipients" in source_measure_id:
         return "count"
