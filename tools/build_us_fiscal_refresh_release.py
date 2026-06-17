@@ -528,9 +528,6 @@ def _with_aca_marketplace_source_outputs(
     seed: int,
     simulation=None,
 ) -> Frame:
-    from policyengine_us import Microsimulation
-
-    simulation = simulation or Microsimulation(dataset=_dataset_from_frame(frame))
     target_tables = _aca_source_target_tables(target_specs)
     if US_ACA_APTC_TARGET_TABLE not in target_tables:
         raise RuntimeError(
@@ -538,6 +535,10 @@ def _with_aca_marketplace_source_outputs(
             "The Marketplace enrollment target is observed person coverage and "
             "must not be used as a simulated PTC take-up fallback."
         )
+    if simulation is None:
+        from policyengine_us import Microsimulation
+
+        simulation = Microsimulation(dataset=_dataset_from_frame(frame))
     stage = US_SOURCE_MANIFEST.stage_map()[US_ACA_MARKETPLACE_STAGE]
     stop_after = (
         None
