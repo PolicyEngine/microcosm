@@ -43,6 +43,7 @@ from populace.build.us import (
     write_us_source_coverage_diagnostics,
 )
 from populace.build.us.demographics import (
+    CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
     population_by_age_from_sim,
     write_demographics,
@@ -74,6 +75,8 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 US_FISCAL_TARGET_LOSS_CAP = 10.0
 US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER = 25.0
 US_STATE_TARGET_LOSS_MULTIPLIER = 0.25
+US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
+US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS = {
     "aca_spending": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
     "ctc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
@@ -1278,6 +1281,47 @@ def _health_input_signal_gate(frame: Frame) -> GateResult:
     )
 
 
+def _base_population_scale_gate(frame: Frame) -> GateResult:
+    population = float(frame.resolve_weights("person").values.sum())
+    benchmark = US_BASE_PERSON_POPULATION_BENCHMARK
+    relative_error = (
+        (population - benchmark) / benchmark
+        if math.isfinite(population) and benchmark
+        else None
+    )
+    max_abs = US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR
+    passed = relative_error is not None and abs(relative_error) <= max_abs
+    details = {
+        "measure": "person_weight",
+        "population": population if math.isfinite(population) else None,
+        "benchmark": benchmark,
+        "relative_error": relative_error,
+        "max_abs_relative_error": max_abs,
+        "calibration_mass_policy": "conserve",
+    }
+    if passed:
+        return GateResult(
+            name="base_population_scale",
+            passed=True,
+            details=details,
+        )
+    if relative_error is None:
+        failure = "weighted person population is non-finite."
+    else:
+        failure = (
+            f"weighted person population {population:,.0f} differs from Census "
+            f"benchmark {benchmark:,.0f} by {relative_error:.1%}; release "
+            "calibration uses mass='conserve', so the base H5 must already be "
+            "national scale."
+        )
+    return GateResult(
+        name="base_population_scale",
+        passed=False,
+        failures=(failure,),
+        details=details,
+    )
+
+
 def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     np.savez_compressed(
         path,
@@ -1385,12 +1429,18 @@ def _release_gate_failures(
     compilation: Mapping[str, object],
     target_profile_gate: GateResult | None = None,
     health_input_gate: GateResult | None = None,
+    base_population_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
         failures.extend(
             f"Target profile coverage failed: {failure}"
             for failure in target_profile_gate.failures
+        )
+    if base_population_gate is not None and not base_population_gate.passed:
+        failures.extend(
+            f"Base population scale failed: {failure}"
+            for failure in base_population_gate.failures
         )
     if health_input_gate is not None and not health_input_gate.passed:
         failures.extend(
@@ -1514,12 +1564,14 @@ def _assert_release_gates(
     compilation: Mapping[str, object],
     target_profile_gate: GateResult | None = None,
     health_input_gate: GateResult | None = None,
+    base_population_gate: GateResult | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
         compilation,
         target_profile_gate,
         health_input_gate,
+        base_population_gate,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
@@ -1687,6 +1739,7 @@ def _build_manifests(
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
     health_input_gate: GateResult | None = None,
+    base_population_gate: GateResult | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -1703,6 +1756,7 @@ def _build_manifests(
         dropped,
         target_profile_gate,
         health_input_gate,
+        base_population_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -1748,6 +1802,17 @@ def _build_manifests(
                 "failures": list(target_profile_gate.failures),
                 "details": dict(target_profile_gate.details),
             },
+            **(
+                {
+                    "base_population_scale": {
+                        "passed": base_population_gate.passed,
+                        "failures": list(base_population_gate.failures),
+                        "details": dict(base_population_gate.details),
+                    }
+                }
+                if base_population_gate is not None
+                else {}
+            ),
             **(
                 {
                     "health_input_signal": {
@@ -1961,6 +2026,15 @@ def main() -> None:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     base_frame = _load_frame(base_h5)
+    base_population_gate = _base_population_scale_gate(base_frame)
+    if not base_population_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Base population scale failed: {failure}"
+                for failure in base_population_gate.failures
+            )
+        )
     base_frame = _with_aca_marketplace_source_outputs(
         base_frame,
         target_specs,
@@ -1995,6 +2069,7 @@ def main() -> None:
         compilation,
         target_profile_gate,
         health_input_gate,
+        base_population_gate,
     )
 
     export_frame = _strip_calibration_columns(base_frame, result.weights)
@@ -2018,6 +2093,11 @@ def main() -> None:
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
                 "details": dict(target_profile_gate.details),
+            },
+            "base_population_scale": {
+                "passed": base_population_gate.passed,
+                "failures": list(base_population_gate.failures),
+                "details": dict(base_population_gate.details),
             },
             "post_export_target_audit": bool(args.audit_export_targets),
         },
@@ -2064,6 +2144,7 @@ def main() -> None:
         dropped=compilation,
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
+        base_population_gate=base_population_gate,
     )
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
