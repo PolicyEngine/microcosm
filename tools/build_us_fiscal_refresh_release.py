@@ -1403,9 +1403,10 @@ def _fiscal_target_value_basis(spec) -> str:
             if _fiscal_target_is_return_count_measure(source_measure_id)
             else "count"
         )
-    if measure_mode in {"count", "positive_count"}:
+    if measure_mode in {"count", "positive_count", "less_than_count"}:
         if metadata.get("count_map_to") == "person" or target_role in {
             "aca_enrollment",
+            "aca_bronze_aptc_consumers",
             "aca_ptc_recipients",
             "medicaid_enrollment",
             "medicaid_chip_enrollment",

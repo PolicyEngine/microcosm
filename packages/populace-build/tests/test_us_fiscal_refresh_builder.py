@@ -565,9 +565,21 @@ def test_fiscal_target_value_basis_keeps_person_counts_separate_from_amounts() -
             "count_map_to": "person",
         },
     )
+    bronze_count = TargetSpec(
+        name="bronze_count",
+        entity="household",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "measure_mode": "less_than_count",
+            "source_measure_id": "bronze_aptc_consumers",
+            "target_role": "aca_bronze_aptc_consumers",
+        },
+    )
 
     assert builder._fiscal_target_value_basis(amount) == "amount"
     assert builder._fiscal_target_value_basis(person_count) == "person_count"
+    assert builder._fiscal_target_value_basis(bronze_count) == "person_count"
 
 
 def test_release_gate_failures_reject_bad_ctc_fit() -> None:
