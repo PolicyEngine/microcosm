@@ -241,7 +241,16 @@ DIRECT_LEDGER_TARGETS: dict[
     ("cms_nhe", "expenditure_amount", "medicaid_title_xix"): (
         "medicaid",
         "cms_medicaid",
-        {"target_role": "medicaid_spending"},
+        {
+            "target_role": "medicaid_spending",
+            "calibration_role": "validation_only",
+            "exclusion_reason": (
+                "PolicyEngine-US allocates medicaid spending from state totals "
+                "through person_weight-dependent denominators. Reweighting then "
+                "recomputes per-person medicaid costs, so this is not a linear "
+                "calibration row."
+            ),
+        },
     ),
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
         "gross_medicare_part_b_premium",
@@ -847,6 +856,8 @@ def _direct_reference_from_fact(
     else:
         base_variable, family, metadata = mapping
         metadata = dict(metadata)
+    if metadata.get("calibration_role") == "validation_only":
+        return None
 
     source_record_id = _source_record_id(fact)
     if not source_record_id:
@@ -1207,12 +1218,6 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="ACA marketplace spending and enrollment",
         accepted_families=("cms_aca",),
         min_matches=2,
-    ),
-    TargetCoverageRequirement(
-        requirement_id="medicaid_spending",
-        label="Medicaid spending",
-        accepted_families=("cms_medicaid",),
-        required_metadata=(("target_role", "medicaid_spending"),),
     ),
     TargetCoverageRequirement(
         requirement_id="medicaid_enrollment",
