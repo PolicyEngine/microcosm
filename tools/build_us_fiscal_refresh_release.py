@@ -954,6 +954,54 @@ def _filing_status_names(values: np.ndarray) -> np.ndarray:
     )
 
 
+def _soi_eitc_child_count_filter(metadata: Mapping[str, str]) -> str | None:
+    explicit = metadata.get("ledger_filter_eitc_child_count")
+    if explicit and explicit.strip().lower() != "all":
+        return explicit
+    record_set = metadata.get("ledger_layout_record_set_id", "")
+    if record_set.endswith(".eitc_by_agi_children.no_qualifying_children"):
+        return "0"
+    if record_set.endswith(".eitc_by_agi_children.one_qualifying_child"):
+        return "1"
+    if record_set.endswith(".eitc_by_agi_children.two_qualifying_children"):
+        return "2"
+    if record_set.endswith(".eitc_by_agi_children.three_or_more_qualifying_children"):
+        return "3plus"
+    measure = metadata.get("source_measure_id", "")
+    if measure.startswith("eitc_no_children_"):
+        return "0"
+    if measure.startswith("eitc_one_child_"):
+        return "1"
+    if measure.startswith("eitc_two_children_"):
+        return "2"
+    if measure.startswith("eitc_three_or_more_children_"):
+        return "3plus"
+    return None
+
+
+def _eitc_child_count_mask(values: np.ndarray, filter_value: str) -> np.ndarray:
+    counts = np.asarray(values, dtype=np.float64)
+    normalized = str(filter_value).strip().lower().replace("_", " ")
+    if normalized in {"0", "none", "no children", "no qualifying children"}:
+        return counts == 0
+    if normalized in {"1", "one", "one child", "one qualifying child"}:
+        return counts == 1
+    if normalized in {"2", "two", "two children", "two qualifying children"}:
+        return counts == 2
+    if normalized in {
+        "3",
+        "3+",
+        "3plus",
+        "three",
+        "three plus",
+        "three or more",
+        "three or more children",
+        "three or more qualifying children",
+    }:
+        return counts >= 3
+    raise ValueError(f"Unsupported EITC child-count filter {filter_value!r}.")
+
+
 def _as_bound(value: str) -> float:
     if value == "-inf":
         return -math.inf
@@ -1051,6 +1099,11 @@ def _materialize_target_frame(
     taxable_income_tax_unit = _calculate_array(simulation, "taxable_income")
     agi_tax_unit = _calculate_array(simulation, "adjusted_gross_income")
     filing_status = _filing_status_names(_calculate_array(simulation, "filing_status"))
+    eitc_child_count = (
+        np.asarray(_calculate_array(simulation, "eitc_child_count"), dtype=np.float64)
+        if "eitc_child_count" in system.variables
+        else None
+    )
     tax_unit_state_fips = household["state_fips"].to_numpy()[tax_unit_positions]
 
     hh["income_tax"] = _collapse_tax_unit(
@@ -1169,6 +1222,11 @@ def _materialize_target_frame(
             mask &= filing_status == status
         elif isinstance(status, set):
             mask &= np.isin(filing_status, sorted(status))
+        child_filter = _soi_eitc_child_count_filter(spec.metadata)
+        if child_filter is not None:
+            if eitc_child_count is None:
+                continue
+            mask &= _eitc_child_count_mask(eitc_child_count, child_filter)
         if "state_fips" in spec.metadata:
             mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
         is_count = spec.metadata.get("count") == "true"
@@ -1195,6 +1253,7 @@ def _materialize_target_frame(
         taxable_income_tax_unit,
         agi_tax_unit,
         filing_status,
+        eitc_child_count,
     )
     simulation._invalidate_all_caches()
     del simulation

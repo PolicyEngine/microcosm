@@ -152,6 +152,94 @@ def test_soi_count_rows_count_positive_component_items() -> None:
     )
 
 
+def test_soi_eitc_child_count_filter_uses_ledger_filter_first() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_filter_eitc_child_count": "2",
+                "source_measure_id": "eitc_no_children_amount",
+            }
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_no_children_amount"}
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_one_child_claims"}
+        )
+        == "1"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_two_children_amount"}
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_three_or_more_children_claims"}
+        )
+        == "3plus"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "3plus"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter({"source_measure_id": "eitc_total"})
+        is None
+    )
+
+
+def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
+    builder = _load_builder_module()
+    counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
+
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "0"),
+        np.asarray([True, False, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "1"),
+        np.asarray([False, True, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "2"),
+        np.asarray([False, False, True, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "3plus"),
+        np.asarray([False, False, False, True, True]),
+    )
+
+
 def test_combined_household_values_unions_positive_person_support(small_frame) -> None:
     builder = _load_builder_module()
 
@@ -1103,6 +1191,139 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert [dataset[1] for dataset in datasets] == [(), ("mock_credit",)]
     assert len(simulations) == 2
     assert [simulation.cache_invalidations for simulation in simulations] == [1, 1]
+
+
+def test_soi_eitc_child_targets_materialize_distinct_child_slices(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 6], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def eitc_spec(name, measure, child_filter, *, count=False):
+        metadata = {
+            "variable": "eitc",
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+            "source_measure_id": "eitc_returns" if count else "eitc_total",
+            "ledger_filter_eitc_child_count": child_filter,
+        }
+        if count:
+            metadata["count"] = "true"
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=measure,
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata=metadata,
+        )
+
+    targets = (
+        eitc_spec("no_child_amount", "no_child_amount", "0"),
+        eitc_spec("two_child_amount", "two_child_amount", "2"),
+        eitc_spec("three_plus_amount", "three_plus_amount", "3plus"),
+        eitc_spec("two_child_returns", "two_child_returns", "2", count=True),
+    )
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            name: FakeVariable()
+            for name in (
+                "income_tax",
+                "taxable_income",
+                "adjusted_gross_income",
+                "filing_status",
+                "state_income_tax",
+                "eitc",
+                "eitc_child_count",
+            )
+        }
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = dataset
+            self.reform = reform
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([10_000.0, 20_000.0, 30_000.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "eitc": np.asarray([100.0, 200.0, 300.0]),
+                "eitc_child_count": np.asarray([0.0, 2.0, 3.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {"eitc": "eitc"})
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["no_child_amount"], np.asarray([100.0, 0.0]))
+    assert np.array_equal(household["two_child_amount"], np.asarray([200.0, 0.0]))
+    assert np.array_equal(household["three_plus_amount"], np.asarray([0.0, 300.0]))
+    assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
+    assert len(registry) == 4
+    assert compilation["dropped_target_names"] == []
 
 
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
