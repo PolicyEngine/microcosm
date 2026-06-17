@@ -47,7 +47,6 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "refundable_ctc_total",
     "aca_spending",
     "aca_enrollment",
-    "medicaid_spending",
     "medicaid_enrollment",
     "medicaid_chip_enrollment",
     "medicare_part_b_premium_total",
@@ -176,6 +175,30 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
     assert control.metadata["base_variable"] == "tanf"
     assert control.metadata["state_fips"] == "06"
     assert control.value == 456_000_000
+
+
+def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
+    source_record_id = (
+        "cms_nhe.cy2024.medicaid_title_xix_expenditures."
+        "medicaid_title_xix.expenditure_amount"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=source_record_id,
+            source_name="cms_nhe",
+            measure_id="expenditure_amount",
+            groupby_value_id="medicaid_title_xix",
+            value=931_692_000_000,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert source_record_id not in by_source_record_id
 
 
 def test_jct_tax_expenditure_references_are_simple_income_tax_reforms() -> None:
@@ -565,7 +588,7 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "eitc_total" in ids
     assert "refundable_ctc_total" in ids
     assert "aca_marketplace" in ids
-    assert "medicaid_spending" in ids
+    assert "medicaid_spending" not in ids
     assert "medicaid_enrollment" in ids
     assert "medicaid_chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
@@ -677,7 +700,7 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
     assert any("medicaid_chip_enrollment" in failure for failure in result.failures)
 
 
-def test_medicaid_requirements_need_spending_and_enrollment_roles() -> None:
+def test_medicaid_requirement_needs_enrollment_role() -> None:
     base_targets = [
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
@@ -686,21 +709,6 @@ def test_medicaid_requirements_need_spending_and_enrollment_roles() -> None:
         *complete_jct_rows(),
     ]
     program_rows = complete_program_rows()
-
-    without_spending = [
-        *base_targets,
-        *[
-            row
-            for row in program_rows
-            if row["metadata"]["target_role"] != "medicaid_spending"
-        ],
-    ]
-    spending_result = target_profile_coverage_gate(
-        without_spending,
-        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
-    )
-    assert not spending_result.passed
-    assert any("medicaid_spending" in failure for failure in spending_result.failures)
 
     without_enrollment = [
         *base_targets,
@@ -1073,11 +1081,7 @@ def complete_program_rows() -> list[dict[str, object]]:
             family = "irs_soi"
         elif role in {"aca_spending", "aca_enrollment"}:
             family = "cms_aca"
-        elif role in {
-            "medicaid_spending",
-            "medicaid_enrollment",
-            "medicaid_chip_enrollment",
-        }:
+        elif role in {"medicaid_enrollment", "medicaid_chip_enrollment"}:
             family = "cms_medicaid"
         elif role == "medicare_part_b_premium_total":
             family = "cms_medicare"
