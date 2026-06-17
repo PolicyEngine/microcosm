@@ -30,15 +30,6 @@ from populace.frame import Frame, Weights
 
 __all__ = ["CalibrationProblem", "SkippedTarget", "build_constraint_matrix"]
 
-#: Half-width of the forbidden band around ``-1`` for a compiled target value.
-#: The bounded relative-error loss divides each residual by
-#: ``(target_value + 1)``; a compiled
-#: value within ``_DENOM_EPS`` of ``-1`` drives that denominator to ~0, so the
-#: loss, its gradients, and every weight go NaN — surfacing only as the kernel's
-#: opaque "Weights must be finite" error. We reject such targets at compile time
-#: instead, naming the culprit and the cause.
-_DENOM_EPS = 1e-8
-
 
 @dataclass(frozen=True)
 class SkippedTarget:
@@ -314,30 +305,10 @@ def build_constraint_matrix(
             f"({len(skipped)} skipped): {detail}."
         )
 
-    target_vector = np.asarray(values, dtype=np.float64)
-    # Guard the loss denominator: the bounded relative-error loss divides each
-    # residual by ``(target_value + 1)``. A compiled value at -1 (a raw
-    # ``value=-1``, or a ``mean`` whose ``value`` is exactly 1 below the current
-    # mean, since its compiled RHS is ``value - current_mean``) makes that
-    # denominator ~0 -> NaN loss -> NaN gradients -> all-NaN weights, which would
-    # otherwise surface only as the kernel's opaque "Weights must be finite".
-    near_minus_one = np.abs(target_vector + 1.0) < _DENOM_EPS
-    if near_minus_one.any():
-        culprits = "; ".join(
-            f"{names[i]} (compiled target value {target_vector[i]:.6g})"
-            for i in np.flatnonzero(near_minus_one)
-        )
-        raise ValueError(
-            "Target(s) compile to a value at -1, which zeroes the "
-            "relative-error loss denominator (target_value + 1) and makes every "
-            f"weight NaN: {culprits}. Shift the target value away from -1 (for a "
-            "'mean', away from exactly 1 below the current mean)."
-        )
-
     matrix = sparse.csr_array(np.vstack(rows))
     return CalibrationProblem(
         matrix=matrix,
-        target_vector=target_vector,
+        target_vector=np.asarray(values, dtype=np.float64),
         names=tuple(names),
         initial_weights=initial,
         weight_entity=weight_entity,

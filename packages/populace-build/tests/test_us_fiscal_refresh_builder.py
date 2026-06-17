@@ -403,18 +403,19 @@ def test_release_gate_failures_reject_missing_critical_targets() -> None:
     ]
 
 
-def test_target_value_loss_weights_prioritize_large_targets() -> None:
+def test_fiscal_target_loss_weights_prioritize_national_totals() -> None:
     builder = _load_builder_module()
     registry = TargetRegistry(
         (
             TargetSpec(
-                name="small_count",
+                name="national_income_tax_total",
                 entity="household",
                 value=10.0,
                 source="fixture",
+                metadata={"target_role": "federal_income_tax_total"},
             ),
             TargetSpec(
-                name="large_amount",
+                name="distribution_row",
                 entity="household",
                 value=1_000_000.0,
                 source="fixture",
@@ -423,33 +424,26 @@ def test_target_value_loss_weights_prioritize_large_targets() -> None:
         country="us",
     )
 
-    weights = builder._target_value_loss_weights(registry)
+    weights = builder._fiscal_target_loss_weights(registry)
 
     assert weights.shape == (2,)
     assert weights.mean() == 1.0
-    assert weights[1] > weights[0] * 10_000
+    assert weights[0] == weights[1] * builder.US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER
 
 
-def test_target_value_loss_weights_boost_ctc_total_role() -> None:
+def test_fiscal_target_loss_weights_downweight_state_rows() -> None:
     builder = _load_builder_module()
     registry = TargetRegistry(
         (
             TargetSpec(
-                name="ctc_total",
+                name="state_role_row",
                 entity="tax_unit",
                 value=100.0,
                 source="fixture",
-                metadata={"target_role": "ctc_total"},
+                metadata={"state_fips": "06", "target_role": "tanf_total"},
             ),
             TargetSpec(
-                name="other_same_value",
-                entity="tax_unit",
-                value=100.0,
-                source="fixture",
-                metadata={"target_role": "eitc_total"},
-            ),
-            TargetSpec(
-                name="legacy_named_ctc_without_role",
+                name="national_row",
                 entity="tax_unit",
                 value=100.0,
                 source="fixture",
@@ -458,11 +452,10 @@ def test_target_value_loss_weights_boost_ctc_total_role() -> None:
         country="us",
     )
 
-    weights = builder._target_value_loss_weights(registry)
+    weights = builder._fiscal_target_loss_weights(registry)
 
     assert weights.mean() == 1.0
-    assert weights[0] == weights[1] * builder.US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER
-    assert weights[2] == weights[1]
+    assert weights[0] == weights[1] * builder.US_STATE_TARGET_LOSS_MULTIPLIER
 
 
 def test_release_gate_failures_reject_bad_ctc_fit() -> None:

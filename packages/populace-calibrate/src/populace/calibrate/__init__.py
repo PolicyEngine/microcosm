@@ -4,9 +4,9 @@ The only place :class:`~populace.frame.WeightKind.CALIBRATED` weights are
 produced. Compiles declared facts — population control totals, counts, averages
 with standard-error-style tolerances — into a sparse linear constraint system
 over a :class:`~populace.frame.Frame`, then solves for the weight vector that
-best reproduces them under the bounded relative-error loss
-``mean(((A @ w - b)/(b + 1))**2)``, optimized with torch's Adam over the
-log-weights (positivity by construction). Multi-period targets stack as
+best reproduces them under capped weighted MAPE,
+``weighted_mean(min(abs((A @ w - b) / scale), cap))``, optimized with torch's
+Adam over the log-weights (positivity by construction). Multi-period targets stack as
 ``(target, period)`` rows over the *same* weight vector — the charter's "one
 weight per trajectory".
 
@@ -95,6 +95,7 @@ from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     CalibrationResult,
     TargetDiagnostic,
     calibrate,
+    default_target_loss_scales,
     relative_error_loss,
 )
 from populace.calibrate.target import (  # noqa: E402 - after the compat gate
@@ -120,6 +121,7 @@ __all__ = [
     "TargetSpec",
     "build_constraint_matrix",
     "calibrate",
+    "default_target_loss_scales",
     "diagnostics_payload",
     "relative_error_loss",
     "specs_from_pe_surface",

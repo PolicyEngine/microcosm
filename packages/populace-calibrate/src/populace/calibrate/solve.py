@@ -3,9 +3,14 @@
 :func:`calibrate` is the representation operator. It compiles a
 :class:`~populace.calibrate.target.TargetSet` against a
 :class:`~populace.frame.Frame` (:mod:`populace.calibrate.matrix`), then optimizes
-the weight vector of ``weight_entity`` to minimize the bounded relative-error loss
+the weight vector of ``weight_entity`` to minimize fixed-scale weighted MAPE
 
-    ``mean(((A @ w - b) / (b + 1))**2)``
+    ``weighted_mean(abs((A @ w - b) / s))``
+
+where ``s`` is a per-target scale fixed before optimization. By default,
+``s = max(abs(b), abs(A @ w0), 1)``: zero-valued or tiny targets can no longer
+dominate the objective merely because their denominator is near zero, while
+large national aggregates remain measured as proportional misses.
 
 with torch's Adam over the **log-weights** (so weights stay strictly positive by
 construction). It returns a
@@ -55,6 +60,7 @@ from populace.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
     "calibrate",
+    "default_target_loss_scales",
     "relative_error_loss",
     "CalibrationResult",
     "TargetDiagnostic",
@@ -85,6 +91,10 @@ _L0_SEARCH_HI = 1e1
 #: the search's cost at ``budget_iters`` optimizations; ~10 bisection steps cut
 #: the ``log10`` bracket by 2^10, far finer than the count is resolvable.
 _DEFAULT_BUDGET_ITERS = 10
+
+# Per-target contribution cap for weighted MAPE. A target can contribute at most
+# a 1000% scaled miss to the objective.
+_DEFAULT_TARGET_LOSS_CAP = 10.0
 
 
 @dataclass(frozen=True)
@@ -140,7 +150,7 @@ class CalibrationResult:
             search settled on, not the value passed in.
         n_nonzero: Number of calibrated weights above the prune threshold. With a
             ``target_records`` budget, the quantity the search drives toward it.
-        closing_loss: The bounded relative-error loss evaluated once on the
+        closing_loss: The capped weighted-MAPE calibration loss evaluated once on the
             *returned* weights (after the closing mass/cap projections). Exposed
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
@@ -170,12 +180,12 @@ class CalibrationResult:
 
     @property
     def initial_loss(self) -> float:
-        """The bounded relative-error loss under the input weights."""
+        """The capped weighted-MAPE calibration loss under the input weights."""
         return float(self.loss_trajectory[0])
 
     @property
     def final_loss(self) -> float:
-        """The bounded relative-error loss of the *returned* weights.
+        """The capped weighted-MAPE calibration loss of the *returned* weights.
 
         This is a single eval-mode evaluation on the weights actually returned —
         after the closing mass/cap projections — so it describes the calibrated
@@ -242,17 +252,23 @@ def relative_error_loss(
     targets: np.ndarray,
     *,
     target_loss_weights: np.ndarray | None = None,
+    target_loss_scales: np.ndarray | None = None,
+    target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
 ) -> float:
-    """THE loss, in numpy: weighted ``((est - tgt)/(tgt + 1))**2``.
+    """THE loss, in numpy: capped weighted MAPE on fixed row scales.
 
     The single canonical definition every measurement imports — the solver's
     closing loss, the acceptance gates, and scorers all call this function
     (the torch twin below is the autograd path of the same formula). Refuses
     non-finite inputs: a NaN estimate is a harness bug, not a large miss.
-    When ``target_loss_weights`` is omitted, this is the historical unweighted
-    mean. When supplied, weights must align to targets and are normalized by
-    their own sum, so multiplying all weights by a constant does not change the
-    objective.
+
+    ``target_loss_scales`` is the row denominator ``s`` in
+    ``abs((estimate - target) / s)``. If omitted, the diagnostic helper uses
+    ``max(abs(target), 1)``; :func:`calibrate` supplies the stronger production
+    default ``max(abs(target), abs(initial_estimate), 1)`` once it has compiled
+    the target matrix. Target weights are normalized by their own sum, so
+    multiplying all weights by a constant does not change the objective. Each
+    row's scaled absolute miss is capped by ``target_loss_cap``.
     """
     estimates = np.asarray(estimates, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
@@ -266,8 +282,13 @@ def relative_error_loss(
             "relative_error_loss requires finite inputs; got non-finite "
             "estimate or target values."
         )
-    rel = (estimates - targets) / (targets + 1.0)
-    loss = rel**2
+    scales = _validate_target_loss_scales(
+        target_loss_scales,
+        targets.shape,
+        targets=targets,
+    )
+    cap = _validate_target_loss_cap(target_loss_cap)
+    loss = np.minimum(np.abs((estimates - targets) / scales), cap)
     weights = _validate_target_loss_weights(target_loss_weights, targets.shape)
     if weights is None:
         return float(loss.mean())
@@ -278,24 +299,59 @@ def _relative_error_loss(
     estimate: torch.Tensor,
     targets: torch.Tensor,
     target_loss_weights: torch.Tensor | None,
+    target_loss_scales: torch.Tensor,
+    target_loss_cap: float,
 ) -> torch.Tensor:
-    """The relative-error loss, optionally averaged with target row weights.
-
-    The ``+1`` in the *denominator* is the regularizer: it keeps the loss finite
-    and well-scaled for targets near zero (a zero-valued count target then
-    contributes ``est**2`` rather than dividing by zero). The numerator is the
-    raw residual ``est - tgt``, so the loss is minimized exactly at ``est = tgt``.
-
-    Some older reweighting formulas carried a ``+1`` in the numerator too. That
-    biases the optimum to ``est = tgt - 1`` and is fatal for small-valued
-    targets (a count of 5 converges to 4). We use the raw residual — this is
-    also the loss this docstring has always described.
-    """
-    rel_error = (estimate - targets) / (targets + 1.0)
-    loss = rel_error**2
+    """The capped weighted-MAPE target loss, optionally averaged with row weights."""
+    scaled_error = (estimate - targets) / target_loss_scales
+    loss = torch.clamp(
+        torch.abs(scaled_error),
+        max=_validate_target_loss_cap(target_loss_cap),
+    )
     if target_loss_weights is None:
         return loss.mean()
     return (loss * target_loss_weights).sum() / target_loss_weights.sum()
+
+
+def _validate_target_loss_cap(target_loss_cap: float) -> float:
+    cap = float(target_loss_cap)
+    if not np.isfinite(cap) or cap <= 0.0:
+        raise ValueError(
+            f"target_loss_cap must be positive and finite, got {target_loss_cap!r}."
+        )
+    return cap
+
+
+def default_target_loss_scales(
+    targets: np.ndarray,
+    initial_estimates: np.ndarray,
+) -> np.ndarray:
+    """Default fixed row scales for calibration.
+
+    The old objective used ``target + 1`` as the denominator. That makes a
+    zero-valued target with a large starting estimate dominate the loss by many
+    orders of magnitude. The production scale is instead the largest meaningful
+    size already known before optimization: the absolute target, the absolute
+    starting estimate, or one unit.
+    """
+    targets = np.asarray(targets, dtype=np.float64)
+    initial_estimates = np.asarray(initial_estimates, dtype=np.float64)
+    if targets.shape != initial_estimates.shape:
+        raise ValueError(
+            "targets and initial_estimates must align, got shapes "
+            f"{targets.shape} vs {initial_estimates.shape}."
+        )
+    if not (np.isfinite(targets).all() and np.isfinite(initial_estimates).all()):
+        raise ValueError(
+            "default_target_loss_scales requires finite targets and estimates."
+        )
+    return np.maximum.reduce(
+        [
+            np.abs(targets),
+            np.abs(initial_estimates),
+            np.ones_like(targets, dtype=np.float64),
+        ]
+    )
 
 
 def _validate_target_loss_weights(
@@ -319,6 +375,28 @@ def _validate_target_loss_weights(
     return weights
 
 
+def _validate_target_loss_scales(
+    target_loss_scales: np.ndarray | None,
+    shape: tuple[int, ...],
+    *,
+    targets: np.ndarray,
+) -> np.ndarray:
+    if target_loss_scales is None:
+        scales = np.maximum(np.abs(np.asarray(targets, dtype=np.float64)), 1.0)
+    else:
+        scales = np.asarray(target_loss_scales, dtype=np.float64)
+    if scales.shape != shape:
+        raise ValueError(
+            "target_loss_scales must align with targets, got shapes "
+            f"{scales.shape} vs {shape}."
+        )
+    if not np.isfinite(scales).all():
+        raise ValueError("target_loss_scales must be finite.")
+    if (scales <= 0).any():
+        raise ValueError("target_loss_scales must be positive.")
+    return scales
+
+
 def _target_loss_weight_options(
     target_loss_weights: np.ndarray | None,
 ) -> Mapping[str, object]:
@@ -331,6 +409,24 @@ def _target_loss_weight_options(
         "sum": float(weights.sum()),
         "min": float(weights.min()),
         "max": float(weights.max()),
+    }
+
+
+def _target_loss_scale_options(
+    target_loss_scales: np.ndarray,
+    *,
+    kind: str,
+    target_loss_cap: float,
+) -> Mapping[str, object]:
+    scales = np.asarray(target_loss_scales, dtype=np.float64)
+    return {
+        "kind": kind,
+        "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
+        "cap": float(target_loss_cap),
+        "n": int(scales.shape[0]),
+        "min": float(scales.min()),
+        "median": float(np.median(scales)),
+        "max": float(scales.max()),
     }
 
 
@@ -398,6 +494,8 @@ def _optimize(
     matrix: torch.Tensor,
     targets: torch.Tensor,
     target_loss_weights: torch.Tensor | None,
+    target_loss_scales: torch.Tensor,
+    target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
     epochs: int,
@@ -411,7 +509,7 @@ def _optimize(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run the torch optimization and return ``(final_weights, loss_trajectory)``.
 
-    Optimizes the log-weights with Adam against the bounded relative-error loss.
+    Optimizes the log-weights with Adam against capped weighted MAPE.
     Positivity is by construction (``w = exp(log_w)`` times optional gates). The
     hard constraints — mass conservation and ``max_weight_ratio`` — are applied
     by projecting the realized weights after each step, so they hold on the
@@ -444,7 +542,13 @@ def _optimize(
         if gates is not None:
             weights = weights * gates()
         estimate = _apply_constraint(matrix, weights)
-        loss = _relative_error_loss(estimate, targets, target_loss_weights)
+        loss = _relative_error_loss(
+            estimate,
+            targets,
+            target_loss_weights,
+            target_loss_scales,
+            target_loss_cap,
+        )
         penalty = (
             l0_lambda * gates.get_penalty()
             if (gates is not None and l0_lambda > 0.0)
@@ -509,6 +613,8 @@ def _search_l0_lambda_for_budget(
     matrix: torch.Tensor,
     targets: torch.Tensor,
     target_loss_weights: torch.Tensor | None,
+    target_loss_scales: torch.Tensor,
+    target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
     target_records: int,
@@ -567,6 +673,8 @@ def _search_l0_lambda_for_budget(
             matrix,
             targets,
             target_loss_weights,
+            target_loss_scales,
+            target_loss_cap,
             initial_weights,
             epochs=epochs,
             learning_rate=learning_rate,
@@ -726,7 +834,7 @@ def calibrate(
     weight_entity: str = "household",
     method: str = "apg",
     epochs: int = 256,
-    learning_rate: float = 0.1,
+    learning_rate: float = 0.02,
     mass: str = FREE_MASS,
     max_weight_ratio: float | None = None,
     target_records: int | None = None,
@@ -736,12 +844,14 @@ def calibrate(
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     seed: int = 0,
     target_loss_weights: np.ndarray | None = None,
+    target_loss_scales: np.ndarray | None = None,
+    target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
     Compiles the targets into a sparse system and optimizes the log-weights with
-    Adam to minimize the bounded relative-error loss
-    ``mean(((A @ w - b)/(b + 1))**2)``. Returns a new frame whose
+    Adam to minimize capped fixed-scale weighted MAPE
+    ``weighted_mean(min(abs((A @ w - b) / s), cap))``. Returns a new frame whose
     ``weight_entity`` weights are :class:`~populace.frame.WeightKind.CALIBRATED`.
 
     Args:
@@ -755,9 +865,10 @@ def calibrate(
             first-order method here; the label is carried for the manifest and
             future solver swaps. Any other value is rejected.
         epochs: Number of optimization steps.
-        learning_rate: Adam learning rate on the log-weights. The reference
-            ``reweight`` is sensitive to this — it does well above ~0.1 and
-            breaks down near ~0.005 — so the default matches that regime.
+        learning_rate: Adam learning rate on the log-weights. Capped MAPE has a
+            nearly constant gradient away from zero, so the default is lower
+            than the old squared-error objective to avoid oscillating around
+            feasible targets.
         mass: :data:`FREE_MASS` (default) to let the total move, or
             :data:`CONSERVE_MASS` to hold it to the input total.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
@@ -783,10 +894,16 @@ def calibrate(
         seed: Seed for torch's RNG (the gate sampling), for reproducibility.
         target_loss_weights: Optional non-negative row weights aligned to the
             supplied :class:`TargetSet`. When omitted, every compiled target row
-            contributes equally (historical behavior). When supplied, the weights
-            for skipped targets are dropped with those targets, and the squared
-            bounded relative errors for compiled rows are averaged with the
-            remaining weights, normalized by their sum.
+            contributes equally. When supplied, the weights for skipped targets
+            are dropped with those targets, and the capped scaled misses for
+            compiled rows are averaged with the remaining weights, normalized by
+            their sum.
+        target_loss_scales: Optional positive row scales aligned to the supplied
+            :class:`TargetSet`. When omitted, compiled rows use
+            :func:`default_target_loss_scales`, fixed from the input weights.
+            Supplying scales is mainly for harnesses and specialized releases.
+        target_loss_cap: Positive per-row cap on scaled absolute misses. The
+            default caps each target's objective contribution at 1000%.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -833,10 +950,20 @@ def calibrate(
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
+    target_loss_cap = _validate_target_loss_cap(target_loss_cap)
 
     target_loss_weights_input = _validate_target_loss_weights(
         target_loss_weights,
         (len(targets),),
+    )
+    target_loss_scales_input = (
+        None
+        if target_loss_scales is None
+        else _validate_target_loss_scales(
+            target_loss_scales,
+            (len(targets),),
+            targets=np.asarray([target.value for target in targets], dtype=np.float64),
+        )
     )
     problem = build_constraint_matrix(frame, targets, weight_entity)
     initial = problem.initial_weights
@@ -847,6 +974,8 @@ def calibrate(
     matrix_t = _torch_constraint_matrix(problem.matrix)
     targets_t = torch.tensor(problem.target_vector, dtype=torch.float32)
     target_loss_weights_np: np.ndarray | None = None
+    target_loss_scales_np: np.ndarray
+    target_loss_scale_kind = "default_initial_or_target"
     if target_loss_weights_input is not None:
         weights_by_key = {
             target.key: weight
@@ -860,11 +989,32 @@ def calibrate(
             target_loss_weights_np,
             problem.target_vector.shape,
         )
+    if target_loss_scales_input is not None:
+        scales_by_key = {
+            target.key: scale
+            for target, scale in zip(targets, target_loss_scales_input, strict=True)
+        }
+        target_loss_scales_np = np.asarray(
+            [scales_by_key[target.key] for target in problem.targets],
+            dtype=np.float64,
+        )
+        target_loss_scales_np = _validate_target_loss_scales(
+            target_loss_scales_np,
+            problem.target_vector.shape,
+            targets=problem.target_vector,
+        )
+        target_loss_scale_kind = "provided"
+    else:
+        target_loss_scales_np = default_target_loss_scales(
+            problem.target_vector,
+            problem.estimates(w0),
+        )
     target_loss_weights_t = (
         torch.tensor(target_loss_weights_np, dtype=torch.float32)
         if target_loss_weights_np is not None
         else None
     )
+    target_loss_scales_t = torch.tensor(target_loss_scales_np, dtype=torch.float32)
 
     if target_records is not None:
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
@@ -875,6 +1025,8 @@ def calibrate(
                 matrix_t,
                 targets_t,
                 target_loss_weights_t,
+                target_loss_scales_t,
+                target_loss_cap,
                 w0,
                 target_records=target_records,
                 epochs=epochs,
@@ -895,6 +1047,8 @@ def calibrate(
             matrix_t,
             targets_t,
             target_loss_weights_t,
+            target_loss_scales_t,
+            target_loss_cap,
             w0,
             epochs=epochs,
             learning_rate=learning_rate,
@@ -924,14 +1078,15 @@ def calibrate(
 
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
     # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
-    # bounded relative-error loss the optimizer minimizes,
-    # mean(((A@w - b)/(b+1))**2),
-    # evaluated after the closing mass/cap projections — so final_loss describes
+    # capped weighted-MAPE loss the optimizer minimizes, evaluated after the closing
+    # mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
     closing_loss = relative_error_loss(
         problem.estimates(final_weights),
         problem.target_vector,
         target_loss_weights=target_loss_weights_np,
+        target_loss_scales=target_loss_scales_np,
+        target_loss_cap=target_loss_cap,
     )
 
     return CalibrationResult(
@@ -955,6 +1110,11 @@ def calibrate(
             "target_records": target_records,
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
+            "target_loss_scales": _target_loss_scale_options(
+                target_loss_scales_np,
+                kind=target_loss_scale_kind,
+                target_loss_cap=target_loss_cap,
+            ),
             "matrix_format": (
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
@@ -985,7 +1145,7 @@ def _apply_weights(
     factor = calibrated.total / initial.total if initial.total != 0 else None
     reason = (
         f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
-        "(bounded relative-error loss); total mass free to move"
+        "(capped weighted-MAPE loss); total mass free to move"
     )
     return frame.with_weights(
         weight_entity,

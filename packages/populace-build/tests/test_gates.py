@@ -210,20 +210,33 @@ class TestRelativeErrorLoss:
     def test_matches_the_calibrator_formula(self) -> None:
         est = np.asarray([110.0, 90.0])
         tgt = np.asarray([100.0, 100.0])
-        expected = (((est - tgt) / (tgt + 1.0)) ** 2).mean()
+        expected = np.abs((est - tgt) / np.maximum(np.abs(tgt), 1.0)).mean()
         assert relative_error_loss(est, tgt) == pytest.approx(expected)
 
     def test_accepts_target_loss_weights(self) -> None:
         est = np.asarray([110.0, 90.0])
         tgt = np.asarray([100.0, 100.0])
         weights = np.asarray([10.0, 1.0])
-        residual = ((est - tgt) / (tgt + 1.0)) ** 2
+        residual = np.abs((est - tgt) / np.maximum(np.abs(tgt), 1.0))
         expected = np.average(residual, weights=weights)
 
         assert relative_error_loss(
             est,
             tgt,
             target_loss_weights=weights,
+        ) == pytest.approx(expected)
+
+    def test_accepts_target_loss_scales_and_caps_each_row(self) -> None:
+        est = np.asarray([1_000.0, 50.0])
+        tgt = np.asarray([0.0, 100.0])
+        scales = np.asarray([100.0, 100.0])
+        expected = np.asarray([10.0, 0.5]).mean()
+
+        assert relative_error_loss(
+            est,
+            tgt,
+            target_loss_scales=scales,
+            target_loss_cap=10.0,
         ) == pytest.approx(expected)
 
     def test_shape_mismatch_is_refused(self) -> None:

@@ -88,17 +88,10 @@ def test_multi_period_targets_become_distinct_rows(multiperiod_frame) -> None:
     assert any("2030" in n for n in problem.names)
 
 
-def test_target_value_near_minus_one_is_rejected_with_a_named_error(
+def test_target_value_near_minus_one_compiles_under_scaled_mape(
     feasible_frame,
 ) -> None:
-    """A compiled RHS of exactly -1 zeroes the loss denominator ``(b + 1)``.
-
-    The bounded relative-error loss divides each residual by ``(target + 1)``.
-    A target value of exactly -1 makes that denominator zero, so the loss is NaN, the gradients are
-    NaN, every weight goes NaN, and the kernel raises an opaque "Weights must be
-    finite" error naming neither the target nor the cause. The compiler must
-    reject the offending target up front, naming it.
-    """
+    """A target at -1 is no longer special: scaled MAPE has no ``b + 1`` denominator."""
     frame, _ = feasible_frame(n=50)
     targets = TargetSet(
         (
@@ -110,17 +103,13 @@ def test_target_value_near_minus_one_is_rejected_with_a_named_error(
             ),
         )
     )
-    with pytest.raises(ValueError, match="counts_to_neg_one"):
-        build_constraint_matrix(frame, targets)
+    problem = build_constraint_matrix(frame, targets)
+    assert problem.names == ("counts_to_neg_one@0",)
+    assert problem.target_vector.tolist() == [-1.0]
 
 
-def test_mean_target_one_below_current_mean_is_rejected(feasible_frame) -> None:
-    """A ``mean`` whose compiled RHS lands at -1 is rejected too.
-
-    A ``mean`` target compiles to a right-hand side of ``value - current_mean``;
-    a value exactly 1 below the current mean lands the RHS at -1 — the same
-    zero-denominator landmine — and must be named, not silently NaN'd.
-    """
+def test_mean_target_one_below_current_mean_compiles(feasible_frame) -> None:
+    """Mean rows whose compiled RHS lands at -1 are valid under scaled MAPE."""
     frame, _ = feasible_frame(n=50)
     current_mean = float(frame.table("household")["income"].to_numpy().mean())
     targets = TargetSet(
@@ -134,8 +123,9 @@ def test_mean_target_one_below_current_mean_is_rejected(feasible_frame) -> None:
             ),
         )
     )
-    with pytest.raises(ValueError, match="mean_one_below"):
-        build_constraint_matrix(frame, targets)
+    problem = build_constraint_matrix(frame, targets)
+    assert problem.names == ("mean_one_below@0",)
+    assert problem.target_vector.tolist() == pytest.approx([-1.0])
 
 
 def test_normal_target_value_compiles_fine(feasible_frame) -> None:

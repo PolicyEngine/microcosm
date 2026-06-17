@@ -380,7 +380,9 @@ def _source_loss(
     if not errors:
         return {
             "loss": 0.0,
-            "loss_formula": "mean(((estimate - target) / (target + 1)) ** 2)",
+            "loss_formula": (
+                "mean(min(abs((estimate - target) / max(abs(target), 1)), 10))"
+            ),
             "n_columns": 0,
             "within_10pct": 1.0,
             "max_abs_relative_error": 0.0,
@@ -401,7 +403,9 @@ def _source_loss(
                 np.asarray([error["target_total"] for error in errors]),
             )
         ),
-        "loss_formula": "mean(((estimate - target) / (target + 1)) ** 2)",
+        "loss_formula": (
+            "mean(min(abs((estimate - target) / max(abs(target), 1)), 10))"
+        ),
         "n_columns": int(len(errors)),
         "within_10pct": _json_float(
             float(np.mean([abs(error["relative_error"]) <= 0.10 for error in errors]))

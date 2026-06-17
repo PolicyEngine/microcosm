@@ -68,10 +68,25 @@ DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
-US_FISCAL_TARGET_LOSS_WEIGHTING = "absolute_target_value_with_ctc_priority"
-US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER = 10.0
+US_FISCAL_TARGET_LOSS_WEIGHTING = (
+    "semantic_weighted_mape_initial_or_target_scale_cap_1000pct"
+)
+US_FISCAL_TARGET_LOSS_CAP = 10.0
+US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER = 25.0
+US_STATE_TARGET_LOSS_MULTIPLIER = 0.25
 US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS = {
-    "ctc_total": US_CTC_TARGET_LOSS_WEIGHT_MULTIPLIER,
+    "aca_spending": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "ctc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "eitc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "federal_income_tax_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "income_tax_before_credits_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "medicare_part_b_premium_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "refundable_ctc_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "snap_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "social_security_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "ssi_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "tanf_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
+    "unemployment_compensation_total": US_NATIONAL_TOTAL_TARGET_LOSS_MULTIPLIER,
 }
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
@@ -257,7 +272,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
     parser.add_argument("--epochs", type=int, default=512)
-    parser.add_argument("--learning-rate", type=float, default=0.12)
+    parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -1285,19 +1300,30 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
     )
 
 
-def _target_value_loss_weights(registry: TargetRegistry) -> np.ndarray:
-    values = np.asarray([abs(spec.value) for spec in registry.specs], dtype=np.float64)
-    weights = np.maximum(values, 1.0)
+def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
+    weights = np.ones(len(registry.specs), dtype=np.float64)
+    state_multipliers = np.asarray(
+        [
+            US_STATE_TARGET_LOSS_MULTIPLIER if spec.metadata.get("state_fips") else 1.0
+            for spec in registry.specs
+        ],
+        dtype=np.float64,
+    )
     multipliers = np.asarray(
         [
-            US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS.get(
-                spec.metadata.get("target_role", ""),
-                1.0,
+            (
+                1.0
+                if spec.metadata.get("state_fips")
+                else US_FISCAL_TARGET_ROLE_LOSS_MULTIPLIERS.get(
+                    spec.metadata.get("target_role", ""),
+                    1.0,
+                )
             )
             for spec in registry.specs
         ],
         dtype=np.float64,
     )
+    weights *= state_multipliers
     weights *= multipliers
     return weights / weights.mean()
 
@@ -1909,7 +1935,8 @@ def main() -> None:
         max_weight_ratio=args.max_weight_ratio,
         seed=args.seed,
         mass="conserve",
-        target_loss_weights=_target_value_loss_weights(registry),
+        target_loss_weights=_fiscal_target_loss_weights(registry),
+        target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
     )
     _assert_release_gates(
         result,
@@ -1934,6 +1961,7 @@ def main() -> None:
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
             "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
