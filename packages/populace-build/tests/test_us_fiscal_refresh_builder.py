@@ -417,7 +417,7 @@ def test_fiscal_target_loss_weights_prioritize_national_totals() -> None:
             TargetSpec(
                 name="distribution_row",
                 entity="household",
-                value=1_000_000.0,
+                value=10.0,
                 source="fixture",
             ),
         ),
@@ -456,6 +456,80 @@ def test_fiscal_target_loss_weights_downweight_state_rows() -> None:
 
     assert weights.mean() == 1.0
     assert weights[0] == weights[1] * builder.US_STATE_TARGET_LOSS_MULTIPLIER
+
+
+def test_fiscal_target_loss_weights_scale_by_value_within_basis() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="amount_small",
+                entity="household",
+                value=100.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="amount_large",
+                entity="household",
+                value=300.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="returns_small",
+                entity="household",
+                value=10.0,
+                source="fixture",
+                metadata={
+                    "source_measure_id": "income_tax_liability_returns",
+                    "count": "true",
+                },
+            ),
+            TargetSpec(
+                name="returns_large",
+                entity="household",
+                value=30.0,
+                source="fixture",
+                metadata={"source_measure_id": "ctc_claims", "count": "true"},
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._fiscal_target_loss_weights(registry)
+
+    assert weights.mean() == 1.0
+    assert weights[1] / weights[0] == 3.0
+    assert weights[3] / weights[2] == 3.0
+    assert weights[0] == weights[2]
+    assert weights[1] == weights[3]
+
+
+def test_fiscal_target_value_basis_keeps_person_counts_separate_from_amounts() -> None:
+    builder = _load_builder_module()
+    amount = TargetSpec(
+        name="amount",
+        entity="household",
+        value=100.0,
+        source="fixture",
+        metadata={"source_measure_id": "payment_amount"},
+    )
+    person_count = TargetSpec(
+        name="person_count",
+        entity="household",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "measure_mode": "positive_count",
+            "source_measure_id": "aptc_recipients",
+            "target_role": "aca_ptc_recipients",
+            "count_map_to": "person",
+        },
+    )
+
+    assert builder._fiscal_target_value_basis(amount) == "amount"
+    assert builder._fiscal_target_value_basis(person_count) == "person_count"
 
 
 def test_release_gate_failures_reject_bad_ctc_fit() -> None:
