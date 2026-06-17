@@ -10,6 +10,7 @@ PolicyEngine-US H5, and emits the release contract files required by
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import importlib.metadata
 import json
@@ -1187,6 +1188,17 @@ def _materialize_target_frame(
         hh[spec.measure] = _collapse_tax_unit(values, tax_unit_positions, n_households)
 
     base_income_tax_household = hh["income_tax"].to_numpy(dtype=np.float64)
+    del (
+        direct_value_cache,
+        variable_cache,
+        income_tax_tax_unit,
+        taxable_income_tax_unit,
+        agi_tax_unit,
+        filing_status,
+    )
+    simulation._invalidate_all_caches()
+    del simulation
+    gc.collect()
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
         reformed_dataset = _dataset_from_frame(
@@ -1195,11 +1207,15 @@ def _materialize_target_frame(
             system=system,
         )
         reformed = Microsimulation(dataset=reformed_dataset, reform=reform)
-        reform_income_tax = np.asarray(
-            reformed.calculate("income_tax", period=PERIOD, map_to="household"),
-            dtype=np.float64,
+        reform_income_tax = _collapse_tax_unit(
+            _calculate_array(reformed, "income_tax"),
+            tax_unit_positions,
+            n_households,
         )
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
+        reformed._invalidate_all_caches()
+        del reform_income_tax, reformed, reformed_dataset, reform
+        gc.collect()
 
     compileable_specs = [
         spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
