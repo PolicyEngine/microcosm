@@ -24,47 +24,81 @@ def _load_builder_module():
 
 
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
-    ctc_target = 82_863_353_000.0
-    ctc_final = 92_000_000_000.0
+    def diagnostic(name, target, final_estimate):
+        return SimpleNamespace(
+            name=f"{name}@{builder.PERIOD}",
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=(final_estimate - target) / target,
+        )
+
     return (
-        SimpleNamespace(
-            name=(
-                "irs_soi.ty2022.historic_table_2.us.all."
-                f"income_tax_liability_amount@{builder.PERIOD}"
-            ),
-            target=2_105_345_646_000.0,
-            initial_estimate=2_000_000_000_000.0,
-            final_estimate=2_067_762_165_736.424,
-            relative_error=-0.0178514536722185,
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+            2_105_345_646_000.0,
+            2_067_762_165_736.424,
         ),
-        SimpleNamespace(
-            name=(
-                "irs_soi.ty2022.historic_table_2.us.all."
-                f"income_tax_liability_returns@{builder.PERIOD}"
-            ),
-            target=113_562_590.0,
-            initial_estimate=105_421_734.40619682,
-            final_estimate=105_437_267.69738781,
-            relative_error=-0.07154928663226319,
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+            113_562_590.0,
+            105_437_267.69738781,
         ),
-        SimpleNamespace(
-            name=(
-                "ssa_supplement.cy2024.oasdi_ssi_payments."
-                f"social_security_benefits.payment_amount@{builder.PERIOD}"
-            ),
-            target=1_471_195_000_000.0,
-            initial_estimate=1_541_646_703_291.2527,
-            final_estimate=1_541_540_768_722.367,
-            relative_error=0.047815394099604024,
+        diagnostic(
+            "ssa_supplement.cy2024.oasdi_ssi_payments."
+            "social_security_benefits.payment_amount",
+            1_471_195_000_000.0,
+            1_541_540_768_722.367,
         ),
-        SimpleNamespace(
-            name=(
-                f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
-            ),
-            target=ctc_target,
-            initial_estimate=132_000_000_000.0,
-            final_estimate=ctc_final,
-            relative_error=(ctc_final - ctc_target) / ctc_target,
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+            82_863_353_000.0,
+            88_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            38_068_980.0,
+            40_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+            33_857_960_000.0,
+            35_300_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+            17_691_400.0,
+            17_100_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+            59_204_610_000.0,
+            63_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
+            23_692_200.0,
+            23_800_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            53_910_190_000.0,
+            58_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            7_841_370.0,
+            8_200_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            455_904_900_000.0,
+            490_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            24_475_100.0,
+            26_000_000.0,
         ),
     )
 
@@ -992,33 +1026,81 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
 
-def test_release_gate_failures_reject_bad_ctc_fit() -> None:
+def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
     builder = _load_builder_module()
-    ctc_target = 82_863_353_000.0
-    ctc_final = 132_511_000_000.0
-    diagnostics = list(_passing_critical_diagnostics(builder))
-    diagnostics[-1] = SimpleNamespace(
-        name=(f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"),
-        target=ctc_target,
-        initial_estimate=132_000_000_000.0,
-        final_estimate=ctc_final,
-        relative_error=(ctc_final - ctc_target) / ctc_target,
-    )
-    result = SimpleNamespace(
-        skipped=(),
-        diagnostics=tuple(diagnostics),
-        initial_loss=10.0,
-        final_loss=5.0,
+    cases = (
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+            "Child Tax Credit amount",
+            82_863_353_000.0,
+            99_282_300_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            "Child Tax Credit claims",
+            38_068_980.0,
+            43_994_700.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+            "Earned Income Tax Credit amount",
+            59_204_610_000.0,
+            70_208_900_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            "Premium Tax Credit amount",
+            53_910_190_000.0,
+            84_823_800_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            "Premium Tax Credit returns",
+            7_841_370.0,
+            11_637_100.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            "taxable Social Security amount",
+            455_904_900_000.0,
+            540_351_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            "taxable Social Security returns",
+            24_475_100.0,
+            31_887_700.0,
+        ),
     )
 
-    failures = builder._release_gate_failures(
-        result,
-        {"dropped_target_names": []},
-    )
+    for target_name, label, target, final_estimate in cases:
+        diagnostics = list(_passing_critical_diagnostics(builder))
+        name = f"{target_name}@{builder.PERIOD}"
+        index = next(
+            i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+        )
+        diagnostics[index] = SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=(final_estimate - target) / target,
+        )
+        result = SimpleNamespace(
+            skipped=(),
+            diagnostics=tuple(diagnostics),
+            initial_loss=10.0,
+            final_loss=5.0,
+        )
 
-    assert len(failures) == 1
-    assert "Child Tax Credit amount" in failures[0]
-    assert "relative_error=0.599151" in failures[0]
+        failures = builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+        )
+
+        assert len(failures) == 1
+        assert label in failures[0]
+        assert "exceeding 0.1" in failures[0]
 
 
 def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:

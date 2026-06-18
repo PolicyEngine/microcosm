@@ -106,7 +106,63 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{PERIOD}"),
         "label": "Child Tax Credit amount",
-        "max_abs_relative_error": 0.20,
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_claims@{PERIOD}"),
+        "label": "Child Tax Credit claims",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_amount@{PERIOD}"),
+        "label": "Additional Child Tax Credit amount",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_claims@{PERIOD}"),
+        "label": "Additional Child Tax Credit claims",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.eitc_amount@{PERIOD}"),
+        "label": "Earned Income Tax Credit amount",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (f"irs_soi.ty2022.historic_table_2.us.all.eitc_claims@{PERIOD}"),
+        "label": "Earned Income Tax Credit claims",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (
+            f"irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@{PERIOD}"
+        ),
+        "label": "Premium Tax Credit amount",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            f"premium_tax_credit_returns@{PERIOD}"
+        ),
+        "label": "Premium Tax Credit returns",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            f"taxable_social_security_amount@{PERIOD}"
+        ),
+        "label": "taxable Social Security amount",
+        "max_abs_relative_error": 0.10,
+    },
+    {
+        "name": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            f"taxable_social_security_returns@{PERIOD}"
+        ),
+        "label": "taxable Social Security returns",
+        "max_abs_relative_error": 0.10,
     },
 )
 
