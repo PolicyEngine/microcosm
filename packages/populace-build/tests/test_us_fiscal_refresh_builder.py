@@ -1624,7 +1624,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     monkeypatch,
 ) -> None:
     builder = _load_builder_module()
-    assert builder.SOI_VARIABLE_MAP["ctc"] == "non_refundable_ctc"
+    assert builder.SOI_VARIABLE_MAP["ctc"] == "ctc"
     assert builder.SOI_VARIABLE_MAP["refundable_ctc"] == "refundable_ctc"
     frame = Frame(
         {
@@ -1714,7 +1714,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
                 "filing_status",
                 "state_income_tax",
                 "ctc",
-                "non_refundable_ctc",
+                "ctc_limiting_tax_liability",
                 "refundable_ctc",
             )
         }
@@ -1734,7 +1734,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
                 "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
                 "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
                 "ctc": np.asarray([1_000.0, 2_000.0, 3_000.0]),
-                "non_refundable_ctc": np.asarray([80.0, 0.0, 20.0]),
+                "ctc_limiting_tax_liability": np.asarray([80.0, 0.0, 20.0]),
                 "refundable_ctc": np.asarray([10.0, 30.0, 0.0]),
             }
             return arrays[variable]
@@ -1755,7 +1755,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
         builder,
         "SOI_VARIABLE_MAP",
         {
-            "ctc": "non_refundable_ctc",
+            "ctc": "ctc",
             "refundable_ctc": "refundable_ctc",
         },
     )

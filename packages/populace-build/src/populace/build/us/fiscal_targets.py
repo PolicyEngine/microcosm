@@ -178,7 +178,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
-    "ctc": "non_refundable_ctc",
+    "ctc": "ctc",
     "employment_income": "employment_income",
     "eitc": "eitc",
     "estate_income": "estate_income",
@@ -210,6 +210,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 }
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "ctc": ("ctc", "ctc_limiting_tax_liability"),
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }

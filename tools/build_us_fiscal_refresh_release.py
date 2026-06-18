@@ -1422,6 +1422,18 @@ def _materialize_target_frame(
 
     variable_cache: dict[str, np.ndarray] = {}
     for source_name, pe_name in SOI_VARIABLE_MAP.items():
+        if source_name == "ctc":
+            if pe_name not in system.variables:
+                continue
+            if "ctc_limiting_tax_liability" not in system.variables:
+                continue
+            total_ctc = _calculate_array(simulation, pe_name)
+            limiting_tax = _calculate_array(simulation, "ctc_limiting_tax_liability")
+            variable_cache[source_name] = np.maximum(
+                np.minimum(total_ctc, limiting_tax),
+                0.0,
+            ).astype(np.float64)
+            continue
         if pe_name == "rent_and_royalty_net_income":
             rental_income = _calculate_array(simulation, "rental_income")
             farm_rent_income = _calculate_array(simulation, "farm_rent_income")
@@ -2650,7 +2662,9 @@ def main() -> None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
 
     if telemetry is not None:
-        telemetry.stage("source_coverage", message="Writing source coverage diagnostics.")
+        telemetry.stage(
+            "source_coverage", message="Writing source coverage diagnostics."
+        )
     active_aliases = DIRECT_ACTIVE_ALIASES
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,

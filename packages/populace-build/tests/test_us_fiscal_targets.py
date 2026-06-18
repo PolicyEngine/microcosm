@@ -603,6 +603,51 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     assert returns.metadata["count"] == "true"
 
 
+def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
+    amount_source_record_id = "irs_soi.ty2022.historic_table_2.us.all.ctc_amount"
+    returns_source_record_id = "irs_soi.ty2022.historic_table_2.us.all.ctc_claims"
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=amount_source_record_id,
+                source_name="irs_soi",
+                measure_id="ctc_amount",
+                value=82_863_353_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=returns_source_record_id,
+                source_name="irs_soi",
+                measure_id="ctc_claims",
+                value=38_068_980,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    amount = specs[amount_source_record_id]
+    assert amount.family == "irs_soi"
+    assert amount.metadata["target_role"] == "ctc_total"
+    assert amount.metadata["variable"] == "ctc"
+    assert amount.metadata["materializer"] == "irs_soi_slice"
+    assert amount.metadata["measure_mode"] == "sum"
+    assert amount.metadata["base_variables"] == "ctc,ctc_limiting_tax_liability"
+    assert "base_variable" not in amount.metadata
+    assert "count" not in amount.metadata
+
+    returns = specs[returns_source_record_id]
+    assert returns.family == "irs_soi"
+    assert returns.metadata["variable"] == "ctc"
+    assert returns.metadata["materializer"] == "irs_soi_slice"
+    assert returns.metadata["measure_mode"] == "positive_count"
+    assert returns.metadata["base_variables"] == "ctc,ctc_limiting_tax_liability"
+    assert returns.metadata["count"] == "true"
+
+
 def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     source_record_id = (
         "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children."
