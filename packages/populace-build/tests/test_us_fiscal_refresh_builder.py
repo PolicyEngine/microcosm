@@ -1326,6 +1326,160 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert compilation["dropped_target_names"] == []
 
 
+def test_soi_ctc_targets_materialize_nonrefundable_credit(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    assert builder.SOI_VARIABLE_MAP["ctc"] == "non_refundable_ctc"
+    assert builder.SOI_VARIABLE_MAP["refundable_ctc"] == "refundable_ctc"
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 6], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def soi_spec(name, measure, source_name, source_measure_id, *, count=False):
+        metadata = {
+            "variable": source_name,
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+            "source_measure_id": source_measure_id,
+        }
+        if count:
+            metadata["count"] = "true"
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=measure,
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata=metadata,
+        )
+
+    targets = (
+        soi_spec("ctc_amount", "ctc_amount", "ctc", "ctc_amount"),
+        soi_spec("ctc_claims", "ctc_claims", "ctc", "ctc_claims", count=True),
+        soi_spec(
+            "actc_amount",
+            "actc_amount",
+            "refundable_ctc",
+            "actc_amount",
+        ),
+        soi_spec(
+            "actc_claims",
+            "actc_claims",
+            "refundable_ctc",
+            "actc_claims",
+            count=True,
+        ),
+    )
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            name: FakeVariable()
+            for name in (
+                "income_tax",
+                "taxable_income",
+                "adjusted_gross_income",
+                "filing_status",
+                "state_income_tax",
+                "ctc",
+                "non_refundable_ctc",
+                "refundable_ctc",
+            )
+        }
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = dataset
+            self.reform = reform
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([10_000.0, 20_000.0, 30_000.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "ctc": np.asarray([1_000.0, 2_000.0, 3_000.0]),
+                "non_refundable_ctc": np.asarray([80.0, 0.0, 20.0]),
+                "refundable_ctc": np.asarray([10.0, 30.0, 0.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        builder,
+        "SOI_VARIABLE_MAP",
+        {
+            "ctc": "non_refundable_ctc",
+            "refundable_ctc": "refundable_ctc",
+        },
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["ctc_amount"], np.asarray([80.0, 20.0]))
+    assert np.array_equal(household["ctc_claims"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["actc_amount"], np.asarray([40.0, 0.0]))
+    assert np.array_equal(household["actc_claims"], np.asarray([2.0, 0.0]))
+    assert len(registry) == 4
+    assert compilation["dropped_target_names"] == []
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:
