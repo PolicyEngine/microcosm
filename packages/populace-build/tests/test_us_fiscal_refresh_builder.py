@@ -877,6 +877,8 @@ def test_release_calibration_diagnostics_include_gate_failures(
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
     build = captured["build"]
     assert build["base_dataset_sha256"] == "base-sha"
+    assert build["target_loss_weighting"].endswith("_cap_100pct")
+    assert build["target_loss_cap"] == 1.0
     assert build["release_gates"] == {
         "passed": False,
         "failures": ["ctc failed"],
@@ -992,6 +994,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_calibrate(*args, **kwargs):
         captured["target_loss_weights"] = kwargs["target_loss_weights"]
+        captured["target_loss_cap"] = kwargs["target_loss_cap"]
         return result
 
     def fake_write_diagnostics(**kwargs):
@@ -1023,6 +1026,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
     assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
 
