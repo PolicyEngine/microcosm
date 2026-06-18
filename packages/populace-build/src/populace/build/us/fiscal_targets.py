@@ -178,7 +178,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
-    "ctc": "non_refundable_ctc",
+    "ctc": "ctc",
     "employment_income": "employment_income",
     "eitc": "eitc",
     "estate_income": "estate_income",
@@ -210,6 +210,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 }
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "ctc": ("ctc", "ctc_limiting_tax_liability"),
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
@@ -831,6 +832,13 @@ def _soi_reference_from_fact(
         return None
 
     lower, upper = _agi_bounds(fact)
+    if _is_untransformed_cross_period_agi_slice(
+        fact,
+        agi_lower_bound=lower,
+        agi_upper_bound=upper,
+        target_period=target_period,
+    ):
+        return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
     if status is None:
         return None
@@ -1079,6 +1087,23 @@ def _is_all_income_range(fact: object) -> bool:
         str(dimensions.get("income_range", "all")) == "all"
         and str(dimensions.get("filing_status", "all")) == "all"
     )
+
+
+def _is_untransformed_cross_period_agi_slice(
+    fact: object,
+    *,
+    agi_lower_bound: str,
+    agi_upper_bound: str,
+    target_period: int | str,
+) -> bool:
+    """Refuse stale nominal SOI AGI bins as target-period hard targets."""
+    if agi_lower_bound == "-inf" and agi_upper_bound == "inf":
+        return False
+    source_period_key = _period_key(fact)
+    target_period_key = _period_key_from_value(target_period)
+    if not source_period_key[0] or not target_period_key[0]:
+        return False
+    return source_period_key[1] != target_period_key[1]
 
 
 def _agi_bounds(fact: object) -> tuple[str, str]:

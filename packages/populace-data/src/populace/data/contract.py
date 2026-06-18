@@ -97,6 +97,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "target_roles": ("ctc_total",),
     },
 )
+_US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -456,8 +457,14 @@ def _check_release_manifest_package(
         )
     elif not name:
         failures.append(f"release_manifest.json '{field}.name' is required.")
-    if not package.get("version"):
+    version = package.get("version")
+    if not version:
         failures.append(f"release_manifest.json '{field}.version' is required.")
+    elif version in {"not-installed", "unknown"}:
+        failures.append(
+            f"release_manifest.json '{field}.version' must be resolved, "
+            f"not {version!r}."
+        )
 
 
 def _check_compatible_package_entries(
@@ -724,9 +731,14 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                     incumbent_targets.get(str(target.get("name"))),
                     failures,
                 )
-                if incumbent_relative_error is not None and abs(
+                improved_over_incumbent = incumbent_relative_error is not None and abs(
                     computed_relative_error
-                ) < abs(incumbent_relative_error):
+                ) < abs(incumbent_relative_error)
+                if (
+                    improved_over_incumbent
+                    and abs(computed_relative_error)
+                    <= _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
+                ):
                     continue
                 failures.append(
                     "calibration_diagnostics.json critical target "
@@ -739,7 +751,9 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                         if incumbent_relative_error is None
                         else (
                             "; incumbent_relative_error="
-                            f"{incumbent_relative_error:.6g}."
+                            f"{incumbent_relative_error:.6g}; "
+                            "improvement_hard_stop="
+                            f"{_US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR:.6g}."
                         )
                     )
                 )

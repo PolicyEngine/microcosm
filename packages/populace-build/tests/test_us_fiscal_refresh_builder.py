@@ -23,6 +23,29 @@ def _load_builder_module():
     return module
 
 
+def test_runtime_versions_use_local_workspace_package_version(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    package = tmp_path / "packages" / "populace-data"
+    package.mkdir(parents=True)
+    (package / "pyproject.toml").write_text(
+        '[project]\nname = "populace-data"\nversion = "0.1.0"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        builder.importlib.metadata,
+        "version",
+        lambda name: (_ for _ in ()).throw(
+            builder.importlib.metadata.PackageNotFoundError(name)
+        ),
+    )
+
+    versions = builder._runtime_versions()
+
+    assert versions["populace-data"] == "0.1.0"
+
+
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     def diagnostic(name, target, final_estimate):
         return SimpleNamespace(
@@ -877,6 +900,8 @@ def test_release_calibration_diagnostics_include_gate_failures(
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
     build = captured["build"]
     assert build["base_dataset_sha256"] == "base-sha"
+    assert build["target_loss_weighting"].endswith("_cap_100pct")
+    assert build["target_loss_cap"] == 1.0
     assert build["release_gates"] == {
         "passed": False,
         "failures": ["ctc failed"],
@@ -992,6 +1017,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_calibrate(*args, **kwargs):
         captured["target_loss_weights"] = kwargs["target_loss_weights"]
+        captured["target_loss_cap"] = kwargs["target_loss_cap"]
         return result
 
     def fake_write_diagnostics(**kwargs):
@@ -1023,6 +1049,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
     assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
 
@@ -1103,7 +1130,7 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
         assert "exceeding 0.1" in failures[0]
 
 
-def test_critical_gate_allows_improvement_over_incumbent_diagnostics() -> None:
+def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
     builder = _load_builder_module()
     name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
     target = 82_863_353_000.0
@@ -1139,6 +1166,47 @@ def test_critical_gate_allows_improvement_over_incumbent_diagnostics() -> None:
         )
         == []
     )
+
+
+def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=105_000_000_000.0,
+        relative_error=(105_000_000_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 134_904_000_000.0,
+        }
+    }
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics=incumbent,
+    )
+
+    assert len(failures) == 1
+    assert "Child Tax Credit amount" in failures[0]
+    assert "exceeding 0.1" in failures[0]
+    assert "incumbent_relative_error=" in failures[0]
+    assert "improvement_hard_stop=0.25" in failures[0]
 
 
 def test_critical_gate_rejects_miss_when_incumbent_is_better() -> None:
@@ -1624,7 +1692,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     monkeypatch,
 ) -> None:
     builder = _load_builder_module()
-    assert builder.SOI_VARIABLE_MAP["ctc"] == "non_refundable_ctc"
+    assert builder.SOI_VARIABLE_MAP["ctc"] == "ctc"
     assert builder.SOI_VARIABLE_MAP["refundable_ctc"] == "refundable_ctc"
     frame = Frame(
         {
@@ -1714,7 +1782,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
                 "filing_status",
                 "state_income_tax",
                 "ctc",
-                "non_refundable_ctc",
+                "ctc_limiting_tax_liability",
                 "refundable_ctc",
             )
         }
@@ -1734,7 +1802,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
                 "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
                 "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
                 "ctc": np.asarray([1_000.0, 2_000.0, 3_000.0]),
-                "non_refundable_ctc": np.asarray([80.0, 0.0, 20.0]),
+                "ctc_limiting_tax_liability": np.asarray([80.0, 0.0, 20.0]),
                 "refundable_ctc": np.asarray([10.0, 30.0, 0.0]),
             }
             return arrays[variable]
@@ -1755,7 +1823,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
         builder,
         "SOI_VARIABLE_MAP",
         {
-            "ctc": "non_refundable_ctc",
+            "ctc": "ctc",
             "refundable_ctc": "refundable_ctc",
         },
     )

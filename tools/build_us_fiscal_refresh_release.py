@@ -18,6 +18,7 @@ import math
 import platform
 import shutil
 import subprocess
+import tomllib
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -73,12 +74,13 @@ CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
-    "sqrt_value_weighted_mape_50_50_amount_count_target_scale_cap_1000pct"
+    "sqrt_value_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
-US_FISCAL_TARGET_LOSS_CAP = 10.0
+US_FISCAL_TARGET_LOSS_CAP = 1.0
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
+US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -402,8 +404,20 @@ def _runtime_versions() -> dict[str, str]:
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
-            versions[package] = "not-installed"
+            versions[package] = _local_workspace_package_version(package)
     return versions
+
+
+def _local_workspace_package_version(package: str) -> str:
+    pyproject = Path("packages") / package / "pyproject.toml"
+    if not pyproject.is_file():
+        return "not-installed"
+    with pyproject.open("rb") as file:
+        project = tomllib.load(file).get("project")
+    if not isinstance(project, Mapping):
+        return "not-installed"
+    version = project.get("version")
+    return version if isinstance(version, str) and version else "not-installed"
 
 
 def _git_output(*args: str) -> str:
@@ -1422,6 +1436,18 @@ def _materialize_target_frame(
 
     variable_cache: dict[str, np.ndarray] = {}
     for source_name, pe_name in SOI_VARIABLE_MAP.items():
+        if source_name == "ctc":
+            if pe_name not in system.variables:
+                continue
+            if "ctc_limiting_tax_liability" not in system.variables:
+                continue
+            total_ctc = _calculate_array(simulation, pe_name)
+            limiting_tax = _calculate_array(simulation, "ctc_limiting_tax_liability")
+            variable_cache[source_name] = np.maximum(
+                np.minimum(total_ctc, limiting_tax),
+                0.0,
+            ).astype(np.float64)
+            continue
         if pe_name == "rent_and_royalty_net_income":
             rental_income = _calculate_array(simulation, "rental_income")
             farm_rent_income = _calculate_array(simulation, "farm_rent_income")
@@ -1804,9 +1830,14 @@ def _critical_target_fit_failures(
                 incumbent_diagnostics.get(requirement["name"]),
                 current_target=float(getattr(diagnostic, "target", 0.0)),
             )
-            if incumbent_relative_error is not None and abs(
+            improved_over_incumbent = incumbent_relative_error is not None and abs(
                 computed_relative_error
-            ) < abs(incumbent_relative_error):
+            ) < abs(incumbent_relative_error)
+            if (
+                improved_over_incumbent
+                and abs(computed_relative_error)
+                <= US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
+            ):
                 continue
             failures.append(
                 "Critical fiscal target "
@@ -1818,7 +1849,11 @@ def _critical_target_fit_failures(
                 + (
                     "."
                     if incumbent_relative_error is None
-                    else (f"; incumbent_relative_error={incumbent_relative_error:.6g}.")
+                    else (
+                        f"; incumbent_relative_error={incumbent_relative_error:.6g}; "
+                        "improvement_hard_stop="
+                        f"{US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR:.6g}."
+                    )
                 )
             )
     return failures
@@ -2650,7 +2685,9 @@ def main() -> None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
 
     if telemetry is not None:
-        telemetry.stage("source_coverage", message="Writing source coverage diagnostics.")
+        telemetry.stage(
+            "source_coverage", message="Writing source coverage diagnostics."
+        )
     active_aliases = DIRECT_ACTIVE_ALIASES
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,

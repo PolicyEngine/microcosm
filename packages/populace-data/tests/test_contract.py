@@ -461,6 +461,48 @@ def test_us_release_allows_bad_ctc_fit_when_it_improves_incumbent(
     validate_release_dir(release_dir)
 
 
+def test_us_release_rejects_incumbent_improvement_past_hard_stop(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024"
+    )
+    ctc_target = 82_863_353_000.0
+    ctc_final = ctc_target * 1.26
+    target["final_estimate"] = ctc_final
+    target["relative_error"] = (ctc_final - ctc_target) / ctc_target
+    diagnostics["build"] = {
+        "incumbent_diagnostics": {
+            "path": "calibration_diagnostics.json",
+            "sha256": "a" * 64,
+            "critical_targets": {
+                target["name"]: {
+                    "target": ctc_target,
+                    "final_estimate": 134_904_000_000.0,
+                    "relative_error": (134_904_000_000.0 - ctc_target) / ctc_target,
+                }
+            },
+        }
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "Child Tax Credit amount" in failures
+    assert "relative_error=0.26" in failures
+    assert "improvement_hard_stop=0.25" in failures
+
+
 def test_us_release_rejects_incumbent_improvement_with_mismatched_target(
     release_dir: Path,
 ) -> None:
@@ -897,6 +939,21 @@ def test_release_manifest_requires_policyengine_certification_shape(
     assert "build.built_with_model_package" in failures
     assert "compatible_model_packages" in failures
     assert "artifact 'populace_us_2024' is missing 'revision'" in failures
+
+
+def test_release_manifest_rejects_unresolved_package_versions(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["data_package"]["version"] = "not-installed"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "data_package.version" in failures
+    assert "not-installed" in failures
 
 
 def test_release_manifest_requires_compatible_core_package(
