@@ -489,6 +489,7 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
         "cms_aca.oep2024.state_marketplace.ca.marketplace_enrollment"
     )
     aptc_source_record_id = "cms_aca.oep2024.state_marketplace.ca.aptc_recipients"
+    bronze_source_record_id = "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers"
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -506,6 +507,15 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
                 source_name="cms_aca",
                 measure_id="aptc_recipients",
                 value=1_568_732,
+                geography_level="state",
+                geography_id="0400000US06",
+                groupby_value_id="ca",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=bronze_source_record_id,
+                source_name="cms_aca",
+                measure_id="bronze_aptc_consumers",
+                value=1_000_000,
                 geography_level="state",
                 geography_id="0400000US06",
                 groupby_value_id="ca",
@@ -532,6 +542,17 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     assert aptc.metadata["count_map_to"] == "person"
     assert aptc.metadata["count_filter_variable"] == "is_aca_ptc_eligible"
     assert aptc.metadata["state_fips"] == "06"
+
+    bronze = specs[bronze_source_record_id]
+    assert bronze.family == "cms_aca"
+    assert bronze.metadata["target_role"] == "aca_bronze_aptc_consumers"
+    assert bronze.metadata["measure_mode"] == "less_than_count"
+    assert (
+        bronze.metadata["base_variable"] == "selected_marketplace_plan_benchmark_ratio"
+    )
+    assert bronze.metadata["count_less_than"] == "1.0"
+    assert bronze.metadata["count_filter_variable"] == "assigned_aca_ptc"
+    assert bronze.metadata["state_fips"] == "06"
 
 
 def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:

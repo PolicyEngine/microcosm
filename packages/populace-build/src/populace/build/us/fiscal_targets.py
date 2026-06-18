@@ -329,6 +329,16 @@ COUNT_LEDGER_TARGETS: dict[tuple[str, str], CountLedgerTarget] = {
             "count_filter_variable": "is_aca_ptc_eligible",
         },
     ),
+    ("cms_aca", "bronze_aptc_consumers"): (
+        "selected_marketplace_plan_benchmark_ratio",
+        "cms_aca",
+        {
+            "target_role": "aca_bronze_aptc_consumers",
+            "measure_mode": "less_than_count",
+            "count_less_than": "1.0",
+            "count_filter_variable": "assigned_aca_ptc",
+        },
+    ),
     ("cms_medicaid", "total_medicaid_enrollment"): (
         "medicaid_enrolled",
         "cms_medicaid",

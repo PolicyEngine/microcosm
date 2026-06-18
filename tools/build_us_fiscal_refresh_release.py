@@ -818,6 +818,7 @@ def _household_values(
     positive_indicator: bool = False,
     map_to: str | None = None,
     filter_variable: str | None = None,
+    less_than: float | None = None,
 ) -> np.ndarray:
     entity = _variable_entity(system, variable)
     if entity is None:
@@ -826,16 +827,32 @@ def _household_values(
         entity = map_to
     if entity == "household":
         values = _calculate_array(simulation, variable, map_to=map_to)
+        filter_values = None
         if filter_variable is not None:
             filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
+        if less_than is not None:
+            indicator = values < less_than
+            if filter_values is not None:
+                indicator &= filter_values > 0
+            return indicator.astype(np.float64)
+        if filter_values is not None:
             values = np.where(filter_values > 0, values, 0)
         return (values > 0).astype(np.float64) if positive_indicator else values
     raw = _calculate_array(simulation, variable, map_to=map_to)
+    filter_values = None
     if filter_variable is not None:
         filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
-        raw = np.where(filter_values > 0, raw, 0)
-    if positive_indicator:
+    if less_than is not None:
+        indicator = raw < less_than
+        if filter_values is not None:
+            indicator &= filter_values > 0
+        raw = indicator.astype(np.float64)
+    elif positive_indicator:
+        if filter_values is not None:
+            raw = np.where(filter_values > 0, raw, 0)
         raw = (raw > 0).astype(np.float64)
+    elif filter_values is not None:
+        raw = np.where(filter_values > 0, raw, 0)
     if entity == "tax_unit":
         return _collapse_tax_unit(
             raw,
@@ -865,6 +882,16 @@ def _base_variables_from_metadata(metadata: Mapping[str, str]) -> tuple[str, ...
     return (metadata["base_variable"],)
 
 
+def _less_than_from_metadata(metadata: Mapping[str, str]) -> float | None:
+    mode = metadata.get("measure_mode", "sum")
+    threshold = metadata.get("count_less_than")
+    if mode != "less_than_count":
+        return None
+    if threshold is None:
+        raise ValueError("less_than_count targets must set count_less_than metadata.")
+    return float(threshold)
+
+
 def _combined_household_values(
     *,
     frame: Frame,
@@ -875,6 +902,7 @@ def _combined_household_values(
     positive_indicator: bool = False,
     map_to: str | None = None,
     filter_variable: str | None = None,
+    less_than: float | None = None,
 ) -> np.ndarray:
     if len(variables) == 1:
         return _household_values(
@@ -886,6 +914,7 @@ def _combined_household_values(
             positive_indicator=positive_indicator,
             map_to=map_to,
             filter_variable=filter_variable,
+            less_than=less_than,
         )
 
     entities = tuple(_variable_entity(system, variable) for variable in variables)
@@ -915,7 +944,13 @@ def _combined_household_values(
     else:
         raw = np.sum(raw_arrays, axis=0, dtype=np.float64)
 
-    if filter_variable is not None:
+    if less_than is not None:
+        raw = raw < less_than
+        if filter_variable is not None:
+            filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
+            raw &= filter_values > 0
+        raw = raw.astype(np.float64)
+    elif filter_variable is not None:
         filter_values = _calculate_array(simulation, filter_variable, map_to=map_to)
         raw = np.where(filter_values > 0, raw, 0)
 
@@ -1196,13 +1231,22 @@ def _materialize_target_frame(
         for spec in target_specs
         if spec.metadata.get("materializer") == "policyengine_variable"
     ]
-    direct_value_cache: dict[tuple[tuple[str, ...], str, str, str], np.ndarray] = {}
+    direct_value_cache: dict[
+        tuple[tuple[str, ...], str, str, str, str], np.ndarray
+    ] = {}
     for spec in direct_target_specs:
         base_variables = _base_variables_from_metadata(spec.metadata)
         mode = spec.metadata.get("measure_mode", "sum")
         map_to = spec.metadata.get("count_map_to")
         filter_variable = spec.metadata.get("count_filter_variable")
-        cache_key = (base_variables, mode, map_to or "", filter_variable or "")
+        less_than = _less_than_from_metadata(spec.metadata)
+        cache_key = (
+            base_variables,
+            mode,
+            map_to or "",
+            filter_variable or "",
+            "" if less_than is None else str(less_than),
+        )
         if cache_key not in direct_value_cache:
             variables_to_check = (
                 *base_variables,
@@ -1219,6 +1263,7 @@ def _materialize_target_frame(
                 positive_indicator=mode == "positive_count",
                 map_to=map_to,
                 filter_variable=filter_variable,
+                less_than=less_than,
             )
         values = direct_value_cache[cache_key]
         state_fips = spec.metadata.get("state_fips")
@@ -1521,7 +1566,7 @@ def _fiscal_target_value_basis(spec) -> str:
     source_measure_id = metadata.get("source_measure_id", "")
     if metadata.get("count") == "true":
         return "count"
-    if measure_mode in {"count", "positive_count"}:
+    if measure_mode in {"count", "positive_count", "less_than_count"}:
         return "count"
     if "enrollment" in source_measure_id or "recipients" in source_measure_id:
         return "count"
