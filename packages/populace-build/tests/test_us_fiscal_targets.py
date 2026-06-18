@@ -650,7 +650,7 @@ def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
 
 def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     source_record_id = (
-        "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children."
+        "irs_soi.ty2024.table_2_5.eitc_by_agi_children.no_qualifying_children."
         "25k_to_30k.eitc_total"
     )
     registry = compile_us_fiscal_target_registry(
@@ -661,7 +661,7 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
                 source_name="irs_soi",
                 measure_id="eitc_total",
                 value=535_000,
-                period_value=2022,
+                period_value=2024,
                 dimensions={"income_range": "25k_to_30k", "filing_status": "all"},
                 universe_constraints=[
                     {
@@ -676,7 +676,7 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
                     },
                 ],
                 layout_record_set_id=(
-                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "irs_soi.ty2024.table_2_5.eitc_by_agi_children."
                     "no_qualifying_children"
                 ),
             ),
@@ -691,8 +691,42 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     assert spec.metadata["agi_upper_bound"] == "30000.0"
     assert spec.metadata["ledger_filter_income_range"] == "25k_to_30k"
     assert spec.metadata["ledger_layout_record_set_id"] == (
-        "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children"
+        "irs_soi.ty2024.table_2_5.eitc_by_agi_children.no_qualifying_children"
     )
+
+
+def test__given_stale_soi_eitc_agi_bucket__then_it_is_not_a_hard_target() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "50k_plus.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="eitc_total",
+                value=0,
+                period_value=2022,
+                dimensions={"income_range": "50k_plus", "filing_status": "all"},
+                universe_constraints=[
+                    {
+                        "variable": "adjusted_gross_income",
+                        "operator": ">=",
+                        "value": 50_000,
+                    },
+                ],
+                layout_record_set_id=(
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children.one_qualifying_child"
+                ),
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    assert source_record_id not in specs
 
 
 def test_soi_alias_targets_expose_policyengine_base_variable() -> None:
