@@ -578,6 +578,127 @@ def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
     assert spec.metadata["source_measure_id"] == "actual_amount"
 
 
+def test_census_pep_population_age_facts_compile_to_count_targets() -> None:
+    national_source_record_id = (
+        "census_pep.cy2024.national_resident_population_age.0_to_4.population"
+    )
+    state_source_record_id = (
+        "census_pep.v2024.cy2024.state_resident_population.06.5_to_9.population"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=national_source_record_id,
+                source_name="census_pep",
+                measure_id="population",
+                value=18_000_000,
+                groupby_value_id="0_to_4",
+                universe_constraints=[
+                    {"variable": "age", "operator": ">=", "value": 0},
+                    {"variable": "age", "operator": "<", "value": 5},
+                ],
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=state_source_record_id,
+                source_name="census_pep",
+                measure_id="population",
+                value=2_000_000,
+                geography_level="state",
+                geography_id="0400000US06",
+                groupby_value_id="5_to_9",
+                universe_constraints=[
+                    {"variable": "age", "operator": ">=", "value": 5},
+                    {"variable": "age", "operator": "<", "value": 10},
+                ],
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    national = specs[national_source_record_id]
+    assert national.family == "census_population"
+    assert national.metadata["materializer"] == "population_age"
+    assert national.metadata["target_role"] == "population_age"
+    assert national.metadata["measure_mode"] == "count"
+    assert national.metadata["geography_scope"] == "national"
+    assert national.metadata["age_lower_bound"] == "0"
+    assert national.metadata["age_upper_bound"] == "5"
+    assert national.value == 18_000_000
+
+    state = specs[state_source_record_id]
+    assert state.family == "census_population"
+    assert state.metadata["geography_scope"] == "state"
+    assert state.metadata["state_fips"] == "06"
+    assert state.metadata["age_lower_bound"] == "5"
+    assert state.metadata["age_upper_bound"] == "10"
+    assert state.value == 2_000_000
+
+
+def test_census_pep_population_age_targets_use_latest_source_period() -> None:
+    older_source_record_id = (
+        "census_pep.cy2023.national_resident_population_age.0_to_4.population"
+    )
+    latest_source_record_id = (
+        "census_pep.cy2024.national_resident_population_age.0_to_4.population"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=older_source_record_id,
+                source_name="census_pep",
+                measure_id="population",
+                value=17_000_000,
+                period_value=2023,
+                groupby_value_id="0_to_4",
+                universe_constraints=[
+                    {"variable": "age", "operator": ">=", "value": 0},
+                    {"variable": "age", "operator": "<", "value": 5},
+                ],
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=latest_source_record_id,
+                source_name="census_pep",
+                measure_id="population",
+                value=18_000_000,
+                period_value=2024,
+                groupby_value_id="0_to_4",
+                universe_constraints=[
+                    {"variable": "age", "operator": ">=", "value": 0},
+                    {"variable": "age", "operator": "<", "value": 5},
+                ],
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    assert older_source_record_id not in specs
+    assert specs[latest_source_record_id].value == 18_000_000
+
+
+def test_census_pep_all_age_population_fact_is_not_age_distribution_target() -> None:
+    all_age_source_record_id = (
+        "census_pep.cy2024.national_resident_population_age.all.population"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=all_age_source_record_id,
+                source_name="census_pep",
+                measure_id="population",
+                value=335_000_000,
+                groupby_value_id="all",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    assert all_age_source_record_id not in specs
+
+
 def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> None:
     ids = {req.requirement_id for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS}
     assert "federal_income_tax_total" in ids
@@ -595,6 +716,8 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "medicaid_chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
     assert "state_income_tax" in ids
+    assert "population_age_national" in ids
+    assert "population_age_state" in ids
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         assert f"jct_tax_expenditure:{spec.neutralized_variable}" in ids
 
@@ -610,6 +733,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
@@ -632,6 +756,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
@@ -648,6 +773,7 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *(spec.target_name for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
     ]
     result = target_profile_coverage_gate(
@@ -669,6 +795,7 @@ def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(43),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
     result = target_profile_coverage_gate(
@@ -690,6 +817,7 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
             if row["metadata"]["target_role"] != "medicaid_chip_enrollment"
         ],
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
 
@@ -708,6 +836,7 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
     program_rows = complete_program_rows()
@@ -728,6 +857,47 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
     assert any(
         "medicaid_enrollment" in failure for failure in enrollment_result.failures
     )
+
+
+def test_population_age_requirement_needs_complete_national_age_surface() -> None:
+    targets = [
+        *complete_coverage_targets(),
+    ]
+    missing_one_national_age = [
+        row
+        for row in targets
+        if row["name"]
+        != "census_pep.cy2024.national_resident_population_age.0_to_4.population"
+    ]
+
+    result = target_profile_coverage_gate(
+        missing_one_national_age,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    assert any("population_age_national" in failure for failure in result.failures)
+
+
+def test_population_age_requirement_needs_complete_state_age_surface() -> None:
+    targets = [
+        *complete_coverage_targets(),
+    ]
+    missing_one_state = [
+        row
+        for row in targets
+        if not str(row["name"]).startswith(
+            "census_pep.v2024.cy2024.state_resident_population.01."
+        )
+    ]
+
+    result = target_profile_coverage_gate(
+        missing_one_state,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    assert any("population_age_state" in failure for failure in result.failures)
 
 
 def test_macro_realism_bands_cover_issue_40_backstops() -> None:
@@ -1019,6 +1189,7 @@ def complete_coverage_targets() -> list[dict[str, object]]:
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
 
@@ -1110,6 +1281,47 @@ def complete_state_income_tax_rows(count: int) -> list[dict[str, object]]:
         }
         for i in range(count)
     ]
+
+
+def complete_population_age_rows() -> list[dict[str, object]]:
+    national = [
+        {
+            "name": (
+                "census_pep.cy2024.national_resident_population_age."
+                f"{i * 5}_to_{i * 5 + 4}.population"
+            ),
+            "measure": (
+                "census_pep.cy2024.national_resident_population_age."
+                f"{i * 5}_to_{i * 5 + 4}.population"
+            ),
+            "family": "census_population",
+            "metadata": {
+                "target_role": "population_age",
+                "geography_scope": "national",
+            },
+        }
+        for i in range(19)
+    ]
+    state = [
+        {
+            "name": (
+                "census_pep.v2024.cy2024.state_resident_population."
+                f"{state_fips:02d}.{age_bin * 5}_to_{age_bin * 5 + 4}.population"
+            ),
+            "measure": (
+                "census_pep.v2024.cy2024.state_resident_population."
+                f"{state_fips:02d}.{age_bin * 5}_to_{age_bin * 5 + 4}.population"
+            ),
+            "family": "census_population",
+            "metadata": {
+                "target_role": "population_age",
+                "geography_scope": "state",
+            },
+        }
+        for state_fips in range(1, 52)
+        for age_bin in range(19)
+    ]
+    return [*national, *state]
 
 
 def complete_jct_rows() -> list[dict[str, object]]:
