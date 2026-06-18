@@ -94,6 +94,12 @@ from populace.build.source_runtime import (  # noqa: E402 - after the compat gat
     UnsupportedSourceOperationError,
     run_source_stage,
 )
+from populace.build.staging import (  # noqa: E402 - after the compat gate
+    LATEST_STAGING_POINTER,
+    RUNS_INDEX,
+    STAGING_SCHEMA_VERSION,
+    StagingTelemetry,
+)
 
 __version__ = "0.1.0"
 
@@ -107,6 +113,10 @@ __all__ = [
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
     "SourceRuntimeError",
+    "LATEST_STAGING_POINTER",
+    "RUNS_INDEX",
+    "STAGING_SCHEMA_VERSION",
+    "StagingTelemetry",
     "TargetCoverageRequirement",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
