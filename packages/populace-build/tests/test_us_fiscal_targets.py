@@ -53,6 +53,27 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "medicare_part_b_premium_total",
 }
 
+CENSUS_PEP_AGE_GROUPS = (
+    "0_to_4",
+    "5_to_9",
+    "10_to_14",
+    "15_to_19",
+    "20_to_24",
+    "25_to_29",
+    "30_to_34",
+    "35_to_39",
+    "40_to_44",
+    "45_to_49",
+    "50_to_54",
+    "55_to_59",
+    "60_to_64",
+    "65_to_69",
+    "70_to_74",
+    "75_to_79",
+    "80_to_84",
+    "85_plus",
+)
+
 
 def test_packaged_us_fiscal_resources_are_value_free() -> None:
     resource = files("populace.build.us").joinpath("fiscal_target_references.json")
@@ -1288,11 +1309,11 @@ def complete_population_age_rows() -> list[dict[str, object]]:
         {
             "name": (
                 "census_pep.cy2024.national_resident_population_age."
-                f"{i * 5}_to_{i * 5 + 4}.population"
+                f"{age_group}.population"
             ),
             "measure": (
                 "census_pep.cy2024.national_resident_population_age."
-                f"{i * 5}_to_{i * 5 + 4}.population"
+                f"{age_group}.population"
             ),
             "family": "census_population",
             "metadata": {
@@ -1300,17 +1321,17 @@ def complete_population_age_rows() -> list[dict[str, object]]:
                 "geography_scope": "national",
             },
         }
-        for i in range(19)
+        for age_group in CENSUS_PEP_AGE_GROUPS
     ]
     state = [
         {
             "name": (
                 "census_pep.v2024.cy2024.state_resident_population."
-                f"{state_fips:02d}.{age_bin * 5}_to_{age_bin * 5 + 4}.population"
+                f"{state_fips:02d}.{age_group}.population"
             ),
             "measure": (
                 "census_pep.v2024.cy2024.state_resident_population."
-                f"{state_fips:02d}.{age_bin * 5}_to_{age_bin * 5 + 4}.population"
+                f"{state_fips:02d}.{age_group}.population"
             ),
             "family": "census_population",
             "metadata": {
@@ -1319,7 +1340,7 @@ def complete_population_age_rows() -> list[dict[str, object]]:
             },
         }
         for state_fips in range(1, 52)
-        for age_bin in range(19)
+        for age_group in CENSUS_PEP_AGE_GROUPS
     ]
     return [*national, *state]
 
