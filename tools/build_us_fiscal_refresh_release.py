@@ -253,6 +253,14 @@ FILING_STATUS_MAP = {
     "Single": "SINGLE",
 }
 
+SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
+    {
+        "ledger_filter_income_range",
+        "ledger_filter_filing_status",
+        "ledger_filter_eitc_child_count",
+    }
+)
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -995,6 +1003,22 @@ def _soi_eitc_child_count_filter(metadata: Mapping[str, str]) -> str | None:
     return None
 
 
+def _is_noop_ledger_filter_value(value: str) -> bool:
+    return value.strip().lower().replace("_", " ") in {"", "all"}
+
+
+def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            key
+            for key, value in metadata.items()
+            if key.startswith("ledger_filter_")
+            and key not in SUPPORTED_SOI_LEDGER_FILTERS
+            and not _is_noop_ledger_filter_value(str(value))
+        )
+    )
+
+
 def _eitc_child_count_mask(values: np.ndarray, filter_value: str) -> np.ndarray:
     counts = np.asarray(values, dtype=np.float64)
     normalized = str(filter_value).strip().lower().replace("_", " ")
@@ -1298,6 +1322,8 @@ def _materialize_target_frame(
 
     for spec in target_specs:
         if spec.family != "irs_soi":
+            continue
+        if _unsupported_soi_ledger_filters(spec.metadata):
             continue
         source_name = spec.metadata["variable"]
         lower = _as_bound(spec.metadata["agi_lower_bound"])

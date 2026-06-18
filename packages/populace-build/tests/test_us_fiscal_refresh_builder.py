@@ -218,6 +218,34 @@ def test_soi_eitc_child_count_filter_uses_ledger_filter_first() -> None:
     )
 
 
+def test_unsupported_soi_ledger_filters_require_materializer_support() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_income_range": "25k_to_30k",
+                "ledger_filter_filing_status": "all",
+                "ledger_filter_eitc_child_count": "1",
+            }
+        )
+        == ()
+    )
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_new_dimension": "all",
+            }
+        )
+        == ()
+    )
+    assert builder._unsupported_soi_ledger_filters(
+        {
+            "ledger_filter_new_dimension": "specific_slice",
+        }
+    ) == ("ledger_filter_new_dimension",)
+
+
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
     builder = _load_builder_module()
     counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
@@ -236,6 +264,10 @@ def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
     )
     assert np.array_equal(
         builder._eitc_child_count_mask(counts, "3plus"),
+        np.asarray([False, False, False, True, True]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "3+"),
         np.asarray([False, False, False, True, True]),
     )
 

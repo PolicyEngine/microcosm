@@ -573,6 +573,53 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     assert returns.metadata["count"] == "true"
 
 
+def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="eitc_total",
+                value=535_000,
+                period_value=2022,
+                dimensions={"income_range": "25k_to_30k", "filing_status": "all"},
+                universe_constraints=[
+                    {
+                        "variable": "adjusted_gross_income",
+                        "operator": ">=",
+                        "value": 25_000,
+                    },
+                    {
+                        "variable": "adjusted_gross_income",
+                        "operator": "<",
+                        "value": 30_000,
+                    },
+                ],
+                layout_record_set_id=(
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children"
+                ),
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "eitc"
+    assert spec.metadata["agi_lower_bound"] == "25000.0"
+    assert spec.metadata["agi_upper_bound"] == "30000.0"
+    assert spec.metadata["ledger_filter_income_range"] == "25k_to_30k"
+    assert spec.metadata["ledger_layout_record_set_id"] == (
+        "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children"
+    )
+
+
 def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
     source_record_id = (
         "cms_medicare.cy2024.part_b_premium_income."
@@ -1144,6 +1191,7 @@ def _dynamic_ledger_fact(
     geography_level: str = "country",
     geography_id: str = "0100000US",
     groupby_value_id: str = "all",
+    layout_record_set_id: str | None = None,
     dimensions: dict[str, object] | None = None,
     universe_constraints: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
@@ -1161,7 +1209,7 @@ def _dynamic_ledger_fact(
         "dimensions": dict(dimensions or {}),
         "universe_constraints": {"constraints": list(universe_constraints or [])},
         "layout": {
-            "record_set_id": f"{source_name}.record_set",
+            "record_set_id": layout_record_set_id or f"{source_name}.record_set",
             "groupby_dimension": "",
             "groupby_value_id": groupby_value_id,
             "measure_id": measure_id,
