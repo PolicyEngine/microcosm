@@ -32,6 +32,7 @@ from populace.build.gates import (
     target_profile_coverage_gate,
 )
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
+from populace.build.staging import StagingTelemetry
 from populace.build.us import (
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
@@ -342,6 +343,36 @@ def _parse_args() -> argparse.Namespace:
         "--skip-demographics",
         action="store_true",
         help="Do not emit demographics.json (weighted population by age) for this release.",
+    )
+    parser.add_argument(
+        "--staging-dir",
+        type=Path,
+        help=(
+            "Optional local directory for staging telemetry artifacts. Defaults "
+            "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
+        ),
+    )
+    parser.add_argument(
+        "--staging-repo-id",
+        help=(
+            "Optional Hugging Face dataset repo to upload staging telemetry "
+            "to while the build runs, e.g. policyengine/populace-us-staging."
+        ),
+    )
+    parser.add_argument(
+        "--staging-prefix",
+        default="runs",
+        help="Repo prefix for staging run artifacts (default: runs).",
+    )
+    parser.add_argument(
+        "--staging-run-id",
+        help="Override the staging run id. Defaults to the candidate release id.",
+    )
+    parser.add_argument(
+        "--staging-upload-interval-seconds",
+        type=float,
+        default=30.0,
+        help="Minimum seconds between progress uploads to the staging repo.",
     )
     return parser.parse_args()
 
@@ -2377,6 +2408,26 @@ def _assert_us_release_id(release_id: str) -> None:
         )
 
 
+def _staging_telemetry(
+    args: argparse.Namespace,
+    *,
+    release_root: Path,
+    release_id: str,
+) -> StagingTelemetry | None:
+    if not args.staging_dir and not args.staging_repo_id:
+        return None
+    run_id = args.staging_run_id or release_id
+    run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
+    return StagingTelemetry(
+        run_id=run_id,
+        candidate_release_id=release_id,
+        run_dir=run_dir,
+        repo_id=args.staging_repo_id,
+        path_prefix=args.staging_prefix,
+        upload_interval_seconds=args.staging_upload_interval_seconds,
+    )
+
+
 def main() -> None:
     args = _parse_args()
     if _git_dirty():
@@ -2413,16 +2464,44 @@ def main() -> None:
     release_dir = release_root / "releases" / release_id
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)
+    telemetry = _staging_telemetry(
+        args,
+        release_root=release_root,
+        release_id=release_id,
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "target_registry",
+            message="Compiled fiscal target registry.",
+            n_targets=len(target_specs),
+            target_profile_gate_passed=target_profile_gate.passed,
+            force_upload=True,
+        )
 
+    if telemetry is not None:
+        telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
     base_population_gate = _base_population_scale_gate(base_frame)
     if not base_population_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "base_population_gate",
+                status="failed",
+                message="Base population scale gate failed.",
+                failures=list(base_population_gate.failures),
+                force_upload=True,
+            )
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
                 f"Base population scale failed: {failure}"
                 for failure in base_population_gate.failures
             )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "source_inputs",
+            message="Materializing ACA marketplace source outputs.",
         )
     base_frame = _with_aca_marketplace_source_outputs(
         base_frame,
@@ -2431,6 +2510,14 @@ def main() -> None:
     )
     health_input_gate = _health_input_signal_gate(base_frame)
     if not health_input_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "health_input_gate",
+                status="failed",
+                message="Health input signal gate failed.",
+                failures=list(health_input_gate.failures),
+                force_upload=True,
+            )
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
@@ -2438,10 +2525,21 @@ def main() -> None:
                 for failure in health_input_gate.failures
             )
         )
+    if telemetry is not None:
+        telemetry.stage("target_compilation", message="Materializing target frame.")
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
         target_specs,
     )
+    if telemetry is not None:
+        telemetry.stage(
+            "calibrating",
+            message="Calibrating household weights.",
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            n_targets=len(registry),
+        )
     result = calibrate(
         target_frame,
         registry.to_target_set(),
@@ -2452,7 +2550,17 @@ def main() -> None:
         mass="conserve",
         target_loss_weights=_fiscal_target_loss_weights(registry),
         target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        progress_callback=(
+            telemetry.calibration_progress if telemetry is not None else None
+        ),
     )
+    if telemetry is not None:
+        telemetry.stage(
+            "release_gates",
+            message="Evaluating release gates.",
+            final_loss=result.final_loss,
+            n_nonzero=result.n_nonzero,
+        )
     incumbent_diagnostics = _load_incumbent_diagnostics(args.incumbent_diagnostics)
     gate_failures = _release_gate_failures(
         result,
@@ -2476,19 +2584,46 @@ def main() -> None:
         incumbent_diagnostics_path=args.incumbent_diagnostics,
         incumbent_diagnostics=incumbent_diagnostics,
     )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "calibration_diagnostics",
+            release_dir / "calibration_diagnostics.json",
+        )
     if gate_failures:
+        if telemetry is not None:
+            telemetry.stage(
+                "release_gates",
+                status="failed",
+                message="Release gates failed.",
+                failures=gate_failures,
+                force_upload=True,
+            )
         raise RuntimeError("Release gates failed: " + "; ".join(gate_failures))
 
+    if telemetry is not None:
+        telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
     export_frame = _strip_calibration_columns(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
     if args.audit_export_targets:
+        if telemetry is not None:
+            telemetry.stage(
+                "post_export_audit",
+                message="Auditing exported H5 against calibration targets.",
+            )
         _assert_export_matches_calibration(dataset_path, result, target_specs)
 
+    if telemetry is not None:
+        telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
     calibration_path = artifact_root / CALIBRATION_FILENAME
     _write_npz(calibration_path, result=result, registry=registry)
 
     if not args.skip_reform_validation:
+        if telemetry is not None:
+            telemetry.stage(
+                "reform_validation",
+                message="Writing reform validation diagnostics.",
+            )
         _write_reform_validation(
             release_dir=release_dir,
             dataset_path=dataset_path,
@@ -2497,14 +2632,25 @@ def main() -> None:
             release_id=release_id,
             simulate_out_of_sample=not args.skip_out_of_sample_reforms,
         )
+        if telemetry is not None:
+            telemetry.attach_artifact(
+                "reform_validation",
+                release_dir / "reform_validation.json",
+            )
 
     if not args.skip_demographics:
+        if telemetry is not None:
+            telemetry.stage("demographics", message="Writing demographics diagnostics.")
         _write_demographics(
             release_dir=release_dir,
             dataset_path=dataset_path,
             release_id=release_id,
         )
+        if telemetry is not None:
+            telemetry.attach_artifact("demographics", release_dir / "demographics.json")
 
+    if telemetry is not None:
+        telemetry.stage("source_coverage", message="Writing source coverage diagnostics.")
     active_aliases = DIRECT_ACTIVE_ALIASES
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
@@ -2520,6 +2666,12 @@ def main() -> None:
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_source_coverage",
+            release_dir / "us_source_coverage.json",
+        )
+        telemetry.stage("manifests", message="Writing release manifests.")
     _build_manifests(
         release_id=release_id,
         release_dir=release_dir,
@@ -2532,6 +2684,13 @@ def main() -> None:
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
     )
+    if telemetry is not None:
+        telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
+        telemetry.attach_artifact(
+            "release_manifest",
+            release_dir / "release_manifest.json",
+        )
+        telemetry.complete()
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.
     shutil.copy2(base_h5, release_root / f"base_{base_h5.name}")

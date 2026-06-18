@@ -41,7 +41,7 @@ Four declared options, each a real feature (and each its own test):
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -500,6 +500,8 @@ def _optimize(
     target_records: int | None,
     init_mean: float,
     temperature: float,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    progress_context: Mapping[str, object] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run the torch optimization and return ``(final_weights, loss_trajectory)``.
 
@@ -550,6 +552,16 @@ def _optimize(
         )
         total_loss = loss + penalty
         trajectory[epoch] = float(loss.item())
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    **dict(progress_context or {}),
+                    "kind": "calibration_epoch",
+                    "epoch": epoch + 1,
+                    "epochs": epochs,
+                    "loss": trajectory[epoch],
+                }
+            )
         total_loss.backward()
         optimizer.step()
 
@@ -621,6 +633,7 @@ def _search_l0_lambda_for_budget(
     seed: int,
     prune_atol: float,
     initial_lambda: float | None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
 ) -> tuple[np.ndarray, np.ndarray, float, int]:
     """Search ``l0_lambda`` so the achieved non-zero count tracks the budget.
@@ -661,7 +674,11 @@ def _search_l0_lambda_for_budget(
     lo_u, hi_u = math.log10(_L0_SEARCH_LO), math.log10(_L0_SEARCH_HI)
     tol = max(1, round(0.05 * target_records))
 
+    evaluation = 0
+
     def evaluate(lam: float) -> tuple[np.ndarray, np.ndarray, int]:
+        nonlocal evaluation
+        evaluation += 1
         torch.manual_seed(seed)
         weights, trajectory = _optimize(
             matrix,
@@ -678,6 +695,13 @@ def _search_l0_lambda_for_budget(
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
+            progress_callback=progress_callback,
+            progress_context={
+                "budget_search": True,
+                "budget_iteration": evaluation,
+                "budget_iters": budget_iters,
+                "l0_lambda": lam,
+            },
         )
         n_nonzero = int((weights > prune_atol).sum())
         return weights, trajectory, n_nonzero
@@ -840,6 +864,7 @@ def calibrate(
     target_loss_weights: np.ndarray | None = None,
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -898,6 +923,11 @@ def calibrate(
             Supplying scales is mainly for harnesses and specialized releases.
         target_loss_cap: Positive per-row cap on scaled absolute misses. The
             default caps each target's objective contribution at 1000%.
+        progress_callback: Optional observer called during optimization with
+            JSON-serializable dictionaries such as ``{"kind":
+            "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
+            Build drivers use this to publish staging telemetry; calibration
+            results are unchanged.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -1029,6 +1059,7 @@ def calibrate(
                 seed=seed,
                 prune_atol=prune_atol,
                 initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
+                progress_callback=progress_callback,
                 budget_iters=budget_iters,
             )
         )
@@ -1049,6 +1080,7 @@ def calibrate(
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
+            progress_callback=progress_callback,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:

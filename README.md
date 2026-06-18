@@ -31,6 +31,25 @@ uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
 
+## Staging build telemetry
+
+Long-running US fiscal refresh builds can emit pre-release telemetry before the
+candidate is published as the production Hugging Face release. Pass
+`--staging-dir` to write local staging artifacts, and optionally
+`--staging-repo-id policyengine/populace-us-staging` to upload small progress
+JSON files while the build runs:
+
+```bash
+python tools/build_us_fiscal_refresh_release.py \
+  --ledger-facts consumer_facts.jsonl \
+  --out /tmp/populace-build \
+  --staging-repo-id policyengine/populace-us-staging
+```
+
+This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
+final candidate diagnostics under `runs/<run_id>/` without updating production
+`latest.json`.
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).

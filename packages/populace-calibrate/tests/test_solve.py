@@ -680,3 +680,16 @@ def test_budget_search_survives_a_mid_search_infeasible_probe(feasible_frame) ->
     initial_total = frame.resolve_weights("household").values.sum()
     final_total = result.frame.resolve_weights("household").values.sum()
     assert abs(final_total - initial_total) / initial_total < 1e-6
+
+
+def test_calibrate_reports_epoch_progress(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=30)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    events: list[dict[str, object]] = []
+
+    calibrate(frame, targets, epochs=5, seed=0, progress_callback=events.append)
+
+    assert [event["kind"] for event in events] == ["calibration_epoch"] * 5
+    assert [event["epoch"] for event in events] == [1, 2, 3, 4, 5]
+    assert all(event["epochs"] == 5 for event in events)
+    assert all(isinstance(event["loss"], float) for event in events)
