@@ -206,8 +206,8 @@ def _calibration_diagnostics() -> dict:
                 target_name="irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
                 target=82_863_353_000.0,
                 initial_estimate=132_000_000_000.0,
-                final_estimate=92_000_000_000.0,
-                relative_error=(92_000_000_000.0 - 82_863_353_000.0) / 82_863_353_000.0,
+                final_estimate=90_000_000_000.0,
+                relative_error=(90_000_000_000.0 - 82_863_353_000.0) / 82_863_353_000.0,
                 family="irs_soi",
                 target_role="ctc_total",
             ),
@@ -423,6 +423,83 @@ def test_us_release_rejects_bad_ctc_fit(release_dir: Path) -> None:
     failures = "\n".join(excinfo.value.failures)
     assert "Child Tax Credit amount" in failures
     assert "relative_error=0.599151" in failures
+
+
+def test_us_release_allows_bad_ctc_fit_when_it_improves_incumbent(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024"
+    )
+    ctc_target = 82_863_353_000.0
+    ctc_final = 99_282_300_000.0
+    target["final_estimate"] = ctc_final
+    target["relative_error"] = (ctc_final - ctc_target) / ctc_target
+    diagnostics["build"] = {
+        "incumbent_diagnostics": {
+            "path": "calibration_diagnostics.json",
+            "sha256": "a" * 64,
+            "critical_targets": {
+                target["name"]: {
+                    "target": ctc_target,
+                    "final_estimate": 134_904_000_000.0,
+                    "relative_error": (134_904_000_000.0 - ctc_target) / ctc_target,
+                }
+            },
+        }
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_us_release_rejects_incumbent_improvement_with_mismatched_target(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024"
+    )
+    ctc_target = 82_863_353_000.0
+    ctc_final = 99_282_300_000.0
+    target["final_estimate"] = ctc_final
+    target["relative_error"] = (ctc_final - ctc_target) / ctc_target
+    diagnostics["build"] = {
+        "incumbent_diagnostics": {
+            "path": "calibration_diagnostics.json",
+            "sha256": "a" * 64,
+            "critical_targets": {
+                target["name"]: {
+                    "target": ctc_target + 1_000_000_000.0,
+                    "final_estimate": 134_904_000_000.0,
+                    "relative_error": 0.0,
+                }
+            },
+        }
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "does not match current target" in failures
+    assert "Child Tax Credit amount" in failures
 
 
 def test_us_release_requires_critical_targets(release_dir: Path) -> None:

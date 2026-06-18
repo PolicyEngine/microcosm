@@ -300,6 +300,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
+    parser.add_argument(
+        "--incumbent-diagnostics",
+        type=Path,
+        help=(
+            "Optional calibration_diagnostics.json for the current published "
+            "release. Critical targets outside their absolute tolerance can "
+            "still pass if they improve on this incumbent row by row."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=512)
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
@@ -404,6 +413,28 @@ def _load_frame(path: Path) -> Frame:
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+
+
+def _load_incumbent_diagnostics(
+    path: Path | None,
+) -> dict[str, Mapping[str, object]]:
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text())
+    targets = payload.get("targets")
+    if not isinstance(targets, list):
+        raise ValueError(
+            f"{path} is not a Populace calibration_diagnostics.json file: "
+            "missing targets list."
+        )
+    diagnostics: dict[str, Mapping[str, object]] = {}
+    for target in targets:
+        if not isinstance(target, Mapping):
+            continue
+        name = target.get("name")
+        if isinstance(name, str) and name:
+            diagnostics[name] = target
+    return diagnostics
 
 
 def _state_fips_text(values: Iterable[object]) -> list[str]:
@@ -1637,6 +1668,7 @@ def _release_gate_failures(
     target_profile_gate: GateResult | None = None,
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -1677,7 +1709,12 @@ def _release_gate_failures(
             f"{len(zero_support)} positive fiscal targets have zero "
             f"materialized support (examples: {examples}{suffix})."
         )
-    failures.extend(_critical_target_fit_failures(result))
+    failures.extend(
+        _critical_target_fit_failures(
+            result,
+            incumbent_diagnostics=incumbent_diagnostics,
+        )
+    )
     if not math.isfinite(result.initial_loss) or not math.isfinite(result.final_loss):
         failures.append("Calibration loss is non-finite.")
     elif result.final_loss > result.initial_loss:
@@ -1688,7 +1725,12 @@ def _release_gate_failures(
     return failures
 
 
-def _critical_target_fit_failures(result) -> list[str]:
+def _critical_target_fit_failures(
+    result,
+    *,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+) -> list[str]:
+    incumbent_diagnostics = incumbent_diagnostics or {}
     diagnostics_by_name = {
         getattr(diagnostic, "name", None): diagnostic
         for diagnostic in getattr(result, "diagnostics", ())
@@ -1727,15 +1769,82 @@ def _critical_target_fit_failures(result) -> list[str]:
             )
         max_abs = float(requirement["max_abs_relative_error"])
         if abs(computed_relative_error) > max_abs:
+            incumbent_relative_error = _incumbent_relative_error(
+                incumbent_diagnostics.get(requirement["name"]),
+                current_target=float(getattr(diagnostic, "target", 0.0)),
+            )
+            if incumbent_relative_error is not None and abs(
+                computed_relative_error
+            ) < abs(incumbent_relative_error):
+                continue
             failures.append(
                 "Critical fiscal target "
                 f"{requirement['name']!r} ({requirement['label']}) has "
                 f"relative_error={computed_relative_error:.6g}, exceeding "
                 f"{max_abs:.6g}; target={getattr(diagnostic, 'target', None)!r}, "
                 "final_estimate="
-                f"{getattr(diagnostic, 'final_estimate', None)!r}."
+                f"{getattr(diagnostic, 'final_estimate', None)!r}"
+                + (
+                    "."
+                    if incumbent_relative_error is None
+                    else (f"; incumbent_relative_error={incumbent_relative_error:.6g}.")
+                )
             )
     return failures
+
+
+def _incumbent_relative_error(
+    row: Mapping[str, object] | None,
+    *,
+    current_target: float | None = None,
+) -> float | None:
+    if row is None:
+        return None
+    target_value = row.get("target")
+    final_estimate = row.get("final_estimate")
+    if not isinstance(target_value, int | float) or not isinstance(
+        final_estimate, int | float
+    ):
+        return None
+    target_value = float(target_value)
+    final_estimate = float(final_estimate)
+    if not math.isfinite(target_value) or not math.isfinite(final_estimate):
+        return None
+    if current_target is not None and not math.isclose(
+        target_value,
+        current_target,
+        rel_tol=1e-9,
+        abs_tol=1e-6,
+    ):
+        return None
+    if target_value == 0.0:
+        return final_estimate - target_value
+    return (final_estimate - target_value) / target_value
+
+
+def _incumbent_critical_target_payload(
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]],
+) -> dict[str, dict[str, float]]:
+    payload: dict[str, dict[str, float]] = {}
+    for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
+        name = requirement["name"]
+        row = incumbent_diagnostics.get(name)
+        if row is None:
+            continue
+        target_value = row.get("target")
+        final_estimate = row.get("final_estimate")
+        relative_error = _incumbent_relative_error(row)
+        if (
+            isinstance(target_value, int | float)
+            and isinstance(final_estimate, int | float)
+            and relative_error is not None
+        ):
+            payload[name] = {
+                "target": float(target_value),
+                "final_estimate": float(final_estimate),
+                "relative_error": float(relative_error),
+            }
+    return payload
 
 
 def _diagnostic_relative_error(diagnostic, failures: list[str]) -> float | None:
@@ -1772,6 +1881,7 @@ def _assert_release_gates(
     target_profile_gate: GateResult | None = None,
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
@@ -1779,6 +1889,7 @@ def _assert_release_gates(
         target_profile_gate,
         health_input_gate,
         base_population_gate,
+        incumbent_diagnostics,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
@@ -1796,9 +1907,21 @@ def _write_release_calibration_diagnostics(
     base_population_gate: GateResult | None,
     audit_export_targets: bool,
     gate_failures: Iterable[str],
+    incumbent_diagnostics_path: Path | None = None,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
+    incumbent_rows = incumbent_diagnostics or {}
+    incumbent_payload = (
+        {
+            "path": str(incumbent_diagnostics_path),
+            "sha256": _sha256(incumbent_diagnostics_path),
+            "critical_targets": _incumbent_critical_target_payload(incumbent_rows),
+        }
+        if incumbent_diagnostics_path is not None
+        else None
+    )
     write_calibration_diagnostics(
         result,
         release_dir / "calibration_diagnostics.json",
@@ -1835,6 +1958,7 @@ def _write_release_calibration_diagnostics(
                 "passed": not failures,
                 "failures": failures,
             },
+            "incumbent_diagnostics": incumbent_payload,
             "post_export_target_audit": bool(audit_export_targets),
         },
     )
@@ -2003,6 +2127,7 @@ def _build_manifests(
     target_profile_gate: GateResult,
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -2020,6 +2145,7 @@ def _build_manifests(
         target_profile_gate,
         health_input_gate,
         base_population_gate,
+        incumbent_diagnostics,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -2327,12 +2453,14 @@ def main() -> None:
         target_loss_weights=_fiscal_target_loss_weights(registry),
         target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
     )
+    incumbent_diagnostics = _load_incumbent_diagnostics(args.incumbent_diagnostics)
     gate_failures = _release_gate_failures(
         result,
         compilation,
         target_profile_gate,
         health_input_gate,
         base_population_gate,
+        incumbent_diagnostics,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -2345,6 +2473,8 @@ def main() -> None:
         base_population_gate=base_population_gate,
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
+        incumbent_diagnostics_path=args.incumbent_diagnostics,
+        incumbent_diagnostics=incumbent_diagnostics,
     )
     if gate_failures:
         raise RuntimeError("Release gates failed: " + "; ".join(gate_failures))
@@ -2400,6 +2530,7 @@ def main() -> None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
+        incumbent_diagnostics=incumbent_diagnostics,
     )
 
     # Keep a copy of the exact base artifact beside diagnostics for local audit.

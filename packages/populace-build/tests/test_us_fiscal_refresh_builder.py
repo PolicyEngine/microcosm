@@ -1103,6 +1103,83 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
         assert "exceeding 0.1" in failures[0]
 
 
+def test_critical_gate_allows_improvement_over_incumbent_diagnostics() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 134_904_000_000.0,
+        }
+    }
+
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            incumbent_diagnostics=incumbent,
+        )
+        == []
+    )
+
+
+def test_critical_gate_rejects_miss_when_incumbent_is_better() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 90_000_000_000.0,
+        }
+    }
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics=incumbent,
+    )
+
+    assert len(failures) == 1
+    assert "Child Tax Credit amount" in failures[0]
+    assert "incumbent_relative_error=" in failures[0]
+
+
 def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:
     builder = _load_builder_module()
 
@@ -1981,6 +2058,102 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         assert artifact["revision"] == release_id
         assert artifact["kind"]
         assert artifact["sha256"]
+
+
+def test_build_manifests_uses_incumbent_aware_calibration_gate(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-abcdef1-20260615"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.729.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+
+        def __len__(self):
+            return 1
+
+    builder._build_manifests(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=FakeRegistry(),
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        incumbent_diagnostics={
+            name: {
+                "target": target,
+                "final_estimate": 134_904_000_000.0,
+            }
+        },
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["gates"]["calibration"] == {
+        "passed": True,
+        "failures": [],
+        "initial_loss": 2.0,
+        "final_loss": 1.0,
+        "fraction_within_10pct": 1.0,
+    }
 
 
 def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:
