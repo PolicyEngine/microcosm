@@ -407,6 +407,39 @@ def test_release_gate_failures_include_health_input_signal() -> None:
     ]
 
 
+def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
+    builder = _load_builder_module()
+
+    gate = builder._base_population_scale_gate(small_frame)
+
+    assert not gate.passed
+    assert gate.name == "base_population_scale"
+    assert gate.details["population"] == 6000.0
+    assert "mass='conserve'" in gate.failures[0]
+
+
+def test_base_population_scale_gate_accepts_national_scale_base(small_frame) -> None:
+    builder = _load_builder_module()
+    benchmark = builder.US_BASE_PERSON_POPULATION_BENCHMARK
+    frame = small_frame.with_weights(
+        "household",
+        builder.Weights(
+            values=np.asarray([benchmark / 4.0, benchmark / 4.0]),
+            kind=WeightKind.DESIGN,
+        ),
+        mass=builder.MassChange(
+            factor=benchmark / 6000.0,
+            reason="test fixture national-scale base",
+        ),
+    )
+
+    gate = builder._base_population_scale_gate(frame)
+
+    assert gate.passed
+    assert gate.details["population"] == benchmark
+    assert gate.details["relative_error"] == 0.0
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -706,6 +739,11 @@ def test_release_calibration_diagnostics_include_gate_failures(
     registry = TargetRegistry((), country="us")
     profile_gate = SimpleNamespace(passed=True, failures=(), details={"n": 1})
     health_gate = SimpleNamespace(passed=True, failures=(), details={"n": 2})
+    base_population_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={"population": 334_200_000.0},
+    )
 
     builder._write_release_calibration_diagnostics(
         result=result,
@@ -715,6 +753,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
+        base_population_gate=base_population_gate,
         audit_export_targets=False,
         gate_failures=["ctc failed"],
     )
@@ -730,6 +769,11 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"n": 2},
+    }
+    assert build["base_population_scale"] == {
+        "passed": True,
+        "failures": [],
+        "details": {"population": 334_200_000.0},
     }
 
 
@@ -797,6 +841,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    monkeypatch.setattr(
+        builder,
+        "_base_population_scale_gate",
+        lambda frame: builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
@@ -1705,6 +1758,15 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             passed=True,
             details={"requirements_checked": 1},
         ),
+        base_population_gate=builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={
+                "population": 334_200_000.0,
+                "benchmark": 334_200_000.0,
+                "relative_error": 0.0,
+            },
+        ),
         health_input_gate=builder.GateResult(
             name="health_input_signal",
             passed=True,
@@ -1733,6 +1795,11 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "takes_up_aca_if_eligible": 2,
         "selected_marketplace_plan_benchmark_ratio": 3,
     }
+    assert build_manifest["gates"]["base_population_scale"]["passed"]
+    assert (
+        build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
+        == 0.0
+    )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {
