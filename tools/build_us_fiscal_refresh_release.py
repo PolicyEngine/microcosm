@@ -1816,10 +1816,6 @@ def _critical_target_fit_failures(
                 incumbent_diagnostics.get(requirement["name"]),
                 current_target=float(getattr(diagnostic, "target", 0.0)),
             )
-            if incumbent_relative_error is not None and abs(
-                computed_relative_error
-            ) < abs(incumbent_relative_error):
-                continue
             failures.append(
                 "Critical fiscal target "
                 f"{requirement['name']!r} ({requirement['label']}) has "
