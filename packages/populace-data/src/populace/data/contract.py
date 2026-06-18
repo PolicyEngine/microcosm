@@ -91,7 +91,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "ctc_amount",
         "label": "Child Tax Credit amount",
-        "max_abs_relative_error": 0.20,
+        "max_abs_relative_error": 0.10,
         "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
         "families": ("irs_soi",),
         "target_roles": ("ctc_total",),
@@ -668,6 +668,7 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
     targets = diagnostics.get("targets")
     if not isinstance(targets, list):
         return
+    incumbent_targets = _incumbent_critical_targets(diagnostics)
     for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS:
         names = set(requirement["names"])
         target_roles = set(requirement["target_roles"])
@@ -718,13 +719,86 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                 )
             max_abs = float(requirement["max_abs_relative_error"])
             if abs(computed_relative_error) > max_abs:
+                incumbent_relative_error = _incumbent_relative_error_for_target(
+                    target,
+                    incumbent_targets.get(str(target.get("name"))),
+                    failures,
+                )
+                if incumbent_relative_error is not None and abs(
+                    computed_relative_error
+                ) < abs(incumbent_relative_error):
+                    continue
                 failures.append(
                     "calibration_diagnostics.json critical target "
                     f"{target.get('name')!r} ({requirement['label']}) has "
                     f"relative_error={computed_relative_error:.6g}, exceeding "
                     f"{max_abs:.6g}; target={target.get('target')!r}, "
-                    f"final_estimate={target.get('final_estimate')!r}."
+                    f"final_estimate={target.get('final_estimate')!r}"
+                    + (
+                        "."
+                        if incumbent_relative_error is None
+                        else (
+                            "; incumbent_relative_error="
+                            f"{incumbent_relative_error:.6g}."
+                        )
+                    )
                 )
+
+
+def _incumbent_critical_targets(diagnostics: Mapping) -> Mapping:
+    build = diagnostics.get("build")
+    if not isinstance(build, Mapping):
+        return {}
+    incumbent = build.get("incumbent_diagnostics")
+    if not isinstance(incumbent, Mapping):
+        return {}
+    targets = incumbent.get("critical_targets")
+    if not isinstance(targets, Mapping):
+        return {}
+    return targets
+
+
+def _incumbent_relative_error_for_target(
+    target: Mapping,
+    incumbent: object,
+    failures: list[str],
+) -> float | None:
+    if not isinstance(incumbent, Mapping):
+        return None
+    current_target = target.get("target")
+    incumbent_target = incumbent.get("target")
+    incumbent_final = incumbent.get("final_estimate")
+    if not isinstance(current_target, int | float) or not isinstance(
+        incumbent_target, int | float
+    ):
+        return None
+    if not isinstance(incumbent_final, int | float):
+        return None
+    current_target = float(current_target)
+    incumbent_target = float(incumbent_target)
+    incumbent_final = float(incumbent_final)
+    if not (
+        math.isfinite(current_target)
+        and math.isfinite(incumbent_target)
+        and math.isfinite(incumbent_final)
+    ):
+        return None
+    if not math.isclose(
+        incumbent_target,
+        current_target,
+        rel_tol=1e-9,
+        abs_tol=1e-6,
+    ):
+        failures.append(
+            "calibration_diagnostics.json critical target "
+            f"{target.get('name')!r} has incumbent target "
+            f"{incumbent_target!r}, which does not match current target "
+            f"{current_target!r}."
+        )
+        return None
+    if current_target == 0.0:
+        return incumbent_final - current_target
+    return (incumbent_final - current_target) / current_target
 
 
 def _target_relative_error(target: Mapping, failures: list[str]) -> float | None:
