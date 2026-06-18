@@ -195,7 +195,7 @@ SOI_VARIABLE_MAP = {
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
-    "ctc": "ctc",
+    "ctc": "non_refundable_ctc",
     "employment_income": "employment_income",
     "eitc": "eitc",
     "estate_income": "estate_income",
