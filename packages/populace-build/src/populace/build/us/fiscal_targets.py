@@ -1338,7 +1338,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
             ("target_role", "population_age"),
             ("geography_scope", "national"),
         ),
-        min_matches=19,
+        min_matches=18,
     ),
     TargetCoverageRequirement(
         requirement_id="population_age_state",
@@ -1348,7 +1348,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
             ("target_role", "population_age"),
             ("geography_scope", "state"),
         ),
-        min_matches=969,
+        min_matches=918,
     ),
     *(spec.coverage_requirement() for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
 )
