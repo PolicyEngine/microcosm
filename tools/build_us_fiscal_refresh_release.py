@@ -79,6 +79,7 @@ US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
+US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -1816,6 +1817,15 @@ def _critical_target_fit_failures(
                 incumbent_diagnostics.get(requirement["name"]),
                 current_target=float(getattr(diagnostic, "target", 0.0)),
             )
+            improved_over_incumbent = incumbent_relative_error is not None and abs(
+                computed_relative_error
+            ) < abs(incumbent_relative_error)
+            if (
+                improved_over_incumbent
+                and abs(computed_relative_error)
+                <= US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
+            ):
+                continue
             failures.append(
                 "Critical fiscal target "
                 f"{requirement['name']!r} ({requirement['label']}) has "
@@ -1826,7 +1836,11 @@ def _critical_target_fit_failures(
                 + (
                     "."
                     if incumbent_relative_error is None
-                    else (f"; incumbent_relative_error={incumbent_relative_error:.6g}.")
+                    else (
+                        f"; incumbent_relative_error={incumbent_relative_error:.6g}; "
+                        "improvement_hard_stop="
+                        f"{US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR:.6g}."
+                    )
                 )
             )
     return failures

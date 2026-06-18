@@ -1107,7 +1107,7 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
         assert "exceeding 0.1" in failures[0]
 
 
-def test_critical_gate_rejects_miss_even_when_improved_over_incumbent() -> None:
+def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
     builder = _load_builder_module()
     name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
     target = 82_863_353_000.0
@@ -1135,6 +1135,44 @@ def test_critical_gate_rejects_miss_even_when_improved_over_incumbent() -> None:
         }
     }
 
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            incumbent_diagnostics=incumbent,
+        )
+        == []
+    )
+
+
+def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=105_000_000_000.0,
+        relative_error=(105_000_000_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 134_904_000_000.0,
+        }
+    }
+
     failures = builder._release_gate_failures(
         result,
         {"dropped_target_names": []},
@@ -1145,6 +1183,7 @@ def test_critical_gate_rejects_miss_even_when_improved_over_incumbent() -> None:
     assert "Child Tax Credit amount" in failures[0]
     assert "exceeding 0.1" in failures[0]
     assert "incumbent_relative_error=" in failures[0]
+    assert "improvement_hard_stop=0.25" in failures[0]
 
 
 def test_critical_gate_rejects_miss_when_incumbent_is_better() -> None:
@@ -2066,7 +2105,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         assert artifact["sha256"]
 
 
-def test_build_manifests_uses_strict_critical_target_calibration_gate(
+def test_build_manifests_uses_incumbent_aware_calibration_gate(
     monkeypatch, tmp_path
 ) -> None:
     builder = _load_builder_module()
@@ -2153,14 +2192,13 @@ def test_build_manifests_uses_strict_critical_target_calibration_gate(
     )
 
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
-    calibration_gate = build_manifest["gates"]["calibration"]
-    assert calibration_gate["passed"] is False
-    assert calibration_gate["initial_loss"] == 2.0
-    assert calibration_gate["final_loss"] == 1.0
-    assert calibration_gate["fraction_within_10pct"] == 1.0
-    assert len(calibration_gate["failures"]) == 1
-    assert "Child Tax Credit amount" in calibration_gate["failures"][0]
-    assert "incumbent_relative_error=" in calibration_gate["failures"][0]
+    assert build_manifest["gates"]["calibration"] == {
+        "passed": True,
+        "failures": [],
+        "initial_loss": 2.0,
+        "final_loss": 1.0,
+        "fraction_within_10pct": 1.0,
+    }
 
 
 def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:
