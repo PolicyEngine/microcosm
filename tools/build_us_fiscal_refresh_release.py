@@ -107,6 +107,8 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
 )
 
 DIRECT_ACTIVE_ALIASES = (
+    "census-pep-2024-national-age-sex",
+    "census-pep-2024-state-age-sex",
     "cms-aca-oep-state-level",
     "cms-medicaid-chip-monthly-enrollment-dataset",
     "cms-medicare-trustees-report-2025-part-b-premium-income",
@@ -139,8 +141,6 @@ REVIEWED_EXCLUDED_ALIASES = (
     "census-acs-s0101-congressional-district-age-2024",
     "census-acs-s0101-national-age-2024",
     "census-acs-s0101-state-age-2024",
-    "census-pep-2024-national-age-sex",
-    "census-pep-2024-state-age-sex",
     "cms-aca-effectuated-enrollment-2022",
     "cms-aca-oep-state-level-2022",
     "cms-aca-oep-state-level-2025",
@@ -149,6 +149,19 @@ REVIEWED_EXCLUDED_ALIASES = (
     "hhs-acf-liheap-fy2023-national-profile",
     "hhs-acf-liheap-fy2024-national-profile",
     "ssa-ssi-table-7b1-2024",
+)
+
+SUPPORTED_LEDGER_FILTER_METADATA_KEYS = frozenset(
+    {
+        "ledger_filter_amount_basis",
+        "ledger_filter_eitc_child_count",
+        "ledger_filter_filing_status",
+        "ledger_filter_income_range",
+        "ledger_filter_medicare.financing_component",
+        "ledger_filter_medicare.part",
+        "ledger_filter_tax_expenditure",
+        "ledger_filter_us_social_security_and_ssi.program_payment_type",
+    }
 )
 
 FISCAL_TARGET_SOURCE_KEYS = {
@@ -1010,6 +1023,63 @@ def _as_bound(value: str) -> float:
     return float(value)
 
 
+def _population_age_household_values(
+    *,
+    frame: Frame,
+    household: pd.DataFrame,
+    age: np.ndarray,
+    metadata: Mapping[str, str],
+) -> np.ndarray:
+    lower = _as_bound(metadata.get("age_lower_bound", "-inf"))
+    upper = _as_bound(metadata.get("age_upper_bound", "inf"))
+    person_mask = (age >= lower) & (age < upper)
+    values = _collapse_person(frame, person_mask.astype(np.float64))
+    state_fips = metadata.get("state_fips")
+    if state_fips:
+        values = np.where(
+            household["state_fips"].to_numpy() == int(state_fips),
+            values,
+            0.0,
+        )
+    return values
+
+
+def _unsupported_ledger_filter_metadata(
+    target_specs: Iterable[object],
+) -> dict[str, tuple[str, ...]]:
+    unsupported: dict[str, tuple[str, ...]] = {}
+    for spec in target_specs:
+        metadata = getattr(spec, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            continue
+        keys = tuple(
+            sorted(
+                str(key)
+                for key in metadata
+                if str(key).startswith("ledger_filter")
+                and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+            )
+        )
+        if keys:
+            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = keys
+    return unsupported
+
+
+def _assert_supported_ledger_filter_metadata(
+    target_specs: Iterable[object],
+) -> None:
+    unsupported = _unsupported_ledger_filter_metadata(target_specs)
+    if not unsupported:
+        return
+    details = "; ".join(
+        f"{name}: {', '.join(keys)}" for name, keys in sorted(unsupported.items())
+    )
+    raise RuntimeError(
+        "Unsupported Ledger target filter metadata would be ignored by the "
+        f"US fiscal materializer: {details}."
+    )
+
+
 def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
     values = np.asarray(values, dtype=np.float64)
     if source_name == "adjusted_gross_income":
@@ -1083,6 +1153,7 @@ def _materialize_target_frame(
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
+    _assert_supported_ledger_filter_metadata(target_specs)
     dataset = _dataset_from_frame(base_frame)
     simulation = Microsimulation(dataset=dataset)
     system = CountryTaxBenefitSystem()
@@ -1116,6 +1187,20 @@ def _materialize_target_frame(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    population_age_target_specs = [
+        spec
+        for spec in target_specs
+        if spec.metadata.get("materializer") == "population_age"
+    ]
+    if population_age_target_specs and "age" in system.variables:
+        person_age = np.asarray(_calculate_array(simulation, "age"), dtype=np.float64)
+        for spec in population_age_target_specs:
+            hh[spec.measure] = _population_age_household_values(
+                frame=base_frame,
+                household=household,
+                age=person_age,
+                metadata=spec.metadata,
+            )
     direct_target_specs = [
         spec
         for spec in target_specs
@@ -1743,8 +1828,8 @@ def _write_demographics(
 ) -> None:
     """Emit demographics.json: the dataset's weighted population by age band.
 
-    The fiscal-refresh release does not calibrate the age distribution, so this
-    is published as an emergent diagnostic (populace vs the Census age structure).
+    The fiscal-refresh release calibrates source-backed Census PEP age targets;
+    this file remains a compact summary diagnostic for release consumers.
     """
     from policyengine_us import Microsimulation
     from policyengine_us.data import USSingleYearDataset

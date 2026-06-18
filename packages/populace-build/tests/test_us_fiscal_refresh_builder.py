@@ -1480,6 +1480,157 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     assert compilation["dropped_target_names"] == []
 
 
+def test_population_age_targets_materialize_person_age_counts(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray(
+                        [100, 100, 200, 200], dtype="int64"
+                    ),
+                    "person_family_id": np.asarray(
+                        [1000, 1000, 2000, 2000], dtype="int64"
+                    ),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 12], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def population_age_spec(name, lower, upper, *, state_fips=None):
+        metadata = {
+            "materializer": "population_age",
+            "measure_mode": "count",
+            "target_role": "population_age",
+            "geography_scope": "state" if state_fips else "national",
+            "age_lower_bound": str(lower),
+            "age_upper_bound": str(upper),
+        }
+        if state_fips:
+            metadata["state_fips"] = state_fips
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=name,
+            value=1.0,
+            source="fixture",
+            family="census_population",
+            metadata=metadata,
+        )
+
+    targets = (
+        population_age_spec("national_age_0_to_4", 0, 5),
+        population_age_spec("ca_age_0_to_4", 0, 5, state_fips="06"),
+        population_age_spec("ca_age_5_to_9", 5, 10, state_fips="06"),
+    )
+
+    class FakeVariable:
+        def __init__(self, entity):
+            self.entity = SimpleNamespace(key=entity)
+
+    class FakeSystem:
+        variables = {
+            "income_tax": FakeVariable("tax_unit"),
+            "taxable_income": FakeVariable("tax_unit"),
+            "adjusted_gross_income": FakeVariable("tax_unit"),
+            "filing_status": FakeVariable("tax_unit"),
+            "state_income_tax": FakeVariable("tax_unit"),
+            "age": FakeVariable("person"),
+        }
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = dataset
+            self.reform = reform
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([0.0, 0.0, 0.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "age": np.asarray([2.0, 7.0, 4.0, 11.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["national_age_0_to_4"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["ca_age_0_to_4"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(household["ca_age_5_to_9"], np.asarray([1.0, 0.0]))
+    assert len(registry) == 3
+    assert compilation["dropped_target_names"] == []
+
+
+def test_unknown_ledger_filter_metadata_fails_closed() -> None:
+    builder = _load_builder_module()
+    target = TargetSpec(
+        name="unknown_filter_target",
+        entity="household",
+        measure="income_tax",
+        value=1.0,
+        source="fixture",
+        family="irs_soi",
+        metadata={"ledger_filter_unmodeled_axis": "example"},
+    )
+
+    try:
+        builder._assert_supported_ledger_filter_metadata((target,))
+    except RuntimeError as exc:
+        assert "ledger_filter_unmodeled_axis" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected unknown Ledger filter metadata to fail closed.")
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:

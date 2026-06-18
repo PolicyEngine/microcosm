@@ -752,6 +752,8 @@ def _reference_from_ledger_fact(
         return _soi_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
+    if source_name == "census_pep":
+        return _population_age_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
@@ -835,6 +837,58 @@ def _state_income_tax_reference_from_fact(
             "state_fips": state_fips,
             "target_role": "state_income_tax",
         },
+    )
+
+
+def _population_age_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    if _measure_id(fact) != "population":
+        return None
+    geography_level = _geography_level(fact)
+    if geography_level == "country":
+        state_fips = None
+        geography_scope = "national"
+    elif geography_level == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+        geography_scope = "state"
+    else:
+        return None
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+    lower, upper = _age_bounds(fact)
+    if lower == "-inf" and upper == "inf":
+        return None
+    metadata = {
+        "materializer": "population_age",
+        "measure_mode": "count",
+        "source_measure_id": "population",
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+        "target_role": "population_age",
+        "geography_scope": geography_scope,
+        "age_lower_bound": lower,
+        "age_upper_bound": upper,
+    }
+    groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+    if groupby_value_id:
+        metadata["age_group"] = groupby_value_id
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        aggregation="sum",
+        period=target_period,
+        family="census_population",
+        metadata=metadata,
     )
 
 
@@ -972,6 +1026,32 @@ def _agi_bounds(fact: object) -> tuple[str, str]:
         elif operator in {"<", "<="}:
             upper = str(float(value))
     return lower, upper
+
+
+def _age_bounds(fact: object) -> tuple[str, str]:
+    lower = "-inf"
+    upper = "inf"
+    for constraint in _constraint_rows(fact):
+        if not isinstance(constraint, dict):
+            continue
+        if str(constraint.get("variable") or "") != "age":
+            continue
+        value = constraint.get("value")
+        if value is None:
+            continue
+        operator = str(constraint.get("operator") or "")
+        if operator in {">", ">="}:
+            lower = _format_number(value)
+        elif operator in {"<", "<="}:
+            upper = _format_number(value)
+    return lower, upper
+
+
+def _format_number(value: object) -> str:
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return str(numeric)
 
 
 def _filing_status_label(value: object) -> str | None:
@@ -1249,6 +1329,26 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         accepted_families=("state_income_tax",),
         required_metadata=(("target_role", "state_income_tax"),),
         min_matches=44,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="population_age_national",
+        label="Census PEP national population by age",
+        accepted_families=("census_population",),
+        required_metadata=(
+            ("target_role", "population_age"),
+            ("geography_scope", "national"),
+        ),
+        min_matches=19,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="population_age_state",
+        label="Census PEP state population by age",
+        accepted_families=("census_population",),
+        required_metadata=(
+            ("target_role", "population_age"),
+            ("geography_scope", "state"),
+        ),
+        min_matches=969,
     ),
     *(spec.coverage_requirement() for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
 )
