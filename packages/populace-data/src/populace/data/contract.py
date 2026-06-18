@@ -456,8 +456,14 @@ def _check_release_manifest_package(
         )
     elif not name:
         failures.append(f"release_manifest.json '{field}.name' is required.")
-    if not package.get("version"):
+    version = package.get("version")
+    if not version:
         failures.append(f"release_manifest.json '{field}.version' is required.")
+    elif version in {"not-installed", "unknown"}:
+        failures.append(
+            f"release_manifest.json '{field}.version' must be resolved, "
+            f"not {version!r}."
+        )
 
 
 def _check_compatible_package_entries(

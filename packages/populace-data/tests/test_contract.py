@@ -899,6 +899,21 @@ def test_release_manifest_requires_policyengine_certification_shape(
     assert "artifact 'populace_us_2024' is missing 'revision'" in failures
 
 
+def test_release_manifest_rejects_unresolved_package_versions(
+    release_dir: Path,
+) -> None:
+    manifest = _release_manifest()
+    manifest["data_package"]["version"] = "not-installed"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "data_package.version" in failures
+    assert "not-installed" in failures
+
+
 def test_release_manifest_requires_compatible_core_package(
     release_dir: Path,
 ) -> None:

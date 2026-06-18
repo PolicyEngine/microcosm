@@ -18,6 +18,7 @@ import math
 import platform
 import shutil
 import subprocess
+import tomllib
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -403,8 +404,20 @@ def _runtime_versions() -> dict[str, str]:
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
-            versions[package] = "not-installed"
+            versions[package] = _local_workspace_package_version(package)
     return versions
+
+
+def _local_workspace_package_version(package: str) -> str:
+    pyproject = Path("packages") / package / "pyproject.toml"
+    if not pyproject.is_file():
+        return "not-installed"
+    with pyproject.open("rb") as file:
+        project = tomllib.load(file).get("project")
+    if not isinstance(project, Mapping):
+        return "not-installed"
+    version = project.get("version")
+    return version if isinstance(version, str) and version else "not-installed"
 
 
 def _git_output(*args: str) -> str:

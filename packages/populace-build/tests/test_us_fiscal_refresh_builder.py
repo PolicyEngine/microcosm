@@ -23,6 +23,29 @@ def _load_builder_module():
     return module
 
 
+def test_runtime_versions_use_local_workspace_package_version(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    package = tmp_path / "packages" / "populace-data"
+    package.mkdir(parents=True)
+    (package / "pyproject.toml").write_text(
+        '[project]\nname = "populace-data"\nversion = "0.1.0"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        builder.importlib.metadata,
+        "version",
+        lambda name: (_ for _ in ()).throw(
+            builder.importlib.metadata.PackageNotFoundError(name)
+        ),
+    )
+
+    versions = builder._runtime_versions()
+
+    assert versions["populace-data"] == "0.1.0"
+
+
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     def diagnostic(name, target, final_estimate):
         return SimpleNamespace(
