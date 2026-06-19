@@ -1172,6 +1172,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+uk = [
+    { name = "h5py" },
+    { name = "policyengine-uk" },
+]
 us = [
     { name = "h5py" },
     { name = "policyengine-us" },
@@ -1184,16 +1188,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },
+    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.729,<2" },
     { name = "populace-calibrate", editable = "packages/populace-calibrate" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
     { name = "scipy", specifier = ">=1.13" },
 ]
-provides-extras = ["us"]
+provides-extras = ["us", "uk"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

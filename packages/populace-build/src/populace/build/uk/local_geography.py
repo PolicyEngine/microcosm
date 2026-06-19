@@ -362,22 +362,64 @@ def stacked_weights_to_long(
     return out.loc[:, LONG_GEOGRAPHY_COLUMNS]
 
 
-def area_support_summary(long_weights: pd.DataFrame) -> pd.DataFrame:
-    """Summarize non-zero household support by local area."""
+def area_support_summary(
+    long_weights: pd.DataFrame,
+    *,
+    area_codes: Sequence[str] | None = None,
+    area_type: str | None = None,
+) -> pd.DataFrame:
+    """Summarize non-zero household support by local area.
+
+    Passing ``area_codes`` includes requested areas with no positive assigned
+    households, which is important for sparse/L0 local solves.
+    """
 
     missing = sorted(set(LONG_GEOGRAPHY_COLUMNS) - set(long_weights.columns))
     if missing:
         raise ValueError(f"long weight frame is missing column(s): {missing}.")
     positive = long_weights[long_weights["weight"] > 0]
-    return (
+    summary = (
         positive.groupby(["area_type", "area_code"], sort=True)
         .agg(
             nonzero_households=("household_id", "nunique"),
+            nonzero_source_households=("source_household_key", "nunique"),
             weight_sum=("weight", "sum"),
             max_weight=("weight", "max"),
+            effective_sample_size=("weight", _effective_sample_size),
         )
         .reset_index()
     )
+    if area_codes is None:
+        return summary
+
+    codes = _area_code_tuple(area_codes)
+    if area_type is None:
+        area_types = long_weights["area_type"].dropna().unique()
+        if len(area_types) != 1:
+            raise ValueError(
+                "area_type must be supplied when area_codes are supplied and "
+                "long_weights does not contain exactly one area_type."
+            )
+        area_type = str(area_types[0])
+    full = pd.DataFrame(
+        {
+            "area_type": area_type,
+            "area_code": list(codes),
+        }
+    )
+    completed = full.merge(summary, on=["area_type", "area_code"], how="left")
+    completed["nonzero_households"] = (
+        completed["nonzero_households"].fillna(0).astype(int)
+    )
+    completed["nonzero_source_households"] = (
+        completed["nonzero_source_households"].fillna(0).astype(int)
+    )
+    completed["weight_sum"] = completed["weight_sum"].fillna(0.0).astype(float)
+    completed["max_weight"] = completed["max_weight"].fillna(0.0).astype(float)
+    completed["effective_sample_size"] = (
+        completed["effective_sample_size"].fillna(0.0).astype(float)
+    )
+    return completed
 
 
 def write_long_geography_weights(
@@ -551,3 +593,11 @@ def _source_keys(
         else:
             keys.append(f"{year}:{household_id}")
     return np.asarray(keys, dtype=object)
+
+
+def _effective_sample_size(weights: pd.Series) -> float:
+    values = weights.to_numpy(dtype=np.float64)
+    square_sum = float(np.square(values).sum())
+    if square_sum == 0:
+        return 0.0
+    return float(values.sum() ** 2 / square_sum)

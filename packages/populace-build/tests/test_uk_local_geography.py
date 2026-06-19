@@ -182,4 +182,55 @@ def test_area_support_summary_counts_nonzero_households() -> None:
 
     assert summary["area_code"].tolist() == ["E001", "S001"]
     assert summary["nonzero_households"].tolist() == [1, 2]
+    assert summary["nonzero_source_households"].tolist() == [1, 2]
     assert summary["weight_sum"].tolist() == [0.5, 3.5]
+    np.testing.assert_allclose(
+        summary["effective_sample_size"],
+        [1.0, (1.5 + 2.0) ** 2 / (1.5**2 + 2.0**2)],
+    )
+
+
+def test_area_support_summary_includes_zero_support_areas() -> None:
+    long = stacked_weights_to_long(
+        [1.0, 0.0],
+        ["E001", "S001"],
+        [101],
+        area_type="constituency",
+    )
+
+    summary = area_support_summary(
+        long,
+        area_codes=["E001", "S001"],
+        area_type="constituency",
+    )
+
+    assert summary["area_code"].tolist() == ["E001", "S001"]
+    assert summary["nonzero_households"].tolist() == [1, 0]
+    assert summary["nonzero_source_households"].tolist() == [1, 0]
+    assert summary["weight_sum"].tolist() == [1.0, 0.0]
+    assert summary["effective_sample_size"].tolist() == [1.0, 0.0]
+
+
+def test_area_support_summary_counts_cloned_source_support() -> None:
+    household_frame = pd.DataFrame(
+        {
+            "household_id": [101, 102],
+            "source_year": [2023, 2023],
+            "source_household_id": ["a", "a"],
+            "source_household_key": ["2023:a", "2023:a"],
+            "clone_index": [0, 1],
+        }
+    )
+    long = stacked_weights_to_long(
+        [1.0, 1.0],
+        ["E001"],
+        [101, 102],
+        area_type="constituency",
+        household_frame=household_frame,
+    )
+
+    summary = area_support_summary(long)
+
+    assert summary["nonzero_households"].tolist() == [2]
+    assert summary["nonzero_source_households"].tolist() == [1]
+    assert summary["effective_sample_size"].tolist() == [2.0]
