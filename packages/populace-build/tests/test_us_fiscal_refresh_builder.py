@@ -1563,13 +1563,17 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         {
             "person": pd.DataFrame(
                 {
-                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
-                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
-                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
-                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
-                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30, 40], dtype="int64"),
+                    "person_spm_unit_id": np.asarray(
+                        [100, 100, 200, 200], dtype="int64"
+                    ),
+                    "person_family_id": np.asarray(
+                        [1000, 1000, 2000, 2000], dtype="int64"
+                    ),
                     "person_marital_unit_id": np.asarray(
-                        [10000, 20000, 30000], dtype="int64"
+                        [10000, 20000, 30000, 40000], dtype="int64"
                     ),
                 }
             ),
@@ -1580,12 +1584,12 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 }
             ),
             "tax_unit": pd.DataFrame(
-                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+                {"tax_unit_id": np.asarray([10, 20, 30, 40], dtype="int64")}
             ),
             "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
             "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
             "marital_unit": pd.DataFrame(
-                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+                {"marital_unit_id": np.asarray([10000, 20000, 30000, 40000])}
             ),
         },
         builder.US_SCHEMA,
@@ -1596,9 +1600,9 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         },
     )
 
-    def eitc_spec(name, measure, child_filter, *, count=False):
+    def eitc_spec(name, measure, child_filter, *, count=False, variable="eitc"):
         metadata = {
-            "variable": "eitc",
+            "variable": variable,
             "agi_lower_bound": "-inf",
             "agi_upper_bound": "inf",
             "filing_status": "All",
@@ -1622,6 +1626,127 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         eitc_spec("two_child_amount", "two_child_amount", "2"),
         eitc_spec("three_plus_amount", "three_plus_amount", "3plus"),
         eitc_spec("two_child_returns", "two_child_returns", "2", count=True),
+        eitc_spec(
+            "three_plus_return_count",
+            "three_plus_return_count",
+            "three_or_more_qualifying_children",
+            count=True,
+        ),
+        TargetSpec(
+            name="form_w2_social_security_tips",
+            entity="household",
+            measure="form_w2_social_security_tips",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "tip_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "count": "true",
+            },
+        ),
+        TargetSpec(
+            name="medical_dental_expense_amount",
+            entity="household",
+            measure="medical_dental_expense_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "medical_expense_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "medical_dental_expense_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="medical_dental_expense_returns",
+            entity="household",
+            measure="medical_dental_expense_returns",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "medical_expense_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "medical_dental_expense_returns",
+                "count": "true",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="real_estate_taxes_amount",
+            entity="household",
+            measure="real_estate_taxes_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "real_estate_taxes",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "real_estate_taxes_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="real_estate_taxes_claims",
+            entity="household",
+            measure="real_estate_taxes_claims",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "real_estate_taxes",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "real_estate_taxes_claims",
+                "count": "true",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="limited_state_local_taxes_amount",
+            entity="household",
+            measure="limited_state_local_taxes_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "salt_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "limited_state_local_taxes_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="limited_state_local_taxes_returns",
+            entity="household",
+            measure="limited_state_local_taxes_returns",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "salt_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "limited_state_local_taxes_returns",
+                "count": "true",
+                "itemized_only": "true",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -1638,6 +1763,11 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "state_income_tax",
                 "eitc",
                 "eitc_child_count",
+                "medical_expense_deduction",
+                "real_estate_taxes",
+                "salt_deduction",
+                "tip_income",
+                "tax_unit_itemizes",
             )
         }
 
@@ -1650,13 +1780,20 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             assert period == builder.PERIOD
             assert kwargs == {}
             arrays = {
-                "income_tax": np.asarray([0.0, 0.0, 0.0]),
-                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
-                "adjusted_gross_income": np.asarray([10_000.0, 20_000.0, 30_000.0]),
-                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
-                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
-                "eitc": np.asarray([100.0, 200.0, 300.0]),
-                "eitc_child_count": np.asarray([0.0, 2.0, 3.0]),
+                "income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray(
+                    [10_000.0, 20_000.0, 30_000.0, 40_000.0]
+                ),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "eitc": np.asarray([100.0, 200.0, 300.0, 0.0]),
+                "eitc_child_count": np.asarray([0.0, 2.0, 3.0, 3.0]),
+                "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
+                "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
+                "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
+                "tip_income": np.asarray([0.0, 50.0, 0.0, 0.0]),
+                "tax_unit_itemizes": np.asarray([False, True, False, False]),
             }
             return arrays[variable]
 
@@ -1672,7 +1809,17 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         ),
     )
     monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
-    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {"eitc": "eitc"})
+    monkeypatch.setattr(
+        builder,
+        "SOI_VARIABLE_MAP",
+        {
+            "eitc": "eitc",
+            "medical_expense_deduction": "medical_expense_deduction",
+            "real_estate_taxes": "real_estate_taxes",
+            "salt_deduction": "salt_deduction",
+            "tip_income": "tip_income",
+        },
+    )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
 
     target_frame, registry, compilation = builder._materialize_target_frame(
@@ -1684,7 +1831,27 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(household["two_child_amount"], np.asarray([200.0, 0.0]))
     assert np.array_equal(household["three_plus_amount"], np.asarray([0.0, 300.0]))
     assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
-    assert len(registry) == 4
+    assert np.array_equal(household["three_plus_return_count"], np.asarray([0.0, 1.0]))
+    assert np.array_equal(
+        household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(
+        household["medical_dental_expense_amount"], np.asarray([200.0, 0.0])
+    )
+    assert np.array_equal(
+        household["medical_dental_expense_returns"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(
+        household["real_estate_taxes_amount"], np.asarray([6_000.0, 0.0])
+    )
+    assert np.array_equal(household["real_estate_taxes_claims"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(
+        household["limited_state_local_taxes_amount"], np.asarray([600.0, 0.0])
+    )
+    assert np.array_equal(
+        household["limited_state_local_taxes_returns"], np.asarray([1.0, 0.0])
+    )
+    assert len(registry) == 12
     assert compilation["dropped_target_names"] == []
 
 
