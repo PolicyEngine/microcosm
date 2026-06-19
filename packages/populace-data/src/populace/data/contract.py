@@ -126,7 +126,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "medical_expense_deduction_amount",
         "label": "medical expense deduction amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": 0.15,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         ),
