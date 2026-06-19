@@ -1755,6 +1755,85 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "itemized_only": "true",
             },
         ),
+        TargetSpec(
+            name="itemized_deductions_amount",
+            entity="household",
+            measure="itemized_deductions_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "itemized_taxable_income_deductions",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "itemized_deductions_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="total_itemized_deductions_amount",
+            entity="household",
+            measure="total_itemized_deductions_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "itemized_taxable_income_deductions",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "total_itemized_deductions_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="charitable_amount",
+            entity="household",
+            measure="charitable_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "charitable_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "charitable_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="interest_paid_deduction_amount",
+            entity="household",
+            measure="interest_paid_deduction_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "interest_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "interest_paid_deduction_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="qbi_amount",
+            entity="household",
+            measure="qbi_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "qualified_business_income_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "qbi_amount",
+            },
+        ),
     )
 
     class FakeVariable:
@@ -1771,6 +1850,10 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "state_income_tax",
                 "eitc",
                 "eitc_child_count",
+                "itemized_taxable_income_deductions",
+                "charitable_deduction",
+                "interest_deduction",
+                "qualified_business_income_deduction",
                 "medical_expense_deduction",
                 "real_estate_taxes",
                 "salt_deduction",
@@ -1797,6 +1880,14 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "state_income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
                 "eitc": np.asarray([100.0, 200.0, 300.0, 0.0]),
                 "eitc_child_count": np.asarray([0.0, 2.0, 3.0, 3.0]),
+                "itemized_taxable_income_deductions": np.asarray(
+                    [1_000.0, 2_000.0, 3_000.0, 4_000.0]
+                ),
+                "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
+                "interest_deduction": np.asarray([1.0, 2.0, 3.0, 4.0]),
+                "qualified_business_income_deduction": np.asarray(
+                    [100.0, 200.0, 300.0, 400.0]
+                ),
                 "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
@@ -1822,6 +1913,14 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         "SOI_VARIABLE_MAP",
         {
             "eitc": "eitc",
+            "itemized_taxable_income_deductions": (
+                "itemized_taxable_income_deductions"
+            ),
+            "charitable_deduction": "charitable_deduction",
+            "interest_deduction": "interest_deduction",
+            "qualified_business_income_deduction": (
+                "qualified_business_income_deduction"
+            ),
             "medical_expense_deduction": "medical_expense_deduction",
             "real_estate_taxes": "real_estate_taxes",
             "salt_deduction": "salt_deduction",
@@ -1859,7 +1958,18 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["limited_state_local_taxes_returns"], np.asarray([1.0, 0.0])
     )
-    assert len(registry) == 12
+    assert np.array_equal(
+        household["itemized_deductions_amount"], np.asarray([2_000.0, 0.0])
+    )
+    assert np.array_equal(
+        household["total_itemized_deductions_amount"], np.asarray([2_000.0, 0.0])
+    )
+    assert np.array_equal(household["charitable_amount"], np.asarray([20.0, 0.0]))
+    assert np.array_equal(
+        household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
+    )
+    assert np.array_equal(household["qbi_amount"], np.asarray([300.0, 700.0]))
+    assert len(registry) == 17
     assert compilation["dropped_target_names"] == []
 
 

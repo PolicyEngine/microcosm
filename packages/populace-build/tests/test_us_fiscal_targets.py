@@ -53,6 +53,15 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "medicare_part_b_premium_total",
 }
 
+REFERENCE_DEDUCTION_TARGET_ROLES = {
+    "itemized_deduction_total",
+    "charitable_deduction_total",
+    "salt_deduction_total",
+    "medical_expense_deduction_total",
+    "qualified_business_income_deduction_total",
+    "interest_deduction_total",
+}
+
 CENSUS_PEP_AGE_GROUPS = (
     "0_to_4",
     "5_to_9",
@@ -829,6 +838,148 @@ def test_soi_itemized_deduction_targets_require_itemizing() -> None:
     assert salt_spec.metadata["itemized_only"] == "true"
 
 
+def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="itemized_deductions_amount",
+            value=1_000_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "total_itemized_deductions_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="total_itemized_deductions_amount",
+            value=1_050_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="charitable_amount",
+            value=220_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "interest_paid_deduction_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="interest_paid_deduction_amount",
+            value=200_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all."
+                "limited_state_local_taxes_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="limited_state_local_taxes_amount",
+            value=120_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="medical_dental_expense_amount",
+            value=80_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id="irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
+            source_name="irs_soi",
+            measure_id="qbi_amount",
+            value=31_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.name: spec for spec in registry.specs}
+    expected = {
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount": (
+            "itemized_taxable_income_deductions",
+            "itemized_deduction_total",
+            "true",
+        ),
+        (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "total_itemized_deductions_amount"
+        ): (
+            "itemized_taxable_income_deductions",
+            "itemized_deduction_total",
+            "true",
+        ),
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount": (
+            "charitable_deduction",
+            "charitable_deduction_total",
+            "true",
+        ),
+        (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "interest_paid_deduction_amount"
+        ): (
+            "interest_deduction",
+            "interest_deduction_total",
+            "true",
+        ),
+        ("irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount"): (
+            "salt_deduction",
+            "salt_deduction_total",
+            "true",
+        ),
+        ("irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount"): (
+            "medical_expense_deduction",
+            "medical_expense_deduction_total",
+            "true",
+        ),
+        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount": (
+            "qualified_business_income_deduction",
+            "qualified_business_income_deduction_total",
+            None,
+        ),
+    }
+    for source_record_id, (variable, role, itemized_only) in expected.items():
+        spec = specs[source_record_id]
+        assert spec.family == "irs_soi"
+        assert spec.metadata["variable"] == variable
+        assert spec.metadata["base_variable"] == variable
+        assert spec.metadata["measure_mode"] == "sum"
+        assert spec.metadata["target_role"] == role
+        if itemized_only is None:
+            assert "itemized_only" not in spec.metadata
+        else:
+            assert spec.metadata["itemized_only"] == itemized_only
+
+
 def test__given_stale_soi_eitc_agi_bucket__then_it_is_not_a_hard_target() -> None:
     source_record_id = (
         "irs_soi.ty2022.table_2_5.eitc_by_agi_children.one_qualifying_child."
@@ -1081,6 +1232,7 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "state_income_tax" in ids
     assert "population_age_national" in ids
     assert "population_age_state" in ids
+    assert REFERENCE_DEDUCTION_TARGET_ROLES <= ids
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         assert f"jct_tax_expenditure:{spec.neutralized_variable}" in ids
 
@@ -1094,6 +1246,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         },
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
         *complete_population_age_rows(),
@@ -1117,6 +1270,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
         },
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
         *complete_population_age_rows(),
@@ -1134,6 +1288,7 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
         *complete_population_age_rows(),
@@ -1151,11 +1306,33 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
         )
 
 
+def test_jct_revenue_loss_targets_do_not_satisfy_deduction_amount_controls() -> None:
+    targets = [
+        federal_income_tax_total_row(),
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *complete_program_rows(),
+        *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
+        *complete_jct_rows(),
+    ]
+
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    for role in REFERENCE_DEDUCTION_TARGET_ROLES:
+        assert any(role in failure for failure in result.failures)
+
+
 def test_state_income_tax_needs_actual_state_surface_not_federal_row() -> None:
     targets = [
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(43),
         *complete_population_age_rows(),
@@ -1174,6 +1351,7 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *[
             row
             for row in complete_program_rows()
@@ -1198,6 +1376,7 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_state_income_tax_rows(45),
         *complete_population_age_rows(),
         *complete_jct_rows(),
@@ -1552,6 +1731,7 @@ def complete_coverage_targets() -> list[dict[str, object]]:
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
         *complete_population_age_rows(),
@@ -1598,6 +1778,18 @@ def complete_income_source_rows() -> list[dict[str, object]]:
         }
         for measure in source_measures
         for i in range(5)
+    ]
+
+
+def complete_deduction_amount_rows() -> list[dict[str, object]]:
+    return [
+        {
+            "name": f"irs_soi.ty2024.deductions.us.all.{role}",
+            "measure": f"irs_soi.ty2024.deductions.us.all.{role}",
+            "family": "irs_soi",
+            "metadata": {"target_role": role},
+        }
+        for role in REFERENCE_DEDUCTION_TARGET_ROLES
     ]
 
 
