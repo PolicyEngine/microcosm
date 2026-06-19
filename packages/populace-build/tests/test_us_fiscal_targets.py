@@ -25,7 +25,7 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "charitable_deduction": (
         "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss"
     ),
-    "deductible_mortgage_interest": (
+    "interest_deduction": (
         "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
     ),
     "qualified_business_income_deduction": (
