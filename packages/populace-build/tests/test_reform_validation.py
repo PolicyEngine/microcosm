@@ -130,11 +130,16 @@ def test_counterfactual_revert_flips_sign(monkeypatch):
 def test_shipped_obbba_config_is_out_of_sample_counterfactual():
     specs = out_of_sample_reform_specs(period=2026)
     assert {s.id for s in specs} >= {"obbba_no_tax_on_tips", "obbba_no_tax_on_overtime"}
+    assert any(s.jct_score and s.jct_score < 0 for s in specs)
+    assert any(s.jct_score and s.jct_score > 0 for s in specs)
+    assert any(s.jct_score is None for s in specs)
     for spec in specs:
         assert spec.effect_direction == "baseline_minus_reform"
         assert spec.period == 2026
-        assert spec.jct_score < 0  # OBBBA provisions are costs
-        assert spec.jct_source.startswith("JCX-35-25")
+        if spec.jct_score is None:
+            assert "No standalone" in spec.jct_source
+        else:
+            assert spec.jct_source.startswith("JCX-35-25")
 
 
 def test_shipped_tax_expenditure_specs_neutralize_big_provisions():

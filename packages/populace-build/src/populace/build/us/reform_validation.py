@@ -188,7 +188,7 @@ def out_of_sample_reform_specs(
                 category=raw.get("category", "OBBBA"),
                 in_sample=False,
                 period=int(raw.get("period", period)),
-                jct_score=float(jct["score"]),
+                jct_score=(float(jct["score"]) if jct.get("score") is not None else None),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
                 jct_source_url=str(jct.get("source_url", "")),
