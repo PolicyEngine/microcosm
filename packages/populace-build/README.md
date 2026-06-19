@@ -57,6 +57,16 @@ files move over. The helper `sort_households_by_id` also codifies the 2024-25
 FRS fix: household attributes and weights must be sorted by the same stable
 household ID before any positional assignment.
 
+`populace.build.uk.local_targets` declares the constituency and local-authority
+metric surface used by the local build: HMRC employment/self-employment amount
+and count rows, ONS age bands, Universal Credit household rows, constituency
+UC-by-children rows, and the LA income/tenure/rent rows. It accepts a
+PolicyEngine-UK-like simulation object and returns household-indexed metric
+tables; it still takes target values as explicit input tables. `local_solver`
+wraps the Populace calibrator's log-weight optimizer for stacked local weights
+and records per-area/per-metric diagnostics before the solved weights are
+exported with `stacked_weights_to_long`.
+
 ## US plan status
 
 `populace.build.us` declares the US build: stage order, donor graph with
