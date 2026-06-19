@@ -129,13 +129,28 @@ def test_uk_release_report_combines_export_and_target_surface() -> None:
         reference_columns={"person.age"},
         candidate_targets={"ons/population"},
         reference_targets={"ons/population"},
+        target_relative_errors={"ons/population": 0.01},
     )
 
     assert report.passed
     assert sorted(report.to_manifest()["gates"]) == [
         "export_surface",
+        "target_fit",
         "target_surface",
     ]
+
+
+def test_uk_release_report_fails_large_target_fit_errors() -> None:
+    report = uk_release_gate_report(
+        candidate_columns={"person.age"},
+        reference_columns={"person.age"},
+        candidate_targets={"ons/population"},
+        reference_targets={"ons/population"},
+        target_relative_errors={"ons/population": -0.40},
+    )
+
+    assert not report.passed
+    assert not report.to_manifest()["gates"]["target_fit"]["passed"]
 
 
 def test_uk_target_fit_gate_fails_large_shipped_target_errors() -> None:

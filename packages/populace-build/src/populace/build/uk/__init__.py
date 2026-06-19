@@ -223,9 +223,11 @@ def uk_release_gate_report(
     reference_columns: Iterable[str],
     candidate_targets: Iterable[str],
     reference_targets: Iterable[str],
+    target_relative_errors: Mapping[str, float],
     reviewed_export_exclusions: Mapping[str, str] | None = None,
+    reviewed_target_fit_exclusions: Mapping[str, str] | None = None,
 ) -> GateReport:
-    """Combine the UK export- and target-surface gates into one report."""
+    """Combine the UK release gates into one report."""
 
     return GateReport(
         (
@@ -237,6 +239,10 @@ def uk_release_gate_report(
             uk_target_surface_gate(
                 candidate_targets,
                 reference_targets,
+            ),
+            uk_target_fit_gate(
+                target_relative_errors,
+                reviewed_exclusions=reviewed_target_fit_exclusions,
             ),
         )
     )
