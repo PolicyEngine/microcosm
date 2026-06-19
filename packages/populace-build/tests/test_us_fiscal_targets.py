@@ -57,7 +57,6 @@ REFERENCE_DEDUCTION_TARGET_ROLES = {
     "itemized_deduction_total",
     "salt_deduction_total",
     "medical_expense_deduction_total",
-    "qualified_business_income_deduction_total",
 }
 
 CENSUS_PEP_AGE_GROUPS = (
@@ -149,7 +148,7 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 40
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 36
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -908,15 +907,6 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
             dimensions={"income_range": "all", "filing_status": "all"},
             layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
         ),
-        _dynamic_ledger_fact(
-            source_record_id="irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
-            source_name="irs_soi",
-            measure_id="qbi_amount",
-            value=31_000_000_000,
-            period_value=2022,
-            dimensions={"income_range": "all", "filing_status": "all"},
-            layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
-        ),
     ]
 
     registry = compile_us_fiscal_target_registry(facts)
@@ -959,11 +949,6 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
             "medical_expense_deduction_total",
             "true",
         ),
-        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount": (
-            "qualified_business_income_deduction",
-            "qualified_business_income_deduction_total",
-            None,
-        ),
     }
     for source_record_id, (variable, role, itemized_only) in expected.items():
         spec = specs[source_record_id]
@@ -976,6 +961,39 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
             assert "itemized_only" not in spec.metadata
         else:
             assert spec.metadata["itemized_only"] == itemized_only
+
+
+def test_soi_qbi_historic_table_2_measures_are_not_direct_targets() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id="irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
+                source_name="irs_soi",
+                measure_id="qbi_amount",
+                value=31_000_000_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id="irs_soi.ty2022.historic_table_2.us.all.qbi_claims",
+                source_name="irs_soi",
+                measure_id="qbi_claims",
+                value=3_700_000,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+            ),
+        ]
+    )
+
+    assert "irs_soi.ty2022.historic_table_2.us.all.qbi_amount" not in {
+        spec.name for spec in registry.specs
+    }
+    assert "irs_soi.ty2022.historic_table_2.us.all.qbi_claims" not in {
+        spec.name for spec in registry.specs
+    }
 
 
 def test__given_stale_soi_eitc_agi_bucket__then_it_is_not_a_hard_target() -> None:
