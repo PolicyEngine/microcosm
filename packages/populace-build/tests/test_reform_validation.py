@@ -10,6 +10,7 @@ import json
 
 import pytest
 
+import populace.build.us.reform_validation as reform_validation_module
 from populace.build.us.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
@@ -39,11 +40,11 @@ class _FakeSim:
         return _FakeSeries(self._totals[measure])
 
 
-def _oos_spec(score: float) -> ReformValidationSpec:
+def _oos_spec(score: float, *, category: str = "Other") -> ReformValidationSpec:
     return ReformValidationSpec(
         id="obbba_salt",
         name="OBBBA — SALT cap to $40k",
-        category="OBBBA",
+        category=category,
         in_sample=False,
         period=2024,
         jct_score=score,
@@ -112,19 +113,69 @@ def test_out_of_sample_budget_effect_is_reform_minus_baseline(monkeypatch):
 
 
 def test_counterfactual_revert_flips_sign(monkeypatch):
-    # A revert reform: baseline (provision on) income tax 2.0e12; reverting the
-    # provision (reform) raises it to 2.033e12. The provision's effect is
-    # baseline − reform = −33e9 (a cost), matching the JCT enactment sign.
-    spec = _oos_spec(score=-33e9)
+    # With a single OBBBA row, the pre-OBBBA scoring baseline is the row's
+    # revert patch and the component-on reform is the no-reform baseline.
+    spec = _oos_spec(score=-33e9, category="OBBBA")
     object.__setattr__(spec, "effect_direction", "baseline_minus_reform")
-    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
 
     def simulate(reform):
-        total = 2.033e12 if reform is not None else 2.0e12
+        total = 2.033e12 if reform else 2.0e12
         return _FakeSim({"income_tax": total})
 
     payload = reform_validation_payload([spec], period=2024, simulate=simulate)
     assert payload["reforms"][0]["populace"]["budget_effect"] == pytest.approx(-33e9)
+
+
+def test_obbba_components_score_against_pre_obbba_baseline(monkeypatch):
+    specs = (
+        ReformValidationSpec(
+            id="obbba_a", name="OBBBA A", category="OBBBA", in_sample=False,
+            period=2026, jct_score=-100.0, jct_window="FY2026",
+            jct_source="JCX", jct_source_url="", parameter_changes={
+                "gov.example.a": {"2026-01-01.2026-12-31": 0},
+            },
+            effect_direction="baseline_minus_reform",
+        ),
+        ReformValidationSpec(
+            id="obbba_b", name="OBBBA B", category="OBBBA", in_sample=False,
+            period=2026, jct_score=60.0, jct_window="FY2026",
+            jct_source="JCX", jct_source_url="", parameter_changes={
+                "gov.example.b": {"2026-01-01.2026-12-31": 0},
+            },
+            effect_direction="baseline_minus_reform",
+        ),
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
+
+    def simulate(reform):
+        # Reform keys are the provisions still turned off. The full pre-OBBBA
+        # baseline has both patches applied. Component A is scored with only B
+        # still off, and component B with only A still off.
+        totals = {
+            frozenset({"gov.example.a", "gov.example.b"}): 1_000.0,
+            frozenset({"gov.example.b"}): 900.0,
+            frozenset({"gov.example.a"}): 1_060.0,
+            None: 950.0,
+        }
+        return _FakeSim({"income_tax": totals[reform]})
+
+    payload = reform_validation_payload(specs, period=2026, simulate=simulate)
+    rows = {row["id"]: row for row in payload["reforms"]}
+    assert rows["obbba_a"]["populace"]["baseline_total"] == pytest.approx(1_000.0)
+    assert rows["obbba_a"]["populace"]["reform_total"] == pytest.approx(900.0)
+    assert rows["obbba_a"]["populace"]["budget_effect"] == pytest.approx(-100.0)
+    assert rows["obbba_b"]["populace"]["baseline_total"] == pytest.approx(1_000.0)
+    assert rows["obbba_b"]["populace"]["reform_total"] == pytest.approx(1_060.0)
+    assert rows["obbba_b"]["populace"]["budget_effect"] == pytest.approx(60.0)
 
 
 def test_shipped_obbba_config_is_out_of_sample_counterfactual():
