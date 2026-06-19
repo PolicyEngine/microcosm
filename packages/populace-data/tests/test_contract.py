@@ -30,7 +30,54 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 5
+TARGET_COUNT = 11
+
+DEDUCTION_CRITICAL_TARGETS = (
+    (
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+        1_000_000_000_000.0,
+        1_020_000_000_000.0,
+        "itemized_deduction_total",
+    ),
+    (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024",
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount",
+        200_000_000_000.0,
+        205_000_000_000.0,
+        "charitable_deduction_total",
+    ),
+    (
+        "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount@2024",
+        "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+        120_000_000_000.0,
+        121_000_000_000.0,
+        "salt_deduction_total",
+    ),
+    (
+        "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
+        "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+        80_000_000_000.0,
+        82_000_000_000.0,
+        "medical_expense_deduction_total",
+    ),
+    (
+        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount@2024",
+        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
+        31_000_000_000.0,
+        30_000_000_000.0,
+        "qualified_business_income_deduction_total",
+    ),
+    (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "interest_paid_deduction_amount@2024",
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "interest_paid_deduction_amount",
+        200_000_000_000.0,
+        198_000_000_000.0,
+        "interest_deduction_total",
+    ),
+)
 
 
 def _model_package(release_id: str) -> tuple[str, str]:
@@ -211,8 +258,25 @@ def _calibration_diagnostics() -> dict:
                 family="irs_soi",
                 target_role="ctc_total",
             ),
+            *deduction_critical_target_rows(),
         ],
     }
+
+
+def deduction_critical_target_rows() -> list[dict]:
+    return [
+        _target_row(
+            name,
+            target_name=target_name,
+            target=target,
+            initial_estimate=target * 1.5,
+            final_estimate=final,
+            relative_error=(final - target) / target,
+            family="irs_soi",
+            target_role=target_role,
+        )
+        for name, target_name, target, final, target_role in DEDUCTION_CRITICAL_TARGETS
+    ]
 
 
 def _target_row(
@@ -288,7 +352,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 3,
+                "target_count": 9,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },
@@ -423,6 +487,81 @@ def test_us_release_rejects_bad_ctc_fit(release_dir: Path) -> None:
     failures = "\n".join(excinfo.value.failures)
     assert "Child Tax Credit amount" in failures
     assert "relative_error=0.599151" in failures
+
+
+@pytest.mark.parametrize(
+    "deduction",
+    DEDUCTION_CRITICAL_TARGETS,
+    ids=lambda row: row[4],
+)
+def test_us_release_rejects_bad_deduction_fit(
+    release_dir: Path, deduction: tuple
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    deduction_name, _, deduction_target, _, _ = deduction
+    target = next(
+        row for row in diagnostics["targets"] if row["name"] == deduction_name
+    )
+    bad_final = deduction_target * 1.5
+    target["final_estimate"] = bad_final
+    target["relative_error"] = (bad_final - deduction_target) / deduction_target
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert deduction_name in failures
+    assert "exceeding 0.1" in failures
+
+
+@pytest.mark.parametrize(
+    "deduction",
+    DEDUCTION_CRITICAL_TARGETS,
+    ids=lambda row: row[4],
+)
+def test_us_release_rejects_deduction_improvement_past_absolute_gate(
+    release_dir: Path, deduction: tuple
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    deduction_name, _, deduction_target, _, _ = deduction
+    target = next(
+        row for row in diagnostics["targets"] if row["name"] == deduction_name
+    )
+    current_final = deduction_target * 1.20
+    target["final_estimate"] = current_final
+    target["relative_error"] = (current_final - deduction_target) / deduction_target
+    diagnostics["build"] = {
+        "incumbent_diagnostics": {
+            "path": "calibration_diagnostics.json",
+            "sha256": "a" * 64,
+            "critical_targets": {
+                target["name"]: {
+                    "target": deduction_target,
+                    "final_estimate": deduction_target * 3.0,
+                    "relative_error": 2.0,
+                }
+            },
+        }
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert deduction_name in failures
+    assert "relative_error=0.2" in failures
 
 
 def test_us_release_allows_bad_ctc_fit_when_it_improves_incumbent(
@@ -578,6 +717,42 @@ def test_us_release_requires_critical_targets(release_dir: Path) -> None:
 
     failures = "\n".join(excinfo.value.failures)
     assert "social_security_benefits" in failures
+
+
+@pytest.mark.parametrize(
+    "deduction",
+    DEDUCTION_CRITICAL_TARGETS,
+    ids=lambda row: row[4],
+)
+def test_us_release_requires_direct_deduction_targets(
+    release_dir: Path, deduction: tuple
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    deduction_name, _, _, _, target_role = deduction
+    diagnostics["targets"] = [
+        row for row in diagnostics["targets"] if row["name"] != deduction_name
+    ]
+    diagnostics["target_surface"]["n_targets"] = len(diagnostics["targets"])
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+    build_manifest = _build_manifest()
+    build_manifest["calibration"]["target_surface"]["n_targets"] = len(
+        diagnostics["targets"]
+    )
+    build_manifest["calibration"]["target_registry"]["n_specs"] = len(
+        diagnostics["targets"]
+    )
+    (release_dir / "build_manifest.json").write_text(json.dumps(build_manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert target_role.replace("_total", "_amount") in failures
 
 
 @pytest.mark.parametrize("filename", required_release_files(RELEASE_ID))

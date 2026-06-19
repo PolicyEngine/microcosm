@@ -96,6 +96,76 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "families": ("irs_soi",),
         "target_roles": ("ctc_total",),
     },
+    {
+        "requirement_id": "itemized_deduction_amount",
+        "label": "itemized deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "total_itemized_deductions_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("itemized_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
+    {
+        "requirement_id": "charitable_deduction_amount",
+        "label": "charitable deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("charitable_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
+    {
+        "requirement_id": "salt_deduction_amount",
+        "label": "state and local tax deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all."
+            "limited_state_local_taxes_amount@2024",
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "limited_state_local_taxes_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("salt_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
+    {
+        "requirement_id": "medical_expense_deduction_amount",
+        "label": "medical expense deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("medical_expense_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
+    {
+        "requirement_id": "qualified_business_income_deduction_amount",
+        "label": "qualified business income deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.qbi_amount@2024",),
+        "families": ("irs_soi",),
+        "target_roles": ("qualified_business_income_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
+    {
+        "requirement_id": "interest_deduction_amount",
+        "label": "interest deduction amount",
+        "max_abs_relative_error": 0.10,
+        "names": (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "interest_paid_deduction_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": ("interest_deduction_total",),
+        "allow_incumbent_improvement": False,
+    },
 )
 _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 
@@ -735,7 +805,8 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                     computed_relative_error
                 ) < abs(incumbent_relative_error)
                 if (
-                    improved_over_incumbent
+                    requirement.get("allow_incumbent_improvement", True)
+                    and improved_over_incumbent
                     and abs(computed_relative_error)
                     <= _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
                 ):

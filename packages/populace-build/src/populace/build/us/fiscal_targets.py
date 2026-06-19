@@ -115,6 +115,8 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "eitc_two_children_amount": "eitc",
     "income_tax_before_credits_amount": "income_tax_before_credits",
     "income_tax_liability_amount": "income_tax",
+    "interest_paid_deduction_amount": "interest_deduction",
+    "itemized_deductions_amount": "itemized_taxable_income_deductions",
     "limited_state_local_taxes_amount": "salt_deduction",
     "medical_dental_expense_amount": "medical_expense_deduction",
     "net_capital_gains_amount": "capital_gains_gross",
@@ -132,8 +134,10 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "taxable_ira_distributions_amount": "ira_distributions",
     "taxable_pension_income_amount": "taxable_pension_income",
     "taxable_social_security_amount": "taxable_social_security",
+    "total_itemized_deductions_amount": "itemized_taxable_income_deductions",
     "unemployment_compensation_amount": "unemployment_compensation",
     "wages_salaries_amount": "employment_income",
+    "charitable_amount": "charitable_deduction",
 }
 
 
@@ -178,6 +182,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "capital_gains_distributions": "capital_gains",
     "capital_gains_gross": "capital_gains",
     "capital_gains_losses": "capital_losses",
+    "charitable_deduction": "charitable_deduction",
     "ctc": "ctc",
     "employment_income": "employment_income",
     "eitc": "eitc",
@@ -186,7 +191,9 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
+    "interest_deduction": "interest_deduction",
     "ira_distributions": "taxable_ira_distributions",
+    "itemized_taxable_income_deductions": "itemized_taxable_income_deductions",
     "medical_expense_deduction": "medical_expense_deduction",
     "ordinary_dividends": "dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
@@ -230,6 +237,9 @@ _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
 )
 _SOI_ITEMIZED_ONLY_VARIABLES = frozenset(
     {
+        "charitable_deduction",
+        "interest_deduction",
+        "itemized_taxable_income_deductions",
         "medical_expense_deduction",
         "real_estate_taxes",
         "salt_deduction",
@@ -1131,7 +1141,14 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
             "eitc_amount": "eitc_total",
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
+            "charitable_amount": "charitable_deduction_total",
             "premium_tax_credit_amount": "aca_spending",
+            "interest_paid_deduction_amount": "interest_deduction_total",
+            "itemized_deductions_amount": "itemized_deduction_total",
+            "limited_state_local_taxes_amount": "salt_deduction_total",
+            "medical_dental_expense_amount": "medical_expense_deduction_total",
+            "qbi_amount": "qualified_business_income_deduction_total",
+            "total_itemized_deductions_amount": "itemized_deduction_total",
             "unemployment_compensation_amount": "unemployment_compensation_total",
         }
         if measure_id in roles:
@@ -1409,6 +1426,44 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="SOI Social Security by AGI bracket",
         accepted_name_substrings=(".taxable_social_security_amount",),
         min_matches=5,
+    ),
+    TargetCoverageRequirement(
+        requirement_id="itemized_deduction_total",
+        label="SOI itemized deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "itemized_deduction_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="charitable_deduction_total",
+        label="SOI charitable deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "charitable_deduction_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="salt_deduction_total",
+        label="SOI state and local tax deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "salt_deduction_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="medical_expense_deduction_total",
+        label="SOI medical expense deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "medical_expense_deduction_total"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="qualified_business_income_deduction_total",
+        label="SOI qualified business income deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(
+            ("target_role", "qualified_business_income_deduction_total"),
+        ),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="interest_deduction_total",
+        label="SOI interest deduction amount total",
+        accepted_families=("irs_soi",),
+        required_metadata=(("target_role", "interest_deduction_total"),),
     ),
     TargetCoverageRequirement(
         requirement_id="social_security_total",
