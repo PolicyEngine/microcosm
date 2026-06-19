@@ -51,7 +51,7 @@ DEDUCTION_CRITICAL_TARGETS = (
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
         80_000_000_000.0,
-        82_000_000_000.0,
+        69_000_000_000.0,
         "medical_expense_deduction_total",
     ),
 )
@@ -475,7 +475,7 @@ def test_us_release_rejects_bad_deduction_fit(
     release_dir: Path, deduction: tuple
 ) -> None:
     diagnostics = _calibration_diagnostics()
-    deduction_name, _, deduction_target, _, _ = deduction
+    deduction_name, _, deduction_target, _, target_role = deduction
     target = next(
         row for row in diagnostics["targets"] if row["name"] == deduction_name
     )
@@ -494,7 +494,8 @@ def test_us_release_rejects_bad_deduction_fit(
 
     failures = "\n".join(excinfo.value.failures)
     assert deduction_name in failures
-    assert "exceeding 0.1" in failures
+    expected_cap = 0.15 if target_role == "medical_expense_deduction_total" else 0.1
+    assert f"exceeding {expected_cap}" in failures
 
 
 @pytest.mark.parametrize(

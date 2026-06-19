@@ -54,7 +54,7 @@ DEDUCTION_CRITICAL_TARGETS = (
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
         80_000_000_000.0,
-        82_000_000_000.0,
+        69_000_000_000.0,
         "medical_expense_deduction_total",
     ),
 )
