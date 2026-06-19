@@ -10,25 +10,40 @@ from __future__ import annotations
 
 import pytest
 
-from populace.data import latest_year, load, resolve
+from populace.data import DEFAULT_VARIANT, latest_year, load, resolve
 
 
 def test_resolve_defaults_to_the_latest_year() -> None:
     spec = resolve("us")
     assert spec.year == latest_year("us")
+    assert spec.variant == DEFAULT_VARIANT
 
 
 def test_resolve_is_case_insensitive_on_country() -> None:
-    assert resolve("US", 2024).key == ("us", 2024)
+    assert resolve("US", 2024).key == ("us", 2024, DEFAULT_VARIANT)
+
+
+def test_resolve_can_select_uk_compact_dataset() -> None:
+    spec = resolve("uk", 2023)
+    assert spec.key == ("uk", 2023, DEFAULT_VARIANT)
+    assert spec.filename == "populace_uk_2023.h5"
 
 
 def test_resolve_unknown_year_names_the_published_years() -> None:
-    with pytest.raises(ValueError, match=r"published years for 'us': \[2024\]"):
+    with pytest.raises(
+        ValueError,
+        match=r"published years for 'us' variant 'compact': \[2024\]",
+    ):
         resolve("us", 1999)
 
 
+def test_resolve_unknown_variant_names_the_published_variants() -> None:
+    with pytest.raises(ValueError, match="variant 'local'"):
+        resolve("uk", 2023, variant="local")
+
+
 def test_resolve_unknown_country_names_the_published_countries() -> None:
-    with pytest.raises(ValueError, match="published countries"):
+    with pytest.raises(ValueError, match="published country variants"):
         resolve("atlantis")
 
 

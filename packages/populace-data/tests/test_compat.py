@@ -34,9 +34,11 @@ def test_data_declares_its_own_version() -> None:
 def test_public_api_surface() -> None:
     """The shard exports exactly the documented public names."""
     from populace.data import (
+        DEFAULT_VARIANT,
         REGISTRY,
         DatasetSpec,
         available,
+        available_variants,
         download,
         latest_year,
         load,
@@ -44,7 +46,16 @@ def test_public_api_surface() -> None:
         resolve,
     )
 
-    for fn in (load, download, available, resolve, latest_year, register):
+    for fn in (
+        load,
+        download,
+        available,
+        available_variants,
+        resolve,
+        latest_year,
+        register,
+    ):
         assert callable(fn)
     assert isinstance(DatasetSpec, type)
     assert isinstance(REGISTRY, dict)
+    assert DEFAULT_VARIANT == "compact"
