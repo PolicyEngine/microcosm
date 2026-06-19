@@ -58,6 +58,12 @@ REFORM_VALIDATION_SCHEMA_VERSION = 1
 DEFAULT_BUDGET_MEASURE = "income_tax"
 
 
+def _build_parameter_reform(parameter_changes: dict[str, Any]) -> Any:
+    from policyengine_core.reforms import Reform
+
+    return Reform.from_dict(parameter_changes, country_id="us")
+
+
 @dataclass(frozen=True)
 class ReformValidationSpec:
     """One reform to score on the dataset and compare to its JCT figure.
@@ -124,14 +130,36 @@ class ReformValidationSpec:
                     self.neutralize_variable(variable)
 
             return _Neutralize
-        from policyengine_core.reforms import Reform
 
-        return Reform.from_dict(self.parameter_changes, country_id="us")
+        return _build_parameter_reform(self.parameter_changes or {})
 
 
 def _finite(value: float) -> float | None:
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _is_obbba_spec(spec: ReformValidationSpec) -> bool:
+    return (
+        not spec.in_sample
+        and spec.parameter_changes is not None
+        and spec.category.strip().lower() == "obbba"
+    )
+
+
+def _merged_parameter_changes(specs: Iterable[ReformValidationSpec]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    owner: dict[str, str] = {}
+    for spec in specs:
+        for path, change in (spec.parameter_changes or {}).items():
+            if path in merged and merged[path] != change:
+                raise ValueError(
+                    f"{spec.id}: OBBBA parameter path {path!r} conflicts with "
+                    f"{owner[path]}."
+                )
+            merged[path] = change
+            owner[path] = spec.id
+    return merged
 
 
 def in_sample_reform_specs(
@@ -188,7 +216,7 @@ def out_of_sample_reform_specs(
                 category=raw.get("category", "OBBBA"),
                 in_sample=False,
                 period=int(raw.get("period", period)),
-                jct_score=float(jct["score"]),
+                jct_score=(float(jct["score"]) if jct.get("score") is not None else None),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
                 jct_source_url=str(jct.get("source_url", "")),
@@ -312,13 +340,24 @@ def reform_validation_payload(
 
     ``simulate`` is required only if any out-of-sample spec is present (or an
     in-sample estimate is missing); when absent, those rows publish a null
-    budget effect rather than failing the build. The shape matches the
+    budget effect rather than failing the build. OBBBA rows are special because
+    policyengine-us already carries OBBBA in its baseline, while JCX-35-25
+    scores enactment relative to a pre-OBBBA present-law baseline. For those
+    rows, each spec's ``parameter_changes`` remains the counterfactual repeal
+    patch, but scoring first merges all OBBBA repeal patches into a pre-OBBBA
+    baseline and then adds the row's provision back. The shape matches the
     calibration-diagnostics dashboard's reform_validation reader.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
     baseline: Any = None
     baseline_totals: dict[tuple[int, str], float] = {}
+    parameter_reform_sims: dict[str, Any] = {}
+    obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
+    obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
+
+    def parameter_changes_key(changes: dict[str, Any]) -> str:
+        return json.dumps(changes, sort_keys=True, separators=(",", ":"))
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -329,9 +368,35 @@ def reform_validation_payload(
             baseline_totals[key] = _weighted_total(baseline, measure, at_period)
         return baseline_totals[key]
 
+    def simulation_for_parameter_changes(changes: dict[str, Any]) -> Any:
+        key = parameter_changes_key(changes)
+        if key not in parameter_reform_sims:
+            reform = None if not changes else _build_parameter_reform(changes)
+            parameter_reform_sims[key] = simulate(reform)  # type: ignore[misc]
+        return parameter_reform_sims[key]
+
+    def obbba_component_effect(
+        spec: ReformValidationSpec,
+    ) -> tuple[float | None, float | None, float | None]:
+        if simulate is None:
+            return None, None, None
+        component_paths = set((spec.parameter_changes or {}).keys())
+        component_on_changes = {
+            path: change
+            for path, change in obbba_pre_baseline_changes.items()
+            if path not in component_paths
+        }
+        pre_obbba = simulation_for_parameter_changes(obbba_pre_baseline_changes)
+        component_on = simulation_for_parameter_changes(component_on_changes)
+        base = _weighted_total(pre_obbba, spec.budget_measure, spec.period)
+        reform_total = _weighted_total(component_on, spec.budget_measure, spec.period)
+        return reform_total - base, base, reform_total
+
     def simulated_effect(spec: ReformValidationSpec) -> tuple[float | None, float | None, float | None]:
         if simulate is None:
             return None, None, None
+        if _is_obbba_spec(spec):
+            return obbba_component_effect(spec)
         base = baseline_total(spec.budget_measure, spec.period)
         reform_total = _weighted_total(simulate(spec.build_reform()), spec.budget_measure, spec.period)
         raw = reform_total - base
