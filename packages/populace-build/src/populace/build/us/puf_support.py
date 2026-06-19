@@ -9,13 +9,14 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from populace.frame import US_SCHEMA, Frame, Weights
+from populace.fit import QRF
+from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
 
 __all__ = [
@@ -23,6 +24,8 @@ __all__ = [
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_STAGE_NAME",
     "clone_us_frame_for_puf_support",
+    "impute_us_puf_tax_detail_support",
+    "puf_tax_unit_donor_from_arrays",
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",
@@ -36,6 +39,78 @@ _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
 )
+
+PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
+    "puf_predictor_filing_status_code",
+    "puf_predictor_tax_unit_person_count",
+    "puf_predictor_employment_income",
+    "puf_predictor_self_employment_income",
+    "puf_predictor_taxable_interest_income",
+    "puf_predictor_dividend_income",
+    "puf_predictor_tax_exempt_interest_income",
+    "puf_predictor_short_term_capital_gains",
+    "puf_predictor_long_term_capital_gains",
+)
+
+PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
+    "employment_income",
+    "self_employment_income",
+    "taxable_interest_income",
+    "dividend_income",
+    "qualified_dividend_income",
+    "tax_exempt_interest_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains",
+    "non_sch_d_capital_gains",
+    "taxable_pension_income",
+    "taxable_ira_distributions",
+    "unemployment_compensation",
+    "social_security",
+    "charitable_cash_donations",
+    "charitable_non_cash_donations",
+    "real_estate_taxes",
+    "home_mortgage_interest",
+    "student_loan_interest",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "miscellaneous_income",
+)
+
+PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS = (
+    "interest_deduction",
+    "state_withheld_income_tax",
+)
+
+_PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
+    {
+        "employment_income",
+        "taxable_interest_income",
+        "dividend_income",
+        "qualified_dividend_income",
+        "tax_exempt_interest_income",
+        "taxable_pension_income",
+        "taxable_ira_distributions",
+        "unemployment_compensation",
+        "social_security",
+        "charitable_cash_donations",
+        "charitable_non_cash_donations",
+        "real_estate_taxes",
+        "home_mortgage_interest",
+        "student_loan_interest",
+        "interest_deduction",
+        "state_withheld_income_tax",
+    }
+)
+
+_FILING_STATUS_CODES = {
+    "SINGLE": 1.0,
+    "JOINT": 2.0,
+    "SEPARATE": 3.0,
+    "HEAD_OF_HOUSEHOLD": 4.0,
+    "SURVIVING_SPOUSE": 5.0,
+}
+_PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
 def clone_us_frame_for_puf_support(
@@ -105,6 +180,173 @@ def clone_us_frame_for_puf_support(
         frame.schema,
         weights,
         strata,
+        mass_log=frame.mass_log,
+    )
+
+
+def puf_tax_unit_donor_from_arrays(
+    arrays: Mapping[str, Sequence[Any]],
+    *,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> pd.DataFrame:
+    """Build a tax-unit donor table from processed PUF array columns.
+
+    The processed PUF array artifact stores person-grain and tax-unit-grain
+    arrays in one HDF file. This helper reduces person-grain PUF variables to
+    tax-unit aggregates so the shared QRF imputer can fit one tax-unit model
+    and later distribute person outputs over the cloned CPS people.
+
+    Args:
+        arrays: Mapping from column name to array-like values.
+        person_outputs: Person-grain PE input variables to aggregate by tax
+            unit.
+        tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
+
+    Returns:
+        A tax-unit donor DataFrame with numeric predictors, requested outputs,
+        and a ``weight`` column.
+    """
+
+    _require_array_columns(
+        arrays,
+        ["tax_unit_id", "household_weight", "filing_status", "person_tax_unit_id"],
+        label="PUF arrays",
+    )
+    tax_unit_id = _numeric_array(arrays["tax_unit_id"]).astype("int64")
+    person_tax_unit_id = _numeric_array(arrays["person_tax_unit_id"]).astype("int64")
+
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": tax_unit_id,
+            "weight": _numeric_array(arrays["household_weight"]),
+            "filing_status_code": _filing_status_codes(arrays["filing_status"]),
+        }
+    )
+    person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
+
+    person_source_columns = set(person_outputs)
+    if "interest_deduction" in tax_unit_outputs:
+        person_source_columns.add("home_mortgage_interest")
+    for output in sorted(person_source_columns):
+        source = _person_source_values(arrays, output)
+        if source is not None:
+            person[output] = source
+
+    grouped = person.groupby("tax_unit_id", sort=False).sum(numeric_only=True)
+    tax_unit = tax_unit.join(grouped, on="tax_unit_id")
+    tax_unit["tax_unit_person_count"] = (
+        person.groupby("tax_unit_id", sort=False).size().reindex(tax_unit_id).to_numpy()
+    )
+
+    for output in tax_unit_outputs:
+        values = _tax_unit_source_values(arrays, tax_unit_id, output, grouped)
+        if values is not None:
+            tax_unit[output] = values
+
+    required_outputs = [*person_outputs, *tax_unit_outputs]
+    missing = [column for column in required_outputs if column not in tax_unit.columns]
+    if missing:
+        raise ValueError(f"PUF donor cannot derive requested output(s): {missing}.")
+
+    for column in tax_unit.columns:
+        if column == "tax_unit_id":
+            continue
+        tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+    return tax_unit
+
+
+def impute_us_puf_tax_detail_support(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    seed: int = 0,
+    n_estimators: int = 100,
+) -> Frame:
+    """Impute PUF-observed inputs onto the PUF support channel.
+
+    Baseline ASEC support rows are left untouched. PUF support rows receive
+    tax-unit predictions from the PUF donor; person-grain predicted tax-unit
+    totals are distributed over the cloned people using their copied ASEC
+    within-tax-unit shares, falling back to the first person in the unit when
+    the copied support has no mass for a variable.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("PUF tax-detail support imputation requires the US schema.")
+    tax_unit_channel = support_channel_column("tax_unit")
+    person_channel = support_channel_column("person")
+    if tax_unit_channel not in frame.table("tax_unit").columns:
+        raise ValueError("PUF support metadata is missing from the tax_unit table.")
+    if person_channel not in frame.table("person").columns:
+        raise ValueError("PUF support metadata is missing from the person table.")
+
+    predictors = tuple(predictors)
+    person_outputs = tuple(person_outputs)
+    tax_unit_outputs = tuple(tax_unit_outputs)
+    outputs = (*person_outputs, *tax_unit_outputs)
+    donor_tax_units = donor_tax_units.copy()
+    _add_predictor_aliases(donor_tax_units, predictors)
+    missing_donor = [
+        column
+        for column in (*predictors, *outputs, "weight")
+        if column not in donor_tax_units
+    ]
+    if missing_donor:
+        raise ValueError(
+            f"PUF donor tax-unit table missing column(s): {missing_donor}."
+        )
+
+    donor = donor_tax_units.loc[:, [*predictors, *outputs, "weight"]].copy()
+    for column in donor.columns:
+        donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
+    donor_frame = _tax_unit_model_frame(donor)
+    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
+        donor_frame,
+        list(predictors),
+        list(outputs),
+        weights="design",
+    )
+
+    features = _tax_unit_feature_frame(frame, predictors)
+    puf_mask = (
+        frame.table("tax_unit")[tax_unit_channel].to_numpy()
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF support channel has no tax-unit rows.")
+    predictions = fitted.predict(features.loc[puf_mask, list(predictors)])
+    for column in outputs:
+        if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
+            predictions[column] = predictions[column].clip(lower=0.0)
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
+    for column in tax_unit_outputs:
+        _ensure_float_output_column(tables["tax_unit"], column)
+        tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
+
+    person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    for column in person_outputs:
+        _ensure_float_output_column(tables["person"], column)
+        _write_person_tax_unit_totals(
+            tables["person"],
+            mask=person_puf_mask,
+            column=column,
+            totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
+            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+        )
+    _write_tax_unit_partnership_s_corp_income_from_splits(tables)
+
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
         mass_log=frame.mass_log,
     )
 
@@ -291,3 +533,271 @@ def _remap_ids(
 def _require_entity_name(entity: str) -> None:
     if not isinstance(entity, str) or not entity:
         raise ValueError("entity must be a non-empty string.")
+
+
+def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
+    n = len(donor)
+    tax_unit = donor.drop(columns=["weight"]).copy()
+    tax_unit.insert(0, "tax_unit_id", np.arange(1, n + 1, dtype="int64"))
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1, dtype="int64"),
+            "person_tax_unit_id": tax_unit["tax_unit_id"].to_numpy(),
+        }
+    )
+    schema = EntitySchema(group_entities=("tax_unit",))
+    return Frame(
+        {"person": person, "tax_unit": tax_unit},
+        schema,
+        {
+            "tax_unit": Weights(
+                donor["weight"].to_numpy(dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFrame:
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    result = pd.DataFrame(index=tax_unit.index)
+    for column in columns:
+        source_column = _predictor_source_column(column)
+        if source_column == "filing_status_code":
+            source = tax_unit.get("filing_status_input")
+            if source is None:
+                source = tax_unit.get("filing_status")
+            if source is None:
+                raise ValueError("tax_unit table lacks filing-status input.")
+            result[column] = _filing_status_codes(source)
+        elif source_column == "tax_unit_person_count":
+            result[column] = (
+                person.groupby("person_tax_unit_id", sort=False)
+                .size()
+                .reindex(tax_unit["tax_unit_id"])
+                .fillna(0.0)
+                .to_numpy(dtype=np.float64)
+            )
+        elif source_column in tax_unit.columns:
+            result[column] = pd.to_numeric(
+                tax_unit[source_column], errors="coerce"
+            ).fillna(0.0)
+        else:
+            result[column] = _person_tax_unit_sum(frame, source_column)
+    return result
+
+
+def _person_tax_unit_sum(frame: Frame, column: str) -> np.ndarray:
+    person = frame.table("person")
+    tax_unit = frame.table("tax_unit")
+    if column == "dividend_income" and column not in person.columns:
+        values = _optional_person(person, "non_qualified_dividend_income")
+        values += _optional_person(person, "qualified_dividend_income")
+    else:
+        if column not in person.columns:
+            raise ValueError(
+                f"Cannot build tax-unit predictor {column!r}; no matching "
+                "tax_unit column or person column exists."
+            )
+        values = pd.to_numeric(person[column], errors="coerce").fillna(0.0)
+    grouped = (
+        pd.DataFrame(
+            {
+                "person_tax_unit_id": person["person_tax_unit_id"],
+                column: np.asarray(values, dtype=np.float64),
+            }
+        )
+        .groupby("person_tax_unit_id", sort=False)[column]
+        .sum()
+    )
+    return grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
+
+
+def _optional_person(person: pd.DataFrame, column: str) -> np.ndarray:
+    if column not in person.columns:
+        return np.zeros(len(person), dtype=np.float64)
+    return pd.to_numeric(person[column], errors="coerce").fillna(0.0).to_numpy()
+
+
+def _ensure_float_output_column(table: pd.DataFrame, column: str) -> None:
+    if column not in table.columns:
+        table[column] = 0.0
+        return
+    table[column] = (
+        pd.to_numeric(table[column], errors="coerce").fillna(0.0).astype("float64")
+    )
+
+
+def _write_person_tax_unit_totals(
+    person: pd.DataFrame,
+    *,
+    mask: pd.Series,
+    column: str,
+    totals: pd.Series,
+    nonnegative: bool,
+) -> None:
+    row_ids = person.loc[mask, "person_tax_unit_id"]
+    current = pd.to_numeric(person.loc[mask, column], errors="coerce").fillna(0.0)
+    basis = current.clip(lower=0.0) if nonnegative else current
+    basis_sum = basis.groupby(row_ids, sort=False).transform("sum")
+    target = row_ids.map(totals).fillna(0.0).to_numpy(dtype=np.float64)
+    first = row_ids.groupby(row_ids, sort=False).cumcount() == 0
+
+    allocation = np.zeros(len(row_ids), dtype=np.float64)
+    has_basis = basis_sum.to_numpy(dtype=np.float64) != 0.0
+    allocation[has_basis] = (
+        target[has_basis]
+        * basis.to_numpy(dtype=np.float64)[has_basis]
+        / basis_sum.to_numpy(dtype=np.float64)[has_basis]
+    )
+    allocation[~has_basis & first.to_numpy()] = target[~has_basis & first.to_numpy()]
+    person.loc[mask, column] = allocation
+
+
+def _person_source_values(
+    arrays: Mapping[str, Sequence[Any]],
+    output: str,
+) -> np.ndarray | None:
+    if output in arrays:
+        return _numeric_array(arrays[output])
+    if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
+        return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
+    if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
+        return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
+    if output == "dividend_income":
+        return _numeric_array(arrays.get("non_qualified_dividend_income", 0.0)) + (
+            _numeric_array(arrays.get("qualified_dividend_income", 0.0))
+        )
+    if output == "unemployment_compensation" and (
+        "taxable_unemployment_compensation" in arrays
+    ):
+        return _numeric_array(arrays["taxable_unemployment_compensation"])
+    return None
+
+
+def _add_predictor_aliases(
+    table: pd.DataFrame,
+    predictors: Sequence[str],
+) -> None:
+    for predictor in predictors:
+        if predictor in table.columns:
+            continue
+        source = _predictor_source_column(predictor)
+        if source in table.columns:
+            table[predictor] = table[source]
+
+
+def _predictor_source_column(column: str) -> str:
+    if column.startswith(_PUF_PREDICTOR_PREFIX):
+        return column.removeprefix(_PUF_PREDICTOR_PREFIX)
+    return column
+
+
+def _tax_unit_source_values(
+    arrays: Mapping[str, Sequence[Any]],
+    tax_unit_id: np.ndarray,
+    output: str,
+    grouped_person: pd.DataFrame,
+) -> np.ndarray | None:
+    if output in arrays:
+        values = _numeric_array(arrays[output])
+        if len(values) == len(tax_unit_id):
+            return values
+    if (
+        output == "state_withheld_income_tax"
+        and "state_and_local_sales_or_income_tax" in arrays
+    ):
+        return _numeric_array(arrays["state_and_local_sales_or_income_tax"])
+    if output == "interest_deduction":
+        if "home_mortgage_interest" in grouped_person:
+            return (
+                grouped_person["home_mortgage_interest"]
+                .reindex(tax_unit_id)
+                .fillna(0.0)
+                .to_numpy()
+            )
+        pieces = [
+            _numeric_array(arrays[name])
+            for name in (
+                "first_home_mortgage_interest",
+                "second_home_mortgage_interest",
+            )
+            if name in arrays
+        ]
+        if pieces:
+            return np.sum(np.column_stack(pieces), axis=1)
+    if output == "tax_unit_partnership_s_corp_income" and {
+        "partnership_income",
+        "s_corp_income",
+    }.issubset(grouped_person.columns):
+        return (
+            grouped_person["partnership_income"]
+            .add(grouped_person["s_corp_income"], fill_value=0.0)
+            .reindex(tax_unit_id)
+            .fillna(0.0)
+            .to_numpy()
+        )
+    return None
+
+
+def _write_tax_unit_partnership_s_corp_income_from_splits(
+    tables: Mapping[str, pd.DataFrame],
+) -> None:
+    person = tables["person"]
+    if not {"partnership_income", "s_corp_income"}.issubset(person.columns):
+        return
+    tax_unit = tables["tax_unit"]
+    combined = pd.to_numeric(person["partnership_income"], errors="coerce").fillna(
+        0.0
+    ) + pd.to_numeric(person["s_corp_income"], errors="coerce").fillna(0.0)
+    grouped = (
+        pd.DataFrame(
+            {
+                "person_tax_unit_id": person["person_tax_unit_id"],
+                "tax_unit_partnership_s_corp_income": combined,
+            }
+        )
+        .groupby("person_tax_unit_id", sort=False)["tax_unit_partnership_s_corp_income"]
+        .sum()
+    )
+    tax_unit["tax_unit_partnership_s_corp_income"] = (
+        grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
+    )
+
+
+def _filing_status_codes(values: Sequence[Any]) -> np.ndarray:
+    decoded = pd.Series(values).map(_decode_status).str.upper()
+    return decoded.map(_FILING_STATUS_CODES).fillna(0.0).to_numpy(dtype=np.float64)
+
+
+def _decode_status(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
+    return str(value)
+
+
+def _numeric_array(values: Any) -> np.ndarray:
+    if values is None:
+        raise ValueError("Cannot convert missing array to numeric values.")
+    if np.isscalar(values):
+        return np.asarray(values, dtype=np.float64)
+    return (
+        pd.to_numeric(pd.Series(values), errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+
+
+def _require_array_columns(
+    arrays: Mapping[str, Sequence[Any]],
+    columns: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    missing = [column for column in columns if column not in arrays]
+    if missing:
+        raise ValueError(f"{label} missing required array(s): {missing}.")
