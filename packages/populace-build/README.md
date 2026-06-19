@@ -77,6 +77,24 @@ It accepts already-pooled or already-cloned household pools, so the compact UK
 artifact can remain the fast national default while a separate `local` variant
 scales up with pooled FRS years, cloned records, and L0 budget control.
 
+Build the row-wise local-geography H5 from a compact Populace UK H5 with:
+
+```bash
+uv run --project packages/populace-build --extra uk python \
+  tools/build_uk_rowwise_dataset.py \
+  --input-h5 /path/to/populace_uk_2023.h5 \
+  --out /tmp/populace-uk-rowwise \
+  --n-clones 2 \
+  --constituency-codes /path/to/constituencies_2024.csv \
+  --la-codes /path/to/local_authorities_2021.csv
+```
+
+If `--crosswalk` is omitted, the driver builds
+`uk_official_geography_crosswalk.csv.gz` from public ONS, NRS, NISRA, and
+postcode sources. It writes the cloned row-wise H5, a geography coverage CSV,
+and `rowwise_build_manifest.json` with input/output hashes, row counts, target
+coverage, weight preservation, and weakest local-support diagnostics.
+
 ## US plan status
 
 `populace.build.us` declares the US build: stage order, donor graph with
