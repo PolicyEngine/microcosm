@@ -67,6 +67,16 @@ wraps the Populace calibrator's log-weight optimizer for stacked local weights
 and records per-area/per-metric diagnostics before the solved weights are
 exported with `stacked_weights_to_long`.
 
+`populace.build.uk.local_runner` is the Populace-owned candidate build path. It
+loads explicit area and target tables, aligns a sorted household frame with
+source-year/source-household/clone lineage, optionally computes household
+metrics once per UK country by setting the PolicyEngine-UK `region` input, then
+solves and writes `local_geography_weights.csv.gz`,
+`solve_diagnostics.csv`, `area_support_summary.csv`, and `solve_summary.json`.
+It accepts already-pooled or already-cloned household pools, so the compact UK
+artifact can remain the fast national default while a separate `local` variant
+scales up with pooled FRS years, cloned records, and L0 budget control.
+
 ## US plan status
 
 `populace.build.us` declares the US build: stage order, donor graph with
