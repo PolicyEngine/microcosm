@@ -343,6 +343,15 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--diagnostic-skip-tax-expenditure-targets",
+        action="store_true",
+        help=(
+            "Diagnostic only: drop JCT tax-expenditure calibration targets so "
+            "local target materialization can skip reform simulations. Do not "
+            "use for publishable releases."
+        ),
+    )
+    parser.add_argument(
         "--skip-demographics",
         action="store_true",
         help="Do not emit demographics.json (weighted population by age) for this release.",
@@ -1546,7 +1555,10 @@ def _materialize_target_frame(
     simulation._invalidate_all_caches()
     del simulation
     gc.collect()
+    requested_reform_measures = {spec.measure for spec in target_specs}
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
+        if reform_spec.measure not in requested_reform_measures:
+            continue
         reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
         reformed_dataset = _dataset_from_frame(
             base_frame,
@@ -2505,11 +2517,23 @@ def main() -> None:
         target_period=PERIOD,
     )
     target_specs = target_registry.specs
+    if args.diagnostic_skip_tax_expenditure_targets:
+        tax_expenditure_measures = {
+            reform_spec.measure for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS
+        }
+        target_specs = tuple(
+            spec
+            for spec in target_specs
+            if spec.measure not in tax_expenditure_measures
+        )
     target_profile_gate = target_profile_coverage_gate(
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    if not target_profile_gate.passed:
+    if (
+        not target_profile_gate.passed
+        and not args.diagnostic_skip_tax_expenditure_targets
+    ):
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
