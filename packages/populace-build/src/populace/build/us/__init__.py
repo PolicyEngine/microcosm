@@ -32,6 +32,12 @@ from populace.build.source_manifest import (
     SourceStageSpec,
     load_source_manifest,
 )
+from populace.build.us.asec_pool import (
+    AsecSource,
+    build_pooled_asec_unit_frame,
+    load_asec_h5_tables,
+    pool_asec_sources,
+)
 from populace.build.us.demographics import (
     AGE_BANDS,
     DEMOGRAPHICS_SCHEMA_VERSION,
@@ -88,6 +94,7 @@ from populace.frame import Frame
 
 __all__ = [
     "BuildConfig",
+    "AsecSource",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -122,11 +129,14 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "build_pooled_asec_unit_frame",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
     "in_sample_reform_specs",
     "load_default_reform_specs",
+    "load_asec_h5_tables",
     "out_of_sample_reform_specs",
+    "pool_asec_sources",
     "reform_validation_payload",
     "source_gap_family_ids",
     "us_plan",
