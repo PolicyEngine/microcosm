@@ -1016,11 +1016,13 @@ def _base_variables_from_metadata(metadata: Mapping[str, str]) -> tuple[str, ...
 
 def _less_than_from_metadata(metadata: Mapping[str, str]) -> float | None:
     mode = metadata.get("measure_mode", "sum")
-    threshold = metadata.get("count_less_than")
-    if mode != "less_than_count":
+    threshold = metadata.get("indicator_less_than")
+    if mode != "less_than_indicator_sum":
         return None
     if threshold is None:
-        raise ValueError("less_than_count targets must set count_less_than metadata.")
+        raise ValueError(
+            "less-than indicator-sum targets must set indicator_less_than metadata."
+        )
     return float(threshold)
 
 
@@ -1255,10 +1257,10 @@ def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
 
 
 def _soi_component_row(
-    values: np.ndarray, source_name: str, *, count: bool
+    values: np.ndarray, source_name: str, *, indicator: bool
 ) -> np.ndarray:
     component = _signed_component(values, source_name)
-    if count:
+    if indicator:
         return (component > 0).astype(np.float64)
     return component
 
@@ -1378,8 +1380,8 @@ def _materialize_target_frame(
     for spec in direct_target_specs:
         base_variables = _base_variables_from_metadata(spec.metadata)
         mode = spec.metadata.get("measure_mode", "sum")
-        map_to = spec.metadata.get("count_map_to")
-        filter_variable = spec.metadata.get("count_filter_variable")
+        map_to = spec.metadata.get("indicator_map_to")
+        filter_variable = spec.metadata.get("indicator_filter_variable")
         less_than = _less_than_from_metadata(spec.metadata)
         cache_key = (
             base_variables,
@@ -1401,7 +1403,7 @@ def _materialize_target_frame(
                 system=system,
                 variables=base_variables,
                 tax_unit_positions=tax_unit_positions,
-                positive_indicator=mode == "positive_count",
+                positive_indicator=mode == "indicator_sum",
                 map_to=map_to,
                 filter_variable=filter_variable,
                 less_than=less_than,
@@ -1508,7 +1510,7 @@ def _materialize_target_frame(
             mask &= tax_unit_itemizes
         if "state_fips" in spec.metadata:
             mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
-        is_count = spec.metadata.get("count") == "true"
+        indicator_sum = spec.metadata.get("measure_mode") == "indicator_sum"
         if source_name == "count":
             values = mask.astype(np.float64)
         else:
@@ -1518,7 +1520,7 @@ def _materialize_target_frame(
                 _soi_component_row(
                     variable_cache[source_name],
                     source_name,
-                    count=is_count,
+                    indicator=indicator_sum,
                 )
                 * mask
             )
@@ -1722,9 +1724,10 @@ def _fiscal_target_value_basis(spec) -> str:
     metadata = spec.metadata
     measure_mode = metadata.get("measure_mode", "")
     source_measure_id = metadata.get("source_measure_id", "")
-    if metadata.get("count") == "true":
-        return "count"
-    if measure_mode in {"count", "positive_count", "less_than_count"}:
+    if measure_mode in {
+        "indicator_sum",
+        "less_than_indicator_sum",
+    }:
         return "count"
     if "enrollment" in source_measure_id or "recipients" in source_measure_id:
         return "count"

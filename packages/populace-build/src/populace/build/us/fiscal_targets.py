@@ -327,28 +327,28 @@ DIRECT_LEDGER_TARGETS: dict[
 }
 
 
-CountBaseVariables = str | tuple[str, ...]
-CountLedgerTarget = tuple[CountBaseVariables, str, dict[str, str]]
+IndicatorBaseVariables = str | tuple[str, ...]
+IndicatorLedgerTarget = tuple[IndicatorBaseVariables, str, dict[str, str]]
 
 
-COUNT_LEDGER_TARGETS: dict[tuple[str, str], CountLedgerTarget] = {
+INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
     ("cms_aca", "marketplace_enrollment"): (
         "has_marketplace_health_coverage_at_interview",
         "cms_aca",
         {"target_role": "aca_enrollment"},
     ),
-    # CMS counts APTC recipients as people. We proxy this as eligible people
-    # (count_filter_variable) in tax units with positive assigned PTC: the
-    # tax-unit assigned_aca_ptc is projected to person grain (count_map_to) and
-    # filtered to is_aca_ptc_eligible before the positive count. Validated at
-    # 20.24M vs the 19.74M CMS target (+2.5%); see PR #68.
+    # CMS reports APTC recipients as people. We proxy this as an indicator-sum
+    # over eligible people in tax units with positive assigned PTC: the tax-unit
+    # assigned_aca_ptc is projected to person grain (indicator_map_to) and
+    # filtered to is_aca_ptc_eligible. Validated at 20.24M vs the 19.74M CMS
+    # target (+2.5%); see PR #68.
     ("cms_aca", "aptc_recipients"): (
         "assigned_aca_ptc",
         "cms_aca",
         {
             "target_role": "aca_ptc_recipients",
-            "count_map_to": "person",
-            "count_filter_variable": "is_aca_ptc_eligible",
+            "indicator_map_to": "person",
+            "indicator_filter_variable": "is_aca_ptc_eligible",
         },
     ),
     ("cms_aca", "bronze_aptc_consumers"): (
@@ -356,9 +356,9 @@ COUNT_LEDGER_TARGETS: dict[tuple[str, str], CountLedgerTarget] = {
         "cms_aca",
         {
             "target_role": "aca_bronze_aptc_consumers",
-            "measure_mode": "less_than_count",
-            "count_less_than": "1.0",
-            "count_filter_variable": "assigned_aca_ptc",
+            "measure_mode": "less_than_indicator_sum",
+            "indicator_less_than": "1.0",
+            "indicator_filter_variable": "assigned_aca_ptc",
         },
     ),
     ("cms_medicaid", "total_medicaid_enrollment"): (
@@ -723,12 +723,14 @@ def _model_target_key(fact: object) -> tuple[str, ...] | None:
     source_name = _source_name(fact)
     mapping = _direct_target_mapping(fact)
     if mapping is None:
-        count_mapping = COUNT_LEDGER_TARGETS.get((source_name, _measure_id(fact)))
-        if count_mapping is None:
+        indicator_mapping = INDICATOR_LEDGER_TARGETS.get(
+            (source_name, _measure_id(fact))
+        )
+        if indicator_mapping is None:
             return None
-        base_variable, family, metadata = count_mapping
+        base_variable, family, metadata = indicator_mapping
         target_role = metadata.get("target_role", "")
-        measure_mode = metadata.get("measure_mode", "positive_count")
+        measure_mode = metadata.get("measure_mode", "indicator_sum")
     else:
         base_variable, family, metadata = mapping
         target_role = metadata.get("target_role", "")
@@ -741,8 +743,8 @@ def _model_target_key(fact: object) -> tuple[str, ...] | None:
         base_variables,
         target_role,
         measure_mode,
-        metadata.get("count_map_to", ""),
-        metadata.get("count_filter_variable", ""),
+        metadata.get("indicator_map_to", ""),
+        metadata.get("indicator_filter_variable", ""),
         _geography_level(fact),
         _geography_id(fact),
         _state_fips(fact) or "",
@@ -888,8 +890,6 @@ def _soi_reference_from_fact(
         metadata["base_variable"] = base_variables[0]
     elif len(base_variables) > 1:
         metadata["base_variables"] = ",".join(base_variables)
-    if is_count:
-        metadata["count"] = "true"
     if variable in _SOI_ITEMIZED_ONLY_VARIABLES:
         metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
@@ -909,10 +909,8 @@ def _soi_reference_from_fact(
 
 
 def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
-    if variable == "count":
-        return "count"
     if is_count:
-        return "positive_count"
+        return "indicator_sum"
     return "sum"
 
 
@@ -1010,7 +1008,7 @@ def _population_age_reference_from_fact(
         return None
     metadata = {
         "materializer": "population_age",
-        "measure_mode": "count",
+        "measure_mode": "indicator_sum",
         "source_measure_id": "population",
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
@@ -1046,11 +1044,11 @@ def _direct_reference_from_fact(
     mapping = _direct_target_mapping(fact)
     measure_mode = "sum"
     if mapping is None:
-        count_mapping = COUNT_LEDGER_TARGETS.get((source_name, measure_id))
-        if count_mapping is None:
+        indicator_mapping = INDICATOR_LEDGER_TARGETS.get((source_name, measure_id))
+        if indicator_mapping is None:
             return None
-        base_variable, family, metadata = count_mapping
-        metadata = {"measure_mode": "positive_count", **metadata}
+        base_variable, family, metadata = indicator_mapping
+        metadata = {"measure_mode": "indicator_sum", **metadata}
     else:
         base_variable, family, metadata = mapping
         metadata = dict(metadata)

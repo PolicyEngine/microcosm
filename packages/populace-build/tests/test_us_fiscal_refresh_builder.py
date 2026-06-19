@@ -180,14 +180,14 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
-def test_soi_count_rows_count_positive_component_items() -> None:
+def test_soi_indicator_rows_flag_positive_component_items() -> None:
     builder = _load_builder_module()
 
     assert np.array_equal(
         builder._soi_component_row(
             np.array([-5.0, 0.0, 7.0]),
             "capital_gains_gross",
-            count=True,
+            indicator=True,
         ),
         np.array([0.0, 0.0, 1.0]),
     )
@@ -195,7 +195,7 @@ def test_soi_count_rows_count_positive_component_items() -> None:
         builder._soi_component_row(
             np.array([-5.0, 0.0, 7.0]),
             "capital_gains_losses",
-            count=True,
+            indicator=True,
         ),
         np.array([0.0, 0.0, 1.0]),
     )
@@ -203,7 +203,7 @@ def test_soi_count_rows_count_positive_component_items() -> None:
         builder._soi_component_row(
             np.array([-5.0, 0.0, 7.0]),
             "business_net_losses",
-            count=True,
+            indicator=True,
         ),
         np.array([1.0, 0.0, 0.0]),
     )
@@ -711,7 +711,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
                 source="fixture",
                 metadata={
                     "source_measure_id": "income_tax_liability_returns",
-                    "count": "true",
+                    "measure_mode": "indicator_sum",
                 },
             ),
             TargetSpec(
@@ -719,7 +719,10 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
                 entity="household",
                 value=30.0,
                 source="fixture",
-                metadata={"source_measure_id": "ctc_claims", "count": "true"},
+                metadata={
+                    "source_measure_id": "ctc_claims",
+                    "measure_mode": "indicator_sum",
+                },
             ),
         ),
         country="us",
@@ -757,7 +760,10 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
                 entity="household",
                 value=10.0,
                 source="fixture",
-                metadata={"source_measure_id": "ctc_claims", "count": "true"},
+                metadata={
+                    "source_measure_id": "ctc_claims",
+                    "measure_mode": "indicator_sum",
+                },
             ),
         ),
         country="us",
@@ -825,7 +831,10 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
         entity="household",
         value=100.0,
         source="fixture",
-        metadata={"source_measure_id": "ctc_claims", "count": "true"},
+        metadata={
+            "source_measure_id": "ctc_claims",
+            "measure_mode": "indicator_sum",
+        },
     )
     person_count = TargetSpec(
         name="person_count",
@@ -833,10 +842,10 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
         value=100.0,
         source="fixture",
         metadata={
-            "measure_mode": "positive_count",
+            "measure_mode": "indicator_sum",
             "source_measure_id": "aptc_recipients",
             "target_role": "aca_ptc_recipients",
-            "count_map_to": "person",
+            "indicator_map_to": "person",
         },
     )
     bronze_count = TargetSpec(
@@ -845,7 +854,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
         value=100.0,
         source="fixture",
         metadata={
-            "measure_mode": "less_than_count",
+            "measure_mode": "less_than_indicator_sum",
             "source_measure_id": "bronze_aptc_consumers",
             "target_role": "aca_bronze_aptc_consumers",
         },
@@ -1608,9 +1617,8 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             "filing_status": "All",
             "source_measure_id": "eitc_returns" if count else "eitc_total",
             "ledger_filter_eitc_child_count": child_filter,
+            "measure_mode": "indicator_sum" if count else "sum",
         }
-        if count:
-            metadata["count"] = "true"
         return TargetSpec(
             name=name,
             entity="household",
@@ -1645,7 +1653,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "agi_upper_bound": "inf",
                 "filing_status": "All",
                 "source_measure_id": "return_count",
-                "count": "true",
+                "measure_mode": "indicator_sum",
             },
         ),
         TargetSpec(
@@ -1677,7 +1685,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "agi_upper_bound": "inf",
                 "filing_status": "All",
                 "source_measure_id": "medical_dental_expense_returns",
-                "count": "true",
+                "measure_mode": "indicator_sum",
                 "itemized_only": "true",
             },
         ),
@@ -1710,7 +1718,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "agi_upper_bound": "inf",
                 "filing_status": "All",
                 "source_measure_id": "real_estate_taxes_claims",
-                "count": "true",
+                "measure_mode": "indicator_sum",
                 "itemized_only": "true",
             },
         ),
@@ -1743,7 +1751,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "agi_upper_bound": "inf",
                 "filing_status": "All",
                 "source_measure_id": "limited_state_local_taxes_returns",
-                "count": "true",
+                "measure_mode": "indicator_sum",
                 "itemized_only": "true",
             },
         ),
@@ -1905,9 +1913,8 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
             "agi_upper_bound": "inf",
             "filing_status": "All",
             "source_measure_id": source_measure_id,
+            "measure_mode": "indicator_sum" if count else "sum",
         }
-        if count:
-            metadata["count"] = "true"
         return TargetSpec(
             name=name,
             entity="household",
@@ -2057,7 +2064,7 @@ def test_population_age_targets_materialize_person_age_counts(
     def population_age_spec(name, lower, upper, *, state_fips=None):
         metadata = {
             "materializer": "population_age",
-            "measure_mode": "count",
+            "measure_mode": "indicator_sum",
             "target_role": "population_age",
             "geography_scope": "state" if state_fips else "national",
             "age_lower_bound": str(lower),
