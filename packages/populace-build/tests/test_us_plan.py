@@ -10,6 +10,7 @@ from populace.build.source_manifest import SourceManifest, SourceOperationSpec
 from populace.build.us import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
+    US_PUF_SUPPORT_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_STAGE_NAMES,
@@ -92,11 +93,18 @@ class TestUsSources:
 
     def test_source_specs_align_with_declared_plan(self) -> None:
         derived_source_specs = {"mortgage_conversion"}
+        frame_structural_stages = {US_PUF_SUPPORT_STAGE_NAME}
         assert {spec.stage for spec in US_SOURCE_STAGE_SPECS} == set(
             US_DONORS
         ) | derived_source_specs
         assert set(US_DONORS).issubset(US_STAGE_NAMES)
         assert derived_source_specs.issubset(US_STAGE_NAMES)
+        assert frame_structural_stages.issubset(US_STAGE_NAMES)
+
+    def test_puf_support_channel_precedes_puf_detail_donor_stage(self) -> None:
+        assert US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
+            "puf_tax_detail"
+        )
 
     def test_source_specs_are_manifest_only_not_python_loaders(self) -> None:
         for spec in US_SOURCE_STAGE_SPECS:

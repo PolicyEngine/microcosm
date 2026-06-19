@@ -67,6 +67,15 @@ from populace.build.us.fiscal_targets import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
+from populace.build.us.puf_support import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_PUF_SUPPORT_STAGE_NAME,
+    clone_us_frame_for_puf_support,
+    support_channel_column,
+    support_clone_index_column,
+    support_source_id_column,
+)
 from populace.build.us.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
@@ -95,6 +104,7 @@ from populace.frame import Frame
 __all__ = [
     "BuildConfig",
     "AsecSource",
+    "BASE_ASEC_SUPPORT_CHANNEL",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -126,10 +136,13 @@ __all__ = [
     "US_SOURCE_MANIFEST",
     "US_SOURCE_STAGE_SPECS",
     "US_STAGE_NAMES",
+    "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
     "build_pooled_asec_unit_frame",
+    "clone_us_frame_for_puf_support",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
     "in_sample_reform_specs",
@@ -145,6 +158,9 @@ __all__ = [
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",
     "write_us_source_coverage_diagnostics",
+    "support_channel_column",
+    "support_clone_index_column",
+    "support_source_id_column",
     "validation_only_family_ids",
 ]
 
@@ -278,6 +294,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "asec_load",
     "unit_assignment",
     "derive_cps_carried",
+    US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "scf_wealth",
     "sipp_tips",
