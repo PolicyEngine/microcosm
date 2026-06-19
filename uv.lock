@@ -1175,6 +1175,7 @@ dependencies = [
 uk = [
     { name = "h5py" },
     { name = "policyengine-uk" },
+    { name = "tables" },
 ]
 us = [
     { name = "h5py" },
@@ -1201,6 +1202,7 @@ requires-dist = [
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
     { name = "scipy", specifier = ">=1.13" },
+    { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
 ]
 provides-extras = ["us", "uk"]
