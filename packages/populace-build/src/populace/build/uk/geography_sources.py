@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import io
 import json
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -21,14 +23,42 @@ from populace.build.uk.rowwise_geography import (
     prepare_geography_crosswalk,
 )
 
+EW_OA_HIERARCHY_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "b9ca90c10aaa4b8d9791e9859a38ca67/csv?layers=0"
+)
 EW_OA_LAD23_URL = (
     "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
     "83982ff4a8144038be52be65dd2b8fa0/csv?layers=0"
 )
+EW_OA_CONSTITUENCY_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "5968b5b2c0f14dd29ba277beaae6dec3/csv?layers=0"
+)
+EW_OA_POPULATION_URL = (
+    "https://www.nomisweb.co.uk/output/census/2021/census2021-ts001.zip"
+)
+ENGLAND_LAD_REGION_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "78b348cd8fb04037ada3c862aa054428/csv?layers=0"
+)
+
+SCOTLAND_OA_DZ_IZ_URL = (
+    "https://www.nrscotland.gov.uk/media/iz3evrqt/oa22_dz22_iz22.zip"
+)
+SCOTLAND_OA_LAU_ITL_URL = (
+    "https://www.nrscotland.gov.uk/media/qsxon3dm/oa22_lau25_itl25.zip"
+)
+SCOTLAND_OA_CONSTITUENCY_URL = (
+    "https://www.nrscotland.gov.uk/media/njkmhppf/oa22_ukpc24.zip"
+)
+SCOTLAND_OA_POPULATION_URL = (
+    "https://www.nrscotland.gov.uk/media/owpknvgk/"
+    "outputarea2022_usualresidentpopulation.csv"
+)
 
 NI_DZ_GEOJSON_ZIP_URL = (
-    "https://www.nisra.gov.uk/files/nisra/publications/"
-    "geography-dz2021-geojson.zip"
+    "https://www.nisra.gov.uk/files/nisra/publications/geography-dz2021-geojson.zip"
 )
 NI_DZ_POPULATION_CSV_URL = (
     "https://build.nisra.gov.uk/en/custom/table.csv?d=PEOPLE&v=DZ21"
@@ -43,8 +73,22 @@ UK_POSTCODE_PCON_MAY24_ZIP_URL = (
     "6f2f35a9a0b94e7e949eeba7785911d4/data"
 )
 
+ENGLAND_WALES_OA2021_COUNT = 188_880
+SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
 MAX_UNMATCHED_ACTIVE_NI_POSTCODE_SHARE = 0.01
+
+
+def load_england_wales_oa_hierarchy(
+    url: str = EW_OA_HIERARCHY_URL,
+) -> pd.DataFrame:
+    """Load ONS OA2021 -> LSOA/MSOA/LAD22 hierarchy for England and Wales."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_ew_hierarchy(
+        frame,
+        expected_count=ENGLAND_WALES_OA2021_COUNT,
+    )
 
 
 def load_ew_oa_lad23_lookup(url: str = EW_OA_LAD23_URL) -> pd.DataFrame:
@@ -52,6 +96,102 @@ def load_ew_oa_lad23_lookup(url: str = EW_OA_LAD23_URL) -> pd.DataFrame:
 
     frame = _read_csv_url(url, dtype=str)
     return _normalise_ew_lad_lookup(frame)
+
+
+def load_england_wales_oa_population(
+    url: str = EW_OA_POPULATION_URL,
+) -> pd.DataFrame:
+    """Load Nomis Census 2021 OA population counts for England and Wales."""
+
+    frame = _read_zip_csv_url(
+        url,
+        filename_contains="census2021-ts001-oa",
+        dtype=str,
+    )
+    return _normalise_ew_population(
+        frame,
+        expected_count=ENGLAND_WALES_OA2021_COUNT,
+    )
+
+
+def load_england_wales_oa_constituencies(
+    url: str = EW_OA_CONSTITUENCY_URL,
+) -> pd.DataFrame:
+    """Load ONS OA2021 -> 2024 Westminster constituency lookup for E/W."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_ew_constituencies(
+        frame,
+        expected_count=ENGLAND_WALES_OA2021_COUNT,
+    )
+
+
+def load_england_lad_region_lookup(
+    url: str = ENGLAND_LAD_REGION_URL,
+) -> pd.DataFrame:
+    """Load ONS English LAD22 -> region lookup."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_england_lad_region_lookup(frame)
+
+
+def load_scotland_oa_dz_iz_lookup(
+    url: str = SCOTLAND_OA_DZ_IZ_URL,
+) -> pd.DataFrame:
+    """Load NRS OA2022 -> Data Zone 2022 -> Intermediate Zone 2022 lookup."""
+
+    frame = _read_zip_csv_url(url, filename_contains="OA22_DZ22_IZ22", dtype=str)
+    return _normalise_scotland_oa_dz_iz(
+        frame,
+        expected_count=SCOTLAND_OA2022_COUNT,
+    )
+
+
+def load_scotland_oa_lau_lookup(
+    url: str = SCOTLAND_OA_LAU_ITL_URL,
+) -> pd.DataFrame:
+    """Load NRS OA2022 -> council-area lookup via LAU 2025 Level 1."""
+
+    data = _read_url_bytes(url)
+    oa_lau = _read_zip_csv_bytes(
+        data,
+        filename_contains="OA22_LAU25_L1",
+        dtype=str,
+    )
+    council_lau = _read_zip_csv_bytes(
+        data,
+        filename_contains="CA19 - LAU25L1",
+        dtype=str,
+    )
+    return _normalise_scotland_oa_lau(
+        oa_lau,
+        council_lau,
+        expected_count=SCOTLAND_OA2022_COUNT,
+    )
+
+
+def load_scotland_oa_constituencies(
+    url: str = SCOTLAND_OA_CONSTITUENCY_URL,
+) -> pd.DataFrame:
+    """Load NRS OA2022 -> 2024 Westminster constituency lookup."""
+
+    frame = _read_zip_csv_url(url, filename_contains="OA22_UKPC24", dtype=str)
+    return _normalise_scotland_constituencies(
+        frame,
+        expected_count=SCOTLAND_OA2022_COUNT,
+    )
+
+
+def load_scotland_oa_population(
+    url: str = SCOTLAND_OA_POPULATION_URL,
+) -> pd.DataFrame:
+    """Load NRS Scotland Census 2022 OA resident population counts."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_scotland_population(
+        frame,
+        expected_count=SCOTLAND_OA2022_COUNT,
+    )
 
 
 def load_ni_dz_hierarchy(url: str = NI_DZ_GEOJSON_ZIP_URL) -> pd.DataFrame:
@@ -105,6 +245,230 @@ def load_uk_postcode_constituency_lookup(
     )
 
 
+def build_england_wales_crosswalk(
+    oa_hierarchy: pd.DataFrame,
+    oa_population: pd.DataFrame,
+    oa_constituencies: pd.DataFrame,
+    oa_lad23_lookup: pd.DataFrame,
+    england_lad_region_lookup: pd.DataFrame,
+    *,
+    expected_oa_count: int | None = ENGLAND_WALES_OA2021_COUNT,
+) -> pd.DataFrame:
+    """Build E/W OA rows for the Populace row-wise crosswalk."""
+
+    hierarchy = _normalise_ew_hierarchy(
+        oa_hierarchy,
+        expected_count=expected_oa_count,
+    )
+    population = _normalise_ew_population(
+        oa_population,
+        expected_count=expected_oa_count,
+    )
+    constituencies = _normalise_ew_constituencies(
+        oa_constituencies,
+        expected_count=expected_oa_count,
+    )
+    lad23 = _normalise_ew_lad_lookup(oa_lad23_lookup)
+    regions = _normalise_england_lad_region_lookup(england_lad_region_lookup)
+    _validate_matching_source_codes(
+        "E/W OA",
+        "codes",
+        {
+            "hierarchy": hierarchy["oa_code"],
+            "population": population["oa_code"],
+            "constituency": constituencies["oa_code"],
+            "lad23": lad23["oa_code"],
+        },
+    )
+
+    rows = (
+        hierarchy.merge(population, on="oa_code", how="left")
+        .merge(constituencies, on="oa_code", how="left")
+        .merge(lad23, on="oa_code", how="left")
+        .merge(regions, on="la_code", how="left")
+    )
+    rows["country"] = rows["oa_code"].map(
+        lambda code: "Wales" if str(code).startswith("W") else "England"
+    )
+    rows.loc[rows["country"] == "Wales", "region_code"] = "W99999999"
+    missing_region = rows[(rows["country"] == "England") & rows["region_code"].isna()][
+        "la_code"
+    ].drop_duplicates()
+    if not missing_region.empty:
+        raise ValueError(
+            "English LAD region lookup is missing LAD22 code(s): "
+            f"{missing_region.astype(str).tolist()[:5]}."
+        )
+    missing = rows[
+        rows[["population", "constituency_code", "lad23_code"]].isna().any(axis=1)
+    ]["oa_code"].tolist()
+    if missing:
+        raise ValueError(f"E/W rows are missing source values: {missing[:5]}.")
+    rows["la_code"] = rows["lad23_code"]
+    return prepare_geography_crosswalk(rows.loc[:, CROSSWALK_COLUMNS])
+
+
+def build_scotland_crosswalk(
+    oa_dz_iz: pd.DataFrame,
+    oa_lau: pd.DataFrame,
+    oa_constituencies: pd.DataFrame,
+    oa_population: pd.DataFrame,
+    *,
+    expected_oa_count: int | None = SCOTLAND_OA2022_COUNT,
+) -> pd.DataFrame:
+    """Build Scotland OA rows for the Populace row-wise crosswalk."""
+
+    hierarchy = _normalise_scotland_oa_dz_iz(
+        oa_dz_iz,
+        expected_count=expected_oa_count,
+    )
+    las = _normalise_scotland_oa_lau(oa_lau, expected_count=expected_oa_count)
+    constituencies = _normalise_scotland_constituencies(
+        oa_constituencies,
+        expected_count=expected_oa_count,
+    )
+    population = _normalise_scotland_population(
+        oa_population,
+        expected_count=expected_oa_count,
+    )
+    _validate_matching_source_codes(
+        "Scotland OA",
+        "codes",
+        {
+            "hierarchy": hierarchy["oa_code"],
+            "la": las["oa_code"],
+            "constituency": constituencies["oa_code"],
+            "population": population["oa_code"],
+        },
+    )
+
+    rows = (
+        hierarchy.merge(las, on="oa_code", how="left")
+        .merge(constituencies, on="oa_code", how="left")
+        .merge(population, on="oa_code", how="left")
+    )
+    rows["region_code"] = "S99999999"
+    rows["country"] = "Scotland"
+    missing = rows[
+        rows[["la_code", "constituency_code", "population"]].isna().any(axis=1)
+    ]["oa_code"].tolist()
+    if missing:
+        raise ValueError(f"Scotland rows are missing source values: {missing[:5]}.")
+    return prepare_geography_crosswalk(rows.loc[:, CROSSWALK_COLUMNS])
+
+
+def build_great_britain_crosswalk(
+    *,
+    ew_oa_hierarchy: pd.DataFrame,
+    ew_oa_population: pd.DataFrame,
+    ew_oa_constituencies: pd.DataFrame,
+    ew_oa_lad23_lookup: pd.DataFrame,
+    england_lad_region_lookup: pd.DataFrame,
+    scotland_oa_dz_iz: pd.DataFrame,
+    scotland_oa_lau: pd.DataFrame,
+    scotland_oa_constituencies: pd.DataFrame,
+    scotland_oa_population: pd.DataFrame,
+    expected_england_wales_oa_count: int | None = ENGLAND_WALES_OA2021_COUNT,
+    expected_scotland_oa_count: int | None = SCOTLAND_OA2022_COUNT,
+) -> pd.DataFrame:
+    """Build GB OA rows from official E/W and Scotland sources."""
+
+    england_wales = build_england_wales_crosswalk(
+        ew_oa_hierarchy,
+        ew_oa_population,
+        ew_oa_constituencies,
+        ew_oa_lad23_lookup,
+        england_lad_region_lookup,
+        expected_oa_count=expected_england_wales_oa_count,
+    )
+    scotland = build_scotland_crosswalk(
+        scotland_oa_dz_iz,
+        scotland_oa_lau,
+        scotland_oa_constituencies,
+        scotland_oa_population,
+        expected_oa_count=expected_scotland_oa_count,
+    )
+    return prepare_geography_crosswalk(
+        pd.concat([england_wales, scotland], ignore_index=True)
+    )
+
+
+def build_official_uk_geography_crosswalk(
+    *,
+    ew_oa_hierarchy: pd.DataFrame | None = None,
+    ew_oa_population: pd.DataFrame | None = None,
+    ew_oa_constituencies: pd.DataFrame | None = None,
+    ew_oa_lad23_lookup: pd.DataFrame | None = None,
+    england_lad_region_lookup: pd.DataFrame | None = None,
+    scotland_oa_dz_iz: pd.DataFrame | None = None,
+    scotland_oa_lau: pd.DataFrame | None = None,
+    scotland_oa_constituencies: pd.DataFrame | None = None,
+    scotland_oa_population: pd.DataFrame | None = None,
+    ni_dz_hierarchy: pd.DataFrame | None = None,
+    ni_dz_population: pd.DataFrame | None = None,
+    ni_dz_constituencies: pd.DataFrame | None = None,
+    postcode_oa: pd.DataFrame | None = None,
+    postcode_constituency: pd.DataFrame | None = None,
+    expected_england_wales_oa_count: int | None = ENGLAND_WALES_OA2021_COUNT,
+    expected_scotland_oa_count: int | None = SCOTLAND_OA2022_COUNT,
+    expected_ni_dz_count: int | None = NI_DZ2021_COUNT,
+) -> pd.DataFrame:
+    """Build the complete UK crosswalk from public ONS, NRS, and NISRA sources."""
+
+    if ew_oa_hierarchy is None:
+        ew_oa_hierarchy = load_england_wales_oa_hierarchy()
+    if ew_oa_population is None:
+        ew_oa_population = load_england_wales_oa_population()
+    if ew_oa_constituencies is None:
+        ew_oa_constituencies = load_england_wales_oa_constituencies()
+    if ew_oa_lad23_lookup is None:
+        ew_oa_lad23_lookup = load_ew_oa_lad23_lookup()
+    if england_lad_region_lookup is None:
+        england_lad_region_lookup = load_england_lad_region_lookup()
+    if scotland_oa_dz_iz is None:
+        scotland_oa_dz_iz = load_scotland_oa_dz_iz_lookup()
+    if scotland_oa_lau is None:
+        scotland_oa_lau = load_scotland_oa_lau_lookup()
+    if scotland_oa_constituencies is None:
+        scotland_oa_constituencies = load_scotland_oa_constituencies()
+    if scotland_oa_population is None:
+        scotland_oa_population = load_scotland_oa_population()
+    if ni_dz_hierarchy is None:
+        ni_dz_hierarchy = load_ni_dz_hierarchy()
+    if ni_dz_population is None:
+        ni_dz_population = load_ni_dz_population()
+    if ni_dz_constituencies is None:
+        if postcode_oa is None:
+            postcode_oa = load_uk_postcode_oa_lookup()
+        if postcode_constituency is None:
+            postcode_constituency = load_uk_postcode_constituency_lookup()
+        ni_dz_constituencies = infer_ni_dz_constituencies_from_postcodes(
+            postcode_oa,
+            postcode_constituency,
+        )
+
+    gb = build_great_britain_crosswalk(
+        ew_oa_hierarchy=ew_oa_hierarchy,
+        ew_oa_population=ew_oa_population,
+        ew_oa_constituencies=ew_oa_constituencies,
+        ew_oa_lad23_lookup=ew_oa_lad23_lookup,
+        england_lad_region_lookup=england_lad_region_lookup,
+        scotland_oa_dz_iz=scotland_oa_dz_iz,
+        scotland_oa_lau=scotland_oa_lau,
+        scotland_oa_constituencies=scotland_oa_constituencies,
+        scotland_oa_population=scotland_oa_population,
+        expected_england_wales_oa_count=expected_england_wales_oa_count,
+        expected_scotland_oa_count=expected_scotland_oa_count,
+    )
+    ni = build_northern_ireland_crosswalk(
+        ni_dz_hierarchy,
+        ni_dz_population,
+        ni_dz_constituencies,
+        expected_dz_count=expected_ni_dz_count,
+    )
+    return prepare_geography_crosswalk(pd.concat([gb, ni], ignore_index=True))
+
+
 def update_england_wales_lad_codes(
     crosswalk: pd.DataFrame,
     oa_lad_lookup: pd.DataFrame,
@@ -119,10 +483,7 @@ def update_england_wales_lad_codes(
         ew_rows = base["country"].isin(["England", "Wales"])
         missing = sorted(set(base.loc[ew_rows, "oa_code"]) - set(lookup["oa_code"]))
         if missing:
-            raise ValueError(
-                "E/W LAD23 lookup is missing OA code(s): "
-                f"{missing[:5]}."
-            )
+            raise ValueError(f"E/W LAD23 lookup is missing OA code(s): {missing[:5]}.")
     repaired = base.merge(lookup, on="oa_code", how="left")
     mask = repaired["lad23_code"].notna()
     repaired.loc[mask, "la_code"] = repaired.loc[mask, "lad23_code"]
@@ -148,7 +509,8 @@ def infer_ni_dz_constituencies_from_postcodes(
     oa["pcd_key"] = _normalise_postcode(oa["pcds"])
     oa = oa[oa["oa21cd"].astype(str).str.startswith("N", na=False)]
     if "doterm" in oa.columns:
-        oa = oa[oa["doterm"].isna()]
+        active = oa["doterm"].isna() | oa["doterm"].astype(str).str.strip().eq("")
+        oa = oa[active]
     if oa.empty:
         raise ValueError("postcode_oa did not include active NI postcodes.")
 
@@ -272,9 +634,9 @@ def build_northern_ireland_crosswalk(
     )
     rows["region_code"] = "N99999999"
     rows["country"] = "Northern Ireland"
-    missing = rows[
-        rows[["population", "constituency_code"]].isna().any(axis=1)
-    ]["oa_code"].tolist()
+    missing = rows[rows[["population", "constituency_code"]].isna().any(axis=1)][
+        "oa_code"
+    ].tolist()
     if missing:
         raise ValueError(f"NI rows are missing population or PCON: {missing[:5]}.")
     return prepare_geography_crosswalk(rows.loc[:, CROSSWALK_COLUMNS])
@@ -306,6 +668,340 @@ def build_complete_uk_geography_crosswalk(
     return prepare_geography_crosswalk(combined)
 
 
+def _normalise_ew_hierarchy(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    lad_column = upper_to_column.get("LAD22CD")
+    if lad_column is None:
+        lad_column = next(
+            (
+                column
+                for upper, column in upper_to_column.items()
+                if upper.startswith("LAD") and upper.endswith("CD")
+            ),
+            None,
+        )
+    column_map = {
+        upper_to_column.get("OA21CD"): "oa_code",
+        upper_to_column.get("LSOA21CD"): "lsoa_code",
+        upper_to_column.get("MSOA21CD"): "msoa_code",
+        lad_column: "la_code",
+    }
+    source = source.rename(
+        columns={column: name for column, name in column_map.items() if column}
+    )
+    missing = sorted({"oa_code", "lsoa_code", "msoa_code", "la_code"} - set(source))
+    if missing:
+        raise ValueError(f"E/W hierarchy is missing column(s): {missing}.")
+    hierarchy = _normalise_code_rows(
+        source[["oa_code", "lsoa_code", "msoa_code", "la_code"]],
+        label="E/W hierarchy",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2021",
+        prefixes=("E", "W"),
+    )
+    return hierarchy
+
+
+def _normalise_ew_population(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    geo_column = _find_column(source, exact=("geography code", "oa_code"))
+    population_column = _find_column(
+        source,
+        exact=("population", "count"),
+        contains_all=(("total", "measures"),),
+    )
+    if geo_column is None or population_column is None:
+        raise ValueError("E/W population is missing OA code or population columns.")
+    population = pd.DataFrame(
+        {
+            "oa_code": source[geo_column],
+            "population": source[population_column],
+        }
+    )
+    population["oa_code"] = population["oa_code"].fillna("").astype(str).str.strip()
+    population = population[population["oa_code"].str.match(r"^[EW]00")].copy()
+    _validate_unique_nonblank(
+        population,
+        "oa_code",
+        label="E/W population",
+        expected_count=expected_count,
+        unit_label="OA2021",
+    )
+    population["population"] = pd.to_numeric(
+        population["population"],
+        errors="raise",
+    )
+    return population.reset_index(drop=True)
+
+
+def _normalise_ew_constituencies(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    pcon_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("PCON") and upper.endswith("CD")
+        ),
+        None,
+    )
+    column_map = {
+        upper_to_column.get("OA21CD"): "oa_code",
+        pcon_column: "constituency_code",
+    }
+    source = source.rename(
+        columns={column: name for column, name in column_map.items() if column}
+    )
+    missing = sorted({"oa_code", "constituency_code"} - set(source))
+    if missing:
+        raise ValueError(f"E/W constituency lookup is missing column(s): {missing}.")
+    return _normalise_code_rows(
+        source[["oa_code", "constituency_code"]],
+        label="E/W constituency lookup",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2021",
+        prefixes=("E", "W"),
+    )
+
+
+def _normalise_england_lad_region_lookup(frame: pd.DataFrame) -> pd.DataFrame:
+    source = frame.copy()
+    if {"la_code", "region_code"}.issubset(source.columns):
+        lookup = source[["la_code", "region_code"]].copy()
+        return _normalise_code_rows(
+            lookup,
+            label="English LAD region lookup",
+            unique_column="la_code",
+            prefixes=("E",),
+        )
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    lad_column = upper_to_column.get("LAD22CD") or next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("LAD") and upper.endswith("CD")
+        ),
+        None,
+    )
+    region_column = upper_to_column.get("RGN22CD") or next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("RGN") and upper.endswith("CD")
+        ),
+        None,
+    )
+    if lad_column is None or region_column is None:
+        raise ValueError("English LAD region lookup is missing LAD or region columns.")
+    lookup = pd.DataFrame(
+        {
+            "la_code": source[lad_column],
+            "region_code": source[region_column],
+        }
+    )
+    return _normalise_code_rows(
+        lookup,
+        label="English LAD region lookup",
+        unique_column="la_code",
+        prefixes=("E",),
+    )
+
+
+def _normalise_scotland_oa_dz_iz(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    column_map = {
+        upper_to_column.get("OA22"): "oa_code",
+        upper_to_column.get("DZ22"): "lsoa_code",
+        upper_to_column.get("IZ22"): "msoa_code",
+    }
+    source = source.rename(
+        columns={column: name for column, name in column_map.items() if column}
+    )
+    missing = sorted({"oa_code", "lsoa_code", "msoa_code"} - set(source))
+    if missing:
+        raise ValueError(f"Scotland OA-DZ-IZ lookup is missing column(s): {missing}.")
+    return _normalise_code_rows(
+        source[["oa_code", "lsoa_code", "msoa_code"]],
+        label="Scotland OA-DZ-IZ lookup",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2022",
+        prefixes=("S",),
+    )
+
+
+def _normalise_scotland_oa_lau(
+    oa_lau: pd.DataFrame,
+    council_lau: pd.DataFrame | None = None,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = oa_lau.copy()
+    if council_lau is None and {"oa_code", "la_code"}.issubset(source.columns):
+        lookup = source[["oa_code", "la_code"]].copy()
+    else:
+        source_columns = {str(column).strip().upper(): column for column in source}
+        oa_column = source_columns.get("OUTPUTAREA2022CODE") or source_columns.get(
+            "OA22"
+        )
+        lau_column = source_columns.get("LAU2025LEVEL1CODE")
+        if oa_column is None or lau_column is None:
+            raise ValueError("Scotland OA-LAU lookup is missing OA or LAU columns.")
+        if council_lau is None:
+            raise ValueError("Scotland OA-LAU lookup needs a council-area bridge.")
+        bridge_columns = {
+            str(column).strip().upper(): column for column in council_lau.columns
+        }
+        bridge_lau_column = bridge_columns.get("LAU2025LEVEL1CODE")
+        council_column = bridge_columns.get("COUNCILAREA2019CODE")
+        if bridge_lau_column is None or council_column is None:
+            raise ValueError(
+                "Scotland LAU council bridge is missing LAU or council columns."
+            )
+        oa_lau_lookup = pd.DataFrame(
+            {
+                "oa_code": source[oa_column],
+                "lau25_code": source[lau_column],
+            }
+        )
+        council_lookup = pd.DataFrame(
+            {
+                "lau25_code": council_lau[bridge_lau_column],
+                "la_code": council_lau[council_column],
+            }
+        )
+        council_lookup = _normalise_code_rows(
+            council_lookup,
+            label="Scotland LAU council bridge",
+            unique_column="lau25_code",
+            prefixes=("S",),
+        )
+        lookup = oa_lau_lookup.merge(council_lookup, on="lau25_code", how="left")
+        missing_la = lookup[lookup["la_code"].isna()]["lau25_code"].drop_duplicates()
+        if not missing_la.empty:
+            raise ValueError(
+                "Scotland LAU council bridge is missing LAU code(s): "
+                f"{missing_la.astype(str).tolist()[:5]}."
+            )
+        lookup = lookup[["oa_code", "la_code"]]
+    return _normalise_code_rows(
+        lookup,
+        label="Scotland OA-LAU lookup",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2022",
+        prefixes=("S",),
+    )
+
+
+def _normalise_scotland_constituencies(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    if {"oa_code", "constituency_code"}.issubset(source.columns):
+        lookup = source[["oa_code", "constituency_code"]].copy()
+        return _normalise_code_rows(
+            lookup,
+            label="Scotland constituency lookup",
+            unique_column="oa_code",
+            expected_count=expected_count,
+            unit_label="OA2022",
+            prefixes=("S",),
+        )
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    oa_column = upper_to_column.get("OA22") or upper_to_column.get("OA_CODE")
+    pcon_column = upper_to_column.get("UKPC24") or upper_to_column.get(
+        "CONSTITUENCY_CODE"
+    )
+    if oa_column is None or pcon_column is None:
+        raise ValueError("Scotland constituency lookup is missing OA or UKPC columns.")
+    lookup = pd.DataFrame(
+        {
+            "oa_code": source[oa_column],
+            "constituency_code": source[pcon_column],
+        }
+    )
+    return _normalise_code_rows(
+        lookup,
+        label="Scotland constituency lookup",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2022",
+        prefixes=("S",),
+    )
+
+
+def _normalise_scotland_population(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    if {"oa_code", "population"}.issubset(source.columns):
+        population = source[["oa_code", "population"]].copy()
+        population["oa_code"] = population["oa_code"].fillna("").astype(str).str.strip()
+        population = population[population["oa_code"].str.startswith("S")].copy()
+        _validate_unique_nonblank(
+            population,
+            "oa_code",
+            label="Scotland population",
+            expected_count=expected_count,
+            unit_label="OA2022",
+        )
+        population["population"] = pd.to_numeric(
+            population["population"],
+            errors="raise",
+        )
+        return population.reset_index(drop=True)
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    oa_column = upper_to_column.get("OUTPUTAREA2022") or upper_to_column.get("OA_CODE")
+    population_column = upper_to_column.get("USUALRESIDENTPOPULATION")
+    if oa_column is None or population_column is None:
+        raise ValueError("Scotland population is missing OA or population columns.")
+    population = pd.DataFrame(
+        {
+            "oa_code": source[oa_column],
+            "population": source[population_column],
+        }
+    )
+    population["oa_code"] = population["oa_code"].fillna("").astype(str).str.strip()
+    population = population[population["oa_code"].str.startswith("S")].copy()
+    _validate_unique_nonblank(
+        population,
+        "oa_code",
+        label="Scotland population",
+        expected_count=expected_count,
+        unit_label="OA2022",
+    )
+    population["population"] = pd.to_numeric(
+        population["population"],
+        errors="raise",
+    )
+    return population.reset_index(drop=True)
+
+
 def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:
     column_map = {}
     for column in frame.columns:
@@ -328,8 +1024,7 @@ def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:
     if blank_lad.any():
         missing_codes = lookup.loc[blank_lad, "oa_code"].tolist()
         raise ValueError(
-            "E/W LAD lookup must not include blank LAD23 codes: "
-            f"{missing_codes[:5]}."
+            f"E/W LAD lookup must not include blank LAD23 codes: {missing_codes[:5]}."
         )
     if lookup["oa_code"].duplicated().any():
         duplicates = lookup.loc[lookup["oa_code"].duplicated(), "oa_code"].unique()
@@ -405,21 +1100,107 @@ def _normalise_ni_population(
     return population
 
 
+def _normalise_code_rows(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    unique_column: str,
+    expected_count: int | None = None,
+    unit_label: str = "row",
+    prefixes: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    result = frame.copy()
+    for column in result.columns:
+        result[column] = result[column].fillna("").astype(str).str.strip()
+    if prefixes is not None:
+        result = result[result[unique_column].str.startswith(prefixes)].copy()
+    for column in result.columns:
+        blank = result[column] == ""
+        if blank.any():
+            missing_codes = result.loc[blank, unique_column].tolist()
+            raise ValueError(
+                f"{label} must not include blank {column} values: {missing_codes[:5]}."
+            )
+    _validate_unique_nonblank(
+        result,
+        unique_column,
+        label=label,
+        expected_count=expected_count,
+        unit_label=unit_label,
+    )
+    return result.reset_index(drop=True)
+
+
+def _validate_unique_nonblank(
+    frame: pd.DataFrame,
+    column: str,
+    *,
+    label: str,
+    expected_count: int | None = None,
+    unit_label: str = "row",
+) -> None:
+    blank = frame[column] == ""
+    if blank.any():
+        raise ValueError(f"{label} must not include blank {column} values.")
+    if frame[column].duplicated().any():
+        duplicates = frame.loc[frame[column].duplicated(), column]
+        raise ValueError(
+            f"{label} {column} values must be unique; duplicate value(s): "
+            f"{list(map(str, duplicates.unique()[:5]))}."
+        )
+    _validate_expected_count(
+        frame,
+        expected_count=expected_count,
+        label=label,
+        unit_label=unit_label,
+    )
+
+
+def _find_column(
+    frame: pd.DataFrame,
+    *,
+    exact: tuple[str, ...] = (),
+    contains_all: tuple[tuple[str, ...], ...] = (),
+) -> str | None:
+    lower_to_column = {str(column).strip().lower(): column for column in frame.columns}
+    for name in exact:
+        column = lower_to_column.get(name.lower())
+        if column is not None:
+            return column
+    for terms in contains_all:
+        lowered_terms = tuple(term.lower() for term in terms)
+        for column in frame.columns:
+            lowered = str(column).strip().lower()
+            if all(term in lowered for term in lowered_terms):
+                return column
+    return None
+
+
 def _validate_expected_count(
     frame: pd.DataFrame,
     *,
     expected_count: int | None,
     label: str,
+    unit_label: str = "DZ2021",
 ) -> None:
     if expected_count is None:
         return
     if len(frame) != expected_count:
         raise ValueError(
-            f"{label} expected {expected_count} DZ2021 row(s), found {len(frame)}."
+            f"{label} expected {expected_count} {unit_label} row(s), "
+            f"found {len(frame)}."
         )
 
 
 def _validate_matching_ni_codes(codes_by_source: dict[str, pd.Series]) -> None:
+    _validate_matching_source_codes("NI DZ", "codes", codes_by_source)
+
+
+def _validate_matching_source_codes(
+    label: str,
+    code_label: str,
+    codes_by_source: dict[str, pd.Series],
+) -> None:
     reference_name = next(iter(codes_by_source))
     reference_codes = set(codes_by_source[reference_name].astype(str))
     failures: list[str] = []
@@ -436,32 +1217,79 @@ def _validate_matching_ni_codes(codes_by_source: dict[str, pd.Series]) -> None:
         if extra:
             failures.append(f"{source_name} extra {len(extra)} code(s): {extra[:5]}")
     if failures:
-        raise ValueError("NI DZ source codes differ; " + "; ".join(failures))
+        raise ValueError(f"{label} source {code_label} differ; " + "; ".join(failures))
 
 
 def _normalise_postcode(values: pd.Series) -> pd.Series:
     return values.astype(str).str.replace(" ", "", regex=False).str.upper()
 
 
-def _read_url_bytes(url: str, *, timeout: int = 300) -> bytes:
+def _read_url_bytes(
+    url: str,
+    *,
+    timeout: int = 300,
+    retries: int = 3,
+    retry_delay: float = 1.0,
+) -> bytes:
     request = urllib.request.Request(
         url,
         headers={"User-Agent": "PolicyEngine-Populace/0.1"},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            should_retry = error.code in {429, 500, 502, 503, 504}
+            if not should_retry or attempt == retries - 1:
+                raise
+        except (urllib.error.URLError, OSError, TimeoutError):
+            if attempt == retries - 1:
+                raise
+        time.sleep(retry_delay * (2**attempt))
+    raise RuntimeError(f"Could not download {url}.")
 
 
 def _read_csv_url(url: str, **kwargs: Any) -> pd.DataFrame:
     return pd.read_csv(io.BytesIO(_read_url_bytes(url)), **kwargs)
 
 
-def _read_zip_csv_url(url: str, **kwargs: Any) -> pd.DataFrame:
+def _read_zip_csv_url(
+    url: str,
+    *,
+    filename_contains: str | None = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
     data = _read_url_bytes(url)
+    return _read_zip_csv_bytes(
+        data,
+        filename_contains=filename_contains,
+        **kwargs,
+    )
+
+
+def _read_zip_csv_bytes(
+    data: bytes,
+    *,
+    filename_contains: str | None = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        csv_files = [name for name in archive.namelist() if name.endswith(".csv")]
+        csv_files = [
+            name for name in archive.namelist() if name.lower().endswith(".csv")
+        ]
+        if filename_contains is not None:
+            needle = filename_contains.lower()
+            csv_files = [name for name in csv_files if needle in name.lower()]
         if not csv_files:
-            raise FileNotFoundError(f"No CSV found in ZIP from {url}.")
+            descriptor = (
+                "CSV"
+                if filename_contains is None
+                else f"CSV matching {filename_contains!r}"
+            )
+            raise FileNotFoundError(
+                f"No {descriptor} found in ZIP. Contents: {archive.namelist()}."
+            )
         with archive.open(csv_files[0]) as csv_file:
             return pd.read_csv(csv_file, **kwargs)
 
