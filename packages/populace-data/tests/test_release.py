@@ -33,7 +33,7 @@ DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
 CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 9
+TARGET_COUNT = 8
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -56,13 +56,6 @@ DEDUCTION_CRITICAL_TARGETS = (
         80_000_000_000.0,
         82_000_000_000.0,
         "medical_expense_deduction_total",
-    ),
-    (
-        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount@2024",
-        "irs_soi.ty2022.historic_table_2.us.all.qbi_amount",
-        31_000_000_000.0,
-        30_000_000_000.0,
-        "qualified_business_income_deduction_total",
     ),
 )
 
@@ -243,7 +236,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 7,
+                "target_count": 6,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },

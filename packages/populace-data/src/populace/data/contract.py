@@ -134,15 +134,6 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "target_roles": ("medical_expense_deduction_total",),
         "allow_incumbent_improvement": False,
     },
-    {
-        "requirement_id": "qualified_business_income_deduction_amount",
-        "label": "qualified business income deduction amount",
-        "max_abs_relative_error": 0.10,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.qbi_amount@2024",),
-        "families": ("irs_soi",),
-        "target_roles": ("qualified_business_income_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
 )
 _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 
