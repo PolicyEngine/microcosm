@@ -19,7 +19,7 @@ from typing import Any
 
 from populace.calibrate import TargetRegistry, TargetSpec
 
-SUPPORTED_AGGREGATIONS = frozenset({"count", "sum", "mean"})
+SUPPORTED_LEDGER_AGGREGATION = "sum"
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,6 @@ class LedgerTargetReference:
     value_operation: str = "identity"
     entity: str = ""
     measure: str | None = None
-    aggregation: str | None = None
     filter: str | None = None
     period: int | str | None = None
     source: str | None = None
@@ -250,16 +249,17 @@ def target_spec_from_ledger_reference(
             f"Ledger fact for {reference.name!r} has invalid value {value!r}."
         )
 
-    aggregation = reference.aggregation or _str_at(fact, "aggregation", "method")
-    if aggregation not in SUPPORTED_AGGREGATIONS:
+    aggregation = _str_at(fact, "aggregation", "method")
+    if aggregation != SUPPORTED_LEDGER_AGGREGATION:
         raise ValueError(
             f"Ledger fact for {reference.name!r} has unsupported aggregation "
             f"{aggregation!r}."
         )
-    if aggregation != "count" and not reference.measure:
+    if not reference.measure:
         raise ValueError(
-            f"Ledger target reference {reference.name!r}: aggregation "
-            f"{aggregation!r} requires a model measure column."
+            f"Ledger target reference {reference.name!r}: measure is required; "
+            "count-like facts must be represented as sums of prepared indicator "
+            "columns."
         )
     period = (
         reference.period
@@ -273,7 +273,6 @@ def target_spec_from_ledger_reference(
         name=reference.name,
         entity=reference.entity,
         measure=reference.measure,
-        aggregation=aggregation,
         value=numeric_value,
         filter=reference.filter,
         period=period,
@@ -372,7 +371,7 @@ def target_spec_from_ledger_fact(
         raise _unsupported("missing_measure_concept", fact)
 
     aggregation = _str_at(fact, "aggregation", "method")
-    if aggregation not in SUPPORTED_AGGREGATIONS:
+    if aggregation != SUPPORTED_LEDGER_AGGREGATION:
         raise _unsupported(f"unsupported_aggregation:{aggregation}", fact)
 
     measure = mapping.measure_by_source_record_id.get(source_record_id)
@@ -427,7 +426,6 @@ def target_spec_from_ledger_fact(
             name=identifier,
             entity=entity,
             measure=measure,
-            aggregation=aggregation,
             value=numeric_value,
             filter=filter_column,
             period=target_period,
@@ -1007,7 +1005,6 @@ def _calibration_effective_spec_payload(spec: TargetSpec) -> dict[str, object]:
         "name": spec.name,
         "entity": spec.entity,
         "measure": spec.measure,
-        "aggregation": spec.aggregation,
         "value": spec.value,
         "filter": spec.filter,
         "period": spec.period,

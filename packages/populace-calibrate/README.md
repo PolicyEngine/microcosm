@@ -10,16 +10,17 @@ reproduces them.
 ## What it does
 
 1. **Declare facts as targets.** A `Target` is a known population aggregate — a
-   control total (`sum`), a count, or an average (`mean`) — on some entity, with
-   an optional tolerance and provenance. A `TargetSet` groups them.
+   sum of a prepared measure column on some entity, with an optional tolerance
+   and provenance. Count-like facts use prepared indicator/count columns. A
+   `TargetSet` groups them.
 2. **Compile to a sparse system.** `build_constraint_matrix(frame, targets,
    weight_entity)` turns the targets into a `CalibrationProblem`: a CSR matrix
    `A` (one row per `(target, period)`, one column per record of the calibrated
    entity), the target vector `b`, and the initial weights. `A @ w` estimates
    every target's aggregate. Multi-period targets stack as extra rows over the
    **same** weight vector — the charter's "one weight per trajectory".
-   Uncompilable targets (missing column, zero `mean` denominator) are **skipped
-   and reported**, never dropped silently.
+   Uncompilable targets (missing columns or invalid lengths) are **skipped and
+   reported**, never dropped silently.
 3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
    the log-weights with torch Adam to minimize **capped weighted MAPE**:
    `weighted_mean(min(abs((A @ w - b) / scale), cap))`. By default
@@ -54,10 +55,10 @@ reproduces them.
 from populace.calibrate import Target, TargetSet, calibrate
 
 targets = TargetSet([
-    Target(name="population", entity="household", aggregation="count",
+    Target(name="population", entity="household", measure="household_count",
            value=330_000_000, source="Census 2024 estimate"),
     Target(name="total_income", entity="household", measure="income",
-           aggregation="sum", value=23_000_000_000_000, tolerance=1e11),
+           value=23_000_000_000_000, tolerance=1e11),
 ])
 
 result = calibrate(frame, targets, weight_entity="household",

@@ -26,7 +26,6 @@ def _income_target(truth: float, factor: float) -> Target:
     return Target(
         name="income",
         entity="household",
-        aggregation="sum",
         value=truth * factor,
         measure="income",
     )
@@ -36,8 +35,8 @@ def _population_target(truth: float, factor: float) -> Target:
     return Target(
         name="population",
         entity="household",
-        aggregation="count",
         value=truth * factor,
+        measure="household_count",
     )
 
 
@@ -87,14 +86,14 @@ def test_target_loss_weights_prioritize_conflicting_targets(feasible_frame) -> N
             Target(
                 name="population_low",
                 entity="household",
-                aggregation="count",
                 value=low,
+                measure="household_count",
             ),
             Target(
                 name="population_high",
                 entity="household",
-                aggregation="count",
                 value=high,
+                measure="household_count",
             ),
         )
     )
@@ -121,7 +120,6 @@ def test_target_loss_weights_follow_skipped_targets(feasible_frame) -> None:
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -148,7 +146,6 @@ def test_target_loss_weights_must_survive_skipped_targets(feasible_frame) -> Non
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -173,7 +170,6 @@ def test_target_loss_scales_follow_skipped_targets(feasible_frame) -> None:
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -203,7 +199,6 @@ def test_target_loss_scales_must_survive_skipped_targets(feasible_frame) -> None
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -244,7 +239,6 @@ def test_weight_ratio_bound_prevents_a_landmine(landmine_frame) -> None:
             Target(
                 name="capital_gains",
                 entity="household",
-                aggregation="sum",
                 value=donor_value * 5000.0,
                 measure="capital_gains",
             ),
@@ -268,7 +262,6 @@ def test_multi_period_targets_share_one_weight_vector(multiperiod_frame) -> None
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truth_2026 * 1.3,
                 measure="income_2026",
                 period=2026,
@@ -276,7 +269,6 @@ def test_multi_period_targets_share_one_weight_vector(multiperiod_frame) -> None
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truth_2030 * 1.3,
                 measure="income_2030",
                 period=2030,
@@ -559,64 +551,6 @@ def test_default_target_loss_scales_ignore_nonfinite_initial_estimates() -> None
     np.testing.assert_allclose(scales, np.asarray([1.0, 10.0, 1_000.0]))
 
 
-def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None:
-    """``mean`` diagnostics describe the true ratio, not the linearized row value.
-
-    A ``mean`` row is linearized about the input weights; ``A @ w`` is the
-    linearized value, which after a large mass move is *not* the achieved mean.
-    Reporting it gave a near-zero ``relative_error`` and a spurious
-    ``within_tolerance=True`` even when the true achieved mean missed the target
-    and its tolerance (Finding 6). The diagnostic must recompute the true ratio
-    ``sum(measure*filter*w) / sum(filter*w)`` under the final weights.
-    """
-    frame, _ = feasible_frame(n=200, seed=1)
-    income = frame.table("household")["income"].to_numpy()
-    w0 = frame.resolve_weights("household").values
-    true_mean = float((income * w0).sum() / w0.sum())
-    target_mean = true_mean * 1.5  # a large move, so linearization is inexact
-    targets = TargetSet(
-        (
-            Target(
-                name="mean_income",
-                entity="household",
-                aggregation="mean",
-                value=target_mean,
-                measure="income",
-                tolerance=target_mean * 0.02,
-            ),
-        )
-    )
-    result = calibrate(frame, targets, epochs=500, seed=0)
-    diag = result.diagnostics[0]
-    w = result.frame.resolve_weights("household").values
-    w0_now = frame.resolve_weights("household").values
-    true_achieved = float((income * w).sum() / w.sum())
-
-    # The diagnostic's target is the user's declared mean, not the shifted
-    # linearization right-hand side.
-    assert abs(diag.target - target_mean) < 1e-9
-    # The reported final estimate IS the true achieved mean (a sane ratio in the
-    # tens of thousands), not the linearized row value the matrix produces.
-    assert abs(diag.final_estimate - true_achieved) < 1e-6 * abs(true_achieved)
-    assert diag.final_estimate > true_mean  # moved up toward the target
-    # The linearized value (what the old diagnostic reported) is materially
-    # different from the true ratio — proving the fix changed the number, not
-    # just relabeled it.
-    linearized = float(result.problem.estimates(w)[0])
-    assert abs(linearized - true_achieved) > 0.1 * abs(true_achieved)
-    # initial_estimate is the true ratio at the input weights, too.
-    true_initial = float((income * w0_now).sum() / w0_now.sum())
-    assert abs(diag.initial_estimate - true_initial) < 1e-6 * abs(true_initial)
-    # relative_error reflects the true ratio's miss, not a spurious ~0.
-    expected_rel = (true_achieved - target_mean) / target_mean
-    assert abs(diag.relative_error - expected_rel) < 1e-9
-    # within_tolerance is the TRUE-ratio tolerance decision (not the
-    # linearization's spurious "perfect hit").
-    assert diag.within_tolerance is (
-        abs(true_achieved - target_mean) <= target_mean * 0.02
-    )
-
-
 def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:
     """The loss is minimized at est == target, not est == target - 1.
 
@@ -635,13 +569,22 @@ def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> Non
             "person": pd.DataFrame(
                 {"person_id": range(n), "person_household_id": range(n)}
             ),
-            "household": pd.DataFrame({"household_id": range(n)}),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(values=np.full(n, 0.1), kind=WeightKind.DESIGN)},
     )
     targets = TargetSet(
-        (Target(name="count", entity="household", aggregation="count", value=5.0),)
+        (
+            Target(
+                name="count",
+                entity="household",
+                measure="household_count",
+                value=5.0,
+            ),
+        )
     )
     result = calibrate(frame, targets, epochs=400, seed=0)
     estimate = result.frame.resolve_weights("household").values.sum()

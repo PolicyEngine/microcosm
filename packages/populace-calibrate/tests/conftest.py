@@ -2,9 +2,9 @@
 
 The builders construct small, seeded frames sized for CI speed (n<=300, a few
 hundred optimization epochs). They cover the scenarios the behavioral contracts
-need: a frame with feasible sum/count targets, and a "landmine" frame carrying a
-rare high-value near-zero-weight donor whose weight an unbounded calibration
-wants to detonate.
+need: a frame with feasible sum targets, and a "landmine" frame carrying a rare
+high-value near-zero-weight donor whose weight an unbounded calibration wants to
+detonate.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def household_frame(
 
 @pytest.fixture
 def feasible_frame():
-    """Factory: a frame with sum/count targets it can hit exactly.
+    """Factory: a frame with sum targets it can hit exactly.
 
     A household frame of ``n`` one-person households, each with a positive
     ``income`` and a binary ``is_renter`` flag, at uniform design weight. Returns
@@ -92,7 +92,11 @@ def feasible_frame():
         is_renter = (rng.random(n) < 0.35).astype(float)
         weights = np.full(n, weight)
         frame = household_frame(
-            household_columns={"income": income, "is_renter": is_renter},
+            household_columns={
+                "household_count": np.ones(n),
+                "income": income,
+                "is_renter": is_renter,
+            },
             weights=weights,
         )
         truths = {
@@ -149,10 +153,10 @@ def multiperson_frame():
 
     Households hold several persons each (so person- and household-length
     vectors differ), every person carries an ``age``, and household weights are
-    uniform. This is the frame a person-entity ``sum``/``mean`` target must
-    compile against while calibrating *household* weights — the cross-entity
-    collapse path. Returns the per-person ``age`` and household membership so a
-    test can compute the true weighted person aggregates by hand.
+    uniform. This is the frame a person-entity ``sum`` target must compile
+    against while calibrating *household* weights — the cross-entity collapse
+    path. Returns the per-person ``age`` and household membership so a test can
+    compute the true weighted person aggregates by hand.
 
     Returns:
         A callable ``make(seed=0, n_households=60, max_persons=4, weight=1000.0)``

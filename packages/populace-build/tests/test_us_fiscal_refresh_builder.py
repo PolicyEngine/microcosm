@@ -743,6 +743,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="national_critical_role",
                 entity="household",
+                measure="national_critical_role",
                 value=100.0,
                 source="fixture",
                 metadata={"target_role": "federal_income_tax_total"},
@@ -750,6 +751,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="state_role_row",
                 entity="household",
+                measure="state_role_row",
                 value=100.0,
                 source="fixture",
                 metadata={"state_fips": "06", "target_role": "tanf_total"},
@@ -757,6 +759,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="ordinary_distribution_row",
                 entity="household",
+                measure="ordinary_distribution_row",
                 value=100.0,
                 source="fixture",
             ),
@@ -778,6 +781,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="amount_small",
                 entity="household",
+                measure="amount_small",
                 value=100.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -785,6 +789,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="amount_large",
                 entity="household",
+                measure="amount_large",
                 value=300.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -792,6 +797,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="returns_small",
                 entity="household",
+                measure="returns_small",
                 value=10.0,
                 source="fixture",
                 metadata={
@@ -802,6 +808,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="returns_large",
                 entity="household",
+                measure="returns_large",
                 value=30.0,
                 source="fixture",
                 metadata={
@@ -829,6 +836,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="amount_small",
                 entity="household",
+                measure="amount_small",
                 value=100.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -836,6 +844,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="amount_large",
                 entity="household",
+                measure="amount_large",
                 value=300.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -843,6 +852,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="returns",
                 entity="household",
+                measure="returns",
                 value=10.0,
                 source="fixture",
                 metadata={
@@ -872,6 +882,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="zero",
                 entity="household",
+                measure="zero",
                 value=0.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -879,6 +890,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="subunit",
                 entity="household",
+                measure="subunit",
                 value=0.25,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -886,6 +898,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="negative",
                 entity="household",
+                measure="negative",
                 value=-9.0,
                 source="fixture",
                 signed=True,
@@ -907,6 +920,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     amount = TargetSpec(
         name="amount",
         entity="household",
+        measure="amount",
         value=100.0,
         source="fixture",
         metadata={"source_measure_id": "payment_amount"},
@@ -914,6 +928,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     return_count = TargetSpec(
         name="return_count",
         entity="household",
+        measure="return_count",
         value=100.0,
         source="fixture",
         metadata={
@@ -924,6 +939,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     person_count = TargetSpec(
         name="person_count",
         entity="household",
+        measure="person_count",
         value=100.0,
         source="fixture",
         metadata={
@@ -936,6 +952,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     bronze_count = TargetSpec(
         name="bronze_count",
         entity="household",
+        measure="bronze_count",
         value=100.0,
         source="fixture",
         metadata={

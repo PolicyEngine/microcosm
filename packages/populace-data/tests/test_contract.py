@@ -155,7 +155,7 @@ def _release_manifest(
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
@@ -273,8 +273,7 @@ def _target_row(
         "target_name": target_name,
         "period": 2024,
         "entity": "household",
-        "aggregation": "sum",
-        "measure": None,
+        "measure": {"kind": "column", "name": "household_count"},
         "filter": None,
         "source": "Fixture admin target",
         "metadata": metadata,

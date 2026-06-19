@@ -28,13 +28,12 @@ def _targets(truths: dict[str, float], factor: float) -> TargetSet:
             Target(
                 name="population",
                 entity="household",
-                aggregation="count",
                 value=truths["population"] * factor,
+                measure="household_count",
             ),
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truths["income"] * factor,
                 measure="income",
             ),
@@ -119,7 +118,6 @@ class TestPathEquivalence:
                 Target(
                     name="capital_gains",
                     entity="household",
-                    aggregation="sum",
                     value=donor_value * 50.0,
                     measure="capital_gains",
                 ),

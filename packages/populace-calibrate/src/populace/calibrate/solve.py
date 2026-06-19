@@ -51,7 +51,6 @@ from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
-    _linearization_weights,
     build_constraint_matrix,
 )
 from populace.calibrate.target import TargetSet
@@ -102,22 +101,18 @@ class TargetDiagnostic:
 
     Attributes:
         name: The target's ``"name@period"`` row label.
-        target: The target value aimed at. For ``sum``/``count`` this is the
-            compiled right-hand side ``b``; for ``mean`` it is the user's declared
-            target mean (not the linearization's shifted right-hand side).
+        target: The sum target value aimed at; this is the compiled right-hand
+            side ``b``.
         initial_estimate: The achieved aggregate under the input weights —
-            ``row @ w0`` for ``sum``/``count``, the true ratio
-            ``sum(measure*filter*w0)/sum(filter*w0)`` for ``mean``.
+            ``row @ w0``.
         final_estimate: The achieved aggregate under the calibrated weights —
-            ``row @ w`` for ``sum``/``count``, the true ratio under ``w`` for
-            ``mean`` (the achieved mean, not the linearized row value).
+            ``row @ w``.
         relative_error: ``(final_estimate - target) / target`` (or
             ``final_estimate - target`` when ``target`` is zero, since the
-            relative form is undefined there). For ``mean`` this is the true
-            ratio's relative miss.
+            relative form is undefined there).
         within_tolerance: Whether ``|final_estimate - target|`` is within the
-            target's declared tolerance (the true achieved value for ``mean``).
-            ``None`` when the target declared no tolerance.
+            target's declared tolerance. ``None`` when the target declared no
+            tolerance.
     """
 
     name: str
@@ -432,36 +427,16 @@ def _build_diagnostics(
 ) -> tuple[TargetDiagnostic, ...]:
     """Assemble per-target diagnostics from the problem and both weight vectors.
 
-    ``sum``/``count`` rows are exactly ``A @ w``, so their estimates and target
-    come straight from the compiled system. A ``mean`` row is only the *linearized*
-    value about the input weights — reporting ``A @ w`` for it after a large mass
-    move reads as a perfect hit even when the achieved ratio missed (Finding 6).
-    For ``mean`` targets the diagnostic instead reports the true ratio
-    ``sum(measure*filter*w)/sum(filter*w)`` under each weight vector, against the
-    user's declared target value (not the linearization's shifted right-hand
-    side).
+    Sum rows are exactly ``A @ w``, so their estimates and target come straight
+    from the compiled system.
     """
     initial_est = problem.estimates(initial_weights)
     final_est = problem.estimates(final_weights)
-    weight_entity = problem.weight_entity
     diagnostics: list[TargetDiagnostic] = []
     for i, target in enumerate(problem.targets):
-        if target.aggregation == "mean":
-            # True achieved ratio under the (entity-aligned) weights, against the
-            # user's declared mean value.
-            tgt = float(target.value)
-            w0_aligned = _linearization_weights(
-                target, frame, initial_weights, weight_entity
-            )
-            w_aligned = _linearization_weights(
-                target, frame, final_weights, weight_entity
-            )
-            initial_value = target.achieved_value(frame, w0_aligned)
-            final = target.achieved_value(frame, w_aligned)
-        else:
-            tgt = float(problem.target_vector[i])
-            initial_value = float(initial_est[i])
-            final = float(final_est[i])
+        tgt = float(problem.target_vector[i])
+        initial_value = float(initial_est[i])
+        final = float(final_est[i])
         if tgt != 0.0:
             rel = (final - tgt) / tgt
         else:

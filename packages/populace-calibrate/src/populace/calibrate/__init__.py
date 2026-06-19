@@ -1,10 +1,10 @@
 """populace.calibrate: the representation operator of the populace stack.
 
 The only place :class:`~populace.frame.WeightKind.CALIBRATED` weights are
-produced. Compiles declared facts — population control totals, counts, averages
-with standard-error-style tolerances — into a sparse linear constraint system
-over a :class:`~populace.frame.Frame`, then solves for the weight vector that
-best reproduces them under capped weighted MAPE,
+produced. Compiles declared facts as sum targets — including count-like facts
+represented by prepared indicator/count columns — into a sparse linear
+constraint system over a :class:`~populace.frame.Frame`, then solves for the
+weight vector that best reproduces them under capped weighted MAPE,
 ``weighted_mean(min(abs((A @ w - b) / scale), cap))``, optimized with torch's
 Adam over the log-weights (positivity by construction). Multi-period targets stack as
 ``(target, period)`` rows over the *same* weight vector — the charter's "one
@@ -99,7 +99,6 @@ from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     relative_error_loss,
 )
 from populace.calibrate.target import (  # noqa: E402 - after the compat gate
-    AGGREGATIONS,
     Target,
     TargetSet,
 )
@@ -107,7 +106,6 @@ from populace.calibrate.target import (  # noqa: E402 - after the compat gate
 __version__ = "0.1.0"
 
 __all__ = [
-    "AGGREGATIONS",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CONSERVE_MASS",
     "FREE_MASS",

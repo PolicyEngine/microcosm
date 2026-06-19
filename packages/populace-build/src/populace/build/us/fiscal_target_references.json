@@ -6,7 +6,6 @@
   "description": "Hand-authored US fiscal target references. Observed values must be resolved from external PolicyEngine Ledger consumer facts; generated IRS, Census, SSA, CMS, SNAP, TANF, and CBO targets are compiled directly from the Ledger fact stream.",
   "target_references": [
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -23,7 +22,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
@@ -40,7 +38,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
@@ -57,7 +54,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
@@ -74,7 +70,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",

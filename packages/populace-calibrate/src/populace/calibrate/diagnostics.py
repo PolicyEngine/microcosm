@@ -33,7 +33,7 @@ __all__ = [
 
 #: Version of the diagnostics payload. Consumers (dashboards, scorers) key
 #: their readers on it; bump it with any shape change.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 2
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 3
 
 
 def _finite(value: float) -> float | None:
@@ -114,7 +114,6 @@ def _target_identity_rows(result: CalibrationResult) -> list[dict[str, object]]:
                 "target_name": target.name,
                 "period": target.period,
                 "entity": target.entity,
-                "aggregation": target.aggregation,
                 "measure": _selector_payload(target.measure),
                 "filter": _selector_payload(target.filter),
                 "source": target.source,
@@ -161,7 +160,6 @@ def _target_row(
         "target_name": target.name,
         "period": target.period,
         "entity": target.entity,
-        "aggregation": target.aggregation,
         "measure": _selector_payload(target.measure),
         "filter": _selector_payload(target.filter),
         "source": target.source,
