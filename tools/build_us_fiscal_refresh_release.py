@@ -79,6 +79,7 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 25_000
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
@@ -317,6 +318,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--maximum-microsim-batch-size",
+        "--maximum-microsimulation-batch-size",
+        dest="maximum_microsim_batch_size",
+        type=int,
+        default=DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+        help=(
+            "Maximum households per PolicyEngine microsimulation batch. "
+            "Use 0 to run each requested microsimulation on the full dataset "
+            "at once."
+        ),
+    )
     parser.add_argument(
         "--audit-export-targets",
         action="store_true",
@@ -948,6 +961,70 @@ def _collapse_person(frame: Frame, values: np.ndarray) -> np.ndarray:
     return out
 
 
+def _household_position_batches(
+    n_households: int, batch_size: int | None
+) -> Iterable[np.ndarray]:
+    if n_households <= 0:
+        return
+    if batch_size is None or batch_size <= 0 or batch_size >= n_households:
+        yield np.arange(n_households, dtype=np.int64)
+        return
+    for start in range(0, n_households, batch_size):
+        stop = min(start + batch_size, n_households)
+        yield np.arange(start, stop, dtype=np.int64)
+
+
+def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame:
+    household_ids = frame.table("household")["household_id"].to_numpy()[positions]
+    person_mask = frame.table("person")["person_household_id"].isin(household_ids)
+    return frame.select(person_mask)
+
+
+def _reform_household_income_tax(
+    *,
+    base_frame: Frame,
+    reform_spec,
+    system,
+    microsimulation_cls,
+    n_households: int,
+    batch_size: int | None,
+) -> np.ndarray:
+    reform_income_tax = np.zeros(n_households, dtype=np.float64)
+    reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
+    batches = tuple(_household_position_batches(n_households, batch_size))
+    if len(batches) > 1:
+        print(
+            "Materializing reform target "
+            f"{reform_spec.measure} in {len(batches)} batches "
+            f"of up to {batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        full_batch = len(household_positions) == n_households
+        batch_frame = (
+            base_frame
+            if full_batch
+            else _select_households_by_position(base_frame, household_positions)
+        )
+        batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
+        reformed_dataset = _dataset_from_frame(
+            batch_frame,
+            zero_variables=(reform_spec.neutralized_variable,),
+            system=system,
+        )
+        reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
+        batch_income_tax = _collapse_tax_unit(
+            _calculate_array(reformed, "income_tax"),
+            batch_tax_unit_positions,
+            batch_frame.n("household"),
+        )
+        reform_income_tax[household_positions] = batch_income_tax
+        reformed._invalidate_all_caches()
+        del batch_income_tax, reformed, reformed_dataset, batch_frame
+        gc.collect()
+    return reform_income_tax
+
+
 def _variable_entity(system, name: str) -> str | None:
     variable = system.variables.get(name)
     if variable is None:
@@ -1324,6 +1401,8 @@ def _make_zero_variable_reform(system, variable_name: str):
 def _materialize_target_frame(
     base_frame: Frame,
     target_specs: tuple,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -1559,21 +1638,16 @@ def _materialize_target_frame(
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         if reform_spec.measure not in requested_reform_measures:
             continue
-        reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
-        reformed_dataset = _dataset_from_frame(
-            base_frame,
-            zero_variables=(reform_spec.neutralized_variable,),
+        reform_income_tax = _reform_household_income_tax(
+            base_frame=base_frame,
+            reform_spec=reform_spec,
             system=system,
-        )
-        reformed = Microsimulation(dataset=reformed_dataset, reform=reform)
-        reform_income_tax = _collapse_tax_unit(
-            _calculate_array(reformed, "income_tax"),
-            tax_unit_positions,
-            n_households,
+            microsimulation_cls=Microsimulation,
+            n_households=n_households,
+            batch_size=maximum_microsim_batch_size,
         )
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
-        reformed._invalidate_all_caches()
-        del reform_income_tax, reformed, reformed_dataset, reform
+        del reform_income_tax
         gc.collect()
 
     compileable_specs = [
@@ -2084,11 +2158,16 @@ def _state_income_tax_target_sum(result) -> float:
 
 
 def _assert_export_matches_calibration(
-    dataset_path: Path, result, target_specs: tuple
+    dataset_path: Path,
+    result,
+    target_specs: tuple,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     target_frame, registry, compilation = _materialize_target_frame(
         _load_frame(dataset_path),
         target_specs,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
     )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
@@ -2612,6 +2691,7 @@ def main() -> None:
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
         target_specs,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
     if telemetry is not None:
         telemetry.stage(
@@ -2693,7 +2773,12 @@ def main() -> None:
                 "post_export_audit",
                 message="Auditing exported H5 against calibration targets.",
             )
-        _assert_export_matches_calibration(dataset_path, result, target_specs)
+        _assert_export_matches_calibration(
+            dataset_path,
+            result,
+            target_specs,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        )
 
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")

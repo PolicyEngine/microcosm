@@ -180,6 +180,42 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
+def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert (
+        args.maximum_microsim_batch_size == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--maximum-microsim-batch-size",
+            "0",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.maximum_microsim_batch_size == 0
+
+
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
@@ -1039,7 +1075,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, specs: (
+        lambda frame, specs, **kwargs: (
             frame,
             registry,
             {"dropped_target_names": []},
@@ -1529,26 +1565,32 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
 
         def calculate(self, variable, *, period, **kwargs):
             assert period == builder.PERIOD
+            tax_unit_ids = (
+                self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
+            )
             if self.reform is not None:
                 assert variable == "income_tax"
                 assert kwargs == {}
-                return np.asarray([90.0, 25.0, 40.0])
-            arrays = {
-                "income_tax": np.asarray([100.0, 30.0, 70.0]),
-                "taxable_income": np.asarray([1000.0, 2000.0, 3000.0]),
-                "adjusted_gross_income": np.asarray([1100.0, 2100.0, 3100.0]),
-                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
-                "state_income_tax": np.asarray([5.0, 6.0, 7.0]),
+                reform_income_tax_by_id = {10: 90.0, 20: 25.0, 30: 40.0}
+                return np.asarray(
+                    [reform_income_tax_by_id[id_] for id_ in tax_unit_ids]
+                )
+            arrays_by_id = {
+                "income_tax": {10: 100.0, 20: 30.0, 30: 70.0},
+                "taxable_income": {10: 1000.0, 20: 2000.0, 30: 3000.0},
+                "adjusted_gross_income": {10: 1100.0, 20: 2100.0, 30: 3100.0},
+                "filing_status": {10: "SINGLE", 20: "SINGLE", 30: "SINGLE"},
+                "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
             }
             assert kwargs == {}
-            return arrays[variable]
+            return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
 
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
     def fake_dataset_from_frame(frame_arg, *, zero_variables=(), system=None):
         datasets.append((frame_arg, tuple(zero_variables), system))
-        return {"zero_variables": tuple(zero_variables)}
+        return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
     def fake_make_zero_variable_reform(system, variable_name):
         assert isinstance(system, FakeSystem)
@@ -1571,7 +1613,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
 
     target_frame, registry, dropped = builder._materialize_target_frame(
-        frame, (target,)
+        frame, (target,), maximum_microsim_batch_size=1
     )
 
     household = target_frame.table("household")
@@ -1581,9 +1623,14 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     assert len(registry) == 1
     assert dropped["dropped_target_names"] == []
-    assert [dataset[1] for dataset in datasets] == [(), ("mock_credit",)]
-    assert len(simulations) == 2
-    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1]
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
+    assert len(simulations) == 3
+    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(
@@ -2595,7 +2642,7 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, target_specs: (
+        lambda frame, target_specs, **kwargs: (
             FakeFrame(),
             FakeRegistry(),
             {"dropped_target_names": []},
@@ -2636,7 +2683,7 @@ def test_post_export_sanity_rejects_dropped_export_targets(
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, target_specs: (
+        lambda frame, target_specs, **kwargs: (
             object(),
             object(),
             {"dropped_target_names": ["missing"]},
