@@ -1434,12 +1434,6 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         required_metadata=(("target_role", "itemized_deduction_total"),),
     ),
     TargetCoverageRequirement(
-        requirement_id="charitable_deduction_total",
-        label="SOI charitable deduction amount total",
-        accepted_families=("irs_soi",),
-        required_metadata=(("target_role", "charitable_deduction_total"),),
-    ),
-    TargetCoverageRequirement(
         requirement_id="salt_deduction_total",
         label="SOI state and local tax deduction amount total",
         accepted_families=("irs_soi",),
@@ -1458,12 +1452,6 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         required_metadata=(
             ("target_role", "qualified_business_income_deduction_total"),
         ),
-    ),
-    TargetCoverageRequirement(
-        requirement_id="interest_deduction_total",
-        label="SOI interest deduction amount total",
-        accepted_families=("irs_soi",),
-        required_metadata=(("target_role", "interest_deduction_total"),),
     ),
     TargetCoverageRequirement(
         requirement_id="social_security_total",
