@@ -567,6 +567,31 @@ def test_base_population_scale_gate_accepts_national_scale_base(small_frame) -> 
     assert gate.details["relative_error"] == 0.0
 
 
+def test_base_population_mass_repair_rescales_to_census_benchmark(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    benchmark = builder.US_BASE_PERSON_POPULATION_BENCHMARK
+
+    repaired, repair = builder._with_base_population_mass_repair(small_frame)
+
+    assert repair["applied"]
+    assert repair["method"] == "rescale_household_weights_to_census_person_population"
+    assert repair["initial_population"] == 6000.0
+    assert np.isclose(repair["factor"], benchmark / 6000.0)
+    assert np.isclose(repair["repaired_population"], benchmark)
+    assert np.isclose(float(repaired.resolve_weights("person").values.sum()), benchmark)
+    assert repaired.mass_log[-1].entity == "household"
+    assert (
+        repaired.mass_log[-1].reason == builder.US_BASE_PERSON_POPULATION_REPAIR_REASON
+    )
+
+    gate = builder._base_population_scale_gate(repaired, mass_repair=repair)
+    assert gate.passed
+    assert gate.details["mass_repair"]["initial_population"] == 6000.0
+    assert np.isclose(gate.details["mass_repair"]["factor"], benchmark / 6000.0)
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -991,13 +1016,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    repair_payload = {
+        "method": "rescale_household_weights_to_census_person_population",
+        "applied": True,
+        "factor": 2.0,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_base_population_mass_repair",
+        lambda frame: (frame, repair_payload),
+    )
     monkeypatch.setattr(
         builder,
         "_base_population_scale_gate",
-        lambda frame: builder.GateResult(
+        lambda frame, *, mass_repair=None: builder.GateResult(
             name="base_population_scale",
             passed=True,
-            details={"checked": True},
+            details={"checked": True, "mass_repair": mass_repair},
         ),
     )
     monkeypatch.setattr(
@@ -1058,6 +1093,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
     assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    assert (
+        captured["diagnostics"]["base_population_gate"].details["mass_repair"]
+        == repair_payload
+    )
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
@@ -2335,6 +2374,11 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 "population": 334_200_000.0,
                 "benchmark": 334_200_000.0,
                 "relative_error": 0.0,
+                "mass_repair": {
+                    "method": "rescale_household_weights_to_census_person_population",
+                    "applied": True,
+                    "factor": 5.87,
+                },
             },
         ),
         health_input_gate=builder.GateResult(
@@ -2370,12 +2414,22 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
         == 0.0
     )
+    assert (
+        build_manifest["gates"]["base_population_scale"]["details"]["mass_repair"][
+            "method"
+        ]
+        == "rescale_household_weights_to_census_person_population"
+    )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",
     }
+    assert (
+        manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
+        == 5.87
+    )
     assert manifest["compatible_core_packages"] == [
         {"name": "policyengine-core", "specifier": "==3.26.11"}
     ]

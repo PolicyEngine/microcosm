@@ -80,6 +80,10 @@ US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
+US_BASE_PERSON_POPULATION_REPAIR_REASON = (
+    "US fiscal refresh rescaled base household weights to the Census 2024 "
+    "national person-population benchmark before mass='conserve' calibration."
+)
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
@@ -1620,14 +1624,79 @@ def _health_input_signal_gate(frame: Frame) -> GateResult:
     )
 
 
-def _base_population_scale_gate(frame: Frame) -> GateResult:
-    population = float(frame.resolve_weights("person").values.sum())
+def _person_population(frame: Frame) -> float:
+    return float(frame.resolve_weights("person").values.sum())
+
+
+def _base_population_relative_error(population: float) -> float | None:
     benchmark = US_BASE_PERSON_POPULATION_BENCHMARK
-    relative_error = (
-        (population - benchmark) / benchmark
-        if math.isfinite(population) and benchmark
-        else None
-    )
+    if not math.isfinite(population) or population <= 0 or not benchmark:
+        return None
+    return (population - benchmark) / benchmark
+
+
+def _mass_change_record_payload(record) -> dict[str, object]:
+    return {
+        "entity": record.entity,
+        "old_total": record.old_total,
+        "new_total": record.new_total,
+        "declared_factor": record.declared_factor,
+        "reason": record.reason,
+    }
+
+
+def _with_base_population_mass_repair(
+    frame: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    initial_population = _person_population(frame)
+    initial_relative_error = _base_population_relative_error(initial_population)
+    benchmark = US_BASE_PERSON_POPULATION_BENCHMARK
+    if initial_relative_error is None:
+        raise RuntimeError(
+            "Base population mass repair requires a positive, finite weighted "
+            f"person population; got {initial_population!r}."
+        )
+
+    factor = benchmark / initial_population
+    applied = not math.isclose(factor, 1.0, rel_tol=1e-12, abs_tol=0.0)
+    repaired = frame
+    if applied:
+        weights = frame.weights_for("household")
+        repaired = frame.with_weights(
+            "household",
+            weights.with_values(weights.values * factor, weights.kind),
+            mass=MassChange(
+                factor=factor,
+                reason=US_BASE_PERSON_POPULATION_REPAIR_REASON,
+            ),
+        )
+
+    repaired_population = _person_population(repaired)
+    repaired_relative_error = _base_population_relative_error(repaired_population)
+    payload: dict[str, object] = {
+        "method": "rescale_household_weights_to_census_person_population",
+        "applied": applied,
+        "reason": US_BASE_PERSON_POPULATION_REPAIR_REASON,
+        "initial_population": initial_population,
+        "benchmark": benchmark,
+        "factor": factor,
+        "initial_relative_error": initial_relative_error,
+        "repaired_population": repaired_population,
+        "repaired_relative_error": repaired_relative_error,
+    }
+    if applied:
+        payload["mass_change"] = _mass_change_record_payload(repaired.mass_log[-1])
+    return repaired, payload
+
+
+def _base_population_scale_gate(
+    frame: Frame,
+    *,
+    mass_repair: Mapping[str, object] | None = None,
+) -> GateResult:
+    population = _person_population(frame)
+    benchmark = US_BASE_PERSON_POPULATION_BENCHMARK
+    relative_error = _base_population_relative_error(population)
     max_abs = US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR
     passed = relative_error is not None and abs(relative_error) <= max_abs
     details = {
@@ -1638,6 +1707,8 @@ def _base_population_scale_gate(frame: Frame) -> GateResult:
         "max_abs_relative_error": max_abs,
         "calibration_mass_policy": "conserve",
     }
+    if mass_repair is not None:
+        details["mass_repair"] = dict(mass_repair)
     if passed:
         return GateResult(
             name="base_population_scale",
@@ -2320,6 +2391,16 @@ def _build_manifests(
                 "name": "policyengine-us",
                 "version": runtime["policyengine-us"],
             },
+            **(
+                {
+                    "base_population_scale": {
+                        "passed": base_population_gate.passed,
+                        "details": dict(base_population_gate.details),
+                    }
+                }
+                if base_population_gate is not None
+                else {}
+            ),
         },
         "compatible_core_packages": [
             {
@@ -2533,7 +2614,20 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
-    base_population_gate = _base_population_scale_gate(base_frame)
+    base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
+    if telemetry is not None:
+        telemetry.stage(
+            "base_population_repair",
+            message="Repaired base population mass for conserved calibration.",
+            applied=base_population_repair["applied"],
+            factor=base_population_repair["factor"],
+            initial_population=base_population_repair["initial_population"],
+            repaired_population=base_population_repair["repaired_population"],
+        )
+    base_population_gate = _base_population_scale_gate(
+        base_frame,
+        mass_repair=base_population_repair,
+    )
     if not base_population_gate.passed:
         if telemetry is not None:
             telemetry.stage(
