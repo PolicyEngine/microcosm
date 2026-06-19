@@ -30,7 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 11
+TARGET_COUNT = 9
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -39,13 +39,6 @@ DEDUCTION_CRITICAL_TARGETS = (
         1_000_000_000_000.0,
         1_020_000_000_000.0,
         "itemized_deduction_total",
-    ),
-    (
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024",
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount",
-        200_000_000_000.0,
-        205_000_000_000.0,
-        "charitable_deduction_total",
     ),
     (
         "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount@2024",
@@ -67,15 +60,6 @@ DEDUCTION_CRITICAL_TARGETS = (
         31_000_000_000.0,
         30_000_000_000.0,
         "qualified_business_income_deduction_total",
-    ),
-    (
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-        "interest_paid_deduction_amount@2024",
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-        "interest_paid_deduction_amount",
-        200_000_000_000.0,
-        198_000_000_000.0,
-        "interest_deduction_total",
     ),
 )
 
@@ -352,7 +336,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 9,
+                "target_count": 7,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },

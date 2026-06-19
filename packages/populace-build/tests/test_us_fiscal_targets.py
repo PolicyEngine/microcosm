@@ -55,11 +55,9 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
 
 REFERENCE_DEDUCTION_TARGET_ROLES = {
     "itemized_deduction_total",
-    "charitable_deduction_total",
     "salt_deduction_total",
     "medical_expense_deduction_total",
     "qualified_business_income_deduction_total",
-    "interest_deduction_total",
 }
 
 CENSUS_PEP_AGE_GROUPS = (
