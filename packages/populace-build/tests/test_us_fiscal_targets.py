@@ -695,6 +695,140 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     )
 
 
+def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
+    source_record_id = (
+        "irs_soi.ty2024.state_2022.us.eitc_three_or_more_children_returns."
+        "three_or_more_qualifying_children.return_count"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="return_count",
+                value=3_080_790,
+                period_value=2024,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id=(
+                    "irs_soi.ty2024.state_2022.us.eitc_three_or_more_children_returns"
+                ),
+                groupby_dimension=("us.tax.earned_income_credit_qualifying_children"),
+                groupby_value_id="three_or_more_qualifying_children",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "eitc"
+    assert spec.metadata["base_variable"] == "eitc"
+    assert spec.metadata["measure_mode"] == "positive_count"
+    assert spec.metadata["count"] == "true"
+    assert (
+        spec.metadata["ledger_filter_eitc_child_count"]
+        == "three_or_more_qualifying_children"
+    )
+
+
+def test_soi_form_w2_social_security_tips_return_count_targets_tip_income() -> None:
+    source_record_id = (
+        "irs_soi.ty2024.form_w2_social_security_tips."
+        "box_7_social_security_tips.return_count"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="return_count",
+                value=6_038_613,
+                period_value=2024,
+                layout_record_set_id="irs_soi.ty2024.form_w2_social_security_tips",
+                groupby_dimension="irs_soi.form_w2_item",
+                groupby_value_id="box_7_social_security_tips",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "tip_income"
+    assert spec.metadata["base_variable"] == "tip_income"
+    assert spec.metadata["measure_mode"] == "positive_count"
+    assert spec.metadata["count"] == "true"
+
+
+def test_soi_itemized_deduction_targets_require_itemizing() -> None:
+    medical_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns"
+    )
+    real_estate_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims"
+    )
+    salt_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=medical_source_record_id,
+                source_name="irs_soi",
+                measure_id="medical_dental_expense_returns",
+                value=3_895_410,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+                groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+                groupby_value_id="all",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=real_estate_source_record_id,
+                source_name="irs_soi",
+                measure_id="real_estate_taxes_claims",
+                value=14_258_420,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+                groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+                groupby_value_id="all",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=salt_source_record_id,
+                source_name="irs_soi",
+                measure_id="limited_state_local_taxes_returns",
+                value=14_872_910,
+                period_value=2022,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+                groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+                groupby_value_id="all",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    medical_spec = specs[medical_source_record_id]
+    assert medical_spec.family == "irs_soi"
+    assert medical_spec.metadata["variable"] == "medical_expense_deduction"
+    assert medical_spec.metadata["measure_mode"] == "positive_count"
+    assert medical_spec.metadata["itemized_only"] == "true"
+    real_estate_spec = specs[real_estate_source_record_id]
+    assert real_estate_spec.family == "irs_soi"
+    assert real_estate_spec.metadata["variable"] == "real_estate_taxes"
+    assert real_estate_spec.metadata["measure_mode"] == "positive_count"
+    assert real_estate_spec.metadata["itemized_only"] == "true"
+    salt_spec = specs[salt_source_record_id]
+    assert salt_spec.family == "irs_soi"
+    assert salt_spec.metadata["variable"] == "salt_deduction"
+    assert salt_spec.metadata["measure_mode"] == "positive_count"
+    assert salt_spec.metadata["itemized_only"] == "true"
+
+
 def test__given_stale_soi_eitc_agi_bucket__then_it_is_not_a_hard_target() -> None:
     source_record_id = (
         "irs_soi.ty2022.table_2_5.eitc_by_agi_children.one_qualifying_child."
@@ -1351,6 +1485,7 @@ def _dynamic_ledger_fact(
     period_value: int | str = 2024,
     geography_level: str = "country",
     geography_id: str = "0100000US",
+    groupby_dimension: str = "",
     groupby_value_id: str = "all",
     layout_record_set_id: str | None = None,
     dimensions: dict[str, object] | None = None,
@@ -1371,7 +1506,7 @@ def _dynamic_ledger_fact(
         "universe_constraints": {"constraints": list(universe_constraints or [])},
         "layout": {
             "record_set_id": layout_record_set_id or f"{source_name}.record_set",
-            "groupby_dimension": "",
+            "groupby_dimension": groupby_dimension,
             "groupby_value_id": groupby_value_id,
             "measure_id": measure_id,
         },

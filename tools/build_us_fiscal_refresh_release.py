@@ -1332,6 +1332,15 @@ def _materialize_target_frame(
         if "eitc_child_count" in system.variables
         else None
     )
+    needs_itemizer_mask = any(
+        spec.family == "irs_soi" and spec.metadata.get("itemized_only") == "true"
+        for spec in target_specs
+    )
+    tax_unit_itemizes = (
+        np.asarray(_calculate_array(simulation, "tax_unit_itemizes"), dtype=bool)
+        if needs_itemizer_mask and "tax_unit_itemizes" in system.variables
+        else None
+    )
     tax_unit_state_fips = household["state_fips"].to_numpy()[tax_unit_positions]
 
     hh["income_tax"] = _collapse_tax_unit(
@@ -1493,6 +1502,10 @@ def _materialize_target_frame(
             if eitc_child_count is None:
                 continue
             mask &= _eitc_child_count_mask(eitc_child_count, child_filter)
+        if spec.metadata.get("itemized_only") == "true":
+            if tax_unit_itemizes is None:
+                continue
+            mask &= tax_unit_itemizes
         if "state_fips" in spec.metadata:
             mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
         is_count = spec.metadata.get("count") == "true"
@@ -1520,6 +1533,7 @@ def _materialize_target_frame(
         agi_tax_unit,
         filing_status,
         eitc_child_count,
+        tax_unit_itemizes,
     )
     simulation._invalidate_all_caches()
     del simulation

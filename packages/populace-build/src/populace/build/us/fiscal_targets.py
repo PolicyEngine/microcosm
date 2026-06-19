@@ -204,6 +204,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "taxable_interest_income": "taxable_interest_income",
     "taxable_pension_income": "taxable_pension_income",
     "taxable_social_security": "tax_unit_taxable_social_security",
+    "tip_income": "tip_income",
     "total_pension_income": "pension_income",
     "total_social_security": "tax_unit_social_security",
     "unemployment_compensation": "unemployment_compensation",
@@ -214,6 +215,26 @@ _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
+
+_SOI_EITC_CHILD_COUNT_LAYOUT_DIMENSIONS = frozenset(
+    {
+        "us.tax.earned_income_credit_qualifying_children",
+        "us.tax.eitc_qualifying_children",
+    }
+)
+_SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
+_SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
+    {
+        "box_7_social_security_tips",
+    }
+)
+_SOI_ITEMIZED_ONLY_VARIABLES = frozenset(
+    {
+        "medical_expense_deduction",
+        "real_estate_taxes",
+        "salt_deduction",
+    }
+)
 
 
 DIRECT_LEDGER_TARGETS: dict[
@@ -830,6 +851,9 @@ def _soi_reference_from_fact(
         is_count = variable is not None
     if variable is None:
         return None
+    override = _soi_layout_variable_override(fact, measure_id=measure_id)
+    if override is not None:
+        variable, is_count = override
 
     lower, upper = _agi_bounds(fact)
     if _is_untransformed_cross_period_agi_slice(
@@ -857,6 +881,7 @@ def _soi_reference_from_fact(
         "agi_lower_bound": lower,
         "agi_upper_bound": upper,
         "filing_status": status,
+        **_soi_layout_filter_metadata(fact),
     }
     base_variables = _soi_base_variables(variable)
     if len(base_variables) == 1:
@@ -865,6 +890,8 @@ def _soi_reference_from_fact(
         metadata["base_variables"] = ",".join(base_variables)
     if is_count:
         metadata["count"] = "true"
+    if variable in _SOI_ITEMIZED_ONLY_VARIABLES:
+        metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
     if state_fips:
         metadata["state_fips"] = state_fips
@@ -893,6 +920,39 @@ def _soi_base_variables(variable: str) -> tuple[str, ...]:
     if variable == "count":
         return ()
     return _SOI_BASE_VARIABLE_OVERRIDES.get(variable, (SOI_VARIABLE_MAP[variable],))
+
+
+def _soi_layout_variable_override(
+    fact: object, *, measure_id: str
+) -> tuple[str, bool] | None:
+    groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
+    groupby_value = _str_at(fact, "layout", "groupby_value_id")
+    if (
+        measure_id == "return_count"
+        and groupby_dimension in _SOI_EITC_CHILD_COUNT_LAYOUT_DIMENSIONS
+        and groupby_value
+        and groupby_value != "all"
+    ):
+        return "eitc", True
+    if (
+        measure_id == "return_count"
+        and groupby_dimension == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+        and groupby_value in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
+    ):
+        return "tip_income", True
+    return None
+
+
+def _soi_layout_filter_metadata(fact: object) -> dict[str, str]:
+    groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
+    groupby_value = _str_at(fact, "layout", "groupby_value_id")
+    if (
+        groupby_dimension in _SOI_EITC_CHILD_COUNT_LAYOUT_DIMENSIONS
+        and groupby_value
+        and groupby_value != "all"
+    ):
+        return {"ledger_filter_eitc_child_count": groupby_value}
+    return {}
 
 
 def _state_income_tax_reference_from_fact(
