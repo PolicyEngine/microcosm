@@ -1,4 +1,4 @@
-"""The published-dataset registry: ``(country, year) -> DatasetSpec``.
+"""The published-dataset registry: ``(country, year, variant) -> DatasetSpec``.
 
 This is the single source of truth for what populace has published and where it
 lives. Adding a dataset is one :class:`DatasetSpec` entry here plus its uploaded
@@ -17,7 +17,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["DatasetSpec", "REGISTRY", "register"]
+__all__ = ["DEFAULT_VARIANT", "DatasetSpec", "REGISTRY", "register"]
+
+DEFAULT_VARIANT = "compact"
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,9 @@ class DatasetSpec:
             element of the registry key and the name of the install extra that
             provides the engine (``populace-data[<country>]``).
         year: The population year. The second element of the registry key.
+        variant: Dataset scale/contract variant. ``"compact"`` is the default
+            fast national microsimulation artifact; local-geography builds
+            should use a separate variant such as ``"local"``.
         hf_repo: The Hugging Face **dataset** repo holding the artifact, e.g.
             ``"policyengine/populace-us"``.
         filename: The artifact filename within ``hf_repo``, e.g.
@@ -50,11 +55,12 @@ class DatasetSpec:
     engine_module: str
     engine_class: str
     engine_package: str
+    variant: str = DEFAULT_VARIANT
 
     @property
-    def key(self) -> tuple[str, int]:
-        """The ``(country, year)`` registry key for this spec."""
-        return (self.country, self.year)
+    def key(self) -> tuple[str, int, str]:
+        """The ``(country, year, variant)`` registry key for this spec."""
+        return (self.country, self.year, self.variant)
 
     @property
     def hf_url(self) -> str:
@@ -62,9 +68,9 @@ class DatasetSpec:
         return f"hf://{self.hf_repo}/{self.filename}"
 
 
-#: The published-dataset registry. Keys are ``(country, year)``; the
+#: The published-dataset registry. Keys are ``(country, year, variant)``; the
 #: lowest-friction way to publish a new population is one entry here.
-REGISTRY: dict[tuple[str, int], DatasetSpec] = {}
+REGISTRY: dict[tuple[str, int, str], DatasetSpec] = {}
 
 
 def register(spec: DatasetSpec) -> DatasetSpec:
@@ -72,8 +78,8 @@ def register(spec: DatasetSpec) -> DatasetSpec:
 
     Raises:
         ValueError: If a different spec is already registered for the same
-            ``(country, year)`` — re-registering the *same* spec is a no-op so
-            re-import is safe.
+            ``(country, year, variant)`` — re-registering the *same* spec is a
+            no-op so re-import is safe.
     """
     existing = REGISTRY.get(spec.key)
     if existing is not None and existing != spec:
@@ -93,6 +99,7 @@ register(
     DatasetSpec(
         country="uk",
         year=2023,
+        variant=DEFAULT_VARIANT,
         hf_repo="policyengine/populace-uk-private",
         filename="populace_uk_2023.h5",
         engine_module="policyengine_uk.data",
@@ -105,6 +112,7 @@ register(
     DatasetSpec(
         country="us",
         year=2024,
+        variant=DEFAULT_VARIANT,
         hf_repo="policyengine/populace-us",
         filename="populace_us_2024.h5",
         engine_module="policyengine_us.data",

@@ -3,8 +3,8 @@
 The distribution end of the stack. Where the operator shards
 (:mod:`populace.frame`, :mod:`populace.fit`, :mod:`populace.calibrate`) *build*
 populations, this shard *serves* the ones populace has published: a registry of
-``(country, year)`` pointers to artifacts on the Hugging Face Hub, and a loader
-that returns each as the country engine's dataset object.
+``(country, year, variant)`` pointers to artifacts on the Hugging Face Hub, and
+a loader that returns each as the country engine's dataset object.
 
     >>> from policyengine_us import Microsimulation
     >>> from populace.data import load
@@ -31,12 +31,13 @@ from populace.data.contract import (
 )
 from populace.data.loader import (
     available,
+    available_variants,
     download,
     latest_year,
     load,
     resolve,
 )
-from populace.data.registry import REGISTRY, DatasetSpec, register
+from populace.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec, register
 from populace.data.release import (
     LATEST_POINTER_PATH,
     LATEST_POINTER_SCHEMA_VERSION,
@@ -50,9 +51,11 @@ __all__ = [
     "load",
     "download",
     "available",
+    "available_variants",
     "resolve",
     "latest_year",
     "DatasetSpec",
+    "DEFAULT_VARIANT",
     "REGISTRY",
     "register",
     "RELEASE_MANIFEST_SCHEMA_VERSION",

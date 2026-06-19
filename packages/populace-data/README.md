@@ -3,9 +3,9 @@
 The distribution end of the [populace](https://github.com/PolicyEngine/populace)
 stack. The operator shards (`populace-frame`, `populace-fit`,
 `populace-calibrate`) *build* populations; `populace-data` *serves* the ones
-populace has published — a registry of `(country, year)` pointers to artifacts
-on the Hugging Face Hub, and a loader that returns each as its PolicyEngine
-engine dataset.
+populace has published — a registry of `(country, year, variant)` pointers to
+artifacts on the Hugging Face Hub, and a loader that returns each as its
+PolicyEngine engine dataset.
 
 ```bash
 pip install 'populace-data[us]'
@@ -19,8 +19,9 @@ sim = Microsimulation(dataset=load("us", 2024))
 sim.calculate("household_net_income", 2024).sum()
 ```
 
-`load("us")` (no year) loads the latest published year. `available()` lists
-every published `(country, year)`.
+`load("us")` (no year) loads the latest published compact year. `available()`
+lists published `(country, year)` pairs; `available_variants()` lists every
+published `(country, year, variant)`.
 
 ## Why a shard, not a repo per country
 
@@ -29,6 +30,12 @@ Publishing a new population is **one `DatasetSpec` entry** in
 Hub — never a new package or repository. The registry is the single source of
 truth for what exists and where; nothing else hard-codes a repo id, filename, or
 engine class.
+
+Dataset variants let one country/year expose multiple scale contracts without a
+new shard. `variant="compact"` is the default fast national microsimulation
+artifact; a future UK local-geography build should register the same
+country/year with `variant="local"` once its pooled-FRS, clone-and-assign, and
+L0 calibration artifact is published.
 
 The shard does not depend on the Frame kernel: a published population is an
 engine-native dataset, so loading it needs only `huggingface_hub` and the
@@ -40,7 +47,8 @@ nor any country model until a load actually needs one.
 
 | Country | Year | Artifact | Engine |
 | --- | --- | --- | --- |
-| US | 2024 | [`policyengine/populace-us`](https://huggingface.co/datasets/policyengine/populace-us) | `policyengine-us` |
+| UK | 2023 compact | [`policyengine/populace-uk-private`](https://huggingface.co/datasets/policyengine/populace-uk-private) | `policyengine-uk` |
+| US | 2024 compact | [`policyengine/populace-us`](https://huggingface.co/datasets/policyengine/populace-us) | `policyengine-us` |
 
 The **populace-US** population is a calibrated synthetic microdataset that
 loads as a PolicyEngine-US dataset — built from CPS ASEC structure and IRS PUF

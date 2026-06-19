@@ -1,7 +1,7 @@
 [project]
 name = "populace-data"
 version = "0.1.0"
-description = "The distribution end of the populace stack: a registry of published populace populations and a loader that returns each as its policyengine engine dataset (one entry per country/year, artifacts on the Hugging Face Hub)"
+description = "The distribution end of the populace stack: a registry of published populace populations and a loader that returns each as its policyengine engine dataset (one entry per country/year/variant, artifacts on the Hugging Face Hub)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
