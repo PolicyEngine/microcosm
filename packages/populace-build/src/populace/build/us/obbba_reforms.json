@@ -7,6 +7,13 @@
     "published": "2025-07-01",
     "url": "https://www.jct.gov/publications/2025/jcx-35-25/"
   },
+  "pre_obbba_reference_policy": {
+    "id": 95714,
+    "label": "OBBBA Reversal (TCJA Expiration Baseline)",
+    "api_version": "1.180.1",
+    "url": "https://api.policyengine.org/us/policy/95714",
+    "note": "Used as a reference for the pre-OBBBA present-law counterfactual. Populace keeps version-compatible parameter paths for the policyengine-us version used by the build."
+  },
   "reforms": [
     {
       "id": "obbba_reduced_rates",
