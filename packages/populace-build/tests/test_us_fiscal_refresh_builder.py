@@ -180,6 +180,28 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
+def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert args.staging_prefix == "candidate-runs"
+
+
 def test_soi_indicator_rows_flag_positive_component_items() -> None:
     builder = _load_builder_module()
 

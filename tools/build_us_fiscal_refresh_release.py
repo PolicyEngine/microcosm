@@ -15,6 +15,7 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import platform
 import shutil
 import subprocess
@@ -356,15 +357,20 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
+        default=os.environ.get("POPULACE_STAGING_REPO_ID"),
         help=(
             "Optional Hugging Face dataset repo to upload staging telemetry "
-            "to while the build runs, e.g. policyengine/populace-us-staging."
+            "to while the build runs, e.g. policyengine/populace-us-staging. "
+            "Defaults to POPULACE_STAGING_REPO_ID."
         ),
     )
     parser.add_argument(
         "--staging-prefix",
-        default="runs",
-        help="Repo prefix for staging run artifacts (default: runs).",
+        default=os.environ.get("POPULACE_STAGING_PREFIX", "runs"),
+        help=(
+            "Repo prefix for staging run artifacts. Defaults to "
+            "POPULACE_STAGING_PREFIX or runs."
+        ),
     )
     parser.add_argument(
         "--staging-run-id",
