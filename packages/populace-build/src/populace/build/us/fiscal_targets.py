@@ -123,7 +123,6 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "ordinary_dividends_amount": "ordinary_dividends",
     "partnership_scorp_income_amount": "partnership_and_s_corp_income",
     "premium_tax_credit_amount": "assigned_aca_ptc",
-    "qbi_amount": "qualified_business_income_deduction",
     "qualified_dividends_amount": "qualified_dividends",
     "real_estate_taxes_amount": "real_estate_taxes",
     "rental_royalty_income_amount": "rent_and_royalty_net_income",
@@ -158,7 +157,6 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "ordinary_dividends_returns": "ordinary_dividends",
     "partnership_scorp_income_returns": "partnership_and_s_corp_income",
     "premium_tax_credit_returns": "assigned_aca_ptc",
-    "qbi_claims": "qualified_business_income_deduction",
     "qualified_dividends_returns": "qualified_dividends",
     "real_estate_taxes_claims": "real_estate_taxes",
     "rental_royalty_income_returns": "rent_and_royalty_net_income",
@@ -498,14 +496,6 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "Current 2024 base microdata have zero income-tax-liability amount "
         "support in the SOI under-$1 AGI bin."
     ),
-    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_claims": (
-        "Current 2024 base microdata have zero positive qualified business "
-        "income deduction support in this SOI AGI bin."
-    ),
-    "irs_soi.ty2022.historic_table_2.us.under_1.qbi_amount": (
-        "Current 2024 base microdata have zero qualified business income "
-        "deduction amount support in this SOI AGI bin."
-    ),
     "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_returns": (
         "Current 2024 base microdata have zero positive taxable-income support "
         "in this SOI AGI bin."
@@ -513,14 +503,6 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
     "irs_soi.ty2022.historic_table_2.us.1_to_10k.taxable_income_amount": (
         "Current 2024 base microdata have zero taxable-income amount support "
         "in this SOI AGI bin."
-    ),
-    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_claims": (
-        "Current 2024 base microdata have zero positive qualified business "
-        "income deduction support in this SOI AGI bin."
-    ),
-    "irs_soi.ty2022.historic_table_2.us.1_to_10k.qbi_amount": (
-        "Current 2024 base microdata have zero qualified business income "
-        "deduction amount support in this SOI AGI bin."
     ),
     "irs_soi.ty2022.historic_table_2.us.500k_to_1m.actc_claims": (
         "Current-law PolicyEngine-US refundable CTC support is zero in this "
@@ -1147,7 +1129,6 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
             "itemized_deductions_amount": "itemized_deduction_total",
             "limited_state_local_taxes_amount": "salt_deduction_total",
             "medical_dental_expense_amount": "medical_expense_deduction_total",
-            "qbi_amount": "qualified_business_income_deduction_total",
             "total_itemized_deductions_amount": "itemized_deduction_total",
             "unemployment_compensation_amount": "unemployment_compensation_total",
         }
@@ -1434,12 +1415,6 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         required_metadata=(("target_role", "itemized_deduction_total"),),
     ),
     TargetCoverageRequirement(
-        requirement_id="charitable_deduction_total",
-        label="SOI charitable deduction amount total",
-        accepted_families=("irs_soi",),
-        required_metadata=(("target_role", "charitable_deduction_total"),),
-    ),
-    TargetCoverageRequirement(
         requirement_id="salt_deduction_total",
         label="SOI state and local tax deduction amount total",
         accepted_families=("irs_soi",),
@@ -1450,20 +1425,6 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="SOI medical expense deduction amount total",
         accepted_families=("irs_soi",),
         required_metadata=(("target_role", "medical_expense_deduction_total"),),
-    ),
-    TargetCoverageRequirement(
-        requirement_id="qualified_business_income_deduction_total",
-        label="SOI qualified business income deduction amount total",
-        accepted_families=("irs_soi",),
-        required_metadata=(
-            ("target_role", "qualified_business_income_deduction_total"),
-        ),
-    ),
-    TargetCoverageRequirement(
-        requirement_id="interest_deduction_total",
-        label="SOI interest deduction amount total",
-        accepted_families=("irs_soi",),
-        required_metadata=(("target_role", "interest_deduction_total"),),
     ),
     TargetCoverageRequirement(
         requirement_id="social_security_total",

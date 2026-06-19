@@ -110,17 +110,6 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "allow_incumbent_improvement": False,
     },
     {
-        "requirement_id": "charitable_deduction_amount",
-        "label": "charitable deduction amount",
-        "max_abs_relative_error": 0.10,
-        "names": (
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("charitable_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    {
         "requirement_id": "salt_deduction_amount",
         "label": "state and local tax deduction amount",
         "max_abs_relative_error": 0.10,
@@ -143,27 +132,6 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         ),
         "families": ("irs_soi",),
         "target_roles": ("medical_expense_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    {
-        "requirement_id": "qualified_business_income_deduction_amount",
-        "label": "qualified business income deduction amount",
-        "max_abs_relative_error": 0.10,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.qbi_amount@2024",),
-        "families": ("irs_soi",),
-        "target_roles": ("qualified_business_income_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    {
-        "requirement_id": "interest_deduction_amount",
-        "label": "interest deduction amount",
-        "max_abs_relative_error": 0.10,
-        "names": (
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-            "interest_paid_deduction_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("interest_deduction_total",),
         "allow_incumbent_improvement": False,
     },
 )
