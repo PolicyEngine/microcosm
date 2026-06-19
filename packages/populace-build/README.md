@@ -34,6 +34,29 @@ The `us` extra adds the rules engine for formula/export checks. Country source
 loaders are not Python dependencies: source stages are declared in packaged
 JSON manifests and executed by shared Populace runtimes.
 
+## UK local-geography path
+
+`populace.build.uk.local_geography` holds the Populace-owned replacement shape
+for UK constituency and local-authority geography. It uses the same stacked
+local-area layout as the US local ECPS flow:
+
+```text
+column = area_index * n_households + household_index
+```
+
+The solved weights export to a long sidecar with `(area_type, area_code,
+household_id, weight)` rows plus source-year/source-household lineage. This is
+the format PolicyEngine can group by directly for constituency and local
+authority outputs, and it avoids preserving the legacy dense
+`areas x households` matrix artifact.
+
+The module does not import the incumbent UK data package. Engine runners and
+target providers pass household metric tables and aligned target tables into
+`build_stacked_local_matrix`; this keeps Populace clean while the target source
+files move over. The helper `sort_households_by_id` also codifies the 2024-25
+FRS fix: household attributes and weights must be sorted by the same stable
+household ID before any positional assignment.
+
 ## US plan status
 
 `populace.build.us` declares the US build: stage order, donor graph with

@@ -1168,6 +1168,7 @@ dependencies = [
     { name = "populace-calibrate" },
     { name = "populace-fit" },
     { name = "populace-frame" },
+    { name = "scipy" },
 ]
 
 [package.optional-dependencies]
@@ -1190,6 +1191,7 @@ requires-dist = [
     { name = "populace-calibrate", editable = "packages/populace-calibrate" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
+    { name = "scipy", specifier = ">=1.13" },
 ]
 provides-extras = ["us"]
 
