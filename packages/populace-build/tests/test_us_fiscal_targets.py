@@ -527,7 +527,7 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     marketplace = specs[marketplace_source_record_id]
     assert marketplace.family == "cms_aca"
     assert marketplace.metadata["target_role"] == "aca_enrollment"
-    assert marketplace.metadata["measure_mode"] == "positive_count"
+    assert marketplace.metadata["measure_mode"] == "indicator_sum"
     assert (
         marketplace.metadata["base_variable"]
         == "has_marketplace_health_coverage_at_interview"
@@ -537,21 +537,21 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     aptc = specs[aptc_source_record_id]
     assert aptc.family == "cms_aca"
     assert aptc.metadata["target_role"] == "aca_ptc_recipients"
-    assert aptc.metadata["measure_mode"] == "positive_count"
+    assert aptc.metadata["measure_mode"] == "indicator_sum"
     assert aptc.metadata["base_variable"] == "assigned_aca_ptc"
-    assert aptc.metadata["count_map_to"] == "person"
-    assert aptc.metadata["count_filter_variable"] == "is_aca_ptc_eligible"
+    assert aptc.metadata["indicator_map_to"] == "person"
+    assert aptc.metadata["indicator_filter_variable"] == "is_aca_ptc_eligible"
     assert aptc.metadata["state_fips"] == "06"
 
     bronze = specs[bronze_source_record_id]
     assert bronze.family == "cms_aca"
     assert bronze.metadata["target_role"] == "aca_bronze_aptc_consumers"
-    assert bronze.metadata["measure_mode"] == "less_than_count"
+    assert bronze.metadata["measure_mode"] == "less_than_indicator_sum"
     assert (
         bronze.metadata["base_variable"] == "selected_marketplace_plan_benchmark_ratio"
     )
-    assert bronze.metadata["count_less_than"] == "1.0"
-    assert bronze.metadata["count_filter_variable"] == "assigned_aca_ptc"
+    assert bronze.metadata["indicator_less_than"] == "1.0"
+    assert bronze.metadata["indicator_filter_variable"] == "assigned_aca_ptc"
     assert bronze.metadata["state_fips"] == "06"
 
 
@@ -598,9 +598,9 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     assert returns.family == "irs_soi"
     assert returns.metadata["variable"] == "assigned_aca_ptc"
     assert returns.metadata["materializer"] == "irs_soi_slice"
-    assert returns.metadata["measure_mode"] == "positive_count"
+    assert returns.metadata["measure_mode"] == "indicator_sum"
     assert returns.metadata["base_variable"] == "assigned_aca_ptc"
-    assert returns.metadata["count"] == "true"
+    assert "count" not in returns.metadata
 
 
 def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
@@ -643,9 +643,9 @@ def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
     assert returns.family == "irs_soi"
     assert returns.metadata["variable"] == "ctc"
     assert returns.metadata["materializer"] == "irs_soi_slice"
-    assert returns.metadata["measure_mode"] == "positive_count"
+    assert returns.metadata["measure_mode"] == "indicator_sum"
     assert returns.metadata["base_variables"] == "ctc,ctc_limiting_tax_liability"
-    assert returns.metadata["count"] == "true"
+    assert "count" not in returns.metadata
 
 
 def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
@@ -724,8 +724,8 @@ def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
     assert spec.family == "irs_soi"
     assert spec.metadata["variable"] == "eitc"
     assert spec.metadata["base_variable"] == "eitc"
-    assert spec.metadata["measure_mode"] == "positive_count"
-    assert spec.metadata["count"] == "true"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "count" not in spec.metadata
     assert (
         spec.metadata["ledger_filter_eitc_child_count"]
         == "three_or_more_qualifying_children"
@@ -758,8 +758,8 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income() -> N
     assert spec.family == "irs_soi"
     assert spec.metadata["variable"] == "tip_income"
     assert spec.metadata["base_variable"] == "tip_income"
-    assert spec.metadata["measure_mode"] == "positive_count"
-    assert spec.metadata["count"] == "true"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "count" not in spec.metadata
 
 
 def test_soi_itemized_deduction_targets_require_itemizing() -> None:
@@ -815,17 +815,17 @@ def test_soi_itemized_deduction_targets_require_itemizing() -> None:
     medical_spec = specs[medical_source_record_id]
     assert medical_spec.family == "irs_soi"
     assert medical_spec.metadata["variable"] == "medical_expense_deduction"
-    assert medical_spec.metadata["measure_mode"] == "positive_count"
+    assert medical_spec.metadata["measure_mode"] == "indicator_sum"
     assert medical_spec.metadata["itemized_only"] == "true"
     real_estate_spec = specs[real_estate_source_record_id]
     assert real_estate_spec.family == "irs_soi"
     assert real_estate_spec.metadata["variable"] == "real_estate_taxes"
-    assert real_estate_spec.metadata["measure_mode"] == "positive_count"
+    assert real_estate_spec.metadata["measure_mode"] == "indicator_sum"
     assert real_estate_spec.metadata["itemized_only"] == "true"
     salt_spec = specs[salt_source_record_id]
     assert salt_spec.family == "irs_soi"
     assert salt_spec.metadata["variable"] == "salt_deduction"
-    assert salt_spec.metadata["measure_mode"] == "positive_count"
+    assert salt_spec.metadata["measure_mode"] == "indicator_sum"
     assert salt_spec.metadata["itemized_only"] == "true"
 
 
@@ -909,8 +909,8 @@ def test_soi_return_count_targets_expose_count_mode_without_base_variable() -> N
     spec = specs[source_record_id]
     assert spec.family == "irs_soi"
     assert spec.metadata["variable"] == "count"
-    assert spec.metadata["count"] == "true"
-    assert spec.metadata["measure_mode"] == "count"
+    assert "count" not in spec.metadata
+    assert spec.metadata["measure_mode"] == "indicator_sum"
     assert "base_variable" not in spec.metadata
     assert "base_variables" not in spec.metadata
 
@@ -983,7 +983,7 @@ def test_census_pep_population_age_facts_compile_to_count_targets() -> None:
     assert national.family == "census_population"
     assert national.metadata["materializer"] == "population_age"
     assert national.metadata["target_role"] == "population_age"
-    assert national.metadata["measure_mode"] == "count"
+    assert national.metadata["measure_mode"] == "indicator_sum"
     assert national.metadata["geography_scope"] == "national"
     assert national.metadata["age_lower_bound"] == "0"
     assert national.metadata["age_upper_bound"] == "5"
@@ -1090,7 +1090,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         {
             "name": "nation/cbo/income_tax_positive",
             "measure": "income_tax",
-            "aggregation": "positive_count_or_amount",
+            "aggregation": "positive_indicator_or_amount",
         },
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
