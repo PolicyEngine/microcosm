@@ -1178,7 +1178,9 @@ uk = [
 ]
 us = [
     { name = "h5py" },
+    { name = "microunit" },
     { name = "policyengine-us" },
+    { name = "tables" },
 ]
 
 [package.dev-dependencies]
@@ -1190,6 +1192,7 @@ dev = [
 requires-dist = [
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
@@ -1198,6 +1201,7 @@ requires-dist = [
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
     { name = "scipy", specifier = ">=1.13" },
+    { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
 ]
 provides-extras = ["us", "uk"]
 
