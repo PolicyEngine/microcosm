@@ -33,9 +33,9 @@ SPI_INCOME_COMPONENT_COLUMNS = (
     "property_income",
 )
 
-# Mirrors the eFRS SPI-trained first-stage QRF output surface. Gift Aid and
-# qualifying investment gifts are relief variables, not income components, but
-# they need to be drawn jointly with high-income SPI rows.
+# UK SPI-trained first-stage QRF output surface. Gift Aid and qualifying
+# investment gifts are relief variables, not income components, but they need
+# to be drawn jointly with high-income SPI rows.
 SPI_INCOME_IMPUTATION_COLUMNS = SPI_INCOME_COMPONENT_COLUMNS + (
     "gift_aid",
     "charitable_investment_gifts",
@@ -48,9 +48,9 @@ FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS = (
     *SPI_INCOME_COMPONENT_COLUMNS,
 )
 
-# Mirrors the eFRS second-stage FRS-only QRF output surface. These fields are
-# replaced on SPI support rows so high-income synthetic rows do not retain a
-# random middle-income FRS donor's benefit receipt or pension behavior.
+# UK second-stage FRS-only QRF output surface. These fields are replaced on SPI
+# support rows so high-income synthetic rows do not retain a random
+# middle-income FRS donor's benefit receipt or pension behavior.
 FRS_ONLY_SPI_FILL_PERSON_COLUMNS = (
     "employee_pension_contributions",
     "employer_pension_contributions",
@@ -245,7 +245,7 @@ def fill_support_channel_from_source(
     QRF prediction frame keyed by original ``person_id``. Rows outside
     ``channel`` are left unchanged. Missing target columns are initialized to
     ``fill_missing_columns_with`` before the channel-specific update, matching
-    the eFRS treatment of SPI-only variables such as charitable-giving fields.
+    the UK SPI treatment of variables such as charitable-giving fields.
     """
 
     entity = _require_entity(entity)

@@ -15,11 +15,9 @@ names its donor survey and fails loudly — no silent fallbacks), and the
   short-term capital gains to −$3.9T);
 - **export surface** — every replacement artifact can prove that its
   exported variables match a reference surface, with only documented
-  structural extras or reviewed exclusions (for UK, this is the eFRS
-  compatibility check);
+  structural extras or reviewed exclusions;
 - **target surface** — the calibration target set covers the reference
-  target surface and may only be wider, not narrower (for UK, Populace must
-  calibrate to at least the eFRS target surface);
+  target surface and may only be wider, not narrower;
 - **per-family fit** — the calibration's within-10% share is reported per
   source family, while only broad family-level misses block publication so
   one family cannot hide inside the global average;
@@ -37,11 +35,12 @@ JSON manifests and executed by shared Populace runtimes.
 ## UK local-geography path
 
 `populace.build.uk.local_geography` holds the Populace-owned replacement shape
-for UK constituency and local-authority geography. It uses the same stacked
-local-area layout as the US local ECPS flow:
+for UK constituency and local-authority geography. The production local path is
+row-wise assigned, matching the longwise direction of the US local ECPS flow:
 
 ```text
-column = area_index * n_households + household_index
+column = household_index
+target rows only see households assigned to that area code
 ```
 
 The solved weights export to a long sidecar with `(area_type, area_code,
@@ -50,12 +49,13 @@ the format PolicyEngine can group by directly for constituency and local
 authority outputs, and it avoids preserving the legacy dense
 `areas x households` matrix artifact.
 
-The module does not import the incumbent UK data package. Engine runners and
+The module does not import an incumbent UK data package. Engine runners and
 target providers pass household metric tables and aligned target tables into
-`build_stacked_local_matrix`; this keeps Populace clean while the target source
-files move over. The helper `sort_households_by_id` also codifies the 2024-25
-FRS fix: household attributes and weights must be sorted by the same stable
-household ID before any positional assignment.
+`build_assigned_local_matrix` / `build_local_candidate`; this keeps Populace as
+the owner of the build surface while historical incumbent comparisons remain
+external migration benchmarks. The helper `sort_households_by_id` also
+codifies the 2024-25 FRS fix: household attributes and weights must be sorted
+by the same stable household ID before any positional assignment.
 
 `populace.build.uk.local_targets` declares the constituency and local-authority
 metric surface used by the local build: HMRC employment/self-employment amount
@@ -63,9 +63,9 @@ and count rows, ONS age bands, Universal Credit household rows, constituency
 UC-by-children rows, and the LA income/tenure/rent rows. It accepts a
 PolicyEngine-UK-like simulation object and returns household-indexed metric
 tables; it still takes target values as explicit input tables. `local_solver`
-wraps the Populace calibrator's log-weight optimizer for stacked local weights
+wraps the Populace calibrator's log-weight optimizer for assigned local weights
 and records per-area/per-metric diagnostics before the solved weights are
-exported with `stacked_weights_to_long`.
+exported with `assigned_weights_to_long`.
 
 `populace.build.uk.local_runner` is the Populace-owned candidate build path. It
 loads explicit area and target tables, aligns a sorted household frame with
@@ -94,6 +94,23 @@ If `--crosswalk` is omitted, the driver builds
 postcode sources. It writes the cloned row-wise H5, a geography coverage CSV,
 and `rowwise_build_manifest.json` with input/output hashes, row counts, target
 coverage, weight preservation, and weakest local-support diagnostics.
+
+Like the US plan, UK migration comparisons against earlier production datasets
+belong in release/benchmark harnesses outside this package. The build code here
+must not import or depend on the incumbent UK data package; `source_manifest.py`
+rejects incumbent country data-package references in declarative source specs.
+
+`populace.build.uk` now also exposes `UK_SOURCE_MANIFEST`,
+`UK_SOURCE_STAGE_SPECS`, `UK_SOURCE_OUTPUTS`, `UK_NONNEGATIVE_SOURCE_OUTPUTS`,
+`UK_DONORS`, `UK_STAGE_NAMES`, and `uk_plan(implementations)`. The packaged
+`uk/source_stages.json` is the Populace-owned raw-input parity contract for the
+UK build: FRS base tables, WAS wealth/debt/vehicles, LCFS consumption and fuel,
+ETB VAT and public services, NHS usage, SPI high-income income/reliefs,
+FRS-only pension/savings/reported-benefit fill, Advani-Summers capital gains,
+salary sacrifice, SLC student-loan plan assignment, and row-wise OA/LA/
+constituency geography. Stage implementations are injected and the plan refuses
+to assemble with any missing or unknown stage, matching the US complete-or-fail
+source-plan behavior.
 
 ## US plan status
 

@@ -1,4 +1,4 @@
-"""Solver wrapper for UK stacked local-geography weights."""
+"""Solver wrappers for UK local-geography weights."""
 
 from __future__ import annotations
 
@@ -72,6 +72,100 @@ def solve_stacked_local_weights(
         problem.n_areas,
         min_weight=min_initial_weight,
     )
+    if len(initial_weights) != problem.matrix.shape[1]:
+        raise ValueError(
+            "base_weights expanded to the wrong stacked length: "
+            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
+        )
+    return _solve_local_weights(
+        problem,
+        initial_weights,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        max_weight_ratio=max_weight_ratio,
+        conserve_mass=conserve_mass,
+        target_records=target_records,
+        l0_lambda=l0_lambda,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        budget_iters=budget_iters,
+        seed=seed,
+    )
+
+
+def solve_assigned_local_weights(
+    problem: StackedLocalMatrix,
+    base_weights: Sequence[float],
+    *,
+    epochs: int = 512,
+    learning_rate: float = 0.15,
+    max_weight_ratio: float | None = None,
+    conserve_mass: bool = False,
+    target_records: int | None = None,
+    l0_lambda: float = 0.0,
+    min_initial_weight: float = 1e-4,
+    target_loss_weights: Sequence[float] | None = None,
+    target_loss_scales: Sequence[float] | None = None,
+    target_loss_cap: float = 10.0,
+    budget_iters: int = 10,
+    seed: int = 0,
+) -> StackedLocalSolveResult:
+    """Solve rowwise-assigned local weights for a Populace UK local build.
+
+    ``base_weights`` align one-to-one with the household columns in ``problem``.
+    The optional ``min_initial_weight`` floor mirrors the stacked solver and is
+    required by the torch log-weight optimizer. The assigned path defaults to
+    no ``max_weight_ratio`` cap so zero-weight support rows, such as synthetic
+    SPI rows, can be upweighted from the optimizer floor.
+    """
+
+    weights = np.asarray(base_weights, dtype=np.float64)
+    if weights.ndim != 1:
+        raise ValueError("base_weights must be one-dimensional.")
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError("base_weights must be finite and non-negative.")
+    if not np.isfinite(min_initial_weight) or min_initial_weight < 0:
+        raise ValueError("min_initial_weight must be finite and non-negative.")
+    initial_weights = np.maximum(weights, min_initial_weight)
+    if len(initial_weights) != problem.matrix.shape[1]:
+        raise ValueError(
+            "base_weights must align with the assigned local matrix columns: "
+            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
+        )
+    return _solve_local_weights(
+        problem,
+        initial_weights,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        max_weight_ratio=max_weight_ratio,
+        conserve_mass=conserve_mass,
+        target_records=target_records,
+        l0_lambda=l0_lambda,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        budget_iters=budget_iters,
+        seed=seed,
+    )
+
+
+def _solve_local_weights(
+    problem: StackedLocalMatrix,
+    initial_weights: np.ndarray,
+    *,
+    epochs: int,
+    learning_rate: float,
+    max_weight_ratio: float | None,
+    conserve_mass: bool,
+    target_records: int | None,
+    l0_lambda: float,
+    target_loss_weights: Sequence[float] | None,
+    target_loss_scales: Sequence[float] | None,
+    target_loss_cap: float,
+    budget_iters: int,
+    seed: int,
+) -> StackedLocalSolveResult:
     targets = np.asarray(problem.targets, dtype=np.float64)
     scales = (
         default_target_loss_scales(targets)
@@ -93,14 +187,9 @@ def solve_stacked_local_weights(
             "target_loss_weights must align with targets, got "
             f"{loss_weights.shape} vs {targets.shape}."
         )
-    if len(initial_weights) != problem.matrix.shape[1]:
-        raise ValueError(
-            "base_weights expanded to the wrong stacked length: "
-            f"{len(initial_weights)} vs {problem.matrix.shape[1]}."
-        )
     if (initial_weights <= 0).any():
         raise ValueError(
-            "all expanded initial weights must be strictly positive for the "
+            "all initial weights must be strictly positive for the "
             "log-weight optimizer; use a positive min_initial_weight or remove "
             "zero-weight records before solving."
         )

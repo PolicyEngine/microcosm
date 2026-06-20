@@ -20,13 +20,17 @@ import pandas as pd
 from populace.build.uk.local_geography import (
     StackedLocalMatrix,
     area_support_summary,
+    assigned_weights_to_long,
+    build_assigned_local_matrix,
     build_stacked_local_matrix,
+    rowwise_assignment_column,
     sort_households_by_id,
     stacked_weights_to_long,
     write_long_geography_weights,
 )
 from populace.build.uk.local_solver import (
     StackedLocalSolveResult,
+    solve_assigned_local_weights,
     solve_stacked_local_weights,
 )
 from populace.build.uk.local_targets import (
@@ -44,6 +48,7 @@ class UKLocalCandidateResult:
     solve_result: StackedLocalSolveResult
     long_weights: pd.DataFrame
     support_summary: pd.DataFrame
+    support_mode: str
 
 
 def read_local_table(path: str | Path) -> pd.DataFrame:
@@ -260,6 +265,8 @@ def build_local_candidate(
     max_areas: int | None = None,
     source_year: int | None = None,
     weight_source: str = "populace_uk_local",
+    support_mode: str = "auto",
+    assignment_column: str | None = None,
     solver_options: Mapping[str, Any] | None = None,
 ) -> UKLocalCandidateResult:
     """Build, solve, and export a UK local candidate in longwise form."""
@@ -281,32 +288,81 @@ def build_local_candidate(
         code_column=code_column,
         group_column=group_column,
     )
+    resolved_support_mode = _resolve_support_mode(
+        support_mode,
+        area_type=area_type,
+        household_frame=households,
+        assignment_column=assignment_column,
+    )
+    if resolved_support_mode == "assigned":
+        households = _filter_assigned_households_to_areas(
+            households,
+            area_codes=area_codes,
+            area_type=area_type,
+            assignment_column=assignment_column,
+        )
+        metrics = _subset_metric_tables_to_households(
+            metrics,
+            households["household_id"].to_numpy(),
+        )
     household_ids = households["household_id"].to_numpy()
     base_weights = households["household_weight"].to_numpy(dtype=np.float64)
     target_frame = _as_frame(targets)
-    problem = build_stacked_local_matrix(
-        metrics,
-        target_frame,
-        area_codes=area_codes,
-        area_groups=area_groups,
-        household_ids=household_ids,
-        area_type=area_type,
-        code_column=code_column,
-    )
-    solve_result = solve_stacked_local_weights(
-        problem,
-        base_weights,
-        **dict(solver_options or {}),
-    )
-    long_weights = stacked_weights_to_long(
-        solve_result.weights,
-        area_codes,
-        household_ids,
-        area_type=area_type,
-        household_frame=households,
-        source_year=source_year,
-        weight_source=weight_source,
-    )
+    solver_config = dict(solver_options or {})
+    if resolved_support_mode == "assigned":
+        problem = build_assigned_local_matrix(
+            metrics,
+            target_frame,
+            household_frame=households,
+            area_codes=area_codes,
+            area_groups=area_groups,
+            household_ids=household_ids,
+            area_type=area_type,
+            code_column=code_column,
+            assignment_column=assignment_column,
+        )
+        solve_result = solve_assigned_local_weights(
+            problem,
+            base_weights,
+            **solver_config,
+        )
+        min_initial_weight = float(solver_config.get("min_initial_weight", 1e-4))
+        long_weights = assigned_weights_to_long(
+            solve_result.weights,
+            area_codes,
+            household_ids,
+            area_type=area_type,
+            household_frame=households,
+            assignment_column=assignment_column,
+            base_weights=base_weights,
+            drop_weight_atol=min_initial_weight,
+            source_year=source_year,
+            weight_source=weight_source,
+        )
+    else:
+        problem = build_stacked_local_matrix(
+            metrics,
+            target_frame,
+            area_codes=area_codes,
+            area_groups=area_groups,
+            household_ids=household_ids,
+            area_type=area_type,
+            code_column=code_column,
+        )
+        solve_result = solve_stacked_local_weights(
+            problem,
+            base_weights,
+            **solver_config,
+        )
+        long_weights = stacked_weights_to_long(
+            solve_result.weights,
+            area_codes,
+            household_ids,
+            area_type=area_type,
+            household_frame=households,
+            source_year=source_year,
+            weight_source=weight_source,
+        )
     return UKLocalCandidateResult(
         problem=problem,
         solve_result=solve_result,
@@ -316,6 +372,7 @@ def build_local_candidate(
             area_codes=area_codes,
             area_type=area_type,
         ),
+        support_mode=resolved_support_mode,
     )
 
 
@@ -333,12 +390,16 @@ def build_local_candidate_from_dataset(
     max_areas: int | None = None,
     source_year: int | None = None,
     weight_source: str = "populace_uk_local",
+    support_mode: str = "auto",
+    assignment_column: str | None = None,
     simulation_factory: Callable[[Any], Any] | None = None,
     solver_options: Mapping[str, Any] | None = None,
 ) -> UKLocalCandidateResult:
     """Build a UK local candidate from a Populace UK H5 or dataset object."""
 
-    dataset_obj = load_uk_dataset(dataset) if isinstance(dataset, str | Path) else dataset
+    dataset_obj = (
+        load_uk_dataset(dataset) if isinstance(dataset, str | Path) else dataset
+    )
     areas = prepare_area_frame(
         area_frame,
         code_column=code_column,
@@ -375,6 +436,8 @@ def build_local_candidate_from_dataset(
         sort_areas_by_code=False,
         source_year=source_year,
         weight_source=weight_source,
+        support_mode=support_mode,
+        assignment_column=assignment_column,
         solver_options=solver_options,
     )
 
@@ -394,6 +457,7 @@ def summarize_local_candidate(result: UKLocalCandidateResult) -> dict[str, Any]:
         "n_targets": int(len(result.problem.targets)),
         "n_long_rows": int(len(result.long_weights)),
         "n_nonzero": int(result.solve_result.n_nonzero),
+        "support_mode": result.support_mode,
         "initial_loss": float(result.solve_result.initial_loss),
         "final_loss": float(result.solve_result.final_loss),
         "weight_sum": float(result.long_weights["weight"].sum()),
@@ -418,14 +482,10 @@ def summarize_local_candidate(result: UKLocalCandidateResult) -> dict[str, Any]:
             0 if support.empty else int(support["nonzero_source_households"].max())
         ),
         "min_area_effective_sample_size": (
-            0.0
-            if support.empty
-            else float(support["effective_sample_size"].min())
+            0.0 if support.empty else float(support["effective_sample_size"].min())
         ),
         "median_area_effective_sample_size": (
-            0.0
-            if support.empty
-            else float(support["effective_sample_size"].median())
+            0.0 if support.empty else float(support["effective_sample_size"].median())
         ),
     }
 
@@ -465,6 +525,109 @@ def _normalise_nonblank_strings(values: pd.Series, *, column: str) -> pd.Series:
     return strings
 
 
+def _resolve_support_mode(
+    support_mode: str,
+    *,
+    area_type: str,
+    household_frame: pd.DataFrame,
+    assignment_column: str | None,
+) -> str:
+    mode = str(support_mode).strip().lower()
+    valid_modes = {"auto", "assigned", "stacked"}
+    if mode not in valid_modes:
+        raise ValueError(f"support_mode must be one of {sorted(valid_modes)}.")
+    if mode == "stacked":
+        return mode
+    try:
+        column = rowwise_assignment_column(
+            area_type,
+            assignment_column=assignment_column,
+        )
+    except ValueError:
+        if mode == "auto":
+            return "stacked"
+        raise
+    if mode == "assigned":
+        return mode
+    return "assigned" if column in household_frame.columns else "stacked"
+
+
+def _filter_assigned_households_to_areas(
+    households: pd.DataFrame,
+    *,
+    area_codes: Sequence[str],
+    area_type: str,
+    assignment_column: str | None,
+) -> pd.DataFrame:
+    column = rowwise_assignment_column(area_type, assignment_column=assignment_column)
+    if column not in households.columns:
+        raise ValueError(
+            f"household_frame is missing rowwise assignment column {column!r}."
+        )
+    assignments = _normalise_optional_strings(households[column])
+    mask = assignments.isin(set(map(str, area_codes)))
+    filtered = households.loc[mask].reset_index(drop=True)
+    if filtered.empty:
+        raise ValueError(
+            "no households are assigned to the requested local area codes."
+        )
+    return filtered
+
+
+def _subset_metric_tables_to_households(
+    metrics: pd.DataFrame | Mapping[str, pd.DataFrame],
+    household_ids: Sequence[Any],
+) -> pd.DataFrame | dict[str, pd.DataFrame]:
+    if isinstance(metrics, pd.DataFrame):
+        return _subset_metric_table_to_households(
+            metrics,
+            household_ids,
+            group="__all__",
+        )
+    return {
+        str(group): _subset_metric_table_to_households(
+            frame,
+            household_ids,
+            group=str(group),
+        )
+        for group, frame in metrics.items()
+    }
+
+
+def _subset_metric_table_to_households(
+    table: pd.DataFrame,
+    household_ids: Sequence[Any],
+    *,
+    group: str,
+) -> pd.DataFrame:
+    expected = pd.Index(household_ids)
+    if expected.has_duplicates:
+        duplicates = expected[expected.duplicated()].unique()
+        raise ValueError(
+            "assigned household IDs must be unique before metric subsetting; "
+            f"duplicate value(s): {list(map(str, duplicates[:5]))}."
+        )
+    if table.index.has_duplicates:
+        duplicates = table.index[table.index.duplicated()].unique()
+        raise ValueError(
+            f"metric table {group!r} household index must be unique; "
+            f"duplicate value(s): {list(map(str, duplicates[:5]))}."
+        )
+    missing = expected.difference(table.index)
+    if len(missing):
+        raise ValueError(
+            f"metric table {group!r} is missing household_id value(s): "
+            f"{list(map(str, missing[:5]))}."
+        )
+    return table.reindex(expected)
+
+
+def _normalise_optional_strings(values: pd.Series) -> pd.Series:
+    missing = values.isna()
+    strings = values.astype(str).str.strip()
+    return strings.mask(missing | (strings == ""), None)
+
+
 def _source_household_keys(
     household_frame: pd.DataFrame,
     *,
@@ -494,9 +657,7 @@ def _metric_table_from_frame(
     group: str,
 ) -> pd.DataFrame:
     if household_id_column not in frame.columns:
-        raise ValueError(
-            f"metric table {group!r} is missing {household_id_column!r}."
-        )
+        raise ValueError(f"metric table {group!r} is missing {household_id_column!r}.")
     table = frame.copy()
     if table[household_id_column].isna().any():
         raise ValueError(
@@ -552,12 +713,6 @@ def _align_metric_table_to_households(
             f"metric table {group!r} is missing household_id value(s): "
             f"{list(map(str, missing[:5]))}."
         )
-    extra = table.index.difference(expected)
-    if len(extra):
-        raise ValueError(
-            f"metric table {group!r} has unexpected household_id value(s): "
-            f"{list(map(str, extra[:5]))}."
-        )
     return table.reindex(expected)
 
 
@@ -568,9 +723,7 @@ def _infer_period(dataset: Any, period: int | str | None) -> int | str:
         value = getattr(dataset, attr, None)
         if value is not None:
             return value
-    raise ValueError(
-        "period is required when it cannot be inferred from the dataset."
-    )
+    raise ValueError("period is required when it cannot be inferred from the dataset.")
 
 
 def _default_uk_simulation_factory(dataset: Any) -> Any:

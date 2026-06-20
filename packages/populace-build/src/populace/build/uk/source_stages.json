@@ -1,0 +1,990 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "UK source stages are manifest-defined. Country/source content may declare primary artifacts, columns, sentinel handling, derivations, imputation recipes, outputs, and validation requirements here; executable Python belongs only in shared Populace runtimes.",
+  "stages": [
+    {
+      "stage": "frs_base",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
+      "grain": "household_person_benunit",
+      "artifacts": [
+        {
+          "kind": "survey_microdata",
+          "format": "tabular_release",
+          "vintage": "2023-24",
+          "locator": "DWP Family Resources Survey household, benefit unit, and person tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "frs_household",
+            "frs_benunit",
+            "frs_person"
+          ],
+          "weight": "household_weight"
+        },
+        {
+          "kind": "replace_sentinels",
+          "scope": "frs_missing_or_not_applicable_fields"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "entity_ids",
+            "source_household_lineage",
+            "household_income_predictors",
+            "education_counts",
+            "housing_predictors"
+          ]
+        }
+      ],
+      "outputs": [
+        "household_id",
+        "benunit_id",
+        "person_id",
+        "person_household_id",
+        "person_benunit_id",
+        "household_weight",
+        "region",
+        "age",
+        "gender",
+        "employment_income",
+        "self_employment_income",
+        "private_pension_income",
+        "capital_income",
+        "household_net_income",
+        "hbai_household_net_income",
+        "tenure_type",
+        "accommodation_type",
+        "num_adults",
+        "num_children",
+        "num_bedrooms",
+        "council_tax"
+      ],
+      "nonnegative_outputs": [
+        "household_weight",
+        "age",
+        "employment_income",
+        "self_employment_income",
+        "private_pension_income",
+        "household_net_income",
+        "hbai_household_net_income",
+        "num_adults",
+        "num_children",
+        "num_bedrooms",
+        "council_tax"
+      ],
+      "notes": "This stage owns the raw FRS base entities and lineage. The compact UK artifact remains the fast national input; local variants can pool years or clone from this base before row-wise geography assignment."
+    },
+    {
+      "stage": "was_wealth",
+      "survey": "Wealth and Assets Survey",
+      "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/debt/methodologies/wealthandassetssurveyqmi",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "survey_microdata",
+          "format": "secure_or_licensed_extract",
+          "vintage": "latest_available",
+          "locator": "ONS Wealth and Assets Survey household/person extract"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "was_household",
+          "weight": "weight"
+        },
+        {
+          "kind": "replace_sentinels",
+          "scope": "was_missing_or_not_applicable_fields"
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "num_bedrooms",
+            "council_tax",
+            "is_renting",
+            "region"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "net_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "student_loan_balance",
+        "mortgage_debt",
+        "consumer_debt"
+      ],
+      "nonnegative_outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "student_loan_balance",
+        "mortgage_debt",
+        "consumer_debt"
+      ],
+      "notes": "Northern Ireland can borrow the Wales region support when the donor survey does not identify Northern Ireland with enough detail."
+    },
+    {
+      "stage": "regional_property_uprating",
+      "survey": "UK House Price Index and regional land-value tables",
+      "source": "https://www.gov.uk/government/collections/uk-house-price-index-reports",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "UK House Price Index regional series and land-value adjustment tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "regional_property_uprating"
+        },
+        {
+          "kind": "uprate",
+          "from_year": "wealth_survey_vintage",
+          "to_year_from_build_config": true,
+          "by": [
+            "region",
+            "property_type"
+          ]
+        }
+      ],
+      "outputs": [
+        "property_wealth",
+        "main_residence_value"
+      ],
+      "nonnegative_outputs": [
+        "property_wealth",
+        "main_residence_value"
+      ]
+    },
+    {
+      "stage": "lcfs_consumption",
+      "survey": "Living Costs and Food Survey",
+      "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/methodologies/livingcostsandfoodsurveyqmi",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "survey_microdata",
+          "format": "licensed_extract",
+          "vintage": "latest_available",
+          "locator": "ONS Living Costs and Food Survey household/person extract"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "lcfs_household",
+            "lcfs_person"
+          ],
+          "weight": "weight"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "lcfs_coicop_consumption",
+            "lcfs_fuel_spending",
+            "has_fuel_consumption"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "hbai_household_net_income",
+            "tenure_type",
+            "accommodation_type",
+            "has_fuel_consumption"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "has_fuel_consumption",
+        "food_and_non_alcoholic_beverages_consumption",
+        "alcohol_and_tobacco_consumption",
+        "clothing_and_footwear_consumption",
+        "housing_water_and_electricity_consumption",
+        "household_furnishings_consumption",
+        "health_consumption",
+        "transport_consumption",
+        "communication_consumption",
+        "recreation_consumption",
+        "education_consumption",
+        "restaurants_and_hotels_consumption",
+        "miscellaneous_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption"
+      ],
+      "nonnegative_outputs": [
+        "food_and_non_alcoholic_beverages_consumption",
+        "alcohol_and_tobacco_consumption",
+        "clothing_and_footwear_consumption",
+        "housing_water_and_electricity_consumption",
+        "household_furnishings_consumption",
+        "health_consumption",
+        "transport_consumption",
+        "communication_consumption",
+        "recreation_consumption",
+        "education_consumption",
+        "restaurants_and_hotels_consumption",
+        "miscellaneous_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption"
+      ],
+      "notes": "The fuel-consumption bridge uses the WAS vehicle signal on recipient households and LCFS fuel purchases on donors."
+    },
+    {
+      "stage": "road_fuel_energy_calibration",
+      "survey": "Road fuel and household energy administrative totals",
+      "source": "https://www.gov.uk/government/collections/road-transport-consumption-at-regional-and-local-level",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "DfT road-fuel consumption totals and DESNZ household energy tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "road_fuel_consumption",
+            "domestic_energy_targets"
+          ]
+        },
+        {
+          "kind": "uprate",
+          "variables": [
+            "petrol_spending",
+            "diesel_spending",
+            "electricity_consumption",
+            "gas_consumption"
+          ],
+          "targets": [
+            "road_fuel_consumption",
+            "domestic_energy_targets"
+          ],
+          "weight": "household_weight"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "domestic_energy_consumption"
+          ],
+          "formula": "electricity_consumption + gas_consumption"
+        }
+      ],
+      "outputs": [
+        "petrol_spending",
+        "diesel_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption"
+      ],
+      "nonnegative_outputs": [
+        "petrol_spending",
+        "diesel_spending",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption"
+      ]
+    },
+    {
+      "stage": "etb_vat",
+      "survey": "Effects of Taxes and Benefits",
+      "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "published_microdata_table",
+          "format": "spreadsheet",
+          "vintage": "build_year",
+          "locator": "ONS Effects of Taxes and Benefits indirect-tax tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "etb_household"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "full_rate_vat_expenditure_rate"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "household_net_income"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "full_rate_vat_expenditure_rate"
+      ],
+      "nonnegative_outputs": [
+        "full_rate_vat_expenditure_rate"
+      ]
+    },
+    {
+      "stage": "nhs_usage",
+      "survey": "NHS activity and unit-cost tables",
+      "source": "https://www.england.nhs.uk/statistics/statistical-work-areas/hospital-activity/monthly-hospital-activity/",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "NHS activity counts and service-cost totals by age/sex where available"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "nhs_activity",
+            "nhs_unit_costs"
+          ]
+        },
+        {
+          "kind": "fit_weighted_imputer",
+          "predictors": [
+            "age",
+            "gender",
+            "region",
+            "disability_benefit_indicators",
+            "hbai_household_net_income"
+          ]
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "nhs_visits",
+            "nhs_spending"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "administrative_nonnegative"
+        }
+      ],
+      "outputs": [
+        "a_and_e_visits",
+        "admitted_patient_visits",
+        "outpatient_visits",
+        "nhs_a_and_e_spending",
+        "nhs_admitted_patient_spending",
+        "nhs_outpatient_spending",
+        "nhs_visits",
+        "nhs_spending"
+      ],
+      "nonnegative_outputs": [
+        "a_and_e_visits",
+        "admitted_patient_visits",
+        "outpatient_visits",
+        "nhs_a_and_e_spending",
+        "nhs_admitted_patient_spending",
+        "nhs_outpatient_spending",
+        "nhs_visits",
+        "nhs_spending"
+      ]
+    },
+    {
+      "stage": "etb_public_services",
+      "survey": "Effects of Taxes and Benefits public-service tables",
+      "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "published_microdata_table",
+          "format": "spreadsheet",
+          "vintage": "build_year",
+          "locator": "ONS Effects of Taxes and Benefits benefits-in-kind tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "etb_household_services"
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "rail_usage"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "is_SP_age",
+            "count_primary_education",
+            "count_secondary_education",
+            "count_further_education",
+            "dla",
+            "pip",
+            "hbai_household_net_income"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "dfe_education_spending",
+        "rail_subsidy_spending",
+        "bus_subsidy_spending",
+        "rail_usage"
+      ],
+      "nonnegative_outputs": [
+        "dfe_education_spending",
+        "rail_subsidy_spending",
+        "bus_subsidy_spending",
+        "rail_usage"
+      ]
+    },
+    {
+      "stage": "rail_public_service_calibration",
+      "survey": "Rail public-service administrative totals",
+      "source": "https://www.gov.uk/government/collections/rail-statistics",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "DfT rail passenger and subsidy totals"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "rail_public_service_targets"
+        },
+        {
+          "kind": "uprate",
+          "variables": [
+            "rail_subsidy_spending",
+            "rail_usage"
+          ],
+          "targets": [
+            "rail_public_service_targets"
+          ],
+          "weight": "household_weight"
+        }
+      ],
+      "outputs": [
+        "rail_subsidy_spending",
+        "rail_usage"
+      ],
+      "nonnegative_outputs": [
+        "rail_subsidy_spending",
+        "rail_usage"
+      ],
+      "notes": "This post-weight stage scales rail usage and subsidy after the local/final household weights are available."
+    },
+    {
+      "stage": "spi_support_channel",
+      "survey": "Family Resources Survey 2023-24 support copy",
+      "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
+      "grain": "household_person_benunit",
+      "artifacts": [
+        {
+          "kind": "derived_support_frame",
+          "format": "in_memory_tables",
+          "vintage": "2023-24",
+          "locator": "zero-weight FRS support channel for high-income SPI imputation"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "derive",
+          "outputs": [
+            "zero_weight_spi_support_copy",
+            "source_household_lineage"
+          ]
+        }
+      ],
+      "outputs": [
+        "household_is_spi_synthetic",
+        "household_support_channel",
+        "person_support_channel",
+        "benunit_support_channel",
+        "household_support_clone_index",
+        "person_support_clone_index",
+        "benunit_support_clone_index",
+        "household_source_id",
+        "person_source_id",
+        "benunit_source_id",
+        "source_household_id",
+        "source_household_key"
+      ],
+      "notes": "The support copy has zero initial household weight and source-household lineage so local-geography support accounting does not count it as independent FRS sample."
+    },
+    {
+      "stage": "spi_income",
+      "survey": "Survey of Personal Incomes",
+      "source": "https://www.gov.uk/government/collections/personal-incomes-statistics",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_microdata_or_tabulation",
+          "format": "hmrc_spi_extract",
+          "vintage": "latest_available",
+          "locator": "HMRC Survey of Personal Incomes person-level income and relief records"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "spi_person",
+          "weight": "spi_weight"
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "gender",
+            "region"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "employment_income",
+        "self_employment_income",
+        "savings_interest_income",
+        "dividend_income",
+        "private_pension_income",
+        "property_income",
+        "gift_aid",
+        "charitable_investment_gifts"
+      ],
+      "nonnegative_outputs": [
+        "employment_income",
+        "self_employment_income",
+        "savings_interest_income",
+        "dividend_income",
+        "private_pension_income",
+        "property_income",
+        "gift_aid",
+        "charitable_investment_gifts"
+      ],
+      "notes": "The SPI-trained first stage fills the SPI support channel jointly for income components, Gift Aid, and qualifying investment gifts."
+    },
+    {
+      "stage": "frs_only_spi_fill",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "survey_microdata",
+          "format": "tabular_release",
+          "vintage": "2023-24",
+          "locator": "DWP Family Resources Survey person-level pension, savings, and reported-benefit fields"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "frs_person"
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "gender",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "employee_pension_contributions",
+        "employer_pension_contributions",
+        "personal_pension_contributions",
+        "pension_contributions_via_salary_sacrifice",
+        "tax_free_savings_income",
+        "universal_credit_reported",
+        "pension_credit_reported",
+        "child_benefit_reported",
+        "housing_benefit_reported",
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "attendance_allowance_reported",
+        "state_pension_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+        "sda_reported",
+        "carers_allowance_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "incapacity_benefit_reported",
+        "maternity_allowance_reported",
+        "winter_fuel_allowance_reported",
+        "council_tax_benefit_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_contrib_reported",
+        "esa_income_reported"
+      ],
+      "nonnegative_outputs": [
+        "employee_pension_contributions",
+        "employer_pension_contributions",
+        "personal_pension_contributions",
+        "pension_contributions_via_salary_sacrifice",
+        "tax_free_savings_income",
+        "universal_credit_reported",
+        "pension_credit_reported",
+        "child_benefit_reported",
+        "housing_benefit_reported",
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "attendance_allowance_reported",
+        "state_pension_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+        "sda_reported",
+        "carers_allowance_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "incapacity_benefit_reported",
+        "maternity_allowance_reported",
+        "winter_fuel_allowance_reported",
+        "council_tax_benefit_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_contrib_reported",
+        "esa_income_reported"
+      ],
+      "notes": "This stage replaces benefit receipt and pension/savings behavior on SPI support rows with draws conditional on the SPI-imputed income surface."
+    },
+    {
+      "stage": "advani_summers_capital_gains",
+      "survey": "Advani-Summers capital gains distribution",
+      "source": "https://ideas.repec.org/p/hal/wpaper/halshs-03022609.html",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "research_table",
+          "format": "csv",
+          "vintage": "latest_available",
+          "locator": "capital gains distribution by income/rank cell"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "capital_gains_distribution"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "household_is_capital_gains_clone",
+          "weight": "household_weight"
+        },
+        {
+          "kind": "fit_weighted_imputer",
+          "predictors": [
+            "household_net_income",
+            "employment_income",
+            "self_employment_income",
+            "dividend_income",
+            "property_income"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "capital_gains",
+        "household_is_capital_gains_clone"
+      ],
+      "nonnegative_outputs": [
+        "capital_gains"
+      ]
+    },
+    {
+      "stage": "frs_salary_sacrifice",
+      "survey": "Family Resources Survey salary-sacrifice subsample",
+      "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "survey_microdata",
+          "format": "tabular_release",
+          "vintage": "2023-24",
+          "locator": "FRS person-level salary-sacrifice fields with OBR/ASHE aggregate target"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "frs_person_salary_sacrifice"
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "employment_income"
+          ]
+        },
+        {
+          "kind": "fold_into",
+          "target": "employee_pension_contributions",
+          "amount": "pension_contributions_via_salary_sacrifice"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        }
+      ],
+      "outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "nonnegative_outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ]
+    },
+    {
+      "stage": "slc_student_loan_plan",
+      "survey": "Student Loans Company repayment-plan statistics",
+      "source": "https://www.gov.uk/government/collections/student-loans-for-higher-and-further-education",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "SLC borrower plan snapshot by cohort and geography"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "slc_student_loan_snapshot"
+        },
+        {
+          "kind": "assign_by_plan_type",
+          "predictors": [
+            "age",
+            "student_loan_balance",
+            "education_status",
+            "region"
+          ],
+          "output": "student_loan_plan"
+        }
+      ],
+      "outputs": [
+        "student_loan_plan"
+      ]
+    },
+    {
+      "stage": "rowwise_oa_geography",
+      "survey": "UK official small-area geography crosswalks",
+      "source": "https://geoportal.statistics.gov.uk/",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "public_geography",
+          "format": "csv_or_geojson",
+          "vintage": "build_year",
+          "locator": "ONS, NRS, NISRA, and postcode-directory OA/DZ to LA/constituency crosswalks"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "uk_official_geography_crosswalk",
+            "household_region_frame"
+          ]
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "rowwise_household_clones",
+            "finest_available_geography_assignment"
+          ]
+        },
+        {
+          "kind": "join",
+          "on": [
+            "household_id",
+            "source_household_id"
+          ]
+        }
+      ],
+      "outputs": [
+        "oa_code",
+        "lsoa_code",
+        "msoa_code",
+        "la_code_oa",
+        "constituency_code_oa",
+        "region_code_oa"
+      ],
+      "notes": "This is the long-format local geography path: each household row receives one finest-area assignment, and later local weights export as area-household rows rather than a dense area-by-household matrix."
+    },
+    {
+      "stage": "national_calibration",
+      "survey": "UK national calibration target registry",
+      "source": "https://github.com/PolicyEngine/populace/tree/main/packages/populace-calibrate",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "target_registry",
+          "format": "json_or_yaml",
+          "vintage": "build_year",
+          "locator": "Populace national calibration target registry and supplied administrative target tables"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "national_calibration_targets",
+            "household_metric_tables"
+          ]
+        },
+        {
+          "kind": "calibrate_weights",
+          "weight": "household_weight",
+          "outputs": [
+            "household_weight"
+          ]
+        }
+      ],
+      "outputs": [
+        "household_weight"
+      ],
+      "nonnegative_outputs": [
+        "household_weight"
+      ],
+      "notes": "This stage rewrites design weights to national target weights before local and post-weight amount scaling stages."
+    },
+    {
+      "stage": "local_geography_weights",
+      "survey": "UK local calibration target tables",
+      "source": "https://github.com/PolicyEngine/populace/tree/main/packages/populace-build",
+      "grain": "household_area",
+      "artifacts": [
+        {
+          "kind": "target_tables",
+          "format": "csv_or_parquet",
+          "vintage": "build_year",
+          "locator": "Explicit constituency and local-authority target tables supplied to the UK local runner"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "local_area_targets",
+            "household_metric_tables"
+          ]
+        },
+        {
+          "kind": "calibrate_weights",
+          "weight": "household_weight",
+          "outputs": [
+            "local_geography_weight"
+          ]
+        }
+      ],
+      "outputs": [
+        "local_geography_weight",
+        "local_solve_diagnostic"
+      ],
+      "nonnegative_outputs": [
+        "local_geography_weight"
+      ],
+      "notes": "Assigned long local weights are solved after row-wise geography assignment and before post-weight rail/fuel amount scaling."
+    }
+  ]
+}

@@ -1,10 +1,12 @@
 """Longwise UK local-geography build primitives.
 
-This module owns the representation that lets Populace replace the legacy
+This module owns the representations that let Populace replace the legacy
 UK incumbent ``areas x households`` matrix artifacts:
 
 * a stacked sparse matrix whose columns are
   ``area_index * n_households + household_index``; and
+* an assigned sparse matrix whose columns are household weights and whose
+  target rows only see households assigned to that local area; and
 * a longweight sidecar with one row per non-zero
   ``(area, household, weight)`` assignment.
 
@@ -39,6 +41,12 @@ LONG_GEOGRAPHY_COLUMNS = (
     "weight_source",
 )
 
+AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN = {
+    "constituency": "constituency_code_oa",
+    "la": "la_code_oa",
+    "local_authority": "la_code_oa",
+}
+
 _AREA_METADATA_COLUMNS = frozenset(
     {
         "area_code",
@@ -54,7 +62,7 @@ _AREA_METADATA_COLUMNS = frozenset(
 
 @dataclass(frozen=True)
 class StackedLocalMatrix:
-    """Sparse stacked local-area calibration matrix and aligned targets."""
+    """Sparse local-area calibration matrix and aligned targets."""
 
     matrix: sp.csr_matrix
     targets: np.ndarray
@@ -226,8 +234,10 @@ def build_stacked_local_matrix(
             )
             cache_key = (group, metric_index)
             if cache_key not in nonzero_cache:
-                column = metric_tables[group].iloc[:, metric_index].to_numpy(
-                    dtype=np.float64
+                column = (
+                    metric_tables[group]
+                    .iloc[:, metric_index]
+                    .to_numpy(dtype=np.float64)
                 )
                 if not np.isfinite(column).all():
                     raise ValueError(
@@ -254,6 +264,162 @@ def build_stacked_local_matrix(
     matrix = sp.csr_matrix(
         (data_array, (row_array, col_array)),
         shape=(n_targets, n_areas * n_households),
+        dtype=np.float64,
+    )
+    target_frame = pd.DataFrame(target_rows)
+    return StackedLocalMatrix(
+        matrix=matrix,
+        targets=target_frame["value"].to_numpy(dtype=np.float64),
+        target_frame=target_frame,
+        area_codes=codes,
+        metric_names=metric_names,
+        n_households=n_households,
+    )
+
+
+def rowwise_assignment_column(
+    area_type: str,
+    *,
+    assignment_column: str | None = None,
+) -> str:
+    """Return the household column carrying rowwise local geography codes."""
+
+    if assignment_column is not None:
+        column = str(assignment_column).strip()
+        if column == "":
+            raise ValueError("assignment_column must not be blank.")
+        return column
+    if area_type not in AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN:
+        raise ValueError(
+            f"No default rowwise assignment column is defined for {area_type!r}."
+        )
+    return AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN[area_type]
+
+
+def build_assigned_local_matrix(
+    metrics: pd.DataFrame | Mapping[str, pd.DataFrame],
+    targets: pd.DataFrame,
+    *,
+    household_frame: pd.DataFrame,
+    area_codes: Sequence[str] | None = None,
+    area_groups: Mapping[str, str] | None = None,
+    household_ids: Sequence[Any] | None = None,
+    area_type: str = "constituency",
+    code_column: str = "code",
+    assignment_column: str | None = None,
+) -> StackedLocalMatrix:
+    """Build a rowwise-assigned sparse matrix for local-area calibration.
+
+    Unlike :func:`build_stacked_local_matrix`, each household has a single
+    column. A household contributes only to the target rows for the local area
+    stored in its rowwise geography assignment column, such as
+    ``constituency_code_oa`` or ``la_code_oa``.
+    """
+
+    if area_codes is None:
+        if code_column not in targets.columns:
+            raise ValueError(
+                "area_codes must be supplied when targets has no "
+                f"{code_column!r} column."
+            )
+        area_codes = targets[code_column].astype(str).tolist()
+    codes = _area_code_tuple(area_codes)
+    if household_ids is None:
+        if "household_id" not in household_frame.columns:
+            raise ValueError("household_frame must include 'household_id'.")
+        household_ids = household_frame["household_id"].to_numpy()
+    hh_ids = np.asarray(household_ids)
+    aligned_households = _align_household_frame(household_frame, hh_ids)
+    assert aligned_households is not None
+    assignment_name = rowwise_assignment_column(
+        area_type,
+        assignment_column=assignment_column,
+    )
+    if assignment_name not in aligned_households.columns:
+        raise ValueError(
+            f"household_frame is missing rowwise assignment column {assignment_name!r}."
+        )
+    assignments = _normalise_area_assignments(aligned_households[assignment_name])
+
+    metric_tables, groups = _normalise_metric_tables(
+        metrics,
+        area_codes=codes,
+        area_groups=area_groups,
+        household_ids=hh_ids,
+    )
+    first = next(iter(metric_tables.values()))
+    metric_names = tuple(str(col) for col in first.columns)
+    target_values = align_area_targets(
+        targets,
+        codes,
+        metric_names=metric_names,
+        code_column=code_column,
+    )
+
+    n_households = len(first)
+    n_areas = len(codes)
+    n_metrics = len(metric_names)
+    n_targets = n_areas * n_metrics
+    rows: list[np.ndarray] = []
+    cols: list[np.ndarray] = []
+    data: list[np.ndarray] = []
+    target_rows: list[dict[str, Any]] = []
+    assignment_indices = {
+        area_code: np.flatnonzero(assignments == area_code) for area_code in codes
+    }
+    metric_cache: dict[tuple[str, int], np.ndarray] = {}
+
+    for area_index, area_code in enumerate(codes):
+        group = groups[area_code]
+        household_positions = assignment_indices[area_code]
+        for metric_index, metric_name in enumerate(metric_names):
+            target_index = area_index * n_metrics + metric_index
+            target_rows.append(
+                {
+                    "target_index": target_index,
+                    "area_type": area_type,
+                    "area_code": area_code,
+                    "area_index": area_index,
+                    "area_group": group,
+                    "metric": metric_name,
+                    "metric_index": metric_index,
+                    "value": float(target_values.loc[area_code, metric_name]),
+                }
+            )
+            if len(household_positions) == 0:
+                continue
+            cache_key = (group, metric_index)
+            if cache_key not in metric_cache:
+                column = (
+                    metric_tables[group]
+                    .iloc[:, metric_index]
+                    .to_numpy(dtype=np.float64)
+                )
+                if not np.isfinite(column).all():
+                    raise ValueError(
+                        f"metric {metric_name!r} for group {group!r} "
+                        "contains non-finite values."
+                    )
+                metric_cache[cache_key] = column
+            values = metric_cache[cache_key][household_positions]
+            nz = np.flatnonzero(values)
+            if len(nz) == 0:
+                continue
+            rows.append(np.full(len(nz), target_index, dtype=np.int64))
+            cols.append(household_positions[nz].astype(np.int64))
+            data.append(values[nz].astype(np.float64, copy=False))
+
+    if rows:
+        row_array = np.concatenate(rows)
+        col_array = np.concatenate(cols)
+        data_array = np.concatenate(data)
+    else:
+        row_array = np.array([], dtype=np.int64)
+        col_array = np.array([], dtype=np.int64)
+        data_array = np.array([], dtype=np.float64)
+    matrix = sp.csr_matrix(
+        (data_array, (row_array, col_array)),
+        shape=(n_targets, n_households),
         dtype=np.float64,
     )
     target_frame = pd.DataFrame(target_rows)
@@ -359,6 +525,114 @@ def stacked_weights_to_long(
     )
     if drop_zero:
         out = out[out["weight"] != 0].reset_index(drop=True)
+    return out.loc[:, LONG_GEOGRAPHY_COLUMNS]
+
+
+def assigned_weights_to_long(
+    weights: Sequence[float],
+    area_codes: Sequence[str],
+    household_ids: Sequence[Any],
+    *,
+    area_type: str,
+    household_frame: pd.DataFrame,
+    assignment_column: str | None = None,
+    base_weights: Sequence[float] | None = None,
+    drop_weight_atol: float = 0.0,
+    source_year: int | None = None,
+    weight_source: str = "populace_local_assigned",
+    drop_zero: bool = True,
+) -> pd.DataFrame:
+    """Convert assigned household weights to the local-geography sidecar."""
+
+    codes = _area_code_tuple(area_codes)
+    hh_ids = np.asarray(household_ids)
+    n_households = len(hh_ids)
+    w = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if len(w) != n_households:
+        raise ValueError(
+            f"weights length must equal household count ({n_households}), got {len(w)}."
+        )
+    if not np.isfinite(w).all() or (w < 0).any():
+        raise ValueError("weights must be finite and non-negative.")
+    base = None if base_weights is None else np.asarray(base_weights, dtype=np.float64)
+    if base is not None:
+        if base.shape != w.shape:
+            raise ValueError(
+                f"base_weights must align with weights, got {base.shape} vs {w.shape}."
+            )
+        if not np.isfinite(base).all() or (base < 0).any():
+            raise ValueError("base_weights must be finite and non-negative.")
+    if not np.isfinite(drop_weight_atol) or drop_weight_atol < 0:
+        raise ValueError("drop_weight_atol must be finite and non-negative.")
+
+    household_frame = _align_household_frame(household_frame, hh_ids)
+    assert household_frame is not None
+    assignment_name = rowwise_assignment_column(
+        area_type,
+        assignment_column=assignment_column,
+    )
+    if assignment_name not in household_frame.columns:
+        raise ValueError(
+            f"household_frame is missing rowwise assignment column {assignment_name!r}."
+        )
+    assignments = _normalise_area_assignments(household_frame[assignment_name])
+    area_index_by_code = {area_code: idx for idx, area_code in enumerate(codes)}
+    in_requested_area = np.fromiter(
+        (area_code in area_index_by_code for area_code in assignments),
+        dtype=bool,
+        count=n_households,
+    )
+    if drop_zero:
+        if base is None:
+            in_requested_area &= w > drop_weight_atol
+        else:
+            zero_base_floor = (base == 0) & (w <= drop_weight_atol)
+            in_requested_area &= (w != 0) & ~zero_base_floor
+    selected = np.flatnonzero(in_requested_area)
+
+    source_year_values = _metadata_values(
+        household_frame,
+        "source_year",
+        default=source_year,
+        length=n_households,
+    )
+    source_household_ids = _metadata_values(
+        household_frame,
+        "source_household_id",
+        default=hh_ids,
+        length=n_households,
+    )
+    source_keys = _metadata_values(
+        household_frame,
+        "source_household_key",
+        default=_source_keys(source_year_values, source_household_ids),
+        length=n_households,
+    )
+    clone_index = _metadata_values(
+        household_frame,
+        "clone_index",
+        default=0,
+        length=n_households,
+    )
+
+    selected_area_codes = assignments[selected]
+    out = pd.DataFrame(
+        {
+            "area_type": area_type,
+            "area_code": selected_area_codes,
+            "area_index": [
+                area_index_by_code[area_code] for area_code in selected_area_codes
+            ],
+            "household_index": selected.astype(np.int64),
+            "household_id": hh_ids[selected],
+            "source_year": source_year_values[selected],
+            "source_household_id": source_household_ids[selected],
+            "source_household_key": source_keys[selected],
+            "clone_index": clone_index[selected],
+            "weight": w[selected],
+            "weight_source": weight_source,
+        }
+    )
     return out.loc[:, LONG_GEOGRAPHY_COLUMNS]
 
 
@@ -477,8 +751,7 @@ def _normalise_metric_tables(
     for group, frame in tables.items():
         if len(frame) != len(first):
             raise ValueError(
-                f"metric table {group!r} has {len(frame)} rows; expected "
-                f"{len(first)}."
+                f"metric table {group!r} has {len(frame)} rows; expected {len(first)}."
             )
         if not frame.index.equals(first.index):
             raise ValueError(
@@ -578,6 +851,14 @@ def _align_household_frame(
             f"household_frame is missing household_id value(s): {missing[:5]}."
         )
     return aligned.reset_index(drop=True)
+
+
+def _normalise_area_assignments(values: Sequence[Any]) -> np.ndarray:
+    series = pd.Series(values)
+    missing = series.isna()
+    strings = series.astype(str).str.strip()
+    strings = strings.mask(missing | (strings == ""), None)
+    return strings.to_numpy(dtype=object)
 
 
 def _source_keys(

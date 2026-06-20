@@ -7,6 +7,8 @@ import pytest
 from populace.build.uk import (
     LONG_GEOGRAPHY_COLUMNS,
     area_support_summary,
+    assigned_weights_to_long,
+    build_assigned_local_matrix,
     build_stacked_local_matrix,
     sort_households_by_id,
     stacked_design_weights,
@@ -82,6 +84,61 @@ def test_build_stacked_local_matrix_uses_area_blocks_and_group_metrics() -> None
     np.testing.assert_allclose(dense[3], [0.0, 0.0, 0.0, 0.0, 2.0, 2.0])
 
 
+def test_build_assigned_local_matrix_uses_rowwise_area_assignments() -> None:
+    metrics = {
+        "England": pd.DataFrame(
+            {
+                "population": [1.0, 2.0, 3.0],
+                "earnings": [10.0, 20.0, 30.0],
+            },
+            index=[101, 102, 103],
+        ),
+        "Scotland": pd.DataFrame(
+            {
+                "population": [100.0, 200.0, 300.0],
+                "earnings": [1000.0, 2000.0, 3000.0],
+            },
+            index=[101, 102, 103],
+        ),
+    }
+    targets = pd.DataFrame(
+        {
+            "code": ["S001", "E001"],
+            "population": [300.0, 1.0],
+            "earnings": [3000.0, 10.0],
+        }
+    )
+    households = pd.DataFrame(
+        {
+            "household_id": [103, 101, 102],
+            "constituency_code_oa": ["S001", "E001", "E999"],
+        }
+    )
+
+    assigned = build_assigned_local_matrix(
+        metrics,
+        targets,
+        household_frame=households,
+        area_codes=["E001", "S001"],
+        area_groups={"E001": "England", "S001": "Scotland"},
+        household_ids=[101, 102, 103],
+    )
+
+    assert assigned.matrix.shape == (4, 3)
+    assert assigned.targets.tolist() == [1.0, 10.0, 300.0, 3000.0]
+    assert assigned.target_frame["area_code"].tolist() == [
+        "E001",
+        "E001",
+        "S001",
+        "S001",
+    ]
+    dense = assigned.matrix.toarray()
+    np.testing.assert_allclose(dense[0], [1.0, 0.0, 0.0])
+    np.testing.assert_allclose(dense[1], [10.0, 0.0, 0.0])
+    np.testing.assert_allclose(dense[2], [0.0, 0.0, 300.0])
+    np.testing.assert_allclose(dense[3], [0.0, 0.0, 3000.0])
+
+
 def test_build_stacked_local_matrix_rejects_drifted_household_index() -> None:
     metrics = {
         "England": pd.DataFrame({"population": [1.0, 2.0]}, index=[101, 102]),
@@ -154,6 +211,57 @@ def test_stacked_weights_to_long_preserves_source_metadata() -> None:
     assert long["household_id"].tolist() == [101, 101, 102]
     assert long["source_household_key"].tolist() == ["2023:a", "2023:a", "2022:b"]
     assert long["clone_index"].tolist() == [0, 0, 3]
+
+
+def test_assigned_weights_to_long_preserves_metadata_and_filters_area_codes() -> None:
+    household_frame = pd.DataFrame(
+        {
+            "household_id": [102, 103, 101],
+            "constituency_code_oa": ["S001", "E999", "E001"],
+            "source_year": [2022, 2021, 2023],
+            "source_household_id": ["b", "c", "a"],
+            "source_household_key": ["2022:b", "2021:c", "2023:a"],
+            "clone_index": [3, 2, 0],
+        }
+    )
+
+    long = assigned_weights_to_long(
+        [1.5, 2.5, 3.5],
+        ["E001", "S001"],
+        [101, 102, 103],
+        area_type="constituency",
+        household_frame=household_frame,
+    )
+
+    assert tuple(long.columns) == LONG_GEOGRAPHY_COLUMNS
+    assert long["weight"].tolist() == [1.5, 2.5]
+    assert long["area_code"].tolist() == ["E001", "S001"]
+    assert long["area_index"].tolist() == [0, 1]
+    assert long["household_id"].tolist() == [101, 102]
+    assert long["source_household_key"].tolist() == ["2023:a", "2022:b"]
+    assert long["clone_index"].tolist() == [0, 3]
+
+
+def test_assigned_weights_to_long_drops_unused_zero_base_floor_weights() -> None:
+    household_frame = pd.DataFrame(
+        {
+            "household_id": [101, 102, 103],
+            "constituency_code_oa": ["E001", "E001", "E001"],
+        }
+    )
+
+    long = assigned_weights_to_long(
+        [1.0, 1e-4, 0.5],
+        ["E001"],
+        [101, 102, 103],
+        area_type="constituency",
+        household_frame=household_frame,
+        base_weights=[1.0, 0.0, 0.0],
+        drop_weight_atol=1e-4,
+    )
+
+    assert long["household_id"].tolist() == [101, 103]
+    assert long["weight"].tolist() == [1.0, 0.5]
 
 
 def test_stacked_weights_to_long_rejects_missing_household_metadata() -> None:

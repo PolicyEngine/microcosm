@@ -45,9 +45,7 @@ class SingleHouseholdSimulation(FakeSimulation):
 
 
 def test_prepare_area_frame_sorts_and_validates_codes() -> None:
-    areas = pd.DataFrame(
-        {"code": ["S001", "E001"], "country": ["Scotland", "England"]}
-    )
+    areas = pd.DataFrame({"code": ["S001", "E001"], "country": ["Scotland", "England"]})
 
     prepared = prepare_area_frame(areas)
 
@@ -129,10 +127,7 @@ def test_build_metric_tables_from_dataset_sets_each_country(monkeypatch) -> None
 
     assert set(tables) == {"England", "Scotland"}
     assert tables["England"].index.tolist() == [101, 102]
-    regions = [
-        sim.inputs[("region", 2023)][0]
-        for sim in calls
-    ]
+    regions = [sim.inputs[("region", 2023)][0] for sim in calls]
     assert regions == ["SOUTH_EAST", "SCOTLAND"]
 
 
@@ -165,10 +160,37 @@ def test_build_metric_tables_from_dataset_reindexes_simulation_household_order(
     assert tables["England"]["population"].tolist() == [10.0, 20.0]
 
 
-def test_build_local_candidate_solves_and_exports_long_weights() -> None:
-    areas = pd.DataFrame(
-        {"code": ["S001", "E001"], "country": ["Scotland", "England"]}
+def test_build_metric_tables_from_dataset_allows_selected_households(
+    monkeypatch,
+) -> None:
+    class ExtraHouseholdSimulation(FakeSimulation):
+        def calculate(self, variable, **_kwargs):
+            assert variable == "household_id"
+            return Result([103, 102, 101])
+
+    def fake_compute(sim, area_type, *, period=None, household_ids=None):
+        assert household_ids is None
+        return pd.DataFrame(
+            {"population": [30.0, 20.0, 10.0]},
+            index=pd.Index([103, 102, 101]),
+        )
+
+    monkeypatch.setattr(local_runner, "compute_household_metrics", fake_compute)
+
+    tables = build_metric_tables_from_dataset(
+        dataset=type("Dataset", (), {"time_period": 2023})(),
+        area_groups={"E001": "England"},
+        area_type="constituency",
+        household_ids=[101, 102],
+        simulation_factory=ExtraHouseholdSimulation,
     )
+
+    assert tables["England"].index.tolist() == [101, 102]
+    assert tables["England"]["population"].tolist() == [10.0, 20.0]
+
+
+def test_build_local_candidate_solves_and_exports_long_weights() -> None:
+    areas = pd.DataFrame({"code": ["S001", "E001"], "country": ["Scotland", "England"]})
     targets = pd.DataFrame(
         {
             "code": ["E001", "S001"],
@@ -208,6 +230,87 @@ def test_build_local_candidate_solves_and_exports_long_weights() -> None:
     assert result.support_summary["area_code"].tolist() == ["E001", "S001"]
     assert "nonzero_source_households" in result.support_summary.columns
     assert "effective_sample_size" in result.support_summary.columns
+
+
+def test_build_local_candidate_uses_assigned_support_when_available() -> None:
+    areas = pd.DataFrame({"code": ["S001", "E001"], "country": ["Scotland", "England"]})
+    targets = pd.DataFrame(
+        {
+            "code": ["E001", "S001"],
+            "population": [1.5, 0.5],
+        }
+    )
+    metrics = {
+        "England": pd.DataFrame(
+            {"population": [1.0, 1.0, 10.0]},
+            index=[101, 102, 103],
+        ),
+        "Scotland": pd.DataFrame(
+            {"population": [1.0, 1.0, 10.0]},
+            index=[101, 102, 103],
+        ),
+    }
+    households = pd.DataFrame(
+        {
+            "household_id": [102, 103, 101],
+            "household_weight": [1.0, 100.0, 1.0],
+            "constituency_code_oa": ["S001", "E999", "E001"],
+        }
+    )
+
+    result = build_local_candidate(
+        area_type="constituency",
+        area_frame=areas,
+        targets=targets,
+        metrics=metrics,
+        household_frame=households,
+        solver_options={"epochs": 80, "learning_rate": 0.2, "seed": 1},
+    )
+
+    assert result.support_mode == "assigned"
+    assert result.problem.matrix.shape == (2, 2)
+    assert result.problem.n_households == 2
+    assert result.solve_result.weights.shape == (2,)
+    assert result.solve_result.final_loss < result.solve_result.initial_loss
+    assert result.long_weights["area_code"].tolist() == ["E001", "S001"]
+    assert result.support_summary["nonzero_households"].tolist() == [1, 1]
+
+
+def test_build_local_candidate_uses_la_assigned_support_and_zero_area() -> None:
+    areas = pd.DataFrame({"code": ["E06000002", "E06000001"]})
+    targets = pd.DataFrame(
+        {
+            "code": ["E06000001", "E06000002"],
+            "population": [1.0, 0.0],
+        }
+    )
+    metrics = pd.DataFrame({"population": [1.0, 10.0]}, index=[101, 102])
+    households = pd.DataFrame(
+        {
+            "household_id": [102, 101],
+            "household_weight": [100.0, 1.0],
+            "la_code_oa": ["E99999999", "E06000001"],
+        }
+    )
+
+    result = build_local_candidate(
+        area_type="la",
+        area_frame=areas,
+        targets=targets,
+        metrics=metrics,
+        household_frame=households,
+        solver_options={"epochs": 5, "learning_rate": 0.2, "seed": 1},
+    )
+
+    assert result.support_mode == "assigned"
+    assert result.problem.area_codes == ("E06000001", "E06000002")
+    assert result.problem.matrix.shape == (2, 1)
+    assert result.long_weights["area_code"].tolist() == ["E06000001"]
+    assert result.support_summary["area_code"].tolist() == [
+        "E06000001",
+        "E06000002",
+    ]
+    assert result.support_summary["nonzero_households"].tolist() == [1, 0]
 
 
 def test_build_local_candidate_can_limit_pilot_areas() -> None:
@@ -269,6 +372,42 @@ def test_build_local_candidate_from_dataset_computes_metrics(monkeypatch) -> Non
 
     assert result.problem.area_codes == ("E001",)
     assert result.support_summary["nonzero_households"].tolist() == [1]
+
+
+def test_build_local_candidate_from_dataset_auto_uses_assigned_support(
+    monkeypatch,
+) -> None:
+    areas = pd.DataFrame({"code": ["E001"], "country": ["England"]})
+    targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
+    households = pd.DataFrame(
+        {
+            "household_id": [101],
+            "household_weight": [1.0],
+            "constituency_code_oa": ["E001"],
+        }
+    )
+
+    def fake_compute(sim, area_type, *, period=None, household_ids=None):
+        assert area_type == "constituency"
+        assert period == 2023
+        assert household_ids is None
+        return pd.DataFrame({"population": [1.0]}, index=pd.Index([101]))
+
+    monkeypatch.setattr(local_runner, "compute_household_metrics", fake_compute)
+
+    result = build_local_candidate_from_dataset(
+        dataset=type("Dataset", (), {"time_period": 2023})(),
+        area_type="constituency",
+        area_frame=areas,
+        targets=targets,
+        household_frame=households,
+        simulation_factory=SingleHouseholdSimulation,
+        solver_options={"epochs": 2},
+    )
+
+    assert result.support_mode == "assigned"
+    assert result.problem.matrix.shape == (1, 1)
+    assert result.long_weights["area_code"].tolist() == ["E001"]
 
 
 def test_write_local_candidate_outputs(tmp_path: Path) -> None:
