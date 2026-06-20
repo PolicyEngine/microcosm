@@ -1253,7 +1253,35 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
 
         assert len(failures) == 1
         assert label in failures[0]
-        assert "exceeding 0.1" in failures[0]
+        assert "exceeding 0.15" in failures[0]
+
+
+def test_critical_gate_allows_eitc_amount_within_credit_tolerance() -> None:
+    builder = _load_builder_module()
+    name = (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        f"earned_income_credit.total_earned_income_credit_amount@{builder.PERIOD}"
+    )
+    target = 69_041_649_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=target,
+        final_estimate=58_954_970_066.74941,
+        relative_error=(58_954_970_066.74941 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
 
 
 def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
@@ -1330,7 +1358,7 @@ def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
 
     assert len(failures) == 1
     assert "Child Tax Credit amount" in failures[0]
-    assert "exceeding 0.1" in failures[0]
+    assert "exceeding 0.15" in failures[0]
     assert "incumbent_relative_error=" in failures[0]
     assert "improvement_hard_stop=0.25" in failures[0]
 
