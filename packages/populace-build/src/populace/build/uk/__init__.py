@@ -11,7 +11,6 @@ from populace.build.source_manifest import (
     SourceStageSpec,
     load_source_manifest,
 )
-
 from populace.build.uk.geography_sources import (
     ENGLAND_LAD_REGION_URL,
     ENGLAND_WALES_OA2021_COUNT,
