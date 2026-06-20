@@ -2,9 +2,31 @@
   "version": 1,
   "country": "uk",
   "policy": "UK source stages are manifest-defined. Country/source content may declare primary artifacts, columns, sentinel handling, derivations, imputation recipes, outputs, and validation requirements here; executable Python belongs only in shared Populace runtimes.",
+  "plan_stages": [
+    "frs_base",
+    "was_wealth",
+    "regional_property_uprating",
+    "lcfs_consumption",
+    "etb_vat",
+    "nhs_usage",
+    "etb_public_services",
+    "spi_support_channel",
+    "spi_income",
+    "frs_only_spi_fill",
+    "advani_summers_capital_gains",
+    "frs_salary_sacrifice",
+    "slc_student_loan_plan",
+    "rowwise_oa_geography",
+    "national_calibration",
+    "local_geography_weights",
+    "rail_public_service_calibration",
+    "road_fuel_energy_calibration",
+    "export"
+  ],
   "stages": [
     {
       "stage": "frs_base",
+      "role": "base",
       "survey": "Family Resources Survey 2023-24",
       "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
       "grain": "household_person_benunit",
@@ -81,6 +103,7 @@
     },
     {
       "stage": "was_wealth",
+      "role": "donor",
       "survey": "Wealth and Assets Survey",
       "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/debt/methodologies/wealthandassetssurveyqmi",
       "grain": "household",
@@ -156,6 +179,7 @@
     },
     {
       "stage": "regional_property_uprating",
+      "role": "donor",
       "survey": "UK House Price Index and regional land-value tables",
       "source": "https://www.gov.uk/government/collections/uk-house-price-index-reports",
       "grain": "household",
@@ -193,6 +217,7 @@
     },
     {
       "stage": "lcfs_consumption",
+      "role": "donor",
       "survey": "Living Costs and Food Survey",
       "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/methodologies/livingcostsandfoodsurveyqmi",
       "grain": "household",
@@ -284,6 +309,7 @@
     },
     {
       "stage": "road_fuel_energy_calibration",
+      "role": "donor",
       "survey": "Road fuel and household energy administrative totals",
       "source": "https://www.gov.uk/government/collections/road-transport-consumption-at-regional-and-local-level",
       "grain": "household",
@@ -342,6 +368,7 @@
     },
     {
       "stage": "etb_vat",
+      "role": "donor",
       "survey": "Effects of Taxes and Benefits",
       "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
       "grain": "household",
@@ -387,6 +414,7 @@
     },
     {
       "stage": "nhs_usage",
+      "role": "donor",
       "survey": "NHS activity and unit-cost tables",
       "source": "https://www.england.nhs.uk/statistics/statistical-work-areas/hospital-activity/monthly-hospital-activity/",
       "grain": "person",
@@ -451,6 +479,7 @@
     },
     {
       "stage": "etb_public_services",
+      "role": "donor",
       "survey": "Effects of Taxes and Benefits public-service tables",
       "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
       "grain": "household",
@@ -507,6 +536,7 @@
     },
     {
       "stage": "rail_public_service_calibration",
+      "role": "donor",
       "survey": "Rail public-service administrative totals",
       "source": "https://www.gov.uk/government/collections/rail-statistics",
       "grain": "household",
@@ -547,6 +577,7 @@
     },
     {
       "stage": "spi_support_channel",
+      "role": "support",
       "survey": "Family Resources Survey 2023-24 support copy",
       "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
       "grain": "household_person_benunit",
@@ -585,6 +616,7 @@
     },
     {
       "stage": "spi_income",
+      "role": "donor",
       "survey": "Survey of Personal Incomes",
       "source": "https://www.gov.uk/government/collections/personal-incomes-statistics",
       "grain": "person",
@@ -639,6 +671,7 @@
     },
     {
       "stage": "frs_only_spi_fill",
+      "role": "donor",
       "survey": "Family Resources Survey 2023-24",
       "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
       "grain": "person",
@@ -744,6 +777,7 @@
     },
     {
       "stage": "advani_summers_capital_gains",
+      "role": "donor",
       "survey": "Advani-Summers capital gains distribution",
       "source": "https://ideas.repec.org/p/hal/wpaper/halshs-03022609.html",
       "grain": "household",
@@ -790,6 +824,7 @@
     },
     {
       "stage": "frs_salary_sacrifice",
+      "role": "donor",
       "survey": "Family Resources Survey salary-sacrifice subsample",
       "source": "https://www.gov.uk/government/collections/family-resources-survey--2",
       "grain": "person",
@@ -834,6 +869,7 @@
     },
     {
       "stage": "slc_student_loan_plan",
+      "role": "donor",
       "survey": "Student Loans Company repayment-plan statistics",
       "source": "https://www.gov.uk/government/collections/student-loans-for-higher-and-further-education",
       "grain": "person",
@@ -867,6 +903,7 @@
     },
     {
       "stage": "rowwise_oa_geography",
+      "role": "geography",
       "survey": "UK official small-area geography crosswalks",
       "source": "https://geoportal.statistics.gov.uk/",
       "grain": "household",
@@ -913,28 +950,37 @@
     },
     {
       "stage": "national_calibration",
-      "survey": "UK national calibration target registry",
-      "source": "https://github.com/PolicyEngine/populace/tree/main/packages/populace-calibrate",
+      "role": "calibration",
+      "survey": "PolicyEngine Ledger UK national calibration facts",
+      "source": "https://github.com/PolicyEngine/arch-data",
       "grain": "household",
       "artifacts": [
         {
-          "kind": "target_registry",
-          "format": "json_or_yaml",
+          "kind": "ledger_consumer_facts",
+          "format": "jsonl",
           "vintage": "build_year",
-          "locator": "Populace national calibration target registry and supplied administrative target tables"
+          "locator": "Ledger consumer facts filtered to the UK national calibration target profile"
         }
       ],
       "operations": [
         {
-          "kind": "read_tables",
-          "tables": [
-            "national_calibration_targets",
-            "household_metric_tables"
-          ]
+          "kind": "read_table",
+          "table": "ledger_consumer_facts"
+        },
+        {
+          "kind": "compile_ledger_targets",
+          "country": "uk",
+          "target_profile": "uk_national_calibration",
+          "geography_levels": [
+            "country"
+          ],
+          "target_table": "national_calibration_targets"
         },
         {
           "kind": "calibrate_weights",
           "weight": "household_weight",
+          "targets": "national_calibration_targets",
+          "metrics": "household_metric_tables",
           "outputs": [
             "household_weight"
           ]
@@ -950,28 +996,38 @@
     },
     {
       "stage": "local_geography_weights",
-      "survey": "UK local calibration target tables",
-      "source": "https://github.com/PolicyEngine/populace/tree/main/packages/populace-build",
+      "role": "calibration",
+      "survey": "PolicyEngine Ledger UK local geography facts",
+      "source": "https://github.com/PolicyEngine/arch-data",
       "grain": "household_area",
       "artifacts": [
         {
-          "kind": "target_tables",
-          "format": "csv_or_parquet",
+          "kind": "ledger_consumer_facts",
+          "format": "jsonl",
           "vintage": "build_year",
-          "locator": "Explicit constituency and local-authority target tables supplied to the UK local runner"
+          "locator": "Ledger consumer facts filtered to the UK constituency and local-authority target profile"
         }
       ],
       "operations": [
         {
-          "kind": "read_tables",
-          "tables": [
-            "local_area_targets",
-            "household_metric_tables"
-          ]
+          "kind": "read_table",
+          "table": "ledger_consumer_facts"
+        },
+        {
+          "kind": "compile_ledger_targets",
+          "country": "uk",
+          "target_profile": "uk_local_geography",
+          "area_types": [
+            "constituency",
+            "la"
+          ],
+          "target_table": "local_area_targets"
         },
         {
           "kind": "calibrate_weights",
           "weight": "household_weight",
+          "targets": "local_area_targets",
+          "metrics": "household_metric_tables",
           "outputs": [
             "local_geography_weight"
           ]

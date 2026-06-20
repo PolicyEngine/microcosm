@@ -41,6 +41,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_binary_from_rate",
         "calibrate_binary_assignment",
         "calibrate_weights",
+        "compile_ledger_targets",
         "convert_interest_to_structural_mortgage_inputs",
         "compute_ratio",
         "derive",
@@ -128,6 +129,7 @@ class SourceStageSpec:
     outputs: tuple[str, ...]
     nonnegative_outputs: tuple[str, ...] = ()
     notes: str = ""
+    role: str = "source"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> SourceStageSpec:
@@ -161,6 +163,9 @@ class SourceStageSpec:
         notes = raw.get("notes", "")
         if not isinstance(notes, str):
             raise ValueError("source stage 'notes' must be a string when provided.")
+        role = raw.get("role", "source")
+        if not isinstance(role, str) or not role:
+            raise ValueError("source stage 'role' must be a non-empty string.")
         _reject_executable_parameter_keys(raw, context=f"stage {raw['stage']!r}")
         _reject_incumbent_dependencies(raw, context=f"stage {raw['stage']!r}")
         return cls(
@@ -168,6 +173,7 @@ class SourceStageSpec:
             survey=raw["survey"],
             source=raw["source"],
             grain=raw["grain"],
+            role=role,
             artifacts=artifacts,
             operations=operations,
             outputs=outputs,
@@ -183,6 +189,7 @@ class SourceManifest:
     country: str
     version: int
     policy: str
+    plan_stages: tuple[str, ...]
     stages: tuple[SourceStageSpec, ...]
 
     @classmethod
@@ -204,9 +211,18 @@ class SourceManifest:
         duplicates = sorted({name for name in names if names.count(name) > 1})
         if duplicates:
             raise ValueError(f"duplicate source stage spec(s): {duplicates}.")
+        plan_stages = tuple(
+            _require_string_sequence(raw.get("plan_stages", names), key="plan_stages")
+        )
         _reject_executable_parameter_keys(raw, context=f"{country} source manifest")
         _reject_incumbent_dependencies(raw, context=f"{country} source manifest")
-        return cls(country=country, version=version, policy=policy, stages=stages)
+        return cls(
+            country=country,
+            version=version,
+            policy=policy,
+            plan_stages=plan_stages,
+            stages=stages,
+        )
 
     def stage_map(self) -> Mapping[str, SourceStageSpec]:
         return {stage.stage: stage for stage in self.stages}

@@ -142,122 +142,34 @@ from populace.build.uk.spi_support import (
 )
 from populace.frame import Frame
 
-UK_DONORS: Mapping[str, DonorSpec] = {
-    "was_wealth": DonorSpec(
-        survey="Wealth and Assets Survey",
-        source="https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/debt/methodologies/wealthandassetssurveyqmi",
-        notes="Household wealth, debts, vehicles, and student-loan balances.",
-    ),
-    "regional_property_uprating": DonorSpec(
-        survey="UK House Price Index and regional land-value tables",
-        source="https://www.gov.uk/government/collections/uk-house-price-index-reports",
-        notes="Regional property-value uprating after WAS wealth imputation.",
-    ),
-    "lcfs_consumption": DonorSpec(
-        survey="Living Costs and Food Survey",
-        source="https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/methodologies/livingcostsandfoodsurveyqmi",
-        notes="COICOP consumption, fuel spending, and domestic energy use.",
-    ),
-    "road_fuel_energy_calibration": DonorSpec(
-        survey="Road fuel and household energy administrative totals",
-        source="https://www.gov.uk/government/collections/road-transport-consumption-at-regional-and-local-level",
-        notes="Fuel and energy calibration targets for LCFS-imputed amounts.",
-    ),
-    "etb_vat": DonorSpec(
-        survey="Effects of Taxes and Benefits",
-        source="https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
-        notes="Full-rate VAT expenditure-rate imputation.",
-    ),
-    "nhs_usage": DonorSpec(
-        survey="NHS activity and unit-cost tables",
-        source="https://www.england.nhs.uk/statistics/statistical-work-areas/hospital-activity/monthly-hospital-activity/",
-        notes="A&E, inpatient, outpatient visit and spending inputs.",
-    ),
-    "etb_public_services": DonorSpec(
-        survey="Effects of Taxes and Benefits public-service tables",
-        source="https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/datasets/theeffectsoftaxesandbenefitsonhouseholdincomehistoricaldatasets",
-        notes="Education, rail, and bus public-service benefit inputs.",
-    ),
-    "rail_public_service_calibration": DonorSpec(
-        survey="Rail public-service administrative totals",
-        source="https://www.gov.uk/government/collections/rail-statistics",
-        notes="Post-weight rail subsidy and usage scaling.",
-    ),
-    "spi_income": DonorSpec(
-        survey="Survey of Personal Incomes",
-        source="https://www.gov.uk/government/collections/personal-incomes-statistics",
-        notes="High-income components, Gift Aid, and investment-gift reliefs.",
-    ),
-    "frs_only_spi_fill": DonorSpec(
-        survey="Family Resources Survey 2023-24",
-        source="https://www.gov.uk/government/collections/family-resources-survey--2",
-        notes=(
-            "Second-stage pension, savings, and reported-benefit behavior for "
-            "SPI support rows."
-        ),
-    ),
-    "advani_summers_capital_gains": DonorSpec(
-        survey="Advani-Summers capital gains distribution",
-        source="https://ideas.repec.org/p/hal/wpaper/halshs-03022609.html",
-        notes="Capital gains assignment and clone flag.",
-    ),
-    "frs_salary_sacrifice": DonorSpec(
-        survey="Family Resources Survey salary-sacrifice subsample",
-        source="https://www.gov.uk/government/collections/family-resources-survey--2",
-        notes="Salary-sacrifice pension contributions and employee adjustment.",
-    ),
-    "slc_student_loan_plan": DonorSpec(
-        survey="Student Loans Company repayment-plan statistics",
-        source="https://www.gov.uk/government/collections/student-loans-for-higher-and-further-education",
-        notes="Student-loan repayment plan assignment by cohort and balance.",
-    ),
-}
-
-UK_STAGE_NAMES: tuple[str, ...] = (
-    "frs_base",
-    "was_wealth",
-    "regional_property_uprating",
-    "lcfs_consumption",
-    "etb_vat",
-    "nhs_usage",
-    "etb_public_services",
-    UK_SPI_SUPPORT_STAGE_NAME,
-    "spi_income",
-    "frs_only_spi_fill",
-    "advani_summers_capital_gains",
-    "frs_salary_sacrifice",
-    "slc_student_loan_plan",
-    "rowwise_oa_geography",
-    "national_calibration",
-    "local_geography_weights",
-    "rail_public_service_calibration",
-    "road_fuel_energy_calibration",
-    "export",
-)
-
-UK_STRUCTURAL_SOURCE_STAGES: tuple[str, ...] = (
-    "frs_base",
-    UK_SPI_SUPPORT_STAGE_NAME,
-    "rowwise_oa_geography",
-    "national_calibration",
-    "local_geography_weights",
-)
-
 
 def _load_uk_source_manifest() -> SourceManifest:
     return load_source_manifest(files(__package__).joinpath("source_stages.json"))
 
 
 UK_SOURCE_MANIFEST = _load_uk_source_manifest()
+UK_STAGE_NAMES: tuple[str, ...] = UK_SOURCE_MANIFEST.plan_stages
 _UK_SOURCE_STAGE_MAP = UK_SOURCE_MANIFEST.stage_map()
 _UNKNOWN_UK_SOURCE_STAGES = sorted(set(_UK_SOURCE_STAGE_MAP) - set(UK_STAGE_NAMES))
 if _UNKNOWN_UK_SOURCE_STAGES:
     raise ValueError(
-        "UK source manifest stage(s) are not declared in UK_STAGE_NAMES: "
+        "UK source manifest stage(s) are not declared in plan_stages: "
         f"{_UNKNOWN_UK_SOURCE_STAGES}."
     )
 UK_SOURCE_STAGE_SPECS: tuple[SourceStageSpec, ...] = tuple(
     _UK_SOURCE_STAGE_MAP[name] for name in UK_STAGE_NAMES if name in _UK_SOURCE_STAGE_MAP
+)
+UK_DONORS: Mapping[str, DonorSpec] = {
+    stage.stage: DonorSpec(
+        survey=stage.survey,
+        source=stage.source,
+        notes=stage.notes,
+    )
+    for stage in UK_SOURCE_STAGE_SPECS
+    if stage.role == "donor"
+}
+UK_STRUCTURAL_SOURCE_STAGES: tuple[str, ...] = tuple(
+    stage.stage for stage in UK_SOURCE_STAGE_SPECS if stage.role != "donor"
 )
 UK_SOURCE_OUTPUTS: frozenset[str] = frozenset(
     output for stage in UK_SOURCE_STAGE_SPECS for output in stage.outputs

@@ -6,6 +6,7 @@ import pytest
 
 from populace.build.source_manifest import SourceManifest, SourceOperationSpec
 from populace.build.uk import (
+    AREA_TYPES,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     ROWWISE_GEOGRAPHY_COLUMNS,
     SPI_INCOME_IMPUTATION_COLUMNS,
@@ -68,6 +69,7 @@ class TestUkSources:
     def test_source_specs_align_with_declared_plan(self) -> None:
         source_stage_names = {spec.stage for spec in UK_SOURCE_STAGE_SPECS}
 
+        assert UK_STAGE_NAMES == UK_SOURCE_MANIFEST.plan_stages
         assert set(UK_SOURCE_MANIFEST.stage_map()) == source_stage_names
         assert source_stage_names == set(UK_DONORS) | set(UK_STRUCTURAL_SOURCE_STAGES)
         assert source_stage_names.issubset(UK_STAGE_NAMES)
@@ -77,6 +79,19 @@ class TestUkSources:
         assert UK_STAGE_NAMES.index("rowwise_oa_geography") < UK_STAGE_NAMES.index(
             "local_geography_weights"
         )
+
+    def test_donor_and_structural_stage_groups_are_manifest_derived(self) -> None:
+        donor_stage_names = tuple(
+            spec.stage for spec in UK_SOURCE_STAGE_SPECS if spec.role == "donor"
+        )
+        structural_stage_names = tuple(
+            spec.stage for spec in UK_SOURCE_STAGE_SPECS if spec.role != "donor"
+        )
+
+        assert tuple(UK_DONORS) == donor_stage_names
+        assert UK_STRUCTURAL_SOURCE_STAGES == structural_stage_names
+        assert "national_calibration" in UK_STRUCTURAL_SOURCE_STAGES
+        assert "local_geography_weights" in UK_STRUCTURAL_SOURCE_STAGES
 
     def test_stage_order_keeps_required_upstream_surfaces_available(self) -> None:
         assert UK_STAGE_NAMES.index("was_wealth") < UK_STAGE_NAMES.index(
@@ -113,8 +128,41 @@ class TestUkSources:
     def test_weight_calibration_stages_are_manifest_declared(self) -> None:
         specs = UK_SOURCE_MANIFEST.stage_map()
         for stage in ("national_calibration", "local_geography_weights"):
+            artifact_kinds = {artifact["kind"] for artifact in specs[stage].artifacts}
             kinds = [operation.kind for operation in specs[stage].operations]
+            compile_operation = next(
+                operation
+                for operation in specs[stage].operations
+                if operation.kind == "compile_ledger_targets"
+            )
+
+            assert specs[stage].source == "https://github.com/PolicyEngine/arch-data"
+            assert artifact_kinds == {"ledger_consumer_facts"}
+            assert "target_registry" not in artifact_kinds
+            assert "target_tables" not in artifact_kinds
+            assert kinds.index("read_table") < kinds.index("compile_ledger_targets")
+            assert kinds.index("compile_ledger_targets") < kinds.index(
+                "calibrate_weights"
+            )
             assert "calibrate_weights" in kinds
+            assert compile_operation.parameters["country"] == "uk"
+
+        assert (
+            next(
+                operation
+                for operation in specs["national_calibration"].operations
+                if operation.kind == "compile_ledger_targets"
+            ).parameters["target_profile"]
+            == "uk_national_calibration"
+        )
+        assert (
+            local_compile_operation := next(
+                operation
+                for operation in specs["local_geography_weights"].operations
+                if operation.kind == "compile_ledger_targets"
+            )
+        ).parameters["target_profile"] == "uk_local_geography"
+        assert tuple(local_compile_operation.parameters["area_types"]) == AREA_TYPES
 
     def test_raw_source_surface_declares_salient_outputs_from_each_input(self) -> None:
         required_outputs = {
