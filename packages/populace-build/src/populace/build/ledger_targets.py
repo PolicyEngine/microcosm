@@ -19,7 +19,7 @@ from typing import Any
 
 from populace.calibrate import TargetRegistry, TargetSpec
 
-SUPPORTED_LEDGER_AGGREGATION = "sum"
+SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum", "count"))
 
 
 @dataclass(frozen=True)
@@ -250,7 +250,7 @@ def target_spec_from_ledger_reference(
         )
 
     aggregation = _str_at(fact, "aggregation", "method")
-    if aggregation != SUPPORTED_LEDGER_AGGREGATION:
+    if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS:
         raise ValueError(
             f"Ledger fact for {reference.name!r} has unsupported aggregation "
             f"{aggregation!r}."
@@ -371,7 +371,7 @@ def target_spec_from_ledger_fact(
         raise _unsupported("missing_measure_concept", fact)
 
     aggregation = _str_at(fact, "aggregation", "method")
-    if aggregation != SUPPORTED_LEDGER_AGGREGATION:
+    if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS:
         raise _unsupported(f"unsupported_aggregation:{aggregation}", fact)
 
     measure = mapping.measure_by_source_record_id.get(source_record_id)
@@ -976,6 +976,7 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_layout_groupby_dimension": _str_at(fact, "layout", "groupby_dimension"),
         "ledger_layout_groupby_value_id": _str_at(fact, "layout", "groupby_value_id"),
         "ledger_layout_measure_id": _str_at(fact, "layout", "measure_id"),
+        "ledger_aggregation_method": _str_at(fact, "aggregation", "method"),
     }
     constraint_rows = _constraint_rows(fact)
     if constraint_rows:
