@@ -808,6 +808,263 @@ def test_cross_period_soi_eitc_decomposition_uses_latest_source_backed_total() -
     assert spec.metadata["uprating_factor"] == "1.04182358533273"
 
 
+def test_cross_period_soi_eitc_decomposition_prefers_agi_specific_factor() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=100,
+                income_range="25k_to_30k",
+                lower=25_000,
+                upper=30_000,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                child_group="no_qualifying_children",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "two_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=15,
+                child_group="two_qualifying_children",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                child_group="three_or_more_qualifying_children",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "agi_eitc_amount"
+    assert spec.metadata["uprating_agi_lower_bound"] == "25000"
+    assert spec.metadata["uprating_agi_upper_bound"] == "30000"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "25k_to_30k.total_earned_income_credit_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_open_ended_decomposition_combines_agi_bins() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "50k_plus.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=80,
+                income_range="50k_to_75k",
+                lower=50_000,
+                upper=75_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=20,
+                income_range="75k_to_100k",
+                lower=75_000,
+                upper=100_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=0,
+                income_range="100k_plus",
+                lower=100_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                income_range="50k_plus",
+                child_group="no_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+                income_range="50k_plus",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "two_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=10,
+                income_range="50k_plus",
+                child_group="two_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=10,
+                income_range="50k_plus",
+                child_group="three_or_more_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "agi_eitc_amount"
+    assert spec.metadata["uprating_agi_lower_bound"] == "50000"
+    assert spec.metadata["uprating_agi_upper_bound"] == "inf"
+    assert spec.metadata["uprating_index_source_record_ids"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "50k_to_75k.total_earned_income_credit_amount,"
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "75k_to_100k.total_earned_income_credit_amount,"
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "100k_plus.total_earned_income_credit_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_uprating_ignores_state_agi_control() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_amount",
+                value=500,
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=10,
+                income_range="25k_to_30k",
+                lower=25_000,
+                upper=30_000,
+                geography_level="state",
+                geography_id="0400000US06",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "total_eitc_amount"
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_uprating_requires_complete_agi_interval() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "50k_plus.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_amount",
+                value=500,
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=80,
+                income_range="50k_to_75k",
+                lower=50_000,
+                upper=75_000,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+                income_range="50k_plus",
+                lower=50_000,
+                upper=None,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "total_eitc_amount"
+    assert spec.metadata["uprating_factor"] == "2"
+
+
 def test_cross_period_soi_eitc_returns_uprate_to_filing_season_total() -> None:
     source_record_id = (
         "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
@@ -1732,6 +1989,53 @@ def _soi_eitc_filing_season_total_fact(
     )
 
 
+def _soi_eitc_filing_season_agi_fact(
+    *,
+    measure_id: str,
+    value: float,
+    income_range: str,
+    lower: float,
+    upper: float | None,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{income_range}.{measure_id}"
+    )
+    suffix = "count" if measure_id.endswith("_returns") else "amount"
+    constraints: list[dict[str, object]] = [
+        {
+            "variable": "adjusted_gross_income",
+            "operator": ">=",
+            "value": lower,
+        }
+    ]
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=2024,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
+        layout_record_set_id=(
+            f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{suffix}"
+        ),
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id=income_range,
+    )
+
+
 def _soi_eitc_child_total_facts(
     source_period: int,
     *,
@@ -1780,32 +2084,39 @@ def _soi_eitc_child_fact(
     source_record_id: str,
     measure_id: str,
     value: float,
+    income_range: str = "25k_to_30k",
+    child_group: str = "one_qualifying_child",
+    lower: float = 25_000,
+    upper: float | None = 30_000,
 ) -> dict[str, object]:
+    constraints: list[dict[str, object]] = [
+        {
+            "variable": "adjusted_gross_income",
+            "operator": ">=",
+            "value": lower,
+        }
+    ]
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
     return _dynamic_ledger_fact(
         source_record_id=source_record_id,
         source_name="irs_soi",
         measure_id=measure_id,
         value=value,
         period_value=source_period,
-        dimensions={"income_range": "25k_to_30k", "filing_status": "all"},
-        universe_constraints=[
-            {
-                "variable": "adjusted_gross_income",
-                "operator": ">=",
-                "value": 25_000,
-            },
-            {
-                "variable": "adjusted_gross_income",
-                "operator": "<",
-                "value": 30_000,
-            },
-        ],
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
         layout_record_set_id=(
-            f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
-            "one_qualifying_child"
+            f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children.{child_group}"
         ),
         groupby_dimension="us.tax.earned_income_credit_qualifying_children",
-        groupby_value_id="one_qualifying_child",
+        groupby_value_id=child_group,
     )
 
 

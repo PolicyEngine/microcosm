@@ -665,17 +665,18 @@ def compile_us_fiscal_target_registry(
 def _uprate_cross_period_eitc_decompositions(
     registry: TargetRegistry,
 ) -> TargetRegistry:
-    """Scale stale EITC AGI/child decompositions to active EITC totals.
+    """Scale stale EITC AGI/child decompositions to active EITC controls.
 
     SOI Table 2.5 releases AGI-by-qualifying-child EITC distributions later
     than all-return totals. When Populace uses a prior-year decomposition for a
     target-year build, it must not treat old nominal bins as hard target-year
-    levels. Instead, scale every row by the ratio of the active total EITC fact
-    to the same decomposition's source-year total so all decompositions add back
-    to the selected total.
+    levels. Prefer active AGI-bucket EITC facts when Ledger has them, preserving
+    the latest child split inside each AGI bucket. Fall back to all-return EITC
+    totals when only totals are available.
     """
 
     target_totals = _eitc_active_totals(registry)
+    target_agi_totals = _eitc_active_agi_totals(registry)
     source_totals = _eitc_source_decomposition_totals(registry)
     source_totals = {
         **_eitc_source_total_fallbacks(registry),
@@ -688,6 +689,49 @@ def _uprate_cross_period_eitc_decompositions(
             continue
         kind = _eitc_total_kind(spec)
         source_period = spec.metadata.get("source_period", "")
+        agi_uprating_group = _eitc_agi_uprating_group(
+            spec,
+            target_agi_totals.get(kind or "", ()),
+        )
+        if agi_uprating_group is not None:
+            source_total = _eitc_source_decomposition_total_for_bounds(
+                registry,
+                kind=kind,
+                source_period=source_period,
+                lower=agi_uprating_group.lower,
+                upper=agi_uprating_group.upper,
+            )
+            if source_total not in (None, 0):
+                factor = agi_uprating_group.value / source_total
+                metadata = {
+                    **dict(spec.metadata),
+                    "uprating_index": _eitc_agi_uprating_index(kind),
+                    "uprating_from_period": source_period,
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": ",".join(
+                        agi_uprating_group.source_periods
+                    ),
+                    "uprating_agi_lower_bound": _format_bound(agi_uprating_group.lower),
+                    "uprating_agi_upper_bound": _format_bound(agi_uprating_group.upper),
+                    "uprating_factor": _format_float(factor),
+                }
+                if len(agi_uprating_group.source_record_ids) == 1:
+                    metadata["uprating_index_source_record_id"] = (
+                        agi_uprating_group.source_record_ids[0]
+                    )
+                else:
+                    metadata["uprating_index_source_record_ids"] = ",".join(
+                        agi_uprating_group.source_record_ids
+                    )
+                specs.append(
+                    replace(
+                        spec,
+                        value=spec.value * factor,
+                        metadata=metadata,
+                    )
+                )
+                continue
+
         target_total = target_totals.get(kind or "")
         source_total = source_totals.get((kind, source_period))
         if target_total is None or source_total in (None, 0):
@@ -719,6 +763,16 @@ class _EitcActiveTotal:
     period_key: tuple[int, int, str]
 
 
+@dataclass(frozen=True)
+class _EitcAgiTotal:
+    value: float
+    source_periods: tuple[str, ...]
+    source_record_ids: tuple[str, ...]
+    period_key: tuple[int, int, str]
+    lower: float
+    upper: float
+
+
 def _eitc_active_totals(registry: TargetRegistry) -> dict[str, _EitcActiveTotal]:
     totals: dict[str, _EitcActiveTotal] = {}
     for spec in registry.specs:
@@ -742,6 +796,43 @@ def _eitc_active_totals(registry: TargetRegistry) -> dict[str, _EitcActiveTotal]
         ):
             totals[kind] = candidate
     return totals
+
+
+def _eitc_active_agi_totals(
+    registry: TargetRegistry,
+) -> dict[str, tuple[_EitcAgiTotal, ...]]:
+    latest: dict[tuple[str, float, float], _EitcAgiTotal] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None or not _is_eitc_agi_total_spec(spec):
+            continue
+        lower, upper = _bounds_from_metadata(spec)
+        candidate = _EitcAgiTotal(
+            value=spec.value,
+            source_periods=(spec.metadata.get("source_period", ""),),
+            source_record_ids=(
+                spec.metadata.get("ledger_source_record_id", spec.name),
+            ),
+            period_key=_period_key_from_value(spec.metadata.get("source_period", "")),
+            lower=lower,
+            upper=upper,
+        )
+        key = (kind, lower, upper)
+        current = latest.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=_period_key_from_value(spec.period),
+        ):
+            latest[key] = candidate
+
+    by_kind: dict[str, list[_EitcAgiTotal]] = {}
+    for (kind, _, _), total in latest.items():
+        by_kind.setdefault(kind, []).append(total)
+    return {
+        kind: tuple(sorted(totals, key=lambda item: (item.lower, item.upper)))
+        for kind, totals in by_kind.items()
+    }
 
 
 def _eitc_source_decomposition_totals(
@@ -777,6 +868,162 @@ def _eitc_source_total_fallbacks(
         source_period = spec.metadata.get("source_period", "")
         totals[(kind, source_period)] = spec.value
     return totals
+
+
+def _eitc_source_decomposition_total_for_bounds(
+    registry: TargetRegistry,
+    *,
+    kind: str | None,
+    source_period: str,
+    lower: float,
+    upper: float,
+) -> float | None:
+    total = 0.0
+    matched = False
+    for spec in registry.specs:
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if _eitc_total_kind(spec) != kind:
+            continue
+        if spec.metadata.get("source_period", "") != source_period:
+            continue
+        spec_lower, spec_upper = _bounds_from_metadata(spec)
+        if _contains_bounds(lower, upper, spec_lower, spec_upper):
+            total += spec.value
+            matched = True
+    return total if matched else None
+
+
+def _eitc_agi_uprating_group(
+    spec: TargetSpec,
+    active_agi_totals: tuple[_EitcAgiTotal, ...],
+) -> _EitcAgiTotal | None:
+    if not active_agi_totals:
+        return None
+    source_period_key = _period_key_from_value(spec.metadata.get("source_period", ""))
+    spec_lower, spec_upper = _bounds_from_metadata(spec)
+    containing = [
+        total
+        for total in active_agi_totals
+        if _period_not_before(total.period_key, source_period_key)
+        and _contains_bounds(total.lower, total.upper, spec_lower, spec_upper)
+    ]
+    if containing:
+        return min(containing, key=lambda total: total.upper - total.lower)
+
+    contained = [
+        total
+        for total in active_agi_totals
+        if _period_not_before(total.period_key, source_period_key)
+        and _contains_bounds(spec_lower, spec_upper, total.lower, total.upper)
+    ]
+    if not _covers_interval(contained, lower=spec_lower, upper=spec_upper):
+        return None
+    return _merge_eitc_agi_totals(contained, lower=spec_lower, upper=spec_upper)
+
+
+def _merge_eitc_agi_totals(
+    totals: list[_EitcAgiTotal],
+    *,
+    lower: float,
+    upper: float,
+) -> _EitcAgiTotal:
+    source_periods = tuple(
+        dict.fromkeys(period for total in totals for period in total.source_periods)
+    )
+    source_record_ids = tuple(
+        dict.fromkeys(
+            source_record_id
+            for total in totals
+            for source_record_id in total.source_record_ids
+        )
+    )
+    return _EitcAgiTotal(
+        value=sum(total.value for total in totals),
+        source_periods=source_periods,
+        source_record_ids=source_record_ids,
+        period_key=max(total.period_key for total in totals),
+        lower=lower,
+        upper=upper,
+    )
+
+
+def _is_eitc_agi_total_spec(spec: TargetSpec) -> bool:
+    if _is_eitc_decomposition_spec(spec):
+        return False
+    if spec.metadata.get("ledger_filter_eitc_child_count"):
+        return False
+    if spec.metadata.get("filing_status") != "All":
+        return False
+    if spec.metadata.get("state_fips"):
+        return False
+    if spec.metadata.get("source_measure_id") not in (
+        _SOI_EITC_TOTAL_AMOUNT_MEASURES | _SOI_EITC_TOTAL_RETURN_MEASURES
+    ):
+        return False
+    lower, upper = _bounds_from_metadata(spec)
+    return not (lower == -float("inf") and upper == float("inf"))
+
+
+def _bounds_from_metadata(spec: TargetSpec) -> tuple[float, float]:
+    return (
+        _bound_from_metadata_value(spec.metadata.get("agi_lower_bound", "-inf")),
+        _bound_from_metadata_value(spec.metadata.get("agi_upper_bound", "inf")),
+    )
+
+
+def _bound_from_metadata_value(value: str) -> float:
+    if value == "-inf":
+        return -float("inf")
+    if value == "inf":
+        return float("inf")
+    return float(value)
+
+
+def _contains_bounds(
+    outer_lower: float,
+    outer_upper: float,
+    inner_lower: float,
+    inner_upper: float,
+) -> bool:
+    return outer_lower <= inner_lower and inner_upper <= outer_upper
+
+
+def _covers_interval(
+    totals: list[_EitcAgiTotal],
+    *,
+    lower: float,
+    upper: float,
+) -> bool:
+    if not totals:
+        return False
+    cursor = lower
+    for total in sorted(totals, key=lambda item: (item.lower, item.upper)):
+        if total.lower != cursor:
+            return False
+        cursor = total.upper
+        if cursor == upper:
+            return True
+        if cursor > upper:
+            return False
+    return cursor == upper
+
+
+def _period_not_before(
+    candidate: tuple[int, int, str],
+    minimum: tuple[int, int, str],
+) -> bool:
+    if not candidate[0] or not minimum[0]:
+        return True
+    return candidate[1] >= minimum[1]
+
+
+def _format_bound(value: float) -> str:
+    if value == -float("inf"):
+        return "-inf"
+    if value == float("inf"):
+        return "inf"
+    return _format_float(value)
 
 
 def _is_eitc_decomposition_spec(spec: TargetSpec) -> bool:
@@ -816,6 +1063,12 @@ def _eitc_uprating_index(kind: str | None) -> str:
     if kind == "returns":
         return "total_eitc_returns"
     return "total_eitc_amount"
+
+
+def _eitc_agi_uprating_index(kind: str | None) -> str:
+    if kind == "returns":
+        return "agi_eitc_returns"
+    return "agi_eitc_amount"
 
 
 def _format_float(value: float) -> str:
