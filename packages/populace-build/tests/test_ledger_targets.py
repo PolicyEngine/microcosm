@@ -297,6 +297,46 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
     assert spec.metadata["uprating_to_period"] == "2024"
 
 
+def test__given_count_ledger_target_reference__then_it_compiles_as_sum_spec() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="census_pep.cy2024.national_resident_population_age.0_to_4.population",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="person",
+        measure="person_count",
+        filter="age_0_to_4",
+        period=2024,
+        source="Census PEP",
+        family="census_population",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _consumer_fact_row(
+                value=18_000_000,
+                aggregation={"method": "count"},
+                observed_measure={
+                    "source_name": "census_pep",
+                    "source_table": "Annual Estimates of the Resident Population",
+                    "source_measure_id": "population",
+                    "source_concept": "census_pep.resident_population",
+                    "unit": "count",
+                },
+            )
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.measure == "person_count"
+    assert spec.filter == "age_0_to_4"
+    assert spec.value == 18_000_000
+    assert spec.metadata["ledger_aggregation_method"] == "count"
+
+
 def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compiles() -> (
     None
 ):
@@ -827,6 +867,29 @@ def test__given_rate_fact__then_it_is_reported_as_unsupported() -> None:
     # Then
     assert not selection.specs
     assert selection.unsupported[0].reason == "unsupported_aggregation:rate"
+
+
+def test__given_count_fact__then_populace_target_is_still_sum_only() -> None:
+    # Given
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+    )
+
+    # When
+    selection = select_ledger_targets(
+        [_ledger_fact(aggregation={"method": "count"}, value=10)],
+        mapping,
+    )
+
+    # Then
+    assert not selection.unsupported
+    spec = selection.specs[0]
+    assert spec.measure == "adjusted_gross_income"
+    assert spec.value == 10
+    assert spec.metadata["ledger_aggregation_method"] == "count"
 
 
 def test__given_malformed_value__then_it_is_reported_as_unsupported() -> None:
