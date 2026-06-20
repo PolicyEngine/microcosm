@@ -701,6 +701,69 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     )
 
 
+def test_cross_period_soi_eitc_decomposition_uprates_to_active_total() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2024,
+                measure_id="total_earned_income_credit_amount",
+                value=1_200,
+            ),
+            _soi_eitc_total_fact(
+                2024,
+                measure_id="total_earned_income_credit_returns",
+                value=60,
+            ),
+            *_soi_eitc_child_total_facts(2023, measure_id="eitc_total"),
+            *_soi_eitc_child_total_facts(2023, measure_id="eitc_returns"),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=returns_source_record_id,
+                measure_id="eitc_returns",
+                value=10,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    amount = specs[amount_source_record_id]
+    assert amount.value == 30
+    assert amount.metadata["requires_total_eitc_uprating"] == "true"
+    assert amount.metadata["uprating_index"] == "total_eitc_amount"
+    assert amount.metadata["uprating_from_period"] == "2023"
+    assert amount.metadata["uprating_to_period"] == "2024"
+    assert amount.metadata["uprating_factor"] == "1.2"
+
+    returns = specs[returns_source_record_id]
+    assert returns.value == 12
+    assert returns.metadata["requires_total_eitc_uprating"] == "true"
+    assert returns.metadata["uprating_index"] == "total_eitc_returns"
+    assert returns.metadata["uprating_factor"] == "1.2"
+
+    scaled_child_total = specs[
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+        "one_qualifying_child.total.eitc_total"
+    ]
+    assert scaled_child_total.value == 240
+    assert scaled_child_total.metadata["uprating_factor"] == "1.2"
+
+
 def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
     source_record_id = (
         "irs_soi.ty2024.state_2022.us.eitc_three_or_more_children_returns."
@@ -1534,6 +1597,103 @@ def packaged_reference_facts() -> list[dict[str, object]]:
         _ledger_fact_for_reference(reference, value=index + 1)
         for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
     ]
+
+
+def _soi_eitc_total_fact(
+    source_period: int,
+    *,
+    measure_id: str,
+    value: float,
+) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty{source_period}.table_2_5.eitc_all_returns.total.{measure_id}"
+    )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id=f"irs_soi.ty{source_period}.table_2_5.eitc_all_returns",
+        groupby_dimension="irs_soi.eitc_return_group",
+        groupby_value_id="total",
+    )
+
+
+def _soi_eitc_child_total_facts(
+    source_period: int,
+    *,
+    measure_id: str,
+) -> list[dict[str, object]]:
+    values = {
+        "no_qualifying_children": 100,
+        "one_qualifying_child": 200,
+        "two_qualifying_children": 300,
+        "three_or_more_qualifying_children": 400,
+    }
+    if measure_id == "eitc_returns":
+        values = {
+            "no_qualifying_children": 5,
+            "one_qualifying_child": 10,
+            "two_qualifying_children": 15,
+            "three_or_more_qualifying_children": 20,
+        }
+    return [
+        _dynamic_ledger_fact(
+            source_record_id=(
+                f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
+                f"{child_group}.total.{measure_id}"
+            ),
+            source_name="irs_soi",
+            measure_id=measure_id,
+            value=value,
+            period_value=source_period,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=(
+                f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
+                f"{child_group}"
+            ),
+            groupby_dimension="us.tax.earned_income_credit_qualifying_children",
+            groupby_value_id=child_group,
+        )
+        for child_group, value in values.items()
+    ]
+
+
+def _soi_eitc_child_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    measure_id: str,
+    value: float,
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": "25k_to_30k", "filing_status": "all"},
+        universe_constraints=[
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": 25_000,
+            },
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": 30_000,
+            },
+        ],
+        layout_record_set_id=(
+            f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
+            "one_qualifying_child"
+        ),
+        groupby_dimension="us.tax.earned_income_credit_qualifying_children",
+        groupby_value_id="one_qualifying_child",
+    )
 
 
 def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, object]:

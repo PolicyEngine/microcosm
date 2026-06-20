@@ -134,6 +134,7 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "taxable_pension_income_amount": "taxable_pension_income",
     "taxable_social_security_amount": "taxable_social_security",
     "total_itemized_deductions_amount": "itemized_taxable_income_deductions",
+    "total_earned_income_credit_amount": "eitc",
     "unemployment_compensation_amount": "unemployment_compensation",
     "wages_salaries_amount": "employment_income",
     "charitable_amount": "charitable_deduction",
@@ -168,6 +169,7 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "taxable_ira_distributions_returns": "ira_distributions",
     "taxable_pension_income_returns": "taxable_pension_income",
     "taxable_social_security_returns": "taxable_social_security",
+    "total_earned_income_credit_returns": "eitc",
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
 }
@@ -226,6 +228,14 @@ _SOI_EITC_CHILD_COUNT_LAYOUT_DIMENSIONS = frozenset(
         "us.tax.earned_income_credit_qualifying_children",
         "us.tax.eitc_qualifying_children",
     }
+)
+_SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES = frozenset({"eitc_total"})
+_SOI_EITC_DECOMPOSITION_RETURN_MEASURES = frozenset({"eitc_returns"})
+_SOI_EITC_TOTAL_AMOUNT_MEASURES = frozenset(
+    {"eitc_amount", "total_earned_income_credit_amount"}
+)
+_SOI_EITC_TOTAL_RETURN_MEASURES = frozenset(
+    {"eitc_claims", "total_earned_income_credit_returns"}
 )
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
@@ -644,11 +654,149 @@ def compile_us_fiscal_target_registry(
             target_period=target_period,
         ),
     )
-    return compile_ledger_target_references(
+    registry = compile_ledger_target_references(
         materialized_facts,
         references,
         country="us",
     )
+    return _uprate_cross_period_eitc_decompositions(registry)
+
+
+def _uprate_cross_period_eitc_decompositions(
+    registry: TargetRegistry,
+) -> TargetRegistry:
+    """Scale stale EITC AGI/child decompositions to active EITC totals.
+
+    SOI Table 2.5 releases AGI-by-qualifying-child EITC distributions later
+    than all-return totals. When Populace uses a prior-year decomposition for a
+    target-year build, it must not treat old nominal bins as hard target-year
+    levels. Instead, scale every row by the ratio of the active total EITC fact
+    to the same decomposition's source-year total so all decompositions add back
+    to the selected total.
+    """
+
+    target_totals = _eitc_active_totals(registry)
+    source_totals = _eitc_source_decomposition_totals(registry)
+    source_totals = {
+        **_eitc_source_total_fallbacks(registry),
+        **source_totals,
+    }
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get("requires_total_eitc_uprating") != "true":
+            specs.append(spec)
+            continue
+        kind = _eitc_total_kind(spec)
+        source_period = spec.metadata.get("source_period", "")
+        target_total = target_totals.get(kind)
+        source_total = source_totals.get((kind, source_period))
+        if target_total is None or source_total in (None, 0):
+            continue
+        factor = target_total / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _eitc_uprating_index(kind),
+                    "uprating_from_period": source_period,
+                    "uprating_to_period": str(spec.period),
+                    "uprating_factor": _format_float(factor),
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _eitc_active_totals(registry: TargetRegistry) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        if spec.metadata.get("target_role") not in _eitc_total_roles(kind):
+            continue
+        totals[kind] = spec.value
+    return totals
+
+
+def _eitc_source_decomposition_totals(
+    registry: TargetRegistry,
+) -> dict[tuple[str, str], float]:
+    totals: dict[tuple[str, str], float] = {}
+    for spec in registry.specs:
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if spec.metadata.get("agi_lower_bound") != "-inf":
+            continue
+        if spec.metadata.get("agi_upper_bound") != "inf":
+            continue
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        source_period = spec.metadata.get("source_period", "")
+        key = (kind, source_period)
+        totals[key] = totals.get(key, 0.0) + spec.value
+    return totals
+
+
+def _eitc_source_total_fallbacks(
+    registry: TargetRegistry,
+) -> dict[tuple[str, str], float]:
+    totals: dict[tuple[str, str], float] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        if spec.metadata.get("target_role") not in _eitc_total_roles(kind):
+            continue
+        source_period = spec.metadata.get("source_period", "")
+        totals[(kind, source_period)] = spec.value
+    return totals
+
+
+def _is_eitc_decomposition_spec(spec: TargetSpec) -> bool:
+    metadata = spec.metadata
+    if metadata.get("source_measure_id") not in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES
+        | _SOI_EITC_DECOMPOSITION_RETURN_MEASURES
+    ):
+        return False
+    return ".table_2_5.eitc_by_agi_children." in metadata.get(
+        "ledger_layout_record_set_id", ""
+    )
+
+
+def _eitc_total_kind(spec: TargetSpec) -> str | None:
+    measure_id = spec.metadata.get("source_measure_id", "")
+    if measure_id in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES | _SOI_EITC_TOTAL_AMOUNT_MEASURES
+    ):
+        return "amount"
+    if measure_id in (
+        _SOI_EITC_DECOMPOSITION_RETURN_MEASURES | _SOI_EITC_TOTAL_RETURN_MEASURES
+    ):
+        return "returns"
+    return None
+
+
+def _eitc_total_roles(kind: str) -> frozenset[str]:
+    if kind == "amount":
+        return frozenset({"eitc_total"})
+    if kind == "returns":
+        return frozenset({"eitc_returns_total"})
+    return frozenset()
+
+
+def _eitc_uprating_index(kind: str | None) -> str:
+    if kind == "returns":
+        return "total_eitc_returns"
+    return "total_eitc_amount"
+
+
+def _format_float(value: float) -> str:
+    return f"{value:.15g}"
 
 
 def _dynamic_us_fiscal_target_references(
@@ -850,12 +998,16 @@ def _soi_reference_from_fact(
         variable, is_count = override
 
     lower, upper = _agi_bounds(fact)
-    if _is_untransformed_cross_period_agi_slice(
+    cross_period_agi_slice = _is_untransformed_cross_period_agi_slice(
         fact,
         agi_lower_bound=lower,
         agi_upper_bound=upper,
         target_period=target_period,
-    ):
+    )
+    requires_total_eitc_uprating = _is_cross_period_fact(
+        fact, target_period=target_period
+    ) and _is_soi_eitc_decomposition_fact(fact, measure_id)
+    if cross_period_agi_slice and not requires_total_eitc_uprating:
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
     if status is None:
@@ -887,6 +1039,8 @@ def _soi_reference_from_fact(
     state_fips = _state_fips(fact)
     if state_fips:
         metadata["state_fips"] = state_fips
+    if requires_total_eitc_uprating:
+        metadata["requires_total_eitc_uprating"] = "true"
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
@@ -943,6 +1097,16 @@ def _soi_layout_filter_metadata(fact: object) -> dict[str, str]:
     ):
         return {"ledger_filter_eitc_child_count": groupby_value}
     return {}
+
+
+def _is_soi_eitc_decomposition_fact(fact: object, measure_id: str) -> bool:
+    if measure_id not in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES
+        | _SOI_EITC_DECOMPOSITION_RETURN_MEASURES
+    ):
+        return False
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    return ".table_2_5.eitc_by_agi_children." in record_set_id
 
 
 def _state_income_tax_reference_from_fact(
@@ -1121,6 +1285,8 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
             "income_tax_liability_amount": "federal_income_tax_total",
             "eitc_amount": "eitc_total",
+            "total_earned_income_credit_amount": "eitc_total",
+            "total_earned_income_credit_returns": "eitc_returns_total",
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
             "charitable_amount": "charitable_deduction_total",
@@ -1162,13 +1328,18 @@ def _is_untransformed_cross_period_agi_slice(
     return source_period_key[1] != target_period_key[1]
 
 
+def _is_cross_period_fact(fact: object, *, target_period: int | str) -> bool:
+    source_period_key = _period_key(fact)
+    target_period_key = _period_key_from_value(target_period)
+    if not source_period_key[0] or not target_period_key[0]:
+        return False
+    return source_period_key[1] != target_period_key[1]
+
+
 def _agi_bounds(fact: object) -> tuple[str, str]:
     lower = "-inf"
     upper = "inf"
-    constraints = _at(fact, "universe_constraints", "constraints") or ()
-    if not isinstance(constraints, list):
-        constraints = ()
-    for constraint in constraints:
+    for constraint in _constraint_rows(fact):
         if not isinstance(constraint, dict):
             continue
         variable = str(constraint.get("variable") or "")
