@@ -1402,6 +1402,24 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
         "selected_marketplace_plan_benchmark_ratio": 3,
         "takes_up_aca_if_eligible": 2,
     }
+    ratio_diagnostics = gate.details["selected_marketplace_plan_benchmark_ratio"]
+    assert ratio_diagnostics["support"] == {"lower": 0.5, "upper": 1.5}
+    assert ratio_diagnostics["all_tax_units"] == {
+        "count": 3,
+        "min": 0.8,
+        "max": 1.2,
+        "mean": 1.0,
+        "neutral_count": 1,
+        "below_benchmark_count": 1,
+        "above_benchmark_count": 1,
+        "below_support_count": 0,
+        "above_support_count": 0,
+    }
+    marketplace_takers = ratio_diagnostics["marketplace_takers"]
+    assert marketplace_takers["count"] == 2
+    assert abs(marketplace_takers["mean"] - 1.1) < 1e-12
+    assert marketplace_takers["below_benchmark_count"] == 0
+    assert marketplace_takers["above_benchmark_count"] == 1
 
 
 def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
@@ -1528,6 +1546,113 @@ def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
         assert "requires an APTC-recipient target" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected enrollment-only ACA source refresh to fail.")
+
+
+def test_aca_source_runtime_uses_bronze_targets_when_available(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    captured: dict[str, object] = {}
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20],
+            "takes_up_aca_if_eligible": [False, False],
+            "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
+        }
+    )
+
+    class FakeFrame:
+        entities = ("tax_unit",)
+        schema = object()
+        weighted_entities = ()
+        strata = None
+
+        def table(self, entity):
+            assert entity == "tax_unit"
+            return tax_unit
+
+    def fake_run_source_stage(
+        stage,
+        *,
+        tables,
+        operation_handlers,
+        config,
+        stop_after,
+    ):
+        captured["stage"] = stage.stage
+        captured["tables"] = tables
+        captured["stop_after"] = stop_after
+        return pd.DataFrame(
+            {
+                "tax_unit_id": [10, 20],
+                "takes_up_aca_if_eligible": [True, False],
+                "selected_marketplace_plan_benchmark_ratio": [0.8, 1.0],
+            }
+        )
+
+    monkeypatch.setattr(builder, "_aca_source_person_table", lambda frame: object())
+    monkeypatch.setattr(
+        builder,
+        "_aca_source_tax_unit_table",
+        lambda frame, target_tables, *, simulation: pd.DataFrame(
+            {"tax_unit_id": [10, 20], "state_fips": ["06", "06"]}
+        ),
+    )
+    monkeypatch.setattr(builder, "run_source_stage", fake_run_source_stage)
+    monkeypatch.setattr(
+        builder,
+        "Frame",
+        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+    )
+
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.ca.aptc_recipients",
+            entity="household",
+            measure="takes_up_aca_if_eligible",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={"target_role": "aca_ptc_recipients", "state_fips": "06"},
+        ),
+        TargetSpec(
+            name="cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers",
+            entity="household",
+            measure="selected_marketplace_plan_benchmark_ratio",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_bronze_aptc_consumers",
+                "state_fips": "06",
+            },
+        ),
+    )
+
+    builder._with_aca_marketplace_source_outputs(
+        FakeFrame(),
+        specs,
+        seed=42,
+        simulation=object(),
+    )
+
+    assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
+    assert captured["stop_after"] is None
+    target_tables = captured["tables"]
+    assert set(target_tables) >= {
+        builder.US_ACA_APTC_TARGET_TABLE,
+        "cms_aca_bronze_aptc_consumers_by_state",
+    }
+    bronze_table = target_tables["cms_aca_bronze_aptc_consumers_by_state"]
+    assert bronze_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 1.0,
+            "source_record_id": (
+                "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers"
+            ),
+        }
+    ]
 
 
 def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
@@ -2776,6 +2901,13 @@ def test_fiscal_refresh_uses_target_period_medicaid_source() -> None:
         "cms-medicaid-chip-monthly-enrollment-dataset"
         in builder.REVIEWED_EXCLUDED_ALIASES
     )
+
+
+def test_fiscal_refresh_keeps_unregistered_aca_state_metal_alias_inactive() -> None:
+    builder = _load_builder_module()
+
+    assert "cms-aca-oep-state-level" in builder.DIRECT_ACTIVE_ALIASES
+    assert "cms-aca-oep-state-metal" not in builder.DIRECT_ACTIVE_ALIASES
 
 
 def test_reviewed_exclusions_fail_when_hard_target_surface_changes(

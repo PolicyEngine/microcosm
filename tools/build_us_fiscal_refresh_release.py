@@ -1705,6 +1705,51 @@ def _strip_calibration_columns(
     )
 
 
+def _selected_plan_ratio_bucket(values: np.ndarray) -> dict[str, object]:
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return {
+            "count": 0,
+            "min": None,
+            "max": None,
+            "mean": None,
+            "neutral_count": 0,
+            "below_benchmark_count": 0,
+            "above_benchmark_count": 0,
+            "below_support_count": 0,
+            "above_support_count": 0,
+        }
+    return {
+        "count": int(finite.size),
+        "min": float(finite.min()),
+        "max": float(finite.max()),
+        "mean": float(finite.mean()),
+        "neutral_count": int(np.isclose(finite, 1.0).sum()),
+        "below_benchmark_count": int((finite < 1.0).sum()),
+        "above_benchmark_count": int((finite > 1.0).sum()),
+        "below_support_count": int((finite < 0.5).sum()),
+        "above_support_count": int((finite > 1.5).sum()),
+    }
+
+
+def _selected_plan_ratio_diagnostics(tax_unit: pd.DataFrame) -> dict[str, object]:
+    column = "selected_marketplace_plan_benchmark_ratio"
+    if column not in tax_unit.columns:
+        return {}
+    values = pd.to_numeric(tax_unit[column], errors="coerce").to_numpy(dtype=np.float64)
+    diagnostics = {
+        "support": {"lower": 0.5, "upper": 1.5},
+        "all_tax_units": _selected_plan_ratio_bucket(values),
+    }
+    if "takes_up_aca_if_eligible" in tax_unit.columns:
+        takes_up = tax_unit["takes_up_aca_if_eligible"].fillna(False).astype(bool)
+        diagnostics["marketplace_takers"] = _selected_plan_ratio_bucket(
+            values[takes_up.to_numpy()]
+        )
+    return diagnostics
+
+
 def _health_input_signal_gate(frame: Frame) -> GateResult:
     tax_unit = frame.table("tax_unit")
     gate = nonconstant_columns_gate(
@@ -1715,11 +1760,15 @@ def _health_input_signal_gate(frame: Frame) -> GateResult:
         },
         US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
     )
+    details = dict(gate.details)
+    selected_plan_diagnostics = _selected_plan_ratio_diagnostics(tax_unit)
+    if selected_plan_diagnostics:
+        details["selected_marketplace_plan_benchmark_ratio"] = selected_plan_diagnostics
     return GateResult(
         name="health_input_signal",
         passed=gate.passed,
         failures=gate.failures,
-        details=gate.details,
+        details=details,
     )
 
 
