@@ -1,5 +1,9 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk.bus_calibration import (
+    calibrate_bus_spending_levels,
+    uk_bus_targets,
+)
 from populace.build.uk.bus_calibration_targets import (
     ENGLAND_TO_UK_POPULATION_UPLIFT,
     UK_BUS_TARGET_REGISTRY,
@@ -146,7 +150,9 @@ __all__ = [
     "UK_BUS_STAGE_NAMES",
     "UK_BUS_TARGET_REGISTRY",
     "UK_BUS_TARGET_SPECS",
+    "calibrate_bus_spending_levels",
     "uk_bus_plan",
+    "uk_bus_targets",
     "AGE_BANDS",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",

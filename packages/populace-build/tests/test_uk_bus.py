@@ -7,6 +7,8 @@ variables ``bus_fare_spending`` and ``bus_subsidy_spending``.
 
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from populace.build.uk import (
@@ -15,7 +17,9 @@ from populace.build.uk import (
     UK_BUS_SOURCE_MANIFEST,
     UK_BUS_STAGE_NAMES,
     UK_BUS_TARGET_REGISTRY,
+    calibrate_bus_spending_levels,
     uk_bus_plan,
+    uk_bus_targets,
 )
 
 EXPECTED_STAGES = {"bus_fare_spending", "bus_subsidy_spending"}
@@ -85,3 +89,67 @@ class TestUkBusTargets:
             assert spec.aggregation == "sum"
             assert spec.family == "dft"
             assert spec.source  # provenance is required
+
+
+class TestUkBusCalibration:
+    @staticmethod
+    def _household(fare: list[float], subsidy: list[float], weight: list[float]):
+        return pd.DataFrame(
+            {
+                "household_weight": weight,
+                "bus_fare_spending": fare,
+                "bus_subsidy_spending": subsidy,
+            }
+        )
+
+    def test_scales_each_variable_to_its_target_total(self) -> None:
+        # Deliberately wrong levels (fare too high, subsidy too low) — the same
+        # failure direction as the published Populace UK population.
+        household = self._household(
+            fare=[0.0, 5_000.0, 5_000.0, 0.0],
+            subsidy=[100.0, 0.0, 100.0, 0.0],
+            weight=[1_000_000.0, 1_000_000.0, 1_000_000.0, 1_000_000.0],
+        )
+        targets = {"bus_fare_spending": 4.0e9, "bus_subsidy_spending": 3.5e9}
+        calibrated, scales = calibrate_bus_spending_levels(household, targets=targets)
+        w = calibrated["household_weight"].to_numpy(float)
+        for column, target in targets.items():
+            total = float(np.sum(calibrated[column].to_numpy(float) * w))
+            assert total == pytest.approx(target, rel=1e-9)
+        assert scales["bus_fare_spending"] < 1  # fare scaled down
+        assert scales["bus_subsidy_spending"] > 1  # subsidy scaled up
+
+    def test_value_scaling_preserves_the_spender_set(self) -> None:
+        household = self._household(
+            fare=[0.0, 5_000.0, 5_000.0, 0.0],
+            subsidy=[0.0, 0.0, 100.0, 0.0],
+            weight=[1e6, 1e6, 1e6, 1e6],
+        )
+        before = household["bus_fare_spending"].to_numpy(float) > 0
+        calibrated, _ = calibrate_bus_spending_levels(
+            household, targets={"bus_fare_spending": 4.0e9}
+        )
+        after = calibrated["bus_fare_spending"].to_numpy(float) > 0
+        # Scaling changes the level, never who spends.
+        assert np.array_equal(before, after)
+
+    def test_default_targets_come_from_the_dft_registry(self) -> None:
+        assert uk_bus_targets() == {
+            spec.measure: float(spec.value) for spec in UK_BUS_TARGET_REGISTRY.specs
+        }
+
+    def test_missing_column_is_a_clear_error(self) -> None:
+        household = pd.DataFrame({"household_weight": [1.0, 2.0]})
+        with pytest.raises(KeyError, match="bus_fare_spending"):
+            calibrate_bus_spending_levels(
+                household, targets={"bus_fare_spending": 4.0e9}
+            )
+
+    def test_zero_aggregate_refuses_to_scale(self) -> None:
+        household = self._household(
+            fare=[0.0, 0.0], subsidy=[0.0, 0.0], weight=[1e6, 1e6]
+        )
+        with pytest.raises(ValueError, match="weighted aggregate"):
+            calibrate_bus_spending_levels(
+                household, targets={"bus_fare_spending": 4.0e9}
+            )
