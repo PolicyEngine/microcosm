@@ -94,13 +94,15 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             17_100_000.0,
         ),
         diagnostic(
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
-            59_204_610_000.0,
-            63_000_000_000.0,
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            69_041_649_000.0,
+            70_000_000_000.0,
         ),
         diagnostic(
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
-            23_692_200.0,
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns",
+            23_837_149.0,
             23_800_000.0,
         ),
         diagnostic(
@@ -1136,10 +1138,11 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
             43_994_700.0,
         ),
         (
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
             "Earned Income Tax Credit amount",
-            59_204_610_000.0,
-            70_208_900_000.0,
+            69_041_649_000.0,
+            83_000_000_000.0,
         ),
         (
             "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
