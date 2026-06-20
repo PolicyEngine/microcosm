@@ -29,13 +29,12 @@ def _result(feasible_frame, *, with_skip: bool = False, epochs: int = 120):
         Target(
             name="population",
             entity="household",
-            aggregation="count",
             value=truths["population"] * 1.2,
+            measure="household_count",
         ),
         Target(
             name="income",
             entity="household",
-            aggregation="sum",
             value=truths["income"] * 1.2,
             measure="income",
             tolerance=truths["income"],
@@ -46,7 +45,6 @@ def _result(feasible_frame, *, with_skip: bool = False, epochs: int = 120):
             Target(
                 name="ghost",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="no_such_column",
             )
@@ -76,7 +74,6 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     income = next(row for row in payload["targets"] if row["name"].startswith("income"))
     assert income["target_name"] == "income"
     assert income["entity"] == "household"
-    assert income["aggregation"] == "sum"
     assert income["measure"] == {"kind": "column", "name": "income"}
     assert income["metadata"] == {}
     assert income["initial_estimate"] is not None
@@ -123,7 +120,7 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
             TargetSpec(
                 name="population",
                 entity="household",
-                aggregation="count",
+                measure="household_count",
                 value=truths["population"] * 1.2,
                 period=2024,
                 source="Census PEP 2024",
@@ -132,7 +129,6 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
             TargetSpec(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 measure="income",
                 value=truths["income"] * 1.2,
                 period=2024,

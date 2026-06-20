@@ -266,7 +266,6 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         filter="is_tax_return",
         period=2024,
         source="IRS SOI Table 1.1",
@@ -339,7 +338,6 @@ def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compile
         ledger_fact_key="ledger.aggregate_fact.v2:def456",
         entity="tax_unit",
         measure="income_tax",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -421,7 +419,6 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -462,7 +459,6 @@ def test__given_selector_matches_future_year__then_latest_eligible_period_is_use
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -503,7 +499,6 @@ def test__given_selector_matches_future_month__then_latest_eligible_period_is_us
         },
         entity="person",
         measure="total_medicaid_chip_enrollment",
-        aggregation="sum",
         period=2024,
         family="cms_medicaid",
     )
@@ -544,7 +539,6 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
         },
         entity="person",
         measure="total_medicaid_chip_enrollment",
-        aggregation="sum",
         period=2024,
         family="cms_medicaid",
     )
@@ -583,7 +577,6 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -607,11 +600,10 @@ def test__given_non_count_reference_without_measure__then_compilation_fails(
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure=measure,
-        aggregation="sum",
     )
 
     # When / Then
-    with pytest.raises(ValueError, match="requires a model measure column"):
+    with pytest.raises(ValueError, match="measure is required"):
         compile_ledger_target_references(
             [_consumer_fact_row()], [reference], country="us"
         )
@@ -955,7 +947,6 @@ def test__given_current_soi_like_row__then_ledger_adapter_matches_current_target
     # Then
     assert spec.entity == "tax_unit"
     assert spec.measure == "adjusted_gross_income"
-    assert spec.aggregation == "sum"
     assert spec.value == 15_286_017_359_000
     assert spec.period == 2023
     assert spec.family == "irs_soi"

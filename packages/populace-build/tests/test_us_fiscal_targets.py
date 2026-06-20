@@ -288,6 +288,7 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                 "value": 90_000_000,
                 "period": {"value": 2024},
                 "geography": {"level": "country", "id": "0100000US"},
+                "aggregation": {"method": "sum"},
                 "layout": {"measure_id": "total_medicaid_chip_enrollment"},
                 "observed_measure": {
                     "source_name": "cms_medicaid",
@@ -1407,7 +1408,6 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         {
             "name": "nation/cbo/income_tax_positive",
             "measure": "income_tax",
-            "aggregation": "positive_indicator_or_amount",
         },
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
@@ -1638,7 +1638,7 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     geography_level = str(selector.get("geography_level") or "country")
     geography_id = str(selector.get("geography_id") or "0100000US")
     entity_name = str(selector.get("entity_name") or reference.entity)
-    aggregation = str(selector.get("aggregation_method") or reference.aggregation)
+    aggregation = str(selector.get("aggregation_method") or "sum")
     fact_id = _fact_id(reference.name, period_value)
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",

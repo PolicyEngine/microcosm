@@ -72,7 +72,6 @@ def test_compat_gate_rejects_an_unparseable_version() -> None:
 def test_public_api_surface() -> None:
     """The shard exports exactly the documented public names."""
     from populace.calibrate import (
-        AGGREGATIONS,
         CalibrationProblem,
         CalibrationResult,
         SkippedTarget,
@@ -95,4 +94,3 @@ def test_public_api_surface() -> None:
         SkippedTarget,
     ):
         assert isinstance(cls, type)
-    assert AGGREGATIONS == ("sum", "count", "mean")

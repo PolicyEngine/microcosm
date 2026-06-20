@@ -41,7 +41,7 @@ __all__ = ["TargetSpec", "TargetRegistry", "specs_from_pe_surface"]
 
 #: Format marker + revision for the JSON artifact.
 _FORMAT_KEY = "populace_target_registry"
-_FORMAT_VERSION = 1
+_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -52,11 +52,9 @@ class TargetSpec:
         name: Unique label within ``(name, period)`` (the compiled row label).
         entity: Entity whose weights the fact constrains.
         value: The administrative value to reproduce.
-        aggregation: ``"sum"``, ``"count"``, or ``"mean"`` (the
-            :class:`~populace.calibrate.target.Target` aggregations).
-        measure: Column name read on ``entity``'s table (optional for
-            ``count``). Declarative: callables are refused so the registry
-            serializes.
+        measure: Column name read on ``entity``'s table. Count-like facts use
+            prepared indicator/count columns. Declarative: callables are
+            refused so the registry serializes.
         filter: Optional boolean column name gating the records.
         period: Period tag; ``(name, period)`` pairs are distinct facts.
         se: Optional standard error of ``value`` (must be positive when
@@ -85,8 +83,7 @@ class TargetSpec:
     name: str
     entity: str
     value: float
-    aggregation: str = "sum"
-    measure: str | None = None
+    measure: str
     filter: str | None = None
     period: int | str = 0
     se: float | None = None
@@ -122,13 +119,23 @@ class TargetSpec:
                 f"TargetSpec {self.name!r}: source is required — a fact "
                 "without provenance is not a fact."
             )
-        for label, column in (("measure", self.measure), ("filter", self.filter)):
-            if column is not None and not isinstance(column, str):
-                raise TypeError(
-                    f"TargetSpec {self.name!r}: {label} must be a column name "
-                    f"(str) or None — callables do not serialize; got "
-                    f"{type(column).__name__}."
-                )
+        if not isinstance(self.measure, str):
+            raise TypeError(
+                f"TargetSpec {self.name!r}: measure must be a column name "
+                f"(str) — callables do not serialize; got "
+                f"{type(self.measure).__name__}."
+            )
+        if self.measure == "":
+            raise ValueError(
+                f"TargetSpec {self.name!r}: measure is required; count-like facts "
+                "must be represented as sums of prepared indicator columns."
+            )
+        if self.filter is not None and not isinstance(self.filter, str):
+            raise TypeError(
+                f"TargetSpec {self.name!r}: filter must be a column name "
+                f"(str) or None — callables do not serialize; got "
+                f"{type(self.filter).__name__}."
+            )
         if not math.isfinite(self.value):
             raise ValueError(
                 f"TargetSpec {self.name!r}: value must be finite, got {self.value!r}."
@@ -164,7 +171,6 @@ class TargetSpec:
             name=self.name,
             entity=self.entity,
             measure=self.measure,
-            aggregation=self.aggregation,
             value=self.value,
             period=self.period,
             tolerance=self.tolerance,
@@ -347,9 +353,8 @@ def specs_from_pe_surface(
             household-grain today).
         period: Period tag for every spec.
         signed_names: Names whose negative values are meaningful.
-        measures: Optional ``name -> measure column`` mapping. Extracted
-            surfaces precompile their rows, so most specs carry no measure;
-            a build recompiling from the registry supplies them here.
+        measures: Required ``name -> measure column`` mapping. Count-like rows
+            must point to prepared indicator/count columns.
 
     Returns:
         One :class:`TargetSpec` per name, in input order.
@@ -379,12 +384,18 @@ def specs_from_pe_surface(
                 f"Family {family!r} (target {name!r}) has no source in "
                 "family_sources — every ingested fact needs provenance."
             )
+        measure = measures.get(name)
+        if measure is None:
+            raise ValueError(
+                f"Target {name!r} has no measure in measures — every registry "
+                "target must compile as a sum over a model column."
+            )
         specs.append(
             TargetSpec(
                 name=name,
                 entity=entity,
                 value=float(value),
-                measure=measures.get(name),
+                measure=measure,
                 period=period,
                 source=family_sources[family],
                 family=family,

@@ -51,7 +51,7 @@ REQUIRED_RELEASE_FILES = (
     "calibration_diagnostics.json",
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 2
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 3
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -685,7 +685,8 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 "target_name",
                 "period",
                 "entity",
-                "aggregation",
+                "measure",
+                "filter",
                 "target",
                 "compiled_target",
                 "initial_estimate",
@@ -701,6 +702,17 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 failures.append(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
+                )
+            if not isinstance(target.get("measure"), Mapping):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} is missing 'measure' selector object."
+                )
+            target_filter = target.get("filter")
+            if target_filter is not None and not isinstance(target_filter, Mapping):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} has non-null 'filter' that is not a selector object."
                 )
             if not isinstance(target.get("metadata"), Mapping):
                 failures.append(
