@@ -688,11 +688,11 @@ def _uprate_cross_period_eitc_decompositions(
             continue
         kind = _eitc_total_kind(spec)
         source_period = spec.metadata.get("source_period", "")
-        target_total = target_totals.get(kind)
+        target_total = target_totals.get(kind or "")
         source_total = source_totals.get((kind, source_period))
         if target_total is None or source_total in (None, 0):
             continue
-        factor = target_total / source_total
+        factor = target_total.value / source_total
         specs.append(
             replace(
                 spec,
@@ -702,6 +702,8 @@ def _uprate_cross_period_eitc_decompositions(
                     "uprating_index": _eitc_uprating_index(kind),
                     "uprating_from_period": source_period,
                     "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": target_total.source_period,
+                    "uprating_index_source_record_id": target_total.source_record_id,
                     "uprating_factor": _format_float(factor),
                 },
             )
@@ -709,15 +711,36 @@ def _uprate_cross_period_eitc_decompositions(
     return TargetRegistry(specs, country=registry.country)
 
 
-def _eitc_active_totals(registry: TargetRegistry) -> dict[str, float]:
-    totals: dict[str, float] = {}
+@dataclass(frozen=True)
+class _EitcActiveTotal:
+    value: float
+    source_period: str
+    source_record_id: str
+    period_key: tuple[int, int, str]
+
+
+def _eitc_active_totals(registry: TargetRegistry) -> dict[str, _EitcActiveTotal]:
+    totals: dict[str, _EitcActiveTotal] = {}
     for spec in registry.specs:
         kind = _eitc_total_kind(spec)
         if kind is None:
             continue
         if spec.metadata.get("target_role") not in _eitc_total_roles(kind):
             continue
-        totals[kind] = spec.value
+        source_period = spec.metadata.get("source_period", "")
+        candidate = _EitcActiveTotal(
+            value=spec.value,
+            source_period=source_period,
+            source_record_id=spec.metadata.get("ledger_source_record_id", spec.name),
+            period_key=_period_key_from_value(source_period),
+        )
+        current = totals.get(kind)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=_period_key_from_value(spec.period),
+        ):
+            totals[kind] = candidate
     return totals
 
 

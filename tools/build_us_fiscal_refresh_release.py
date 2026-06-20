@@ -129,12 +129,18 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "max_abs_relative_error": 0.10,
     },
     {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.eitc_amount@{PERIOD}"),
+        "name": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            f"earned_income_credit.total_earned_income_credit_amount@{PERIOD}"
+        ),
         "label": "Earned Income Tax Credit amount",
         "max_abs_relative_error": 0.10,
     },
     {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.eitc_claims@{PERIOD}"),
+        "name": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            f"earned_income_credit.total_earned_income_credit_returns@{PERIOD}"
+        ),
         "label": "Earned Income Tax Credit claims",
         "max_abs_relative_error": 0.10,
     },
@@ -187,6 +193,7 @@ DIRECT_ACTIVE_ALIASES = (
     "soi-table-2-1",
     "soi-table-2-5",
     "soi-table-2-5-eitc-agi-children-2023",
+    "soi-filing-season-week47-2024-eitc-total",
     "soi-table-4-3",
     "soi-state-2022",
     "soi-historic-table-2",

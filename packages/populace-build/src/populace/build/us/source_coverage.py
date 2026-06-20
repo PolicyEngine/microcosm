@@ -2,7 +2,7 @@
 
 This is a pinned Populace-side copy of the Ledger source coverage contract
 merged in ``PolicyEngine/ledger-data`` commit
-``4fee6d0ac90b7b58257d025db03ed905fb08fca7``. Ledger owns source packages;
+``e2fc882c35f9203c788a7159e7b08b0b5e5ceb58``. Ledger owns source packages;
 Populace owns whether source families are active hard targets, validation-only
 diagnostics, or explicit source gaps in a release profile.
 """
@@ -30,7 +30,7 @@ __all__ = [
     "validation_only_family_ids",
 ]
 
-LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "4fee6d0ac90b7b58257d025db03ed905fb08fca7"
+LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT = "e2fc882c35f9203c788a7159e7b08b0b5e5ceb58"
 
 CoverageRole = Literal["hard_target", "validation_only", "source_gap"]
 
@@ -82,6 +82,7 @@ US_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
             "soi-table-2-1",
             "soi-table-2-5",
             "soi-table-2-5-eitc-agi-children-2023",
+            "soi-filing-season-week47-2024-eitc-total",
             "soi-table-4-3",
             "soi-state-2022",
             "soi-historic-table-2",
