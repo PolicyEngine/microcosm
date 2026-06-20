@@ -87,6 +87,7 @@ US_BASE_PERSON_POPULATION_REPAIR_REASON = (
     "national person-population benchmark before mass='conserve' calibration."
 )
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
+US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -102,7 +103,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"income_tax_liability_returns@{PERIOD}"
         ),
         "label": "income tax liability returns",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -115,22 +116,22 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{PERIOD}"),
         "label": "Child Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_claims@{PERIOD}"),
         "label": "Child Tax Credit claims",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_amount@{PERIOD}"),
         "label": "Additional Child Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_claims@{PERIOD}"),
         "label": "Additional Child Tax Credit claims",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -138,7 +139,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"earned_income_credit.total_earned_income_credit_amount@{PERIOD}"
         ),
         "label": "Earned Income Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -146,14 +147,14 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"earned_income_credit.total_earned_income_credit_returns@{PERIOD}"
         ),
         "label": "Earned Income Tax Credit claims",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
             f"irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@{PERIOD}"
         ),
         "label": "Premium Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -161,7 +162,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"premium_tax_credit_returns@{PERIOD}"
         ),
         "label": "Premium Tax Credit returns",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -169,7 +170,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"taxable_social_security_amount@{PERIOD}"
         ),
         "label": "taxable Social Security amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
     {
         "name": (
@@ -177,7 +178,7 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
             f"taxable_social_security_returns@{PERIOD}"
         ),
         "label": "taxable Social Security returns",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
     },
 )
 

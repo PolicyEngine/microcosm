@@ -30,7 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 8
+TARGET_COUNT = 17
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -235,9 +235,85 @@ def _calibration_diagnostics() -> dict:
                 family="irs_soi",
                 target_role="ctc_total",
             ),
+            *additional_critical_credit_rows(),
             *deduction_critical_target_rows(),
         ],
     }
+
+
+def additional_critical_credit_rows() -> list[dict]:
+    rows = [
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            38_068_980.0,
+            36_607_400.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+            33_858_000_000.0,
+            33_501_200_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+            17_691_400.0,
+            17_434_500.0,
+        ),
+        (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount@2024",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            69_041_649_000.0,
+            58_954_970_066.74941,
+        ),
+        (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns@2024",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns",
+            23_837_149.0,
+            23_349_300.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            53_910_190_000.0,
+            56_821_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            7_841_370.0,
+            8_385_450.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            455_904_900_000.0,
+            454_551_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            24_475_100.0,
+            24_472_900.0,
+        ),
+    ]
+    return [
+        _target_row(
+            name,
+            target_name=target_name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final,
+            relative_error=(final - target) / target,
+            family="irs_soi",
+        )
+        for name, target_name, target, final in rows
+    ]
 
 
 def deduction_critical_target_rows() -> list[dict]:
@@ -328,7 +404,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 6,
+                "target_count": 15,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },

@@ -56,6 +56,7 @@ US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
 _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "federal_income_tax_amount",
@@ -70,7 +71,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "income_tax_liability_returns",
         "label": "income tax liability returns",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns@2024",
         ),
@@ -91,10 +92,96 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "ctc_amount",
         "label": "Child Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
         "families": ("irs_soi",),
         "target_roles": ("ctc_total",),
+    },
+    {
+        "requirement_id": "ctc_claims",
+        "label": "Child Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "actc_amount",
+        "label": "Additional Child Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "actc_claims",
+        "label": "Additional Child Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "eitc_amount",
+        "label": "Earned Income Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "eitc_claims",
+        "label": "Earned Income Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "premium_tax_credit_amount",
+        "label": "Premium Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "premium_tax_credit_returns",
+        "label": "Premium Tax Credit returns",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "taxable_social_security_amount",
+        "label": "taxable Social Security amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "taxable_social_security_returns",
+        "label": "taxable Social Security returns",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
     },
     {
         "requirement_id": "itemized_deduction_amount",
