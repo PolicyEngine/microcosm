@@ -1,5 +1,22 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk.bus_calibration import (
+    calibrate_bus_spending_levels,
+    uk_bus_targets,
+)
+from populace.build.uk.bus_calibration_targets import (
+    ENGLAND_TO_UK_POPULATION_UPLIFT,
+    UK_BUS_TARGET_REGISTRY,
+    UK_BUS_TARGET_SPECS,
+)
+from populace.build.uk.bus_imputation import (
+    UK_BUS_DONORS,
+    UK_BUS_NONNEGATIVE_SOURCE_OUTPUTS,
+    UK_BUS_SOURCE_MANIFEST,
+    UK_BUS_SOURCE_STAGE_SPECS,
+    UK_BUS_STAGE_NAMES,
+    uk_bus_plan,
+)
 from populace.build.uk.geography_sources import (
     ENGLAND_LAD_REGION_URL,
     ENGLAND_WALES_OA2021_COUNT,
@@ -127,6 +144,17 @@ from populace.build.uk.spi_support import (
 )
 
 __all__ = [
+    "ENGLAND_TO_UK_POPULATION_UPLIFT",
+    "UK_BUS_DONORS",
+    "UK_BUS_NONNEGATIVE_SOURCE_OUTPUTS",
+    "UK_BUS_SOURCE_MANIFEST",
+    "UK_BUS_SOURCE_STAGE_SPECS",
+    "UK_BUS_STAGE_NAMES",
+    "UK_BUS_TARGET_REGISTRY",
+    "UK_BUS_TARGET_SPECS",
+    "calibrate_bus_spending_levels",
+    "uk_bus_plan",
+    "uk_bus_targets",
     "AGE_BANDS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
