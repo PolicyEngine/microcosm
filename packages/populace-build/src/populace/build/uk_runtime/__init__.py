@@ -1,6 +1,6 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
-from populace.build.uk.geography_sources import (
+from populace.build.uk_runtime.geography_sources import (
     ENGLAND_LAD_REGION_URL,
     ENGLAND_WALES_OA2021_COUNT,
     EW_OA_CONSTITUENCY_URL,
@@ -41,7 +41,7 @@ from populace.build.uk.geography_sources import (
     update_england_wales_lad_codes,
     write_geography_crosswalk,
 )
-from populace.build.uk.local_geography import (
+from populace.build.uk_runtime.local_geography import (
     LONG_GEOGRAPHY_COLUMNS,
     StackedLocalMatrix,
     align_area_targets,
@@ -52,7 +52,7 @@ from populace.build.uk.local_geography import (
     stacked_weights_to_long,
     write_long_geography_weights,
 )
-from populace.build.uk.local_runner import (
+from populace.build.uk_runtime.local_runner import (
     UKLocalCandidateResult,
     build_local_candidate,
     build_local_candidate_from_dataset,
@@ -66,11 +66,11 @@ from populace.build.uk.local_runner import (
     summarize_local_candidate,
     write_local_candidate_outputs,
 )
-from populace.build.uk.local_solver import (
+from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     solve_stacked_local_weights,
 )
-from populace.build.uk.local_targets import (
+from populace.build.uk_runtime.local_targets import (
     AGE_BANDS,
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
     AREA_TYPES,
@@ -83,7 +83,7 @@ from populace.build.uk.local_targets import (
     metric_names_from_target_profile,
     metric_tables_by_area_group,
 )
-from populace.build.uk.rowwise_dataset import (
+from populace.build.uk_runtime.rowwise_dataset import (
     BENUNIT_ID_COLUMNS,
     HOUSEHOLD_ID_COLUMNS,
     PERSON_ID_COLUMNS,
@@ -94,7 +94,7 @@ from populace.build.uk.rowwise_dataset import (
     validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
-from populace.build.uk.rowwise_geography import (
+from populace.build.uk_runtime.rowwise_geography import (
     AREA_TYPE_TO_CROSSWALK_COLUMN,
     CROSSWALK_COLUMNS,
     FRS_REGION_TO_COUNTRY,
@@ -108,7 +108,7 @@ from populace.build.uk.rowwise_geography import (
     prepare_geography_crosswalk,
     validate_geography_coverage,
 )
-from populace.build.uk.spi_support import (
+from populace.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,

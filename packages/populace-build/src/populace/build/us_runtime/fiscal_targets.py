@@ -624,7 +624,7 @@ class SimpleTaxExpenditureReform:
 
 def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
     payload = json.loads(
-        files(__package__).joinpath("fiscal_target_references.json").read_text()
+        files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
     )
     if payload.get("country") != "us":
         raise ValueError("US fiscal target manifest must declare country='us'.")

@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-import populace.build.us.reform_validation as reform_validation_module
-from populace.build.us.reform_validation import (
+import populace.build.us_runtime.reform_validation as reform_validation_module
+from populace.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
     in_sample_reform_specs,
@@ -58,23 +58,44 @@ def _oos_spec(score: float, *, category: str = "Other") -> ReformValidationSpec:
 def test_spec_requires_exactly_one_reform_definition():
     with pytest.raises(ValueError):
         ReformValidationSpec(
-            id="x", name="x", category="c", in_sample=False, period=2024,
-            jct_score=1.0, jct_window="", jct_source="", jct_source_url="",
+            id="x",
+            name="x",
+            category="c",
+            in_sample=False,
+            period=2024,
+            jct_score=1.0,
+            jct_window="",
+            jct_source="",
+            jct_source_url="",
         )
     with pytest.raises(ValueError):
         ReformValidationSpec(
-            id="x", name="x", category="c", in_sample=False, period=2024,
-            jct_score=1.0, jct_window="", jct_source="", jct_source_url="",
-            neutralized_variable="v", parameter_changes={"a": 1},
+            id="x",
+            name="x",
+            category="c",
+            in_sample=False,
+            period=2024,
+            jct_score=1.0,
+            jct_window="",
+            jct_source="",
+            jct_source_url="",
+            neutralized_variable="v",
+            parameter_changes={"a": 1},
         )
 
 
 def test_in_sample_uses_calibration_estimate_no_simulation():
     specs = (
         ReformValidationSpec(
-            id="nation/jct/mortgage", name="Mortgage interest deduction",
-            category="JCT tax expenditure", in_sample=True, period=2024,
-            jct_score=30e9, jct_window="annual", jct_source="JCT", jct_source_url="",
+            id="nation/jct/mortgage",
+            name="Mortgage interest deduction",
+            category="JCT tax expenditure",
+            in_sample=True,
+            period=2024,
+            jct_score=30e9,
+            jct_window="annual",
+            jct_source="JCT",
+            jct_source_url="",
             neutralized_variable="mortgage_interest_deduction",
         ),
     )
@@ -134,17 +155,31 @@ def test_counterfactual_revert_flips_sign(monkeypatch):
 def test_obbba_components_score_against_pre_obbba_baseline(monkeypatch):
     specs = (
         ReformValidationSpec(
-            id="obbba_a", name="OBBBA A", category="OBBBA", in_sample=False,
-            period=2026, jct_score=-100.0, jct_window="FY2026",
-            jct_source="JCX", jct_source_url="", parameter_changes={
+            id="obbba_a",
+            name="OBBBA A",
+            category="OBBBA",
+            in_sample=False,
+            period=2026,
+            jct_score=-100.0,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={
                 "gov.example.a": {"2026-01-01.2026-12-31": 0},
             },
             effect_direction="baseline_minus_reform",
         ),
         ReformValidationSpec(
-            id="obbba_b", name="OBBBA B", category="OBBBA", in_sample=False,
-            period=2026, jct_score=60.0, jct_window="FY2026",
-            jct_source="JCX", jct_source_url="", parameter_changes={
+            id="obbba_b",
+            name="OBBBA B",
+            category="OBBBA",
+            in_sample=False,
+            period=2026,
+            jct_score=60.0,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={
                 "gov.example.b": {"2026-01-01.2026-12-31": 0},
             },
             effect_direction="baseline_minus_reform",
@@ -196,7 +231,13 @@ def test_shipped_obbba_config_is_out_of_sample_counterfactual():
 def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     specs = tax_expenditure_reform_specs(period=2024)
     by_id = {s.id for s in specs}
-    assert {"te_ctc", "te_eitc", "te_cdcc", "te_standard_deduction", "te_itemized_total"} <= by_id
+    assert {
+        "te_ctc",
+        "te_eitc",
+        "te_cdcc",
+        "te_standard_deduction",
+        "te_itemized_total",
+    } <= by_id
     for spec in specs:
         assert spec.neutralized_variable  # all are repeals
         assert spec.effect_direction == "reform_minus_baseline"  # neutralize raises tax
@@ -208,9 +249,16 @@ def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
 
 def test_null_benchmark_row_publishes_magnitude_only(monkeypatch):
     spec = ReformValidationSpec(
-        id="te_std", name="Standard deduction", category="Tax expenditure",
-        in_sample=False, period=2024, jct_score=None, jct_window="FY2024",
-        jct_source="not scored", jct_source_url="", neutralized_variable="standard_deduction",
+        id="te_std",
+        name="Standard deduction",
+        category="Tax expenditure",
+        in_sample=False,
+        period=2024,
+        jct_score=None,
+        jct_window="FY2024",
+        jct_source="not scored",
+        jct_source_url="",
+        neutralized_variable="standard_deduction",
     )
     monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
 

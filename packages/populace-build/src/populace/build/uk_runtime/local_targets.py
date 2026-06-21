@@ -4,7 +4,7 @@ The functions here define the household-side metrics that Populace local UK
 builds calibrate against for Westminster constituencies and local authorities.
 They intentionally accept a PolicyEngine-UK-like simulation object rather than
 importing a country data package. Target values are supplied separately as
-area-indexed tables and consumed by :mod:`populace.build.uk.local_geography`.
+area-indexed tables and consumed by :mod:`populace.build.uk_runtime.local_geography`.
 """
 
 from __future__ import annotations

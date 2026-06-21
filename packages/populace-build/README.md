@@ -34,9 +34,13 @@ The `us` extra adds the rules engine for formula/export checks. Country source
 loaders are not Python dependencies: source stages are declared in packaged
 JSON manifests and executed by shared Populace runtimes.
 
+Country namespaces under `populace.build.us` and `populace.build.uk` are
+resource packages only. They may contain specs and data artifacts, but no Python
+modules; guard tests enforce this so country content stays declarative.
+
 ## UK local-geography path
 
-`populace.build.uk.local_geography` holds the Populace-owned replacement shape
+`populace.build.uk_runtime.local_geography` holds the Populace-owned replacement shape
 for UK constituency and local-authority geography. It uses the same stacked
 local-area layout as the US local ECPS flow:
 
@@ -57,7 +61,7 @@ files move over. The helper `sort_households_by_id` also codifies the 2024-25
 FRS fix: household attributes and weights must be sorted by the same stable
 household ID before any positional assignment.
 
-`populace.build.uk.local_targets` declares the constituency and local-authority
+`populace.build.uk_runtime.local_targets` declares the constituency and local-authority
 metric surface used by the local build: HMRC employment/self-employment amount
 and count rows, ONS age bands, Universal Credit household rows, constituency
 UC-by-children rows, and the LA income/tenure/rent rows. It accepts a
@@ -67,7 +71,7 @@ wraps the Populace calibrator's log-weight optimizer for stacked local weights
 and records per-area/per-metric diagnostics before the solved weights are
 exported with `stacked_weights_to_long`.
 
-`populace.build.uk.local_runner` is the Populace-owned candidate build path. It
+`populace.build.uk_runtime.local_runner` is the Populace-owned candidate build path. It
 loads explicit area and target tables, aligns a sorted household frame with
 source-year/source-household/clone lineage, optionally computes household
 metrics once per UK country by setting the PolicyEngine-UK `region` input, then
@@ -97,7 +101,7 @@ coverage, weight preservation, and weakest local-support diagnostics.
 
 ## US plan status
 
-`populace.build.us` declares the US build: stage order, donor graph with
+`populace.build.us_runtime` declares the US build: stage order, donor graph with
 citations (`US_DONORS`), the manifest-ready `BuildConfig`, and the packaged
 source-stage manifest (`US_SOURCE_MANIFEST`). The stage *implementations* are
 injected (`us_plan(implementations)`) and the plan refuses to assemble with any

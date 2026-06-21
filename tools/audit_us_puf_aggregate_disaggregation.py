@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from populace.build.us.puf_aggregate_records import (
+from populace.build.us_runtime.puf_aggregate_records import (
     audit_puf_aggregate_disaggregation,
     disaggregate_puf_aggregate_records,
 )

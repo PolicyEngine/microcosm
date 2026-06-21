@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us.puf_aggregate_records import (
+from populace.build.us_runtime.puf_aggregate_records import (
     AGGREGATE_RECIDS,
     SYNTHETIC_RECID_START,
     PufAggregateDisaggregationSpec,

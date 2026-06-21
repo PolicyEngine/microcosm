@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "country": "us",
+  "policy": "spec-only country package; Python execution lives in shared runtime modules",
+  "resources": [
+    "fiscal_target_references.json",
+    "obbba_reforms.json",
+    "puf_aggregate_record_disaggregation.json",
+    "source_stages.json",
+    "tax_expenditure_reforms.json"
+  ]
+}

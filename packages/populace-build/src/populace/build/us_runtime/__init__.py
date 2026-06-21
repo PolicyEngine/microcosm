@@ -1,4 +1,4 @@
-"""populace.build.us: the typed stage plan of the US dataset build.
+"""Runtime helpers for the US dataset build.
 
 This module is the declarative description of how the US population dataset
 is assembled — the stage order, what each stage produces, and **which primary
@@ -32,13 +32,13 @@ from populace.build.source_manifest import (
     SourceStageSpec,
     load_source_manifest,
 )
-from populace.build.us.asec_pool import (
+from populace.build.us_runtime.asec_pool import (
     AsecSource,
     build_pooled_asec_unit_frame,
     load_asec_h5_tables,
     pool_asec_sources,
 )
-from populace.build.us.demographics import (
+from populace.build.us_runtime.demographics import (
     AGE_BANDS,
     DEMOGRAPHICS_SCHEMA_VERSION,
     AgeBand,
@@ -46,7 +46,7 @@ from populace.build.us.demographics import (
     demographics_payload,
     write_demographics,
 )
-from populace.build.us.fiscal_targets import (
+from populace.build.us_runtime.fiscal_targets import (
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
     US_FISCAL_LEDGER_PARITY_REPORT,
@@ -67,7 +67,7 @@ from populace.build.us.fiscal_targets import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
-from populace.build.us.puf_support import (
+from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_STAGE_NAME,
@@ -78,7 +78,7 @@ from populace.build.us.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.build.us.reform_validation import (
+from populace.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
     in_sample_reform_specs,
@@ -87,7 +87,7 @@ from populace.build.us.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
-from populace.build.us.source_coverage import (
+from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     US_SOURCE_COVERAGE,
     hard_target_package_aliases,
@@ -97,7 +97,7 @@ from populace.build.us.source_coverage import (
     validation_only_family_ids,
     write_us_source_coverage_diagnostics,
 )
-from populace.build.us.source_runtime import (
+from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
@@ -315,7 +315,9 @@ US_STAGE_NAMES: tuple[str, ...] = (
 
 
 def _load_us_source_manifest() -> SourceManifest:
-    return load_source_manifest(files(__package__).joinpath("source_stages.json"))
+    return load_source_manifest(
+        files("populace.build.us").joinpath("source_stages.json")
+    )
 
 
 US_SOURCE_MANIFEST = _load_us_source_manifest()

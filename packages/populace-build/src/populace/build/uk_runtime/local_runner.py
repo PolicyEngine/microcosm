@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.uk.local_geography import (
+from populace.build.uk_runtime.local_geography import (
     StackedLocalMatrix,
     area_support_summary,
     build_stacked_local_matrix,
@@ -25,11 +25,11 @@ from populace.build.uk.local_geography import (
     stacked_weights_to_long,
     write_long_geography_weights,
 )
-from populace.build.uk.local_solver import (
+from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     solve_stacked_local_weights,
 )
-from populace.build.uk.local_targets import (
+from populace.build.uk_runtime.local_targets import (
     COUNTRY_TO_REGION,
     area_groups_from_codes,
     compute_household_metrics,

@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 import torch
 
-import populace.build.uk.local_solver as local_solver
-from populace.build.uk import (
+import populace.build.uk_runtime.local_solver as local_solver
+from populace.build.uk_runtime import (
     build_stacked_local_matrix,
     solve_stacked_local_weights,
 )

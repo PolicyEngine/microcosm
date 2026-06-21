@@ -9,6 +9,7 @@ country-specific donor loader.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -80,8 +81,12 @@ FORBIDDEN_EXECUTABLE_OPERATION_KINDS = frozenset(
 FORBIDDEN_EXECUTABLE_LOADER_KEYS = frozenset(
     {
         "callable",
+        "callback",
+        "entry",
         "entrypoint",
+        "entry_point",
         "function",
+        "handler",
         "import",
         "loader",
         "module",
@@ -267,7 +272,10 @@ def _reject_incumbent_dependencies(value: object, *, context: str) -> None:
 
 def _reject_executable_loader_shape(kind: str, parameters: Mapping[str, Any]) -> None:
     normalized_kind = _normalize_manifest_key(kind)
-    if normalized_kind in FORBIDDEN_EXECUTABLE_OPERATION_KINDS:
+    if (
+        normalized_kind in FORBIDDEN_EXECUTABLE_OPERATION_KINDS
+        or _is_executable_loader_key(normalized_kind)
+    ):
         raise ValueError(
             f"source operation {kind!r} is executable-loader content, not a "
             "declarative source operation."
@@ -285,7 +293,7 @@ def _reject_executable_parameter_keys(value: object, *, context: str) -> None:
         for key, nested in value.items():
             if isinstance(key, str):
                 normalized = _normalize_manifest_key(key)
-                if normalized in FORBIDDEN_EXECUTABLE_LOADER_KEYS:
+                if _is_executable_loader_key(normalized):
                     raise ValueError(
                         f"{context} uses executable-loader key {key!r}; source "
                         "manifests must be declarative."
@@ -295,7 +303,46 @@ def _reject_executable_parameter_keys(value: object, *, context: str) -> None:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for nested in value:
             _reject_executable_parameter_keys(nested, context=context)
+        return
+    if isinstance(value, str) and _looks_like_python_entrypoint(value):
+        raise ValueError(
+            f"{context} references executable Python entrypoint {value!r}; source "
+            "manifests must be declarative."
+        )
 
 
 def _normalize_manifest_key(value: str) -> str:
-    return value.lower().replace("-", "_").strip()
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
+def _is_executable_loader_key(normalized: str) -> bool:
+    if normalized in FORBIDDEN_EXECUTABLE_LOADER_KEYS:
+        return True
+    tokens = normalized.split("_")
+    return any(
+        token
+        in {
+            "callable",
+            "callback",
+            "entry",
+            "entrypoint",
+            "function",
+            "handler",
+            "import",
+            "loader",
+            "module",
+            "python",
+        }
+        for token in tokens
+    )
+
+
+def _looks_like_python_entrypoint(value: str) -> bool:
+    if "://" in value:
+        return False
+    return bool(
+        re.search(
+            r"\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+:[a-zA-Z_]\w*\b",
+            value,
+        )
+    )

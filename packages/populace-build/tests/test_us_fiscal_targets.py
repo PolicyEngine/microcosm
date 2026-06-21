@@ -3,7 +3,7 @@ from hashlib import sha256
 from importlib.resources import files
 
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
-from populace.build.us import (
+from populace.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_REFERENCES,
@@ -15,7 +15,9 @@ from populace.build.us import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
-from populace.build.us.fiscal_targets import US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES
+from populace.build.us_runtime.fiscal_targets import (
+    US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
+)
 
 REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",

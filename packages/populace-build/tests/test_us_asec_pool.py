@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us.asec_pool import (
+from populace.build.us_runtime.asec_pool import (
     ASEC_PERSON_WEIGHT_COLUMN,
     AsecSource,
     build_pooled_asec_unit_frame,

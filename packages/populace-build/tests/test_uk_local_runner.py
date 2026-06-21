@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import populace.build.uk.local_runner as local_runner
-from populace.build.uk import (
+import populace.build.uk_runtime.local_runner as local_runner
+from populace.build.uk_runtime import (
     build_local_candidate,
     build_local_candidate_from_dataset,
     build_metric_tables_from_dataset,
