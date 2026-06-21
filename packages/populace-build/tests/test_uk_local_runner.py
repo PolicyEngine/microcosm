@@ -45,9 +45,7 @@ class SingleHouseholdSimulation(FakeSimulation):
 
 
 def test_prepare_area_frame_sorts_and_validates_codes() -> None:
-    areas = pd.DataFrame(
-        {"code": ["S001", "E001"], "country": ["Scotland", "England"]}
-    )
+    areas = pd.DataFrame({"code": ["S001", "E001"], "country": ["Scotland", "England"]})
 
     prepared = prepare_area_frame(areas)
 
@@ -129,10 +127,7 @@ def test_build_metric_tables_from_dataset_sets_each_country(monkeypatch) -> None
 
     assert set(tables) == {"England", "Scotland"}
     assert tables["England"].index.tolist() == [101, 102]
-    regions = [
-        sim.inputs[("region", 2023)][0]
-        for sim in calls
-    ]
+    regions = [sim.inputs[("region", 2023)][0] for sim in calls]
     assert regions == ["SOUTH_EAST", "SCOTLAND"]
 
 
@@ -166,9 +161,7 @@ def test_build_metric_tables_from_dataset_reindexes_simulation_household_order(
 
 
 def test_build_local_candidate_solves_and_exports_long_weights() -> None:
-    areas = pd.DataFrame(
-        {"code": ["S001", "E001"], "country": ["Scotland", "England"]}
-    )
+    areas = pd.DataFrame({"code": ["S001", "E001"], "country": ["Scotland", "England"]})
     targets = pd.DataFrame(
         {
             "code": ["E001", "S001"],
@@ -247,12 +240,28 @@ def test_build_local_candidate_from_dataset_computes_metrics(monkeypatch) -> Non
     areas = pd.DataFrame({"code": ["E001"], "country": ["England"]})
     targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
     households = pd.DataFrame({"household_id": [101], "household_weight": [1.0]})
+    target_profile = {
+        "targets": [
+            {
+                "geography_levels": ["constituency"],
+                "bindings": {"policyengine": {"metric_name": "population"}},
+            }
+        ]
+    }
 
-    def fake_compute(sim, area_type, *, period=None, household_ids=None):
+    def fake_compute(
+        sim,
+        area_type,
+        *,
+        period=None,
+        household_ids=None,
+        target_profile=None,
+    ):
         assert area_type == "constituency"
         assert period == 2023
         assert sim.inputs[("region", 2023)] == ["SOUTH_EAST"]
         assert household_ids is None
+        assert target_profile is not None
         return pd.DataFrame({"population": [1.0]}, index=pd.Index([101]))
 
     monkeypatch.setattr(local_runner, "compute_household_metrics", fake_compute)
@@ -264,6 +273,7 @@ def test_build_local_candidate_from_dataset_computes_metrics(monkeypatch) -> Non
         targets=targets,
         household_frame=households,
         simulation_factory=SingleHouseholdSimulation,
+        target_profile=target_profile,
         solver_options={"epochs": 2},
     )
 
