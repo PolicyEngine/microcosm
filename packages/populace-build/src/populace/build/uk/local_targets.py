@@ -16,6 +16,10 @@ import numpy as np
 import pandas as pd
 
 AREA_TYPES = ("constituency", "la")
+AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
+    "constituency": "constituency",
+    "la": "local_authority",
+}
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
 AGE_BANDS = tuple((lower, lower + 10) for lower in range(0, 80, 10))
 CONSTITUENCY_UC_CHILDREN_METRICS = (
@@ -42,10 +46,16 @@ COUNTRY_TO_REGION = {
 }
 
 
-def metric_names(area_type: str) -> tuple[str, ...]:
+def metric_names(
+    area_type: str,
+    *,
+    target_profile: Mapping[str, Any] | Any | None = None,
+) -> tuple[str, ...]:
     """Ordered local-area calibration metric names for ``area_type``."""
 
     _validate_area_type(area_type)
+    if target_profile is not None:
+        return metric_names_from_target_profile(target_profile, area_type)
     names: list[str] = []
     for income_variable in INCOME_VARIABLES:
         names.append(f"hmrc/{income_variable}/amount")
@@ -56,6 +66,53 @@ def metric_names(area_type: str) -> tuple[str, ...]:
         names.extend(CONSTITUENCY_UC_CHILDREN_METRICS)
     else:
         names.extend(LA_EXTRA_METRICS)
+    return tuple(names)
+
+
+def metric_names_from_target_profile(
+    target_profile: Mapping[str, Any] | Any,
+    area_type: str,
+    *,
+    backend: str = "policyengine",
+) -> tuple[str, ...]:
+    """Ordered UK local metric names from a Ledger target profile.
+
+    The profile is duck-typed so Populace can consume a Ledger-exported JSON
+    object or the Ledger package's parsed dataclasses without importing Ledger
+    at runtime. Populace still owns calculation of the backend binding; Ledger
+    owns which target contracts are active for each geography level.
+    """
+
+    _validate_area_type(area_type)
+    geography_level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type]
+    names: list[str] = []
+    for target in _profile_targets(target_profile):
+        geography_levels = tuple(_profile_get(target, "geography_levels", ()))
+        if geography_level not in geography_levels:
+            continue
+        binding = _profile_binding(target, backend)
+        metric_name = _profile_get(binding, "metric_name", "")
+        if not isinstance(metric_name, str) or not metric_name:
+            target_id = _profile_get(target, "target_id", "<unknown>")
+            raise ValueError(
+                f"Ledger target profile row {target_id!r} has no non-empty "
+                f"{backend!r} metric_name binding."
+            )
+        names.append(metric_name)
+
+    if not names:
+        raise ValueError(
+            f"Ledger target profile has no {backend!r} metrics for "
+            f"area_type {area_type!r}."
+        )
+    duplicate_names = sorted(
+        name for name in set(names) if sum(candidate == name for candidate in names) > 1
+    )
+    if duplicate_names:
+        raise ValueError(
+            "Ledger target profile declares duplicate metric binding(s): "
+            f"{duplicate_names}."
+        )
     return tuple(names)
 
 
@@ -89,6 +146,7 @@ def metric_tables_by_area_group(
     *,
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
+    target_profile: Mapping[str, Any] | Any | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Compute metric tables for each country/devolution group simulation."""
 
@@ -98,6 +156,7 @@ def metric_tables_by_area_group(
             area_type,
             period=period,
             household_ids=household_ids,
+            target_profile=target_profile,
         )
         for group, sim in sim_by_group.items()
     }
@@ -109,6 +168,7 @@ def compute_household_metrics(
     *,
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
+    target_profile: Mapping[str, Any] | Any | None = None,
 ) -> pd.DataFrame:
     """Compute local calibration metrics at household grain.
 
@@ -154,13 +214,9 @@ def compute_household_metrics(
         is_child = _values(_calculate(sim, "is_child", period))
         children_per_hh = _map_result(sim, is_child, "person", "household")
         on_uc_bool = on_uc_hh > 0
-        matrix["uc_hh_0_children"] = (on_uc_bool & (children_per_hh == 0)).astype(
-            float
-        )
+        matrix["uc_hh_0_children"] = (on_uc_bool & (children_per_hh == 0)).astype(float)
         matrix["uc_hh_1_child"] = (on_uc_bool & (children_per_hh == 1)).astype(float)
-        matrix["uc_hh_2_children"] = (on_uc_bool & (children_per_hh == 2)).astype(
-            float
-        )
+        matrix["uc_hh_2_children"] = (on_uc_bool & (children_per_hh == 2)).astype(float)
         matrix["uc_hh_3plus_children"] = (on_uc_bool & (children_per_hh >= 3)).astype(
             float
         )
@@ -182,12 +238,10 @@ def compute_household_metrics(
         matrix["tenure/owned_outright"] = (tenure_type == "OWNED_OUTRIGHT").astype(
             float
         )
-        matrix["tenure/owned_mortgage"] = (
-            tenure_type == "OWNED_WITH_MORTGAGE"
-        ).astype(float)
-        matrix["tenure/private_rent"] = (tenure_type == "RENT_PRIVATELY").astype(
+        matrix["tenure/owned_mortgage"] = (tenure_type == "OWNED_WITH_MORTGAGE").astype(
             float
         )
+        matrix["tenure/private_rent"] = (tenure_type == "RENT_PRIVATELY").astype(float)
         matrix["tenure/social_rent"] = (
             (tenure_type == "RENT_FROM_COUNCIL") | (tenure_type == "RENT_FROM_HA")
         ).astype(float)
@@ -197,10 +251,12 @@ def compute_household_metrics(
         household_rent = _map_result(sim, benunit_rent, "benunit", "household")
         matrix["rent/private_rent"] = household_rent * is_private_renter
 
-    expected = metric_names(area_type)
+    expected = metric_names(area_type, target_profile=target_profile)
     matrix = matrix.loc[:, expected]
     if household_ids is None:
-        household_ids = _values(_calculate(sim, "household_id", period, map_to="household"))
+        household_ids = _values(
+            _calculate(sim, "household_id", period, map_to="household")
+        )
     if len(household_ids) != len(matrix):
         raise ValueError(
             "household_ids must align with household metric rows, got "
@@ -214,6 +270,48 @@ def compute_household_metrics(
             f"{list(map(str, duplicates[:5]))}."
         )
     return matrix
+
+
+def _profile_targets(target_profile: Mapping[str, Any] | Any) -> tuple[Any, ...]:
+    if hasattr(target_profile, "targets"):
+        targets = target_profile.targets
+    elif isinstance(target_profile, Mapping):
+        targets = target_profile.get("targets")
+    else:
+        targets = None
+    if not isinstance(targets, Sequence) or isinstance(targets, str | bytes):
+        raise ValueError("Ledger target profile must expose a target sequence.")
+    return tuple(targets)
+
+
+def _profile_binding(target: Any, backend: str) -> Any:
+    if hasattr(target, "binding"):
+        try:
+            return target.binding(backend)
+        except KeyError as exc:
+            target_id = _profile_get(target, "target_id", "<unknown>")
+            raise ValueError(
+                f"Ledger target profile row {target_id!r} has no {backend!r} binding."
+            ) from exc
+    bindings = _profile_get(target, "bindings", {})
+    if not isinstance(bindings, Mapping):
+        target_id = _profile_get(target, "target_id", "<unknown>")
+        raise ValueError(
+            f"Ledger target profile row {target_id!r} has invalid bindings."
+        )
+    try:
+        return bindings[backend]
+    except KeyError as exc:
+        target_id = _profile_get(target, "target_id", "<unknown>")
+        raise ValueError(
+            f"Ledger target profile row {target_id!r} has no {backend!r} binding."
+        ) from exc
+
+
+def _profile_get(value: Any, key: str, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key, default)
+    return getattr(value, key, default)
 
 
 def _validate_area_type(area_type: str) -> None:

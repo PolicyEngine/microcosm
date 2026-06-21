@@ -72,6 +72,7 @@ from populace.build.uk.local_solver import (
 )
 from populace.build.uk.local_targets import (
     AGE_BANDS,
+    AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
     AREA_TYPES,
     COUNTRY_TO_REGION,
     INCOME_VARIABLES,
@@ -79,6 +80,7 @@ from populace.build.uk.local_targets import (
     area_groups_from_codes,
     compute_household_metrics,
     metric_names,
+    metric_names_from_target_profile,
     metric_tables_by_area_group,
 )
 from populace.build.uk.rowwise_dataset import (
@@ -126,6 +128,7 @@ from populace.build.uk.spi_support import (
 
 __all__ = [
     "AGE_BANDS",
+    "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",
     "BASE_FRS_SUPPORT_CHANNEL",
@@ -211,6 +214,7 @@ __all__ = [
     "load_uk_postcode_oa_lookup",
     "load_uk_dataset",
     "metric_names",
+    "metric_names_from_target_profile",
     "metric_tables_by_area_group",
     "prepare_area_frame",
     "prepare_geography_crosswalk",
