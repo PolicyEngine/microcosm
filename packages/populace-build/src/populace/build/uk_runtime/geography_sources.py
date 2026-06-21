@@ -18,7 +18,7 @@ from typing import Any
 
 import pandas as pd
 
-from populace.build.uk.rowwise_geography import (
+from populace.build.uk_runtime.rowwise_geography import (
     CROSSWALK_COLUMNS,
     prepare_geography_crosswalk,
 )

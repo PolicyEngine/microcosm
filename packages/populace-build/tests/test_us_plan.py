@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from populace.build.source_manifest import SourceManifest, SourceOperationSpec
-from populace.build.us import (
+from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
@@ -127,7 +127,7 @@ class TestUsSources:
                     "function": "add_scf_wealth",
                 }
             )
-        with pytest.raises(ValueError, match="allowed manifest operation"):
+        with pytest.raises(ValueError, match="executable-loader"):
             SourceOperationSpec.from_mapping({"kind": "custom_loader"})
         with pytest.raises(ValueError, match="executable-loader key"):
             SourceOperationSpec.from_mapping(
@@ -135,6 +135,38 @@ class TestUsSources:
                     "kind": "read_table",
                     "table": "scf_household",
                     "postprocess": [{"callable": "clean_scf"}],
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "callable_path": "populace.build.us_runtime.sources:clean",
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "entry-point": "populace.build.us_runtime.sources:clean",
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "handler": "clean_scf",
+                }
+            )
+        with pytest.raises(ValueError, match="executable Python entrypoint"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "transform_path": "populace.build.us_runtime.sources:clean",
                 }
             )
 
@@ -167,8 +199,8 @@ class TestUsSources:
             )
 
     def test_legacy_sources_import_path_is_metadata_only(self) -> None:
-        from populace.build.us import sources
-        from populace.build.us.sources import (
+        from populace.build.us_runtime import sources
+        from populace.build.us_runtime.sources import (
             SCF_TARGETS,
             _support_guard,
             add_scf_wealth,

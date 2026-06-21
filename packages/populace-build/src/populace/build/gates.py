@@ -956,7 +956,7 @@ def source_coverage_gate(
     source availability, not evidence that the build covered the family.
 
     ``coverage_entries`` intentionally accepts either dict-like entries or the
-    ``SourceCoverageEntry`` dataclass from ``populace.build.us.source_coverage``
+    ``SourceCoverageEntry`` dataclass from ``populace.build.us_runtime.source_coverage``
     so callers can also pass a live Ledger coverage contract.
     """
     active_aliases = set(active_target_aliases)

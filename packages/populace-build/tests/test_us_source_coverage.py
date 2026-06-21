@@ -3,7 +3,7 @@ import json
 import pytest
 
 from populace.build.gates import GateReport
-from populace.build.us.source_coverage import (
+from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     hard_target_package_aliases,
     source_gap_family_ids,

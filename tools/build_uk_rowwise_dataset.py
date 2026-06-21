@@ -19,7 +19,7 @@ from typing import Any
 
 import pandas as pd
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     build_official_uk_geography_crosswalk,
     clone_uk_dataset_with_rowwise_geography,
     geography_coverage_summary,

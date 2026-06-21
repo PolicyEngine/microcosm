@@ -17,7 +17,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from populace.build.us import (
+from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     clone_us_frame_for_puf_support,

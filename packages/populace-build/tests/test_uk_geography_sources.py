@@ -7,8 +7,8 @@ import zipfile
 import pandas as pd
 import pytest
 
-import populace.build.uk.geography_sources as geography_sources
-from populace.build.uk import (
+import populace.build.uk_runtime.geography_sources as geography_sources
+from populace.build.uk_runtime import (
     build_complete_uk_geography_crosswalk,
     build_england_wales_crosswalk,
     build_northern_ireland_crosswalk,

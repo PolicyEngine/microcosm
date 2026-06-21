@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,

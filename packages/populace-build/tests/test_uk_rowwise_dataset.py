@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     clone_uk_dataset_tables_with_rowwise_geography,
     clone_uk_dataset_with_rowwise_geography,
@@ -237,7 +237,12 @@ def test_clone_uk_dataset_h5_roundtrip(tmp_path) -> None:
     assert cloned.output_path == output
     assert output.exists()
     with pd.HDFStore(output, mode="r") as store:
-        assert set(store.keys()) == {"/benunit", "/household", "/person", "/time_period"}
+        assert set(store.keys()) == {
+            "/benunit",
+            "/household",
+            "/person",
+            "/time_period",
+        }
         assert store["time_period"].iloc[0] == "2023"
         assert len(store["household"]) == 4
         assert len(store["person"]) == 6

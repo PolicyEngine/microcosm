@@ -31,7 +31,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from populace.build.us.fiscal_targets import (
+from populace.build.us_runtime.fiscal_targets import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
@@ -108,7 +108,10 @@ class ReformValidationSpec:
                 f"{self.id}: provide exactly one of neutralized_variable or "
                 "parameter_changes."
             )
-        if self.effect_direction not in {"reform_minus_baseline", "baseline_minus_reform"}:
+        if self.effect_direction not in {
+            "reform_minus_baseline",
+            "baseline_minus_reform",
+        }:
             raise ValueError(
                 f"{self.id}: effect_direction must be 'reform_minus_baseline' or "
                 "'baseline_minus_reform'."
@@ -193,7 +196,7 @@ def in_sample_reform_specs(
 
 
 def _obbba_config_path() -> Path:
-    return Path(str(files(__package__).joinpath("obbba_reforms.json")))
+    return Path(str(files("populace.build.us").joinpath("obbba_reforms.json")))
 
 
 def out_of_sample_reform_specs(
@@ -216,7 +219,9 @@ def out_of_sample_reform_specs(
                 category=raw.get("category", "OBBBA"),
                 in_sample=False,
                 period=int(raw.get("period", period)),
-                jct_score=(float(jct["score"]) if jct.get("score") is not None else None),
+                jct_score=(
+                    float(jct["score"]) if jct.get("score") is not None else None
+                ),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
                 jct_source_url=str(jct.get("source_url", "")),
@@ -226,14 +231,18 @@ def out_of_sample_reform_specs(
                 parameter_changes=raw["parameter_changes"],
                 # OBBBA provisions are baked into the baseline, so the config
                 # encodes a revert; the provision's effect is baseline − reform.
-                effect_direction=str(raw.get("effect_direction", "baseline_minus_reform")),
+                effect_direction=str(
+                    raw.get("effect_direction", "baseline_minus_reform")
+                ),
             )
         )
     return tuple(specs)
 
 
 def _tax_expenditure_config_path() -> Path:
-    return Path(str(files(__package__).joinpath("tax_expenditure_reforms.json")))
+    return Path(
+        str(files("populace.build.us").joinpath("tax_expenditure_reforms.json"))
+    )
 
 
 def tax_expenditure_reform_specs(
@@ -264,7 +273,9 @@ def tax_expenditure_reform_specs(
                 category=raw.get("category", "Tax expenditure"),
                 in_sample=bool(raw.get("in_sample", False)),
                 period=int(raw.get("period", period)),
-                jct_score=(float(bench["score"]) if bench.get("score") is not None else None),
+                jct_score=(
+                    float(bench["score"]) if bench.get("score") is not None else None
+                ),
                 jct_window=str(bench.get("window", "")),
                 jct_source=str(bench.get("source", "")),
                 jct_source_url=str(bench.get("source_url", "")),
@@ -392,13 +403,17 @@ def reform_validation_payload(
         reform_total = _weighted_total(component_on, spec.budget_measure, spec.period)
         return reform_total - base, base, reform_total
 
-    def simulated_effect(spec: ReformValidationSpec) -> tuple[float | None, float | None, float | None]:
+    def simulated_effect(
+        spec: ReformValidationSpec,
+    ) -> tuple[float | None, float | None, float | None]:
         if simulate is None:
             return None, None, None
         if _is_obbba_spec(spec):
             return obbba_component_effect(spec)
         base = baseline_total(spec.budget_measure, spec.period)
-        reform_total = _weighted_total(simulate(spec.build_reform()), spec.budget_measure, spec.period)
+        reform_total = _weighted_total(
+            simulate(spec.build_reform()), spec.budget_measure, spec.period
+        )
         raw = reform_total - base
         # A counterfactual revert measures the provision as baseline − reform.
         effect = raw if spec.effect_direction == "reform_minus_baseline" else -raw
@@ -436,8 +451,12 @@ def reform_validation_payload(
                     "period": spec.period,
                     "window": spec.jct_window or None,
                     "measure": spec.budget_measure,
-                    "baseline_total": None if base_total is None else _finite(base_total),
-                    "reform_total": None if reform_total is None else _finite(reform_total),
+                    "baseline_total": None
+                    if base_total is None
+                    else _finite(base_total),
+                    "reform_total": None
+                    if reform_total is None
+                    else _finite(reform_total),
                 },
             }
         )

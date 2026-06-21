@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.uk.rowwise_geography import id_multiplier_for_values
+from populace.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
 BASE_FRS_SUPPORT_CHANNEL = "frs"
 SPI_SYNTHETIC_SUPPORT_CHANNEL = "spi"

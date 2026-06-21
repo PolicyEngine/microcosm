@@ -14,7 +14,7 @@ from populace.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
-from populace.build.us.puf_aggregate_records import (
+from populace.build.us_runtime.puf_aggregate_records import (
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )

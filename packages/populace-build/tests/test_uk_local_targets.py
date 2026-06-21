@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     area_groups_from_codes,
     compute_household_metrics,
     metric_names,
