@@ -254,6 +254,29 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "usda_snap": "USDA SNAP administrative data",
 }
 
+US_HEALTHCARE_STATE_TARGET_ROLES = {
+    "aca_enrollment": {
+        "family": "cms_aca",
+        "label": "ACA marketplace enrollment",
+    },
+    "aca_ptc_recipients": {
+        "family": "cms_aca",
+        "label": "ACA premium tax credit recipients",
+    },
+    "aca_bronze_aptc_consumers": {
+        "family": "cms_aca",
+        "label": "ACA bronze APTC consumers",
+    },
+    "medicaid_enrollment": {
+        "family": "cms_medicaid",
+        "label": "Medicaid enrollment",
+    },
+    "medicaid_chip_enrollment": {
+        "family": "cms_medicaid",
+        "label": "Medicaid and CHIP combined enrollment",
+    },
+}
+
 US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
@@ -2687,6 +2710,80 @@ def _fiscal_target_source_provenance(
     }
 
 
+def _target_spec_state_fips(spec: object) -> str | None:
+    metadata = getattr(spec, "metadata", {}) or {}
+    if not isinstance(metadata, Mapping):
+        return None
+    raw_state_fips = metadata.get("state_fips")
+    if raw_state_fips is None:
+        return None
+    state_fips = str(raw_state_fips).strip()
+    if not state_fips:
+        return None
+    try:
+        return f"{int(state_fips):02d}"
+    except ValueError:
+        return state_fips
+
+
+def _healthcare_state_target_diagnostics(
+    target_specs: Iterable[object],
+) -> dict[str, object]:
+    specs = tuple(target_specs)
+    state_universe = sorted(
+        {state for spec in specs if (state := _target_spec_state_fips(spec))}
+    )
+    role_diagnostics: dict[str, dict[str, object]] = {}
+    for role, config in US_HEALTHCARE_STATE_TARGET_ROLES.items():
+        role_specs = [
+            spec
+            for spec in specs
+            if spec.family == config["family"]
+            and spec.metadata.get("target_role") == role
+        ]
+        state_fips = sorted(
+            {state for spec in role_specs if (state := _target_spec_state_fips(spec))}
+        )
+        state_count = len(state_fips)
+        state_universe_count = len(state_universe)
+        source_record_ids = sorted(
+            {
+                source_record_id
+                for spec in role_specs
+                if (source_record_id := spec.metadata.get("ledger_source_record_id"))
+            }
+        )
+        target_names = sorted({spec.name for spec in role_specs})
+        role_diagnostics[role] = {
+            "family": config["family"],
+            "label": config["label"],
+            "target_count": len(role_specs),
+            "state_target_count": sum(
+                1 for spec in role_specs if _target_spec_state_fips(spec)
+            ),
+            "national_or_unscoped_target_count": sum(
+                1 for spec in role_specs if not _target_spec_state_fips(spec)
+            ),
+            "state_count": state_count,
+            "state_coverage_ratio": (
+                state_count / state_universe_count if state_universe_count else None
+            ),
+            "state_fips": state_fips,
+            "missing_state_fips": sorted(set(state_universe) - set(state_fips)),
+            "source_record_ids": source_record_ids,
+            "target_names": target_names,
+        }
+    return {
+        "schema_version": 1,
+        "state_universe": {
+            "source": "target_specs_with_state_fips",
+            "state_count": len(state_universe),
+            "state_fips": state_universe,
+        },
+        "roles": role_diagnostics,
+    }
+
+
 def _assert_us_release_id(release_id: str) -> None:
     if not release_id.startswith("populace-us-"):
         raise ValueError(
@@ -2977,6 +3074,9 @@ def main() -> None:
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    coverage["healthcare_state_target_diagnostics"] = (
+        _healthcare_state_target_diagnostics(target_specs)
+    )
     coverage["fiscal_target_support_exclusions"] = [
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(

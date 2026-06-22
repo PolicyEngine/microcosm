@@ -3022,6 +3022,93 @@ def test_fiscal_target_source_provenance_covers_active_families() -> None:
     assert provenance["state_income_tax"]["reference_urls"]
 
 
+def test_healthcare_state_target_diagnostics_summarizes_state_coverage() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="ca_aca_enrollment",
+            entity="household",
+            measure="aca",
+            value=100.0,
+            source="fixture",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_enrollment",
+                "state_fips": "6",
+                "ledger_source_record_id": "cms_aca.ca.enrollment",
+            },
+        ),
+        TargetSpec(
+            name="ny_aca_enrollment",
+            entity="household",
+            measure="aca",
+            value=100.0,
+            source="fixture",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_enrollment",
+                "state_fips": "36",
+                "ledger_source_record_id": "cms_aca.ny.enrollment",
+            },
+        ),
+        TargetSpec(
+            name="national_aptc_recipients",
+            entity="household",
+            measure="aptc",
+            value=100.0,
+            source="fixture",
+            family="cms_aca",
+            metadata={"target_role": "aca_ptc_recipients"},
+        ),
+        TargetSpec(
+            name="ca_medicaid_enrollment",
+            entity="household",
+            measure="medicaid_enrolled",
+            value=100.0,
+            source="fixture",
+            family="cms_medicaid",
+            metadata={
+                "target_role": "medicaid_enrollment",
+                "state_fips": "06",
+            },
+        ),
+        TargetSpec(
+            name="tx_income_tax",
+            entity="household",
+            measure="state_income_tax",
+            value=100.0,
+            source="fixture",
+            family="state_income_tax",
+            metadata={"target_role": "state_income_tax", "state_fips": "48"},
+        ),
+    )
+
+    diagnostics = builder._healthcare_state_target_diagnostics(specs)
+
+    assert diagnostics["state_universe"] == {
+        "source": "target_specs_with_state_fips",
+        "state_count": 3,
+        "state_fips": ["06", "36", "48"],
+    }
+    aca_enrollment = diagnostics["roles"]["aca_enrollment"]
+    assert aca_enrollment["target_count"] == 2
+    assert aca_enrollment["state_target_count"] == 2
+    assert aca_enrollment["national_or_unscoped_target_count"] == 0
+    assert aca_enrollment["state_fips"] == ["06", "36"]
+    assert aca_enrollment["missing_state_fips"] == ["48"]
+    assert np.isclose(aca_enrollment["state_coverage_ratio"], 2 / 3)
+    assert aca_enrollment["source_record_ids"] == [
+        "cms_aca.ca.enrollment",
+        "cms_aca.ny.enrollment",
+    ]
+    aptc_recipients = diagnostics["roles"]["aca_ptc_recipients"]
+    assert aptc_recipients["target_count"] == 1
+    assert aptc_recipients["state_target_count"] == 0
+    assert aptc_recipients["national_or_unscoped_target_count"] == 1
+    assert aptc_recipients["missing_state_fips"] == ["06", "36", "48"]
+    assert diagnostics["roles"]["aca_bronze_aptc_consumers"]["target_count"] == 0
+
+
 def test_us_release_id_guard() -> None:
     builder = _load_builder_module()
 
