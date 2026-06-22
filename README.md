@@ -23,6 +23,16 @@ artifacts).
 Legacy consumers (policyengine-us-data, PolicyEngine apps) pin the legacy
 packages; there is no backward-compatibility layer.
 
+## PolicyEngine bundles
+
+Populace publishes data artifacts and release manifests. It does not publish or
+orchestrate certified PolicyEngine runtime bundles.
+
+Certified package-plus-data installation is owned by `policyengine.py` through
+the `policyengine bundle install` command. A Populace release becomes part of a
+certified PolicyEngine bundle only when the `.py` bundle manifest pins it as the
+country data release.
+
 ## Development
 
 ```bash
