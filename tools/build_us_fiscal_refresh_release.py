@@ -271,6 +271,14 @@ US_ACA_TARGET_ROLE_TABLES = {
     "aca_bronze_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
     "aca_below_benchmark_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
 }
+US_ACA_PLAN_CHOICE_DENOMINATOR_ROLE = "aca_ptc_recipients"
+US_ACA_METAL_LEVEL_TARGET_ROLES = frozenset(
+    {
+        "aca_bronze_aptc_consumers",
+        "aca_bronze_ptc_consumers",
+        "aca_below_benchmark_ptc_consumers",
+    }
+)
 US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
     {
         US_ACA_APTC_TARGET_TABLE,
@@ -1956,6 +1964,236 @@ def _fiscal_target_value_basis(spec) -> str:
     return "amount"
 
 
+def _finite_diagnostic_number(value: object) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _safe_ratio(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator is None or denominator == 0.0:
+        return None
+    return numerator / denominator
+
+
+def _relative_error_from_values(
+    *,
+    target: float | None,
+    final_estimate: float | None,
+) -> float | None:
+    if target is None or final_estimate is None:
+        return None
+    if target == 0.0:
+        return final_estimate - target
+    return (final_estimate - target) / target
+
+
+def _sum_diagnostic_records(
+    records: Iterable[Mapping[str, object]],
+    field: str,
+) -> float | None:
+    total = 0.0
+    for record in records:
+        value = _finite_diagnostic_number(record.get(field))
+        if value is None:
+            return None
+        total += value
+    return total
+
+
+def _aca_target_count_summary(
+    records: Iterable[Mapping[str, object]],
+) -> dict[str, object]:
+    materialized = tuple(records)
+    target = _sum_diagnostic_records(materialized, "target")
+    initial_estimate = _sum_diagnostic_records(materialized, "initial_estimate")
+    final_estimate = _sum_diagnostic_records(materialized, "final_estimate")
+    return {
+        "target_count": len(materialized),
+        "target": target,
+        "initial_estimate": initial_estimate,
+        "final_estimate": final_estimate,
+        "relative_error": _relative_error_from_values(
+            target=target,
+            final_estimate=final_estimate,
+        ),
+        "row_names": sorted(str(record["row_name"]) for record in materialized),
+        "source_record_ids": sorted(
+            str(record["source_record_id"]) for record in materialized
+        ),
+    }
+
+
+def _aca_plan_choice_share_summary(
+    numerator: Mapping[str, object],
+    denominator: Mapping[str, object],
+) -> dict[str, float | None]:
+    target_share = _safe_ratio(
+        _finite_diagnostic_number(numerator.get("target")),
+        _finite_diagnostic_number(denominator.get("target")),
+    )
+    initial_share = _safe_ratio(
+        _finite_diagnostic_number(numerator.get("initial_estimate")),
+        _finite_diagnostic_number(denominator.get("initial_estimate")),
+    )
+    final_share = _safe_ratio(
+        _finite_diagnostic_number(numerator.get("final_estimate")),
+        _finite_diagnostic_number(denominator.get("final_estimate")),
+    )
+    difference = (
+        None
+        if target_share is None or final_share is None
+        else final_share - target_share
+    )
+    return {
+        "target": target_share,
+        "initial_estimate": initial_share,
+        "final_estimate": final_share,
+        "difference": difference,
+        "relative_error": _relative_error_from_values(
+            target=target_share,
+            final_estimate=final_share,
+        ),
+    }
+
+
+def _aca_metal_level_diagnostics(
+    result,
+    target_specs: Iterable[object],
+) -> dict[str, object]:
+    diagnostics_by_name = {
+        str(diagnostic.name): diagnostic
+        for diagnostic in getattr(result, "diagnostics", ())
+        if getattr(diagnostic, "name", None) is not None
+    }
+    grouped: dict[str, dict[str, list[dict[str, object]]]] = {}
+    missing_diagnostics: list[str] = []
+    declared_metal_states: set[str] = set()
+    declared_metal_target_count = 0
+
+    for spec in target_specs:
+        if getattr(spec, "family", None) != "cms_aca":
+            continue
+        metadata = dict(getattr(spec, "metadata", {}) or {})
+        target_role = metadata.get("target_role")
+        if target_role == US_ACA_PLAN_CHOICE_DENOMINATOR_ROLE:
+            bucket = "aptc_recipients"
+        elif target_role in US_ACA_METAL_LEVEL_TARGET_ROLES:
+            bucket = "below_benchmark_ptc_consumers"
+        else:
+            continue
+        state_fips = metadata.get("state_fips")
+        if not state_fips:
+            continue
+        state_key = str(state_fips).zfill(2)
+        if bucket == "below_benchmark_ptc_consumers":
+            declared_metal_states.add(state_key)
+            declared_metal_target_count += 1
+
+        row_name = f"{spec.name}@{spec.period}"
+        diagnostic = diagnostics_by_name.get(row_name)
+        if diagnostic is None:
+            missing_diagnostics.append(row_name)
+            continue
+
+        grouped.setdefault(
+            state_key,
+            {
+                "aptc_recipients": [],
+                "below_benchmark_ptc_consumers": [],
+            },
+        )[bucket].append(
+            {
+                "row_name": row_name,
+                "source_record_id": spec.name,
+                "target": getattr(diagnostic, "target", None),
+                "initial_estimate": getattr(diagnostic, "initial_estimate", None),
+                "final_estimate": getattr(diagnostic, "final_estimate", None),
+            }
+        )
+
+    state_rows: list[dict[str, object]] = []
+    all_aptc_records: list[dict[str, object]] = []
+    all_metal_records: list[dict[str, object]] = []
+    for state_fips in sorted(grouped):
+        records = grouped[state_fips]
+        aptc = _aca_target_count_summary(records["aptc_recipients"])
+        below_benchmark = _aca_target_count_summary(
+            records["below_benchmark_ptc_consumers"]
+        )
+        share = _aca_plan_choice_share_summary(below_benchmark, aptc)
+        state_rows.append(
+            {
+                "state_fips": state_fips,
+                "aptc_recipients": aptc,
+                "below_benchmark_ptc_consumers": below_benchmark,
+                "below_benchmark_share": share,
+            }
+        )
+        if records["below_benchmark_ptc_consumers"]:
+            all_aptc_records.extend(records["aptc_recipients"])
+            all_metal_records.extend(records["below_benchmark_ptc_consumers"])
+
+    national_aptc = _aca_target_count_summary(all_aptc_records)
+    national_below_benchmark = _aca_target_count_summary(all_metal_records)
+    national = {
+        "aptc_recipients": national_aptc,
+        "below_benchmark_ptc_consumers": national_below_benchmark,
+        "below_benchmark_share": _aca_plan_choice_share_summary(
+            national_below_benchmark,
+            national_aptc,
+        ),
+    }
+    share_errors = [
+        {
+            "state_fips": row["state_fips"],
+            "target": row["below_benchmark_share"]["target"],
+            "final_estimate": row["below_benchmark_share"]["final_estimate"],
+            "difference": row["below_benchmark_share"]["difference"],
+            "relative_error": row["below_benchmark_share"]["relative_error"],
+        }
+        for row in state_rows
+        if row["below_benchmark_share"]["difference"] is not None
+    ]
+    share_errors.sort(
+        key=lambda row: abs(float(row["difference"])),
+        reverse=True,
+    )
+    missing_denominator_states = [
+        str(row["state_fips"])
+        for row in state_rows
+        if row["below_benchmark_ptc_consumers"]["target_count"]
+        and not row["aptc_recipients"]["target_count"]
+    ]
+    return {
+        "schema_version": 1,
+        "available": bool(all_metal_records),
+        "metal_target_roles": sorted(US_ACA_METAL_LEVEL_TARGET_ROLES),
+        "denominator_role": US_ACA_PLAN_CHOICE_DENOMINATOR_ROLE,
+        "declared_target_count": declared_metal_target_count,
+        "declared_state_count": len(declared_metal_states),
+        "target_count": len(all_metal_records),
+        "state_count": sum(
+            1
+            for row in state_rows
+            if row["below_benchmark_ptc_consumers"]["target_count"]
+        ),
+        "missing_diagnostics": sorted(missing_diagnostics),
+        "missing_denominator_states": missing_denominator_states,
+        "national": national if all_metal_records else None,
+        "states": [
+            row
+            for row in state_rows
+            if row["below_benchmark_ptc_consumers"]["target_count"]
+        ],
+        "largest_abs_share_errors": share_errors[:10],
+    }
+
+
 def _release_gate_failures(
     result,
     compilation: Mapping[str, object],
@@ -2256,6 +2494,10 @@ def _write_release_calibration_diagnostics(
                 }
                 if base_population_gate is not None
                 else None
+            ),
+            "aca_metal_level_diagnostics": _aca_metal_level_diagnostics(
+                result,
+                registry.specs,
             ),
             "release_gates": {
                 "passed": not failures,
