@@ -48,6 +48,10 @@ reproduces them.
   (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.
 - **`l0_lambda`** alone (no `target_records`) prunes at a fixed penalty: `> 0`
   gates the pool, `0.0` keeps every record.
+- **`l2_lambda`** is an experimental soft concentration knob: positive values
+  add `l2_lambda * mean((weight / initial_weight) ** 2)` to the loss. It is
+  useful for ESS/design-effect sweeps when `max_weight_ratio` is too blunt, but
+  it is not a safety guarantee and does not replace the hard ratio cap.
 
 ## Example
 

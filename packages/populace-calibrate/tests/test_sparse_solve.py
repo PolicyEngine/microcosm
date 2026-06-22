@@ -141,10 +141,13 @@ class TestOptionsRecord:
             learning_rate=0.2,
             mass="conserve",
             max_weight_ratio=50.0,
+            l2_lambda=0.001,
             seed=7,
         )
         opts = result.options
         assert opts["max_weight_ratio"] == 50.0
+        assert opts["l2_lambda"] == 0.001
+        assert opts["l2_penalty"] == "mean_initial_weight_ratio_squared"
         assert opts["mass"] == "conserve"
         assert opts["epochs"] == 50
         assert opts["learning_rate"] == 0.2
