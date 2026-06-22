@@ -52,6 +52,7 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "aca_enrollment",
     "medicaid_enrollment",
     "medicaid_chip_enrollment",
+    "chip_enrollment",
     "medicare_part_b_premium_total",
 }
 
@@ -680,6 +681,128 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
     assert spec.metadata["target_role"] == "medicaid_chip_enrollment"
     assert spec.metadata["base_variables"] == "medicaid_enrolled,chip_enrolled"
     assert "base_variable" not in spec.metadata
+
+
+def test_chip_enrollment_target_is_derived_from_medicaid_split_controls() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=80_000_000,
+                measure_id="total_medicaid_enrollment",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=90_000_000,
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.us.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 10_000_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["source_measure_id"] == "derived_total_chip_enrollment"
+    assert spec.metadata["derived_operation"] == (
+        "medicaid_chip_enrollment_minus_medicaid_enrollment"
+    )
+    assert spec.metadata["derived_source_record_ids"] == (
+        "cms_medicaid.month2024_12.us.total_medicaid_chip_enrollment,"
+        "cms_medicaid.month2024_12.us.total_medicaid_enrollment"
+    )
+
+
+def test_state_chip_enrollment_target_is_derived_from_state_controls() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_000_000,
+                measure_id="total_medicaid_enrollment",
+                geography_level="state",
+                geography_id="0400000US06",
+                geography_slug="ca",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_150_000,
+                geography_level="state",
+                geography_id="0400000US06",
+                geography_slug="ca",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.ca.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 150_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["state_fips"] == "06"
+    assert spec.metadata["derived_source_record_ids"] == (
+        "cms_medicaid.month2024_12.ca.total_medicaid_chip_enrollment,"
+        "cms_medicaid.month2024_12.ca.total_medicaid_enrollment"
+    )
+
+
+def test_direct_chip_enrollment_fact_maps_to_chip_enrolled() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=7_000_000,
+                measure_id="total_chip_enrollment",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.us.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 7_000_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "base_variables" not in spec.metadata
+
+
+def test_direct_chip_enrollment_fact_prevents_duplicate_derived_chip_target() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=80_000_000,
+                measure_id="total_medicaid_enrollment",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=90_000_000,
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=7_000_000,
+                measure_id="total_chip_enrollment",
+            ),
+        ]
+    )
+
+    chip_specs = [
+        spec
+        for spec in registry.specs
+        if spec.name == "cms_medicaid.month2024_12.us.total_chip_enrollment"
+    ]
+    assert len(chip_specs) == 1
+    assert chip_specs[0].value == 7_000_000
+    assert chip_specs[0].metadata["target_role"] == "chip_enrollment"
+    assert "derived_operation" not in chip_specs[0].metadata
 
 
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
@@ -2650,6 +2773,7 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "medicaid_spending" not in ids
     assert "medicaid_enrollment" in ids
     assert "medicaid_chip_enrollment" in ids
+    assert "chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
     assert "state_income_tax" in ids
     assert "population_age_national" in ids
@@ -2849,6 +2973,31 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
     assert any(
         "medicaid_enrollment" in failure for failure in enrollment_result.failures
     )
+
+
+def test_chip_requirement_needs_direct_chip_role() -> None:
+    targets = [
+        federal_income_tax_total_row(),
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
+        *[
+            row
+            for row in complete_program_rows()
+            if row["metadata"]["target_role"] != "chip_enrollment"
+        ],
+        *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
+        *complete_jct_rows(),
+    ]
+
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    assert any("chip_enrollment" in failure for failure in result.failures)
 
 
 def test_population_age_requirement_needs_complete_national_age_surface() -> None:
@@ -3387,14 +3536,14 @@ def _cms_medicaid_enrollment_fact(
     source_period: str,
     *,
     value: float,
+    measure_id: str = "total_medicaid_chip_enrollment",
     geography_level: str = "country",
     geography_id: str = "0100000US",
     geography_slug: str = "us",
 ) -> dict[str, object]:
     normalized_period = source_period.replace("-", "_")
     source_record_id = (
-        "cms_medicaid."
-        f"month{normalized_period}.{geography_slug}.total_medicaid_chip_enrollment"
+        f"cms_medicaid.month{normalized_period}.{geography_slug}.{measure_id}"
     )
     return {
         "aggregate_fact_key": (
@@ -3415,14 +3564,14 @@ def _cms_medicaid_enrollment_fact(
         "layout": {
             "record_set_id": f"cms_medicaid.month{normalized_period}",
             "groupby_dimension": "program",
-            "groupby_value_id": "total_medicaid_chip_enrollment",
-            "measure_id": "total_medicaid_chip_enrollment",
+            "groupby_value_id": measure_id,
+            "measure_id": measure_id,
         },
         "observed_measure": {
             "source_name": "cms_medicaid",
             "source_table": "Medicaid and CHIP enrollment",
-            "source_measure_id": "total_medicaid_chip_enrollment",
-            "source_concept": "cms.total_medicaid_chip_enrollment",
+            "source_measure_id": measure_id,
+            "source_concept": f"cms.{measure_id}",
             "unit": "people",
         },
         "source": {
@@ -3591,7 +3740,11 @@ def complete_program_rows() -> list[dict[str, object]]:
             family = "irs_soi"
         elif role in {"aca_spending", "aca_enrollment"}:
             family = "cms_aca"
-        elif role in {"medicaid_enrollment", "medicaid_chip_enrollment"}:
+        elif role in {
+            "chip_enrollment",
+            "medicaid_enrollment",
+            "medicaid_chip_enrollment",
+        }:
             family = "cms_medicaid"
         elif role == "medicare_part_b_premium_total":
             family = "cms_medicare"
