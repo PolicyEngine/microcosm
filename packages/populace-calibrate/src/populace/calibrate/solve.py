@@ -37,8 +37,11 @@ Five declared options, each a real feature (and each its own test):
   gates the pool, ``0.0`` keeps every record. It is the sole control when no
   budget is given.
 - ``l2_lambda`` adds an experimental soft concentration penalty on
-  ``mean((weight / initial_weight) ** 2)``. It is a smooth ESS/design-effect
-  knob; ``max_weight_ratio`` remains the hard safety bound.
+  ``mean((pre_gate_weight / initial_weight) ** 2)``. With no L0 gates this is
+  the realized weight ratio; with L0 gates it intentionally penalizes the
+  latent pre-gate weight so a nearly closed gate cannot hide an exploding
+  ``log_w``. It is cleanest as an ESS/design-effect knob under
+  ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
 """
 
 from __future__ import annotations
@@ -530,6 +533,8 @@ def _optimize(
             if (gates is not None and l0_lambda > 0.0)
             else torch.zeros((), dtype=torch.float32)
         )
+        # Penalize latent pre-gate weights. Under L0, a nearly closed gate
+        # should not be able to hide a very large exp(log_w).
         l2_penalty = (
             ((torch.exp(log_w) / w0_t) ** 2).mean()
             if w0_t is not None
@@ -896,9 +901,14 @@ def calibrate(
             this is only the budget search's warm start (the search overrides it).
         l2_lambda: Experimental soft concentration penalty strength. ``0.0``
             (default) preserves the unpenalized path. Positive values add
-            ``l2_lambda * mean((weight / initial_weight) ** 2)`` to the
+            ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
             optimization loss while leaving ``max_weight_ratio`` as the hard
-            per-record cap.
+            per-record cap. When L0 gates are active, this is a latent pre-gate
+            penalty on ``exp(log_w)``, not the realized gated returned weight;
+            that preserves the original L0 behavior of discouraging hidden
+            weight explosion behind partially closed gates. Its ESS/design-effect
+            interpretation is cleanest with ``mass="conserve"``; with
+            ``mass="free"`` it also penalizes total weight scale.
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -1131,7 +1141,7 @@ def calibrate(
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
             "l2_lambda": l2_lambda,
-            "l2_penalty": "mean_initial_weight_ratio_squared",
+            "l2_penalty": "mean_initial_pre_gate_weight_ratio_squared",
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "target_loss_scales": _target_loss_scale_options(

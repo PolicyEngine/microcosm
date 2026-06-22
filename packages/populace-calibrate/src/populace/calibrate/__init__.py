@@ -16,7 +16,9 @@ against tail "landmine" records detonating on reweight); ``target_records`` for
 hard-concrete L0 pruning with budget control — the solver searches
 ``l0_lambda`` so the achieved non-zero count tracks the budget (the
 generate-big-then-prune path); and experimental ``l2_lambda`` as a soft
-concentration penalty. ``l0_lambda`` alone prunes at a fixed penalty.
+concentration penalty. Under L0 gates, ``l2_lambda`` penalizes latent pre-gate
+weights so a nearly closed gate cannot hide an exploding underlying weight.
+``l0_lambda`` alone prunes at a fixed penalty.
 
 Importing this shard asserts compatibility with the installed
 :mod:`populace.frame` kernel — the constellation mechanism from DESIGN.md: a

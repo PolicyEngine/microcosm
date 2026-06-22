@@ -45,6 +45,47 @@ def _effective_sample_size(weights: np.ndarray) -> float:
     return float(weights.sum() ** 2 / np.square(weights).sum())
 
 
+def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
+    rng = np.random.default_rng(0)
+    n = 160
+    income = rng.lognormal(10.5, 1.0, n)
+    is_renter = (income < np.quantile(income, 0.35)).astype(float)
+    initial_weights = np.full(n, 1000.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "income": income,
+                    "is_renter": is_renter,
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * initial_weights).sum()) * 1.3,
+                measure="income",
+            ),
+            Target(
+                name="renters",
+                entity="household",
+                value=float((is_renter * initial_weights).sum()) * 0.7,
+                measure="is_renter",
+            ),
+        )
+    )
+    return frame, targets, initial_weights
+
+
 def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> None:
     frame, truths = feasible_frame()
     # Shift both targets by the same factor so a uniform rescale hits both.
@@ -402,7 +443,7 @@ def test_l2_lambda_records_provenance(feasible_frame) -> None:
     result = calibrate(frame, targets, epochs=50, seed=0, l2_lambda=0.001)
 
     assert result.options["l2_lambda"] == 0.001
-    assert result.options["l2_penalty"] == "mean_initial_weight_ratio_squared"
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
 
 
 def test_l2_lambda_reduces_weight_concentration() -> None:
@@ -413,43 +454,7 @@ def test_l2_lambda_reduces_weight_concentration() -> None:
     while making that concentration materially less extreme.
     """
 
-    rng = np.random.default_rng(0)
-    n = 160
-    income = rng.lognormal(10.5, 1.0, n)
-    is_renter = (income < np.quantile(income, 0.35)).astype(float)
-    initial_weights = np.full(n, 1000.0)
-    frame = Frame(
-        {
-            "person": pd.DataFrame(
-                {"person_id": range(n), "person_household_id": range(n)}
-            ),
-            "household": pd.DataFrame(
-                {
-                    "household_id": range(n),
-                    "income": income,
-                    "is_renter": is_renter,
-                }
-            ),
-        },
-        EntitySchema(group_entities=("household",)),
-        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
-    )
-    targets = TargetSet(
-        (
-            Target(
-                name="income",
-                entity="household",
-                value=float((income * initial_weights).sum()) * 1.3,
-                measure="income",
-            ),
-            Target(
-                name="renters",
-                entity="household",
-                value=float((is_renter * initial_weights).sum()) * 0.7,
-                measure="is_renter",
-            ),
-        )
-    )
+    frame, targets, initial_weights = _l2_concentration_fixture()
 
     baseline = calibrate(
         frame,
@@ -478,6 +483,40 @@ def test_l2_lambda_reduces_weight_concentration() -> None:
     assert penalized.final_loss <= baseline.final_loss + 0.02
 
 
+def test_l2_lambda_reduces_concentration_with_l0_gates_active() -> None:
+    frame, targets, initial_weights = _l2_concentration_fixture()
+
+    baseline = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+    )
+    penalized = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+        l2_lambda=0.001,
+    )
+
+    assert baseline.n_nonzero < len(initial_weights)
+    assert penalized.n_nonzero < len(initial_weights)
+    baseline_ratio = baseline.weights / initial_weights
+    penalized_ratio = penalized.weights / initial_weights
+    assert penalized_ratio.max() < baseline_ratio.max() * 0.5
+    assert _effective_sample_size(penalized.weights) > (
+        _effective_sample_size(baseline.weights) * 1.5
+    )
+    assert penalized.final_loss <= baseline.final_loss + 0.1
+
+
 def test_l2_lambda_is_fixed_during_target_record_budget_search(feasible_frame) -> None:
     frame, truths = feasible_frame(n=400)
     targets = TargetSet(
@@ -499,6 +538,7 @@ def test_l2_lambda_is_fixed_during_target_record_budget_search(feasible_frame) -
     assert abs(result.n_nonzero - 120) <= 60, result.n_nonzero
     assert result.l0_lambda > 0.0
     assert result.options["l2_lambda"] == 0.001
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
 
 
 def test_budget_iters_must_be_positive(feasible_frame) -> None:
