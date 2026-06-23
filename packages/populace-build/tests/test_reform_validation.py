@@ -275,6 +275,29 @@ def test_out_of_sample_null_when_no_simulate():
     payload = reform_validation_payload([_oos_spec(-1.0)], period=2024, simulate=None)
     assert payload["reforms"][0]["populace"]["budget_effect"] is None
     assert payload["schema_version"] == REFORM_VALIDATION_SCHEMA_VERSION
+    # A release built with out-of-sample reforms but no simulation must mark
+    # itself, so a null budget effect is never mistaken for a genuine result.
+    assert payload["out_of_sample_simulated"] is False
+
+
+def test_out_of_sample_simulated_flag_true_when_simulated(monkeypatch):
+    spec = _oos_spec(-1.0)
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
+
+    def simulate(reform):
+        return _FakeSim({"income_tax": 2.0e12 if reform is None else 1.99e12})
+
+    payload = reform_validation_payload([spec], period=2024, simulate=simulate)
+    assert payload["out_of_sample_simulated"] is True
+
+
+def test_out_of_sample_simulated_flag_true_when_only_in_sample():
+    # No out-of-sample specs => the fidelity test is vacuously complete.
+    spec = in_sample_reform_specs(period=2024)[0]
+    payload = reform_validation_payload(
+        [spec], period=2024, in_sample_estimates={spec.id: 1.0}
+    )
+    assert payload["out_of_sample_simulated"] is True
 
 
 def test_in_sample_specs_built_from_jct_reforms():

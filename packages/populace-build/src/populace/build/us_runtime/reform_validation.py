@@ -461,10 +461,17 @@ def reform_validation_payload(
             }
         )
 
+    # Self-describing flag so a null out-of-sample row can be told apart from a
+    # genuinely-zero one, and so a release built with simulation skipped is
+    # never mistaken for one where the dataset simply failed the fidelity test.
+    # False only when out-of-sample reforms exist but no simulate() was given.
+    has_out_of_sample = any(not spec.in_sample for spec in specs)
+    out_of_sample_simulated = simulate is not None or not has_out_of_sample
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "baseline_period": int(period),
         "scoring_window": "see per-reform jct.window",
+        "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
     }
     if release_id is not None:
