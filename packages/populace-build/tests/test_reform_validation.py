@@ -282,9 +282,10 @@ def test_out_of_sample_null_when_no_simulate():
 
 def test_out_of_sample_simulated_flag_true_when_simulated(monkeypatch):
     spec = _oos_spec(-1.0)
+    monkeypatch.setattr(spec.__class__, "build_reform", lambda self: "REFORM")
 
     def simulate(reform):
-        return _FakeSim({"income_tax": 0.0 if reform is None else -1.0})
+        return _FakeSim({"income_tax": 2.0e12 if reform is None else 1.99e12})
 
     payload = reform_validation_payload([spec], period=2024, simulate=simulate)
     assert payload["out_of_sample_simulated"] is True
