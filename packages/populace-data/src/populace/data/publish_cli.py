@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from populace.data.release import publish_release
+from populace.data.slack import notify_release
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +66,15 @@ def main(argv: list[str] | None = None) -> int:
         updated_at=args.updated_at,
     )
     print(json.dumps(pointer, indent=2))
+
+    # Real-time release alert, fired the moment latest.json is live. No-op
+    # unless the country's SLACK_WEBHOOK_POPULACE_* env var is set, and never
+    # fatal — a Slack failure must not fail an otherwise-successful publish.
+    notify_release(
+        args.repo_id,
+        str(pointer.get("release_id", "")),
+        pointer.get("updated_at"),
+    )
     return 0
 
 
