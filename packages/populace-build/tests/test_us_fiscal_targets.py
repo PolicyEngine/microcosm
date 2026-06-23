@@ -767,6 +767,198 @@ def test_cross_period_soi_eitc_decomposition_uprates_to_active_total() -> None:
     assert scaled_child_total.metadata["uprating_factor"] == "1.2"
 
 
+def test_cross_period_soi_taxable_interest_agi_slice_uprates_to_active_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_returns"
+                ),
+                measure_id="taxable_interest_returns",
+                value=30_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2024,
+                source_record_id=(
+                    "irs_soi.ty2024.state_2022.us.all.taxable_interest_amount"
+                ),
+                value=360_000_000_000,
+                layout_record_set_id="irs_soi.ty2024.state_2022.us",
+            ),
+            _soi_taxable_interest_fact(
+                2024,
+                source_record_id=(
+                    "irs_soi.ty2024.state_2022.us.all.taxable_interest_returns"
+                ),
+                measure_id="taxable_interest_returns",
+                value=33_000_000,
+                layout_record_set_id="irs_soi.ty2024.state_2022.us",
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=returns_source_record_id,
+                measure_id="taxable_interest_returns",
+                value=2_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.value == 25_200_000_000
+    assert spec.metadata["variable"] == "taxable_interest_income"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["requires_total_soi_uprating"] == "true"
+    assert spec.metadata["uprating_index"] == "total_taxable_interest_amount"
+    assert spec.metadata["uprating_from_period"] == "2022"
+    assert spec.metadata["uprating_to_period"] == "2024"
+    assert spec.metadata["uprating_index_source_period"] == "2024"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.state_2022.us.all.taxable_interest_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "1.2"
+
+    returns = specs[returns_source_record_id]
+    assert returns.value == 2_200_000
+    assert returns.metadata["variable"] == "taxable_interest_income"
+    assert returns.metadata["measure_mode"] == "indicator_sum"
+    assert returns.metadata["requires_total_soi_uprating"] == "true"
+    assert returns.metadata["uprating_index"] == "total_taxable_interest_returns"
+    assert returns.metadata["uprating_factor"] == "1.1"
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_uses_latest_available_total() -> (
+    None
+):
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 21_000_000_000
+    assert spec.metadata["uprating_index_source_period"] == "2022"
+    assert spec.metadata["uprating_factor"] == "1"
+
+
+def test_cross_period_soi_taxable_interest_open_ended_agi_slice_without_dimension_is_kept() -> (
+    None
+):
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.500k_plus.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="taxable_interest_amount",
+                value=90_000_000_000,
+                period_value=2022,
+                dimensions={"filing_status": "all"},
+                universe_constraints=[
+                    {
+                        "variable": "adjusted_gross_income",
+                        "operator": ">=",
+                        "value": 500_000,
+                    }
+                ],
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+                groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+                groupby_value_id="500k_plus",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 90_000_000_000
+    assert spec.metadata["agi_lower_bound"] == "500000.0"
+    assert spec.metadata["agi_upper_bound"] == "inf"
+    assert spec.metadata["requires_total_soi_uprating"] == "true"
+    assert spec.metadata["uprating_factor"] == "1"
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    assert source_record_id not in {spec.name for spec in registry.specs}
+
+
 def test_cross_period_soi_eitc_decomposition_uses_latest_source_backed_total() -> None:
     source_record_id = (
         "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
@@ -1707,6 +1899,35 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
     assert result.passed
 
 
+def test_interest_distribution_requirement_rejects_only_broad_state_totals() -> None:
+    requirement = next(
+        req
+        for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS
+        if req.requirement_id == "irs_interest_distribution"
+    )
+    state_total_targets = [
+        {
+            "name": f"irs_soi.ty2024.state_2022.state_{i}.all.taxable_interest_amount",
+            "measure": (
+                f"irs_soi.ty2024.state_2022.state_{i}.all.taxable_interest_amount"
+            ),
+            "family": "irs_soi",
+            "metadata": {
+                "source_measure_id": "taxable_interest_amount",
+                "target_role": "soi_fiscal_distribution",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+            },
+        }
+        for i in range(52)
+    ]
+
+    result = target_profile_coverage_gate(state_total_targets, [requirement])
+
+    assert not result.passed
+    assert any("irs_interest_distribution" in failure for failure in result.failures)
+
+
 def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
     targets = [
         federal_income_tax_total_row(),
@@ -2122,6 +2343,49 @@ def _soi_eitc_child_fact(
     )
 
 
+def _soi_taxable_interest_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    value: float,
+    income_range: str = "all",
+    lower: float | None = None,
+    upper: float | None = None,
+    measure_id: str = "taxable_interest_amount",
+    layout_record_set_id: str | None = None,
+) -> dict[str, object]:
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
+        layout_record_set_id=layout_record_set_id
+        or f"irs_soi.ty{source_period}.historic_table_2.us",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id=income_range,
+    )
+
+
 def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, object]:
     source_record_id = (
         f"irs_soi.ty{source_period}.table_3_3.us.all.income_tax_liability_amount"
@@ -2379,7 +2643,7 @@ def complete_income_source_rows() -> list[dict[str, object]]:
             "family": "irs_soi",
         }
         for measure in source_measures
-        for i in range(5)
+        for i in range(100)
     ]
 
 
