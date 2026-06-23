@@ -1319,9 +1319,10 @@ def _unsupported_ledger_filter_metadata(
         keys = tuple(
             sorted(
                 str(key)
-                for key in metadata
+                for key, value in metadata.items()
                 if str(key).startswith("ledger_filter")
                 and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+                and not _is_noop_ledger_filter_value(str(value))
             )
         )
         if keys:

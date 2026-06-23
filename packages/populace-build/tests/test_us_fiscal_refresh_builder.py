@@ -363,6 +363,24 @@ def test_unsupported_soi_ledger_filters_require_materializer_support() -> None:
     ) == ("ledger_filter_new_dimension",)
 
 
+def test_unsupported_ledger_filter_metadata_all_value_is_noop() -> None:
+    builder = _load_builder_module()
+    specs = (
+        SimpleNamespace(
+            name="all_child_count",
+            metadata={"ledger_filter_qualifying_children": "all"},
+        ),
+        SimpleNamespace(
+            name="specific_child_count",
+            metadata={"ledger_filter_qualifying_children": "one"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "specific_child_count": ("ledger_filter_qualifying_children",)
+    }
+
+
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
     builder = _load_builder_module()
     counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
