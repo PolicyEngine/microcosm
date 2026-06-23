@@ -157,15 +157,54 @@ class StagingTelemetry:
         _write_json(local, payload)
         self._upload_file(local, LATEST_STAGING_POINTER)
 
+    def _existing_runs(self) -> list[dict[str, Any]]:
+        """Best-effort fetch of the runs index already in the repo."""
+        api = self._api()
+        if api is None or not self.repo_id:
+            return []
+        download = getattr(api, "hf_hub_download", None)
+        if download is None:
+            try:
+                from huggingface_hub import hf_hub_download as download
+            except Exception:
+                return []
+        try:
+            local = download(
+                repo_id=self.repo_id,
+                filename=RUNS_INDEX,
+                repo_type="dataset",
+                force_download=True,
+            )
+            data = json.loads(Path(local).read_text())
+        except Exception:
+            # Index missing (first run) or unreadable; start from scratch.
+            return []
+        runs = data.get("runs") if isinstance(data, dict) else None
+        if not isinstance(runs, list):
+            return []
+        return [run for run in runs if isinstance(run, dict) and run.get("run_id")]
+
     def _upload_runs_index(self) -> None:
-        local = self.run_dir / RUNS_INDEX
+        # Upsert this run into the existing index rather than overwriting it, so
+        # the index keeps every run instead of only the last one to upload.
         current = self.run_summary()
+        runs = [
+            run for run in self._existing_runs() if run.get("run_id") != self.run_id
+        ]
+        runs.append(current)
+        runs.sort(
+            key=lambda run: str(
+                run.get("updated_at") or run.get("started_at") or run.get("run_id")
+            ),
+            reverse=True,
+        )
+        local = self.run_dir / RUNS_INDEX
         _write_json(
             local,
             {
                 "schema_version": STAGING_SCHEMA_VERSION,
                 "updated_at": _now(),
-                "runs": [current],
+                "runs": runs,
             },
         )
         self._upload_file(local, RUNS_INDEX)
