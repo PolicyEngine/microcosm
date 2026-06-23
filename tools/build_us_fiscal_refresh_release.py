@@ -19,6 +19,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tomllib
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
@@ -2390,6 +2391,23 @@ def _write_reform_validation(
     diagnostics-only build).
     """
     specs = load_default_reform_specs(period=PERIOD)
+    if not simulate_out_of_sample:
+        print(
+            "\n".join(
+                (
+                    "",
+                    "!" * 72,
+                    "WARNING: --skip-out-of-sample-reforms is set.",
+                    "reform_validation.json will publish the in-sample JCT rows only;",
+                    "every out-of-sample (OBBBA / tax-expenditure) row will have a null",
+                    "budget effect and the dashboard will show no fidelity test for them.",
+                    "Do NOT use this for a publishable release.",
+                    "!" * 72,
+                    "",
+                )
+            ),
+            file=sys.stderr,
+        )
     simulate = (
         default_simulate_factory(dataset_path) if simulate_out_of_sample else None
     )
