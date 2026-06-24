@@ -1,57 +1,50 @@
-"""Contract tests for the UK household-wealth imputation plan.
+"""Contract tests for the UK household-wealth source manifest.
 
-Mirrors ``test_uk_bus.py`` (plan assembly + donor citations), for the
-WAS-anchored wealth holdings — in particular the cash_isa /
-stocks_and_shares_isa split and the back-compat fold into corporate_wealth.
+The UK build package is spec-only: the wealth holdings are declared in
+``uk/wealth_source_stages.json`` and loaded by the shared source-manifest
+runtime. These tests assert the manifest is valid and, in particular, that it
+surfaces the cash / stocks-and-shares ISA split (with the investment-ISA
+component folded into corporate_wealth for back-compatibility).
 """
 
 from __future__ import annotations
 
-import pytest
+import json
+from pathlib import Path
 
-from populace.build.uk import (
-    UK_WEALTH_DONORS,
-    UK_WEALTH_NONNEGATIVE_SOURCE_OUTPUTS,
-    UK_WEALTH_SOURCE_MANIFEST,
-    UK_WEALTH_STAGE_NAMES,
-    uk_wealth_plan,
-)
+from populace.build.source_manifest import load_source_manifest
 
-EXPECTED_STAGES = {"household_wealth"}
+UK_PACKAGE = Path(__file__).resolve().parents[1] / "src/populace/build/uk"
+WEALTH_MANIFEST_PATH = UK_PACKAGE / "wealth_source_stages.json"
 ISA_OUTPUTS = {"cash_isa", "stocks_and_shares_isa"}
 
 
-def _noop_implementations() -> dict:
-    return {name: (lambda frame: frame) for name in UK_WEALTH_STAGE_NAMES}
+def _manifest():
+    return load_source_manifest(WEALTH_MANIFEST_PATH)
 
 
 class TestUkWealthManifest:
-    def test_manifest_is_uk(self) -> None:
-        assert UK_WEALTH_SOURCE_MANIFEST.country == "uk"
-        assert UK_WEALTH_SOURCE_MANIFEST.version >= 1
-        assert set(UK_WEALTH_STAGE_NAMES) == EXPECTED_STAGES
+    def test_manifest_is_uk_household_wealth(self) -> None:
+        manifest = _manifest()
+        assert manifest.country == "uk"
+        assert manifest.version >= 1
+        assert {stage.stage for stage in manifest.stages} == {"household_wealth"}
 
     def test_isa_outputs_present_and_nonnegative(self) -> None:
-        outputs = {
-            output
-            for stage in UK_WEALTH_SOURCE_MANIFEST.stages
-            for output in stage.outputs
-        }
-        assert ISA_OUTPUTS <= outputs
-        assert ISA_OUTPUTS <= UK_WEALTH_NONNEGATIVE_SOURCE_OUTPUTS
+        stage = _manifest().stages[0]
+        assert ISA_OUTPUTS <= set(stage.outputs)
+        assert ISA_OUTPUTS <= set(stage.nonnegative_outputs)
 
     def test_stage_imputes_then_clips(self) -> None:
-        for stage in UK_WEALTH_SOURCE_MANIFEST.stages:
-            kinds = [op.kind for op in stage.operations]
-            assert "fit_weighted_qrf" in kinds
-            assert "support_clip" in kinds
+        kinds = [op.kind for op in _manifest().stages[0].operations]
+        assert "fit_weighted_qrf" in kinds
+        assert "support_clip" in kinds
 
     def test_investment_isa_folded_into_corporate_wealth(self) -> None:
         # Back-compat: investment ISAs remain part of corporate_wealth.
         folds = [
             op
-            for stage in UK_WEALTH_SOURCE_MANIFEST.stages
-            for op in stage.operations
+            for op in _manifest().stages[0].operations
             if op.kind == "fold_into"
         ]
         assert any(
@@ -60,22 +53,13 @@ class TestUkWealthManifest:
             for op in folds
         )
 
+    def test_donor_source_is_cited(self) -> None:
+        assert _manifest().stages[0].source.startswith("https://")
 
-class TestUkWealthPlan:
-    def test_plan_assembles_with_donor_citations(self) -> None:
-        plan = uk_wealth_plan(_noop_implementations())
-        assert tuple(stage.name for stage in plan.stages) == UK_WEALTH_STAGE_NAMES
-        donor_stages = dict(plan.donors())
-        assert set(donor_stages) == set(UK_WEALTH_DONORS)
-        for spec in donor_stages.values():
-            assert spec.source.startswith("https://")
 
-    def test_missing_stage_refuses_to_assemble(self) -> None:
-        with pytest.raises(ValueError, match="missing"):
-            uk_wealth_plan({})
-
-    def test_unknown_stage_refuses_to_assemble(self) -> None:
-        implementations = _noop_implementations()
-        implementations["not_a_stage"] = lambda frame: frame
-        with pytest.raises(ValueError, match="Unknown stage"):
-            uk_wealth_plan(implementations)
+class TestUkCountryPackage:
+    def test_manifest_is_registered_as_a_resource(self) -> None:
+        country_package = json.loads(
+            (UK_PACKAGE / "country_package.json").read_text(encoding="utf-8")
+        )
+        assert "wealth_source_stages.json" in country_package["resources"]
