@@ -11,3 +11,6 @@ out/
 !packages/*/build/
 # populace.build is a real namespace package, not a build-artifact dir
 !packages/populace-build/src/populace/build/
+
+# Release alert webhooks (real file is machine-local; .example is tracked)
+tools/release.env
