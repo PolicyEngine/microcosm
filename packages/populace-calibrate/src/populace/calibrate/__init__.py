@@ -10,12 +10,15 @@ Adam over the log-weights (positivity by construction). Multi-period targets sta
 ``(target, period)`` rows over the *same* weight vector — the charter's "one
 weight per trajectory".
 
-Three load-bearing options beyond the fit: ``mass`` ("free" or "conserve") to
+Load-bearing options beyond the fit include: ``mass`` ("free" or "conserve") to
 control the total; ``max_weight_ratio`` as a hard per-record bound (the guard
-against tail "landmine" records detonating on reweight); and ``target_records``
-for hard-concrete L0 pruning with budget control — the solver searches
+against tail "landmine" records detonating on reweight); ``target_records`` for
+hard-concrete L0 pruning with budget control — the solver searches
 ``l0_lambda`` so the achieved non-zero count tracks the budget (the
-generate-big-then-prune path). ``l0_lambda`` alone prunes at a fixed penalty.
+generate-big-then-prune path); and experimental ``l2_lambda`` as a soft
+concentration penalty. Under L0 gates, ``l2_lambda`` penalizes latent pre-gate
+weights so a nearly closed gate cannot hide an exploding underlying weight.
+``l0_lambda`` alone prunes at a fixed penalty.
 
 Importing this shard asserts compatibility with the installed
 :mod:`populace.frame` kernel — the constellation mechanism from DESIGN.md: a

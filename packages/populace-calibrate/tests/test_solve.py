@@ -10,6 +10,7 @@ a record budget with L0.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from populace.calibrate import (
@@ -19,7 +20,7 @@ from populace.calibrate import (
     default_target_loss_scales,
     relative_error_loss,
 )
-from populace.frame import WeightKind
+from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def _income_target(truth: float, factor: float) -> Target:
@@ -38,6 +39,51 @@ def _population_target(truth: float, factor: float) -> Target:
         value=truth * factor,
         measure="household_count",
     )
+
+
+def _effective_sample_size(weights: np.ndarray) -> float:
+    return float(weights.sum() ** 2 / np.square(weights).sum())
+
+
+def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
+    rng = np.random.default_rng(0)
+    n = 160
+    income = rng.lognormal(10.5, 1.0, n)
+    is_renter = (income < np.quantile(income, 0.35)).astype(float)
+    initial_weights = np.full(n, 1000.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "income": income,
+                    "is_renter": is_renter,
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * initial_weights).sum()) * 1.3,
+                measure="income",
+            ),
+            Target(
+                name="renters",
+                entity="household",
+                value=float((is_renter * initial_weights).sum()) * 0.7,
+                measure="is_renter",
+            ),
+        )
+    )
+    return frame, targets, initial_weights
 
 
 def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> None:
@@ -361,6 +407,138 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
     assert strong.l0_lambda == 3e-3
+
+
+def test_l2_lambda_zero_matches_default(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=80)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.2),
+            _income_target(truths["income"], 1.2),
+        )
+    )
+
+    default = calibrate(frame, targets, epochs=120, seed=0)
+    explicit_zero = calibrate(frame, targets, epochs=120, seed=0, l2_lambda=0.0)
+
+    np.testing.assert_array_equal(explicit_zero.weights, default.weights)
+
+
+@pytest.mark.parametrize("l2_lambda", [-1.0, float("inf"), float("nan")])
+def test_l2_lambda_must_be_finite_and_non_negative(
+    feasible_frame,
+    l2_lambda: float,
+) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+
+    with pytest.raises(ValueError, match="l2_lambda"):
+        calibrate(frame, targets, epochs=50, seed=0, l2_lambda=l2_lambda)
+
+
+def test_l2_lambda_records_provenance(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.1),))
+
+    result = calibrate(frame, targets, epochs=50, seed=0, l2_lambda=0.001)
+
+    assert result.options["l2_lambda"] == 0.001
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
+
+
+def test_l2_lambda_reduces_weight_concentration() -> None:
+    """A positive L2 penalty is a smooth concentration/ESS control.
+
+    The shifted targets below are easiest to fit by moving mass toward the
+    highest-income non-renter records. A small L2 penalty keeps the fit close
+    while making that concentration materially less extreme.
+    """
+
+    frame, targets, initial_weights = _l2_concentration_fixture()
+
+    baseline = calibrate(
+        frame,
+        targets,
+        epochs=500,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+    )
+    penalized = calibrate(
+        frame,
+        targets,
+        epochs=500,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l2_lambda=0.001,
+    )
+
+    baseline_ratio = baseline.weights / initial_weights
+    penalized_ratio = penalized.weights / initial_weights
+    assert penalized_ratio.max() < baseline_ratio.max() * 0.5
+    assert _effective_sample_size(penalized.weights) > (
+        _effective_sample_size(baseline.weights) * 2.0
+    )
+    assert penalized.final_loss <= baseline.final_loss + 0.02
+
+
+def test_l2_lambda_reduces_concentration_with_l0_gates_active() -> None:
+    frame, targets, initial_weights = _l2_concentration_fixture()
+
+    baseline = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+    )
+    penalized = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+        l2_lambda=0.001,
+    )
+
+    assert baseline.n_nonzero < len(initial_weights)
+    assert penalized.n_nonzero < len(initial_weights)
+    baseline_ratio = baseline.weights / initial_weights
+    penalized_ratio = penalized.weights / initial_weights
+    assert penalized_ratio.max() < baseline_ratio.max() * 0.5
+    assert _effective_sample_size(penalized.weights) > (
+        _effective_sample_size(baseline.weights) * 1.5
+    )
+    assert penalized.final_loss <= baseline.final_loss + 0.1
+
+
+def test_l2_lambda_is_fixed_during_target_record_budget_search(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+
+    result = calibrate(
+        frame,
+        targets,
+        epochs=250,
+        seed=0,
+        target_records=120,
+        l2_lambda=0.001,
+    )
+
+    assert abs(result.n_nonzero - 120) <= 60, result.n_nonzero
+    assert result.l0_lambda > 0.0
+    assert result.options["l2_lambda"] == 0.001
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
 
 
 def test_budget_iters_must_be_positive(feasible_frame) -> None:

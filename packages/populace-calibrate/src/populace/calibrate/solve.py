@@ -17,7 +17,7 @@ construction). It returns a
 are :class:`~populace.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
 
-Four declared options, each a real feature (and each its own test):
+Five declared options, each a real feature (and each its own test):
 
 - ``mass="free"`` (default) lets the total weight move to fit the targets;
   ``mass="conserve"`` projects every step's weights back to the input total, so
@@ -36,6 +36,12 @@ Four declared options, each a real feature (and each its own test):
 - ``l0_lambda`` alone (no ``target_records``) prunes at a fixed penalty: ``> 0``
   gates the pool, ``0.0`` keeps every record. It is the sole control when no
   budget is given.
+- ``l2_lambda`` adds an experimental soft concentration penalty on
+  ``mean((pre_gate_weight / initial_weight) ** 2)``. With no L0 gates this is
+  the realized weight ratio; with L0 gates it intentionally penalizes the
+  latent pre-gate weight so a nearly closed gate cannot hide an exploding
+  ``log_w``. It is cleanest as an ESS/design-effect knob under
+  ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
 """
 
 from __future__ import annotations
@@ -149,11 +155,11 @@ class CalibrationResult:
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
         options: The solver configuration as passed (method, epochs,
-            learning_rate, mass, max_weight_ratio, target_records, seed) plus
-            the realized ``matrix_format`` (``"dense"`` or ``"sparse_csr"``).
-            This is what a build records in its release manifest — the
-            max_weight_ratio bound is part of the dataset's provenance, not a
-            local solver detail.
+            learning_rate, mass, max_weight_ratio, target_records, seed,
+            l2_lambda) plus the realized ``matrix_format`` (``"dense"`` or
+            ``"sparse_csr"``). This is what a build records in its release
+            manifest — the max_weight_ratio bound is part of the dataset's
+            provenance, not a local solver detail.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -472,6 +478,7 @@ def _optimize(
     conserve_mass: bool,
     max_weight_ratio: float | None,
     l0_lambda: float,
+    l2_lambda: float,
     target_records: int | None,
     init_mean: float,
     temperature: float,
@@ -505,6 +512,7 @@ def _optimize(
         if max_weight_ratio is not None
         else None
     )
+    w0_t = torch.tensor(w0, dtype=torch.float32) if l2_lambda > 0.0 else None
 
     trajectory = np.empty(epochs, dtype=np.float64)
     for epoch in range(epochs):
@@ -525,7 +533,14 @@ def _optimize(
             if (gates is not None and l0_lambda > 0.0)
             else torch.zeros((), dtype=torch.float32)
         )
-        total_loss = loss + penalty
+        # Penalize latent pre-gate weights. Under L0, a nearly closed gate
+        # should not be able to hide a very large exp(log_w).
+        l2_penalty = (
+            ((torch.exp(log_w) / w0_t) ** 2).mean()
+            if w0_t is not None
+            else torch.zeros((), dtype=torch.float32)
+        )
+        total_loss = loss + penalty + l2_lambda * l2_penalty
         trajectory[epoch] = float(loss.item())
         if progress_callback is not None:
             progress_callback(
@@ -603,6 +618,7 @@ def _search_l0_lambda_for_budget(
     learning_rate: float,
     conserve_mass: bool,
     max_weight_ratio: float | None,
+    l2_lambda: float,
     init_mean: float,
     temperature: float,
     seed: int,
@@ -636,6 +652,8 @@ def _search_l0_lambda_for_budget(
         target_records: The non-zero budget to hit.
         epochs, learning_rate, conserve_mass, max_weight_ratio, init_mean,
             temperature: Passed through to :func:`_optimize`.
+        l2_lambda: Fixed soft concentration penalty passed through to
+            :func:`_optimize`; the budget search varies only ``l0_lambda``.
         seed: Reseeded before every evaluation for a deterministic response.
         prune_atol: Threshold counting a weight as non-zero (a survivor).
         initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
@@ -667,6 +685,7 @@ def _search_l0_lambda_for_budget(
             conserve_mass=conserve_mass,
             max_weight_ratio=max_weight_ratio,
             l0_lambda=lam,
+            l2_lambda=l2_lambda,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -832,6 +851,7 @@ def calibrate(
     max_weight_ratio: float | None = None,
     target_records: int | None = None,
     l0_lambda: float = 0.0,
+    l2_lambda: float = 0.0,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -879,6 +899,16 @@ def calibrate(
             ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
             ``0.0`` (default) keeps every record. When ``target_records`` is set,
             this is only the budget search's warm start (the search overrides it).
+        l2_lambda: Experimental soft concentration penalty strength. ``0.0``
+            (default) preserves the unpenalized path. Positive values add
+            ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
+            optimization loss while leaving ``max_weight_ratio`` as the hard
+            per-record cap. When L0 gates are active, this is a latent pre-gate
+            penalty on ``exp(log_w)``, not the realized gated returned weight;
+            that preserves the original L0 behavior of discouraging hidden
+            weight explosion behind partially closed gates. Its ESS/design-effect
+            interpretation is cleanest with ``mass="conserve"``; with
+            ``mass="free"`` it also penalizes total weight scale.
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -912,8 +942,8 @@ def calibrate(
         ValueError: If ``method`` is unknown, ``mass`` is not ``"free"`` or
             ``"conserve"``, ``epochs`` is not positive, ``max_weight_ratio`` is
             given and is not ``> 0``, or ``target_records`` is given and is not
-            a positive integer; or if no targets compile (from the matrix
-            build).
+            a positive integer, or ``l2_lambda`` is negative or non-finite; or if
+            no targets compile (from the matrix build).
     """
     if method not in ("apg", "adam"):
         raise ValueError(
@@ -947,6 +977,8 @@ def calibrate(
         raise ValueError(
             f"target_records must be a positive integer, got {target_records!r}."
         )
+    if not math.isfinite(l2_lambda) or l2_lambda < 0.0:
+        raise ValueError(f"l2_lambda must be finite and non-negative, got {l2_lambda!r}.")
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
     target_loss_cap = _validate_target_loss_cap(target_loss_cap)
@@ -1029,6 +1061,7 @@ def calibrate(
                 learning_rate=learning_rate,
                 conserve_mass=(mass == CONSERVE_MASS),
                 max_weight_ratio=max_weight_ratio,
+                l2_lambda=l2_lambda,
                 init_mean=init_mean,
                 temperature=temperature,
                 seed=seed,
@@ -1052,6 +1085,7 @@ def calibrate(
             conserve_mass=(mass == CONSERVE_MASS),
             max_weight_ratio=max_weight_ratio,
             l0_lambda=effective_l0,
+            l2_lambda=l2_lambda,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -1106,6 +1140,8 @@ def calibrate(
             "mass": mass,
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
+            "l2_lambda": l2_lambda,
+            "l2_penalty": "mean_initial_pre_gate_weight_ratio_squared",
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "target_loss_scales": _target_loss_scale_options(

@@ -48,6 +48,14 @@ reproduces them.
   (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.
 - **`l0_lambda`** alone (no `target_records`) prunes at a fixed penalty: `> 0`
   gates the pool, `0.0` keeps every record.
+- **`l2_lambda`** is an experimental soft concentration knob: positive values
+  add `l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)` to the loss.
+  With no L0 gates this is the calibrated weight ratio; with L0 gates it is
+  intentionally latent/pre-gate, so a nearly closed gate cannot hide an exploding
+  underlying weight. It is useful for ESS/design-effect sweeps when
+  `max_weight_ratio` is too blunt, especially with `mass="conserve"`; under
+  `mass="free"` it also penalizes total weight scale. It is not a safety
+  guarantee and does not replace the hard ratio cap.
 
 ## Example
 
