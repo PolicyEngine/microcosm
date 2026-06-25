@@ -46,6 +46,7 @@ Six declared options, each a real feature (and each its own test):
   latent pre-gate weight so a nearly closed gate cannot hide an exploding
   ``log_w``. It is cleanest as an ESS/design-effect knob under
   ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
+  This penalty is only implemented by ``method="adam"``.
 """
 
 from __future__ import annotations
@@ -1103,6 +1104,11 @@ def calibrate(
         raise ValueError(
             "method='prox' is the L1 selection path and does not use L0 gates; pass "
             "l0_lambda=0 and target_records=None (use method='adam' for L0/budget search)."
+        )
+    if method == "prox" and l2_lambda > 0.0:
+        raise ValueError(
+            "method='prox' does not implement l2_lambda; use method='adam' for the "
+            "L2 concentration penalty or pass l2_lambda=0."
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")

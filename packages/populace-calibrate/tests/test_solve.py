@@ -127,6 +127,13 @@ def test_l1_lambda_requires_prox_method() -> None:
         calibrate(frame, targets, method="adam", l1_lambda=0.5, epochs=10, seed=0)
 
 
+def test_method_prox_rejects_l2_lambda() -> None:
+    """The prox path must not record an L2 objective it does not optimize."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="method='prox' does not implement l2_lambda"):
+        calibrate(frame, targets, method="prox", l2_lambda=0.001, epochs=10, seed=0)
+
+
 def test_method_prox_l1_uses_mean_ratio_penalty_scale() -> None:
     """The prox shrink matches l1_lambda * mean(weight / initial_weight)."""
     initial_weights = np.array([100.0, 200.0, 300.0, 400.0])
@@ -169,6 +176,52 @@ def test_method_prox_l1_uses_mean_ratio_penalty_scale() -> None:
     expected_ratio = 1.0 - (learning_rate * l1_lambda / n)
     np.testing.assert_allclose(result.weights / initial_weights, expected_ratio)
     assert result.options["l1_penalty"] == "mean_initial_weight_ratio_abs"
+
+
+def test_method_prox_l1_uses_effective_step_with_nonzero_gradient() -> None:
+    """The L1 threshold uses the RMS-normalized smooth step, not raw lr."""
+    initial_weights = np.array([100.0, 200.0, 300.0, 400.0])
+    n = initial_weights.size
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    target = float(initial_weights.sum() * 2.0)
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=target,
+                measure="household_count",
+            ),
+        )
+    )
+    learning_rate = 0.2
+    l1_lambda = 0.8
+
+    result = calibrate(
+        frame,
+        targets,
+        method="prox",
+        l1_lambda=l1_lambda,
+        learning_rate=learning_rate,
+        epochs=1,
+        seed=0,
+    )
+
+    grad = -initial_weights / target
+    step_size = learning_rate / np.sqrt(np.mean(grad**2))
+    expected_ratio = 1.0 - (step_size * grad) - (step_size * l1_lambda / n)
+    np.testing.assert_allclose(result.weights / initial_weights, expected_ratio)
 
 
 def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> None:
