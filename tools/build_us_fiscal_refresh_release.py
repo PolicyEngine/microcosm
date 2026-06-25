@@ -946,10 +946,11 @@ def _dataset_from_frame(
     system=None,
     assert_no_formula_owned_columns: bool = True,
 ):
-    from policyengine_us.data import USSingleYearDataset
-
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame)
+
+    from policyengine_us.data import USSingleYearDataset
+
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
         if system is None:
