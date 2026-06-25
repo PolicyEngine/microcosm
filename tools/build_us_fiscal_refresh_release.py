@@ -731,6 +731,7 @@ def _aca_source_tax_unit_table_batched(
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
 ) -> pd.DataFrame:
+    _assert_no_formula_owned_columns(frame)
     tax_unit = frame.table("tax_unit").copy()
     household = frame.table("household")
     positions = _tax_unit_to_household_positions(frame)
@@ -774,7 +775,12 @@ def _aca_source_tax_unit_table_batched(
             if full_batch
             else _select_households_by_position(frame, household_positions)
         )
-        batch_simulation = microsimulation_cls(dataset=_dataset_from_frame(batch_frame))
+        batch_simulation = microsimulation_cls(
+            dataset=_dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
+        )
         batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
             batch_frame,
             target_tables,
@@ -938,10 +944,12 @@ def _dataset_from_frame(
     *,
     zero_variables: Iterable[str] = (),
     system=None,
+    assert_no_formula_owned_columns: bool = True,
 ):
     from policyengine_us.data import USSingleYearDataset
 
-    _assert_no_formula_owned_columns(frame)
+    if assert_no_formula_owned_columns:
+        _assert_no_formula_owned_columns(frame)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
         if system is None:
@@ -1063,6 +1071,7 @@ def _reform_household_income_tax(
     n_households: int,
     batch_size: int | None,
 ) -> np.ndarray:
+    _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
     batches = tuple(_household_position_batches(n_households, batch_size))
@@ -1085,6 +1094,7 @@ def _reform_household_income_tax(
             batch_frame,
             zero_variables=(reform_spec.neutralized_variable,),
             system=system,
+            assert_no_formula_owned_columns=False,
         )
         reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
         batch_income_tax = _collapse_tax_unit(
@@ -1482,7 +1492,11 @@ def _materialize_target_frame(
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     _assert_supported_ledger_filter_metadata(target_specs)
-    dataset = _dataset_from_frame(base_frame)
+    _assert_no_formula_owned_columns(base_frame)
+    dataset = _dataset_from_frame(
+        base_frame,
+        assert_no_formula_owned_columns=False,
+    )
     simulation = Microsimulation(dataset=dataset)
     system = CountryTaxBenefitSystem()
     household = base_frame.table("household")
@@ -1707,7 +1721,7 @@ def _materialize_target_frame(
         tax_unit_itemizes,
     )
     simulation._invalidate_all_caches()
-    del simulation
+    del simulation, dataset
     gc.collect()
     requested_reform_measures = {spec.measure for spec in target_specs}
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:

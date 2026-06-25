@@ -1656,6 +1656,8 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
     }
     person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
     seen_tax_unit_batches: list[tuple[int, ...]] = []
+    formula_owned_assertions: list[int] = []
+    dataset_assert_flags: list[bool | None] = []
 
     class FakeMicrosimulation:
         def __init__(self, *, dataset):
@@ -1685,7 +1687,19 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
             dtype=np.float64,
         )
 
-    monkeypatch.setattr(builder, "_dataset_from_frame", lambda frame, **kwargs: frame)
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
+
+    def fake_dataset_from_frame(frame_arg, **kwargs):
+        dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        return frame_arg
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
 
     tax_unit = builder._aca_source_tax_unit_table_batched(
@@ -1696,6 +1710,8 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
     ).set_index("tax_unit_id")
 
     assert seen_tax_unit_batches == [(10,), (20,), (30,)]
+    assert formula_owned_assertions == [3]
+    assert dataset_assert_flags == [False, False, False]
     assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
@@ -1903,6 +1919,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     datasets = []
     simulations = []
+    formula_owned_assertions: list[int] = []
 
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
@@ -1945,14 +1962,30 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
-    def fake_dataset_from_frame(frame_arg, *, zero_variables=(), system=None):
-        datasets.append((frame_arg, tuple(zero_variables), system))
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        datasets.append(
+            (
+                frame_arg,
+                tuple(zero_variables),
+                system,
+                assert_no_formula_owned_columns,
+            )
+        )
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
     def fake_make_zero_variable_reform(system, variable_name):
         assert isinstance(system, FakeSystem)
         assert variable_name == "mock_credit"
         return object()
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
 
     monkeypatch.setitem(
         sys.modules,
@@ -1961,6 +1994,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             CountryTaxBenefitSystem=FakeSystem,
             Microsimulation=FakeMicrosimulation,
         ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
     )
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
@@ -1986,6 +2024,8 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         ("mock_credit",),
     ]
     assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False]
+    assert formula_owned_assertions == [2, 2]
     assert len(simulations) == 3
     assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
 
@@ -2942,6 +2982,26 @@ def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) ->
             small_frame,
             np.array([1000.0, 2000.0]),
         )
+
+
+def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    def fake_assert_no_formula_owned_columns(frame):
+        assert frame is small_frame
+        raise ValueError("formula-owned guard fired")
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+
+    with pytest.raises(ValueError, match="formula-owned guard fired"):
+        builder._dataset_from_frame(small_frame)
 
 
 def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
