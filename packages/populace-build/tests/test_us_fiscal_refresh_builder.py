@@ -1134,7 +1134,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed: frame,
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
     )
     monkeypatch.setattr(
         builder,
@@ -1585,6 +1585,132 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
     )
 
 
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20, 30], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200, 300], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000, 3000], dtype="int64"),
+            "person_marital_unit_id": np.asarray(
+                [10000, 10000, 20000, 30000], dtype="int64"
+            ),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "state_fips": np.asarray([1, 1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2, 0.3],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200, 300]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000, 3000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000, 30000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 20.0, 30.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    target_tables = {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {
+                "state_fips": ["01"],
+                "target": [3.0],
+            }
+        )
+    }
+    tax_values = {
+        10: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 100.0,
+            "health_insurance_premiums_without_medicare_part_b": 400.0,
+            "slcsp": 1000.0,
+        },
+        20: {
+            "is_aca_ptc_eligible": 0.0,
+            "aca_ptc": 200.0,
+            "health_insurance_premiums_without_medicare_part_b": 500.0,
+            "slcsp": 1100.0,
+        },
+        30: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 300.0,
+            "health_insurance_premiums_without_medicare_part_b": 600.0,
+            "slcsp": 1200.0,
+        },
+    }
+    person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
+    seen_tax_unit_batches: list[tuple[int, ...]] = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.dataset = dataset
+            seen_tax_unit_batches.append(
+                tuple(dataset.table("tax_unit")["tax_unit_id"].astype(int))
+            )
+
+        def _invalidate_all_caches(self):
+            pass
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        if map_to == "person":
+            return np.asarray(
+                [
+                    person_eligible[int(person_id)]
+                    for person_id in simulation.dataset.table("person")["person_id"]
+                ],
+                dtype=np.float64,
+            )
+        assert map_to == "tax_unit"
+        return np.asarray(
+            [
+                tax_values[int(tax_unit_id)][variable]
+                for tax_unit_id in simulation.dataset.table("tax_unit")["tax_unit_id"]
+            ],
+            dtype=np.float64,
+        )
+
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda frame, **kwargs: frame)
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    tax_unit = builder._aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=FakeMicrosimulation,
+        maximum_microsim_batch_size=1,
+    ).set_index("tax_unit_id")
+
+    assert seen_tax_unit_batches == [(10,), (20,), (30,)]
+    assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
+    assert bool(tax_unit.loc[10, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[20, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[30, "is_aca_ptc_eligible"]) is False
+    assert tax_unit.loc[10, "assigned_aca_ptc"] == 100.0
+    assert (
+        tax_unit.loc[20, "health_insurance_premiums_without_medicare_part_b"] == 500.0
+    )
+    assert tax_unit.loc[30, "slcsp"] == 1200.0
+    assert tax_unit.loc[10, "aca_take_up_rate"] == 0.075
+    assert tax_unit.loc[30, "aca_take_up_rate"] == 0.0
+
+
 def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
     builder = _load_builder_module()
     specs = (
@@ -1658,8 +1784,8 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "_aca_source_tax_unit_table",
-        lambda frame, target_tables, *, simulation: pd.DataFrame(
-            {"tax_unit_id": [10, 20], "state_fips": ["06", "06"]}
+        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None: (
+            pd.DataFrame({"tax_unit_id": [10, 20], "state_fips": ["06", "06"]})
         ),
     )
     monkeypatch.setattr(builder, "run_source_stage", fake_run_source_stage)

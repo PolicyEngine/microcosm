@@ -80,7 +80,7 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
-DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 25_000
+DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
@@ -664,7 +664,7 @@ def _aca_source_person_table(frame: Frame) -> pd.DataFrame:
     return person
 
 
-def _aca_source_tax_unit_table(
+def _aca_source_tax_unit_table_from_simulation(
     frame: Frame,
     target_tables: Mapping[str, pd.DataFrame],
     *,
@@ -724,12 +724,112 @@ def _aca_source_tax_unit_table(
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
+def _aca_source_tax_unit_table_batched(
+    frame: Frame,
+    target_tables: Mapping[str, pd.DataFrame],
+    *,
+    microsimulation_cls,
+    maximum_microsim_batch_size: int | None,
+) -> pd.DataFrame:
+    tax_unit = frame.table("tax_unit").copy()
+    household = frame.table("household")
+    positions = _tax_unit_to_household_positions(frame)
+    tax_unit["state_fips"] = _state_fips_text(
+        np.asarray(household["state_fips"].to_numpy())[positions]
+    )
+
+    fill_columns = (
+        "tax_unit_weight",
+        "is_aca_ptc_eligible",
+        "health_insurance_premiums_without_medicare_part_b",
+        "assigned_aca_ptc",
+        "slcsp",
+    )
+    tax_unit["tax_unit_weight"] = 0.0
+    tax_unit["is_aca_ptc_eligible"] = False
+    tax_unit["health_insurance_premiums_without_medicare_part_b"] = 0.0
+    tax_unit["assigned_aca_ptc"] = 0.0
+    tax_unit["slcsp"] = 0.0
+
+    tax_unit_positions = pd.Series(
+        np.arange(len(tax_unit), dtype=np.int64),
+        index=tax_unit["tax_unit_id"].to_numpy(),
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing ACA source inputs in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+
+    for household_positions in batches:
+        full_batch = len(household_positions) == n_households
+        batch_frame = (
+            frame
+            if full_batch
+            else _select_households_by_position(frame, household_positions)
+        )
+        batch_simulation = microsimulation_cls(dataset=_dataset_from_frame(batch_frame))
+        batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
+            batch_frame,
+            target_tables,
+            simulation=batch_simulation,
+        )
+        full_positions = tax_unit_positions.reindex(
+            batch_tax_unit["tax_unit_id"].to_numpy()
+        ).to_numpy()
+        if np.isnan(full_positions).any():
+            raise RuntimeError(
+                "ACA source batch produced tax_unit_id values not present in "
+                "the full tax_unit table."
+            )
+        full_positions = full_positions.astype(np.int64)
+        for column in fill_columns:
+            tax_unit.iloc[
+                full_positions,
+                tax_unit.columns.get_loc(column),
+            ] = batch_tax_unit[column].to_numpy()
+        batch_simulation._invalidate_all_caches()
+        del batch_tax_unit, batch_simulation, batch_frame
+        gc.collect()
+    return _with_state_take_up_rates(tax_unit, target_tables)
+
+
+def _aca_source_tax_unit_table(
+    frame: Frame,
+    target_tables: Mapping[str, pd.DataFrame],
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> pd.DataFrame:
+    if simulation is not None:
+        return _aca_source_tax_unit_table_from_simulation(
+            frame,
+            target_tables,
+            simulation=simulation,
+        )
+    from policyengine_us import Microsimulation
+
+    return _aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=Microsimulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+
+
 def _with_aca_marketplace_source_outputs(
     frame: Frame,
     target_specs: tuple,
     *,
     seed: int,
     simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> Frame:
     target_tables = _aca_source_target_tables(target_specs)
     if US_ACA_APTC_TARGET_TABLE not in target_tables:
@@ -738,10 +838,6 @@ def _with_aca_marketplace_source_outputs(
             "The Marketplace enrollment target is observed person coverage and "
             "must not be used as a simulated PTC take-up fallback."
         )
-    if simulation is None:
-        from policyengine_us import Microsimulation
-
-        simulation = Microsimulation(dataset=_dataset_from_frame(frame))
     stage = US_SOURCE_MANIFEST.stage_map()[US_ACA_MARKETPLACE_STAGE]
     stop_after = (
         None
@@ -754,6 +850,7 @@ def _with_aca_marketplace_source_outputs(
             frame,
             target_tables,
             simulation=simulation,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
         ),
         **target_tables,
     }
@@ -2802,6 +2899,7 @@ def main() -> None:
         base_frame,
         target_specs,
         seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
     health_input_gate = _health_input_signal_gate(base_frame)
     if not health_input_gate.passed:
