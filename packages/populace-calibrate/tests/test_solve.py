@@ -86,6 +86,91 @@ def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
     return frame, targets, initial_weights
 
 
+def test_method_prox_l1_selects_sparse_subset() -> None:
+    """method='prox' with an L1 penalty drives a strict subset to exact zero."""
+    frame, targets, w0 = _l2_concentration_fixture()
+    n = w0.size
+    dense = calibrate(frame, targets, method="prox", l1_lambda=0.0, epochs=300, seed=0)
+    assert dense.n_nonzero == n  # no penalty -> nothing pruned
+    assert dense.final_loss < dense.initial_loss  # the prox path actually fits
+
+    sparse = calibrate(frame, targets, method="prox", l1_lambda=0.5, epochs=300, seed=0)
+    weights = np.asarray(sparse.weights)
+    assert 0 < sparse.n_nonzero < n  # a budget-controllable sparse subset
+    assert np.all(weights >= 0.0)  # weights stay non-negative
+    assert (weights == 0.0).any()  # and exactly zero, not merely small
+
+
+def test_l1_lambda_is_budget_monotone() -> None:
+    """A larger L1 penalty retains no more records -- the budget knob is monotone."""
+    frame, targets, _ = _l2_concentration_fixture()
+    counts = [
+        calibrate(
+            frame, targets, method="prox", l1_lambda=lam, epochs=300, seed=0
+        ).n_nonzero
+        for lam in (0.3, 0.5, 1.0)
+    ]
+    assert counts[0] >= counts[1] >= counts[2]
+
+
+def test_apg_method_is_rejected() -> None:
+    """The misleading 'apg' alias (it only ran Adam) is gone; the label is honest now."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="Unknown method"):
+        calibrate(frame, targets, method="apg", epochs=10, seed=0)
+
+
+def test_l1_lambda_requires_prox_method() -> None:
+    """l1_lambda needs the proximal solver; Adam cannot soft-threshold to zero."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="l1_lambda requires method='prox'"):
+        calibrate(frame, targets, method="adam", l1_lambda=0.5, epochs=10, seed=0)
+
+
+def test_method_prox_l1_uses_mean_ratio_penalty_scale() -> None:
+    """The prox shrink matches l1_lambda * mean(weight / initial_weight)."""
+    initial_weights = np.array([100.0, 200.0, 300.0, 400.0])
+    n = initial_weights.size
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=float(initial_weights.sum()),
+                measure="household_count",
+            ),
+        )
+    )
+    learning_rate = 0.2
+    l1_lambda = 0.8
+
+    result = calibrate(
+        frame,
+        targets,
+        method="prox",
+        l1_lambda=l1_lambda,
+        learning_rate=learning_rate,
+        epochs=1,
+        seed=0,
+    )
+
+    expected_ratio = 1.0 - (learning_rate * l1_lambda / n)
+    np.testing.assert_allclose(result.weights / initial_weights, expected_ratio)
+    assert result.options["l1_penalty"] == "mean_initial_weight_ratio_abs"
+
+
 def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> None:
     frame, truths = feasible_frame()
     # Shift both targets by the same factor so a uniform rescale hits both.
