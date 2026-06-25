@@ -66,6 +66,9 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "taxable_ira_distributions",
     "unemployment_compensation",
     "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
@@ -78,6 +81,13 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "partnership_income",
     "s_corp_income",
     "partnership_self_employment_net_earnings",
+)
+
+PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
 )
 
 PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
@@ -118,6 +128,9 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "taxable_ira_distributions",
         "unemployment_compensation",
         "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -377,6 +390,13 @@ def impute_us_puf_tax_detail_support(
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
+    _reconcile_puf_social_security_components(
+        predictions,
+        tables["person"],
+        person_channel=person_channel,
+        tax_unit_ids=tax_unit_ids,
+        requested_components=person_outputs,
+    )
     for column in tax_unit_outputs:
         _ensure_float_output_column(tables["tax_unit"], column)
         tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
@@ -741,6 +761,81 @@ def _write_person_tax_unit_totals(
     person.loc[mask, column] = allocation
 
 
+def _reconcile_puf_social_security_components(
+    predictions: pd.DataFrame,
+    person: pd.DataFrame,
+    *,
+    person_channel: str,
+    tax_unit_ids: np.ndarray,
+    requested_components: Sequence[str],
+) -> None:
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components:
+        return
+    if set(components) != set(PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS):
+        raise ValueError(
+            "PUF Social Security support must request all Social Security "
+            f"component leaves, got {components!r}."
+        )
+    missing = [component for component in components if component not in predictions]
+    if missing:
+        raise ValueError(
+            "PUF Social Security predictions are missing component column(s): "
+            f"{missing}."
+        )
+
+    puf_person = person.loc[
+        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        ["person_tax_unit_id"],
+    ].copy()
+    for component in components:
+        if component in person.columns:
+            puf_person[component] = (
+                pd.to_numeric(
+                    person.loc[
+                        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                        component,
+                    ],
+                    errors="coerce",
+                )
+                .fillna(0.0)
+                .clip(lower=0.0)
+                .to_numpy(dtype=np.float64)
+            )
+        else:
+            puf_person[component] = np.zeros(
+                len(puf_person),
+                dtype=np.float64,
+            )
+    basis = (
+        puf_person.groupby("person_tax_unit_id", sort=False)[list(components)]
+        .sum()
+        .reindex(tax_unit_ids)
+        .fillna(0.0)
+    )
+    basis_values = basis.to_numpy(dtype=np.float64)
+    basis_sums = basis_values.sum(axis=1)
+    shares = np.zeros_like(basis_values)
+    has_basis = basis_sums > 0
+    shares[has_basis] = basis_values[has_basis] / basis_sums[has_basis, np.newaxis]
+    shares[~has_basis] = 1.0 / len(components)
+
+    total = (
+        predictions.loc[:, list(components)]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0)
+        .sum(axis=1)
+        .to_numpy(dtype=np.float64)
+    )
+    for index, component in enumerate(components):
+        predictions[component] = shares[:, index] * total
+
+
 def _person_source_values(
     arrays: Mapping[str, Sequence[Any]],
     output: str,
@@ -779,7 +874,12 @@ def _person_source_values(
         "taxable_unemployment_compensation" in arrays
     ):
         return _numeric_array(arrays["taxable_unemployment_compensation"])
-    if output == "social_security_retirement":
+    if output in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS:
+        if output != "social_security_retirement":
+            for source in ("social_security", "total_social_security", "E02400"):
+                if source in arrays:
+                    return np.zeros_like(_numeric_array(arrays[source]))
+            return None
         for source in ("social_security", "total_social_security", "E02400"):
             if source in arrays:
                 return _numeric_array(arrays[source])

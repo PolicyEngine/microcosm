@@ -237,6 +237,9 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "non_qualified_dividend_income",
             "home_mortgage_interest",
             "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
             "unemployment_compensation",
         ),
         tax_unit_outputs=(),
@@ -248,6 +251,9 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert donor["non_qualified_dividend_income"].tolist() == [3.0, 3.0]
     assert donor["puf_predictor_dividend_income"].tolist() == [12.0, 9.0]
     assert donor["social_security_retirement"].tolist() == [300.0, 300.0]
+    assert donor["social_security_disability"].tolist() == [0.0, 0.0]
+    assert donor["social_security_dependents"].tolist() == [0.0, 0.0]
+    assert donor["social_security_survivors"].tolist() == [0.0, 0.0]
     assert "social_security" not in donor
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
     assert donor["home_mortgage_interest"].tolist() == [30.0, 30.0]
@@ -263,6 +269,9 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "ordinary_dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "social_security_retirement" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_disability" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_dependents" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_survivors" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "social_security" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
@@ -601,6 +610,92 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         [1_000.0, 1_000.0],
     )
     assert "tax_unit_partnership_s_corp_income" not in imputed.table("tax_unit")
+
+
+def test_puf_tax_detail_imputation_reconciles_social_security_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TotalSocialSecurityQRF:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def fit(
+            self,
+            *_: object,
+            **__: object,
+        ) -> "TotalSocialSecurityQRF":
+            return self
+
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "social_security_retirement": [400.0, 800.0],
+                    "social_security_disability": [0.0, 0.0],
+                    "social_security_dependents": [0.0, 0.0],
+                    "social_security_survivors": [0.0, 0.0],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", TotalSocialSecurityQRF)
+
+    base = _minimal_us_frame()
+    person = base.table("person")
+    person["social_security_retirement"] = [100.0, 0.0, 0.0]
+    person["social_security_disability"] = [0.0, 100.0, 0.0]
+    person["social_security_dependents"] = [0.0, 0.0, 0.0]
+    person["social_security_survivors"] = [0.0, 0.0, 0.0]
+    expanded = clone_us_frame_for_puf_support(base)
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0],
+            "tax_unit_person_count": [1.0, 2.0],
+            "social_security_retirement": [1_000.0, 2_000.0],
+            "social_security_disability": [0.0, 0.0],
+            "social_security_dependents": [0.0, 0.0],
+            "social_security_survivors": [0.0, 0.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    person = imputed.table("person")
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    puf_totals = puf_people.groupby("person_tax_unit_id")[
+        [
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+        ]
+    ].sum()
+    np.testing.assert_allclose(
+        puf_totals.to_numpy(),
+        [
+            [200.0, 200.0, 0.0, 0.0],
+            [200.0, 200.0, 200.0, 200.0],
+        ],
+    )
+    assert "social_security" not in person.columns
 
 
 def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
