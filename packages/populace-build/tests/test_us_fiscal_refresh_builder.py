@@ -2107,6 +2107,45 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             count=True,
         ),
         TargetSpec(
+            name="eitc_return_agi",
+            entity="household",
+            measure="eitc_return_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+            },
+        ),
+        TargetSpec(
+            name="eitc_return_count",
+            entity="household",
+            measure="eitc_return_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "count",
+                "source_variable": "count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+                "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
             name="form_w2_social_security_tips",
             entity="household",
             measure="form_w2_social_security_tips",
@@ -2359,6 +2398,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         builder,
         "SOI_VARIABLE_MAP",
         {
+            "adjusted_gross_income": "adjusted_gross_income",
             "eitc": "eitc",
             "itemized_taxable_income_deductions": (
                 "itemized_taxable_income_deductions"
@@ -2383,6 +2423,10 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(household["three_plus_amount"], np.asarray([0.0, 300.0]))
     assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["three_plus_return_count"], np.asarray([0.0, 1.0]))
+    assert np.array_equal(
+        household["eitc_return_agi"], np.asarray([30_000.0, 30_000.0])
+    )
+    assert np.array_equal(household["eitc_return_count"], np.asarray([2.0, 1.0]))
     assert np.array_equal(
         household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
     )
@@ -2412,7 +2456,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
     )
-    assert len(registry) == 16
+    assert len(registry) == 18
     assert compilation["dropped_target_names"] == []
 
 

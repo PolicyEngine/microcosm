@@ -1312,6 +1312,13 @@ def _soi_eitc_child_count_filter(metadata: Mapping[str, str]) -> str | None:
     return None
 
 
+def _soi_requires_positive_eitc_filter(metadata: Mapping[str, str]) -> bool:
+    return (
+        metadata.get("ledger_domain")
+        == "individual_income_tax_returns_with_earned_income_credit"
+    )
+
+
 def _is_noop_ledger_filter_value(value: str) -> bool:
     return value.strip().lower().replace("_", " ") in {"", "all"}
 
@@ -1688,6 +1695,10 @@ def _materialize_target_frame(
             if eitc_child_count is None:
                 continue
             mask &= _eitc_child_count_mask(eitc_child_count, child_filter)
+        if _soi_requires_positive_eitc_filter(spec.metadata):
+            if "eitc" not in variable_cache:
+                continue
+            mask &= variable_cache["eitc"] > 0
         if spec.metadata.get("itemized_only") == "true":
             if tax_unit_itemizes is None:
                 continue
