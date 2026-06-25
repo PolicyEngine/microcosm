@@ -237,9 +237,18 @@ class TestUsSources:
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
+            < kinds.index("derive_puf_policyengine_variables")
             < kinds.index("disaggregate_aggregate_records")
             < kinds.index("uprate")
         )
+
+        derive_operation = operations[kinds.index("derive_puf_policyengine_variables")]
+        assert derive_operation.parameters == {
+            "ordinary_dividend_source": "E00600",
+            "qualified_dividend_source": "E00650",
+            "qualified_dividend_output": "qualified_dividend_income",
+            "non_qualified_dividend_output": "non_qualified_dividend_income",
+        }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]
         assert operation.parameters == {

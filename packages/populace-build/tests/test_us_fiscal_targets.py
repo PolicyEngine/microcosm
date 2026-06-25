@@ -1652,8 +1652,38 @@ def test_soi_alias_targets_expose_policyengine_base_variable() -> None:
     specs = {spec.name: spec for spec in registry.specs}
     spec = specs[source_record_id]
     assert spec.family == "irs_soi"
-    assert spec.metadata["variable"] == "ordinary_dividends"
-    assert spec.metadata["base_variable"] == "dividend_income"
+    assert spec.metadata["variable"] == "ordinary_dividend_income"
+    assert spec.metadata["source_variable"] == "ordinary_dividends"
+    assert spec.metadata["base_variables"] == (
+        "qualified_dividend_income,non_qualified_dividend_income"
+    )
+    assert "base_variable" not in spec.metadata
+    assert spec.metadata["measure_mode"] == "sum"
+
+
+def test_cbo_net_business_income_uses_source_aligned_policyengine_variable() -> None:
+    source_record_id = (
+        "cbo.cy2024.income_by_source.net_business_income.projected_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="cbo",
+                measure_id="projected_amount",
+                groupby_dimension="income_source",
+                groupby_value_id="net_business_income",
+                value=1_700_000_000_000,
+            ),
+        ]
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "cbo"
+    assert spec.metadata["target_role"] == "cbo_net_business_income"
+    assert spec.metadata["base_variable"] == "cbo_net_business_income"
     assert spec.metadata["measure_mode"] == "sum"
 
 

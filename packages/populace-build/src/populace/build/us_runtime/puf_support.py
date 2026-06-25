@@ -53,19 +53,19 @@ PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
 )
 
 PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
-    "employment_income",
-    "self_employment_income",
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
     "taxable_interest_income",
-    "dividend_income",
     "qualified_dividend_income",
+    "non_qualified_dividend_income",
     "tax_exempt_interest_income",
     "short_term_capital_gains",
-    "long_term_capital_gains",
+    "long_term_capital_gains_before_response",
     "non_sch_d_capital_gains",
-    "taxable_pension_income",
+    "taxable_private_pension_income",
     "taxable_ira_distributions",
     "unemployment_compensation",
-    "social_security",
+    "social_security_retirement",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
@@ -85,14 +85,18 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS = (
 _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
     {
         "employment_income",
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
         "taxable_interest_income",
-        "dividend_income",
         "qualified_dividend_income",
+        "non_qualified_dividend_income",
         "tax_exempt_interest_income",
+        "long_term_capital_gains_before_response",
         "taxable_pension_income",
+        "taxable_private_pension_income",
         "taxable_ira_distributions",
         "unemployment_compensation",
-        "social_security",
+        "social_security_retirement",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -102,6 +106,21 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "state_withheld_income_tax",
     }
 )
+_PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
+    "employment_income": ("employment_income_before_lsr",),
+    "self_employment_income": ("self_employment_income_before_lsr",),
+    "long_term_capital_gains": ("long_term_capital_gains_before_response",),
+    "taxable_pension_income": (
+        "taxable_private_pension_income",
+        "taxable_public_pension_income",
+    ),
+    "social_security": (
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents",
+    ),
+}
 
 _FILING_STATUS_CODES = {
     "SINGLE": 1.0,
@@ -340,8 +359,6 @@ def impute_us_puf_tax_detail_support(
             totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
             nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
         )
-    _write_tax_unit_partnership_s_corp_income_from_splits(tables)
-
     return Frame(
         tables,
         frame.schema,
@@ -594,6 +611,10 @@ def _person_tax_unit_sum(frame: Frame, column: str) -> np.ndarray:
     if column == "dividend_income" and column not in person.columns:
         values = _optional_person(person, "non_qualified_dividend_income")
         values += _optional_person(person, "qualified_dividend_income")
+    elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
+        values = np.zeros(len(person), dtype=np.float64)
+        for leaf in _PREDICTOR_LEAF_ALIASES[column]:
+            values += _optional_person(person, leaf)
     else:
         if column not in person.columns:
             raise ValueError(
@@ -661,18 +682,27 @@ def _person_source_values(
 ) -> np.ndarray | None:
     if output in arrays:
         return _numeric_array(arrays[output])
+    source_aliases = {
+        "employment_income_before_lsr": ("employment_income",),
+        "self_employment_income_before_lsr": ("self_employment_income",),
+        "long_term_capital_gains_before_response": ("long_term_capital_gains",),
+        "taxable_private_pension_income": ("taxable_pension_income",),
+    }
+    for source in source_aliases.get(output, ()):
+        if source in arrays:
+            return _numeric_array(arrays[source])
     if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
         return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
         return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
-    if output == "dividend_income":
-        return _numeric_array(arrays.get("non_qualified_dividend_income", 0.0)) + (
-            _numeric_array(arrays.get("qualified_dividend_income", 0.0))
-        )
     if output == "unemployment_compensation" and (
         "taxable_unemployment_compensation" in arrays
     ):
         return _numeric_array(arrays["taxable_unemployment_compensation"])
+    if output == "social_security_retirement":
+        for source in ("social_security", "total_social_security", "E02400"):
+            if source in arrays:
+                return _numeric_array(arrays[source])
     return None
 
 
@@ -686,6 +716,28 @@ def _add_predictor_aliases(
         source = _predictor_source_column(predictor)
         if source in table.columns:
             table[predictor] = table[source]
+        elif source == "dividend_income" and {
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+        }.issubset(table.columns):
+            table[predictor] = (
+                pd.to_numeric(
+                    table["qualified_dividend_income"],
+                    errors="coerce",
+                ).fillna(0.0)
+                + pd.to_numeric(
+                    table["non_qualified_dividend_income"],
+                    errors="coerce",
+                ).fillna(0.0)
+            )
+        elif source in _PREDICTOR_LEAF_ALIASES:
+            pieces = [
+                pd.to_numeric(table[leaf], errors="coerce").fillna(0.0)
+                for leaf in _PREDICTOR_LEAF_ALIASES[source]
+                if leaf in table.columns
+            ]
+            if pieces:
+                table[predictor] = sum(pieces)
 
 
 def _predictor_source_column(column: str) -> str:
@@ -727,43 +779,7 @@ def _tax_unit_source_values(
         ]
         if pieces:
             return np.sum(np.column_stack(pieces), axis=1)
-    if output == "tax_unit_partnership_s_corp_income" and {
-        "partnership_income",
-        "s_corp_income",
-    }.issubset(grouped_person.columns):
-        return (
-            grouped_person["partnership_income"]
-            .add(grouped_person["s_corp_income"], fill_value=0.0)
-            .reindex(tax_unit_id)
-            .fillna(0.0)
-            .to_numpy()
-        )
     return None
-
-
-def _write_tax_unit_partnership_s_corp_income_from_splits(
-    tables: Mapping[str, pd.DataFrame],
-) -> None:
-    person = tables["person"]
-    if not {"partnership_income", "s_corp_income"}.issubset(person.columns):
-        return
-    tax_unit = tables["tax_unit"]
-    combined = pd.to_numeric(person["partnership_income"], errors="coerce").fillna(
-        0.0
-    ) + pd.to_numeric(person["s_corp_income"], errors="coerce").fillna(0.0)
-    grouped = (
-        pd.DataFrame(
-            {
-                "person_tax_unit_id": person["person_tax_unit_id"],
-                "tax_unit_partnership_s_corp_income": combined,
-            }
-        )
-        .groupby("person_tax_unit_id", sort=False)["tax_unit_partnership_s_corp_income"]
-        .sum()
-    )
-    tax_unit["tax_unit_partnership_s_corp_income"] = (
-        grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
-    )
 
 
 def _filing_status_codes(values: Sequence[Any]) -> np.ndarray:

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec
 from populace.frame import Frame, WeightKind
@@ -2799,7 +2800,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     }
 
 
-def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:
+def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
     class FakePolicyEngineUSEngine:
@@ -2810,48 +2811,31 @@ def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> N
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._strip_calibration_columns(
-        small_frame,
-        np.array([1000.0, 2000.0]),
-    )
-
-    assert "income" not in stripped.table("person")
-    assert stripped.weights_for("household").kind == WeightKind.CALIBRATED
+    with pytest.raises(ValueError, match="Formula-owned.*income"):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
 
 
-def test_export_frame_seeds_partnership_inputs_before_formula_drop(
-    monkeypatch, small_frame
-) -> None:
+def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
-
-    person = small_frame.table("person").copy()
-    person["partnership_s_corp_income"] = np.asarray([100.0, -5.0, 0.0, 40.0])
-    frame = Frame(
-        {"person": person, "household": small_frame.table("household").copy()},
-        small_frame.schema,
-        {"household": small_frame.weights_for("household")},
-    )
 
     class FakePolicyEngineUSEngine:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
-            assert "partnership_income" in tables["person"]
-            assert "s_corp_income" in tables["person"]
-            return {"partnership_s_corp_income"}
+            assert "income" in tables["person"]
+            return set()
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._drop_formula_owned_columns(frame)
+    exported = builder._with_calibrated_weights(
+        small_frame,
+        np.array([1000.0, 2000.0]),
+    )
 
-    assert "partnership_s_corp_income" not in stripped.table("person")
-    assert np.array_equal(
-        stripped.table("person")["partnership_income"].to_numpy(),
-        np.asarray([100.0, -5.0, 0.0, 40.0]),
-    )
-    assert np.array_equal(
-        stripped.table("person")["s_corp_income"].to_numpy(),
-        np.zeros(4),
-    )
+    assert "income" in exported.table("person")
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
 
 
 def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) -> None:

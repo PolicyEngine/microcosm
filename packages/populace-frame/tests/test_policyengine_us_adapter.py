@@ -39,7 +39,7 @@ def us_bundle() -> Frame:
             "person_family_id": [1, 1, 2],
             "person_marital_unit_id": [1, 1, 2],
             "age": [40.0, 38.0, 33.0],
-            "employment_income": [70_000.0, 30_000.0, 48_000.0],
+            "employment_income_before_lsr": [70_000.0, 30_000.0, 48_000.0],
         }
     )
     group = lambda name: pd.DataFrame({f"{name}_id": [1, 2]})  # noqa: E731
@@ -74,7 +74,8 @@ class TestVariableMetadata:
 
     def test_variables_lists_inputs_not_outputs(self, adapter) -> None:
         names = adapter.variables()
-        assert "employment_income" in names  # input
+        assert "employment_income_before_lsr" in names
+        assert "employment_income" not in names  # adds-owned output
         assert "partnership_income" in names
         assert "s_corp_income" in names
         assert "partnership_self_employment_net_earnings" in names
@@ -109,7 +110,7 @@ class TestWriteDataset:
         adapter.write_dataset(us_bundle, path, period=2024)
         reloaded = USSingleYearDataset(file_path=str(path))
         assert reloaded.household["household_weight"].tolist() == [1500.0, 900.0]
-        assert reloaded.person["employment_income"].tolist() == [
+        assert reloaded.person["employment_income_before_lsr"].tolist() == [
             70_000.0,
             30_000.0,
             48_000.0,
@@ -133,13 +134,13 @@ class TestWriteDataset:
     def test_forbidden_column_blocks_the_write(self, us_bundle, tmp_path) -> None:
         contract = ExportContract(
             required=(),
-            forbidden=("employment_income",),
+            forbidden=("employment_income_before_lsr",),
             optional=(),
             formula_owned_excluded=(),
         )
         gated = PolicyEngineUSEngine(contract=contract)
         path = tmp_path / "gated.h5"
-        with pytest.raises(ValueError, match="employment_income"):
+        with pytest.raises(ValueError, match="employment_income_before_lsr"):
             gated.write_dataset(us_bundle, path, period=2024)
         assert not path.exists()
 
@@ -159,6 +160,102 @@ class TestWriteDataset:
 
         path = tmp_path / "formula_blocked.h5"
         with pytest.raises(ValueError, match="ssi"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_adds_owned_columns_block_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["employment_income"] = [70_000.0, 30_000.0, 48_000.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "adds_owned_blocked.h5"
+        with pytest.raises(ValueError, match="employment_income"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_redundant_dividend_total_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["qualified_dividend_income"] = [100.0, 0.0, 40.0]
+        person["non_qualified_dividend_income"] = [25.0, 0.0, 10.0]
+        person["dividend_income"] = [125.0, 0.0, 50.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "formula_blocked.h5"
+        with pytest.raises(ValueError, match="dividend_income"):
+            adapter.write_dataset(rebuilt, path, period=2024)
+        assert not path.exists()
+
+    def test_dividend_leaf_inputs_round_trip_without_total(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        from policyengine_us.data import USSingleYearDataset
+
+        person = us_bundle.person.copy()
+        person["qualified_dividend_income"] = [100.0, 0.0, 40.0]
+        person["non_qualified_dividend_income"] = [25.0, 0.0, 10.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "dividend_leaves.h5"
+        adapter.write_dataset(rebuilt, path, period=2024)
+        reloaded = USSingleYearDataset(file_path=str(path))
+        assert reloaded.person["qualified_dividend_income"].tolist() == [
+            100.0,
+            0.0,
+            40.0,
+        ]
+        assert reloaded.person["non_qualified_dividend_income"].tolist() == [
+            25.0,
+            0.0,
+            10.0,
+        ]
+        assert "dividend_income" not in reloaded.person.columns
+        assert "ordinary_dividend_income" not in reloaded.person.columns
+
+    def test_redundant_social_security_total_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        person = us_bundle.person.copy()
+        person["social_security_retirement"] = [10_000.0, 0.0, 5_000.0]
+        person["social_security_disability"] = [0.0, 2_000.0, 0.0]
+        person["social_security_survivors"] = [0.0, 0.0, 0.0]
+        person["social_security_dependents"] = [0.0, 0.0, 0.0]
+        person["social_security"] = [10_000.0, 2_000.0, 5_000.0]
+        rebuilt = Frame(
+            {
+                name: (person if name == "person" else us_bundle.table(name))
+                for name in us_bundle.entities
+            },
+            US_SCHEMA,
+            {"household": us_bundle.weights_for("household")},
+        )
+
+        path = tmp_path / "social_security_aggregate.h5"
+        with pytest.raises(ValueError, match="social_security"):
             adapter.write_dataset(rebuilt, path, period=2024)
         assert not path.exists()
 

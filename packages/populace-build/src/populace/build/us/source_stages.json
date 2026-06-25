@@ -23,6 +23,13 @@
           "weight": "s006"
         },
         {
+          "kind": "derive_puf_policyengine_variables",
+          "ordinary_dividend_source": "E00600",
+          "qualified_dividend_source": "E00650",
+          "qualified_dividend_output": "qualified_dividend_income",
+          "non_qualified_dividend_output": "non_qualified_dividend_income"
+        },
+        {
           "kind": "disaggregate_aggregate_records",
           "method": "donor_template_calibration",
           "spec": "puf_aggregate_record_disaggregation",
@@ -42,7 +49,8 @@
             "employment_income",
             "self_employment_income",
             "taxable_interest_income",
-            "ordinary_dividends",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
             "capital_gains",
             "filing_status"
           ]

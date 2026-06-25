@@ -15,6 +15,7 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
 )
 from populace.build.us_runtime.puf_aggregate_records import (
+    derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "assign_us_binary_from_rate_from_manifest",
     "calibrate_us_binary_assignment_from_manifest",
     "compute_us_ratio_from_manifest",
+    "derive_us_puf_policyengine_variables_from_manifest",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
@@ -37,6 +39,15 @@ _PUF_AGGREGATE_DISAGGREGATION_PARAMETER_KEYS = frozenset(
         "weight",
         "amount_columns",
         "seed_from_build_config",
+    }
+)
+
+_PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
+    {
+        "ordinary_dividend_source",
+        "qualified_dividend_source",
+        "qualified_dividend_output",
+        "non_qualified_dividend_output",
     }
 )
 
@@ -141,6 +152,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "assign_binary_from_rate": assign_us_binary_from_rate_from_manifest,
         "calibrate_binary_assignment": (calibrate_us_binary_assignment_from_manifest),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_puf_policyengine_variables": (
+            derive_us_puf_policyengine_variables_from_manifest
+        ),
         "disaggregate_aggregate_records": (
             disaggregate_us_puf_aggregate_records_from_manifest
         ),
@@ -448,6 +462,61 @@ def compute_us_ratio_from_manifest(
     return result
 
 
+def derive_us_puf_policyengine_variables_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Translate raw IRS PUF columns into PE-aligned source variables."""
+
+    _ = context
+    if operation.kind != "derive_puf_policyengine_variables":
+        raise SourceRuntimeError(
+            "PUF PolicyEngine-variable derivation received unexpected operation "
+            f"{operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError(
+            "PUF PolicyEngine-variable derivation requires a current source frame."
+        )
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS,
+        label="PUF PolicyEngine-variable derivation",
+    )
+    try:
+        return derive_puf_policyengine_variables(
+            frame,
+            ordinary_dividend_source=_string_param_with_default(
+                params,
+                "ordinary_dividend_source",
+                default="E00600",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_dividend_source=_string_param_with_default(
+                params,
+                "qualified_dividend_source",
+                default="E00650",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_dividend_output=_string_param_with_default(
+                params,
+                "qualified_dividend_output",
+                default="qualified_dividend_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            non_qualified_dividend_output=_string_param_with_default(
+                params,
+                "non_qualified_dividend_output",
+                default="non_qualified_dividend_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+        )
+    except ValueError as exc:
+        raise SourceRuntimeError(str(exc)) from exc
+
+
 def support_clip_us_source_output_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -570,6 +639,33 @@ def _required_string_param(
     value = params.get(key)
     if not isinstance(value, str) or not value:
         raise SourceRuntimeError(f"{label} requires a non-empty {key!r} parameter.")
+    return value
+
+
+def _string_param_with_default(
+    params: Mapping[str, object],
+    key: str,
+    *,
+    default: str,
+    label: str,
+) -> str:
+    value = params.get(key, default)
+    if not isinstance(value, str) or not value:
+        raise SourceRuntimeError(f"{label} requires {key!r} to be a string.")
+    return value
+
+
+def _optional_string_param(
+    params: Mapping[str, object],
+    key: str,
+    *,
+    label: str,
+) -> str | None:
+    value = params.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SourceRuntimeError(f"{label} requires {key!r} to be a string or null.")
     return value
 
 

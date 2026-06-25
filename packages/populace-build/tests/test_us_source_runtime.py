@@ -19,6 +19,7 @@ from populace.build.us_runtime.puf_aggregate_records import (
 )
 from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
+    derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
@@ -179,6 +180,15 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     pd.testing.assert_frame_equal(result, expected)
     assert not result["RECID"].isin(AGGREGATE_RECIDS).any()
     assert (result["RECID"] >= SYNTHETIC_RECID_START).any()
+    assert "ordinary_dividend_income" not in result.columns
+    assert "dividend_income" not in result.columns
+    assert "qualified_dividend_income" in result.columns
+    assert "non_qualified_dividend_income" in result.columns
+    assert np.allclose(result["qualified_dividend_income"], result["E00650"])
+    assert np.allclose(
+        result["non_qualified_dividend_income"],
+        result["E00600"] - result["E00650"],
+    )
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:
@@ -201,6 +211,23 @@ def test_us_puf_manifest_prefix_uses_build_seed() -> None:
     )
 
     assert not first.equals(second)
+
+
+def test_us_puf_manifest_rejects_invalid_dividend_sources() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"]
+    mini_puf = _make_runtime_mini_puf()
+    mini_puf.loc[mini_puf.index[0], "E00650"] = (
+        mini_puf.loc[mini_puf.index[0], "E00600"] + 1.0
+    )
+
+    with pytest.raises(SourceRuntimeError, match="qualified dividends above ordinary"):
+        run_source_stage(
+            stage,
+            tables={"puf_tax_unit": mini_puf},
+            operation_handlers=us_source_operation_handlers(),
+            config=SourceRuntimeConfig(seed=42, target_year=2024),
+            stop_after="derive_puf_policyengine_variables",
+        )
 
 
 def test_us_puf_handler_validates_packaged_spec_shape() -> None:
@@ -244,6 +271,28 @@ def test_us_puf_handler_rejects_unknown_parameters() -> None:
 
     with pytest.raises(SourceRuntimeError, match="unsupported parameter"):
         disaggregate_us_puf_aggregate_records_from_manifest(
+            mini_puf,
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={},
+            ),
+        )
+
+
+def test_us_puf_policyengine_variable_handler_rejects_unknown_parameters() -> None:
+    mini_puf = _make_runtime_mini_puf()
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "derive_puf_policyengine_variables",
+            "ordinary_dividend_source": "E00600",
+            "qualified_dividend_source": "E00650",
+            "unsupported": "field",
+        }
+    )
+
+    with pytest.raises(SourceRuntimeError, match="unsupported parameter"):
+        derive_us_puf_policyengine_variables_from_manifest(
             mini_puf,
             operation,
             context=SourceRuntimeContext(

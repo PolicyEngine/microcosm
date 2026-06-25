@@ -825,51 +825,15 @@ def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
     return tuple(facts)
 
 
-def _with_exportable_formula_inputs(frame: Frame) -> Frame:
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    person = tables.get("person")
-    if person is not None and "partnership_s_corp_income" in person.columns:
-        combined = person["partnership_s_corp_income"].to_numpy(dtype=np.float64)
-        has_partnership = "partnership_income" in person.columns
-        has_s_corp = "s_corp_income" in person.columns
-        if not has_partnership and not has_s_corp:
-            person["partnership_income"] = combined
-            person["s_corp_income"] = np.zeros(len(person), dtype=np.float64)
-        elif not has_partnership:
-            person["partnership_income"] = combined - person["s_corp_income"].to_numpy(
-                dtype=np.float64
-            )
-        elif not has_s_corp:
-            person["s_corp_income"] = combined - person["partnership_income"].to_numpy(
-                dtype=np.float64
-            )
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-    )
-
-
-def _drop_formula_owned_columns(frame: Frame) -> Frame:
+def _assert_no_formula_owned_columns(frame: Frame) -> None:
     adapter = PolicyEngineUSEngine()
-    frame = _with_exportable_formula_inputs(frame)
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
-    if not formula_owned:
-        return frame
-    stripped_tables = {
-        entity: table.drop(
-            columns=[column for column in formula_owned if column in table.columns]
+    if formula_owned:
+        raise ValueError(
+            "Formula-owned PolicyEngine columns are present before export: "
+            f"{sorted(formula_owned)}. Source stages must emit leaf inputs."
         )
-        for entity, table in tables.items()
-    }
-    return Frame(
-        stripped_tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-    )
 
 
 def _dataset_from_frame(
@@ -880,7 +844,7 @@ def _dataset_from_frame(
 ):
     from policyengine_us.data import USSingleYearDataset
 
-    frame = _drop_formula_owned_columns(frame)
+    _assert_no_formula_owned_columns(frame)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
         if system is None:
@@ -1596,7 +1560,7 @@ def _materialize_target_frame(
             continue
         if _unsupported_soi_ledger_filters(spec.metadata):
             continue
-        source_name = spec.metadata["variable"]
+        source_name = spec.metadata.get("source_variable", spec.metadata["variable"])
         lower = _as_bound(spec.metadata["agi_lower_bound"])
         upper = _as_bound(spec.metadata["agi_upper_bound"])
         mask = (agi_tax_unit >= lower) & (agi_tax_unit < upper)
@@ -1694,10 +1658,10 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     return measure_ready and filter_ready
 
 
-def _strip_calibration_columns(
+def _with_calibrated_weights(
     base_frame: Frame, calibrated_weights: np.ndarray
 ) -> Frame:
-    base_frame = _drop_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(base_frame)
     return base_frame.with_weights(
         "household",
         Weights(calibrated_weights, WeightKind.CALIBRATED),
@@ -2934,7 +2898,7 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
-    export_frame = _strip_calibration_columns(base_frame, result.weights)
+    export_frame = _with_calibrated_weights(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
     if args.audit_export_targets:

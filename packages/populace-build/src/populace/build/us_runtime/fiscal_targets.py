@@ -195,7 +195,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ira_distributions": "taxable_ira_distributions",
     "itemized_taxable_income_deductions": "itemized_taxable_income_deductions",
     "medical_expense_deduction": "medical_expense_deduction",
-    "ordinary_dividends": "dividend_income",
+    "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
@@ -219,6 +219,10 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "ctc": ("ctc", "ctc_limiting_tax_liability"),
+    "ordinary_dividends": (
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    ),
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
@@ -284,7 +288,7 @@ DIRECT_LEDGER_TARGETS: dict[
         {"target_role": "cbo_net_capital_gain"},
     ),
     ("cbo", "projected_amount", "net_business_income"): (
-        "self_employment_income",
+        "cbo_net_business_income",
         "cbo",
         {"target_role": "cbo_net_business_income"},
     ),
@@ -1451,12 +1455,14 @@ def _soi_reference_from_fact(
     source_record_id = _source_record_id(fact)
     if not source_record_id:
         return None
+    display_variable = _soi_display_variable(variable)
     metadata = {
         "source_measure_id": measure_id,
+        "source_variable": variable,
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
         "target_role": _soi_target_role(fact, measure_id),
-        "variable": variable,
+        "variable": display_variable,
         "materializer": "irs_soi_slice",
         "measure_mode": _soi_measure_mode(variable, is_count=is_count),
         "agi_lower_bound": lower,
@@ -1494,6 +1500,12 @@ def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
     if is_count:
         return "indicator_sum"
     return "sum"
+
+
+def _soi_display_variable(variable: str) -> str:
+    if variable == "ordinary_dividends":
+        return "ordinary_dividend_income"
+    return variable
 
 
 def _soi_base_variables(variable: str) -> tuple[str, ...]:

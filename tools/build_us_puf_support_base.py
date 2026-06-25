@@ -127,14 +127,16 @@ def _channel_output_totals(frame: Frame) -> dict[str, dict[str, float]]:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
     person_outputs = [
-        "employment_income",
-        "self_employment_income",
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
         "taxable_interest_income",
-        "dividend_income",
         "qualified_dividend_income",
+        "non_qualified_dividend_income",
         "tax_exempt_interest_income",
         "short_term_capital_gains",
-        "long_term_capital_gains",
+        "long_term_capital_gains_before_response",
+        "taxable_private_pension_income",
+        "social_security_retirement",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -143,7 +145,6 @@ def _channel_output_totals(frame: Frame) -> dict[str, dict[str, float]]:
     tax_unit_outputs = [
         "interest_deduction",
         "state_withheld_income_tax",
-        "tax_unit_partnership_s_corp_income",
     ]
     result: dict[str, dict[str, float]] = {
         BASE_ASEC_SUPPORT_CHANNEL: {},

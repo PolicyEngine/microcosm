@@ -14,6 +14,7 @@ from populace.build.us_runtime import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -26,7 +27,10 @@ def _minimal_us_frame() -> Frame:
             "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
             "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
             "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
-            "employment_income": np.asarray([50_000, 20_000, 125_000], dtype="int64"),
+            "employment_income_before_lsr": np.asarray(
+                [50_000, 20_000, 125_000],
+                dtype="int64",
+            ),
             "partnership_income": [1_000.0, 2_000.0, 3_000.0],
             "s_corp_income": [4_000.0, 5_000.0, 6_000.0],
         }
@@ -114,7 +118,11 @@ def test_puf_support_channel_preserves_provenance_and_remaps_linked_ids() -> Non
             ]
         )
     )
-    assert puf_people["employment_income"].tolist() == [50_000.0, 20_000.0, 125_000.0]
+    assert puf_people["employment_income_before_lsr"].tolist() == [
+        50_000.0,
+        20_000.0,
+        125_000.0,
+    ]
     assert puf_tax_units[support_source_id_column("tax_unit")].tolist() == [10, 20]
 
 
@@ -149,25 +157,53 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "non_qualified_dividend_income": [1.0, 2.0, 3.0],
             "qualified_dividend_income": [4.0, 5.0, 6.0],
             "home_mortgage_interest": [10.0, 20.0, 30.0],
+            "social_security": [100.0, 200.0, 300.0],
             "taxable_unemployment_compensation": [13.0, 17.0, 19.0],
             "state_and_local_sales_or_income_tax": [40.0, 50.0],
         },
         person_outputs=(
-            "employment_income",
-            "dividend_income",
+            "employment_income_before_lsr",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
             "home_mortgage_interest",
+            "social_security_retirement",
             "unemployment_compensation",
         ),
         tax_unit_outputs=("interest_deduction", "state_withheld_income_tax"),
     )
 
-    assert donor["employment_income"].tolist() == [12.0, 11.0]
-    assert donor["dividend_income"].tolist() == [12.0, 9.0]
+    assert donor["employment_income_before_lsr"].tolist() == [12.0, 11.0]
+    assert "employment_income" not in donor
+    assert donor["qualified_dividend_income"].tolist() == [9.0, 6.0]
+    assert donor["non_qualified_dividend_income"].tolist() == [3.0, 3.0]
+    assert donor["puf_predictor_dividend_income"].tolist() == [12.0, 9.0]
+    assert donor["social_security_retirement"].tolist() == [300.0, 300.0]
+    assert "social_security" not in donor
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
     assert donor["interest_deduction"].tolist() == [30.0, 30.0]
     assert donor["state_withheld_income_tax"].tolist() == [40.0, 50.0]
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+
+
+def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
+    assert "qualified_dividend_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "non_qualified_dividend_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "ordinary_dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_retirement" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "long_term_capital_gains_before_response"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
 
 
 def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
@@ -185,12 +221,12 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "E26180": [20.0, 30.0],
         },
         person_outputs=("partnership_income", "s_corp_income"),
-        tax_unit_outputs=("tax_unit_partnership_s_corp_income",),
+        tax_unit_outputs=(),
     )
 
     assert donor["partnership_income"].tolist() == [45.0, 60.0]
     assert donor["s_corp_income"].tolist() == [60.0, 80.0]
-    assert donor["tax_unit_partnership_s_corp_income"].tolist() == [105.0, 140.0]
+    assert "tax_unit_partnership_s_corp_income" not in donor
 
 
 def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
@@ -199,7 +235,7 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         {
             "filing_status_code": [1.0, 2.0, 4.0, 1.0],
             "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
-            "employment_income": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
+            "employment_income_before_lsr": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
             "state_withheld_income_tax": [100.0, 100.0, 100.0, 100.0],
             "weight": [1.0, 1.0, 1.0, 1.0],
         }
@@ -212,7 +248,7 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
             "puf_predictor_filing_status_code",
             "puf_predictor_tax_unit_person_count",
         ),
-        person_outputs=("employment_income",),
+        person_outputs=("employment_income_before_lsr",),
         tax_unit_outputs=("state_withheld_income_tax",),
         n_estimators=4,
         seed=0,
@@ -230,9 +266,15 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     ]
 
-    assert asec_people["employment_income"].tolist() == [50_000.0, 20_000.0, 125_000.0]
+    assert asec_people["employment_income_before_lsr"].tolist() == [
+        50_000.0,
+        20_000.0,
+        125_000.0,
+    ]
     np.testing.assert_allclose(
-        puf_people.groupby("person_tax_unit_id")["employment_income"].sum().to_numpy(),
+        puf_people.groupby("person_tax_unit_id")[
+            "employment_income_before_lsr"
+        ].sum().to_numpy(),
         [1_000.0, 1_000.0],
     )
     assert tax_unit.loc[
@@ -243,7 +285,4 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         puf_tax_units["state_withheld_income_tax"].to_numpy(),
         [100.0, 100.0],
     )
-    np.testing.assert_allclose(
-        puf_tax_units["tax_unit_partnership_s_corp_income"].to_numpy(),
-        [12_000.0, 9_000.0],
-    )
+    assert "tax_unit_partnership_s_corp_income" not in puf_tax_units
