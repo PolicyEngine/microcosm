@@ -19,8 +19,11 @@ import pandas as pd
 
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     clone_us_frame_for_puf_support,
+    derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
@@ -48,7 +51,7 @@ def main() -> None:
     output_h5 = out_dir / DATASET_FILENAME
     summary_path = out_dir / SUMMARY_FILENAME
 
-    base = _load_frame(args.base_h5)
+    base = derive_us_cps_carried_inputs(_load_frame(args.base_h5))
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
@@ -126,26 +129,8 @@ def _channel_weight_totals(frame: Frame) -> dict[str, float]:
 def _channel_output_totals(frame: Frame) -> dict[str, dict[str, float]]:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
-    person_outputs = [
-        "employment_income_before_lsr",
-        "self_employment_income_before_lsr",
-        "taxable_interest_income",
-        "qualified_dividend_income",
-        "non_qualified_dividend_income",
-        "tax_exempt_interest_income",
-        "short_term_capital_gains",
-        "long_term_capital_gains_before_response",
-        "taxable_private_pension_income",
-        "social_security_retirement",
-        "charitable_cash_donations",
-        "charitable_non_cash_donations",
-        "real_estate_taxes",
-        "home_mortgage_interest",
-    ]
-    tax_unit_outputs = [
-        "interest_deduction",
-        "state_withheld_income_tax",
-    ]
+    person_outputs = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    tax_unit_outputs = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     result: dict[str, dict[str, float]] = {
         BASE_ASEC_SUPPORT_CHANNEL: {},
         PUF_TAX_DETAIL_SUPPORT_CHANNEL: {},

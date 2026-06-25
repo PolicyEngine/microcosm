@@ -52,16 +52,30 @@ def _asec_person(
 def _write_asec(
     path: Path,
     *,
-    households: list[tuple[int, int] | tuple[int, int, int]],
+    households: list[
+        tuple[int, int] | tuple[int, int, int] | tuple[int, int, int, int]
+    ],
     include_relationship_recode: bool = True,
 ) -> None:
     person_rows = []
     household_rows = []
     for household in households:
-        household_id, n_people, household_weight = (
-            (*household, 10_000) if len(household) == 2 else household
+        if len(household) == 2:
+            household_id, n_people = household
+            household_weight = 10_000
+            state_fips = 6
+        elif len(household) == 3:
+            household_id, n_people, household_weight = household
+            state_fips = 6
+        else:
+            household_id, n_people, household_weight, state_fips = household
+        household_rows.append(
+            {
+                "H_SEQ": household_id,
+                "HSUP_WGT": household_weight,
+                "GESTFIPS": state_fips,
+            }
         )
-        household_rows.append({"H_SEQ": household_id, "HSUP_WGT": household_weight})
         if n_people >= 2:
             person_rows.append(_asec_person(household_id, 1, spouse=2))
             person_rows.append(_asec_person(household_id, 2, spouse=1))
@@ -160,8 +174,8 @@ def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(
 ) -> None:
     current = tmp_path / "asec_2024.h5"
     prior = tmp_path / "asec_2023.h5"
-    _write_asec(current, households=[(1, 2)])
-    _write_asec(prior, households=[(1, 2)])
+    _write_asec(current, households=[(1, 2, 10_000, 6)])
+    _write_asec(prior, households=[(1, 2, 10_000, 36)])
 
     frame, metadata = build_pooled_asec_unit_frame(
         [
@@ -182,6 +196,8 @@ def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(
     assert metadata["target_person_population"] == pytest.approx(200.0)
     assert metadata["weighted_person_population"] == pytest.approx(200.0)
     assert np.array_equal(frame.table("household")["household_id"], np.array([1, 2]))
+    assert frame.table("household")["state_fips"].tolist() == [6, 36]
+    assert "state_fips" not in frame.table("person")
 
 
 def test_build_pooled_asec_unit_frame_aligns_household_weights_by_remapped_id(

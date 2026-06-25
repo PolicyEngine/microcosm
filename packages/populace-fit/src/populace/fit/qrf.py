@@ -311,10 +311,10 @@ _QUANTILE_GRID = np.concatenate(
     ]
 )
 
-#: Row-batch size for the draw predict. Bounds the ``(rows x grid)`` matrix so a
-#: 3M+ row draw streams in fixed-memory blocks instead of allocating the whole
-#: matrix at once.
-_PREDICT_CHUNK_ROWS = 50_000
+#: Row-batch size for the draw predict. Bounds the ``(rows x grid)`` matrix and
+#: the quantile-forest workspace so large support frames stream in fixed-memory
+#: blocks instead of allocating the whole draw at once.
+_PREDICT_CHUNK_ROWS = 10_000
 
 
 def _fit_forest(

@@ -4,17 +4,23 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.puf_support as puf_support_module
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     clone_us_frame_for_puf_support,
+    derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+from populace.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -64,6 +70,70 @@ def _minimal_us_frame() -> Frame:
         )
     }
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def _raw_asec_predictor_frame() -> Frame:
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+                "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                "person_marital_unit_id": np.asarray(
+                    [10000, 10000, 20000], dtype="int64"
+                ),
+                "A_AGE": [65, 40, 61],
+                "A_SEX": [1, 2, 2],
+                "WSAL_VAL": [100.0, 200.0, 0.0],
+                "SEMP_VAL": [10.0, 0.0, 30.0],
+                "INT_VAL": [1_000.0, 0.0, 200.0],
+                "DIV_VAL": [100.0, 0.0, 50.0],
+                "CAP_VAL": [50.0, 0.0, 25.0],
+                "SS_VAL": [1_000.0, 900.0, 800.0],
+                "RESNSS1": [1, 2, 0],
+                "RESNSS2": [0, 0, 0],
+                "PNSN_VAL": [1_000.0, 0.0, 0.0],
+                "ANN_VAL": [100.0, 0.0, 0.0],
+                "DST_SC1": [4, 3, 0],
+                "DST_VAL1": [500.0, 200.0, 0.0],
+                "NOW_MRK": [1, 2, 1],
+                "NOW_NONM": [2, 1, 2],
+                "NOW_MCAID": [1, 2, 2],
+                "NOW_GRP": [2, 1, 1],
+                "NOW_CHAMPVA": [2, 2, 1],
+                "NOW_MIL": [1, 2, 2],
+                "NOW_VACARE": [2, 1, 2],
+                "NOW_OTHMT": [2, 1, 2],
+                "NOW_IHSFLG": [1, 2, 2],
+                "RNT_VAL": [20.0, 0.0, 0.0],
+                "FRSE_VAL": [5.0, 0.0, 0.0],
+                "UC_VAL": [0.0, 70.0, 0.0],
+                "OI_VAL": [3.0, 0.0, 0.0],
+            }
+        ),
+        "household": pd.DataFrame(
+            {
+                "household_id": np.asarray([1, 2], dtype="int64"),
+                "state_fips": np.asarray([6, 36], dtype="int64"),
+            }
+        ),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": np.asarray([10, 20], dtype="int64"),
+                "filing_status_input": ["JOINT", "SINGLE"],
+            }
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+        "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": np.asarray([10000, 20000])}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.asarray([100.0, 300.0]), WeightKind.DESIGN)},
+    )
 
 
 def test_puf_support_channel_doubles_rows_without_doubling_mass() -> None:
@@ -169,7 +239,7 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "social_security_retirement",
             "unemployment_compensation",
         ),
-        tax_unit_outputs=("interest_deduction", "state_withheld_income_tax"),
+        tax_unit_outputs=(),
     )
 
     assert donor["employment_income_before_lsr"].tolist() == [12.0, 11.0]
@@ -180,8 +250,9 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert donor["social_security_retirement"].tolist() == [300.0, 300.0]
     assert "social_security" not in donor
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
-    assert donor["interest_deduction"].tolist() == [30.0, 30.0]
-    assert donor["state_withheld_income_tax"].tolist() == [40.0, 50.0]
+    assert donor["home_mortgage_interest"].tolist() == [30.0, 30.0]
+    assert "interest_deduction" not in donor
+    assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
 
@@ -204,6 +275,201 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "first_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "second_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert (
+        "first_home_mortgage_origination_year"
+        in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    assert (
+        "second_home_mortgage_origination_year"
+        in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+
+
+def test_puf_tax_detail_refuses_formula_owned_outputs() -> None:
+    arrays = {
+        "tax_unit_id": [10],
+        "household_weight": [100.0],
+        "filing_status": [b"SINGLE"],
+        "person_tax_unit_id": [10],
+        "home_mortgage_interest": [10.0],
+    }
+
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            person_outputs=(),
+            tax_unit_outputs=("interest_deduction",),
+        )
+
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "interest_deduction": [100.0, 100.0, 100.0, 100.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        impute_us_puf_tax_detail_support(
+            expanded,
+            donor,
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=(),
+            tax_unit_outputs=("interest_deduction",),
+            n_estimators=4,
+            seed=0,
+        )
+
+
+def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
+    frame = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+
+    person = frame.table("person")
+    assert not CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person.columns)
+    assert person["age"].tolist() == [65.0, 40.0, 61.0]
+    assert person["is_female"].tolist() == [False, True, True]
+    assert person["employment_income_before_lsr"].tolist() == [100.0, 200.0, 0.0]
+    assert person["self_employment_income_before_lsr"].tolist() == [10.0, 0.0, 30.0]
+    assert person["taxable_interest_income"].tolist() == [680.0, 0.0, 136.0]
+    np.testing.assert_allclose(
+        person["tax_exempt_interest_income"].to_numpy(),
+        [320.0, 0.0, 64.0],
+    )
+    np.testing.assert_allclose(
+        person["qualified_dividend_income"].to_numpy(),
+        [44.8, 0.0, 22.4],
+    )
+    np.testing.assert_allclose(
+        person["non_qualified_dividend_income"].to_numpy(),
+        [55.2, 0.0, 27.6],
+    )
+    np.testing.assert_allclose(
+        person["long_term_capital_gains_before_response"].to_numpy(),
+        [44.0, 0.0, 22.0],
+    )
+    np.testing.assert_allclose(
+        person["short_term_capital_gains"].to_numpy(),
+        [6.0, 0.0, 3.0],
+    )
+    assert person["social_security_retirement"].tolist() == [1_000.0, 0.0, 0.0]
+    assert person["social_security_disability"].tolist() == [0.0, 900.0, 800.0]
+    assert person["taxable_private_pension_income"].tolist() == [649.0, 0.0, 0.0]
+    assert person["taxable_ira_distributions"].tolist() == [500.0, 0.0, 0.0]
+    assert person["rental_income"].tolist() == [20.0, 0.0, 0.0]
+    assert person["farm_income"].tolist() == [5.0, 0.0, 0.0]
+    assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
+    assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
+    assert person["has_marketplace_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        True,
+    ]
+    assert person["has_marketplace_health_coverage"].tolist() == [
+        True,
+        False,
+        True,
+    ]
+    assert person[
+        "has_non_marketplace_direct_purchase_health_coverage_at_interview"
+    ].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_medicaid_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+    assert person["has_esi"].tolist() == [False, True, True]
+    assert person["has_champva_health_coverage_at_interview"].tolist() == [
+        False,
+        False,
+        True,
+    ]
+    assert person["has_tricare_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+    assert person["has_va_health_coverage_at_interview"].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_other_means_tested_health_coverage_at_interview"].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_indian_health_service_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+
+
+def test_cps_carried_derivations_reject_formula_owned_input_columns() -> None:
+    frame = _raw_asec_predictor_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["dividend_income"] = [1.0, 2.0, 3.0]
+    bad = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+    with pytest.raises(ValueError, match="formula-owned aggregate columns"):
+        derive_us_cps_carried_inputs(bad)
+
+
+def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "puf_predictor_employment_income": [100.0, 200.0, 300.0, 400.0],
+            "puf_predictor_self_employment_income": [10.0, 20.0, 30.0, 40.0],
+            "puf_predictor_taxable_interest_income": [1.0, 2.0, 3.0, 4.0],
+            "puf_predictor_dividend_income": [5.0, 6.0, 7.0, 8.0],
+            "puf_predictor_tax_exempt_interest_income": [9.0, 10.0, 11.0, 12.0],
+            "puf_predictor_short_term_capital_gains": [13.0, 14.0, 15.0, 16.0],
+            "puf_predictor_long_term_capital_gains": [17.0, 18.0, 19.0, 20.0],
+            "taxable_interest_income": [100.0, 200.0, 300.0, 400.0],
+            "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
+            "non_qualified_dividend_income": [50.0, 60.0, 70.0, 80.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        person_outputs=(
+            "taxable_interest_income",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    puf_people = imputed.table("person")[
+        imputed.table("person")[support_channel_column("person")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert {"taxable_interest_income", "qualified_dividend_income"}.issubset(
+        puf_people.columns
+    )
 
 
 def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
@@ -219,13 +485,75 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "E25960": [5.0, 10.0],
             "E26190": [80.0, 110.0],
             "E26180": [20.0, 30.0],
+            "E17500": [300.0, 400.0],
         },
-        person_outputs=("partnership_income", "s_corp_income"),
+        person_outputs=(
+            "partnership_income",
+            "s_corp_income",
+            "partnership_self_employment_net_earnings",
+            "other_medical_expenses",
+        ),
         tax_unit_outputs=(),
     )
 
     assert donor["partnership_income"].tolist() == [45.0, 60.0]
     assert donor["s_corp_income"].tolist() == [60.0, 80.0]
+    assert donor["partnership_self_employment_net_earnings"].tolist() == [25.0, 40.0]
+    assert donor["other_medical_expenses"].tolist() == [300.0, 400.0]
+    assert "tax_unit_partnership_s_corp_income" not in donor
+
+
+def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 20],
+            "first_home_mortgage_balance": [250_000.0, 500_000.0],
+            "second_home_mortgage_balance": [0.0, 125_000.0],
+            "first_home_mortgage_interest": [10_000.0, 20_000.0],
+            "second_home_mortgage_interest": [0.0, 5_000.0],
+            "first_home_mortgage_origination_year": [2018, 2016],
+            "second_home_mortgage_origination_year": [0, 2020],
+        },
+        person_outputs=(),
+        tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    )
+
+    assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
+    assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
+    assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]
+    assert donor["second_home_mortgage_interest"].tolist() == [0.0, 5_000.0]
+    assert donor["first_home_mortgage_origination_year"].tolist() == [
+        2018.0,
+        2016.0,
+    ]
+    assert donor["second_home_mortgage_origination_year"].tolist() == [0.0, 2020.0]
+    assert "interest_deduction" not in donor
+
+
+def test_puf_tax_unit_donor_carries_processed_partnership_s_corp_as_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 20],
+            "partnership_s_corp_income": [1_000.0, 2_000.0],
+            "partnership_se_income": [100.0, 200.0],
+        },
+        person_outputs=(
+            "partnership_income",
+            "s_corp_income",
+            "partnership_self_employment_net_earnings",
+        ),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["partnership_income"].tolist() == [1_000.0, 2_000.0]
+    assert donor["s_corp_income"].tolist() == [0.0, 0.0]
+    assert donor["partnership_self_employment_net_earnings"].tolist() == [100.0, 200.0]
     assert "tax_unit_partnership_s_corp_income" not in donor
 
 
@@ -236,7 +564,6 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
             "filing_status_code": [1.0, 2.0, 4.0, 1.0],
             "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
             "employment_income_before_lsr": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
-            "state_withheld_income_tax": [100.0, 100.0, 100.0, 100.0],
             "weight": [1.0, 1.0, 1.0, 1.0],
         }
     )
@@ -249,21 +576,17 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
             "puf_predictor_tax_unit_person_count",
         ),
         person_outputs=("employment_income_before_lsr",),
-        tax_unit_outputs=("state_withheld_income_tax",),
+        tax_unit_outputs=(),
         n_estimators=4,
         seed=0,
     )
 
     person = imputed.table("person")
-    tax_unit = imputed.table("tax_unit")
     asec_people = person[
         person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
     ]
     puf_people = person[
         person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
-    ]
-    puf_tax_units = tax_unit[
-        tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     ]
 
     assert asec_people["employment_income_before_lsr"].tolist() == [
@@ -272,17 +595,74 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         125_000.0,
     ]
     np.testing.assert_allclose(
-        puf_people.groupby("person_tax_unit_id")[
-            "employment_income_before_lsr"
-        ].sum().to_numpy(),
+        puf_people.groupby("person_tax_unit_id")["employment_income_before_lsr"]
+        .sum()
+        .to_numpy(),
         [1_000.0, 1_000.0],
     )
-    assert tax_unit.loc[
-        tax_unit[support_channel_column("tax_unit")] == BASE_ASEC_SUPPORT_CHANNEL,
-        "state_withheld_income_tax",
-    ].tolist() == [0.0, 0.0]
-    np.testing.assert_allclose(
-        puf_tax_units["state_withheld_income_tax"].to_numpy(),
-        [100.0, 100.0],
+    assert "tax_unit_partnership_s_corp_income" not in imputed.table("tax_unit")
+
+
+def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FractionalYearQRF:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def fit(
+            self,
+            *_: object,
+            **__: object,
+        ) -> "FractionalYearQRF":
+            return self
+
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "first_home_mortgage_origination_year": [2008.4, 2017.6],
+                    "second_home_mortgage_origination_year": [0.2, 2019.5],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", FractionalYearQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0],
+            "first_home_mortgage_origination_year": [0.0, 2008.0, 2018.0],
+            "second_home_mortgage_origination_year": [0.0, 2020.0, 2020.0],
+            "weight": [1.0, 1.0, 1.0],
+        }
     )
-    assert "tax_unit_partnership_s_corp_income" not in puf_tax_units
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(),
+        tax_unit_outputs=(
+            "first_home_mortgage_origination_year",
+            "second_home_mortgage_origination_year",
+        ),
+        n_estimators=4,
+        seed=0,
+    )
+
+    puf_tax_units = imputed.table("tax_unit")[
+        imputed.table("tax_unit")[support_channel_column("tax_unit")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert puf_tax_units["first_home_mortgage_origination_year"].tolist() == [
+        2008.0,
+        2018.0,
+    ]
+    assert puf_tax_units["second_home_mortgage_origination_year"].tolist() == [
+        0.0,
+        2020.0,
+    ]

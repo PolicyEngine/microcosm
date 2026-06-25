@@ -75,11 +75,32 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "estate_income",
     "farm_income",
     "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
 )
 
-PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS = (
-    "interest_deduction",
-    "state_withheld_income_tax",
+PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
+    "first_home_mortgage_balance",
+    "second_home_mortgage_balance",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "first_home_mortgage_origination_year",
+    "second_home_mortgage_origination_year",
+)
+
+_PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
+    {
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
+    }
+)
+
+PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS = frozenset(
+    {
+        "interest_deduction",
+        "state_withheld_income_tax",
+    }
 )
 
 _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
@@ -102,8 +123,12 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
-        "interest_deduction",
-        "state_withheld_income_tax",
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
     }
 )
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
@@ -244,6 +269,7 @@ def puf_tax_unit_donor_from_arrays(
     )
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
 
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
     person_source_columns = set(person_outputs)
     if "interest_deduction" in tax_unit_outputs:
         person_source_columns.add("home_mortgage_interest")
@@ -304,6 +330,7 @@ def impute_us_puf_tax_detail_support(
     if person_channel not in frame.table("person").columns:
         raise ValueError("PUF support metadata is missing from the person table.")
 
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
@@ -342,6 +369,11 @@ def impute_us_puf_tax_detail_support(
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)
+        if column in _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
@@ -575,6 +607,19 @@ def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
     )
 
 
+def _reject_formula_owned_outputs(
+    person_outputs: Sequence[str],
+    tax_unit_outputs: Sequence[str],
+) -> None:
+    requested = set(person_outputs) | set(tax_unit_outputs)
+    formula_owned = sorted(requested & PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
+    if formula_owned:
+        raise ValueError(
+            "PUF tax-detail support outputs must be PolicyEngine leaf inputs, "
+            f"not formula-owned aggregate outputs: {formula_owned}."
+        )
+
+
 def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFrame:
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
@@ -609,8 +654,9 @@ def _person_tax_unit_sum(frame: Frame, column: str) -> np.ndarray:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
     if column == "dividend_income" and column not in person.columns:
-        values = _optional_person(person, "non_qualified_dividend_income")
-        values += _optional_person(person, "qualified_dividend_income")
+        values = _optional_person(
+            person, "non_qualified_dividend_income"
+        ) + _optional_person(person, "qualified_dividend_income")
     elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
         values = np.zeros(len(person), dtype=np.float64)
         for leaf in _PREDICTOR_LEAF_ALIASES[column]:
@@ -648,6 +694,25 @@ def _ensure_float_output_column(table: pd.DataFrame, column: str) -> None:
     table[column] = (
         pd.to_numeric(table[column], errors="coerce").fillna(0.0).astype("float64")
     )
+
+
+def _snap_to_observed_values(
+    values: Sequence[Any],
+    observed: Sequence[Any],
+) -> np.ndarray:
+    """Map continuous model predictions to the nearest observed donor value."""
+
+    value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    observed_array = np.unique(
+        np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+    )
+    if len(observed_array) == 0:
+        return value_array.to_numpy(dtype=np.float64)
+    positions = np.abs(
+        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
+    ).argmin(axis=1)
+    return observed_array[positions]
 
 
 def _write_person_tax_unit_totals(
@@ -691,10 +756,25 @@ def _person_source_values(
     for source in source_aliases.get(output, ()):
         if source in arrays:
             return _numeric_array(arrays[source])
+    if output == "partnership_income" and "partnership_s_corp_income" in arrays:
+        return _numeric_array(arrays["partnership_s_corp_income"])
+    if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
+        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+    if output == "partnership_self_employment_net_earnings" and (
+        "partnership_se_income" in arrays
+    ):
+        return _numeric_array(arrays["partnership_se_income"])
     if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
         return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
         return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
+    if output == "partnership_self_employment_net_earnings" and {
+        "E25960",
+        "E26180",
+    }.issubset(arrays):
+        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+    if output == "other_medical_expenses" and "E17500" in arrays:
+        return _numeric_array(arrays["E17500"])
     if output == "unemployment_compensation" and (
         "taxable_unemployment_compensation" in arrays
     ):
@@ -720,16 +800,13 @@ def _add_predictor_aliases(
             "qualified_dividend_income",
             "non_qualified_dividend_income",
         }.issubset(table.columns):
-            table[predictor] = (
-                pd.to_numeric(
-                    table["qualified_dividend_income"],
-                    errors="coerce",
-                ).fillna(0.0)
-                + pd.to_numeric(
-                    table["non_qualified_dividend_income"],
-                    errors="coerce",
-                ).fillna(0.0)
-            )
+            table[predictor] = pd.to_numeric(
+                table["qualified_dividend_income"],
+                errors="coerce",
+            ).fillna(0.0) + pd.to_numeric(
+                table["non_qualified_dividend_income"],
+                errors="coerce",
+            ).fillna(0.0)
         elif source in _PREDICTOR_LEAF_ALIASES:
             pieces = [
                 pd.to_numeric(table[leaf], errors="coerce").fillna(0.0)
