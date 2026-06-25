@@ -152,7 +152,7 @@ def test_counterfactual_revert_flips_sign(monkeypatch):
     assert payload["reforms"][0]["populace"]["budget_effect"] == pytest.approx(-33e9)
 
 
-def test_obbba_components_score_against_pre_obbba_baseline(monkeypatch):
+def test_obbba_components_score_stacked_in_jcx_order(monkeypatch):
     specs = (
         ReformValidationSpec(
             id="obbba_a",
@@ -192,25 +192,31 @@ def test_obbba_components_score_against_pre_obbba_baseline(monkeypatch):
     )
 
     def simulate(reform):
-        # Reform keys are the provisions still turned off. The full pre-OBBBA
-        # baseline has both patches applied. Component A is scored with only B
-        # still off, and component B with only A still off.
+        # Reform keys are the provisions still repealed. Pre-OBBBA repeals both;
+        # the provisions are then enacted one at a time in order: A (only B still
+        # repealed), then B (nothing repealed → reform is None).
         totals = {
-            frozenset({"gov.example.a", "gov.example.b"}): 1_000.0,
-            frozenset({"gov.example.b"}): 900.0,
-            frozenset({"gov.example.a"}): 1_060.0,
-            None: 950.0,
+            frozenset({"gov.example.a", "gov.example.b"}): 1_000.0,  # pre-OBBBA
+            frozenset({"gov.example.b"}): 900.0,  # A enacted
+            None: 960.0,  # A and B enacted
         }
         return _FakeSim({"income_tax": totals[reform]})
 
     payload = reform_validation_payload(specs, period=2026, simulate=simulate)
     rows = {row["id"]: row for row in payload["reforms"]}
+    # A is scored against pre-OBBBA; B is scored against the post-A state, not
+    # against pre-OBBBA — that stacking is the whole point.
     assert rows["obbba_a"]["populace"]["baseline_total"] == pytest.approx(1_000.0)
     assert rows["obbba_a"]["populace"]["reform_total"] == pytest.approx(900.0)
     assert rows["obbba_a"]["populace"]["budget_effect"] == pytest.approx(-100.0)
-    assert rows["obbba_b"]["populace"]["baseline_total"] == pytest.approx(1_000.0)
-    assert rows["obbba_b"]["populace"]["reform_total"] == pytest.approx(1_060.0)
+    assert rows["obbba_b"]["populace"]["baseline_total"] == pytest.approx(900.0)
+    assert rows["obbba_b"]["populace"]["reform_total"] == pytest.approx(960.0)
     assert rows["obbba_b"]["populace"]["budget_effect"] == pytest.approx(60.0)
+    # Stacked line effects telescope to the true total OBBBA effect.
+    total = sum(
+        rows[i]["populace"]["budget_effect"] for i in ("obbba_a", "obbba_b")
+    )
+    assert total == pytest.approx(960.0 - 1_000.0)
 
 
 def test_shipped_obbba_config_is_out_of_sample_counterfactual():
