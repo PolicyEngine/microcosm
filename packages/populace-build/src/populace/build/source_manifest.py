@@ -41,6 +41,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_by_plan_type",
         "assign_binary_from_rate",
         "calibrate_binary_assignment",
+        "calibrate_binary_assignment_joint_targets",
         "convert_interest_to_structural_mortgage_inputs",
         "compute_ratio",
         "derive",

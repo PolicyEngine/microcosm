@@ -571,6 +571,12 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     returns_source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns"
     )
+    state_amount_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.premium_tax_credit_amount"
+    )
+    state_returns_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.premium_tax_credit_returns"
+    )
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -590,6 +596,26 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
                 period_value=2022,
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
+            _dynamic_ledger_fact(
+                source_record_id=state_amount_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_amount",
+                value=6_000_000_000,
+                period_value=2022,
+                geography_level="state",
+                geography_id="0400000US06",
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=state_returns_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_returns",
+                value=1_000_000,
+                period_value=2022,
+                geography_level="state",
+                geography_id="0400000US06",
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
         ]
     )
 
@@ -605,9 +631,18 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
 
     returns = specs[returns_source_record_id]
     assert returns.family == "irs_soi"
+    assert returns.metadata["target_role"] == "aca_ptc_returns"
     assert returns.metadata["variable"] == "assigned_aca_ptc"
     assert returns.metadata["materializer"] == "irs_soi_slice"
     assert returns.metadata["measure_mode"] == "indicator_sum"
+
+    state_amount = specs[state_amount_source_record_id]
+    assert state_amount.metadata["target_role"] == "aca_spending"
+    assert state_amount.metadata["state_fips"] == "06"
+
+    state_returns = specs[state_returns_source_record_id]
+    assert state_returns.metadata["target_role"] == "aca_ptc_returns"
+    assert state_returns.metadata["state_fips"] == "06"
     assert returns.metadata["base_variable"] == "assigned_aca_ptc"
     assert "count" not in returns.metadata
 

@@ -129,6 +129,7 @@ def _make_aca_tax_units() -> pd.DataFrame:
             "tax_unit_id": [10, 20, 30, 40, 50, 60],
             "state_fips": ["01", "01", "01", "01", "02", "02"],
             "tax_unit_weight": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "household_weight": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             "stable_tax_unit_draw": [0.90, 0.95, 0.10, 0.20, 0.80, 0.30],
             "aca_take_up_rate": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "is_aca_ptc_eligible": [True, True, True, True, True, True],
@@ -141,6 +142,7 @@ def _make_aca_tax_units() -> pd.DataFrame:
                 100.0,
             ],
             "assigned_aca_ptc": [0.0, 200.0, 200.0, 0.0, 0.0, 100.0],
+            "weighted_assigned_aca_ptc": [0.0, 200.0, 200.0, 0.0, 0.0, 100.0],
             "slcsp": [0.0, 500.0, 500.0, 500.0, 0.0, 500.0],
         }
     )
@@ -518,6 +520,60 @@ def test_us_aca_take_up_calibration_uses_declared_weights() -> None:
     assert weighted.groupby(result["state_fips"]).sum().to_dict() == {
         "01": 3.0,
         "02": 2.0,
+    }
+
+
+def test_us_aca_take_up_calibration_uses_soi_ptc_targets() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    people = _make_aca_people()
+    people["reported_has_subsidized_marketplace_health_coverage_at_interview"] = False
+    tax_units = _make_aca_tax_units()
+    tax_units["assigned_aca_ptc"] = [1000.0, 900.0, 100.0, 100.0, 500.0, 100.0]
+    tax_units["weighted_assigned_aca_ptc"] = tax_units["assigned_aca_ptc"]
+    cms_targets = pd.DataFrame({"state_fips": ["01", "02"], "target": [4.0, 2.0]})
+    soi_return_targets = pd.DataFrame(
+        {"state_fips": ["01", "02"], "target": [2.0, 1.0]}
+    )
+    soi_amount_targets = pd.DataFrame(
+        {"state_fips": ["01", "02"], "target": [200.0, 100.0]}
+    )
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": people,
+            "tax_unit": tax_units,
+            "cms_aca_aptc_recipients_by_state": cms_targets,
+            "irs_soi_premium_tax_credit_returns_by_state": soi_return_targets,
+            "irs_soi_premium_tax_credit_amount_by_state": soi_amount_targets,
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="support_clip",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert assigned.to_dict() == {
+        10: False,
+        20: False,
+        30: True,
+        40: True,
+        50: False,
+        60: True,
+    }
+    assigned_amount = result["assigned_aca_ptc"] * result[
+        "takes_up_aca_if_eligible"
+    ].astype(float)
+    assert assigned_amount.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 200.0,
+        "02": 100.0,
+    }
+    assigned_returns = result["household_weight"] * result[
+        "takes_up_aca_if_eligible"
+    ].astype(float)
+    assert assigned_returns.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 2.0,
+        "02": 1.0,
     }
 
 

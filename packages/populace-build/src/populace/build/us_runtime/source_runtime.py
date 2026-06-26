@@ -24,6 +24,7 @@ __all__ = [
     "aggregate_us_person_to_tax_unit_from_manifest",
     "assign_us_binary_from_rate_from_manifest",
     "calibrate_us_binary_assignment_from_manifest",
+    "calibrate_us_binary_assignment_joint_targets_from_manifest",
     "compute_us_ratio_from_manifest",
     "derive_us_puf_policyengine_variables_from_manifest",
     "disaggregate_us_puf_aggregate_records_from_manifest",
@@ -77,11 +78,28 @@ _ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS = frozenset(
     {
         "variable",
         "targets",
+        "optional",
         "preserve_true_anchors",
         "preserve_true_anchor",
         "domain",
         "group_by",
         "weight",
+        "draw",
+    }
+)
+
+_ACA_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS = frozenset(
+    {
+        "variable",
+        "count_targets",
+        "amount_targets",
+        "optional",
+        "preserve_true_anchors",
+        "preserve_true_anchor",
+        "domain",
+        "group_by",
+        "count_weight",
+        "amount_weight",
         "draw",
     }
 )
@@ -151,6 +169,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "aggregate_person_to_tax_unit": aggregate_us_person_to_tax_unit_from_manifest,
         "assign_binary_from_rate": assign_us_binary_from_rate_from_manifest,
         "calibrate_binary_assignment": (calibrate_us_binary_assignment_from_manifest),
+        "calibrate_binary_assignment_joint_targets": (
+            calibrate_us_binary_assignment_joint_targets_from_manifest
+        ),
         "compute_ratio": compute_us_ratio_from_manifest,
         "derive_puf_policyengine_variables": (
             derive_us_puf_policyengine_variables_from_manifest
@@ -335,7 +356,14 @@ def calibrate_us_binary_assignment_from_manifest(
     )
     value_state = _binary_calibration_value_state(frame, variable)
 
-    target_table_name, target_table = _first_available_target_table(targets, context)
+    try:
+        target_table_name, target_table = _first_available_target_table(
+            targets, context
+        )
+    except SourceRuntimeError:
+        if bool(params.get("optional", False)):
+            return frame
+        raise
     value_column = _target_value_column(target_table, label=target_table_name)
     group_by = _group_columns(params.get("group_by"), target_table, frame)
     weight_column = params.get("weight")
@@ -405,6 +433,183 @@ def calibrate_us_binary_assignment_from_manifest(
                 break
             calibrated.loc[idx] = False
             removed += float(weights.loc[idx])
+
+    result = value_state.write(result, calibrated, domain)
+    if "__all__" in result.columns:
+        result = result.drop(columns=["__all__"])
+    return result
+
+
+def calibrate_us_binary_assignment_joint_targets_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    context: SourceRuntimeContext,
+) -> pd.DataFrame:
+    """Calibrate a boolean assignment to linked count and amount targets.
+
+    For each target group, this starts from preserved true anchors, then fills
+    the remaining count target with units whose amount per counted unit is
+    closest to the target amount/count average. This is intentionally read-only
+    with respect to target values: the manifest supplies target tables and
+    source columns, while the runtime supplies the generic selection rule.
+    """
+
+    if operation.kind != "calibrate_binary_assignment_joint_targets":
+        raise SourceRuntimeError(
+            "ACA joint binary calibration received unexpected operation "
+            f"{operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError("ACA joint binary calibration requires a frame.")
+    params = operation.parameters
+    _reject_unexpected_parameters(
+        params,
+        allowed=_ACA_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS,
+        label="ACA joint binary calibration",
+    )
+    variable = _required_string_param(
+        params,
+        "variable",
+        label="ACA joint binary calibration",
+    )
+    count_targets = _required_string_sequence_param(
+        params,
+        "count_targets",
+        label="ACA joint binary calibration",
+    )
+    amount_targets = _required_string_sequence_param(
+        params,
+        "amount_targets",
+        label="ACA joint binary calibration",
+    )
+    try:
+        count_target_name, count_target_table = _first_available_target_table(
+            count_targets, context
+        )
+        amount_target_name, amount_target_table = _first_available_target_table(
+            amount_targets, context
+        )
+    except SourceRuntimeError:
+        if bool(params.get("optional", False)):
+            return frame
+        raise
+
+    count_value_column = _target_value_column(
+        count_target_table,
+        label=count_target_name,
+    )
+    amount_value_column = _target_value_column(
+        amount_target_table,
+        label=amount_target_name,
+    )
+    group_by = _group_columns(params.get("group_by"), count_target_table, frame)
+    count_weight_column = params.get("count_weight")
+    amount_weight_column = params.get("amount_weight")
+    draw_column = params.get("draw", "stable_tax_unit_draw")
+    if not isinstance(count_weight_column, str) or not count_weight_column:
+        raise SourceRuntimeError(
+            "ACA joint binary calibration requires a count_weight column."
+        )
+    if not isinstance(amount_weight_column, str) or not amount_weight_column:
+        raise SourceRuntimeError(
+            "ACA joint binary calibration requires an amount_weight column."
+        )
+    if not isinstance(draw_column, str) or not draw_column:
+        raise SourceRuntimeError("ACA joint binary calibration requires a draw column.")
+
+    result = frame.copy(deep=True)
+    if not group_by:
+        count_target_table = count_target_table.assign(__all__="all")
+        amount_target_table = amount_target_table.assign(__all__="all")
+        result = result.assign(__all__="all")
+        group_by = ("__all__",)
+
+    _require_columns(
+        count_target_table,
+        [*group_by, count_value_column],
+        label=count_target_name,
+    )
+    _require_columns(
+        amount_target_table,
+        [*group_by, amount_value_column],
+        label=amount_target_name,
+    )
+    _require_columns(
+        result,
+        [*group_by, count_weight_column, amount_weight_column],
+        label="ACA joint binary calibration frame",
+    )
+    if draw_column not in result:
+        result[draw_column] = _stable_draws(
+            result,
+            seed=int(context.config.seed),
+            salt=f"joint-calibrate:{variable}",
+        )
+
+    value_state = _binary_calibration_value_state(result, variable)
+    values = value_state.values(result)
+    preserved = _preserved_true_mask(result, params)
+    domain = _domain_mask(result, params.get("domain"))
+    count_weights = pd.to_numeric(
+        result[count_weight_column],
+        errors="coerce",
+    ).fillna(0.0)
+    amount_weights = pd.to_numeric(
+        result[amount_weight_column],
+        errors="coerce",
+    ).fillna(0.0)
+    draws = pd.to_numeric(result[draw_column], errors="coerce").fillna(1.0)
+    unit_amount = amount_weights / count_weights.where(count_weights > 0)
+    unit_amount = unit_amount.fillna(0.0)
+
+    amount_by_key = {
+        tuple(row[column] for column in group_by): float(row[amount_value_column])
+        for _, row in amount_target_table.iterrows()
+    }
+    calibrated = values.copy()
+    for _, target_row in count_target_table.iterrows():
+        key = tuple(target_row[column] for column in group_by)
+        if key not in amount_by_key:
+            raise SourceRuntimeError(
+                f"{amount_target_name} is missing group "
+                f"{dict(zip(group_by, key, strict=True))}."
+            )
+        group_mask = pd.Series(True, index=result.index)
+        for column, value in zip(group_by, key, strict=True):
+            group_mask &= result[column] == value
+
+        active_group = group_mask & domain
+        calibrated.loc[active_group] = False
+        preserved_group = active_group & preserved
+        calibrated.loc[preserved_group] = True
+
+        target_count = float(target_row[count_value_column])
+        target_amount = amount_by_key[key]
+        preserved_count = float(count_weights[preserved_group].sum())
+        preserved_amount = float(amount_weights[preserved_group].sum())
+        remaining_count = target_count - preserved_count
+        if remaining_count <= 0:
+            continue
+        remaining_amount = max(target_amount - preserved_amount, 0.0)
+        target_average = remaining_amount / remaining_count
+
+        eligible = result.index[
+            active_group & (~preserved) & (count_weights > 0) & (amount_weights >= 0)
+        ]
+        ordered = sorted(
+            eligible,
+            key=lambda idx: (
+                abs(float(unit_amount.loc[idx]) - target_average),
+                float(draws.loc[idx]),
+                str(idx),
+            ),
+        )
+        added = 0.0
+        for idx in ordered:
+            if added >= remaining_count:
+                break
+            calibrated.loc[idx] = True
+            added += float(count_weights.loc[idx])
 
     result = value_state.write(result, calibrated, domain)
     if "__all__" in result.columns:

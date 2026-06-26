@@ -271,6 +271,8 @@ US_ACA_TARGET_ROLE_TABLES = {
     "aca_bronze_aptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
     "aca_bronze_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
     "aca_below_benchmark_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
+    "aca_spending": "irs_soi_premium_tax_credit_amount_by_state",
+    "aca_ptc_returns": "irs_soi_premium_tax_credit_returns_by_state",
 }
 US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
     {
@@ -545,8 +547,6 @@ def _state_fips_text(values: Iterable[object]) -> list[str]:
 def _aca_source_target_tables(target_specs: tuple) -> dict[str, pd.DataFrame]:
     rows_by_table: dict[str, list[dict[str, object]]] = {}
     for spec in target_specs:
-        if spec.family != "cms_aca":
-            continue
         state_fips = spec.metadata.get("state_fips")
         if not state_fips:
             continue
@@ -674,6 +674,7 @@ def _aca_source_tax_unit_table_from_simulation(
     household = frame.table("household")
     positions = _tax_unit_to_household_positions(frame)
     state_fips = np.asarray(household["state_fips"].to_numpy())[positions]
+    household_weights = frame.weights_for("household").values[positions]
     has_person_count_targets = any(
         table_name in target_tables for table_name in US_ACA_PERSON_COUNT_TARGET_TABLES
     )
@@ -712,14 +713,16 @@ def _aca_source_tax_unit_table_from_simulation(
             tax_unit["tax_unit_weight"] > 0
         ) & has_potential_ptc
     else:
-        tax_unit["tax_unit_weight"] = frame.weights_for("household").values[positions]
+        tax_unit["tax_unit_weight"] = household_weights
         tax_unit["is_aca_ptc_eligible"] = is_aca_ptc_eligible & has_potential_ptc
+    tax_unit["household_weight"] = household_weights
     tax_unit["health_insurance_premiums_without_medicare_part_b"] = _calculate_array(
         simulation,
         "health_insurance_premiums_without_medicare_part_b",
         map_to="tax_unit",
     )
     tax_unit["assigned_aca_ptc"] = potential_aca_ptc
+    tax_unit["weighted_assigned_aca_ptc"] = potential_aca_ptc * household_weights
     tax_unit["slcsp"] = _calculate_array(simulation, "slcsp", map_to="tax_unit")
     return _with_state_take_up_rates(tax_unit, target_tables)
 
@@ -741,15 +744,19 @@ def _aca_source_tax_unit_table_batched(
 
     fill_columns = (
         "tax_unit_weight",
+        "household_weight",
         "is_aca_ptc_eligible",
         "health_insurance_premiums_without_medicare_part_b",
         "assigned_aca_ptc",
+        "weighted_assigned_aca_ptc",
         "slcsp",
     )
     tax_unit["tax_unit_weight"] = 0.0
+    tax_unit["household_weight"] = frame.weights_for("household").values[positions]
     tax_unit["is_aca_ptc_eligible"] = False
     tax_unit["health_insurance_premiums_without_medicare_part_b"] = 0.0
     tax_unit["assigned_aca_ptc"] = 0.0
+    tax_unit["weighted_assigned_aca_ptc"] = 0.0
     tax_unit["slcsp"] = 0.0
 
     tax_unit_positions = pd.Series(

@@ -586,6 +586,22 @@
           "weight": "tax_unit_weight"
         },
         {
+          "kind": "calibrate_binary_assignment_joint_targets",
+          "variable": "takes_up_aca_if_eligible",
+          "count_targets": [
+            "irs_soi_premium_tax_credit_returns_by_state"
+          ],
+          "amount_targets": [
+            "irs_soi_premium_tax_credit_amount_by_state"
+          ],
+          "optional": true,
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
+          "domain": "is_aca_ptc_eligible",
+          "count_weight": "household_weight",
+          "amount_weight": "weighted_assigned_aca_ptc"
+        },
+        {
           "kind": "compute_ratio",
           "output": "selected_marketplace_plan_benchmark_ratio",
           "numerator": [

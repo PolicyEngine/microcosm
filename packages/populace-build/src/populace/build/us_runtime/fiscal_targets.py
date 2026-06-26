@@ -1734,6 +1734,11 @@ def _references_for_target_period(
 
 
 def _soi_target_role(fact: object, measure_id: str) -> str:
+    if _is_all_income_range(fact):
+        if measure_id == "premium_tax_credit_amount":
+            return "aca_spending"
+        if measure_id == "premium_tax_credit_returns":
+            return "aca_ptc_returns"
     if _geography_level(fact) == "country" and _is_all_income_range(fact):
         roles = {
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
@@ -1744,7 +1749,6 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
             "charitable_amount": "charitable_deduction_total",
-            "premium_tax_credit_amount": "aca_spending",
             "interest_paid_deduction_amount": "interest_deduction_total",
             "itemized_deductions_amount": "itemized_deduction_total",
             "limited_state_local_taxes_amount": "salt_deduction_total",
