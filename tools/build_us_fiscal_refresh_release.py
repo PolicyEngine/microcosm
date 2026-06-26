@@ -1417,6 +1417,7 @@ def _population_age_household_values(
     household: pd.DataFrame,
     age: np.ndarray,
     metadata: Mapping[str, str],
+    household_congressional_district_geoid: np.ndarray | None = None,
 ) -> np.ndarray:
     lower = _as_bound(metadata.get("age_lower_bound", "-inf"))
     upper = _as_bound(metadata.get("age_upper_bound", "inf"))
@@ -1426,6 +1427,18 @@ def _population_age_household_values(
     if state_fips:
         values = np.where(
             household["state_fips"].to_numpy() == int(state_fips),
+            values,
+            0.0,
+        )
+    congressional_district_geoid = metadata.get("congressional_district_geoid")
+    if congressional_district_geoid:
+        if household_congressional_district_geoid is None:
+            household_congressional_district_geoid = _integer_geography_codes(
+                household["congressional_district_geoid"].to_numpy(),
+                column="congressional_district_geoid",
+            )
+        values = np.where(
+            household_congressional_district_geoid == int(congressional_district_geoid),
             values,
             0.0,
         )
@@ -1623,6 +1636,9 @@ def _materialize_target_frame(
                 household=household,
                 age=person_age,
                 metadata=spec.metadata,
+                household_congressional_district_geoid=(
+                    household_congressional_district_geoid
+                ),
             )
     direct_target_specs = [
         spec
@@ -2894,7 +2910,7 @@ def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
             + ", ".join(unknown_active)
         )
     excluded = hard - active
-    reviewed = set(REVIEWED_EXCLUDED_ALIASES)
+    reviewed = set(REVIEWED_EXCLUDED_ALIASES) - active
     if excluded != reviewed:
         missing = sorted(excluded - reviewed)
         extra = sorted(reviewed - excluded)
@@ -2911,6 +2927,7 @@ def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
             "coverage."
         )
         for alias in REVIEWED_EXCLUDED_ALIASES
+        if alias in reviewed
     }
 
 
@@ -3247,7 +3264,11 @@ def main() -> None:
         telemetry.stage(
             "source_coverage", message="Writing source coverage diagnostics."
         )
-    active_aliases = DIRECT_ACTIVE_ALIASES
+    active_aliases = DIRECT_ACTIVE_ALIASES + (
+        ("census-acs-s0101-congressional-district-age-2024",)
+        if args.include_congressional_district_targets
+        else ()
+    )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
         reviewed_exclusions=_reviewed_exclusions(active_aliases),

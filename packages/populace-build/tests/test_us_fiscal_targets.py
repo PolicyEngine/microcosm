@@ -216,6 +216,68 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     assert agi.value == 22_915_824_000
 
 
+def test_acs_congressional_district_age_targets_are_opt_in() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _census_acs_population_age_fact(
+            source_record_id=(
+                "census_acs.acs1_2024.s0101.national_age.age_0_to_4.population"
+            ),
+            value=3_000_000,
+        ),
+        _census_acs_population_age_fact(
+            source_record_id=(
+                "census_acs.acs1_2024.s0101.state_age.01.age_0_to_4.population"
+            ),
+            value=240_000,
+            geography_level="state",
+            geography_id="0400000US01",
+            layout_record_set_id="census_acs.acs1_2024.s0101.state_age.01",
+        ),
+        _census_acs_congressional_district_age_fact(),
+    ]
+
+    default_registry = compile_us_fiscal_target_registry(facts)
+    cd_registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    default_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
+    }
+    cd_specs = [
+        spec
+        for spec in cd_registry.specs
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+    ]
+    assert not any(
+        "s0101.congressional_district_age" in source_id
+        for source_id in default_source_ids
+    )
+    assert not any(
+        "s0101.national_age" in source_id for source_id in default_source_ids
+    )
+    assert not any("s0101.state_age" in source_id for source_id in default_source_ids)
+    assert not any(
+        "s0101.national_age" in spec.metadata["ledger_source_record_id"]
+        or "s0101.state_age" in spec.metadata["ledger_source_record_id"]
+        for spec in cd_registry.specs
+    )
+    assert len(cd_specs) == 1
+    target = cd_specs[0]
+    assert target.family == "census_population"
+    assert target.metadata["materializer"] == "population_age"
+    assert target.metadata["measure_mode"] == "indicator_sum"
+    assert target.metadata["geography_scope"] == "congressional_district"
+    assert target.metadata["state_fips"] == "01"
+    assert target.metadata["congressional_district_geoid"] == "0101"
+    assert target.metadata["ledger_geography_id"] == "5001900US0101"
+    assert target.metadata["age_lower_bound"] == "0"
+    assert target.metadata["age_upper_bound"] == "5"
+    assert target.value == 42_000
+
+
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
     assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
     assert all(
@@ -2857,6 +2919,56 @@ def _soi_congressional_district_fact(
         layout_record_set_id="irs_soi.ty2023.congressional_district_2022.all_returns",
         groupby_dimension="irs_soi.congressional_district",
         groupby_value_id=groupby_value_id,
+    )
+
+
+def _census_acs_population_age_fact(
+    *,
+    source_record_id: str,
+    value: float,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    layout_record_set_id: str = "census_acs.acs1_2024.s0101.national_age",
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="census_acs",
+        measure_id="population",
+        value=value,
+        period_value=2024,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"age": "age_0_to_4"},
+        universe_constraints=[
+            {
+                "variable": "age",
+                "operator": ">=",
+                "value": 0,
+            },
+            {
+                "variable": "age",
+                "operator": "<",
+                "value": 5,
+            },
+        ],
+        layout_record_set_id=layout_record_set_id,
+        groupby_dimension="age",
+        groupby_value_id="age_0_to_4",
+    )
+
+
+def _census_acs_congressional_district_age_fact() -> dict[str, object]:
+    return _census_acs_population_age_fact(
+        source_record_id=(
+            "census_acs.acs1_2024.s0101.congressional_district_age."
+            "0101.age_0_to_4.population"
+        ),
+        value=42_000,
+        geography_level="congressional_district",
+        geography_id="5001900US0101",
+        layout_record_set_id=(
+            "census_acs.acs1_2024.s0101.congressional_district_age.0101"
+        ),
     )
 
 
