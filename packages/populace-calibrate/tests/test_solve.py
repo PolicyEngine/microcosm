@@ -134,6 +134,27 @@ def test_method_prox_rejects_l2_lambda() -> None:
         calibrate(frame, targets, method="prox", l2_lambda=0.001, epochs=10, seed=0)
 
 
+def test_method_prox_conserve_cap_infeasible_names_l1_remedy() -> None:
+    """The prox projection error must not tell users to tune L0 knobs."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(
+        ValueError,
+        match=(
+            "L1 proximal pruning.*mass='conserve'.*max_weight_ratio=.*lower l1_lambda"
+        ),
+    ):
+        calibrate(
+            frame,
+            targets,
+            method="prox",
+            l1_lambda=0.5,
+            epochs=300,
+            seed=0,
+            mass="conserve",
+            max_weight_ratio=1.05,
+        )
+
+
 def test_method_prox_l1_uses_mean_ratio_penalty_scale() -> None:
     """The prox shrink matches l1_lambda * mean(weight / initial_weight)."""
     initial_weights = np.array([100.0, 200.0, 300.0, 400.0])

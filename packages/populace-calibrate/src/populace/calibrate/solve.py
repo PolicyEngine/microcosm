@@ -707,7 +707,13 @@ def _optimize_proximal(
         final = np.minimum(final, max_weight_ratio * w0)
     if conserve_mass:
         final = _project_to_total(
-            final, total0, max_weight_ratio, w0, pruned=(final <= 0.0)
+            final,
+            total0,
+            max_weight_ratio,
+            w0,
+            pruned=(final <= 0.0),
+            pruning_label="L1 proximal pruning",
+            pruning_remedy="lower l1_lambda",
         )
     return final, trajectory
 
@@ -876,6 +882,8 @@ def _project_to_total(
     initial_weights: np.ndarray,
     *,
     pruned: np.ndarray | None = None,
+    pruning_label: str = "L0 pruning",
+    pruning_remedy: str = "loosen the record budget (smaller l0_lambda)",
 ) -> np.ndarray:
     """Scale ``weights`` to sum to ``total`` while respecting an optional cap.
 
@@ -898,6 +906,9 @@ def _project_to_total(
         pruned: Optional boolean mask of gate-closed records to hold at zero and
             exclude from deficit redistribution. ``None`` redistributes over
             every record with headroom (the no-pruning case).
+        pruning_label: Human-readable name of the pruning path for infeasibility
+            errors.
+        pruning_remedy: Path-specific remediation text for infeasibility errors.
 
     Raises:
         ValueError: If pruning is active and the surviving (non-pruned) records
@@ -931,13 +942,12 @@ def _project_to_total(
                 # short: the only way to close it would be to refill pruned
                 # records, which we refuse. Surface the joint infeasibility.
                 raise ValueError(
-                    "Infeasible combination: L0 pruning + mass='conserve' + "
+                    f"Infeasible combination: {pruning_label} + mass='conserve' + "
                     f"max_weight_ratio={max_weight_ratio!r}. After pruning "
                     f"{int(pruned.sum())} record(s), the {int(eligible.sum())} "
                     "surviving record(s) cannot absorb the freed mass under the "
                     "cap (sum of survivor caps < input total). Raise "
-                    "max_weight_ratio, loosen the record budget (smaller "
-                    "l0_lambda), or use mass='free'."
+                    f"max_weight_ratio, {pruning_remedy}, or use mass='free'."
                 )
             break  # no pruning: cap binds everywhere; total is the maximum.
         deficit = total - current
@@ -1009,6 +1019,10 @@ def calibrate(
             ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
             ``0.0`` (default) keeps every record. When ``target_records`` is set,
             this is only the budget search's warm start (the search overrides it).
+        l1_lambda: L1 penalty strength for ``method="prox"``. Positive values
+            add ``l1_lambda * mean(weight / initial_weight)`` to the objective and
+            use a proximal soft-threshold step that can drive records to exact
+            zero. ``l1_lambda`` must be zero unless ``method="prox"``.
         l2_lambda: Experimental soft concentration penalty strength. ``0.0``
             (default) preserves the unpenalized path. Positive values add
             ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
@@ -1052,8 +1066,10 @@ def calibrate(
         ValueError: If ``method`` is unknown, ``mass`` is not ``"free"`` or
             ``"conserve"``, ``epochs`` is not positive, ``max_weight_ratio`` is
             given and is not ``> 0``, or ``target_records`` is given and is not
-            a positive integer, or ``l2_lambda`` is negative or non-finite; or if
-            no targets compile (from the matrix build).
+            a positive integer, if ``l1_lambda`` or ``l2_lambda`` is negative or
+            non-finite, if ``l1_lambda`` is used outside ``method="prox"``, if
+            ``method="prox"`` is combined with L0/budget pruning or
+            ``l2_lambda``, or if no targets compile (from the matrix build).
     """
     if method not in ("adam", "prox"):
         raise ValueError(
