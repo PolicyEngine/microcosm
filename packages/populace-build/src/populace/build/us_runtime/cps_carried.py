@@ -46,7 +46,6 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",
         "taxable_interest_income",
-        "tax_exempt_interest_income",
         "qualified_dividend_income",
         "non_qualified_dividend_income",
         "short_term_capital_gains",
@@ -58,6 +57,10 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "taxable_private_pension_income",
         "tax_exempt_private_pension_income",
         "taxable_ira_distributions",
+        "health_insurance_premiums_without_medicare_part_b",
+        "medicare_part_b_premiums",
+        "other_medical_expenses",
+        "over_the_counter_health_expenses",
         "rental_income",
         "farm_income",
         "has_champva_health_coverage_at_interview",
@@ -105,11 +108,6 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         "taxable_interest_income",
         interest * TAXABLE_INTEREST_FRACTION,
     )
-    _fill_missing(
-        person,
-        "tax_exempt_interest_income",
-        interest * (1 - TAXABLE_INTEREST_FRACTION),
-    )
 
     dividends = _source(person, "DIV_VAL")
     _fill_missing(
@@ -154,6 +152,10 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         "farm_income": "FRSE_VAL",
         "unemployment_compensation": "UC_VAL",
         "miscellaneous_income": "OI_VAL",
+        "health_insurance_premiums_without_medicare_part_b": "PHIP_VAL",
+        "medicare_part_b_premiums": "PEMCPREM",
+        "other_medical_expenses": "PMED_VAL",
+        "over_the_counter_health_expenses": "POTC_VAL",
     }
     for output, source in direct_sources.items():
         _fill_missing(person, output, _source(person, source))

@@ -47,7 +47,6 @@ PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_self_employment_income",
     "puf_predictor_taxable_interest_income",
     "puf_predictor_dividend_income",
-    "puf_predictor_tax_exempt_interest_income",
     "puf_predictor_short_term_capital_gains",
     "puf_predictor_long_term_capital_gains",
 )
@@ -166,6 +165,12 @@ _FILING_STATUS_CODES = {
     "SEPARATE": 3.0,
     "HEAD_OF_HOUSEHOLD": 4.0,
     "SURVIVING_SPOUSE": 5.0,
+}
+_PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
+    "health_insurance_premiums_without_medicare_part_b": 0.453,
+    "other_medical_expenses": 0.325,
+    "medicare_part_b_premiums": 0.137,
+    "over_the_counter_health_expenses": 0.085,
 }
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
@@ -868,8 +873,11 @@ def _person_source_values(
         "E26180",
     }.issubset(arrays):
         return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
-    if output == "other_medical_expenses" and "E17500" in arrays:
-        return _numeric_array(arrays["E17500"])
+    if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
+        return (
+            _numeric_array(arrays["E17500"])
+            * _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS[output]
+        )
     if output == "unemployment_compensation" and (
         "taxable_unemployment_compensation" in arrays
     ):

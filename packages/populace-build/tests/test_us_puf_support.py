@@ -111,6 +111,10 @@ def _raw_asec_predictor_frame() -> Frame:
                 "FRSE_VAL": [5.0, 0.0, 0.0],
                 "UC_VAL": [0.0, 70.0, 0.0],
                 "OI_VAL": [3.0, 0.0, 0.0],
+                "PHIP_VAL": [400.0, 0.0, 50.0],
+                "PEMCPREM": [100.0, 0.0, 25.0],
+                "PMED_VAL": [200.0, 0.0, 40.0],
+                "POTC_VAL": [30.0, 0.0, 10.0],
             }
         ),
         "household": pd.DataFrame(
@@ -277,6 +281,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "tax_exempt_interest_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert (
         "long_term_capital_gains_before_response"
         in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
@@ -284,6 +289,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -349,10 +355,7 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert person["employment_income_before_lsr"].tolist() == [100.0, 200.0, 0.0]
     assert person["self_employment_income_before_lsr"].tolist() == [10.0, 0.0, 30.0]
     assert person["taxable_interest_income"].tolist() == [680.0, 0.0, 136.0]
-    np.testing.assert_allclose(
-        person["tax_exempt_interest_income"].to_numpy(),
-        [320.0, 0.0, 64.0],
-    )
+    assert "tax_exempt_interest_income" not in person
     np.testing.assert_allclose(
         person["qualified_dividend_income"].to_numpy(),
         [44.8, 0.0, 22.4],
@@ -377,6 +380,14 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert person["farm_income"].tolist() == [5.0, 0.0, 0.0]
     assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
     assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
+    assert person["health_insurance_premiums_without_medicare_part_b"].tolist() == [
+        400.0,
+        0.0,
+        50.0,
+    ]
+    assert person["medicare_part_b_premiums"].tolist() == [100.0, 0.0, 25.0]
+    assert person["other_medical_expenses"].tolist() == [200.0, 0.0, 40.0]
+    assert person["over_the_counter_health_expenses"].tolist() == [30.0, 0.0, 10.0]
     assert person["has_marketplace_health_coverage_at_interview"].tolist() == [
         True,
         False,
@@ -449,7 +460,6 @@ def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
             "puf_predictor_self_employment_income": [10.0, 20.0, 30.0, 40.0],
             "puf_predictor_taxable_interest_income": [1.0, 2.0, 3.0, 4.0],
             "puf_predictor_dividend_income": [5.0, 6.0, 7.0, 8.0],
-            "puf_predictor_tax_exempt_interest_income": [9.0, 10.0, 11.0, 12.0],
             "puf_predictor_short_term_capital_gains": [13.0, 14.0, 15.0, 16.0],
             "puf_predictor_long_term_capital_gains": [17.0, 18.0, 19.0, 20.0],
             "taxable_interest_income": [100.0, 200.0, 300.0, 400.0],
@@ -494,13 +504,16 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
             "E25960": [5.0, 10.0],
             "E26190": [80.0, 110.0],
             "E26180": [20.0, 30.0],
-            "E17500": [300.0, 400.0],
+            "E17500": [1_000.0, 2_000.0],
         },
         person_outputs=(
             "partnership_income",
             "s_corp_income",
             "partnership_self_employment_net_earnings",
+            "health_insurance_premiums_without_medicare_part_b",
+            "medicare_part_b_premiums",
             "other_medical_expenses",
+            "over_the_counter_health_expenses",
         ),
         tax_unit_outputs=(),
     )
@@ -508,7 +521,13 @@ def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields
     assert donor["partnership_income"].tolist() == [45.0, 60.0]
     assert donor["s_corp_income"].tolist() == [60.0, 80.0]
     assert donor["partnership_self_employment_net_earnings"].tolist() == [25.0, 40.0]
-    assert donor["other_medical_expenses"].tolist() == [300.0, 400.0]
+    assert donor["health_insurance_premiums_without_medicare_part_b"].tolist() == [
+        453.0,
+        906.0,
+    ]
+    assert donor["medicare_part_b_premiums"].tolist() == [137.0, 274.0]
+    assert donor["other_medical_expenses"].tolist() == [325.0, 650.0]
+    assert donor["over_the_counter_health_expenses"].tolist() == [85.0, 170.0]
     assert "tax_unit_partnership_s_corp_income" not in donor
 
 
