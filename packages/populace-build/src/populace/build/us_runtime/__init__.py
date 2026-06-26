@@ -38,6 +38,14 @@ from populace.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from populace.build.us_runtime.congressional_district_geography import (
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+    SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
+    assign_congressional_districts_to_households,
+    congressional_district_assignment_summary,
+    congressional_district_distribution_from_ledger_facts,
+    with_household_congressional_districts,
+)
 from populace.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
@@ -124,6 +132,8 @@ __all__ = [
     "AGE_BANDS",
     "DEMOGRAPHICS_SCHEMA_VERSION",
     "compute_age_distribution",
+    "CONGRESSIONAL_DISTRICT_GEOID_COLUMN",
+    "SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID",
     "demographics_payload",
     "write_demographics",
     "US_DONORS",
@@ -154,8 +164,11 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "assign_congressional_districts_to_households",
     "build_pooled_asec_unit_frame",
     "clone_us_frame_for_puf_support",
+    "congressional_district_assignment_summary",
+    "congressional_district_distribution_from_ledger_facts",
     "derive_us_cps_carried_inputs",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
@@ -178,6 +191,7 @@ __all__ = [
     "support_clone_index_column",
     "support_source_id_column",
     "validation_only_family_ids",
+    "with_household_congressional_districts",
 ]
 
 
