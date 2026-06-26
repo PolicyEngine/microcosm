@@ -1075,6 +1075,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
         base_population_gate=base_population_gate,
+        support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
         gate_failures=["ctc failed"],
     )
@@ -1097,6 +1098,9 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"population": 334_200_000.0},
+    }
+    assert build["support_value_repairs"] == {
+        "social_security_components": {"applied": True}
     }
 
 
@@ -1174,6 +1178,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_with_base_population_mass_repair",
         lambda frame: (frame, repair_payload),
     )
+    ss_repair_payload = {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": True,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, ss_repair_payload),
+    )
     monkeypatch.setattr(
         builder,
         "_base_population_scale_gate",
@@ -1245,6 +1258,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
     )
+    assert captured["diagnostics"]["support_value_repairs"] == {
+        "social_security_components": ss_repair_payload
+    }
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
