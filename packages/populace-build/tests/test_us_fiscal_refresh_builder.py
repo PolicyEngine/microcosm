@@ -1156,7 +1156,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "compile_us_fiscal_target_registry",
-        lambda facts, *, target_period: registry,
+        lambda facts, *, target_period, include_congressional_district_targets=False: (
+            registry
+        ),
     )
     monkeypatch.setattr(
         builder,
