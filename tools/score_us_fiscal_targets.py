@@ -57,6 +57,14 @@ def _parse_args() -> argparse.Namespace:
             "still fail on these columns."
         ),
     )
+    parser.add_argument(
+        "--include-congressional-district-targets",
+        action="store_true",
+        help=(
+            "Opt into SOI congressional-district target rows. Requires the "
+            "scored H5 to contain household congressional_district_geoid."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -100,10 +108,12 @@ def score_frame(
     | None = release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
+    include_congressional_district_targets: bool = False,
 ) -> tuple[CalibrationResult, object, dict[str, object], dict[str, object]]:
     target_registry = release.compile_us_fiscal_target_registry(
         release._load_ledger_facts(ledger_facts),
         target_period=release.PERIOD,
+        include_congressional_district_targets=include_congressional_district_targets,
     )
     target_specs = target_registry.specs
     if diagnostic_skip_tax_expenditure_targets:
@@ -217,6 +227,7 @@ def main() -> None:
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
+        include_congressional_district_targets=args.include_congressional_district_targets,
     )
     write_calibration_diagnostics(
         result,

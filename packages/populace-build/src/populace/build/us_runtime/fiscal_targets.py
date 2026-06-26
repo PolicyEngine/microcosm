@@ -128,6 +128,7 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "rental_royalty_income_amount": "rent_and_royalty_net_income",
     "schedule_c_income_amount": "business_net_profits",
     "tax_exempt_interest_amount": "tax_exempt_interest_income",
+    "tax_filer_individual_count": "tax_filer_individual_count",
     "taxable_income_amount": "taxable_income",
     "taxable_interest_amount": "taxable_interest_income",
     "taxable_ira_distributions_amount": "ira_distributions",
@@ -209,6 +210,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "tax_exempt_interest_income": "tax_exempt_interest_income",
     "taxable_income": "taxable_income",
     "taxable_interest_income": "taxable_interest_income",
+    "tax_filer_individual_count": "tax_unit_size",
     "taxable_pension_income": "taxable_pension_income",
     "taxable_social_security": "tax_unit_taxable_social_security",
     "tip_income": "tip_income",
@@ -680,6 +682,7 @@ def compile_us_fiscal_target_registry(
     facts: object,
     *,
     target_period: int | str = 2024,
+    include_congressional_district_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed."""
     materialized_facts = tuple(facts)
@@ -687,6 +690,9 @@ def compile_us_fiscal_target_registry(
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
             target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
         ),
         *_references_for_target_period(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
@@ -1449,12 +1455,19 @@ def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
         tuple[tuple[str, ...], tuple[int, int, str], LedgerTargetReference]
     ] = []
     for fact in facts:
-        reference = _reference_from_ledger_fact(fact, target_period=target_period)
+        reference = _reference_from_ledger_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
         if reference is not None:
             candidates.append((_dynamic_target_key(fact), _period_key(fact), reference))
     latest: dict[
@@ -1563,6 +1576,11 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
     return "all_returns"
 
 
+def _is_soi_congressional_district_record_set(fact: object) -> bool:
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    return ".congressional_district_2022." in record_set_id
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -1623,13 +1641,20 @@ def _reference_from_ledger_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
-        return _soi_reference_from_fact(fact, target_period=target_period)
+        return _soi_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_pep":
@@ -1643,10 +1668,29 @@ def _soi_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
-    if _geography_level(fact) not in {"country", "state"}:
+    if (
+        _is_soi_congressional_district_record_set(fact)
+        and not include_congressional_district_targets
+    ):
         return None
+    geography_level = _geography_level(fact)
+    if geography_level not in {"country", "state", "congressional_district"}:
+        return None
+    congressional_district_geoid: str | None = None
+    if geography_level == "congressional_district":
+        if not include_congressional_district_targets:
+            return None
+        congressional_district_geoid = _congressional_district_geoid(fact)
+        if congressional_district_geoid is None:
+            return None
     measure_id = _measure_id(fact)
+    if measure_id == "tax_filer_individual_count" and not (
+        include_congressional_district_targets
+        and geography_level == "congressional_district"
+    ):
+        return None
     variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
     is_count = False
     if variable is None:
@@ -1714,8 +1758,12 @@ def _soi_reference_from_fact(
     ):
         metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
+    if congressional_district_geoid is not None:
+        state_fips = congressional_district_geoid[:2]
     if state_fips:
         metadata["state_fips"] = state_fips
+    if congressional_district_geoid is not None:
+        metadata["congressional_district_geoid"] = congressional_district_geoid
     if requires_total_eitc_uprating:
         metadata["requires_total_eitc_uprating"] = "true"
     if requires_total_soi_uprating:
@@ -2107,6 +2155,21 @@ def _state_fips(fact: object) -> str | None:
     if fips not in STATE_FIPS_TO_POSTAL:
         return None
     return fips
+
+
+def _congressional_district_geoid(fact: object) -> str | None:
+    geoid = _geography_id(fact)
+    if not geoid.startswith("5001700US"):
+        return None
+    congressional_district_geoid = geoid.removeprefix("5001700US")
+    if len(congressional_district_geoid) != 4:
+        return None
+    if not congressional_district_geoid.isdigit():
+        return None
+    state_fips = congressional_district_geoid[:2]
+    if state_fips not in STATE_FIPS_TO_POSTAL:
+        return None
+    return congressional_district_geoid
 
 
 def _numeric_value(fact: object) -> float:
