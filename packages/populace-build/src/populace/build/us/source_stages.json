@@ -23,6 +23,13 @@
           "weight": "s006"
         },
         {
+          "kind": "derive_puf_policyengine_variables",
+          "ordinary_dividend_source": "E00600",
+          "qualified_dividend_source": "E00650",
+          "qualified_dividend_output": "qualified_dividend_income",
+          "non_qualified_dividend_output": "non_qualified_dividend_income"
+        },
+        {
           "kind": "disaggregate_aggregate_records",
           "method": "donor_template_calibration",
           "spec": "puf_aggregate_record_disaggregation",
@@ -42,7 +49,8 @@
             "employment_income",
             "self_employment_income",
             "taxable_interest_income",
-            "ordinary_dividends",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
             "capital_gains",
             "filing_status"
           ]
@@ -53,21 +61,65 @@
         }
       ],
       "outputs": [
-        "salt_deduction",
-        "medical_expense_deduction",
-        "charitable_deduction",
-        "interest_deduction",
-        "qualified_business_income",
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "taxable_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+        "tax_exempt_interest_income",
+        "short_term_capital_gains",
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+        "taxable_private_pension_income",
+        "taxable_ira_distributions",
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
+        "charitable_cash_donations",
+        "charitable_non_cash_donations",
+        "real_estate_taxes",
+        "home_mortgage_interest",
+        "student_loan_interest",
+        "rental_income",
+        "estate_income",
+        "farm_income",
+        "miscellaneous_income",
         "partnership_income",
         "s_corp_income",
         "partnership_self_employment_net_earnings",
-        "partnership_s_corp_loss"
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year"
       ],
       "nonnegative_outputs": [
-        "salt_deduction",
-        "medical_expense_deduction",
-        "charitable_deduction",
-        "interest_deduction"
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "taxable_interest_income",
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+        "tax_exempt_interest_income",
+        "long_term_capital_gains_before_response",
+        "taxable_private_pension_income",
+        "taxable_ira_distributions",
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
+        "charitable_cash_donations",
+        "charitable_non_cash_donations",
+        "real_estate_taxes",
+        "home_mortgage_interest",
+        "student_loan_interest",
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year"
       ],
       "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled."
     },
@@ -532,6 +584,22 @@
           "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
           "domain": "is_aca_ptc_eligible",
           "weight": "tax_unit_weight"
+        },
+        {
+          "kind": "calibrate_binary_assignment_joint_targets",
+          "variable": "takes_up_aca_if_eligible",
+          "count_targets": [
+            "irs_soi_premium_tax_credit_returns_by_state"
+          ],
+          "amount_targets": [
+            "irs_soi_premium_tax_credit_amount_by_state"
+          ],
+          "optional": true,
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
+          "domain": "is_aca_ptc_eligible",
+          "count_weight": "household_weight",
+          "amount_weight": "weighted_assigned_aca_ptc"
         },
         {
           "kind": "compute_ratio",

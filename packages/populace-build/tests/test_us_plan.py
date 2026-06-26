@@ -17,6 +17,10 @@ from populace.build.us_runtime import (
     BuildConfig,
     us_plan,
 )
+from populace.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -229,17 +233,45 @@ class TestUsSources:
         assert "partnership_income" in outputs
         assert "s_corp_income" in outputs
         assert "partnership_self_employment_net_earnings" in outputs
+        assert "qualified_dividend_income" in outputs
+        assert "non_qualified_dividend_income" in outputs
+        assert "home_mortgage_interest" in outputs
+        assert "charitable_cash_donations" in outputs
+        assert "charitable_non_cash_donations" in outputs
         assert "partnership_s_corp_income" not in outputs
         assert "partnership_se_income" not in outputs
+        assert "partnership_s_corp_loss" not in outputs
+        assert "qualified_business_income" not in outputs
+        assert "salt_deduction" not in outputs
+        assert "medical_expense_deduction" not in outputs
+        assert "charitable_deduction" not in outputs
+        assert "interest_deduction" not in outputs
+
+    def test_puf_stage_outputs_match_runtime_defaults(self) -> None:
+        outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
+        runtime_outputs = set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS) | set(
+            PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        )
+
+        assert outputs == runtime_outputs
 
     def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
         operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
+            < kinds.index("derive_puf_policyengine_variables")
             < kinds.index("disaggregate_aggregate_records")
             < kinds.index("uprate")
         )
+
+        derive_operation = operations[kinds.index("derive_puf_policyengine_variables")]
+        assert derive_operation.parameters == {
+            "ordinary_dividend_source": "E00600",
+            "qualified_dividend_source": "E00650",
+            "qualified_dividend_output": "qualified_dividend_income",
+            "non_qualified_dividend_output": "non_qualified_dividend_income",
+        }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]
         assert operation.parameters == {
@@ -282,7 +314,7 @@ class TestUsSources:
         for path in ROOT.rglob("*"):
             if not path.is_file() or path.suffix not in checked_suffixes:
                 continue
-            if ".git" in path.parts or ".venv" in path.parts:
+            if ".git" in path.parts or ".venv" in path.parts or "out" in path.parts:
                 continue
             text = path.read_text(encoding="utf-8")
             for needle in forbidden:

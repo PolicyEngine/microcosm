@@ -80,15 +80,26 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
-DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 25_000
+DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
     "US fiscal refresh rescaled base household weights to the Census 2024 "
     "national person-population benchmark before mass='conserve' calibration."
 )
+US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
+    "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
+    "component payment targets from the active fiscal target registry before "
+    "mass='conserve' calibration."
+)
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
+US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
+    "ssa_retirement_total": "social_security_retirement",
+    "ssa_disability_total": "social_security_disability",
+    "ssa_dependents_total": "social_security_dependents",
+    "ssa_survivors_total": "social_security_survivors",
+}
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -271,6 +282,8 @@ US_ACA_TARGET_ROLE_TABLES = {
     "aca_bronze_aptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
     "aca_bronze_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
     "aca_below_benchmark_ptc_consumers": "cms_aca_bronze_aptc_consumers_by_state",
+    "aca_spending": "irs_soi_premium_tax_credit_amount_by_state",
+    "aca_ptc_returns": "irs_soi_premium_tax_credit_returns_by_state",
 }
 US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
     {
@@ -545,8 +558,6 @@ def _state_fips_text(values: Iterable[object]) -> list[str]:
 def _aca_source_target_tables(target_specs: tuple) -> dict[str, pd.DataFrame]:
     rows_by_table: dict[str, list[dict[str, object]]] = {}
     for spec in target_specs:
-        if spec.family != "cms_aca":
-            continue
         state_fips = spec.metadata.get("state_fips")
         if not state_fips:
             continue
@@ -664,7 +675,7 @@ def _aca_source_person_table(frame: Frame) -> pd.DataFrame:
     return person
 
 
-def _aca_source_tax_unit_table(
+def _aca_source_tax_unit_table_from_simulation(
     frame: Frame,
     target_tables: Mapping[str, pd.DataFrame],
     *,
@@ -674,6 +685,7 @@ def _aca_source_tax_unit_table(
     household = frame.table("household")
     positions = _tax_unit_to_household_positions(frame)
     state_fips = np.asarray(household["state_fips"].to_numpy())[positions]
+    household_weights = frame.weights_for("household").values[positions]
     has_person_count_targets = any(
         table_name in target_tables for table_name in US_ACA_PERSON_COUNT_TARGET_TABLES
     )
@@ -712,16 +724,127 @@ def _aca_source_tax_unit_table(
             tax_unit["tax_unit_weight"] > 0
         ) & has_potential_ptc
     else:
-        tax_unit["tax_unit_weight"] = frame.weights_for("household").values[positions]
+        tax_unit["tax_unit_weight"] = household_weights
         tax_unit["is_aca_ptc_eligible"] = is_aca_ptc_eligible & has_potential_ptc
+    tax_unit["household_weight"] = household_weights
     tax_unit["health_insurance_premiums_without_medicare_part_b"] = _calculate_array(
         simulation,
         "health_insurance_premiums_without_medicare_part_b",
         map_to="tax_unit",
     )
     tax_unit["assigned_aca_ptc"] = potential_aca_ptc
+    tax_unit["weighted_assigned_aca_ptc"] = potential_aca_ptc * household_weights
     tax_unit["slcsp"] = _calculate_array(simulation, "slcsp", map_to="tax_unit")
     return _with_state_take_up_rates(tax_unit, target_tables)
+
+
+def _aca_source_tax_unit_table_batched(
+    frame: Frame,
+    target_tables: Mapping[str, pd.DataFrame],
+    *,
+    microsimulation_cls,
+    maximum_microsim_batch_size: int | None,
+) -> pd.DataFrame:
+    _assert_no_formula_owned_columns(frame)
+    tax_unit = frame.table("tax_unit").copy()
+    household = frame.table("household")
+    positions = _tax_unit_to_household_positions(frame)
+    tax_unit["state_fips"] = _state_fips_text(
+        np.asarray(household["state_fips"].to_numpy())[positions]
+    )
+
+    fill_columns = (
+        "tax_unit_weight",
+        "household_weight",
+        "is_aca_ptc_eligible",
+        "health_insurance_premiums_without_medicare_part_b",
+        "assigned_aca_ptc",
+        "weighted_assigned_aca_ptc",
+        "slcsp",
+    )
+    tax_unit["tax_unit_weight"] = 0.0
+    tax_unit["household_weight"] = frame.weights_for("household").values[positions]
+    tax_unit["is_aca_ptc_eligible"] = False
+    tax_unit["health_insurance_premiums_without_medicare_part_b"] = 0.0
+    tax_unit["assigned_aca_ptc"] = 0.0
+    tax_unit["weighted_assigned_aca_ptc"] = 0.0
+    tax_unit["slcsp"] = 0.0
+
+    tax_unit_positions = pd.Series(
+        np.arange(len(tax_unit), dtype=np.int64),
+        index=tax_unit["tax_unit_id"].to_numpy(),
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing ACA source inputs in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+
+    for household_positions in batches:
+        full_batch = len(household_positions) == n_households
+        batch_frame = (
+            frame
+            if full_batch
+            else _select_households_by_position(frame, household_positions)
+        )
+        batch_simulation = microsimulation_cls(
+            dataset=_dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
+        )
+        batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
+            batch_frame,
+            target_tables,
+            simulation=batch_simulation,
+        )
+        full_positions = tax_unit_positions.reindex(
+            batch_tax_unit["tax_unit_id"].to_numpy()
+        ).to_numpy()
+        if np.isnan(full_positions).any():
+            raise RuntimeError(
+                "ACA source batch produced tax_unit_id values not present in "
+                "the full tax_unit table."
+            )
+        full_positions = full_positions.astype(np.int64)
+        for column in fill_columns:
+            tax_unit.iloc[
+                full_positions,
+                tax_unit.columns.get_loc(column),
+            ] = batch_tax_unit[column].to_numpy()
+        batch_simulation._invalidate_all_caches()
+        del batch_tax_unit, batch_simulation, batch_frame
+        gc.collect()
+    return _with_state_take_up_rates(tax_unit, target_tables)
+
+
+def _aca_source_tax_unit_table(
+    frame: Frame,
+    target_tables: Mapping[str, pd.DataFrame],
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> pd.DataFrame:
+    if simulation is not None:
+        return _aca_source_tax_unit_table_from_simulation(
+            frame,
+            target_tables,
+            simulation=simulation,
+        )
+    from policyengine_us import Microsimulation
+
+    return _aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=Microsimulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
 
 
 def _with_aca_marketplace_source_outputs(
@@ -730,6 +853,7 @@ def _with_aca_marketplace_source_outputs(
     *,
     seed: int,
     simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> Frame:
     target_tables = _aca_source_target_tables(target_specs)
     if US_ACA_APTC_TARGET_TABLE not in target_tables:
@@ -738,10 +862,6 @@ def _with_aca_marketplace_source_outputs(
             "The Marketplace enrollment target is observed person coverage and "
             "must not be used as a simulated PTC take-up fallback."
         )
-    if simulation is None:
-        from policyengine_us import Microsimulation
-
-        simulation = Microsimulation(dataset=_dataset_from_frame(frame))
     stage = US_SOURCE_MANIFEST.stage_map()[US_ACA_MARKETPLACE_STAGE]
     stop_after = (
         None
@@ -754,6 +874,7 @@ def _with_aca_marketplace_source_outputs(
             frame,
             target_tables,
             simulation=simulation,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
         ),
         **target_tables,
     }
@@ -825,51 +946,15 @@ def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
     return tuple(facts)
 
 
-def _with_exportable_formula_inputs(frame: Frame) -> Frame:
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    person = tables.get("person")
-    if person is not None and "partnership_s_corp_income" in person.columns:
-        combined = person["partnership_s_corp_income"].to_numpy(dtype=np.float64)
-        has_partnership = "partnership_income" in person.columns
-        has_s_corp = "s_corp_income" in person.columns
-        if not has_partnership and not has_s_corp:
-            person["partnership_income"] = combined
-            person["s_corp_income"] = np.zeros(len(person), dtype=np.float64)
-        elif not has_partnership:
-            person["partnership_income"] = combined - person["s_corp_income"].to_numpy(
-                dtype=np.float64
-            )
-        elif not has_s_corp:
-            person["s_corp_income"] = combined - person["partnership_income"].to_numpy(
-                dtype=np.float64
-            )
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-    )
-
-
-def _drop_formula_owned_columns(frame: Frame) -> Frame:
+def _assert_no_formula_owned_columns(frame: Frame) -> None:
     adapter = PolicyEngineUSEngine()
-    frame = _with_exportable_formula_inputs(frame)
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
-    if not formula_owned:
-        return frame
-    stripped_tables = {
-        entity: table.drop(
-            columns=[column for column in formula_owned if column in table.columns]
+    if formula_owned:
+        raise ValueError(
+            "Formula-owned PolicyEngine columns are present before export: "
+            f"{sorted(formula_owned)}. Source stages must emit leaf inputs."
         )
-        for entity, table in tables.items()
-    }
-    return Frame(
-        stripped_tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-    )
 
 
 def _dataset_from_frame(
@@ -877,10 +962,13 @@ def _dataset_from_frame(
     *,
     zero_variables: Iterable[str] = (),
     system=None,
+    assert_no_formula_owned_columns: bool = True,
 ):
+    if assert_no_formula_owned_columns:
+        _assert_no_formula_owned_columns(frame)
+
     from policyengine_us.data import USSingleYearDataset
 
-    frame = _drop_formula_owned_columns(frame)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
         if system is None:
@@ -1002,6 +1090,7 @@ def _reform_household_income_tax(
     n_households: int,
     batch_size: int | None,
 ) -> np.ndarray:
+    _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
     batches = tuple(_household_position_batches(n_households, batch_size))
@@ -1024,6 +1113,7 @@ def _reform_household_income_tax(
             batch_frame,
             zero_variables=(reform_spec.neutralized_variable,),
             system=system,
+            assert_no_formula_owned_columns=False,
         )
         reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
         batch_income_tax = _collapse_tax_unit(
@@ -1240,6 +1330,13 @@ def _soi_eitc_child_count_filter(metadata: Mapping[str, str]) -> str | None:
     return None
 
 
+def _soi_requires_positive_eitc_filter(metadata: Mapping[str, str]) -> bool:
+    return (
+        metadata.get("ledger_domain")
+        == "individual_income_tax_returns_with_earned_income_credit"
+    )
+
+
 def _is_noop_ledger_filter_value(value: str) -> bool:
     return value.strip().lower().replace("_", " ") in {"", "all"}
 
@@ -1421,7 +1518,11 @@ def _materialize_target_frame(
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     _assert_supported_ledger_filter_metadata(target_specs)
-    dataset = _dataset_from_frame(base_frame)
+    _assert_no_formula_owned_columns(base_frame)
+    dataset = _dataset_from_frame(
+        base_frame,
+        assert_no_formula_owned_columns=False,
+    )
     simulation = Microsimulation(dataset=dataset)
     system = CountryTaxBenefitSystem()
     household = base_frame.table("household")
@@ -1596,7 +1697,7 @@ def _materialize_target_frame(
             continue
         if _unsupported_soi_ledger_filters(spec.metadata):
             continue
-        source_name = spec.metadata["variable"]
+        source_name = spec.metadata.get("source_variable", spec.metadata["variable"])
         lower = _as_bound(spec.metadata["agi_lower_bound"])
         upper = _as_bound(spec.metadata["agi_upper_bound"])
         mask = (agi_tax_unit >= lower) & (agi_tax_unit < upper)
@@ -1612,6 +1713,10 @@ def _materialize_target_frame(
             if eitc_child_count is None:
                 continue
             mask &= _eitc_child_count_mask(eitc_child_count, child_filter)
+        if _soi_requires_positive_eitc_filter(spec.metadata):
+            if "eitc" not in variable_cache:
+                continue
+            mask &= variable_cache["eitc"] > 0
         if spec.metadata.get("itemized_only") == "true":
             if tax_unit_itemizes is None:
                 continue
@@ -1646,7 +1751,7 @@ def _materialize_target_frame(
         tax_unit_itemizes,
     )
     simulation._invalidate_all_caches()
-    del simulation
+    del simulation, dataset
     gc.collect()
     requested_reform_measures = {spec.measure for spec in target_specs}
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
@@ -1694,10 +1799,10 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     return measure_ready and filter_ready
 
 
-def _strip_calibration_columns(
+def _with_calibrated_weights(
     base_frame: Frame, calibrated_weights: np.ndarray
 ) -> Frame:
-    base_frame = _drop_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(base_frame)
     return base_frame.with_weights(
         "household",
         Weights(calibrated_weights, WeightKind.CALIBRATED),
@@ -1838,6 +1943,72 @@ def _with_base_population_mass_repair(
     if applied:
         payload["mass_change"] = _mass_change_record_payload(repaired.mass_log[-1])
     return repaired, payload
+
+
+def _with_social_security_component_value_repair(
+    frame: Frame,
+    target_specs: Iterable[object],
+) -> tuple[Frame, dict[str, object]]:
+    targets_by_column: dict[str, float] = {}
+    for spec in target_specs:
+        role = spec.metadata.get("target_role")
+        column = US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.get(role)
+        if column is not None:
+            targets_by_column[column] = float(spec.value)
+
+    missing_targets = sorted(
+        set(US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.values()) - set(targets_by_column)
+    )
+    if missing_targets:
+        raise RuntimeError(
+            "Social Security component repair requires target(s) for "
+            f"{missing_targets}."
+        )
+
+    person = frame.table("person").copy()
+    person_weights = pd.Series(
+        frame.resolve_weights("person").values, index=person.index
+    )
+    component_payload: dict[str, object] = {}
+    applied = False
+    for column, target in targets_by_column.items():
+        if column not in person.columns:
+            raise RuntimeError(
+                f"Social Security component repair requires person column {column!r}."
+            )
+        values = pd.to_numeric(person[column], errors="coerce").fillna(0.0)
+        initial = float((values * person_weights).sum())
+        if not math.isfinite(initial) or initial <= 0.0:
+            raise RuntimeError(
+                "Social Security component repair requires positive finite "
+                f"support for {column!r}; got {initial!r}."
+            )
+        factor = target / initial
+        if not math.isclose(factor, 1.0, rel_tol=1e-12, abs_tol=0.0):
+            person[column] = values.to_numpy(dtype=np.float64) * factor
+            applied = True
+        component_payload[column] = {
+            "target": target,
+            "initial_estimate": initial,
+            "factor": factor,
+            "repaired_estimate": initial * factor,
+        }
+
+    tables_out = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables_out["person"] = person
+    repaired = Frame(
+        tables_out,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    return repaired, {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": applied,
+        "reason": US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON,
+        "components": component_payload,
+    }
 
 
 def _base_population_scale_gate(
@@ -2210,6 +2381,7 @@ def _write_release_calibration_diagnostics(
     target_profile_gate: GateResult,
     health_input_gate: GateResult | None,
     base_population_gate: GateResult | None,
+    support_value_repairs: Mapping[str, object] | None,
     audit_export_targets: bool,
     gate_failures: Iterable[str],
     incumbent_diagnostics_path: Path | None = None,
@@ -2259,6 +2431,7 @@ def _write_release_calibration_diagnostics(
                 if base_population_gate is not None
                 else None
             ),
+            "support_value_repairs": support_value_repairs,
             "release_gates": {
                 "passed": not failures,
                 "failures": failures,
@@ -2800,6 +2973,9 @@ def main() -> None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
     base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
+    base_frame, social_security_component_repair = (
+        _with_social_security_component_value_repair(base_frame, target_specs)
+    )
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
@@ -2808,6 +2984,12 @@ def main() -> None:
             factor=base_population_repair["factor"],
             initial_population=base_population_repair["initial_population"],
             repaired_population=base_population_repair["repaired_population"],
+        )
+        telemetry.stage(
+            "social_security_component_repair",
+            message="Repaired Social Security component value support.",
+            applied=social_security_component_repair["applied"],
+            components=social_security_component_repair["components"],
         )
     base_population_gate = _base_population_scale_gate(
         base_frame,
@@ -2838,6 +3020,7 @@ def main() -> None:
         base_frame,
         target_specs,
         seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
     health_input_gate = _health_input_signal_gate(base_frame)
     if not health_input_gate.passed:
@@ -2911,6 +3094,9 @@ def main() -> None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
+        support_value_repairs={
+            "social_security_components": social_security_component_repair
+        },
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         incumbent_diagnostics_path=args.incumbent_diagnostics,
@@ -2934,7 +3120,7 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
-    export_frame = _strip_calibration_columns(base_frame, result.weights)
+    export_frame = _with_calibrated_weights(base_frame, result.weights)
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
     if args.audit_export_targets:

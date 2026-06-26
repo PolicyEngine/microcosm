@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec
 from populace.frame import Frame, WeightKind
@@ -670,6 +671,58 @@ def test_base_population_mass_repair_rescales_to_census_benchmark(
     assert np.isclose(gate.details["mass_repair"]["factor"], benchmark / 6000.0)
 
 
+def test_social_security_component_value_repair_uses_registry_targets(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    person = small_frame.table("person").copy()
+    person["social_security_retirement"] = [1.0, 0.0, 2.0, 0.0]
+    person["social_security_disability"] = [0.0, 3.0, 0.0, 1.0]
+    person["social_security_dependents"] = [2.0, 0.0, 0.0, 1.0]
+    person["social_security_survivors"] = [0.0, 1.0, 2.0, 0.0]
+    frame = Frame(
+        {
+            "person": person,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    targets = {
+        "ssa_retirement_total": 10_000.0,
+        "ssa_disability_total": 8_000.0,
+        "ssa_dependents_total": 6_000.0,
+        "ssa_survivors_total": 12_000.0,
+    }
+    specs = tuple(
+        TargetSpec(
+            name=f"ssa.{role}",
+            entity="household",
+            value=value,
+            measure="unused",
+            period=builder.PERIOD,
+            source="SSA",
+            metadata={"target_role": role},
+        )
+        for role, value in targets.items()
+    )
+
+    repaired, repair = builder._with_social_security_component_value_repair(
+        frame,
+        specs,
+    )
+
+    assert repair["applied"]
+    weights = pd.Series(repaired.resolve_weights("person").values)
+    for role, column in builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.items():
+        total = float((repaired.table("person")[column] * weights).sum())
+        assert np.isclose(total, targets[role])
+        assert np.isclose(
+            repair["components"][column]["repaired_estimate"],
+            targets[role],
+        )
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -1022,6 +1075,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
         base_population_gate=base_population_gate,
+        support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
         gate_failures=["ctc failed"],
     )
@@ -1044,6 +1098,9 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"population": 334_200_000.0},
+    }
+    assert build["support_value_repairs"] == {
+        "social_security_components": {"applied": True}
     }
 
 
@@ -1121,6 +1178,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_with_base_population_mass_repair",
         lambda frame: (frame, repair_payload),
     )
+    ss_repair_payload = {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": True,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, ss_repair_payload),
+    )
     monkeypatch.setattr(
         builder,
         "_base_population_scale_gate",
@@ -1133,7 +1199,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed: frame,
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
     )
     monkeypatch.setattr(
         builder,
@@ -1192,6 +1258,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
     )
+    assert captured["diagnostics"]["support_value_repairs"] == {
+        "social_security_components": ss_repair_payload
+    }
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
 
@@ -1584,6 +1653,148 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
     )
 
 
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20, 30], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200, 300], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000, 3000], dtype="int64"),
+            "person_marital_unit_id": np.asarray(
+                [10000, 10000, 20000, 30000], dtype="int64"
+            ),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "state_fips": np.asarray([1, 1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2, 0.3],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200, 300]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000, 3000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000, 30000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 20.0, 30.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    target_tables = {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {
+                "state_fips": ["01"],
+                "target": [3.0],
+            }
+        )
+    }
+    tax_values = {
+        10: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 100.0,
+            "health_insurance_premiums_without_medicare_part_b": 400.0,
+            "slcsp": 1000.0,
+        },
+        20: {
+            "is_aca_ptc_eligible": 0.0,
+            "aca_ptc": 200.0,
+            "health_insurance_premiums_without_medicare_part_b": 500.0,
+            "slcsp": 1100.0,
+        },
+        30: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 300.0,
+            "health_insurance_premiums_without_medicare_part_b": 600.0,
+            "slcsp": 1200.0,
+        },
+    }
+    person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
+    seen_tax_unit_batches: list[tuple[int, ...]] = []
+    formula_owned_assertions: list[int] = []
+    dataset_assert_flags: list[bool | None] = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.dataset = dataset
+            seen_tax_unit_batches.append(
+                tuple(dataset.table("tax_unit")["tax_unit_id"].astype(int))
+            )
+
+        def _invalidate_all_caches(self):
+            pass
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        if map_to == "person":
+            return np.asarray(
+                [
+                    person_eligible[int(person_id)]
+                    for person_id in simulation.dataset.table("person")["person_id"]
+                ],
+                dtype=np.float64,
+            )
+        assert map_to == "tax_unit"
+        return np.asarray(
+            [
+                tax_values[int(tax_unit_id)][variable]
+                for tax_unit_id in simulation.dataset.table("tax_unit")["tax_unit_id"]
+            ],
+            dtype=np.float64,
+        )
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
+
+    def fake_dataset_from_frame(frame_arg, **kwargs):
+        dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        return frame_arg
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    tax_unit = builder._aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=FakeMicrosimulation,
+        maximum_microsim_batch_size=1,
+    ).set_index("tax_unit_id")
+
+    assert seen_tax_unit_batches == [(10,), (20,), (30,)]
+    assert formula_owned_assertions == [3]
+    assert dataset_assert_flags == [False, False, False]
+    assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
+    assert bool(tax_unit.loc[10, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[20, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[30, "is_aca_ptc_eligible"]) is False
+    assert tax_unit.loc[10, "assigned_aca_ptc"] == 100.0
+    assert (
+        tax_unit.loc[20, "health_insurance_premiums_without_medicare_part_b"] == 500.0
+    )
+    assert tax_unit.loc[30, "slcsp"] == 1200.0
+    assert tax_unit.loc[10, "aca_take_up_rate"] == 0.075
+    assert tax_unit.loc[30, "aca_take_up_rate"] == 0.0
+
+
 def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
     builder = _load_builder_module()
     specs = (
@@ -1657,8 +1868,8 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "_aca_source_tax_unit_table",
-        lambda frame, target_tables, *, simulation: pd.DataFrame(
-            {"tax_unit_id": [10, 20], "state_fips": ["06", "06"]}
+        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None: (
+            pd.DataFrame({"tax_unit_id": [10, 20], "state_fips": ["06", "06"]})
         ),
     )
     monkeypatch.setattr(builder, "run_source_stage", fake_run_source_stage)
@@ -1776,6 +1987,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     datasets = []
     simulations = []
+    formula_owned_assertions: list[int] = []
 
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
@@ -1818,14 +2030,30 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
-    def fake_dataset_from_frame(frame_arg, *, zero_variables=(), system=None):
-        datasets.append((frame_arg, tuple(zero_variables), system))
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        datasets.append(
+            (
+                frame_arg,
+                tuple(zero_variables),
+                system,
+                assert_no_formula_owned_columns,
+            )
+        )
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
     def fake_make_zero_variable_reform(system, variable_name):
         assert isinstance(system, FakeSystem)
         assert variable_name == "mock_credit"
         return object()
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
 
     monkeypatch.setitem(
         sys.modules,
@@ -1834,6 +2062,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             CountryTaxBenefitSystem=FakeSystem,
             Microsimulation=FakeMicrosimulation,
         ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
     )
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
@@ -1859,6 +2092,8 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         ("mock_credit",),
     ]
     assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False]
+    assert formula_owned_assertions == [2, 2]
     assert len(simulations) == 3
     assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
 
@@ -1938,6 +2173,45 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             "three_plus_return_count",
             "three_or_more_qualifying_children",
             count=True,
+        ),
+        TargetSpec(
+            name="eitc_return_agi",
+            entity="household",
+            measure="eitc_return_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+            },
+        ),
+        TargetSpec(
+            name="eitc_return_count",
+            entity="household",
+            measure="eitc_return_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "count",
+                "source_variable": "count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+                "measure_mode": "indicator_sum",
+            },
         ),
         TargetSpec(
             name="form_w2_social_security_tips",
@@ -2192,6 +2466,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         builder,
         "SOI_VARIABLE_MAP",
         {
+            "adjusted_gross_income": "adjusted_gross_income",
             "eitc": "eitc",
             "itemized_taxable_income_deductions": (
                 "itemized_taxable_income_deductions"
@@ -2216,6 +2491,10 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(household["three_plus_amount"], np.asarray([0.0, 300.0]))
     assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["three_plus_return_count"], np.asarray([0.0, 1.0]))
+    assert np.array_equal(
+        household["eitc_return_agi"], np.asarray([30_000.0, 30_000.0])
+    )
+    assert np.array_equal(household["eitc_return_count"], np.asarray([2.0, 1.0]))
     assert np.array_equal(
         household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
     )
@@ -2245,7 +2524,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
     )
-    assert len(registry) == 16
+    assert len(registry) == 18
     assert compilation["dropped_target_names"] == []
 
 
@@ -2799,7 +3078,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     }
 
 
-def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:
+def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
     class FakePolicyEngineUSEngine:
@@ -2810,48 +3089,51 @@ def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> N
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._strip_calibration_columns(
-        small_frame,
-        np.array([1000.0, 2000.0]),
-    )
-
-    assert "income" not in stripped.table("person")
-    assert stripped.weights_for("household").kind == WeightKind.CALIBRATED
+    with pytest.raises(ValueError, match="Formula-owned.*income"):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
 
 
-def test_export_frame_seeds_partnership_inputs_before_formula_drop(
-    monkeypatch, small_frame
+def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
+    monkeypatch,
+    small_frame,
 ) -> None:
     builder = _load_builder_module()
 
-    person = small_frame.table("person").copy()
-    person["partnership_s_corp_income"] = np.asarray([100.0, -5.0, 0.0, 40.0])
-    frame = Frame(
-        {"person": person, "household": small_frame.table("household").copy()},
-        small_frame.schema,
-        {"household": small_frame.weights_for("household")},
+    def fake_assert_no_formula_owned_columns(frame):
+        assert frame is small_frame
+        raise ValueError("formula-owned guard fired")
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
     )
+
+    with pytest.raises(ValueError, match="formula-owned guard fired"):
+        builder._dataset_from_frame(small_frame)
+
+
+def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
 
     class FakePolicyEngineUSEngine:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
-            assert "partnership_income" in tables["person"]
-            assert "s_corp_income" in tables["person"]
-            return {"partnership_s_corp_income"}
+            assert "income" in tables["person"]
+            return set()
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._drop_formula_owned_columns(frame)
+    exported = builder._with_calibrated_weights(
+        small_frame,
+        np.array([1000.0, 2000.0]),
+    )
 
-    assert "partnership_s_corp_income" not in stripped.table("person")
-    assert np.array_equal(
-        stripped.table("person")["partnership_income"].to_numpy(),
-        np.asarray([100.0, -5.0, 0.0, 40.0]),
-    )
-    assert np.array_equal(
-        stripped.table("person")["s_corp_income"].to_numpy(),
-        np.zeros(4),
-    )
+    assert "income" in exported.table("person")
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
 
 
 def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) -> None:

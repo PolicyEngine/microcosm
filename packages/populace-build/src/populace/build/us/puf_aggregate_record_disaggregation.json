@@ -9,13 +9,13 @@
     "E00200",
     "P23250",
     "P22250",
-    "E00650",
+    "qualified_dividend_income",
     "E00300",
     "E26270",
     "E00900",
     "E02100",
     "E00400",
-    "E00600"
+    "non_qualified_dividend_income"
   ],
   "buckets": {
     "999996": {

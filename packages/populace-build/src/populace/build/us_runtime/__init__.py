@@ -38,6 +38,11 @@ from populace.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from populace.build.us_runtime.cps_carried import (
+    CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+    CPS_CARRIED_PERSON_INPUTS,
+    derive_us_cps_carried_inputs,
+)
 from populace.build.us_runtime.demographics import (
     AGE_BANDS,
     DEMOGRAPHICS_SCHEMA_VERSION,
@@ -69,6 +74,8 @@ from populace.build.us_runtime.fiscal_targets import (
 )
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_STAGE_NAME,
     clone_us_frame_for_puf_support,
@@ -107,6 +114,8 @@ __all__ = [
     "BuildConfig",
     "AsecSource",
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
+    "CPS_CARRIED_PERSON_INPUTS",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -138,6 +147,8 @@ __all__ = [
     "US_SOURCE_MANIFEST",
     "US_SOURCE_STAGE_SPECS",
     "US_STAGE_NAMES",
+    "PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS",
+    "PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
@@ -145,6 +156,7 @@ __all__ = [
     "compile_us_fiscal_target_registry",
     "build_pooled_asec_unit_frame",
     "clone_us_frame_for_puf_support",
+    "derive_us_cps_carried_inputs",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
     "impute_us_puf_tax_detail_support",

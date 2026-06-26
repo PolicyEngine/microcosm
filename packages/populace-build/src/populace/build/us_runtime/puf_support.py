@@ -47,25 +47,26 @@ PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_self_employment_income",
     "puf_predictor_taxable_interest_income",
     "puf_predictor_dividend_income",
-    "puf_predictor_tax_exempt_interest_income",
     "puf_predictor_short_term_capital_gains",
     "puf_predictor_long_term_capital_gains",
 )
 
 PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
-    "employment_income",
-    "self_employment_income",
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
     "taxable_interest_income",
-    "dividend_income",
     "qualified_dividend_income",
+    "non_qualified_dividend_income",
     "tax_exempt_interest_income",
     "short_term_capital_gains",
-    "long_term_capital_gains",
+    "long_term_capital_gains_before_response",
     "non_sch_d_capital_gains",
-    "taxable_pension_income",
+    "taxable_private_pension_income",
     "taxable_ira_distributions",
-    "unemployment_compensation",
-    "social_security",
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
@@ -75,33 +76,91 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "estate_income",
     "farm_income",
     "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
 )
 
-PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS = (
-    "interest_deduction",
-    "state_withheld_income_tax",
+PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
+)
+
+PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
+    "first_home_mortgage_balance",
+    "second_home_mortgage_balance",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "first_home_mortgage_origination_year",
+    "second_home_mortgage_origination_year",
+)
+
+_PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
+    {
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
+    }
+)
+_PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
+    {
+        "taxable_interest_income",
+    }
+)
+
+PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS = frozenset(
+    {
+        "interest_deduction",
+        "state_withheld_income_tax",
+    }
 )
 
 _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
     {
         "employment_income",
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
         "taxable_interest_income",
-        "dividend_income",
         "qualified_dividend_income",
+        "non_qualified_dividend_income",
         "tax_exempt_interest_income",
+        "long_term_capital_gains_before_response",
         "taxable_pension_income",
+        "taxable_private_pension_income",
         "taxable_ira_distributions",
-        "unemployment_compensation",
-        "social_security",
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
-        "interest_deduction",
-        "state_withheld_income_tax",
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
     }
 )
+_PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
+    "employment_income": ("employment_income_before_lsr",),
+    "self_employment_income": ("self_employment_income_before_lsr",),
+    "long_term_capital_gains": ("long_term_capital_gains_before_response",),
+    "taxable_pension_income": (
+        "taxable_private_pension_income",
+        "taxable_public_pension_income",
+    ),
+    "social_security": (
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents",
+    ),
+}
 
 _FILING_STATUS_CODES = {
     "SINGLE": 1.0,
@@ -109,6 +168,12 @@ _FILING_STATUS_CODES = {
     "SEPARATE": 3.0,
     "HEAD_OF_HOUSEHOLD": 4.0,
     "SURVIVING_SPOUSE": 5.0,
+}
+_PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
+    "health_insurance_premiums_without_medicare_part_b": 0.453,
+    "other_medical_expenses": 0.325,
+    "medicare_part_b_premiums": 0.137,
+    "over_the_counter_health_expenses": 0.085,
 }
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
@@ -225,6 +290,7 @@ def puf_tax_unit_donor_from_arrays(
     )
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
 
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
     person_source_columns = set(person_outputs)
     if "interest_deduction" in tax_unit_outputs:
         person_source_columns.add("home_mortgage_interest")
@@ -285,6 +351,7 @@ def impute_us_puf_tax_detail_support(
     if person_channel not in frame.table("person").columns:
         raise ValueError("PUF support metadata is missing from the person table.")
 
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
@@ -323,9 +390,26 @@ def impute_us_puf_tax_detail_support(
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)
+        if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
+        if column in _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
+    _reconcile_puf_social_security_components(
+        predictions,
+        tables["person"],
+        person_channel=person_channel,
+        tax_unit_ids=tax_unit_ids,
+        requested_components=person_outputs,
+    )
     for column in tax_unit_outputs:
         _ensure_float_output_column(tables["tax_unit"], column)
         tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
@@ -340,8 +424,19 @@ def impute_us_puf_tax_detail_support(
             totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
             nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
         )
-    _write_tax_unit_partnership_s_corp_income_from_splits(tables)
-
+    for column in person_outputs:
+        if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
+            _sparsify_tax_unit_person_output_to_donor_positive_rate(
+                tables,
+                column=column,
+                donor_positive_rate=_weighted_positive_rate(
+                    donor[column],
+                    donor["weight"],
+                ),
+                household_weights=frame.weights_for("household").values,
+                person_channel=person_channel,
+                tax_unit_channel=tax_unit_channel,
+            )
     return Frame(
         tables,
         frame.schema,
@@ -558,6 +653,19 @@ def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
     )
 
 
+def _reject_formula_owned_outputs(
+    person_outputs: Sequence[str],
+    tax_unit_outputs: Sequence[str],
+) -> None:
+    requested = set(person_outputs) | set(tax_unit_outputs)
+    formula_owned = sorted(requested & PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
+    if formula_owned:
+        raise ValueError(
+            "PUF tax-detail support outputs must be PolicyEngine leaf inputs, "
+            f"not formula-owned aggregate outputs: {formula_owned}."
+        )
+
+
 def _tax_unit_feature_frame(frame: Frame, columns: Sequence[str]) -> pd.DataFrame:
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
@@ -592,8 +700,13 @@ def _person_tax_unit_sum(frame: Frame, column: str) -> np.ndarray:
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
     if column == "dividend_income" and column not in person.columns:
-        values = _optional_person(person, "non_qualified_dividend_income")
-        values += _optional_person(person, "qualified_dividend_income")
+        values = _optional_person(
+            person, "non_qualified_dividend_income"
+        ) + _optional_person(person, "qualified_dividend_income")
+    elif column not in person.columns and column in _PREDICTOR_LEAF_ALIASES:
+        values = np.zeros(len(person), dtype=np.float64)
+        for leaf in _PREDICTOR_LEAF_ALIASES[column]:
+            values += _optional_person(person, leaf)
     else:
         if column not in person.columns:
             raise ValueError(
@@ -629,6 +742,25 @@ def _ensure_float_output_column(table: pd.DataFrame, column: str) -> None:
     )
 
 
+def _snap_to_observed_values(
+    values: Sequence[Any],
+    observed: Sequence[Any],
+) -> np.ndarray:
+    """Map continuous model predictions to the nearest observed donor value."""
+
+    value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    observed_array = np.unique(
+        np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+    )
+    if len(observed_array) == 0:
+        return value_array.to_numpy(dtype=np.float64)
+    positions = np.abs(
+        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
+    ).argmin(axis=1)
+    return observed_array[positions]
+
+
 def _write_person_tax_unit_totals(
     person: pd.DataFrame,
     *,
@@ -655,24 +787,218 @@ def _write_person_tax_unit_totals(
     person.loc[mask, column] = allocation
 
 
+def _weighted_positive_rate(values: pd.Series, weights: pd.Series) -> float:
+    numeric_values = pd.to_numeric(values, errors="coerce").fillna(0.0)
+    numeric_weights = (
+        pd.to_numeric(weights, errors="coerce").fillna(0.0).clip(lower=0.0)
+    )
+    total_weight = float(numeric_weights.sum())
+    if total_weight <= 0.0:
+        return 0.0
+    return float((numeric_weights * (numeric_values > 0.0)).sum() / total_weight)
+
+
+def _sparsify_tax_unit_person_output_to_donor_positive_rate(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    column: str,
+    donor_positive_rate: float,
+    household_weights: np.ndarray,
+    person_channel: str,
+    tax_unit_channel: str,
+) -> None:
+    positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
+    person = tables["person"]
+    household = tables["household"]
+    tax_unit = tables["tax_unit"]
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "household_weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+    household_weight = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"],
+    )
+    tax_unit_household_id = (
+        person.groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+        .astype("int64")
+    )
+    tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
+    tax_unit_amount = (
+        pd.to_numeric(person[column], errors="coerce")
+        .fillna(0.0)
+        .groupby(person["person_tax_unit_id"], sort=False)
+        .sum()
+    )
+
+    for channel in tax_unit[tax_unit_channel].dropna().unique():
+        channel_tax_unit_ids = tax_unit.loc[
+            tax_unit[tax_unit_channel] == channel,
+            "tax_unit_id",
+        ]
+        amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
+        weights = tax_unit_weight.reindex(channel_tax_unit_ids).fillna(0.0)
+        positive = amounts > 0.0
+        positive_weight = float(weights[positive].sum())
+        desired_positive_weight = positive_rate * float(weights.sum())
+        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+            continue
+
+        ranked = (
+            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+            .sort_values("amount", ascending=False)
+            .copy()
+        )
+        cumulative = ranked["weight"].cumsum()
+        keep = cumulative <= desired_positive_weight
+        if not keep.any() and len(keep) > 0:
+            keep.iloc[0] = True
+        kept_ids = set(ranked.index[keep])
+
+        sparse_totals = amounts.copy()
+        sparse_totals.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+        original_total = float((amounts * weights).sum())
+        sparse_total = float((sparse_totals * weights).sum())
+        if original_total != 0.0 and sparse_total != 0.0:
+            sparse_totals *= original_total / sparse_total
+
+        mask = person[person_channel] == channel
+        _write_person_tax_unit_totals(
+            person,
+            mask=mask,
+            column=column,
+            totals=sparse_totals,
+            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+        )
+
+
+def _reconcile_puf_social_security_components(
+    predictions: pd.DataFrame,
+    person: pd.DataFrame,
+    *,
+    person_channel: str,
+    tax_unit_ids: np.ndarray,
+    requested_components: Sequence[str],
+) -> None:
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components:
+        return
+    if set(components) != set(PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS):
+        raise ValueError(
+            "PUF Social Security support must request all Social Security "
+            f"component leaves, got {components!r}."
+        )
+    missing = [component for component in components if component not in predictions]
+    if missing:
+        raise ValueError(
+            "PUF Social Security predictions are missing component column(s): "
+            f"{missing}."
+        )
+
+    puf_person = person.loc[
+        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        ["person_tax_unit_id"],
+    ].copy()
+    for component in components:
+        if component in person.columns:
+            puf_person[component] = (
+                pd.to_numeric(
+                    person.loc[
+                        person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                        component,
+                    ],
+                    errors="coerce",
+                )
+                .fillna(0.0)
+                .clip(lower=0.0)
+                .to_numpy(dtype=np.float64)
+            )
+        else:
+            puf_person[component] = np.zeros(
+                len(puf_person),
+                dtype=np.float64,
+            )
+    basis = (
+        puf_person.groupby("person_tax_unit_id", sort=False)[list(components)]
+        .sum()
+        .reindex(tax_unit_ids)
+        .fillna(0.0)
+    )
+    basis_values = basis.to_numpy(dtype=np.float64)
+    basis_sums = basis_values.sum(axis=1)
+    shares = np.zeros_like(basis_values)
+    has_basis = basis_sums > 0
+    shares[has_basis] = basis_values[has_basis] / basis_sums[has_basis, np.newaxis]
+    shares[~has_basis] = 1.0 / len(components)
+
+    total = (
+        predictions.loc[:, list(components)]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0)
+        .sum(axis=1)
+        .to_numpy(dtype=np.float64)
+    )
+    for index, component in enumerate(components):
+        predictions[component] = shares[:, index] * total
+
+
 def _person_source_values(
     arrays: Mapping[str, Sequence[Any]],
     output: str,
 ) -> np.ndarray | None:
     if output in arrays:
         return _numeric_array(arrays[output])
+    source_aliases = {
+        "employment_income_before_lsr": ("employment_income",),
+        "self_employment_income_before_lsr": ("self_employment_income",),
+        "long_term_capital_gains_before_response": ("long_term_capital_gains",),
+        "taxable_private_pension_income": ("taxable_pension_income",),
+    }
+    for source in source_aliases.get(output, ()):
+        if source in arrays:
+            return _numeric_array(arrays[source])
+    if output == "partnership_income" and "partnership_s_corp_income" in arrays:
+        return _numeric_array(arrays["partnership_s_corp_income"])
+    if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
+        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+    if output == "partnership_self_employment_net_earnings" and (
+        "partnership_se_income" in arrays
+    ):
+        return _numeric_array(arrays["partnership_se_income"])
     if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
         return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
         return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
-    if output == "dividend_income":
-        return _numeric_array(arrays.get("non_qualified_dividend_income", 0.0)) + (
-            _numeric_array(arrays.get("qualified_dividend_income", 0.0))
+    if output == "partnership_self_employment_net_earnings" and {
+        "E25960",
+        "E26180",
+    }.issubset(arrays):
+        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+    if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
+        return (
+            _numeric_array(arrays["E17500"])
+            * _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS[output]
         )
     if output == "unemployment_compensation" and (
         "taxable_unemployment_compensation" in arrays
     ):
         return _numeric_array(arrays["taxable_unemployment_compensation"])
+    if output in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS:
+        if output != "social_security_retirement":
+            for source in ("social_security", "total_social_security", "E02400"):
+                if source in arrays:
+                    return np.zeros_like(_numeric_array(arrays[source]))
+            return None
+        for source in ("social_security", "total_social_security", "E02400"):
+            if source in arrays:
+                return _numeric_array(arrays[source])
     return None
 
 
@@ -686,6 +1012,25 @@ def _add_predictor_aliases(
         source = _predictor_source_column(predictor)
         if source in table.columns:
             table[predictor] = table[source]
+        elif source == "dividend_income" and {
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+        }.issubset(table.columns):
+            table[predictor] = pd.to_numeric(
+                table["qualified_dividend_income"],
+                errors="coerce",
+            ).fillna(0.0) + pd.to_numeric(
+                table["non_qualified_dividend_income"],
+                errors="coerce",
+            ).fillna(0.0)
+        elif source in _PREDICTOR_LEAF_ALIASES:
+            pieces = [
+                pd.to_numeric(table[leaf], errors="coerce").fillna(0.0)
+                for leaf in _PREDICTOR_LEAF_ALIASES[source]
+                if leaf in table.columns
+            ]
+            if pieces:
+                table[predictor] = sum(pieces)
 
 
 def _predictor_source_column(column: str) -> str:
@@ -727,43 +1072,7 @@ def _tax_unit_source_values(
         ]
         if pieces:
             return np.sum(np.column_stack(pieces), axis=1)
-    if output == "tax_unit_partnership_s_corp_income" and {
-        "partnership_income",
-        "s_corp_income",
-    }.issubset(grouped_person.columns):
-        return (
-            grouped_person["partnership_income"]
-            .add(grouped_person["s_corp_income"], fill_value=0.0)
-            .reindex(tax_unit_id)
-            .fillna(0.0)
-            .to_numpy()
-        )
     return None
-
-
-def _write_tax_unit_partnership_s_corp_income_from_splits(
-    tables: Mapping[str, pd.DataFrame],
-) -> None:
-    person = tables["person"]
-    if not {"partnership_income", "s_corp_income"}.issubset(person.columns):
-        return
-    tax_unit = tables["tax_unit"]
-    combined = pd.to_numeric(person["partnership_income"], errors="coerce").fillna(
-        0.0
-    ) + pd.to_numeric(person["s_corp_income"], errors="coerce").fillna(0.0)
-    grouped = (
-        pd.DataFrame(
-            {
-                "person_tax_unit_id": person["person_tax_unit_id"],
-                "tax_unit_partnership_s_corp_income": combined,
-            }
-        )
-        .groupby("person_tax_unit_id", sort=False)["tax_unit_partnership_s_corp_income"]
-        .sum()
-    )
-    tax_unit["tax_unit_partnership_s_corp_income"] = (
-        grouped.reindex(tax_unit["tax_unit_id"]).fillna(0.0).to_numpy()
-    )
 
 
 def _filing_status_codes(values: Sequence[Any]) -> np.ndarray:

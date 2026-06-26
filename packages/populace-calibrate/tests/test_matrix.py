@@ -39,6 +39,43 @@ def test_matrix_has_one_row_per_target_one_column_per_weight(feasible_frame) -> 
     )
 
 
+def test_matrix_compiler_does_not_dense_stack_target_rows(
+    feasible_frame, monkeypatch
+) -> None:
+    frame, truths = feasible_frame(n=150)
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=truths["population"],
+                measure="household_count",
+            ),
+            Target(
+                name="income",
+                entity="household",
+                value=truths["income"],
+                measure="income",
+            ),
+        )
+    )
+
+    def fail_vstack(*args, **kwargs):
+        raise AssertionError("matrix compiler should not dense-stack rows")
+
+    monkeypatch.setattr(np, "vstack", fail_vstack)
+    problem = build_constraint_matrix(frame, targets)
+
+    assert problem.matrix.shape == (2, 150)
+    np.testing.assert_allclose(
+        problem.estimates(frame.resolve_weights("household").values),
+        [
+            truths["population"],
+            truths["income"],
+        ],
+    )
+
+
 def test_estimates_recover_the_weighted_aggregates(feasible_frame) -> None:
     frame, truths = feasible_frame(n=150)
     targets = TargetSet(

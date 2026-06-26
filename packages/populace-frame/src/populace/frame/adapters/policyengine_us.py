@@ -46,6 +46,14 @@ _FORMULA_OWNED_COMPAT_COLUMNS = frozenset(
         # leaves. Some published wheels can still report it as an input, but
         # Populace must not persist it as a final dataset input.
         "partnership_s_corp_income",
+        # Dividends are sourced as qualified and non-qualified leaves. Persisting
+        # either total can make the stored inputs internally inconsistent.
+        "dividend_income",
+        "ordinary_dividend_income",
+        # Social Security is sourced and targeted through benefit-type leaves.
+        # Persisting the aggregate can disagree with those leaves and mask the
+        # engine-owned total.
+        "social_security",
     }
 )
 
@@ -69,6 +77,8 @@ def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
     variables. Formula-owned outputs may be backed by a direct formula or a
     formula mapping keyed by start date.
     """
+    if getattr(variable, "adds", None) or getattr(variable, "subtracts", None):
+        return True
     if period is not None:
         return variable.get_formula(str(period)) is not None
     if getattr(variable, "formula", None) is not None:

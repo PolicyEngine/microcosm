@@ -195,7 +195,9 @@ def build_constraint_matrix(
     w0 = initial.values
     n_weights = len(w0)
 
-    rows: list[np.ndarray] = []
+    data_parts: list[np.ndarray] = []
+    index_parts: list[np.ndarray] = []
+    indptr: list[int] = [0]
     values: list[float] = []
     names: list[str] = []
     compiled: list[Target] = []
@@ -230,12 +232,16 @@ def build_constraint_matrix(
                 )
             )
             continue
-        rows.append(row)
+        indices = np.flatnonzero(row)
+        if len(indices):
+            index_parts.append(indices.astype(np.int64, copy=False))
+            data_parts.append(row[indices].astype(np.float64, copy=False))
+        indptr.append(indptr[-1] + int(len(indices)))
         values.append(target.value)
         names.append(target.row_name)
         compiled.append(target)
 
-    if not rows:
+    if not compiled:
         detail = (
             "; ".join(f"{s.target.row_name}: {s.reason}" for s in skipped)
             or "no targets supplied"
@@ -245,7 +251,20 @@ def build_constraint_matrix(
             f"({len(skipped)} skipped): {detail}."
         )
 
-    matrix = sparse.csr_array(np.vstack(rows))
+    if data_parts:
+        data = np.concatenate(data_parts)
+        indices = np.concatenate(index_parts)
+    else:
+        data = np.empty(0, dtype=np.float64)
+        indices = np.empty(0, dtype=np.int64)
+    matrix = sparse.csr_array(
+        (
+            data,
+            indices,
+            np.asarray(indptr, dtype=np.int64),
+        ),
+        shape=(len(compiled), n_weights),
+    )
     return CalibrationProblem(
         matrix=matrix,
         target_vector=np.asarray(values, dtype=np.float64),

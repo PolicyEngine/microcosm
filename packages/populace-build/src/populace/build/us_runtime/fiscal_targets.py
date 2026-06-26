@@ -195,7 +195,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ira_distributions": "taxable_ira_distributions",
     "itemized_taxable_income_deductions": "itemized_taxable_income_deductions",
     "medical_expense_deduction": "medical_expense_deduction",
-    "ordinary_dividends": "dividend_income",
+    "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
@@ -219,6 +219,10 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "ctc": ("ctc", "ctc_limiting_tax_liability"),
+    "ordinary_dividends": (
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    ),
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
@@ -284,7 +288,7 @@ DIRECT_LEDGER_TARGETS: dict[
         {"target_role": "cbo_net_capital_gain"},
     ),
     ("cbo", "projected_amount", "net_business_income"): (
-        "self_employment_income",
+        "cbo_net_business_income",
         "cbo",
         {"target_role": "cbo_net_business_income"},
     ),
@@ -398,10 +402,40 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
+        "Tennessee has no modeled 2024 state individual income tax support in "
+        "PolicyEngine-US; this STC residual collection row cannot be estimated "
+        "from the current state_income_tax variable."
+    ),
     "census_stc.fy2024.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
         "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
+        "Current US support does not yet materialize a positive tip_income source "
+        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
+        "source stage wired into the fiscal refresh before calibration."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -665,7 +699,12 @@ def compile_us_fiscal_target_registry(
         country="us",
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
-    return _uprate_cross_period_soi_decompositions(
+    registry = _uprate_cross_period_soi_decompositions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
+    return _rebase_stale_soi_capital_gains_distributions(
         registry,
         materialized_facts,
         target_period=target_period,
@@ -773,6 +812,185 @@ class _SoiTotalControl:
     period_key: tuple[int, int, str]
 
 
+def _rebase_stale_soi_capital_gains_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Use stale SOI capital-gains rows as shares, not hard old-year totals."""
+
+    controls = _soi_capital_gains_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    stale_national_totals = _soi_capital_gains_stale_national_totals(facts)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        kind = _soi_capital_gains_kind(spec)
+        if kind is None or not _is_stale_soi_historic_capital_gains_spec(spec):
+            specs.append(spec)
+            continue
+
+        key = _soi_capital_gains_control_key_from_spec(spec)
+        control = controls.get(key)
+        source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
+        if control is None:
+            specs.append(spec)
+            continue
+        if source_total in (None, 0):
+            continue
+        if not _period_not_before(
+            control.period_key, _period_key_from_value(spec.metadata["source_period"])
+        ):
+            specs.append(spec)
+            continue
+
+        if _is_national_all_agi_spec(spec):
+            continue
+
+        factor = control.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _soi_capital_gains_uprating_index(kind),
+                    "uprating_from_period": spec.metadata["source_period"],
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_capital_gains_active_totals(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None:
+            continue
+        if _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        current = controls.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=target_period_key,
+        ):
+            controls[key] = candidate
+    return controls
+
+
+def _soi_capital_gains_stale_national_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str], float] = {}
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None or not _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        totals[(*key, str(_period_value(fact)))] = _numeric_value(fact)
+    return totals
+
+
+def _soi_capital_gains_kind(spec: TargetSpec) -> str | None:
+    return _soi_capital_gains_kind_from_measure(
+        spec.metadata.get("source_measure_id", "")
+    )
+
+
+def _soi_capital_gains_kind_from_measure(measure_id: str) -> str | None:
+    if measure_id == "net_capital_gains_amount":
+        return "amount"
+    if measure_id == "net_capital_gains_returns":
+        return "returns"
+    return None
+
+
+def _is_stale_soi_historic_capital_gains_spec(spec: TargetSpec) -> bool:
+    if spec.family != "irs_soi":
+        return False
+    if _soi_capital_gains_kind(spec) is None:
+        return False
+    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+
+
+def _is_stale_soi_historic_capital_gains_fact(fact: object) -> bool:
+    if _source_name(fact) != "irs_soi":
+        return False
+    if _soi_capital_gains_kind_from_measure(_measure_id(fact)) is None:
+        return False
+    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
+
+
+def _soi_capital_gains_control_key_from_fact(
+    fact: object,
+) -> tuple[str, str, str] | None:
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if _soi_capital_gains_kind_from_measure(measure_id) is None:
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    if not _is_all_agi_range_fact(fact):
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    return (
+        measure_id,
+        status,
+        _soi_return_universe_from_fact(fact),
+    )
+
+
+def _soi_capital_gains_control_key_from_spec(
+    spec: TargetSpec,
+) -> tuple[str, str, str]:
+    return (
+        spec.metadata.get("source_measure_id", ""),
+        spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
+    )
+
+
+def _is_national_all_agi_spec(spec: TargetSpec) -> bool:
+    if spec.metadata.get("state_fips"):
+        return False
+    lower, upper = _bounds_from_metadata(spec)
+    return lower == -float("inf") and upper == float("inf")
+
+
+def _soi_capital_gains_uprating_index(kind: str) -> str:
+    if kind == "returns":
+        return "total_net_capital_gains_returns"
+    return "total_net_capital_gains_amount"
+
+
 def _uprate_cross_period_soi_decompositions(
     registry: TargetRegistry,
     facts: tuple[object, ...],
@@ -818,8 +1036,8 @@ def _uprate_cross_period_soi_decompositions(
 
 def _soi_total_controls_by_source_period(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str, str], float] = {}
     for fact in facts:
         if not _is_soi_total_uprating_control_fact(fact):
             continue
@@ -835,8 +1053,8 @@ def _soi_active_total_controls(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-) -> dict[tuple[str, str, str], _SoiTotalControl]:
-    totals: dict[tuple[str, str, str], _SoiTotalControl] = {}
+) -> dict[tuple[str, str, str, str], _SoiTotalControl]:
+    totals: dict[tuple[str, str, str, str], _SoiTotalControl] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
         if not _is_soi_total_uprating_control_fact(fact):
@@ -879,23 +1097,25 @@ def _is_soi_total_uprating_control_fact(fact: object) -> bool:
     return lower == "-inf" and upper == "inf"
 
 
-def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str]:
+def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str, str]:
     state_fips = _state_fips(fact)
     geography_key = f"state:{state_fips}" if state_fips else "country"
     return (
         _measure_id(fact),
         geography_key,
         _filing_status_label(_dimensions(fact).get("filing_status")) or "",
+        _soi_return_universe_from_fact(fact),
     )
 
 
-def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str]:
+def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str, str]:
     state_fips = spec.metadata.get("state_fips", "")
     geography_key = f"state:{state_fips}" if state_fips else "country"
     return (
         spec.metadata.get("source_measure_id", ""),
         geography_key,
         spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
     )
 
 
@@ -1328,6 +1548,21 @@ def _normalized_record_set_id(record_set_id: str) -> str:
     )
 
 
+def _soi_return_universe_from_fact(fact: object) -> str:
+    return _soi_return_universe_from_record_set_id(
+        _str_at(fact, "layout", "record_set_id")
+    )
+
+
+def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
+    normalized = _normalized_record_set_id(record_set_id)
+    if "itemized_all_returns" in normalized:
+        return "itemized_returns"
+    if "all_returns_excluding_dependents" in normalized:
+        return "returns_excluding_dependents"
+    return "all_returns"
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -1451,17 +1686,21 @@ def _soi_reference_from_fact(
     source_record_id = _source_record_id(fact)
     if not source_record_id:
         return None
+    display_variable = _soi_display_variable(variable)
+    soi_return_universe = _soi_return_universe_from_fact(fact)
     metadata = {
         "source_measure_id": measure_id,
+        "source_variable": variable,
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
         "target_role": _soi_target_role(fact, measure_id),
-        "variable": variable,
+        "variable": display_variable,
         "materializer": "irs_soi_slice",
         "measure_mode": _soi_measure_mode(variable, is_count=is_count),
         "agi_lower_bound": lower,
         "agi_upper_bound": upper,
         "filing_status": status,
+        "soi_return_universe": soi_return_universe,
         **_soi_layout_filter_metadata(fact),
     }
     base_variables = _soi_base_variables(variable)
@@ -1469,7 +1708,10 @@ def _soi_reference_from_fact(
         metadata["base_variable"] = base_variables[0]
     elif len(base_variables) > 1:
         metadata["base_variables"] = ",".join(base_variables)
-    if variable in _SOI_ITEMIZED_ONLY_VARIABLES:
+    if (
+        variable in _SOI_ITEMIZED_ONLY_VARIABLES
+        or soi_return_universe == "itemized_returns"
+    ):
         metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
     if state_fips:
@@ -1494,6 +1736,12 @@ def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
     if is_count:
         return "indicator_sum"
     return "sum"
+
+
+def _soi_display_variable(variable: str) -> str:
+    if variable == "ordinary_dividends":
+        return "ordinary_dividend_income"
+    return variable
 
 
 def _soi_base_variables(variable: str) -> tuple[str, ...]:
@@ -1722,6 +1970,11 @@ def _references_for_target_period(
 
 
 def _soi_target_role(fact: object, measure_id: str) -> str:
+    if _is_all_income_range(fact):
+        if measure_id == "premium_tax_credit_amount":
+            return "aca_spending"
+        if measure_id == "premium_tax_credit_returns":
+            return "aca_ptc_returns"
     if _geography_level(fact) == "country" and _is_all_income_range(fact):
         roles = {
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
@@ -1732,7 +1985,6 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
             "charitable_amount": "charitable_deduction_total",
-            "premium_tax_credit_amount": "aca_spending",
             "interest_paid_deduction_amount": "interest_deduction_total",
             "itemized_deductions_amount": "itemized_deduction_total",
             "limited_state_local_taxes_amount": "salt_deduction_total",
@@ -1747,10 +1999,16 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
 
 def _is_all_income_range(fact: object) -> bool:
     dimensions = _dimensions(fact)
+    return _is_all_agi_range_fact(fact) and (
+        str(dimensions.get("filing_status", "all")) == "all"
+    )
+
+
+def _is_all_agi_range_fact(fact: object) -> bool:
+    dimensions = _dimensions(fact)
     lower, upper = _agi_bounds(fact)
     return (
         str(dimensions.get("income_range", "all")) == "all"
-        and str(dimensions.get("filing_status", "all")) == "all"
         and lower == "-inf"
         and upper == "inf"
     )
