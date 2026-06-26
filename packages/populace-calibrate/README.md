@@ -21,11 +21,15 @@ reproduces them.
    **same** weight vector — the charter's "one weight per trajectory".
    Uncompilable targets (missing columns or invalid lengths) are **skipped and
    reported**, never dropped silently.
-3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
-   the log-weights with torch Adam to minimize **capped weighted MAPE**:
+3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` minimizes
+   **capped weighted MAPE**:
    `weighted_mean(min(abs((A @ w - b) / scale), cap))`. By default
    `scale = max(abs(target), 1)` and `cap = 10`
-   (1000%). Weights stay strictly positive by construction (`w = exp(log_w)`).
+   (1000%). The default `method="adam"` optimizes log-weights with torch Adam,
+   keeping weights strictly positive by construction (`w = exp(log_w)`).
+   `method="prox"` optimizes non-negative weight ratios with a proximal
+   soft-threshold step for L1 selection, so unneeded records can become exact
+   zeros.
    The result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.
 
@@ -48,6 +52,9 @@ reproduces them.
   (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.
 - **`l0_lambda`** alone (no `target_records`) prunes at a fixed penalty: `> 0`
   gates the pool, `0.0` keeps every record.
+- **`l1_lambda`** uses `method="prox"` and adds a proximal L1 penalty on
+  `mean(weight / initial_weight)`. The soft-threshold step can prune records to
+  exact zero while keeping the recorded objective coefficient explicit.
 - **`l2_lambda`** is an experimental soft concentration knob: positive values
   add `l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)` to the loss.
   With no L0 gates this is the calibrated weight ratio; with L0 gates it is
