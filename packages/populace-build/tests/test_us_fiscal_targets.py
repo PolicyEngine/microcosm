@@ -890,6 +890,50 @@ def test_cross_period_soi_taxable_interest_agi_slice_uprates_to_active_total() -
     assert returns.metadata["uprating_factor"] == "1.1"
 
 
+def test_cross_period_soi_taxable_interest_agi_slice_ignores_itemized_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                    "taxable_interest_amount"
+                ),
+                value=165_000_000_000,
+                layout_record_set_id=("irs_soi.ty2023.table_2_1.itemized_all_returns"),
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 21_000_000_000
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "1"
+
+
 def test_cross_period_soi_taxable_interest_agi_slice_uses_latest_available_total() -> (
     None
 ):
@@ -1597,6 +1641,68 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
             assert "itemized_only" not in spec.metadata
         else:
             assert spec.metadata["itemized_only"] == itemized_only
+
+
+def test_soi_itemized_return_universe_sets_itemized_filter_for_income_targets() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "taxable_interest_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="taxable_interest_amount",
+            value=165_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "taxable_interest_returns"
+            ),
+            source_name="irs_soi",
+            measure_id="taxable_interest_returns",
+            value=9_500_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "ordinary_dividends_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="ordinary_dividends_amount",
+            value=270_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "adjusted_gross_income"
+            ),
+            source_name="irs_soi",
+            measure_id="adjusted_gross_income",
+            value=7_000_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.name: spec for spec in registry.specs}
+    for fact in facts:
+        source_record_id = fact["lineage"]["source_record_id"]
+        if source_record_id.startswith("irs_soi.ty2023.table_2_1"):
+            assert specs[source_record_id].metadata["itemized_only"] == "true"
 
 
 def test_soi_qbi_historic_table_2_measures_are_not_direct_targets() -> None:

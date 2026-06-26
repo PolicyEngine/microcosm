@@ -852,8 +852,8 @@ def _uprate_cross_period_soi_decompositions(
 
 def _soi_total_controls_by_source_period(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str, str], float] = {}
     for fact in facts:
         if not _is_soi_total_uprating_control_fact(fact):
             continue
@@ -869,8 +869,8 @@ def _soi_active_total_controls(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-) -> dict[tuple[str, str, str], _SoiTotalControl]:
-    totals: dict[tuple[str, str, str], _SoiTotalControl] = {}
+) -> dict[tuple[str, str, str, str], _SoiTotalControl]:
+    totals: dict[tuple[str, str, str, str], _SoiTotalControl] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
         if not _is_soi_total_uprating_control_fact(fact):
@@ -913,23 +913,25 @@ def _is_soi_total_uprating_control_fact(fact: object) -> bool:
     return lower == "-inf" and upper == "inf"
 
 
-def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str]:
+def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str, str]:
     state_fips = _state_fips(fact)
     geography_key = f"state:{state_fips}" if state_fips else "country"
     return (
         _measure_id(fact),
         geography_key,
         _filing_status_label(_dimensions(fact).get("filing_status")) or "",
+        _soi_return_universe_from_fact(fact),
     )
 
 
-def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str]:
+def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str, str]:
     state_fips = spec.metadata.get("state_fips", "")
     geography_key = f"state:{state_fips}" if state_fips else "country"
     return (
         spec.metadata.get("source_measure_id", ""),
         geography_key,
         spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
     )
 
 
@@ -1362,6 +1364,21 @@ def _normalized_record_set_id(record_set_id: str) -> str:
     )
 
 
+def _soi_return_universe_from_fact(fact: object) -> str:
+    return _soi_return_universe_from_record_set_id(
+        _str_at(fact, "layout", "record_set_id")
+    )
+
+
+def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
+    normalized = _normalized_record_set_id(record_set_id)
+    if "itemized_all_returns" in normalized:
+        return "itemized_returns"
+    if "all_returns_excluding_dependents" in normalized:
+        return "returns_excluding_dependents"
+    return "all_returns"
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -1486,6 +1503,7 @@ def _soi_reference_from_fact(
     if not source_record_id:
         return None
     display_variable = _soi_display_variable(variable)
+    soi_return_universe = _soi_return_universe_from_fact(fact)
     metadata = {
         "source_measure_id": measure_id,
         "source_variable": variable,
@@ -1498,6 +1516,7 @@ def _soi_reference_from_fact(
         "agi_lower_bound": lower,
         "agi_upper_bound": upper,
         "filing_status": status,
+        "soi_return_universe": soi_return_universe,
         **_soi_layout_filter_metadata(fact),
     }
     base_variables = _soi_base_variables(variable)
@@ -1505,7 +1524,10 @@ def _soi_reference_from_fact(
         metadata["base_variable"] = base_variables[0]
     elif len(base_variables) > 1:
         metadata["base_variables"] = ",".join(base_variables)
-    if variable in _SOI_ITEMIZED_ONLY_VARIABLES:
+    if (
+        variable in _SOI_ITEMIZED_ONLY_VARIABLES
+        or soi_return_universe == "itemized_returns"
+    ):
         metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
     if state_fips:
