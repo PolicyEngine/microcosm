@@ -53,6 +53,22 @@ def test_soi_cd_distribution_uses_state_total_only_for_at_large_states() -> None
     assert distribution["is_state_total_proxy"].tolist() == [False, False, True]
 
 
+def test_soi_cd_distribution_falls_back_to_lineage_source_record_id() -> None:
+    distribution = congressional_district_distribution_from_ledger_facts(
+        [
+            _soi_cd_fact(
+                value=315_360,
+                geography_id="5001700US0101",
+                geography_level="congressional_district",
+                source_row_id="al_01",
+                include_layout_source_row_id=False,
+            ),
+        ]
+    )
+
+    assert distribution["source_record_id"].tolist() == ["al_01"]
+
+
 def test_cd_assignment_is_state_constrained_and_index_independent() -> None:
     household = pd.DataFrame(
         {"household_id": [10, 20, 30, 40], "state_fips": [1, 1, 2, 2]},
@@ -97,6 +113,48 @@ def test_cd_assignment_refuses_missing_state_distribution() -> None:
         assign_congressional_districts_to_households(household, distribution)
 
 
+def test_cd_assignment_refuses_distribution_state_geoid_mismatch() -> None:
+    household = pd.DataFrame({"household_id": [1], "state_fips": [1]})
+    distribution = pd.DataFrame(
+        {
+            "state_fips": ["01"],
+            "congressional_district_geoid": ["0601"],
+            "sampling_weight": [1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="state_fips must match"):
+        assign_congressional_districts_to_households(household, distribution)
+
+
+def test_cd_assignment_refuses_fractional_codes() -> None:
+    distribution = pd.DataFrame(
+        {
+            "state_fips": ["01"],
+            "congressional_district_geoid": ["0101"],
+            "sampling_weight": [1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="integer"):
+        assign_congressional_districts_to_households(
+            pd.DataFrame({"household_id": [1], "state_fips": [1.5]}),
+            distribution,
+        )
+
+    with pytest.raises(ValueError, match="geoid values must be integers"):
+        assign_congressional_districts_to_households(
+            pd.DataFrame({"household_id": [1], "state_fips": [1]}),
+            pd.DataFrame(
+                {
+                    "state_fips": ["01"],
+                    "congressional_district_geoid": [101.5],
+                    "sampling_weight": [1.0],
+                }
+            ),
+        )
+
+
 def test_with_household_congressional_districts_preserves_frame_mass() -> None:
     frame = _minimal_us_frame()
     distribution = pd.DataFrame(
@@ -133,17 +191,21 @@ def _soi_cd_fact(
     geography_id: str,
     geography_level: str,
     source_row_id: str,
+    include_layout_source_row_id: bool = True,
 ) -> dict[str, object]:
+    layout = {
+        "record_set_id": SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
+        "groupby_value_id": source_row_id,
+    }
+    if include_layout_source_row_id:
+        layout["source_row_id"] = source_row_id
     return {
         "value": value,
         "source": {"source_sha256": "sha"},
         "observed_measure": {"source_measure_id": "return_count"},
         "geography": {"id": geography_id, "level": geography_level},
-        "layout": {
-            "record_set_id": SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
-            "groupby_value_id": source_row_id,
-            "source_row_id": source_row_id,
-        },
+        "layout": layout,
+        "lineage": {"source_record_id": source_row_id},
         "dimensions": {"filing_status": "all", "income_range": "all"},
         "period": {"value": 2023},
     }

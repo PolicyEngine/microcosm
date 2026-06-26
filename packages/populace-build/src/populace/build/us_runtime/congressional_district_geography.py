@@ -224,13 +224,16 @@ def _distribution_row(
     is_state_total_proxy: bool,
 ) -> dict[str, Any]:
     layout = _mapping_at(fact, "layout")
+    lineage = _mapping_at(fact, "lineage")
     period = _mapping_at(fact, "period")
     source = _mapping_at(fact, "source")
     return {
         "state_fips": state_fips,
         CONGRESSIONAL_DISTRICT_GEOID_COLUMN: congressional_district_geoid,
         "sampling_weight": float(sampling_weight),
-        "source_record_id": str(layout.get("source_row_id") or ""),
+        "source_record_id": str(
+            layout.get("source_row_id") or lineage.get("source_record_id") or ""
+        ),
         "source_geography_id": source_geography_id,
         "source_sha256": str(source.get("source_sha256") or ""),
         "ledger_period": period.get("value"),
@@ -255,6 +258,19 @@ def _prepare_distribution(distribution: pd.DataFrame) -> pd.DataFrame:
     prepared[CONGRESSIONAL_DISTRICT_GEOID_COLUMN] = _cd_geoid_series(
         prepared[CONGRESSIONAL_DISTRICT_GEOID_COLUMN]
     )
+    geoid_state_fips = prepared[CONGRESSIONAL_DISTRICT_GEOID_COLUMN].map(
+        lambda value: f"{int(value) // 100:02d}"
+    )
+    mismatched = geoid_state_fips != prepared["state_fips"]
+    if mismatched.any():
+        examples = prepared.loc[
+            mismatched,
+            ["state_fips", CONGRESSIONAL_DISTRICT_GEOID_COLUMN],
+        ].head(5)
+        raise ValueError(
+            "CD distribution state_fips must match congressional_district_geoid "
+            f"prefix; mismatched row(s): {examples.to_dict('records')}."
+        )
     weights = pd.to_numeric(prepared["sampling_weight"], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -281,7 +297,16 @@ def _state_fips_series(values: Any, *, label: str) -> pd.Series:
     if numeric.isna().any():
         bad = series[numeric.isna()].head(5).tolist()
         raise ValueError(f"{label} contains non-numeric value(s): {bad}.")
-    integers = numeric.astype("int64")
+    numeric_values = numeric.to_numpy(dtype=np.float64)
+    non_finite = ~np.isfinite(numeric_values)
+    if non_finite.any():
+        bad = series.iloc[np.flatnonzero(non_finite)[:5]].tolist()
+        raise ValueError(f"{label} contains non-finite value(s): {bad}.")
+    non_integer = numeric_values != np.floor(numeric_values)
+    if non_integer.any():
+        bad = series.iloc[np.flatnonzero(non_integer)[:5]].tolist()
+        raise ValueError(f"{label} must contain integer value(s); invalid: {bad}.")
+    integers = pd.Series(numeric_values.astype("int64"), index=series.index)
     invalid = (integers < 1) | (integers > 99)
     if invalid.any():
         raise ValueError(
@@ -297,7 +322,16 @@ def _cd_geoid_series(values: Any) -> pd.Series:
     if numeric.isna().any():
         bad = series[numeric.isna()].head(5).tolist()
         raise ValueError(f"CD distribution contains non-numeric geoid(s): {bad}.")
-    integers = numeric.astype("int64")
+    numeric_values = numeric.to_numpy(dtype=np.float64)
+    non_finite = ~np.isfinite(numeric_values)
+    if non_finite.any():
+        bad = series.iloc[np.flatnonzero(non_finite)[:5]].tolist()
+        raise ValueError(f"CD distribution contains non-finite geoid value(s): {bad}.")
+    non_integer = numeric_values != np.floor(numeric_values)
+    if non_integer.any():
+        bad = series.iloc[np.flatnonzero(non_integer)[:5]].tolist()
+        raise ValueError(f"CD distribution geoid values must be integers: {bad}.")
+    integers = pd.Series(numeric_values.astype("int64"), index=series.index)
     invalid = (integers < 100) | (integers > 9999)
     if invalid.any():
         raise ValueError(
