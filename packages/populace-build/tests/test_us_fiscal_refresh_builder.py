@@ -47,6 +47,19 @@ def test_runtime_versions_use_local_workspace_package_version(
     assert versions["populace-data"] == "0.1.0"
 
 
+def test_reviewed_exclusions_do_not_report_opted_in_acs_cd_source() -> None:
+    builder = _load_builder_module()
+    acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
+
+    reviewed = builder._reviewed_exclusions(
+        builder.DIRECT_ACTIVE_ALIASES + (acs_cd_alias,)
+    )
+
+    assert acs_cd_alias not in reviewed
+    assert "census-acs-s0101-national-age-2024" in reviewed
+    assert "census-acs-s0101-state-age-2024" in reviewed
+
+
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     def diagnostic(name, target, final_estimate):
         return SimpleNamespace(
@@ -2753,6 +2766,9 @@ def test_population_age_targets_materialize_person_age_counts(
                 {
                     "household_id": np.asarray([1, 2], dtype="int64"),
                     "state_fips": np.asarray([6, 12], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        ["0601", "1201"], dtype=object
+                    ),
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -2772,17 +2788,32 @@ def test_population_age_targets_materialize_person_age_counts(
         },
     )
 
-    def population_age_spec(name, lower, upper, *, state_fips=None):
+    def population_age_spec(
+        name,
+        lower,
+        upper,
+        *,
+        state_fips=None,
+        congressional_district_geoid=None,
+    ):
         metadata = {
             "materializer": "population_age",
             "measure_mode": "indicator_sum",
             "target_role": "population_age",
-            "geography_scope": "state" if state_fips else "national",
+            "geography_scope": (
+                "congressional_district"
+                if congressional_district_geoid
+                else "state"
+                if state_fips
+                else "national"
+            ),
             "age_lower_bound": str(lower),
             "age_upper_bound": str(upper),
         }
         if state_fips:
             metadata["state_fips"] = state_fips
+        if congressional_district_geoid:
+            metadata["congressional_district_geoid"] = congressional_district_geoid
         return TargetSpec(
             name=name,
             entity="household",
@@ -2797,6 +2828,13 @@ def test_population_age_targets_materialize_person_age_counts(
         population_age_spec("national_age_0_to_4", 0, 5),
         population_age_spec("ca_age_0_to_4", 0, 5, state_fips="06"),
         population_age_spec("ca_age_5_to_9", 5, 10, state_fips="06"),
+        population_age_spec(
+            "ca_01_age_0_to_4",
+            0,
+            5,
+            state_fips="06",
+            congressional_district_geoid="0601",
+        ),
     )
 
     class FakeVariable:
@@ -2854,7 +2892,8 @@ def test_population_age_targets_materialize_person_age_counts(
     assert np.array_equal(household["national_age_0_to_4"], np.asarray([1.0, 1.0]))
     assert np.array_equal(household["ca_age_0_to_4"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["ca_age_5_to_9"], np.asarray([1.0, 0.0]))
-    assert len(registry) == 3
+    assert np.array_equal(household["ca_01_age_0_to_4"], np.asarray([1.0, 0.0]))
+    assert len(registry) == 4
     assert compilation["dropped_target_names"] == []
 
 

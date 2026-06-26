@@ -1657,8 +1657,27 @@ def _reference_from_ledger_fact(
         )
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
+    if source_name == "census_acs":
+        if (
+            not include_congressional_district_targets
+            or _geography_level(fact) != "congressional_district"
+        ):
+            return None
+        return _population_age_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "census_pep":
-        return _population_age_reference_from_fact(fact, target_period=target_period)
+        return _population_age_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "jct":
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
@@ -1882,10 +1901,12 @@ def _population_age_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
     if _measure_id(fact) != "population":
         return None
     geography_level = _geography_level(fact)
+    congressional_district_geoid: str | None = None
     if geography_level == "country":
         state_fips = None
         geography_scope = "national"
@@ -1894,6 +1915,14 @@ def _population_age_reference_from_fact(
         if state_fips is None:
             return None
         geography_scope = "state"
+    elif geography_level == "congressional_district":
+        if not include_congressional_district_targets:
+            return None
+        congressional_district_geoid = _congressional_district_geoid(fact)
+        if congressional_district_geoid is None:
+            return None
+        state_fips = congressional_district_geoid[:2]
+        geography_scope = "congressional_district"
     else:
         return None
     source_record_id = _source_record_id(fact)
@@ -1918,6 +1947,8 @@ def _population_age_reference_from_fact(
         metadata["age_group"] = groupby_value_id
     if state_fips:
         metadata["state_fips"] = state_fips
+    if congressional_district_geoid is not None:
+        metadata["congressional_district_geoid"] = congressional_district_geoid
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
@@ -2159,9 +2190,12 @@ def _state_fips(fact: object) -> str | None:
 
 def _congressional_district_geoid(fact: object) -> str | None:
     geoid = _geography_id(fact)
-    if not geoid.startswith("5001700US"):
+    for prefix in ("5001700US", "5001900US"):
+        if geoid.startswith(prefix):
+            congressional_district_geoid = geoid.removeprefix(prefix)
+            break
+    else:
         return None
-    congressional_district_geoid = geoid.removeprefix("5001700US")
     if len(congressional_district_geoid) != 4:
         return None
     if not congressional_district_geoid.isdigit():
