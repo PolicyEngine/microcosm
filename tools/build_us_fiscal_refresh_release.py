@@ -391,6 +391,14 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--include-congressional-district-targets",
+        action="store_true",
+        help=(
+            "Opt into SOI congressional-district target rows. Requires the "
+            "support frame to contain household congressional_district_geoid."
+        ),
+    )
+    parser.add_argument(
         "--skip-demographics",
         action="store_true",
         help="Do not emit demographics.json (weighted population by age) for this release.",
@@ -553,6 +561,25 @@ def _state_fips_text(values: Iterable[object]) -> list[str]:
             raise ValueError("state_fips contains missing values.")
         result.append(f"{int(value):02d}")
     return result
+
+
+def _integer_geography_codes(values: Iterable[object], *, column: str) -> np.ndarray:
+    result: list[int] = []
+    for value in values:
+        if isinstance(value, bytes):
+            stripped = value.decode().strip()
+            if stripped:
+                result.append(int(stripped))
+                continue
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                result.append(int(stripped))
+                continue
+        if pd.isna(value):
+            raise ValueError(f"{column} contains missing values.")
+        result.append(int(value))
+    return np.asarray(result, dtype=np.int64)
 
 
 def _aca_source_target_tables(target_specs: tuple) -> dict[str, pd.DataFrame]:
@@ -1553,6 +1580,25 @@ def _materialize_target_frame(
         else None
     )
     tax_unit_state_fips = household["state_fips"].to_numpy()[tax_unit_positions]
+    needs_congressional_district_mask = any(
+        spec.metadata.get("congressional_district_geoid") for spec in target_specs
+    )
+    if needs_congressional_district_mask:
+        if "congressional_district_geoid" not in household.columns:
+            raise RuntimeError(
+                "Congressional-district target rows require a household "
+                "congressional_district_geoid column in the support frame."
+            )
+        household_congressional_district_geoid = _integer_geography_codes(
+            household["congressional_district_geoid"].to_numpy(),
+            column="congressional_district_geoid",
+        )
+        tax_unit_congressional_district_geoid = household_congressional_district_geoid[
+            tax_unit_positions
+        ]
+    else:
+        household_congressional_district_geoid = None
+        tax_unit_congressional_district_geoid = None
 
     hh["income_tax"] = _collapse_tax_unit(
         income_tax_tax_unit, tax_unit_positions, n_households
@@ -1622,6 +1668,19 @@ def _materialize_target_frame(
         if state_fips:
             values = np.where(
                 household["state_fips"].to_numpy() == int(state_fips),
+                values,
+                0.0,
+            )
+        congressional_district_geoid = spec.metadata.get("congressional_district_geoid")
+        if congressional_district_geoid:
+            if household_congressional_district_geoid is None:
+                raise RuntimeError(
+                    "Congressional-district target rows require a household "
+                    "congressional_district_geoid column in the support frame."
+                )
+            values = np.where(
+                household_congressional_district_geoid
+                == int(congressional_district_geoid),
                 values,
                 0.0,
             )
@@ -1723,6 +1782,15 @@ def _materialize_target_frame(
             mask &= tax_unit_itemizes
         if "state_fips" in spec.metadata:
             mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
+        if "congressional_district_geoid" in spec.metadata:
+            if tax_unit_congressional_district_geoid is None:
+                raise RuntimeError(
+                    "Congressional-district target rows require a household "
+                    "congressional_district_geoid column in the support frame."
+                )
+            mask &= tax_unit_congressional_district_geoid == int(
+                spec.metadata["congressional_district_geoid"]
+            )
         indicator_sum = spec.metadata.get("measure_mode") == "indicator_sum"
         if source_name == "count":
             values = mask.astype(np.float64)
@@ -2924,6 +2992,9 @@ def main() -> None:
     target_registry = compile_us_fiscal_target_registry(
         _load_ledger_facts(args.ledger_facts),
         target_period=PERIOD,
+        include_congressional_district_targets=(
+            args.include_congressional_district_targets
+        ),
     )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:

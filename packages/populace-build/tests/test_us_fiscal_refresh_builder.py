@@ -2124,6 +2124,9 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 {
                     "household_id": np.asarray([1, 2], dtype="int64"),
                     "state_fips": np.asarray([6, 6], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        [601, 602], dtype="int64"
+                    ),
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -2227,6 +2230,40 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "filing_status": "All",
                 "source_measure_id": "return_count",
                 "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_agi",
+            entity="household",
+            measure="cd_0601_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_tax_filer_individual_count",
+            entity="household",
+            measure="cd_0601_tax_filer_individual_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "tax_filer_individual_count",
+                "congressional_district_geoid": "0601",
             },
         ),
         TargetSpec(
@@ -2415,6 +2452,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "real_estate_taxes",
                 "salt_deduction",
                 "tip_income",
+                "tax_unit_size",
                 "tax_unit_itemizes",
             )
         }
@@ -2446,6 +2484,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
                 "tip_income": np.asarray([0.0, 50.0, 0.0, 0.0]),
+                "tax_unit_size": np.asarray([1.0, 2.0, 3.0, 4.0]),
                 "tax_unit_itemizes": np.asarray([False, True, False, False]),
             }
             return arrays[variable]
@@ -2477,6 +2516,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             "real_estate_taxes": "real_estate_taxes",
             "salt_deduction": "salt_deduction",
             "tip_income": "tip_income",
+            "tax_filer_individual_count": "tax_unit_size",
         },
     )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
@@ -2497,6 +2537,10 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(household["eitc_return_count"], np.asarray([2.0, 1.0]))
     assert np.array_equal(
         household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(household["cd_0601_agi"], np.asarray([30_000.0, 0.0]))
+    assert np.array_equal(
+        household["cd_0601_tax_filer_individual_count"], np.asarray([3.0, 0.0])
     )
     assert np.array_equal(
         household["medical_dental_expense_amount"], np.asarray([200.0, 0.0])
@@ -2524,7 +2568,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
     )
-    assert len(registry) == 18
+    assert len(registry) == 20
     assert compilation["dropped_target_names"] == []
 
 

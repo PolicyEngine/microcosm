@@ -149,6 +149,51 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
     compile_us_fiscal_target_registry(facts)
 
 
+def test_soi_congressional_district_targets_are_opt_in() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact("return_count", 315_360),
+        _soi_congressional_district_fact("tax_filer_individual_count", 597_980),
+        _soi_congressional_district_fact("adjusted_gross_income", 22_915_824_000),
+    ]
+
+    default_registry = compile_us_fiscal_target_registry(facts)
+    cd_registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    default_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
+    }
+    cd_specs = [
+        spec
+        for spec in cd_registry.specs
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+    ]
+    assert not any("al_01" in source_id for source_id in default_source_ids)
+    assert len(cd_specs) == 3
+    by_measure = {spec.metadata["source_measure_id"]: spec for spec in cd_specs}
+    returns = by_measure["return_count"]
+    assert returns.metadata["measure_mode"] == "indicator_sum"
+    assert returns.metadata["source_variable"] == "count"
+    assert returns.metadata["state_fips"] == "01"
+    assert returns.metadata["congressional_district_geoid"] == "0101"
+    assert returns.metadata["ledger_geography_id"] == "5001700US0101"
+    assert returns.value == 315_360
+
+    individuals = by_measure["tax_filer_individual_count"]
+    assert individuals.metadata["measure_mode"] == "sum"
+    assert individuals.metadata["source_variable"] == "tax_filer_individual_count"
+    assert individuals.metadata["base_variable"] == "tax_unit_size"
+    assert individuals.value == 597_980
+
+    agi = by_measure["adjusted_gross_income"]
+    assert agi.metadata["measure_mode"] == "sum"
+    assert agi.metadata["base_variable"] == "adjusted_gross_income"
+    assert agi.value == 22_915_824_000
+
+
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
     assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
     assert all(
@@ -2764,6 +2809,27 @@ def _soi_capital_gains_fact(
         or f"irs_soi.ty{source_period}.historic_table_2.us",
         groupby_dimension="us:statutes/26/62#adjusted_gross_income",
         groupby_value_id="all",
+    )
+
+
+def _soi_congressional_district_fact(
+    measure_id: str,
+    value: float,
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=(
+            f"irs_soi.ty2023.congressional_district_2022.all_returns.al_01.{measure_id}"
+        ),
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=2023,
+        geography_level="congressional_district",
+        geography_id="5001700US0101",
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id="irs_soi.ty2023.congressional_district_2022.all_returns",
+        groupby_dimension="irs_soi.congressional_district",
+        groupby_value_id="al_01",
     )
 
 
