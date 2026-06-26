@@ -18,6 +18,7 @@ from populace.build.gates import TargetCoverageRequirement
 from populace.build.ledger_targets import (
     LedgerTargetParityReport,
     LedgerTargetReference,
+    apply_ledger_target_profile,
     compile_ledger_target_references,
 )
 from populace.calibrate import TargetRegistry, TargetSpec
@@ -664,9 +665,7 @@ class SimpleTaxExpenditureReform:
 
 
 def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
-    payload = json.loads(
-        files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
-    )
+    payload = _load_us_fiscal_target_manifest()
     if payload.get("country") != "us":
         raise ValueError("US fiscal target manifest must declare country='us'.")
     allowed_operations = set(payload.get("allowed_value_operations") or ())
@@ -676,6 +675,23 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
             f"resolution from Ledger facts; got {sorted(allowed_operations)!r}."
         )
     return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
+
+
+def _load_us_fiscal_target_profile() -> dict[str, Any]:
+    payload = _load_us_fiscal_target_manifest()
+    profile = payload.get("target_profile") or {}
+    if not isinstance(profile, dict):
+        raise ValueError("US fiscal target manifest target_profile must be an object.")
+    return profile
+
+
+def _load_us_fiscal_target_manifest() -> dict[str, Any]:
+    payload = json.loads(
+        files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("US fiscal target manifest must be a JSON object.")
+    return payload
 
 
 def compile_us_fiscal_target_registry(
@@ -710,10 +726,21 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
-    return _rebase_stale_soi_capital_gains_distributions(
+    registry = _rebase_stale_soi_capital_gains_distributions(
         registry,
         materialized_facts,
         target_period=target_period,
+    )
+    return apply_ledger_target_profile(
+        registry,
+        _load_us_fiscal_target_profile(),
+        context={
+            "country": "us",
+            "target_period": target_period,
+            "include_congressional_district_targets": (
+                include_congressional_district_targets
+            ),
+        },
     )
 
 
