@@ -699,7 +699,12 @@ def compile_us_fiscal_target_registry(
         country="us",
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
-    return _uprate_cross_period_soi_decompositions(
+    registry = _uprate_cross_period_soi_decompositions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
+    return _rebase_stale_soi_capital_gains_distributions(
         registry,
         materialized_facts,
         target_period=target_period,
@@ -805,6 +810,185 @@ class _SoiTotalControl:
     source_period: str
     source_record_id: str
     period_key: tuple[int, int, str]
+
+
+def _rebase_stale_soi_capital_gains_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Use stale SOI capital-gains rows as shares, not hard old-year totals."""
+
+    controls = _soi_capital_gains_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    stale_national_totals = _soi_capital_gains_stale_national_totals(facts)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        kind = _soi_capital_gains_kind(spec)
+        if kind is None or not _is_stale_soi_historic_capital_gains_spec(spec):
+            specs.append(spec)
+            continue
+
+        key = _soi_capital_gains_control_key_from_spec(spec)
+        control = controls.get(key)
+        source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
+        if control is None:
+            specs.append(spec)
+            continue
+        if source_total in (None, 0):
+            continue
+        if not _period_not_before(
+            control.period_key, _period_key_from_value(spec.metadata["source_period"])
+        ):
+            specs.append(spec)
+            continue
+
+        if _is_national_all_agi_spec(spec):
+            continue
+
+        factor = control.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _soi_capital_gains_uprating_index(kind),
+                    "uprating_from_period": spec.metadata["source_period"],
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_capital_gains_active_totals(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None:
+            continue
+        if _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        current = controls.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=target_period_key,
+        ):
+            controls[key] = candidate
+    return controls
+
+
+def _soi_capital_gains_stale_national_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str], float] = {}
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None or not _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        totals[(*key, str(_period_value(fact)))] = _numeric_value(fact)
+    return totals
+
+
+def _soi_capital_gains_kind(spec: TargetSpec) -> str | None:
+    return _soi_capital_gains_kind_from_measure(
+        spec.metadata.get("source_measure_id", "")
+    )
+
+
+def _soi_capital_gains_kind_from_measure(measure_id: str) -> str | None:
+    if measure_id == "net_capital_gains_amount":
+        return "amount"
+    if measure_id == "net_capital_gains_returns":
+        return "returns"
+    return None
+
+
+def _is_stale_soi_historic_capital_gains_spec(spec: TargetSpec) -> bool:
+    if spec.family != "irs_soi":
+        return False
+    if _soi_capital_gains_kind(spec) is None:
+        return False
+    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+
+
+def _is_stale_soi_historic_capital_gains_fact(fact: object) -> bool:
+    if _source_name(fact) != "irs_soi":
+        return False
+    if _soi_capital_gains_kind_from_measure(_measure_id(fact)) is None:
+        return False
+    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
+
+
+def _soi_capital_gains_control_key_from_fact(
+    fact: object,
+) -> tuple[str, str, str] | None:
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if _soi_capital_gains_kind_from_measure(measure_id) is None:
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    if not _is_all_agi_range_fact(fact):
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    return (
+        measure_id,
+        status,
+        _soi_return_universe_from_fact(fact),
+    )
+
+
+def _soi_capital_gains_control_key_from_spec(
+    spec: TargetSpec,
+) -> tuple[str, str, str]:
+    return (
+        spec.metadata.get("source_measure_id", ""),
+        spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
+    )
+
+
+def _is_national_all_agi_spec(spec: TargetSpec) -> bool:
+    if spec.metadata.get("state_fips"):
+        return False
+    lower, upper = _bounds_from_metadata(spec)
+    return lower == -float("inf") and upper == float("inf")
+
+
+def _soi_capital_gains_uprating_index(kind: str) -> str:
+    if kind == "returns":
+        return "total_net_capital_gains_returns"
+    return "total_net_capital_gains_amount"
 
 
 def _uprate_cross_period_soi_decompositions(
@@ -1815,10 +1999,16 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
 
 def _is_all_income_range(fact: object) -> bool:
     dimensions = _dimensions(fact)
+    return _is_all_agi_range_fact(fact) and (
+        str(dimensions.get("filing_status", "all")) == "all"
+    )
+
+
+def _is_all_agi_range_fact(fact: object) -> bool:
+    dimensions = _dimensions(fact)
     lower, upper = _agi_bounds(fact)
     return (
         str(dimensions.get("income_range", "all")) == "all"
-        and str(dimensions.get("filing_status", "all")) == "all"
         and lower == "-inf"
         and upper == "inf"
     )

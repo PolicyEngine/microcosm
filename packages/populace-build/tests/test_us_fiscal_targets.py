@@ -1016,6 +1016,190 @@ def test_cross_period_soi_taxable_interest_open_ended_agi_slice_without_dimensio
     assert spec.metadata["uprating_factor"] == "1"
 
 
+def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+            ),
+            value=1_000.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns"
+            ),
+            measure_id="net_capital_gains_returns",
+            value=100.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ny.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US36",
+            value=150.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_returns"
+            ),
+            measure_id="net_capital_gains_returns",
+            geography_level="state",
+            geography_id="0400000US06",
+            value=25.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=800.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=(
+                "irs_soi.ty2023.itemized_all_returns.all.net_capital_gains_amount"
+            ),
+            layout_record_set_id="irs_soi.ty2023.itemized_all_returns",
+            value=600.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            measure_id="net_capital_gains_returns",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=40.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount" not in specs
+    )
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns" not in specs
+    )
+    ca_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    ]
+    ny_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ny.all.net_capital_gains_amount"
+    ]
+    ca_returns = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_returns"
+    ]
+    assert ca_amount.value == 200.0
+    assert ny_amount.value == 120.0
+    assert ca_returns.value == 10.0
+    assert ca_amount.metadata["uprating_index"] == "total_net_capital_gains_amount"
+    assert ca_amount.metadata["uprating_factor"] == "0.8"
+    assert (
+        ca_amount.metadata["uprating_index_source_record_id"]
+        == "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount"
+    )
+    assert ca_amount.metadata["stale_distribution_rebased_to_active_total"] == "true"
+    assert ca_returns.metadata["uprating_index"] == "total_net_capital_gains_returns"
+    assert ca_returns.metadata["uprating_factor"] == "0.4"
+
+
+def test_stale_soi_capital_gains_rebases_when_source_national_row_is_not_kept() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+            ),
+            value=1_000.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=800.0,
+        ),
+        _soi_capital_gains_fact(
+            2024,
+            source_record_id="irs_soi.ty2024.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2024.table_1_4",
+            value=900.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount" not in specs
+    )
+    ca_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    ]
+    assert ca_amount.value == 225.0
+    assert ca_amount.metadata["uprating_factor"] == "0.9"
+    assert (
+        ca_amount.metadata["uprating_index_source_record_id"]
+        == "irs_soi.ty2024.table_1_4.all.net_capital_gains_amount"
+    )
+
+
+def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
+    state_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=state_record_id,
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2024,
+            source_record_id="irs_soi.ty2024.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2024.table_1_4",
+            value=900.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert state_record_id not in source_record_ids
+
+
 def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() -> None:
     source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
@@ -2554,6 +2738,32 @@ def _soi_taxable_interest_fact(
         or f"irs_soi.ty{source_period}.historic_table_2.us",
         groupby_dimension="us:statutes/26/62#adjusted_gross_income",
         groupby_value_id=income_range,
+    )
+
+
+def _soi_capital_gains_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    value: float,
+    measure_id: str = "net_capital_gains_amount",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    layout_record_set_id: str | None = None,
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id=layout_record_set_id
+        or f"irs_soi.ty{source_period}.historic_table_2.us",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id="all",
     )
 
 
