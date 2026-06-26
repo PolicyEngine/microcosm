@@ -492,6 +492,70 @@ def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
     )
 
 
+def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
+    monkeypatch,
+) -> None:
+    class TinyPositiveQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(
+            self,
+            frame,
+            predictors,
+            outputs,
+            *,
+            weights,
+        ) -> "TinyPositiveQRF":
+            return self
+
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "taxable_interest_income": [0.25, 9.6],
+                    "qualified_dividend_income": [0.25, 9.6],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", TinyPositiveQRF)
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 1.0],
+            "taxable_interest_income": [0.0, 10.0],
+            "qualified_dividend_income": [0.0, 10.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "taxable_interest_income",
+            "qualified_dividend_income",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    puf_people = imputed.table("person")[
+        imputed.table("person")[support_channel_column("person")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert puf_people["taxable_interest_income"].tolist() == [0.0, 0.0, 10.0]
+    assert puf_people["qualified_dividend_income"].tolist() == [0.25, 0.0, 9.6]
+
+
 def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
     None
 ):

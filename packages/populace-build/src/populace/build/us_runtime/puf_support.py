@@ -103,6 +103,11 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
         "second_home_mortgage_origination_year",
     }
 )
+_PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
+    {
+        "taxable_interest_income",
+    }
+)
 
 PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS = frozenset(
     {
@@ -385,6 +390,11 @@ def impute_us_puf_tax_detail_support(
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)
+        if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
         if column in _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS:
             predictions[column] = _snap_to_observed_values(
                 predictions[column],
@@ -414,6 +424,19 @@ def impute_us_puf_tax_detail_support(
             totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
             nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
         )
+    for column in person_outputs:
+        if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
+            _sparsify_tax_unit_person_output_to_donor_positive_rate(
+                tables,
+                column=column,
+                donor_positive_rate=_weighted_positive_rate(
+                    donor[column],
+                    donor["weight"],
+                ),
+                household_weights=frame.weights_for("household").values,
+                person_channel=person_channel,
+                tax_unit_channel=tax_unit_channel,
+            )
     return Frame(
         tables,
         frame.schema,
@@ -762,6 +785,93 @@ def _write_person_tax_unit_totals(
     )
     allocation[~has_basis & first.to_numpy()] = target[~has_basis & first.to_numpy()]
     person.loc[mask, column] = allocation
+
+
+def _weighted_positive_rate(values: pd.Series, weights: pd.Series) -> float:
+    numeric_values = pd.to_numeric(values, errors="coerce").fillna(0.0)
+    numeric_weights = (
+        pd.to_numeric(weights, errors="coerce").fillna(0.0).clip(lower=0.0)
+    )
+    total_weight = float(numeric_weights.sum())
+    if total_weight <= 0.0:
+        return 0.0
+    return float((numeric_weights * (numeric_values > 0.0)).sum() / total_weight)
+
+
+def _sparsify_tax_unit_person_output_to_donor_positive_rate(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    column: str,
+    donor_positive_rate: float,
+    household_weights: np.ndarray,
+    person_channel: str,
+    tax_unit_channel: str,
+) -> None:
+    positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
+    person = tables["person"]
+    household = tables["household"]
+    tax_unit = tables["tax_unit"]
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "household_weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+    household_weight = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"],
+    )
+    tax_unit_household_id = (
+        person.groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+        .astype("int64")
+    )
+    tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
+    tax_unit_amount = (
+        pd.to_numeric(person[column], errors="coerce")
+        .fillna(0.0)
+        .groupby(person["person_tax_unit_id"], sort=False)
+        .sum()
+    )
+
+    for channel in tax_unit[tax_unit_channel].dropna().unique():
+        channel_tax_unit_ids = tax_unit.loc[
+            tax_unit[tax_unit_channel] == channel,
+            "tax_unit_id",
+        ]
+        amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
+        weights = tax_unit_weight.reindex(channel_tax_unit_ids).fillna(0.0)
+        positive = amounts > 0.0
+        positive_weight = float(weights[positive].sum())
+        desired_positive_weight = positive_rate * float(weights.sum())
+        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+            continue
+
+        ranked = (
+            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+            .sort_values("amount", ascending=False)
+            .copy()
+        )
+        cumulative = ranked["weight"].cumsum()
+        keep = cumulative <= desired_positive_weight
+        if not keep.any() and len(keep) > 0:
+            keep.iloc[0] = True
+        kept_ids = set(ranked.index[keep])
+
+        sparse_totals = amounts.copy()
+        sparse_totals.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+        original_total = float((amounts * weights).sum())
+        sparse_total = float((sparse_totals * weights).sum())
+        if original_total != 0.0 and sparse_total != 0.0:
+            sparse_totals *= original_total / sparse_total
+
+        mask = person[person_channel] == channel
+        _write_person_tax_unit_totals(
+            person,
+            mask=mask,
+            column=column,
+            totals=sparse_totals,
+            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+        )
 
 
 def _reconcile_puf_social_security_components(
