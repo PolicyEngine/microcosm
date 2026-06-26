@@ -5,17 +5,19 @@ produced. Compiles declared facts as sum targets — including count-like facts
 represented by prepared indicator/count columns — into a sparse linear
 constraint system over a :class:`~populace.frame.Frame`, then solves for the
 weight vector that best reproduces them under capped weighted MAPE,
-``weighted_mean(min(abs((A @ w - b) / scale), cap))``, optimized with torch's
-Adam over the log-weights (positivity by construction). Multi-period targets stack as
-``(target, period)`` rows over the *same* weight vector — the charter's "one
-weight per trajectory".
+``weighted_mean(min(abs((A @ w - b) / scale), cap))``. The default
+``method="adam"`` path uses torch Adam over log-weights (positivity by
+construction); ``method="prox"`` uses proximal gradient over non-negative weight
+ratios for L1 selection. Multi-period targets stack as ``(target, period)`` rows
+over the *same* weight vector — the charter's "one weight per trajectory".
 
 Load-bearing options beyond the fit include: ``mass`` ("free" or "conserve") to
 control the total; ``max_weight_ratio`` as a hard per-record bound (the guard
 against tail "landmine" records detonating on reweight); ``target_records`` for
 hard-concrete L0 pruning with budget control — the solver searches
 ``l0_lambda`` so the achieved non-zero count tracks the budget (the
-generate-big-then-prune path); and experimental ``l2_lambda`` as a soft
+generate-big-then-prune path); ``l1_lambda`` with ``method="prox"`` as a
+proximal selection penalty; and experimental ``l2_lambda`` as a soft
 concentration penalty. Under L0 gates, ``l2_lambda`` penalizes latent pre-gate
 weights so a nearly closed gate cannot hide an exploding underlying weight.
 ``l0_lambda`` alone prunes at a fixed penalty.

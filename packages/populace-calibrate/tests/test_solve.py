@@ -113,11 +113,13 @@ def test_l1_lambda_is_budget_monotone() -> None:
     assert counts[0] >= counts[1] >= counts[2]
 
 
-def test_apg_method_is_rejected() -> None:
-    """The misleading 'apg' alias (it only ran Adam) is gone; the label is honest now."""
+def test_apg_method_alias_normalizes_to_adam() -> None:
+    """Existing configs can pass 'apg', but manifests record the real Adam path."""
     frame, targets, _ = _l2_concentration_fixture()
-    with pytest.raises(ValueError, match="Unknown method"):
-        calibrate(frame, targets, method="apg", epochs=10, seed=0)
+    with pytest.deprecated_call(match="method='apg' is deprecated"):
+        result = calibrate(frame, targets, method="apg", epochs=10, seed=0)
+
+    assert result.options["method"] == "adam"
 
 
 def test_l1_lambda_requires_prox_method() -> None:
@@ -152,6 +154,48 @@ def test_method_prox_conserve_cap_infeasible_names_l1_remedy() -> None:
             seed=0,
             mass="conserve",
             max_weight_ratio=1.05,
+        )
+
+
+def test_method_prox_zero_target_all_zero_raises_named_error() -> None:
+    """The prox path names all-zero optima before the frame kernel rejects them."""
+    initial_weights = np.full(8, 100.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(8), "person_household_id": range(8)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(8), "household_count": np.ones(8)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="zero_population",
+                entity="household",
+                value=0.0,
+                measure="household_count",
+            ),
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="method='prox' returned every calibrated weight as zero",
+    ):
+        calibrate(
+            frame,
+            targets,
+            method="prox",
+            l1_lambda=0.0,
+            learning_rate=1.0,
+            epochs=1,
+            seed=0,
+            target_loss_cap=1_000_000.0,
         )
 
 

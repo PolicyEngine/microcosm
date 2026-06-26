@@ -11,8 +11,10 @@ where ``s`` is a per-target scale fixed before optimization. By default,
 ``s = max(abs(b), 1)``: the loss is measured against the administrative target
 value, while zero-valued targets use one unit in their measure basis.
 
-with torch's Adam over the **log-weights** (so weights stay strictly positive by
-construction). It returns a
+The default ``method="adam"`` optimizes with torch's Adam over the
+**log-weights** (so weights stay strictly positive by construction).
+``method="prox"`` uses proximal gradient on raw non-negative weight ratios for
+the nonsmooth L1 selection path. It returns a
 :class:`CalibrationResult` carrying a new frame whose ``weight_entity`` weights
 are :class:`~populace.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
@@ -52,6 +54,7 @@ Six declared options, each a real feature (and each its own test):
 from __future__ import annotations
 
 import math
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
@@ -994,10 +997,12 @@ def calibrate(
         method: Optimization method. ``"adam"`` (default) runs the torch Adam
             optimizer on the log-weights described above (smooth objective; weights
             stay strictly positive by construction). ``"prox"`` runs proximal
-            gradient (ISTA) on the raw weights with a soft-threshold step, the
-            optimizer required for the nonsmooth ``l1_lambda`` penalty: it drives
-            unneeded records to exact zero, so L1 selects a sparse weighted subset.
-            Any other value is rejected.
+            gradient (ISTA) on raw non-negative weight ratios with a
+            soft-threshold step, the optimizer required for the nonsmooth
+            ``l1_lambda`` penalty: it drives unneeded records to exact zero, so
+            L1 selects a sparse weighted subset. ``"apg"`` is accepted only as a
+            deprecated alias for ``"adam"`` and is recorded as ``"adam"`` in
+            result options. Any other value is rejected.
         epochs: Number of optimization steps.
         learning_rate: Adam learning rate on the log-weights. Capped MAPE has a
             nearly constant gradient away from zero, so the default is lower
@@ -1071,10 +1076,19 @@ def calibrate(
             ``method="prox"`` is combined with L0/budget pruning or
             ``l2_lambda``, or if no targets compile (from the matrix build).
     """
+    if method == "apg":
+        warnings.warn(
+            "method='apg' is deprecated and now aliases method='adam'; result "
+            "options record the normalized method='adam'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        method = "adam"
     if method not in ("adam", "prox"):
         raise ValueError(
-            f"Unknown method {method!r}; supported: 'adam' (Adam on log-weights) "
-            "and 'prox' (proximal gradient on raw weights, for the l1_lambda penalty)."
+            f"Unknown method {method!r}; supported: 'adam' (Adam on log-weights), "
+            "'prox' (proximal gradient on raw weights, for the l1_lambda penalty), "
+            "and deprecated alias 'apg' -> 'adam'."
         )
     if mass not in (FREE_MASS, CONSERVE_MASS):
         raise ValueError(
@@ -1212,10 +1226,17 @@ def calibrate(
             progress_callback=progress_callback,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
-        if l1_lambda > 0.0 and n_nonzero == 0:
+        if n_nonzero == 0:
+            if l1_lambda > 0.0:
+                raise ValueError(
+                    f"L1 penalty zeroed every weight: l1_lambda={l1_lambda!r} "
+                    "overwhelmed the fit loss. Lower l1_lambda."
+                )
             raise ValueError(
-                f"L1 penalty zeroed every weight: l1_lambda={l1_lambda!r} overwhelmed "
-                "the fit loss. Lower l1_lambda."
+                "method='prox' returned every calibrated weight as zero. "
+                "Populace frames require at least one positive calibrated weight; "
+                "use method='adam', mass='conserve', or a target surface that "
+                "does not make zero total mass optimal."
             )
     elif target_records is not None:
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
