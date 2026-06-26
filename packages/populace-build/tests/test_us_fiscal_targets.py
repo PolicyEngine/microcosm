@@ -2693,7 +2693,6 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     geography_level = str(selector.get("geography_level") or "country")
     geography_id = str(selector.get("geography_id") or "0100000US")
     entity_name = str(selector.get("entity_name") or reference.entity)
-    aggregation = str(selector.get("aggregation_method") or "sum")
     fact_id = _fact_id(reference.name, period_value)
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
@@ -2706,7 +2705,7 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
             "value": period_value,
         },
         "entity": {"name": entity_name},
-        "aggregation": {"method": aggregation},
+        "aggregation": {"method": "sum"},
         "geography": {"level": geography_level, "id": geography_id},
         "dimensions": dimensions,
         "layout": {
