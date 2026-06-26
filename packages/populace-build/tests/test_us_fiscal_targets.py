@@ -152,22 +152,37 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
 def test_soi_congressional_district_targets_are_opt_in() -> None:
     facts = [
         *packaged_reference_facts(),
-        _soi_congressional_district_fact("return_count", 315_360),
-        _soi_congressional_district_fact("tax_filer_individual_count", 597_980),
-        _soi_congressional_district_fact("adjusted_gross_income", 22_915_824_000),
         _soi_congressional_district_fact(
             "return_count",
-            2_332_710,
-            groupby_value_id="al_total",
-            geography_level="state",
-            geography_id="0400000US01",
+            315_360,
+            groupby_value_id="ak_00",
+            geography_id="5001700US0200",
+        ),
+        _soi_congressional_district_fact(
+            "tax_filer_individual_count",
+            597_980,
+            groupby_value_id="ak_00",
+            geography_id="5001700US0200",
         ),
         _soi_congressional_district_fact(
             "adjusted_gross_income",
-            174_042_651_000,
-            groupby_value_id="al_total",
+            22_915_824_000,
+            groupby_value_id="ak_00",
+            geography_id="5001700US0200",
+        ),
+        _soi_congressional_district_fact(
+            "return_count",
+            315_360,
+            groupby_value_id="ak_total",
             geography_level="state",
-            geography_id="0400000US01",
+            geography_id="0400000US02",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            22_915_824_000,
+            groupby_value_id="ak_total",
+            geography_level="state",
+            geography_id="0400000US02",
         ),
     ]
 
@@ -188,20 +203,20 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         for spec in cd_registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
-    assert not any("al_01" in source_id for source_id in default_source_ids)
-    assert not any("al_total" in source_id for source_id in default_source_ids)
-    assert any("al_total.return_count" in source_id for source_id in cd_source_ids)
+    assert not any("ak_00" in source_id for source_id in default_source_ids)
+    assert not any("ak_total" in source_id for source_id in default_source_ids)
+    assert any("ak_total.return_count" in source_id for source_id in cd_source_ids)
     assert any(
-        "al_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
+        "ak_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
     )
     assert len(cd_specs) == 3
     by_measure = {spec.metadata["source_measure_id"]: spec for spec in cd_specs}
     returns = by_measure["return_count"]
     assert returns.metadata["measure_mode"] == "indicator_sum"
     assert returns.metadata["source_variable"] == "count"
-    assert returns.metadata["state_fips"] == "01"
-    assert returns.metadata["congressional_district_geoid"] == "0101"
-    assert returns.metadata["ledger_geography_id"] == "5001700US0101"
+    assert returns.metadata["state_fips"] == "02"
+    assert returns.metadata["congressional_district_geoid"] == "0200"
+    assert returns.metadata["ledger_geography_id"] == "5001700US0200"
     assert returns.value == 315_360
 
     individuals = by_measure["tax_filer_individual_count"]
@@ -214,6 +229,82 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     assert agi.metadata["measure_mode"] == "sum"
     assert agi.metadata["base_variable"] == "adjusted_gross_income"
     assert agi.value == 22_915_824_000
+
+
+def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            30_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            70_000_000_000,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            200_000_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    cd_specs = {
+        spec.metadata["congressional_district_geoid"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") == "adjusted_gross_income"
+        and spec.metadata.get("ledger_geography_level") == "congressional_district"
+    }
+    assert cd_specs["1501"].value == 60_000_000_000
+    assert cd_specs["1502"].value == 140_000_000_000
+    assert (
+        cd_specs["1501"].metadata["hierarchy_reconciliation_rule"]
+        == "congressional_district_children_scale_to_state_parent"
+    )
+    assert cd_specs["1501"].metadata["hierarchy_parent_geography_id"] == "0400000US15"
+    assert cd_specs["1501"].metadata["hierarchy_expected_child_count"] == "2"
+    assert cd_specs["1501"].metadata["hierarchy_observed_child_count"] == "2"
+    assert cd_specs["1501"].metadata["hierarchy_reconciliation_factor"] == "2"
+
+
+def test_soi_congressional_district_reconciliation_requires_complete_children() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            30_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            200_000_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+
+    try:
+        compile_us_fiscal_target_registry(
+            facts,
+            include_congressional_district_targets=True,
+        )
+    except ValueError as exc:
+        assert "expected 2 child target" in str(exc)
+    else:
+        raise AssertionError("Expected incomplete CD hierarchy to fail.")
 
 
 def test_acs_congressional_district_age_targets_are_opt_in() -> None:

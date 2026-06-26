@@ -13,13 +13,14 @@ import hashlib
 import json
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from populace.calibrate import TargetRegistry, TargetSpec
 
-SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum", "count"))
+SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
+DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,149 @@ class LedgerTargetSelection:
 
 
 @dataclass(frozen=True)
+class LedgerTargetHierarchyRule:
+    """Spec-declared parent/child reconciliation for Ledger-backed targets."""
+
+    rule_id: str
+    child_geography_level: str
+    parent_geography_level: str
+    parent_geography_id_template: str
+    method: str = "scale_children_to_parent"
+    match_spec_fields: tuple[str, ...] = DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS
+    match_metadata_keys: tuple[str, ...] = ()
+    enabled_when: Mapping[str, str] = field(default_factory=dict)
+    child_id_metadata_key: str = ""
+    parent_key_metadata_key: str = ""
+    expected_child_count_by_parent_key: Mapping[str, int] = field(default_factory=dict)
+    on_incomplete: str = "fail"
+
+    def __post_init__(self) -> None:
+        if not self.rule_id:
+            raise ValueError("LedgerTargetHierarchyRule.rule_id must be non-empty.")
+        if self.method != "scale_children_to_parent":
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: unsupported "
+                f"method {self.method!r}."
+            )
+        if not self.child_geography_level:
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: "
+                "child_geography_level is required."
+            )
+        if not self.parent_geography_level:
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: "
+                "parent_geography_level is required."
+            )
+        if not self.parent_geography_id_template:
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: "
+                "parent_geography_id.template is required."
+            )
+        object.__setattr__(
+            self,
+            "match_spec_fields",
+            tuple(str(field_name) for field_name in self.match_spec_fields),
+        )
+        object.__setattr__(
+            self,
+            "match_metadata_keys",
+            tuple(str(key) for key in self.match_metadata_keys),
+        )
+        object.__setattr__(
+            self,
+            "enabled_when",
+            {
+                str(key): _profile_scalar(value)
+                for key, value in self.enabled_when.items()
+            },
+        )
+        object.__setattr__(
+            self,
+            "expected_child_count_by_parent_key",
+            {
+                str(key): int(value)
+                for key, value in self.expected_child_count_by_parent_key.items()
+            },
+        )
+        if bool(self.expected_child_count_by_parent_key) != bool(
+            self.child_id_metadata_key and self.parent_key_metadata_key
+        ):
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: child "
+                "completeness requires child_id_metadata_key, "
+                "parent_key_metadata_key, and expected_child_count_by_parent_key."
+            )
+        bad_counts = sorted(
+            key
+            for key, value in self.expected_child_count_by_parent_key.items()
+            if value <= 0
+        )
+        if bad_counts:
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: expected child "
+                f"counts must be positive; bad parent keys {bad_counts!r}."
+            )
+        if self.on_incomplete not in {"fail", "skip"}:
+            raise ValueError(
+                f"Ledger target hierarchy rule {self.rule_id!r}: unsupported "
+                f"on_incomplete action {self.on_incomplete!r}."
+            )
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, object]) -> LedgerTargetHierarchyRule:
+        parent_geography_id = raw.get("parent_geography_id") or {}
+        if not isinstance(parent_geography_id, Mapping):
+            raise TypeError(
+                "Ledger target hierarchy rule parent_geography_id must be a mapping."
+            )
+        match = raw.get("match") or {}
+        if not isinstance(match, Mapping):
+            raise TypeError("Ledger target hierarchy rule match must be a mapping.")
+        enabled_when = raw.get("enabled_when") or {}
+        if not isinstance(enabled_when, Mapping):
+            raise TypeError(
+                "Ledger target hierarchy rule enabled_when must be a mapping."
+            )
+        completeness = raw.get("child_completeness") or {}
+        if not isinstance(completeness, Mapping):
+            raise TypeError(
+                "Ledger target hierarchy rule child_completeness must be a mapping."
+            )
+        expected_child_counts = (
+            completeness.get("expected_child_count_by_parent_key") or {}
+        )
+        if not isinstance(expected_child_counts, Mapping):
+            raise TypeError(
+                "Ledger target hierarchy rule "
+                "expected_child_count_by_parent_key must be a mapping."
+            )
+        return cls(
+            rule_id=str(raw.get("id") or ""),
+            method=str(raw.get("method") or "scale_children_to_parent"),
+            child_geography_level=str(raw.get("child_geography_level") or ""),
+            parent_geography_level=str(raw.get("parent_geography_level") or ""),
+            parent_geography_id_template=str(parent_geography_id.get("template") or ""),
+            match_spec_fields=tuple(
+                str(field_name)
+                for field_name in (
+                    match.get("spec_fields") or DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS
+                )
+            ),
+            match_metadata_keys=tuple(
+                str(key) for key in (match.get("metadata_keys") or ())
+            ),
+            enabled_when=enabled_when,
+            child_id_metadata_key=str(completeness.get("child_id_metadata_key") or ""),
+            parent_key_metadata_key=str(
+                completeness.get("parent_key_metadata_key") or ""
+            ),
+            expected_child_count_by_parent_key=expected_child_counts,
+            on_incomplete=str(completeness.get("on_incomplete") or "fail"),
+        )
+
+
+@dataclass(frozen=True)
 class _LedgerFactIndex:
     facts: tuple[object, ...]
     by_identifier: Mapping[str, tuple[object, ...]]
@@ -229,6 +373,127 @@ def compile_ledger_target_references(
     return TargetRegistry(specs, country=country)
 
 
+def apply_ledger_target_profile(
+    registry: TargetRegistry,
+    profile: Mapping[str, object] | None,
+    *,
+    context: Mapping[str, object] | None = None,
+) -> TargetRegistry:
+    """Apply spec-declared target-profile transformations.
+
+    Ledger owns the raw facts. Populace target profiles can declare generic
+    transformations needed to compile those facts into a coherent calibration
+    surface, such as reconciling child-geography rows to an available parent.
+    The declarations are data; this shared compiler owns the implementation.
+    """
+
+    if not profile:
+        return registry
+    schema_version = profile.get("schema_version", 1)
+    if schema_version != 1:
+        raise ValueError(
+            f"Ledger target profile schema_version must be 1, got {schema_version!r}."
+        )
+    result = registry
+    for raw_rule in profile.get("hierarchy_reconciliations") or ():
+        if not isinstance(raw_rule, Mapping):
+            raise TypeError("Ledger hierarchy reconciliation entries must be mappings.")
+        rule = LedgerTargetHierarchyRule.from_mapping(raw_rule)
+        if _hierarchy_rule_enabled(rule, context or {}):
+            result = reconcile_ledger_target_hierarchy(result, rule)
+    return result
+
+
+def reconcile_ledger_target_hierarchy(
+    registry: TargetRegistry,
+    rule: LedgerTargetHierarchyRule,
+) -> TargetRegistry:
+    """Scale child-geography target rows to their matching parent target row."""
+
+    parent_by_key: dict[tuple[str, ...], TargetSpec] = {}
+    child_groups: dict[tuple[str, ...], list[tuple[int, TargetSpec]]] = {}
+    for index, spec in enumerate(registry.specs):
+        geography_level = spec.metadata.get("ledger_geography_level", "")
+        if geography_level == rule.parent_geography_level:
+            key = _hierarchy_parent_key(spec, rule)
+            existing = parent_by_key.get(key)
+            if existing is not None:
+                raise ValueError(
+                    f"Ledger target hierarchy rule {rule.rule_id!r} found "
+                    f"multiple parent targets for key {key!r}: "
+                    f"{existing.name!r} and {spec.name!r}."
+                )
+            parent_by_key[key] = spec
+        elif geography_level == rule.child_geography_level:
+            parent_geography_id = _hierarchy_parent_geography_id(spec, rule)
+            if not parent_geography_id:
+                continue
+            child_groups.setdefault(
+                _hierarchy_match_key(spec, rule) + (parent_geography_id,),
+                [],
+            ).append((index, spec))
+
+    replacements: dict[int, TargetSpec] = {}
+    for key, children in child_groups.items():
+        parent = parent_by_key.get(key)
+        if parent is None:
+            continue
+        completeness = _hierarchy_completeness(parent, children, rule)
+        if completeness is not None and not completeness["complete"]:
+            if rule.on_incomplete == "skip":
+                continue
+            raise ValueError(
+                f"Ledger target hierarchy rule {rule.rule_id!r} expected "
+                f"{completeness['expected_child_count']} child target(s) for "
+                f"parent key {completeness['parent_key']!r} and parent "
+                f"{parent.name!r}, got {completeness['observed_child_count']}."
+            )
+        raw_sum = sum(spec.value for _, spec in children)
+        parent_value = parent.value
+        if raw_sum == 0 and parent_value != 0:
+            child_names = [spec.name for _, spec in children]
+            raise ValueError(
+                f"Ledger target hierarchy rule {rule.rule_id!r} cannot scale "
+                f"zero-valued children to nonzero parent {parent.name!r}; "
+                f"children: {child_names!r}."
+            )
+        factor = 1.0 if raw_sum == 0 else parent_value / raw_sum
+        if factor < 0:
+            child_names = [spec.name for _, spec in children]
+            raise ValueError(
+                f"Ledger target hierarchy rule {rule.rule_id!r} cannot reconcile "
+                f"opposite-signed child and parent targets for {parent.name!r}; "
+                f"children: {child_names!r}."
+            )
+        coverage_ratio = 1.0 if parent_value == 0 else raw_sum / parent_value
+        for index, spec in children:
+            replacements[index] = replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "hierarchy_reconciliation_rule": rule.rule_id,
+                    "hierarchy_reconciliation_method": rule.method,
+                    "hierarchy_raw_value": _format_float(spec.value),
+                    "hierarchy_child_sum_raw": _format_float(raw_sum),
+                    "hierarchy_parent_value": _format_float(parent_value),
+                    "hierarchy_coverage_ratio": _format_float(coverage_ratio),
+                    "hierarchy_reconciliation_factor": _format_float(factor),
+                    "hierarchy_parent_target_name": parent.name,
+                    "hierarchy_parent_target_period": str(parent.period),
+                    "hierarchy_parent_geography_level": rule.parent_geography_level,
+                    "hierarchy_parent_geography_id": parent.metadata.get(
+                        "ledger_geography_id", ""
+                    ),
+                    **_hierarchy_completeness_metadata(completeness),
+                },
+            )
+    if not replacements:
+        return registry
+    specs = [replacements.get(index, spec) for index, spec in enumerate(registry.specs)]
+    return TargetRegistry(specs, country=registry.country)
+
+
 def target_spec_from_ledger_reference(
     fact: object,
     reference: LedgerTargetReference,
@@ -253,7 +518,9 @@ def target_spec_from_ledger_reference(
     if aggregation not in SUPPORTED_LEDGER_AGGREGATIONS:
         raise ValueError(
             f"Ledger fact for {reference.name!r} has unsupported aggregation "
-            f"{aggregation!r}."
+            f"{aggregation!r}; Populace targets must be compiled from sum "
+            "facts, including counts represented as sums of prepared indicator "
+            "columns."
         )
     if not reference.measure:
         raise ValueError(
@@ -985,6 +1252,148 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         if value is not None:
             metadata[f"ledger_filter_{key}"] = str(value)
     return {key: value for key, value in metadata.items() if value}
+
+
+def _hierarchy_rule_enabled(
+    rule: LedgerTargetHierarchyRule,
+    context: Mapping[str, object],
+) -> bool:
+    for key, expected in rule.enabled_when.items():
+        if _profile_scalar(context.get(key)) != expected:
+            return False
+    return True
+
+
+def _hierarchy_parent_key(
+    spec: TargetSpec,
+    rule: LedgerTargetHierarchyRule,
+) -> tuple[str, ...]:
+    return _hierarchy_match_key(spec, rule) + (
+        spec.metadata.get("ledger_geography_id", ""),
+    )
+
+
+def _hierarchy_match_key(
+    spec: TargetSpec,
+    rule: LedgerTargetHierarchyRule,
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for field_name in rule.match_spec_fields:
+        if not hasattr(spec, field_name):
+            raise ValueError(
+                f"Ledger target hierarchy rule {rule.rule_id!r} references "
+                f"unknown TargetSpec field {field_name!r}."
+            )
+        values.append(_profile_scalar(getattr(spec, field_name)))
+    for key in rule.match_metadata_keys:
+        values.append(spec.metadata.get(key, ""))
+    return tuple(values)
+
+
+def _hierarchy_parent_geography_id(
+    spec: TargetSpec,
+    rule: LedgerTargetHierarchyRule,
+) -> str:
+    values = {
+        **{key: _profile_scalar(value) for key, value in spec.metadata.items()},
+        "name": spec.name,
+        "entity": spec.entity,
+        "period": _profile_scalar(spec.period),
+        "family": spec.family,
+        "filter": spec.filter or "",
+    }
+    try:
+        return rule.parent_geography_id_template.format(**values)
+    except KeyError as exc:
+        raise ValueError(
+            f"Ledger target hierarchy rule {rule.rule_id!r} cannot expand "
+            f"parent geography template {rule.parent_geography_id_template!r}; "
+            f"missing metadata key {exc.args[0]!r} on target {spec.name!r}."
+        ) from exc
+
+
+def _hierarchy_completeness(
+    parent: TargetSpec,
+    children: list[tuple[int, TargetSpec]],
+    rule: LedgerTargetHierarchyRule,
+) -> dict[str, object] | None:
+    if not rule.expected_child_count_by_parent_key:
+        return None
+    parent_key = parent.metadata.get(rule.parent_key_metadata_key, "")
+    if not parent_key:
+        raise ValueError(
+            f"Ledger target hierarchy rule {rule.rule_id!r} cannot check child "
+            f"completeness for parent {parent.name!r}: missing parent metadata "
+            f"{rule.parent_key_metadata_key!r}."
+        )
+    expected_child_count = rule.expected_child_count_by_parent_key.get(parent_key)
+    if expected_child_count is None:
+        raise ValueError(
+            f"Ledger target hierarchy rule {rule.rule_id!r} has no expected child "
+            f"count for parent key {parent_key!r}."
+        )
+    child_id_values = tuple(
+        spec.metadata.get(rule.child_id_metadata_key, "") for _, spec in children
+    )
+    if "" in child_id_values:
+        missing = [
+            spec.name
+            for _, spec in children
+            if not spec.metadata.get(rule.child_id_metadata_key, "")
+        ]
+        raise ValueError(
+            f"Ledger target hierarchy rule {rule.rule_id!r} cannot check child "
+            f"completeness for parent {parent.name!r}: missing child metadata "
+            f"{rule.child_id_metadata_key!r} on targets {missing!r}."
+        )
+    child_ids = tuple(sorted(set(child_id_values)))
+    if len(child_ids) != len(child_id_values):
+        duplicate_child_ids = sorted(
+            child_id
+            for child_id in set(child_id_values)
+            if child_id_values.count(child_id) > 1
+        )
+        raise ValueError(
+            f"Ledger target hierarchy rule {rule.rule_id!r} found duplicate "
+            f"child ids for parent {parent.name!r}: {duplicate_child_ids!r}."
+        )
+    observed_child_count = len(child_ids)
+    return {
+        "parent_key": parent_key,
+        "expected_child_count": expected_child_count,
+        "observed_child_count": observed_child_count,
+        "child_ids": ",".join(child_ids),
+        "complete": observed_child_count == expected_child_count,
+    }
+
+
+def _hierarchy_completeness_metadata(
+    completeness: Mapping[str, object] | None,
+) -> dict[str, str]:
+    if completeness is None:
+        return {}
+    return {
+        "hierarchy_parent_key": _profile_scalar(completeness["parent_key"]),
+        "hierarchy_expected_child_count": _profile_scalar(
+            completeness["expected_child_count"]
+        ),
+        "hierarchy_observed_child_count": _profile_scalar(
+            completeness["observed_child_count"]
+        ),
+        "hierarchy_child_ids": _profile_scalar(completeness["child_ids"]),
+    }
+
+
+def _profile_scalar(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _format_float(value: float) -> str:
+    return f"{value:.15g}"
 
 
 def _registry_digest(
