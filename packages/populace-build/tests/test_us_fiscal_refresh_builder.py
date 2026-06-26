@@ -986,6 +986,132 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     assert builder._fiscal_target_value_basis(bronze_count) == "count"
 
 
+def test_aca_metal_level_diagnostics_report_state_and_national_shares() -> None:
+    builder = _load_builder_module()
+
+    def aca_spec(name, role, state_fips, value):
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure="selected_marketplace_plan_benchmark_ratio",
+            value=value,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            period=builder.PERIOD,
+            metadata={
+                "target_role": role,
+                "state_fips": state_fips,
+                "source_measure_id": name.rsplit(".", maxsplit=1)[-1],
+            },
+        )
+
+    ca_aptc = aca_spec(
+        "cms_aca.oep2024.state_marketplace.ca.aptc_recipients",
+        "aca_ptc_recipients",
+        "06",
+        100.0,
+    )
+    ny_aptc = aca_spec(
+        "cms_aca.oep2024.state_marketplace.ny.aptc_recipients",
+        "aca_ptc_recipients",
+        "36",
+        50.0,
+    )
+    ca_bronze = aca_spec(
+        "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers",
+        "aca_bronze_aptc_consumers",
+        "06",
+        40.0,
+    )
+    ny_bronze = aca_spec(
+        "cms_aca.oep2024.state_metal.ny.bronze_aptc_consumers",
+        "aca_bronze_aptc_consumers",
+        "36",
+        10.0,
+    )
+
+    def diagnostic(spec, initial_estimate, final_estimate):
+        return SimpleNamespace(
+            name=f"{spec.name}@{spec.period}",
+            target=spec.value,
+            initial_estimate=initial_estimate,
+            final_estimate=final_estimate,
+            relative_error=(final_estimate - spec.value) / spec.value,
+        )
+
+    result = SimpleNamespace(
+        diagnostics=(
+            diagnostic(ca_aptc, 100.0, 80.0),
+            diagnostic(ny_aptc, 50.0, 50.0),
+            diagnostic(ca_bronze, 40.0, 32.0),
+            diagnostic(ny_bronze, 10.0, 20.0),
+        )
+    )
+
+    payload = builder._aca_metal_level_diagnostics(
+        result,
+        (ca_aptc, ny_aptc, ca_bronze, ny_bronze),
+    )
+
+    assert payload["available"] is True
+    assert payload["declared_target_count"] == 2
+    assert payload["target_count"] == 2
+    assert payload["state_count"] == 2
+    assert payload["missing_diagnostics"] == []
+    assert payload["missing_denominator_states"] == []
+
+    national = payload["national"]
+    assert national["aptc_recipients"]["target"] == 150.0
+    assert national["aptc_recipients"]["final_estimate"] == 130.0
+    assert national["below_benchmark_ptc_consumers"]["target"] == 50.0
+    assert national["below_benchmark_ptc_consumers"]["final_estimate"] == 52.0
+    assert np.isclose(national["below_benchmark_share"]["target"], 50.0 / 150.0)
+    assert np.isclose(national["below_benchmark_share"]["final_estimate"], 0.4)
+    assert np.isclose(national["below_benchmark_share"]["relative_error"], 0.2)
+
+    states = {row["state_fips"]: row for row in payload["states"]}
+    assert np.isclose(states["06"]["below_benchmark_share"]["final_estimate"], 0.4)
+    assert np.isclose(states["36"]["below_benchmark_share"]["target"], 0.2)
+    assert np.isclose(states["36"]["below_benchmark_share"]["final_estimate"], 0.4)
+    assert payload["largest_abs_share_errors"][0]["state_fips"] == "36"
+
+
+def test_aca_metal_level_diagnostics_reports_unavailable_without_metal_targets() -> (
+    None
+):
+    builder = _load_builder_module()
+    aptc = TargetSpec(
+        name="cms_aca.oep2024.state_marketplace.ca.aptc_recipients",
+        entity="household",
+        measure="takes_up_aca_if_eligible",
+        value=100.0,
+        source="CMS Marketplace OEP",
+        family="cms_aca",
+        period=builder.PERIOD,
+        metadata={"target_role": "aca_ptc_recipients", "state_fips": "06"},
+    )
+    result = SimpleNamespace(
+        diagnostics=(
+            SimpleNamespace(
+                name=f"{aptc.name}@{aptc.period}",
+                target=100.0,
+                initial_estimate=100.0,
+                final_estimate=100.0,
+                relative_error=0.0,
+            ),
+        )
+    )
+
+    payload = builder._aca_metal_level_diagnostics(result, (aptc,))
+
+    assert payload["available"] is False
+    assert payload["declared_target_count"] == 0
+    assert payload["target_count"] == 0
+    assert payload["state_count"] == 0
+    assert payload["national"] is None
+    assert payload["states"] == []
+
+
 def test_release_calibration_diagnostics_include_gate_failures(
     monkeypatch, tmp_path
 ) -> None:
@@ -1045,6 +1171,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "failures": [],
         "details": {"population": 334_200_000.0},
     }
+    assert build["aca_metal_level_diagnostics"]["available"] is False
 
 
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
