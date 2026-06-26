@@ -23,10 +23,13 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     clone_us_frame_for_puf_support,
+    congressional_district_assignment_summary,
+    congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
+    with_household_congressional_districts,
 )
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -44,7 +47,26 @@ def main() -> None:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
+    parser.add_argument(
+        "--ledger-facts",
+        type=Path,
+        help=(
+            "Ledger consumer facts JSONL. Required when assigning congressional "
+            "district geography."
+        ),
+    )
+    parser.add_argument(
+        "--assign-congressional-districts",
+        action="store_true",
+        help=(
+            "Assign household congressional_district_geoid values from SOI CD "
+            "return-count Ledger facts, constrained by state_fips."
+        ),
+    )
+    parser.add_argument("--congressional-district-seed", default=0, type=int)
     args = parser.parse_args()
+    if args.assign_congressional_districts and args.ledger_facts is None:
+        parser.error("--assign-congressional-districts requires --ledger-facts")
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +83,27 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    congressional_district_assignment = {"applied": False}
+    if args.assign_congressional_districts:
+        distribution = congressional_district_distribution_from_ledger_facts(
+            _load_ledger_facts(args.ledger_facts)
+        )
+        imputed = with_household_congressional_districts(
+            imputed,
+            distribution,
+            seed=args.congressional_district_seed,
+        )
+        congressional_district_assignment = congressional_district_assignment_summary(
+            imputed.table("household"),
+            distribution,
+        )
+        congressional_district_assignment.update(
+            {
+                "ledger_facts": str(args.ledger_facts.resolve()),
+                "ledger_facts_sha256": _sha256(args.ledger_facts),
+                "seed": args.congressional_district_seed,
+            }
+        )
     PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=PERIOD)
 
     summary = {
@@ -81,6 +124,7 @@ def main() -> None:
         "channel_weight_totals": _channel_weight_totals(imputed),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "congressional_district_assignment": congressional_district_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
@@ -110,6 +154,11 @@ def _load_frame(path: Path) -> Frame:
 def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
     with h5py.File(path, "r") as h5:
         return {name: np.asarray(dataset) for name, dataset in h5.items()}
+
+
+def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
+    with path.open() as file:
+        return tuple(json.loads(line) for line in file if line.strip())
 
 
 def _row_counts(frame: Frame) -> dict[str, int]:
