@@ -1576,6 +1576,11 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
     return "all_returns"
 
 
+def _is_soi_congressional_district_record_set(fact: object) -> bool:
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    return ".congressional_district_2022." in record_set_id
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -1665,6 +1670,11 @@ def _soi_reference_from_fact(
     target_period: int | str,
     include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
+    if (
+        _is_soi_congressional_district_record_set(fact)
+        and not include_congressional_district_targets
+    ):
+        return None
     geography_level = _geography_level(fact)
     if geography_level not in {"country", "state", "congressional_district"}:
         return None

@@ -155,6 +155,20 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         _soi_congressional_district_fact("return_count", 315_360),
         _soi_congressional_district_fact("tax_filer_individual_count", 597_980),
         _soi_congressional_district_fact("adjusted_gross_income", 22_915_824_000),
+        _soi_congressional_district_fact(
+            "return_count",
+            2_332_710,
+            groupby_value_id="al_total",
+            geography_level="state",
+            geography_id="0400000US01",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            174_042_651_000,
+            groupby_value_id="al_total",
+            geography_level="state",
+            geography_id="0400000US01",
+        ),
     ]
 
     default_registry = compile_us_fiscal_target_registry(facts)
@@ -166,12 +180,20 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     default_source_ids = {
         spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
     }
+    cd_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in cd_registry.specs
+    }
     cd_specs = [
         spec
         for spec in cd_registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
     assert not any("al_01" in source_id for source_id in default_source_ids)
+    assert not any("al_total" in source_id for source_id in default_source_ids)
+    assert any("al_total.return_count" in source_id for source_id in cd_source_ids)
+    assert any(
+        "al_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
+    )
     assert len(cd_specs) == 3
     by_measure = {spec.metadata["source_measure_id"]: spec for spec in cd_specs}
     returns = by_measure["return_count"]
@@ -2815,21 +2837,26 @@ def _soi_capital_gains_fact(
 def _soi_congressional_district_fact(
     measure_id: str,
     value: float,
+    *,
+    groupby_value_id: str = "al_01",
+    geography_level: str = "congressional_district",
+    geography_id: str = "5001700US0101",
 ) -> dict[str, object]:
     return _dynamic_ledger_fact(
         source_record_id=(
-            f"irs_soi.ty2023.congressional_district_2022.all_returns.al_01.{measure_id}"
+            "irs_soi.ty2023.congressional_district_2022.all_returns."
+            f"{groupby_value_id}.{measure_id}"
         ),
         source_name="irs_soi",
         measure_id=measure_id,
         value=value,
         period_value=2023,
-        geography_level="congressional_district",
-        geography_id="5001700US0101",
+        geography_level=geography_level,
+        geography_id=geography_id,
         dimensions={"income_range": "all", "filing_status": "all"},
         layout_record_set_id="irs_soi.ty2023.congressional_district_2022.all_returns",
         groupby_dimension="irs_soi.congressional_district",
-        groupby_value_id="al_01",
+        groupby_value_id=groupby_value_id,
     )
 
 
