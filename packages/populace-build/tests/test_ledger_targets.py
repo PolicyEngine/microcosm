@@ -518,7 +518,6 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
@@ -558,7 +557,6 @@ def test__given_selector_matches_future_year__then_latest_eligible_period_is_use
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
@@ -598,7 +596,6 @@ def test__given_selector_matches_future_month__then_latest_eligible_period_is_us
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "person",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "total_medicaid_chip_enrollment",
         },
         entity="person",
@@ -638,7 +635,6 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "person",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "total_medicaid_chip_enrollment",
         },
         entity="person",
@@ -676,7 +672,6 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
@@ -689,6 +684,27 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
     with pytest.raises(ValueError, match="at or before target period"):
         compile_ledger_target_references(
             [_consumer_fact_row_for_period(2025, value=17_000_000_000_000)],
+            [reference],
+            country="us",
+        )
+
+
+def test__given_aggregation_method_selector__then_compilation_fails() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="no aggregation selector",
+        ledger_selector={"aggregation_method": "sum"},
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+    )
+
+    # When / Then
+    with pytest.raises(
+        ValueError,
+        match="Unsupported Ledger fact selector field 'aggregation_method'",
+    ):
+        compile_ledger_target_references(
+            [_consumer_fact_row()],
             [reference],
             country="us",
         )

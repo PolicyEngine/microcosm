@@ -1077,8 +1077,6 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "geography", "id"),)
     if key == "entity_name":
         return (_str_at(fact, "entity", "name"),)
-    if key == "aggregation_method":
-        return (_str_at(fact, "aggregation", "method"),)
     if key == "layout_record_set_id":
         return (_str_at(fact, "layout", "record_set_id"),)
     if key == "layout_groupby_dimension":
