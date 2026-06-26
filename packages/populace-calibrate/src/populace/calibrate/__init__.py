@@ -92,6 +92,7 @@ from populace.calibrate.registry import (  # noqa: E402 - after the compat gate
     TargetSpec,
     specs_from_pe_surface,
 )
+from populace.calibrate.score import score_targets  # noqa: E402 - after the compat gate
 from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     CONSERVE_MASS,
     FREE_MASS,
@@ -125,6 +126,7 @@ __all__ = [
     "default_target_loss_scales",
     "diagnostics_payload",
     "relative_error_loss",
+    "score_targets",
     "specs_from_pe_surface",
     "write_calibration_diagnostics",
     "__version__",
