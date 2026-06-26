@@ -87,8 +87,19 @@ US_BASE_PERSON_POPULATION_REPAIR_REASON = (
     "US fiscal refresh rescaled base household weights to the Census 2024 "
     "national person-population benchmark before mass='conserve' calibration."
 )
+US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
+    "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
+    "component payment targets from the active fiscal target registry before "
+    "mass='conserve' calibration."
+)
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
+US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
+    "ssa_retirement_total": "social_security_retirement",
+    "ssa_disability_total": "social_security_disability",
+    "ssa_dependents_total": "social_security_dependents",
+    "ssa_survivors_total": "social_security_survivors",
+}
 US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "name": (
@@ -1934,6 +1945,72 @@ def _with_base_population_mass_repair(
     return repaired, payload
 
 
+def _with_social_security_component_value_repair(
+    frame: Frame,
+    target_specs: Iterable[object],
+) -> tuple[Frame, dict[str, object]]:
+    targets_by_column: dict[str, float] = {}
+    for spec in target_specs:
+        role = spec.metadata.get("target_role")
+        column = US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.get(role)
+        if column is not None:
+            targets_by_column[column] = float(spec.value)
+
+    missing_targets = sorted(
+        set(US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.values()) - set(targets_by_column)
+    )
+    if missing_targets:
+        raise RuntimeError(
+            "Social Security component repair requires target(s) for "
+            f"{missing_targets}."
+        )
+
+    person = frame.table("person").copy()
+    person_weights = pd.Series(
+        frame.resolve_weights("person").values, index=person.index
+    )
+    component_payload: dict[str, object] = {}
+    applied = False
+    for column, target in targets_by_column.items():
+        if column not in person.columns:
+            raise RuntimeError(
+                f"Social Security component repair requires person column {column!r}."
+            )
+        values = pd.to_numeric(person[column], errors="coerce").fillna(0.0)
+        initial = float((values * person_weights).sum())
+        if not math.isfinite(initial) or initial <= 0.0:
+            raise RuntimeError(
+                "Social Security component repair requires positive finite "
+                f"support for {column!r}; got {initial!r}."
+            )
+        factor = target / initial
+        if not math.isclose(factor, 1.0, rel_tol=1e-12, abs_tol=0.0):
+            person[column] = values.to_numpy(dtype=np.float64) * factor
+            applied = True
+        component_payload[column] = {
+            "target": target,
+            "initial_estimate": initial,
+            "factor": factor,
+            "repaired_estimate": initial * factor,
+        }
+
+    tables_out = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables_out["person"] = person
+    repaired = Frame(
+        tables_out,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    return repaired, {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": applied,
+        "reason": US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON,
+        "components": component_payload,
+    }
+
+
 def _base_population_scale_gate(
     frame: Frame,
     *,
@@ -2304,6 +2381,7 @@ def _write_release_calibration_diagnostics(
     target_profile_gate: GateResult,
     health_input_gate: GateResult | None,
     base_population_gate: GateResult | None,
+    support_value_repairs: Mapping[str, object] | None,
     audit_export_targets: bool,
     gate_failures: Iterable[str],
     incumbent_diagnostics_path: Path | None = None,
@@ -2353,6 +2431,7 @@ def _write_release_calibration_diagnostics(
                 if base_population_gate is not None
                 else None
             ),
+            "support_value_repairs": support_value_repairs,
             "release_gates": {
                 "passed": not failures,
                 "failures": failures,
@@ -2894,6 +2973,9 @@ def main() -> None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
     base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
+    base_frame, social_security_component_repair = (
+        _with_social_security_component_value_repair(base_frame, target_specs)
+    )
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
@@ -2902,6 +2984,12 @@ def main() -> None:
             factor=base_population_repair["factor"],
             initial_population=base_population_repair["initial_population"],
             repaired_population=base_population_repair["repaired_population"],
+        )
+        telemetry.stage(
+            "social_security_component_repair",
+            message="Repaired Social Security component value support.",
+            applied=social_security_component_repair["applied"],
+            components=social_security_component_repair["components"],
         )
     base_population_gate = _base_population_scale_gate(
         base_frame,
@@ -3006,6 +3094,9 @@ def main() -> None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
+        support_value_repairs={
+            "social_security_components": social_security_component_repair
+        },
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         incumbent_diagnostics_path=args.incumbent_diagnostics,

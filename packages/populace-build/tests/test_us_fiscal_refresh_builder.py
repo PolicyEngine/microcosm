@@ -671,6 +671,58 @@ def test_base_population_mass_repair_rescales_to_census_benchmark(
     assert np.isclose(gate.details["mass_repair"]["factor"], benchmark / 6000.0)
 
 
+def test_social_security_component_value_repair_uses_registry_targets(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    person = small_frame.table("person").copy()
+    person["social_security_retirement"] = [1.0, 0.0, 2.0, 0.0]
+    person["social_security_disability"] = [0.0, 3.0, 0.0, 1.0]
+    person["social_security_dependents"] = [2.0, 0.0, 0.0, 1.0]
+    person["social_security_survivors"] = [0.0, 1.0, 2.0, 0.0]
+    frame = Frame(
+        {
+            "person": person,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    targets = {
+        "ssa_retirement_total": 10_000.0,
+        "ssa_disability_total": 8_000.0,
+        "ssa_dependents_total": 6_000.0,
+        "ssa_survivors_total": 12_000.0,
+    }
+    specs = tuple(
+        TargetSpec(
+            name=f"ssa.{role}",
+            entity="household",
+            value=value,
+            measure="unused",
+            period=builder.PERIOD,
+            source="SSA",
+            metadata={"target_role": role},
+        )
+        for role, value in targets.items()
+    )
+
+    repaired, repair = builder._with_social_security_component_value_repair(
+        frame,
+        specs,
+    )
+
+    assert repair["applied"]
+    weights = pd.Series(repaired.resolve_weights("person").values)
+    for role, column in builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.items():
+        total = float((repaired.table("person")[column] * weights).sum())
+        assert np.isclose(total, targets[role])
+        assert np.isclose(
+            repair["components"][column]["repaired_estimate"],
+            targets[role],
+        )
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(

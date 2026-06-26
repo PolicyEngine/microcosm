@@ -150,7 +150,7 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 36
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS

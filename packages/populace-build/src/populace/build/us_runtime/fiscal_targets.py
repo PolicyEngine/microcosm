@@ -402,10 +402,40 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
+        "Tennessee has no modeled 2024 state individual income tax support in "
+        "PolicyEngine-US; this STC residual collection row cannot be estimated "
+        "from the current state_income_tax variable."
+    ),
     "census_stc.fy2024.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
         "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
+        "Current US support does not yet materialize a positive tip_income source "
+        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
+        "source stage wired into the fiscal refresh before calibration."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
