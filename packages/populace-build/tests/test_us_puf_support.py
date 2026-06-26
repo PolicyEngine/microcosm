@@ -282,6 +282,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "tax_exempt_interest_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "unemployment_compensation" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert (
         "long_term_capital_gains_before_response"
         in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
