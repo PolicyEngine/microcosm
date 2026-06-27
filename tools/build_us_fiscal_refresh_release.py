@@ -399,10 +399,21 @@ def _parse_args() -> argparse.Namespace:
         "--target-materialization-cache-dir",
         type=Path,
         help=(
-            "Optional local cache for expensive per-household target "
-            "materialization artifacts such as JCT reform income-tax vectors. "
-            "The cache is content-addressed by base H5, target registry, "
-            "policyengine-us version, build commit, period, and reform."
+            "Override the standard target-materialization checkpoint "
+            "directory. Defaults to <out>/artifacts/"
+            "target_materialization_cache. The cache stores expensive "
+            "per-household target materialization artifacts such as JCT "
+            "reform income-tax vectors and is content-addressed by base H5, "
+            "target registry, policyengine-us version, build commit, "
+            "period, and reform."
+        ),
+    )
+    parser.add_argument(
+        "--no-target-materialization-cache",
+        action="store_true",
+        help=(
+            "Diagnostic only: disable the standard target-materialization "
+            "checkpoint. Release builds should leave caching enabled."
         ),
     )
     parser.add_argument(
@@ -3365,6 +3376,14 @@ def main() -> None:
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
+    target_materialization_cache_dir = (
+        None
+        if args.no_target_materialization_cache
+        else (
+            args.target_materialization_cache_dir
+            or artifact_root / "target_materialization_cache"
+        )
+    )
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
@@ -3458,7 +3477,7 @@ def main() -> None:
         base_frame,
         target_specs,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        target_materialization_cache_dir=args.target_materialization_cache_dir,
+        target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
             "base_dataset_sha256": base_dataset_sha256,
             "build_commit": full_commit,

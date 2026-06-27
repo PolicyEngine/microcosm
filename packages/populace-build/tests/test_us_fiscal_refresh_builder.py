@@ -1378,14 +1378,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["materialize_kwargs"] = kwargs
+        return frame, registry, {"dropped_target_names": []}
+
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, specs, **kwargs: (
-            frame,
-            registry,
-            {"dropped_target_names": []},
-        ),
+        fake_materialize_target_frame,
     )
 
     def fake_calibrate(*args, **kwargs):
@@ -1431,6 +1432,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     }
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_dir"]
+        == out / "artifacts" / "target_materialization_cache"
+    )
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
