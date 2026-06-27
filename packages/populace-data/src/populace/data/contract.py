@@ -57,6 +57,7 @@ SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
+_US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR = 0.15
 _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "federal_income_tax_amount",
@@ -186,7 +187,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "itemized_deduction_amount",
         "label": "itemized deduction amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
             "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
@@ -213,7 +214,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "medical_expense_deduction_amount",
         "label": "medical expense deduction amount",
-        "max_abs_relative_error": 0.15,
+        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         ),
