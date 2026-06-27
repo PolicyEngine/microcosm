@@ -623,6 +623,14 @@ def _integer_geography_codes(values: Iterable[object], *, column: str) -> np.nda
 def _aca_source_target_tables(target_specs: tuple) -> dict[str, pd.DataFrame]:
     rows_by_table: dict[str, list[dict[str, object]]] = {}
     for spec in target_specs:
+        if spec.metadata.get("ledger_geography_level") != "state":
+            continue
+        groupby_dimension = spec.metadata.get("ledger_layout_groupby_dimension")
+        if (
+            isinstance(groupby_dimension, str)
+            and "congressional_district" in groupby_dimension
+        ):
+            continue
         state_fips = spec.metadata.get("state_fips")
         if not state_fips:
             continue
