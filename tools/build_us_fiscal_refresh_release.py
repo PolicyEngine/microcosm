@@ -81,6 +81,7 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
@@ -395,6 +396,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--target-materialization-cache-dir",
+        type=Path,
+        help=(
+            "Optional local cache for expensive per-household target "
+            "materialization artifacts such as JCT reform income-tax vectors. "
+            "The cache is content-addressed by base H5, target registry, "
+            "policyengine-us version, build commit, period, and reform."
+        ),
+    )
+    parser.add_argument(
         "--audit-export-targets",
         action="store_true",
         help=(
@@ -501,11 +512,132 @@ def _runtime_versions() -> dict[str, str]:
     )
     versions = {"python": platform.python_version()}
     for package in packages:
-        try:
-            versions[package] = importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError:
-            versions[package] = _local_workspace_package_version(package)
+        versions[package] = _package_or_workspace_version(package)
     return versions
+
+
+def _package_or_workspace_version(package: str) -> str:
+    try:
+        return importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        return _local_workspace_package_version(package)
+
+
+def _strict_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _strict_json_text(value: object, *, indent: int | None = None) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=None if indent is not None else (",", ":"),
+        indent=indent,
+        allow_nan=False,
+    )
+
+
+def _target_materialization_cache_identity(
+    *,
+    context: Mapping[str, object],
+    reform_spec,
+    n_households: int,
+) -> dict[str, object]:
+    return {
+        "schema_version": TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION,
+        "kind": "jct_reform_income_tax_by_household",
+        "country": "us",
+        "period": PERIOD,
+        "n_households": int(n_households),
+        "reform_measure": str(reform_spec.measure),
+        "neutralized_variable": str(reform_spec.neutralized_variable),
+        "context": dict(sorted(context.items())),
+    }
+
+
+def _target_materialization_cache_digest(identity: Mapping[str, object]) -> str:
+    return hashlib.sha256(_strict_json_bytes(identity)).hexdigest()
+
+
+def _cache_safe_name(value: str) -> str:
+    safe = "".join(character if character.isalnum() else "-" for character in value)
+    safe = "-".join(part for part in safe.split("-") if part)
+    return safe[:80] or "target"
+
+
+def _target_materialization_cache_paths(
+    cache_dir: Path,
+    identity: Mapping[str, object],
+) -> tuple[str, Path, Path]:
+    digest = _target_materialization_cache_digest(identity)
+    measure = _cache_safe_name(str(identity["reform_measure"]))
+    stem = f"{measure}-{digest[:16]}"
+    return digest, cache_dir / f"{stem}.json", cache_dir / f"{stem}.npy"
+
+
+def _read_reform_income_tax_cache(
+    cache_dir: Path,
+    identity: Mapping[str, object],
+    *,
+    n_households: int,
+) -> tuple[np.ndarray, str, Path] | None:
+    digest, metadata_path, values_path = _target_materialization_cache_paths(
+        cache_dir,
+        identity,
+    )
+    if not metadata_path.exists() or not values_path.exists():
+        return None
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("identity") != identity:
+        raise RuntimeError(
+            "Target materialization cache metadata identity mismatch for "
+            f"{metadata_path}."
+        )
+    values = np.load(values_path, allow_pickle=False)
+    if values.shape != (n_households,):
+        raise RuntimeError(
+            "Target materialization cache shape mismatch for "
+            f"{values_path}: got {values.shape}, expected {(n_households,)}."
+        )
+    return values.astype(np.float64, copy=False), digest, values_path
+
+
+def _write_reform_income_tax_cache(
+    cache_dir: Path,
+    identity: Mapping[str, object],
+    values: np.ndarray,
+) -> tuple[str, Path]:
+    digest, metadata_path, values_path = _target_materialization_cache_paths(
+        cache_dir,
+        identity,
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp_values_path = values_path.with_name(f"{values_path.name}.tmp")
+    tmp_metadata_path = metadata_path.with_name(f"{metadata_path.name}.tmp")
+    values_array = np.asarray(values, dtype=np.float64)
+    with tmp_values_path.open("wb") as stream:
+        np.save(stream, values_array, allow_pickle=False)
+    metadata = {
+        "identity": identity,
+        "values": {
+            "file": values_path.name,
+            "dtype": "float64",
+            "shape": [int(values_array.shape[0])],
+            "sha256": _sha256(tmp_values_path),
+        },
+    }
+    tmp_metadata_path.write_text(
+        _strict_json_text(metadata, indent=1) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(tmp_values_path, values_path)
+    os.replace(tmp_metadata_path, metadata_path)
+    return digest, values_path
 
 
 def _local_workspace_package_version(package: str) -> str:
@@ -1600,9 +1732,19 @@ def _materialize_target_frame(
     target_specs: tuple,
     *,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    target_materialization_cache_dir: Path | None = None,
+    target_materialization_cache_context: Mapping[str, object] | None = None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
+    if (
+        target_materialization_cache_dir is not None
+        and target_materialization_cache_context is None
+    ):
+        raise ValueError(
+            "target_materialization_cache_context is required when "
+            "target_materialization_cache_dir is set."
+        )
     _assert_supported_ledger_filter_metadata(target_specs)
     _assert_no_formula_owned_columns(base_frame)
     dataset = _dataset_from_frame(
@@ -1884,17 +2026,97 @@ def _materialize_target_frame(
     del simulation, dataset
     gc.collect()
     requested_reform_measures = {spec.measure for spec in target_specs}
+    cache_context = (
+        dict(target_materialization_cache_context)
+        if target_materialization_cache_context is not None
+        else None
+    )
+    cache_stats: dict[str, object] = {
+        "enabled": target_materialization_cache_dir is not None,
+        "cache_dir": (
+            None
+            if target_materialization_cache_dir is None
+            else str(target_materialization_cache_dir)
+        ),
+        "schema_version": TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION,
+        "hits": 0,
+        "misses": 0,
+        "writes": 0,
+        "entries": [],
+    }
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         if reform_spec.measure not in requested_reform_measures:
             continue
-        reform_income_tax = _reform_household_income_tax(
-            base_frame=base_frame,
-            reform_spec=reform_spec,
-            system=system,
-            microsimulation_cls=Microsimulation,
-            n_households=n_households,
-            batch_size=maximum_microsim_batch_size,
-        )
+        reform_income_tax = None
+        cache_entry: dict[str, object] | None = None
+        if target_materialization_cache_dir is not None and cache_context is not None:
+            identity = _target_materialization_cache_identity(
+                context=cache_context,
+                reform_spec=reform_spec,
+                n_households=n_households,
+            )
+            cached = _read_reform_income_tax_cache(
+                target_materialization_cache_dir,
+                identity,
+                n_households=n_households,
+            )
+            if cached is not None:
+                reform_income_tax, cache_digest, cache_path = cached
+                cache_stats["hits"] = int(cache_stats["hits"]) + 1
+                cache_entry = {
+                    "measure": reform_spec.measure,
+                    "neutralized_variable": reform_spec.neutralized_variable,
+                    "status": "hit",
+                    "identity_sha256": cache_digest,
+                    "path": str(cache_path),
+                }
+            else:
+                cache_stats["misses"] = int(cache_stats["misses"]) + 1
+                cache_digest = _target_materialization_cache_digest(identity)
+                cache_entry = {
+                    "measure": reform_spec.measure,
+                    "neutralized_variable": reform_spec.neutralized_variable,
+                    "status": "miss",
+                    "identity_sha256": cache_digest,
+                }
+        if reform_income_tax is None:
+            reform_income_tax = _reform_household_income_tax(
+                base_frame=base_frame,
+                reform_spec=reform_spec,
+                system=system,
+                microsimulation_cls=Microsimulation,
+                n_households=n_households,
+                batch_size=maximum_microsim_batch_size,
+            )
+            if (
+                target_materialization_cache_dir is not None
+                and cache_context is not None
+            ):
+                identity = _target_materialization_cache_identity(
+                    context=cache_context,
+                    reform_spec=reform_spec,
+                    n_households=n_households,
+                )
+                cache_digest, cache_path = _write_reform_income_tax_cache(
+                    target_materialization_cache_dir,
+                    identity,
+                    reform_income_tax,
+                )
+                cache_stats["writes"] = int(cache_stats["writes"]) + 1
+                if cache_entry is None:
+                    cache_entry = {
+                        "measure": reform_spec.measure,
+                        "neutralized_variable": reform_spec.neutralized_variable,
+                        "status": "write",
+                        "identity_sha256": cache_digest,
+                    }
+                cache_entry["status"] = "miss_written"
+                cache_entry["identity_sha256"] = cache_digest
+                cache_entry["path"] = str(cache_path)
+        if cache_entry is not None:
+            entries = cache_stats["entries"]
+            assert isinstance(entries, list)
+            entries.append(cache_entry)
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
         del reform_income_tax
         gc.collect()
@@ -1919,6 +2141,7 @@ def _materialize_target_frame(
             "declared_targets": len(target_specs),
             "compiled_candidate_targets": len(compileable_specs),
             "dropped_target_names": dropped,
+            "target_materialization_cache": cache_stats,
         },
     )
 
@@ -3096,8 +3319,10 @@ def main() -> None:
     timing: dict[str, float] = {}
 
     base_h5 = args.base_h5 or _download_base_h5()
-    digest = _sha256(base_h5)[:7]
+    base_dataset_sha256 = _sha256(base_h5)
+    digest = base_dataset_sha256[:7]
     build_timestamp = datetime.now(UTC)
+    full_commit = _git_output("rev-parse", "HEAD")
     commit = _git_output("rev-parse", "--short=12", "HEAD")
     release_id = (
         args.release_id
@@ -3121,6 +3346,7 @@ def main() -> None:
             for spec in target_specs
             if spec.measure not in tax_expenditure_measures
         )
+    active_target_registry = TargetRegistry(target_specs, country="us")
     target_profile_gate = target_profile_coverage_gate(
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
@@ -3232,6 +3458,15 @@ def main() -> None:
         base_frame,
         target_specs,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        target_materialization_cache_dir=args.target_materialization_cache_dir,
+        target_materialization_cache_context={
+            "base_dataset_sha256": base_dataset_sha256,
+            "build_commit": full_commit,
+            "policyengine_us_version": _package_or_workspace_version("policyengine-us"),
+            "seed": args.seed,
+            "target_period": PERIOD,
+            "target_registry_version": active_target_registry.version,
+        },
     )
     timing["target_compilation_seconds"] = (
         time.perf_counter() - target_compilation_started

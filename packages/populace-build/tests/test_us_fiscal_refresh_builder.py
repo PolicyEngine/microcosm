@@ -2174,6 +2174,7 @@ def test_aca_source_target_tables_ignore_congressional_district_targets() -> Non
 
 def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch,
+    tmp_path,
 ) -> None:
     builder = _load_builder_module()
     frame = Frame(
@@ -2318,8 +2319,20 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (reform_spec,))
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
 
+    cache_context = {
+        "base_dataset_sha256": "test-base-sha",
+        "build_commit": "test-commit",
+        "policyengine_us_version": "test-policyengine-us",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "test-target-registry",
+    }
     target_frame, registry, dropped = builder._materialize_target_frame(
-        frame, (target,), maximum_microsim_batch_size=1
+        frame,
+        (target,),
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=cache_context,
     )
 
     household = target_frame.table("household")
@@ -2329,6 +2342,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     assert len(registry) == 1
     assert dropped["dropped_target_names"] == []
+    assert dropped["target_materialization_cache"]["hits"] == 0
+    assert dropped["target_materialization_cache"]["misses"] == 1
+    assert dropped["target_materialization_cache"]["writes"] == 1
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert len(list(tmp_path.glob("*.npy"))) == 1
     assert [dataset[1] for dataset in datasets] == [
         (),
         ("mock_credit",),
@@ -2339,6 +2357,42 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert formula_owned_assertions == [2, 2]
     assert len(simulations) == 3
     assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
+
+    target_frame_again, registry_again, dropped_again = (
+        builder._materialize_target_frame(
+            frame,
+            (target,),
+            maximum_microsim_batch_size=1,
+            target_materialization_cache_dir=tmp_path,
+            target_materialization_cache_context=cache_context,
+        )
+    )
+
+    household_again = target_frame_again.table("household")
+    assert np.array_equal(
+        household_again["jct_mock_tax_expenditure"], np.asarray([-15.0, -30.0])
+    )
+    assert len(registry_again) == 1
+    assert dropped_again["dropped_target_names"] == []
+    assert dropped_again["target_materialization_cache"]["hits"] == 1
+    assert dropped_again["target_materialization_cache"]["misses"] == 0
+    assert dropped_again["target_materialization_cache"]["writes"] == 0
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+        (),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1, 2]
+    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
+    assert formula_owned_assertions == [2, 2, 2]
+    assert len(simulations) == 4
+    assert [simulation.cache_invalidations for simulation in simulations] == [
+        1,
+        1,
+        1,
+        1,
+    ]
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(
