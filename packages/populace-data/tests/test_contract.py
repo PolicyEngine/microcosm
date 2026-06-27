@@ -569,7 +569,9 @@ def test_us_release_rejects_bad_deduction_fit(
 
     failures = "\n".join(excinfo.value.failures)
     assert deduction_name in failures
-    expected_cap = 0.15 if target_role == "medical_expense_deduction_total" else 0.1
+    expected_cap = (
+        0.1 if target_role == "salt_deduction_total" else 0.15
+    )
     assert f"exceeding {expected_cap}" in failures
 
 
