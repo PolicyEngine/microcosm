@@ -21,6 +21,9 @@ from populace.build.ledger_targets import (
     apply_ledger_target_profile,
     compile_ledger_target_references,
 )
+from populace.build.us_runtime.congressional_district_vintage import (
+    translate_congressional_district_facts_to_current_vintage,
+)
 from populace.calibrate import TargetRegistry, TargetSpec
 
 __all__ = [
@@ -707,9 +710,15 @@ def compile_us_fiscal_target_registry(
     *,
     target_period: int | str = 2024,
     include_congressional_district_targets: bool = False,
+    congressional_district_vintage_crosswalk: object | None = None,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed."""
     materialized_facts = tuple(facts)
+    if congressional_district_vintage_crosswalk is not None:
+        materialized_facts = translate_congressional_district_facts_to_current_vintage(
+            materialized_facts,
+            congressional_district_vintage_crosswalk,
+        )
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
