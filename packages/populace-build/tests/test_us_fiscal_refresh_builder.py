@@ -382,6 +382,127 @@ def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) ->
     assert args.congressional_district_vintage_crosswalk == Path("crosswalk.csv")
 
 
+def test_area_artifact_preflight_runs_before_source_materialization(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("")
+    facts = tmp_path / "facts.jsonl"
+    facts.write_text("")
+    out = tmp_path / "out"
+    crosswalk = tmp_path / "crosswalk.csv"
+    crosswalk.write_text("source_geography_id,target_geography_id,weight\n")
+    release_id = "populace-us-test"
+    calls: list[str] = []
+
+    spec = TargetSpec(
+        name="target",
+        entity="household",
+        measure="household_count",
+        value=1.0,
+        source="source",
+        family="family",
+    )
+    registry = TargetRegistry((spec,), country="us")
+
+    class FakeFrame:
+        pass
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--base-h5",
+            str(base_h5),
+            "--ledger-facts",
+            str(facts),
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--include-area-artifacts",
+            "--congressional-district-vintage-crosswalk",
+            str(crosswalk),
+        ],
+    )
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "sha")
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "load_congressional_district_vintage_crosswalk",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, metadata: None,
+    )
+    monkeypatch.setattr(builder, "_load_ledger_facts", lambda path: ({"fact": 1},))
+    monkeypatch.setattr(
+        builder,
+        "compile_us_fiscal_target_registry",
+        lambda facts, **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        builder,
+        "target_profile_coverage_gate",
+        lambda specs, requirements: builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={},
+        ),
+    )
+    monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    monkeypatch.setattr(
+        builder,
+        "_with_base_population_mass_repair",
+        lambda frame: (frame, {"applied": False}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, {"applied": False}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_base_population_scale_gate",
+        lambda frame, *, mass_repair=None: builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={},
+        ),
+    )
+
+    def fail_area_preflight(frame):
+        calls.append("area_preflight")
+        raise ValueError("bad current CD lookup")
+
+    def source_inputs_should_not_run(
+        frame,
+        specs,
+        *,
+        seed,
+        maximum_microsim_batch_size=None,
+    ):
+        calls.append("source_inputs")
+        return frame
+
+    monkeypatch.setattr(builder, "_strict_area_artifact_specs", fail_area_preflight)
+    monkeypatch.setattr(
+        builder,
+        "_with_aca_marketplace_source_outputs",
+        source_inputs_should_not_run,
+    )
+
+    with pytest.raises(ValueError, match="bad current CD lookup"):
+        builder.main()
+
+    assert calls == ["area_preflight"]
+
+
 def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
     builder = _load_builder_module()
 
