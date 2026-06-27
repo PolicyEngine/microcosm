@@ -1,3 +1,4 @@
+import builtins
 import importlib.util
 import json
 import sys
@@ -89,10 +90,77 @@ def test_cd_vintage_support_provenance_requires_matching_h5_attrs(
             builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
                 builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
             ),
+            "household_congressional_district_geoid": {
+                "exists": True,
+                "positive_unique_count": 436,
+            },
         },
     )
 
     builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_rejects_missing_cd_lookup(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "household_congressional_district_geoid": {"exists": False},
+        },
+    )
+
+    with pytest.raises(ValueError, match="missing household congressional"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_counts_only_positive_numeric_lookup() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._positive_numeric_unique_count(
+            np.asarray(["", "0", "0000", "not-a-geoid"])
+        )
+        == 0
+    )
+    assert (
+        builder._positive_numeric_unique_count(np.asarray(["0101", "0101", "0200"]))
+        == 2
+    )
+
+
+def test_cd_vintage_support_provenance_names_us_extra_when_h5py_missing(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "h5py":
+            raise ModuleNotFoundError("No module named 'h5py'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._read_cd_vintage_support_provenance(h5_path)
+
+    message = str(excinfo.value)
+    assert "--extra us" in message
+    assert "before calibration or donor imputation" in message
 
 
 def _complete_area_artifact_results(builder, artifact_root: Path) -> tuple:
@@ -259,6 +327,59 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     )
     args = builder._parse_args()
     assert args.audit_export_targets
+
+
+def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-congressional-district-targets",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-area-artifacts",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-congressional-district-targets",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.congressional_district_vintage_crosswalk == Path("crosswalk.csv")
 
 
 def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
@@ -2516,6 +2637,29 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         1,
         1,
     ]
+
+
+def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> None:
+    builder = _load_builder_module()
+    identity = {
+        "schema_version": builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION,
+        "kind": "jct_reform_income_tax_by_household",
+        "reform_measure": "mock_credit",
+    }
+    _, values_path = builder._write_reform_income_tax_cache(
+        tmp_path,
+        identity,
+        np.asarray([1.0, 2.0]),
+    )
+    with values_path.open("wb") as stream:
+        np.save(stream, np.asarray([3.0, 4.0]), allow_pickle=False)
+
+    with pytest.raises(RuntimeError, match="values hash mismatch"):
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            identity,
+            n_households=2,
+        )
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(

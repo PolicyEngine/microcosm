@@ -474,10 +474,10 @@ def _parse_args() -> argparse.Namespace:
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
-            "Optional source-to-current congressional-district crosswalk "
+            "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
-            "weight columns. Required before publishing current regional "
-            "artifacts from old-vintage SOI CD facts."
+            "weight columns. Required when congressional-district targets or "
+            "area artifacts are requested."
         ),
     )
     parser.add_argument(
@@ -539,7 +539,16 @@ def _parse_args() -> argparse.Namespace:
         default=30.0,
         help="Minimum seconds between progress uploads to the staging repo.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if (
+        args.include_congressional_district_targets or args.include_area_artifacts
+    ) and args.congressional_district_vintage_crosswalk is None:
+        parser.error(
+            "--congressional-district-vintage-crosswalk is required when "
+            "--include-congressional-district-targets or --include-area-artifacts "
+            "is set."
+        )
+    return args
 
 
 def _sha256(path: Path) -> str:
@@ -649,6 +658,25 @@ def _read_reform_income_tax_cache(
         raise RuntimeError(
             "Target materialization cache metadata identity mismatch for "
             f"{metadata_path}."
+        )
+    metadata_values = metadata.get("values")
+    if not isinstance(metadata_values, Mapping):
+        raise RuntimeError(
+            "Target materialization cache metadata is missing values entry for "
+            f"{metadata_path}."
+        )
+    if metadata_values.get("file") != values_path.name:
+        raise RuntimeError(
+            "Target materialization cache values filename mismatch for "
+            f"{metadata_path}: got {metadata_values.get('file')!r}, expected "
+            f"{values_path.name!r}."
+        )
+    expected_sha256 = metadata_values.get("sha256")
+    actual_sha256 = _sha256(values_path)
+    if expected_sha256 != actual_sha256:
+        raise RuntimeError(
+            "Target materialization cache values hash mismatch for "
+            f"{values_path}: got {actual_sha256}, expected {expected_sha256}."
         )
     values = np.load(values_path, allow_pickle=False)
     if values.shape != (n_households,):
@@ -766,6 +794,11 @@ def _assert_cd_vintage_support_matches(
             "target vintage "
             f"{actual_target!r} != expected {CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE!r}"
         )
+    cd_lookup = support_provenance.get("household_congressional_district_geoid")
+    if not isinstance(cd_lookup, Mapping) or not cd_lookup.get("exists"):
+        failures.append("missing household congressional_district_geoid lookup column")
+    elif int(cd_lookup.get("positive_unique_count") or 0) <= 0:
+        failures.append("household congressional_district_geoid has no positive values")
     if failures:
         raise ValueError(
             "Congressional-district support crosswalk provenance mismatch in "
@@ -773,8 +806,17 @@ def _assert_cd_vintage_support_matches(
         )
 
 
-def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, str | None]:
-    import h5py
+def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, object]:
+    try:
+        import h5py
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Reading congressional-district support provenance requires h5py. "
+            "Run the fiscal refresh builder with the US extra, for example "
+            "`uv run --python 3.13 --package populace-build --extra us --group "
+            "dev python tools/build_us_fiscal_refresh_release.py ...`. This "
+            "preflight is intentionally before calibration or donor imputation."
+        ) from exc
 
     with h5py.File(h5_path, "r") as h5:
         return {
@@ -784,7 +826,44 @@ def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, str | None]:
             CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: _h5_attr_text(
                 h5.attrs, CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR
             ),
+            "household_congressional_district_geoid": (
+                _h5_table_column_status(
+                    h5,
+                    table="household",
+                    column="congressional_district_geoid",
+                )
+            ),
         }
+
+
+def _h5_table_column_status(h5, *, table: str, column: str) -> dict[str, object]:
+    table_path = f"{table}/table"
+    if table_path not in h5:
+        return {"exists": False, "table": table, "column": column}
+    dataset = h5[table_path]
+    names = getattr(dataset.dtype, "names", None) or ()
+    if column not in names:
+        return {"exists": False, "table": table, "column": column}
+    values = np.asarray(dataset[column])
+    return {
+        "exists": True,
+        "table": table,
+        "column": column,
+        "rows": int(values.shape[0]),
+        "positive_unique_count": _positive_numeric_unique_count(values),
+    }
+
+
+def _positive_numeric_unique_count(values: np.ndarray) -> int:
+    positive: set[float] = set()
+    for value in np.asarray(values).ravel():
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric_value) and numeric_value > 0:
+            positive.add(numeric_value)
+    return len(positive)
 
 
 def _h5_attr_text(attrs: Mapping[str, object], key: str) -> str | None:
