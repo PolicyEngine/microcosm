@@ -76,7 +76,7 @@ CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
-    "sqrt_value_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
+    "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
@@ -91,6 +91,42 @@ US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
     "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
     "component payment targets from the active fiscal target registry before "
     "mass='conserve' calibration."
+)
+US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS = frozenset(
+    {
+        "congressional_district_geoid",
+        "geography_scope",
+        "hierarchy_child_ids",
+        "hierarchy_child_sum_raw",
+        "hierarchy_coverage_ratio",
+        "hierarchy_expected_child_count",
+        "hierarchy_observed_child_count",
+        "hierarchy_parent_geography_id",
+        "hierarchy_parent_geography_level",
+        "hierarchy_parent_key",
+        "hierarchy_parent_target_name",
+        "hierarchy_parent_target_period",
+        "hierarchy_parent_value",
+        "hierarchy_raw_value",
+        "hierarchy_reconciliation_factor",
+        "hierarchy_reconciliation_method",
+        "hierarchy_reconciliation_rule",
+        "ledger_aggregate_fact_key",
+        "ledger_dimension_set_key",
+        "ledger_fact_key",
+        "ledger_geography_id",
+        "ledger_geography_level",
+        "ledger_geography_name",
+        "ledger_geography_vintage",
+        "ledger_legacy_fact_key",
+        "ledger_layout_groupby_dimension",
+        "ledger_layout_groupby_value_id",
+        "ledger_layout_record_set_id",
+        "ledger_observed_measure_key",
+        "ledger_semantic_fact_key",
+        "ledger_source_record_id",
+        "state_fips",
+    }
 )
 US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
@@ -2161,7 +2197,7 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
 
 
 def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
-    weights = _fiscal_target_value_basis_weights(registry)
+    weights = _fiscal_target_concept_budget_weights(registry)
     bases = np.asarray(
         [_fiscal_target_value_basis(spec) for spec in registry.specs],
         dtype=object,
@@ -2176,6 +2212,50 @@ def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
         if current_total > 0:
             weights[mask] *= basis_total / current_total
     return weights / weights.mean()
+
+
+def _fiscal_target_concept_budget_weights(registry: TargetRegistry) -> np.ndarray:
+    weights = _fiscal_target_value_basis_weights(registry)
+    group_indices: dict[tuple[object, ...], list[int]] = {}
+    for index, spec in enumerate(registry.specs):
+        group_indices.setdefault(_fiscal_target_concept_budget_key(spec), []).append(
+            index
+        )
+    for indices in group_indices.values():
+        group_weights = weights[indices]
+        group_total = float(group_weights.sum())
+        group_budget = float(group_weights.max(initial=0.0))
+        if group_total > 0 and group_budget > 0:
+            weights[indices] *= group_budget / group_total
+    return weights
+
+
+def _fiscal_target_concept_budget_key(spec) -> tuple[object, ...]:
+    metadata = spec.metadata
+    if metadata.get("ledger_geography_level") != "congressional_district":
+        return (
+            _fiscal_target_value_basis(spec),
+            spec.entity,
+            spec.period,
+            spec.family,
+            spec.name,
+        )
+    semantic_metadata = tuple(
+        sorted(
+            (key, value)
+            for key, value in metadata.items()
+            if key not in US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
+        )
+    )
+    return (
+        _fiscal_target_value_basis(spec),
+        spec.entity,
+        spec.period,
+        spec.family,
+        spec.filter or "",
+        metadata.get("state_fips", ""),
+        semantic_metadata,
+    )
 
 
 def _fiscal_target_value_basis_weights(registry: TargetRegistry) -> np.ndarray:
