@@ -62,6 +62,39 @@ def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
     assert "census-acs-s0101-state-age-2024" in reviewed
 
 
+def test_cd_vintage_support_provenance_requires_matching_h5_attrs(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {},
+    )
+
+    with pytest.raises(ValueError, match="crosswalk provenance mismatch"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+        },
+    )
+
+    builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
 def _complete_area_artifact_results(builder, artifact_root: Path) -> tuple:
     from populace.build.us_runtime.area_artifacts import (
         EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
@@ -1408,9 +1441,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "compile_us_fiscal_target_registry",
-        lambda facts, *, target_period, include_congressional_district_targets=False: (
-            registry
-        ),
+        lambda facts, **kwargs: registry,
     )
     monkeypatch.setattr(
         builder,

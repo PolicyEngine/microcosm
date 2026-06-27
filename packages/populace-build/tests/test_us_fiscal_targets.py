@@ -385,7 +385,7 @@ def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
     assert cd_specs["1501"].metadata["hierarchy_reconciliation_factor"] == "2"
 
 
-def test_soi_congressional_district_hierarchy_uses_source_vintage_counts() -> None:
+def test_soi_congressional_district_hierarchy_uses_current_vintage_counts() -> None:
     payload = json.loads(
         files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
     )
@@ -393,11 +393,14 @@ def test_soi_congressional_district_hierarchy_uses_source_vintage_counts() -> No
         "child_completeness"
     ]["expected_child_count_by_parent_key"]
 
-    assert counts["06"] == 53
-    assert counts["12"] == 27
-    assert counts["36"] == 27
+    assert counts["06"] == 52
+    assert counts["08"] == 8
+    assert counts["12"] == 28
+    assert counts["30"] == 2
+    assert counts["36"] == 26
+    assert counts["48"] == 38
     assert "11" not in counts
-    assert sum(counts.values()) == 428
+    assert sum(counts.values()) == 429
 
 
 def test_soi_congressional_district_reconciliation_requires_complete_children() -> None:

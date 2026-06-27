@@ -342,9 +342,12 @@ def _cd_geoid_series(values: Any) -> pd.Series:
 
 
 def _parse_congressional_district_geoid(geography_id: str) -> str | None:
-    if not geography_id.startswith("5001700US"):
+    for prefix in ("5001700US", "5001900US"):
+        if geography_id.startswith(prefix):
+            geoid = geography_id.removeprefix(prefix)
+            break
+    else:
         return None
-    geoid = geography_id.removeprefix("5001700US")
     if len(geoid) != 4 or not geoid.isdigit():
         return None
     return geoid

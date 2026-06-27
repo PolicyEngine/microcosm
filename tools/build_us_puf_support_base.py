@@ -13,12 +13,14 @@ import hashlib
 import json
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -27,8 +29,10 @@ from populace.build.us_runtime import (
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
+    load_congressional_district_vintage_crosswalk,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
+    translate_congressional_district_facts_to_current_vintage,
     with_household_congressional_districts,
 )
 from populace.frame import Frame, WeightKind, Weights
@@ -40,7 +44,7 @@ DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-h5", required=True, type=Path)
     parser.add_argument("--puf-h5", required=True, type=Path)
@@ -63,10 +67,33 @@ def main() -> None:
             "return-count Ledger facts, constrained by state_fips."
         ),
     )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        help=(
+            "Optional source-to-current congressional-district crosswalk "
+            "artifact with source_geography_id, target_geography_id, and "
+            "weight columns. When provided, SOI CD return-count facts are "
+            "translated before support assignment."
+        ),
+    )
     parser.add_argument("--congressional-district-seed", default=0, type=int)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if (
+        args.congressional_district_vintage_crosswalk is not None
+        and not args.assign_congressional_districts
+    ):
+        parser.error(
+            "--congressional-district-vintage-crosswalk requires "
+            "--assign-congressional-districts"
+        )
     if args.assign_congressional_districts and args.ledger_facts is None:
         parser.error("--assign-congressional-districts requires --ledger-facts")
+    return args
+
+
+def main() -> None:
+    args = _parse_args()
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,8 +112,16 @@ def main() -> None:
     )
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
+        ledger_facts = _load_ledger_facts(args.ledger_facts)
+        if args.congressional_district_vintage_crosswalk is not None:
+            ledger_facts = translate_congressional_district_facts_to_current_vintage(
+                ledger_facts,
+                load_congressional_district_vintage_crosswalk(
+                    args.congressional_district_vintage_crosswalk
+                ),
+            )
         distribution = congressional_district_distribution_from_ledger_facts(
-            _load_ledger_facts(args.ledger_facts)
+            ledger_facts
         )
         imputed = with_household_congressional_districts(
             imputed,
@@ -101,10 +136,30 @@ def main() -> None:
             {
                 "ledger_facts": str(args.ledger_facts.resolve()),
                 "ledger_facts_sha256": _sha256(args.ledger_facts),
+                "congressional_district_vintage_crosswalk": (
+                    str(args.congressional_district_vintage_crosswalk.resolve())
+                    if args.congressional_district_vintage_crosswalk is not None
+                    else None
+                ),
+                "congressional_district_vintage_crosswalk_sha256": (
+                    _sha256(args.congressional_district_vintage_crosswalk)
+                    if args.congressional_district_vintage_crosswalk is not None
+                    else None
+                ),
                 "seed": args.congressional_district_seed,
             }
         )
     PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=PERIOD)
+    if args.congressional_district_vintage_crosswalk is not None:
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = _sha256(
+                args.congressional_district_vintage_crosswalk
+            )
+            h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            )
 
     summary = {
         "base_h5": str(args.base_h5.resolve()),
@@ -152,6 +207,8 @@ def _load_frame(path: Path) -> Frame:
 
 
 def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
+    import h5py
+
     with h5py.File(path, "r") as h5:
         return {name: np.asarray(dataset) for name, dataset in h5.items()}
 

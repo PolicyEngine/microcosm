@@ -65,6 +65,16 @@ def _parse_args() -> argparse.Namespace:
             "scored H5 to contain household congressional_district_geoid."
         ),
     )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        help=(
+            "Optional source-to-current congressional-district crosswalk "
+            "artifact with source_geography_id, target_geography_id, and "
+            "weight columns. Used to score old-vintage SOI CD targets on the "
+            "current regional surface."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -109,11 +119,30 @@ def score_frame(
     diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
     include_congressional_district_targets: bool = False,
+    congressional_district_vintage_crosswalk: Path | None = None,
 ) -> tuple[CalibrationResult, object, dict[str, object], dict[str, object]]:
+    congressional_district_vintage_crosswalk_metadata = (
+        {
+            "path": str(congressional_district_vintage_crosswalk.resolve()),
+            "sha256": release._sha256(congressional_district_vintage_crosswalk),
+        }
+        if congressional_district_vintage_crosswalk is not None
+        else None
+    )
+    release._assert_cd_vintage_support_matches(
+        h5, congressional_district_vintage_crosswalk_metadata
+    )
     target_registry = release.compile_us_fiscal_target_registry(
         release._load_ledger_facts(ledger_facts),
         target_period=release.PERIOD,
         include_congressional_district_targets=include_congressional_district_targets,
+        congressional_district_vintage_crosswalk=(
+            release.load_congressional_district_vintage_crosswalk(
+                congressional_district_vintage_crosswalk
+            )
+            if congressional_district_vintage_crosswalk is not None
+            else None
+        ),
     )
     target_specs = target_registry.specs
     if diagnostic_skip_tax_expenditure_targets:
@@ -190,6 +219,7 @@ def _summary_payload(
     *,
     h5: Path,
     ledger_facts: Path,
+    congressional_district_vintage_crosswalk: Path | None,
     result: CalibrationResult,
     registry,
     compilation: dict[str, object],
@@ -201,6 +231,16 @@ def _summary_payload(
         "h5_sha256": release._sha256(h5),
         "ledger_facts": str(ledger_facts),
         "ledger_facts_sha256": release._sha256(ledger_facts),
+        "congressional_district_vintage_crosswalk": (
+            str(congressional_district_vintage_crosswalk)
+            if congressional_district_vintage_crosswalk is not None
+            else None
+        ),
+        "congressional_district_vintage_crosswalk_sha256": (
+            release._sha256(congressional_district_vintage_crosswalk)
+            if congressional_district_vintage_crosswalk is not None
+            else None
+        ),
         "final_loss": result.final_loss,
         "initial_loss": result.initial_loss,
         "fraction_within_10pct": result.fraction_within_10pct,
@@ -228,6 +268,9 @@ def main() -> None:
         diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
         include_congressional_district_targets=args.include_congressional_district_targets,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
     )
     write_calibration_diagnostics(
         result,
@@ -245,6 +288,9 @@ def main() -> None:
     summary = _summary_payload(
         h5=h5,
         ledger_facts=args.ledger_facts,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
         result=result,
         registry=registry,
         compilation=compilation,

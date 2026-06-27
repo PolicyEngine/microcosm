@@ -46,6 +46,15 @@ from populace.build.us_runtime.congressional_district_geography import (
     congressional_district_distribution_from_ledger_facts,
     with_household_congressional_districts,
 )
+from populace.build.us_runtime.congressional_district_vintage import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+    load_congressional_district_vintage_crosswalk,
+    translate_congressional_district_facts_to_current_vintage,
+)
 from populace.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
@@ -133,7 +142,12 @@ __all__ = [
     "DEMOGRAPHICS_SCHEMA_VERSION",
     "compute_age_distribution",
     "CONGRESSIONAL_DISTRICT_GEOID_COLUMN",
+    "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR",
+    "CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR",
+    "CURRENT_CONGRESSIONAL_DISTRICT_PREFIX",
+    "CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE",
     "SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID",
+    "SOURCE_CONGRESSIONAL_DISTRICT_PREFIX",
     "demographics_payload",
     "write_demographics",
     "US_DONORS",
@@ -175,6 +189,7 @@ __all__ = [
     "impute_us_puf_tax_detail_support",
     "in_sample_reform_specs",
     "load_default_reform_specs",
+    "load_congressional_district_vintage_crosswalk",
     "load_asec_h5_tables",
     "out_of_sample_reform_specs",
     "puf_tax_unit_donor_from_arrays",
@@ -191,6 +206,7 @@ __all__ = [
     "support_clone_index_column",
     "support_source_id_column",
     "validation_only_family_ids",
+    "translate_congressional_district_facts_to_current_vintage",
     "with_household_congressional_districts",
 ]
 

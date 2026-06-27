@@ -38,6 +38,9 @@ from populace.build.gates import (
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.staging import StagingTelemetry
 from populace.build.us_runtime import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -45,6 +48,7 @@ from populace.build.us_runtime import (
     US_SOURCE_MANIFEST,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
+    load_congressional_district_vintage_crosswalk,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
     write_us_source_coverage_diagnostics,
@@ -467,6 +471,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        help=(
+            "Optional source-to-current congressional-district crosswalk "
+            "artifact with source_geography_id, target_geography_id, and "
+            "weight columns. Required before publishing current regional "
+            "artifacts from old-vintage SOI CD facts."
+        ),
+    )
+    parser.add_argument(
         "--include-area-artifacts",
         action="store_true",
         help=(
@@ -728,6 +742,60 @@ def _load_frame(path: Path) -> Frame:
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+
+
+def _assert_cd_vintage_support_matches(
+    h5_path: Path,
+    crosswalk_metadata: Mapping[str, object] | None,
+) -> None:
+    if crosswalk_metadata is None:
+        return
+    expected_sha256 = str(crosswalk_metadata.get("sha256") or "")
+    support_provenance = _read_cd_vintage_support_provenance(h5_path)
+    actual_sha256 = support_provenance.get(
+        CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR
+    )
+    actual_target = support_provenance.get(CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR)
+    failures: list[str] = []
+    if actual_sha256 != expected_sha256:
+        failures.append(
+            f"crosswalk sha256 {actual_sha256!r} != expected {expected_sha256!r}"
+        )
+    if actual_target != CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE:
+        failures.append(
+            "target vintage "
+            f"{actual_target!r} != expected {CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE!r}"
+        )
+    if failures:
+        raise ValueError(
+            "Congressional-district support crosswalk provenance mismatch in "
+            f"{h5_path}: " + "; ".join(failures)
+        )
+
+
+def _read_cd_vintage_support_provenance(h5_path: Path) -> dict[str, str | None]:
+    import h5py
+
+    with h5py.File(h5_path, "r") as h5:
+        return {
+            CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: _h5_attr_text(
+                h5.attrs, CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR
+            ),
+            CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: _h5_attr_text(
+                h5.attrs, CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR
+            ),
+        }
+
+
+def _h5_attr_text(attrs: Mapping[str, object], key: str) -> str | None:
+    value = attrs.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value.decode()
+    if isinstance(value, np.bytes_):
+        return value.decode()
+    return str(value)
 
 
 def _load_incumbent_diagnostics(
@@ -3494,11 +3562,32 @@ def main() -> None:
         or f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
     )
     _assert_us_release_id(release_id)
+    congressional_district_vintage_crosswalk = (
+        load_congressional_district_vintage_crosswalk(
+            args.congressional_district_vintage_crosswalk
+        )
+        if args.congressional_district_vintage_crosswalk is not None
+        else None
+    )
+    congressional_district_vintage_crosswalk_metadata = (
+        {
+            "path": str(args.congressional_district_vintage_crosswalk.resolve()),
+            "sha256": _sha256(args.congressional_district_vintage_crosswalk),
+        }
+        if args.congressional_district_vintage_crosswalk is not None
+        else None
+    )
+    _assert_cd_vintage_support_matches(
+        base_h5, congressional_district_vintage_crosswalk_metadata
+    )
     target_registry = compile_us_fiscal_target_registry(
         _load_ledger_facts(args.ledger_facts),
         target_period=PERIOD,
         include_congressional_district_targets=(
             args.include_congressional_district_targets
+        ),
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
         ),
     )
     target_specs = target_registry.specs
@@ -3664,9 +3753,19 @@ def main() -> None:
             "seed": args.seed,
             "target_period": PERIOD,
             "target_registry_version": active_target_registry.version,
+            "congressional_district_vintage_crosswalk_sha256": (
+                congressional_district_vintage_crosswalk_metadata or {}
+            ).get("sha256"),
         },
         gate_congressional_district_targets=args.gate_congressional_district_targets,
     )
+    if congressional_district_vintage_crosswalk_metadata is not None:
+        compilation = {
+            **dict(compilation),
+            "congressional_district_vintage_crosswalk": (
+                congressional_district_vintage_crosswalk_metadata
+            ),
+        }
     timing["target_compilation_seconds"] = (
         time.perf_counter() - target_compilation_started
     )
@@ -3856,6 +3955,10 @@ def main() -> None:
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    if congressional_district_vintage_crosswalk_metadata is not None:
+        coverage["congressional_district_vintage_crosswalk"] = (
+            congressional_district_vintage_crosswalk_metadata
+        )
     coverage["fiscal_target_support_exclusions"] = [
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(
