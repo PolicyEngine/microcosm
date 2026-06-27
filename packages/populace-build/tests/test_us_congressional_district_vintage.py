@@ -205,6 +205,343 @@ def test_compile_us_fiscal_targets_can_use_translated_current_cd_surface() -> No
     assert cd_specs["0602"].value == pytest.approx(85.0)
 
 
+def test__given_missing_statewide_source_cd__then_matching_state_fact_is_split_to_current_cds() -> (
+    None
+):
+    # Given
+    facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    # When
+    translated = translate_congressional_district_facts_to_current_vintage(
+        facts,
+        crosswalk,
+        crosswalk_basis="block_population",
+    )
+
+    # Then
+    by_geography = {
+        fact["geography"]["id"]: fact
+        for fact in translated
+        if fact["geography"]["level"] == "congressional_district"
+        and str(fact["geography"]["id"]).startswith("5001900US30")
+    }
+    assert set(by_geography) == {"5001900US3001", "5001900US3002"}
+    assert by_geography["5001900US3001"]["value"] == pytest.approx(40.0)
+    assert by_geography["5001900US3002"]["value"] == pytest.approx(60.0)
+    assert (
+        by_geography["5001900US3001"]["lineage"][
+            "congressional_district_state_total_proxy_source_geography_id"
+        ]
+        == "0400000US30"
+    )
+    assert (
+        by_geography["5001900US3001"]["lineage"][
+            "congressional_district_vintage_source_geography_id"
+        ]
+        == "5001700US3000"
+    )
+    assert by_geography["5001900US3001"]["lineage"][
+        "congressional_district_vintage_contributions"
+    ][0]["source_record_id"].startswith(
+        "irs_soi.ty2023.state_agi.mt_total.adjusted_gross_income"
+        ".state_total_proxy_cd.5001700US3000."
+    )
+
+
+def test__given_existing_source_cd_state__then_state_total_proxy_is_not_added() -> None:
+    # Given
+    facts = [
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US3000",
+            source_row_id="mt_00",
+        ),
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    # When
+    translated = translate_congressional_district_facts_to_current_vintage(
+        facts,
+        crosswalk,
+    )
+
+    # Then
+    by_geography = {
+        fact["geography"]["id"]: fact
+        for fact in translated
+        if fact["geography"]["level"] == "congressional_district"
+    }
+    assert set(by_geography) == {"5001900US3001", "5001900US3002"}
+    assert by_geography["5001900US3001"]["value"] == pytest.approx(4.0)
+    assert by_geography["5001900US3002"]["value"] == pytest.approx(6.0)
+
+
+def test__given_non_soi_source_cd_fact__then_soi_state_total_proxy_still_applies() -> (
+    None
+):
+    # Given
+    facts = [
+        _non_soi_cd_fact(
+            "population",
+            500.0,
+            geography_id="5001700US3000",
+            source_row_id="mt_00",
+        ),
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    # When
+    translated = translate_congressional_district_facts_to_current_vintage(
+        facts,
+        crosswalk,
+    )
+
+    # Then
+    soi_mt_facts = {
+        fact["geography"]["id"]: fact
+        for fact in translated
+        if fact["geography"]["level"] == "congressional_district"
+        and str(fact["geography"]["id"]).startswith("5001900US30")
+        and fact["source"]["source_name"] == "irs_soi"
+    }
+    assert set(soi_mt_facts) == {"5001900US3001", "5001900US3002"}
+    assert soi_mt_facts["5001900US3001"]["value"] == pytest.approx(40.0)
+    assert soi_mt_facts["5001900US3002"]["value"] == pytest.approx(60.0)
+
+
+def test__given_state_fact_shape_absent_from_source_cds__then_proxy_is_not_added() -> (
+    None
+):
+    # Given
+    unmatched_state_fact = _soi_state_fact(
+        "adjusted_gross_income",
+        100.0,
+        geography_id="0400000US30",
+        source_row_id="mt_total",
+    )
+    unmatched_state_fact["dimensions"] = {
+        "income_range": "state_only_range",
+        "filing_status": "all",
+    }
+    facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        unmatched_state_fact,
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 1.0,
+        },
+    ]
+
+    # When
+    translated = translate_congressional_district_facts_to_current_vintage(
+        facts,
+        crosswalk,
+    )
+
+    # Then
+    by_geography = {
+        fact["geography"]["id"]: fact
+        for fact in translated
+        if fact["geography"]["level"] == "congressional_district"
+    }
+    assert set(by_geography) == {"5001900US0601"}
+
+
+def test__given_state_fact_universe_differs_from_source_cds__then_proxy_is_not_added() -> (
+    None
+):
+    # Given
+    itemized_state_fact = _soi_state_fact(
+        "adjusted_gross_income",
+        100.0,
+        geography_id="0400000US30",
+        source_row_id="mt_total",
+    )
+    itemized_state_fact["layout"]["record_set_id"] = (
+        "irs_soi.ty2023.itemized_all_returns.mt"
+    )
+    facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        itemized_state_fact,
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 1.0,
+        },
+    ]
+
+    # When
+    translated = translate_congressional_district_facts_to_current_vintage(
+        facts,
+        crosswalk,
+    )
+
+    # Then
+    by_geography = {
+        fact["geography"]["id"]: fact
+        for fact in translated
+        if fact["geography"]["level"] == "congressional_district"
+    }
+    assert set(by_geography) == {"5001900US0601"}
+
+
+def test__given_state_proxy_cd_targets__then_compiler_uses_current_cd_surface() -> None:
+    # Given
+    facts = [
+        *_packaged_reference_facts(),
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+    ]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    # When
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+        congressional_district_vintage_crosswalk=crosswalk,
+    )
+
+    # Then
+    cd_specs = {
+        spec.metadata["congressional_district_geoid"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") == "adjusted_gross_income"
+        and spec.metadata.get("ledger_geography_level") == "congressional_district"
+        and str(spec.metadata.get("ledger_geography_id")).startswith("5001900US30")
+    }
+    assert set(cd_specs) == {"3001", "3002"}
+    assert cd_specs["3001"].metadata["ledger_geography_id"] == "5001900US3001"
+    assert cd_specs["3001"].value == pytest.approx(40.0)
+    assert cd_specs["3002"].value == pytest.approx(60.0)
+
+
 def test_cd_distribution_accepts_translated_current_cd_facts() -> None:
     translated = translate_congressional_district_facts_to_current_vintage(
         [
@@ -283,6 +620,77 @@ def _soi_cd_fact(
             "source_sha256": "sha",
             "vintage": "tax_year_2023",
             "url": "https://example.org/soi-cd",
+        },
+    }
+
+
+def _non_soi_cd_fact(
+    measure_id: str,
+    value: float,
+    *,
+    geography_id: str,
+    source_row_id: str,
+) -> dict[str, object]:
+    fact = _soi_cd_fact(
+        measure_id,
+        value,
+        geography_id=geography_id,
+        source_row_id=source_row_id,
+    )
+    source_record_id = f"census_acs.congressional_district.{source_row_id}.{measure_id}"
+    fact["lineage"] = {"source_record_id": source_record_id}
+    fact["layout"]["record_set_id"] = "census_acs.congressional_district"
+    fact["observed_measure"]["source_name"] = "census_acs"
+    fact["observed_measure"]["source_table"] = "ACS congressional district"
+    fact["observed_measure"]["source_measure_id"] = measure_id
+    fact["source"]["source_name"] = "census_acs"
+    fact["source"]["source_table"] = "ACS congressional district"
+    return fact
+
+
+def _soi_state_fact(
+    measure_id: str,
+    value: float,
+    *,
+    geography_id: str,
+    source_row_id: str,
+) -> dict[str, object]:
+    source_record_id = f"irs_soi.ty2023.state_agi.{source_row_id}.{measure_id}"
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_row_id}.{measure_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{source_row_id}.{measure_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{source_row_id}.{measure_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "tax_year", "value": 2023},
+        "geography": {
+            "level": "state",
+            "id": geography_id,
+            "vintage": "state_fips",
+        },
+        "entity": {"name": "tax_unit"},
+        "aggregation": {"method": "sum"},
+        "dimensions": {"income_range": "all", "filing_status": "all"},
+        "layout": {
+            "record_set_id": "irs_soi.ty2023.state_agi",
+            "groupby_dimension": "irs_soi.state",
+            "groupby_value_id": source_row_id,
+            "measure_id": measure_id,
+            "source_row_id": source_row_id,
+        },
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_table": "SOI state AGI",
+            "source_measure_id": measure_id,
+            "source_concept": measure_id,
+            "unit": "usd",
+        },
+        "source": {
+            "source_name": "irs_soi",
+            "source_table": "SOI state AGI",
+            "source_sha256": "sha",
+            "vintage": "tax_year_2023",
+            "url": "https://example.org/soi-state",
         },
     }
 
