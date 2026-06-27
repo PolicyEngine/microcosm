@@ -22,6 +22,7 @@ The first integration should depend on these upstream artifacts:
 - Ledger target profile:
   - `uk_firms`
 - Axiom UK RuleSpec:
+  - `uk:policies/govuk/vat#firm_must_register_for_vat`
   - `uk:policies/govuk/vat#firm_vat_registered`
   - `uk:policies/govuk/vat#firm_treated_as_vat_registered`
   - `uk:policies/govuk/vat#standard_rate_output_vat`
