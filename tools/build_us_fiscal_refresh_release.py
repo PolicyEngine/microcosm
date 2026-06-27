@@ -273,6 +273,7 @@ REVIEWED_EXCLUDED_ALIASES = (
     "cms-nhe-historical-service-source",
     "hhs-acf-liheap-fy2023-national-profile",
     "hhs-acf-liheap-fy2024-national-profile",
+    "soi-congressional-district-2022",
     "ssa-ssi-table-7b1-2024",
 )
 
@@ -3345,7 +3346,10 @@ def main() -> None:
             "source_coverage", message="Writing source coverage diagnostics."
         )
     active_aliases = DIRECT_ACTIVE_ALIASES + (
-        ("census-acs-s0101-congressional-district-age-2024",)
+        (
+            "census-acs-s0101-congressional-district-age-2024",
+            "soi-congressional-district-2022",
+        )
         if args.include_congressional_district_targets
         else ()
     )

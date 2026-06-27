@@ -124,6 +124,9 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "ordinary_dividends_amount": "ordinary_dividends",
     "partnership_scorp_income_amount": "partnership_and_s_corp_income",
     "premium_tax_credit_amount": "assigned_aca_ptc",
+    "qualified_business_income_deduction_amount": (
+        "qualified_business_income_deduction"
+    ),
     "qualified_dividends_amount": "qualified_dividends",
     "real_estate_taxes_amount": "real_estate_taxes",
     "rental_royalty_income_amount": "rent_and_royalty_net_income",
@@ -154,12 +157,16 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "eitc_two_children_claims": "eitc",
     "income_tax_before_credits_returns": "income_tax_before_credits",
     "income_tax_liability_returns": "income_tax",
+    "interest_paid_deduction_returns": "interest_deduction",
     "limited_state_local_taxes_returns": "salt_deduction",
     "medical_dental_expense_returns": "medical_expense_deduction",
     "net_capital_gains_returns": "capital_gains_gross",
     "ordinary_dividends_returns": "ordinary_dividends",
     "partnership_scorp_income_returns": "partnership_and_s_corp_income",
     "premium_tax_credit_returns": "assigned_aca_ptc",
+    "qualified_business_income_deduction_returns": (
+        "qualified_business_income_deduction"
+    ),
     "qualified_dividends_returns": "qualified_dividends",
     "real_estate_taxes_claims": "real_estate_taxes",
     "rental_royalty_income_returns": "rent_and_royalty_net_income",
@@ -174,6 +181,7 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "total_earned_income_credit_returns": "eitc",
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
+    "charitable_returns": "charitable_deduction",
 }
 
 
@@ -1866,6 +1874,9 @@ def _soi_layout_variable_override(
 
 
 def _soi_layout_filter_metadata(fact: object) -> dict[str, str]:
+    eitc_child_count = _dimensions(fact).get("eitc_child_count")
+    if eitc_child_count is not None:
+        return {"ledger_filter_eitc_child_count": str(eitc_child_count)}
     groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
     groupby_value = _str_at(fact, "layout", "groupby_value_id")
     if (

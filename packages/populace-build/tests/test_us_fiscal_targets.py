@@ -177,6 +177,43 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
+            "taxable_interest_amount",
+            135_822_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "qualified_business_income_deduction_amount",
+            2_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "qualified_business_income_deduction_returns",
+            12_345,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "interest_paid_deduction_returns",
+            23_456,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "charitable_returns",
+            34_567,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "eitc_three_or_more_children_amount",
+            45_678_901,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+            dimensions={"eitc_child_count": "3plus"},
+        ),
+        _soi_congressional_district_fact(
             "adjusted_gross_income",
             12_915_824_000,
             groupby_value_id="hi_02",
@@ -221,7 +258,7 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     assert any(
         "hi_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
     )
-    assert len(cd_specs) == 5
+    assert len(cd_specs) == 11
     by_measure = {
         spec.metadata["source_measure_id"]: spec
         for spec in cd_specs
@@ -245,6 +282,43 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     assert agi.metadata["measure_mode"] == "sum"
     assert agi.metadata["base_variable"] == "adjusted_gross_income"
     assert agi.value == 10_000_000_000
+
+    taxable_interest = by_measure["taxable_interest_amount"]
+    assert taxable_interest.metadata["measure_mode"] == "sum"
+    assert taxable_interest.metadata["source_variable"] == "taxable_interest_income"
+    assert taxable_interest.metadata["base_variable"] == "taxable_interest_income"
+    assert taxable_interest.value == 135_822_000
+
+    qbi = by_measure["qualified_business_income_deduction_amount"]
+    assert qbi.metadata["measure_mode"] == "sum"
+    assert qbi.metadata["source_variable"] == "qualified_business_income_deduction"
+    assert qbi.metadata["base_variable"] == "qualified_business_income_deduction"
+    assert qbi.value == 2_000_000_000
+
+    qbi_returns = by_measure["qualified_business_income_deduction_returns"]
+    assert qbi_returns.metadata["measure_mode"] == "indicator_sum"
+    assert (
+        qbi_returns.metadata["base_variable"] == "qualified_business_income_deduction"
+    )
+    assert qbi_returns.value == 12_345
+
+    interest_returns = by_measure["interest_paid_deduction_returns"]
+    assert interest_returns.metadata["measure_mode"] == "indicator_sum"
+    assert interest_returns.metadata["base_variable"] == "interest_deduction"
+    assert interest_returns.metadata["itemized_only"] == "true"
+    assert interest_returns.value == 23_456
+
+    charitable_returns = by_measure["charitable_returns"]
+    assert charitable_returns.metadata["measure_mode"] == "indicator_sum"
+    assert charitable_returns.metadata["base_variable"] == "charitable_deduction"
+    assert charitable_returns.metadata["itemized_only"] == "true"
+    assert charitable_returns.value == 34_567
+
+    eitc_three_plus = by_measure["eitc_three_or_more_children_amount"]
+    assert eitc_three_plus.metadata["measure_mode"] == "sum"
+    assert eitc_three_plus.metadata["base_variable"] == "eitc"
+    assert eitc_three_plus.metadata["ledger_filter_eitc_child_count"] == "3plus"
+    assert eitc_three_plus.value == 45_678_901
 
 
 def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
@@ -3041,7 +3115,11 @@ def _soi_congressional_district_fact(
     groupby_value_id: str = "al_01",
     geography_level: str = "congressional_district",
     geography_id: str = "5001700US0101",
+    dimensions: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    fact_dimensions = {"income_range": "all", "filing_status": "all"}
+    if dimensions:
+        fact_dimensions.update(dimensions)
     return _dynamic_ledger_fact(
         source_record_id=(
             "irs_soi.ty2023.congressional_district_2022.all_returns."
@@ -3053,7 +3131,7 @@ def _soi_congressional_district_fact(
         period_value=2023,
         geography_level=geography_level,
         geography_id=geography_id,
-        dimensions={"income_range": "all", "filing_status": "all"},
+        dimensions=fact_dimensions,
         layout_record_set_id="irs_soi.ty2023.congressional_district_2022.all_returns",
         groupby_dimension="irs_soi.congressional_district",
         groupby_value_id=groupby_value_id,
