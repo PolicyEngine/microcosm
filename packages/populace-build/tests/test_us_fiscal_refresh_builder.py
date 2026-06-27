@@ -62,6 +62,36 @@ def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
     assert "census-acs-s0101-state-age-2024" in reviewed
 
 
+def _complete_area_artifact_results(builder, artifact_root: Path) -> tuple:
+    from populace.build.us_runtime.area_artifacts import (
+        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
+        EXPECTED_STATE_ARTIFACT_KEYS,
+    )
+
+    artifacts = []
+    for key in sorted(EXPECTED_STATE_ARTIFACT_KEYS) + sorted(
+        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS
+    ):
+        path = artifact_root / f"{key}.h5"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(key)
+        artifacts.append(
+            builder.AreaArtifactResult(
+                key=key,
+                path=f"{key}.h5",
+                kind=(
+                    "state_microdata"
+                    if key.startswith("states/")
+                    else "congressional_district_microdata"
+                ),
+                sha256=builder._sha256(path),
+                n_households=10,
+                n_persons=25,
+            )
+        )
+    return tuple(artifacts)
+
+
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     def diagnostic(name, target, final_estimate):
         return SimpleNamespace(
@@ -3272,6 +3302,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     artifact_root.mkdir()
     (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    area_artifacts = _complete_area_artifact_results(builder, artifact_root)
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
 
@@ -3364,6 +3395,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "calibration_seconds": 4.0,
             "total_build_seconds": 7.0,
         },
+        area_artifacts=area_artifacts,
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -3404,6 +3436,15 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
+    assert build_manifest["area_artifacts"]["count"] == 487
+    assert build_manifest["area_artifacts"]["states"] == 51
+    assert build_manifest["area_artifacts"]["congressional_districts"] == 436
+    area_manifest_artifacts = {
+        artifact["key"]: artifact
+        for artifact in build_manifest["area_artifacts"]["artifacts"]
+    }
+    assert area_manifest_artifacts["states/CA"]["path"] == "states/CA.h5"
+    assert area_manifest_artifacts["districts/TX-38"]["path"] == "districts/TX-38.h5"
     assert manifest["build"]["timing"] == {
         "target_compilation_seconds": 3.0,
         "calibration_seconds": 4.0,
@@ -3419,6 +3460,20 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     assert manifest["compatible_model_packages"] == [
         {"name": "policyengine-us", "specifier": "==1.729.0"}
     ]
+    assert manifest["artifacts"]["states/CA"] == {
+        "repo_id": builder.REPO_ID,
+        "path": "states/CA.h5",
+        "revision": release_id,
+        "sha256": area_manifest_artifacts["states/CA"]["sha256"],
+        "kind": "state_microdata",
+    }
+    assert manifest["artifacts"]["districts/TX-38"] == {
+        "repo_id": builder.REPO_ID,
+        "path": "districts/TX-38.h5",
+        "revision": release_id,
+        "sha256": area_manifest_artifacts["districts/TX-38"]["sha256"],
+        "kind": "congressional_district_microdata",
+    }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id
