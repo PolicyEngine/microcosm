@@ -858,6 +858,149 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
     assert np.array_equal(weights, np.ones(3))
 
 
+def test_fiscal_target_loss_weights_hold_concept_budget_when_geography_expands() -> (
+    None
+):
+    builder = _load_builder_module()
+
+    def spec(name: str, value: float, **metadata: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=metadata.get("variable", "amount"),
+            value=value,
+            source="fixture",
+            metadata={
+                "source_measure_id": "amount",
+                "source_period": "2024",
+                "target_role": "fixture_distribution",
+                "measure_mode": "sum",
+                **metadata,
+            },
+        )
+
+    national_income_tax = spec(
+        "income_tax_national",
+        100.0,
+        variable="income_tax",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_national = spec(
+        "ctc_national",
+        400.0,
+        variable="ctc",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_cd_1 = spec(
+        "ctc_cd_1",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0101",
+        ledger_geography_name="Alabama Congressional District 1",
+        congressional_district_geoid="0101",
+        state_fips="01",
+    )
+    ctc_cd_2 = spec(
+        "ctc_cd_2",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0102",
+        ledger_geography_name="Alabama Congressional District 2",
+        congressional_district_geoid="0102",
+        state_fips="01",
+    )
+
+    base_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry((national_income_tax, ctc_national), country="us")
+    )
+    one_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1),
+            country="us",
+        )
+    )
+    two_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1, ctc_cd_2),
+            country="us",
+        )
+    )
+
+    assert np.isclose(base_weights[1] / base_weights.sum(), 2 / 3)
+    assert np.isclose(
+        one_child_weights[2:].sum() / one_child_weights.sum(),
+        two_child_weights[2:].sum() / two_child_weights.sum(),
+    )
+    assert two_child_weights[1] > two_child_weights[2:].sum()
+    assert two_child_weights[2] == two_child_weights[3]
+
+
+def test_fiscal_target_loss_weights_budget_unparented_cd_rows_by_concept() -> None:
+    builder = _load_builder_module()
+
+    def cd_spec(name: str, geoid: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure="tax_filer_individual_count",
+            value=100.0,
+            source="fixture",
+            metadata={
+                "source_measure_id": "tax_filer_individual_count",
+                "source_period": "2023",
+                "target_role": "soi_fiscal_distribution",
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "measure_mode": "sum",
+                "ledger_geography_level": "congressional_district",
+                "ledger_geography_id": f"5001700US{geoid}",
+                "ledger_geography_name": f"Congressional District {geoid}",
+                "congressional_district_geoid": geoid,
+                "state_fips": geoid[:2],
+            },
+        )
+
+    comparison = TargetSpec(
+        name="comparison_amount",
+        entity="household",
+        measure="adjusted_gross_income",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "source_measure_id": "adjusted_gross_income",
+            "source_period": "2023",
+            "target_role": "soi_fiscal_distribution",
+            "variable": "adjusted_gross_income",
+            "source_variable": "adjusted_gross_income",
+            "measure_mode": "sum",
+        },
+    )
+    one_cd_registry = TargetRegistry(
+        (comparison, cd_spec("cd_1", "0101")), country="us"
+    )
+    many_cd_registry = TargetRegistry(
+        (
+            comparison,
+            cd_spec("cd_1", "0101"),
+            cd_spec("cd_2", "0102"),
+            cd_spec("cd_3", "0103"),
+            cd_spec("cd_4", "0104"),
+        ),
+        country="us",
+    )
+
+    one_cd_weights = builder._fiscal_target_loss_weights(one_cd_registry)
+    many_cd_weights = builder._fiscal_target_loss_weights(many_cd_registry)
+
+    assert np.isclose(one_cd_weights[1:].sum() / one_cd_weights.sum(), 0.5)
+    assert np.isclose(many_cd_weights[1:].sum() / many_cd_weights.sum(), 0.5)
+    assert np.allclose(many_cd_weights[1:], many_cd_weights[1])
+
+
 def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
     builder = _load_builder_module()
     registry = TargetRegistry(
