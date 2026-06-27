@@ -1236,6 +1236,10 @@ def test_release_calibration_diagnostics_include_gate_failures(
         support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
         gate_failures=["ctc failed"],
+        timing={
+            "target_compilation_seconds": 1.25,
+            "calibration_seconds": 2.5,
+        },
     )
 
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
@@ -1259,6 +1263,10 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
     assert build["support_value_repairs"] == {
         "social_security_components": {"applied": True}
+    }
+    assert build["timing"] == {
+        "target_compilation_seconds": 1.25,
+        "calibration_seconds": 2.5,
     }
 
 
@@ -3160,6 +3168,11 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 }
             },
         ),
+        timing={
+            "target_compilation_seconds": 3.0,
+            "calibration_seconds": 4.0,
+            "total_build_seconds": 7.0,
+        },
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -3194,6 +3207,16 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     assert manifest["build"]["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",
+    }
+    assert build_manifest["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
+    }
+    assert manifest["build"]["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
     }
     assert (
         manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]

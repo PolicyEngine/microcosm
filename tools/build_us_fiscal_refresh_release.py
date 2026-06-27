@@ -20,6 +20,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
@@ -2549,6 +2550,7 @@ def _write_release_calibration_diagnostics(
     support_value_repairs: Mapping[str, object] | None,
     audit_export_targets: bool,
     gate_failures: Iterable[str],
+    timing: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
@@ -2597,6 +2599,7 @@ def _write_release_calibration_diagnostics(
                 else None
             ),
             "support_value_repairs": support_value_repairs,
+            "timing": dict(timing or {}),
             "release_gates": {
                 "passed": not failures,
                 "failures": failures,
@@ -2793,6 +2796,7 @@ def _build_manifests(
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    timing: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -2816,6 +2820,7 @@ def _build_manifests(
     commit = _git_output("rev-parse", "HEAD")
     built_at = datetime.now(UTC).isoformat()
     runtime = _runtime_versions()
+    timing_payload = dict(timing or {})
     manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
@@ -2826,6 +2831,7 @@ def _build_manifests(
             "git_dirty": False,
         },
         "runtime": runtime,
+        "timing": timing_payload,
         "dataset": {
             "filename": DATASET_FILENAME,
             "sha256": dataset_sha,
@@ -2902,6 +2908,7 @@ def _build_manifests(
                 "name": "policyengine-us",
                 "version": runtime["policyengine-us"],
             },
+            "timing": timing_payload,
             **(
                 {
                     "base_population_scale": {
@@ -3077,6 +3084,8 @@ def main() -> None:
     args = _parse_args()
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
+    build_started = time.perf_counter()
+    timing: dict[str, float] = {}
 
     base_h5 = args.base_h5 or _download_base_h5()
     digest = _sha256(base_h5)[:7]
@@ -3210,10 +3219,14 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
+    target_compilation_started = time.perf_counter()
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
         target_specs,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    timing["target_compilation_seconds"] = (
+        time.perf_counter() - target_compilation_started
     )
     if telemetry is not None:
         telemetry.stage(
@@ -3223,7 +3236,9 @@ def main() -> None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             n_targets=len(registry),
+            target_compilation_seconds=timing["target_compilation_seconds"],
         )
+    calibration_started = time.perf_counter()
     result = calibrate(
         target_frame,
         registry.to_target_set(),
@@ -3238,12 +3253,18 @@ def main() -> None:
             telemetry.calibration_progress if telemetry is not None else None
         ),
     )
+    timing["calibration_seconds"] = time.perf_counter() - calibration_started
+    timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
     if telemetry is not None:
         telemetry.stage(
             "release_gates",
             message="Evaluating release gates.",
             final_loss=result.final_loss,
             n_nonzero=result.n_nonzero,
+            calibration_seconds=timing["calibration_seconds"],
+            elapsed_through_calibration_seconds=timing[
+                "elapsed_through_calibration_seconds"
+            ],
         )
     incumbent_diagnostics = _load_incumbent_diagnostics(args.incumbent_diagnostics)
     gate_failures = _release_gate_failures(
@@ -3268,6 +3289,7 @@ def main() -> None:
         },
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
+        timing=timing,
         incumbent_diagnostics_path=args.incumbent_diagnostics,
         incumbent_diagnostics=incumbent_diagnostics,
     )
@@ -3373,6 +3395,7 @@ def main() -> None:
             release_dir / "us_source_coverage.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
+    timing["total_build_seconds"] = time.perf_counter() - build_started
     _build_manifests(
         release_id=release_id,
         release_dir=release_dir,
@@ -3384,6 +3407,7 @@ def main() -> None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
+        timing=timing,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
