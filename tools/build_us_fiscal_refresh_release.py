@@ -459,6 +459,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--gate-congressional-district-targets",
+        action="store_true",
+        help=(
+            "Treat congressional-district targets as hard release gates. "
+            "The default small-dataset path keeps them diagnostic-only because "
+            "sparse CD support can make zero-support rows expected rather than "
+            "release blockers."
+        ),
+    )
+    parser.add_argument(
         "--skip-demographics",
         action="store_true",
         help="Do not emit demographics.json (weighted population by age) for this release.",
@@ -1745,6 +1755,7 @@ def _materialize_target_frame(
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
+    gate_congressional_district_targets: bool = False,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -2136,8 +2147,12 @@ def _materialize_target_frame(
         spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
     ]
     registry = TargetRegistry(compileable_specs, country="us")
-    dropped = sorted(
-        spec.name for spec in target_specs if spec not in compileable_specs
+    dropped_specs = tuple(
+        spec for spec in target_specs if spec not in compileable_specs
+    )
+    dropped = sorted(spec.name for spec in dropped_specs)
+    diagnostic_only_dropped = sorted(
+        spec.name for spec in dropped_specs if _target_is_congressional_district(spec)
     )
     target_frame = Frame(
         materialized,
@@ -2152,6 +2167,10 @@ def _materialize_target_frame(
             "declared_targets": len(target_specs),
             "compiled_candidate_targets": len(compileable_specs),
             "dropped_target_names": dropped,
+            "gate_congressional_district_targets": (
+                gate_congressional_district_targets
+            ),
+            "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
             "target_materialization_cache": cache_stats,
         },
     )
@@ -2537,6 +2556,43 @@ def _fiscal_target_value_basis(spec) -> str:
     return "amount"
 
 
+def _target_is_congressional_district(target: object) -> bool:
+    metadata = getattr(target, "metadata", {}) or {}
+    return (
+        metadata.get("ledger_geography_level") == "congressional_district"
+        or metadata.get("geography_scope") == "congressional_district"
+        or bool(metadata.get("congressional_district_geoid"))
+    )
+
+
+def _target_row_name(target: object) -> str:
+    row_name = getattr(target, "row_name", None)
+    if row_name is not None:
+        return str(row_name)
+    name = getattr(target, "name", "")
+    period = getattr(target, "period", None)
+    return str(name) if period is None else f"{name}@{period}"
+
+
+def _diagnostic_targets_by_name(result) -> dict[str, object]:
+    problem = getattr(result, "problem", None)
+    if problem is None:
+        return {}
+    targets = tuple(getattr(problem, "targets", ()) or ())
+    if not targets:
+        return {}
+    names = tuple(getattr(problem, "names", ()) or ())
+    if len(names) == len(targets):
+        return {str(name): target for name, target in zip(names, targets, strict=True)}
+    return {_target_row_name(target): target for target in targets}
+
+
+def _congressional_district_release_gates_enabled(
+    compilation: Mapping[str, object],
+) -> bool:
+    return bool(compilation.get("gate_congressional_district_targets", True))
+
+
 def _release_gate_failures(
     result,
     compilation: Mapping[str, object],
@@ -2561,21 +2617,45 @@ def _release_gate_failures(
             f"Health input signal failed: {failure}"
             for failure in health_input_gate.failures
         )
+    gate_congressional_district_targets = _congressional_district_release_gates_enabled(
+        compilation
+    )
+    diagnostic_only_dropped_target_names = set(
+        compilation.get("diagnostic_only_dropped_target_names") or ()
+    )
     dropped = compilation.get("dropped_target_names") or []
+    if not gate_congressional_district_targets:
+        dropped = [
+            name for name in dropped if name not in diagnostic_only_dropped_target_names
+        ]
     if dropped:
         failures.append(f"{len(dropped)} fiscal targets were not materialized.")
-    if result.skipped:
-        failures.append(
-            f"{len(result.skipped)} fiscal targets were skipped by calibration."
+    skipped = tuple(getattr(result, "skipped", ()) or ())
+    if not gate_congressional_district_targets:
+        skipped = tuple(
+            skipped_target
+            for skipped_target in skipped
+            if not _target_is_congressional_district(
+                getattr(skipped_target, "target", None)
+            )
         )
+    if skipped:
+        failures.append(f"{len(skipped)} fiscal targets were skipped by calibration.")
     if not result.diagnostics:
         failures.append("No fiscal targets were compiled.")
+    diagnostic_targets = _diagnostic_targets_by_name(result)
     zero_support = [
         diagnostic.name
         for diagnostic in result.diagnostics
         if float(getattr(diagnostic, "target", 0.0)) > 0.0
         and abs(float(getattr(diagnostic, "initial_estimate", 0.0))) <= 1e-9
         and abs(float(getattr(diagnostic, "final_estimate", 0.0))) <= 1e-9
+        and (
+            gate_congressional_district_targets
+            or not _target_is_congressional_district(
+                diagnostic_targets.get(diagnostic.name)
+            )
+        )
     ]
     if zero_support:
         examples = ", ".join(zero_support[:5])
@@ -3486,6 +3566,7 @@ def main() -> None:
             "target_period": PERIOD,
             "target_registry_version": active_target_registry.version,
         },
+        gate_congressional_district_targets=args.gate_congressional_district_targets,
     )
     timing["target_compilation_seconds"] = (
         time.perf_counter() - target_compilation_started

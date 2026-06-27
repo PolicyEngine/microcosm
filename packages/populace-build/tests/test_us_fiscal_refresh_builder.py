@@ -767,6 +767,62 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     ]
 
 
+def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
+    builder = _load_builder_module()
+    cd_spec = TargetSpec(
+        name="irs_soi.ty2023.congressional_district_2022.all_returns."
+        "ak_00.tax_exempt_interest_amount",
+        entity="household",
+        measure="tax_exempt_interest",
+        value=1_000.0,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "ledger_geography_level": "congressional_district",
+            "congressional_district_geoid": "0200",
+        },
+    )
+    cd_target = cd_spec.to_target()
+    cd_row_name = f"{cd_spec.name}@{builder.PERIOD}"
+    result = SimpleNamespace(
+        skipped=(SimpleNamespace(target=cd_target, reason="missing column"),),
+        diagnostics=(
+            SimpleNamespace(
+                name=cd_row_name,
+                target=1_000.0,
+                initial_estimate=0.0,
+                final_estimate=0.0,
+            ),
+            *_passing_critical_diagnostics(builder),
+        ),
+        problem=SimpleNamespace(
+            names=(cd_row_name,),
+            targets=(cd_target,),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    compilation = {
+        "dropped_target_names": [cd_spec.name],
+        "gate_congressional_district_targets": False,
+        "diagnostic_only_dropped_target_names": [cd_spec.name],
+    }
+
+    assert builder._release_gate_failures(result, compilation) == []
+
+    gated_compilation = {
+        **compilation,
+        "gate_congressional_district_targets": True,
+    }
+
+    assert builder._release_gate_failures(result, gated_compilation) == [
+        "1 fiscal targets were not materialized.",
+        "1 fiscal targets were skipped by calibration.",
+        "1 positive fiscal targets have zero materialized support "
+        f"(examples: {cd_row_name}).",
+    ]
+
+
 def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -1436,6 +1492,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["materialize_kwargs"]["target_materialization_cache_dir"]
         == out / "artifacts" / "target_materialization_cache"
     )
+    assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
