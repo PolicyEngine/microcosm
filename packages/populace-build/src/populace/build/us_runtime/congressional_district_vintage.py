@@ -93,6 +93,12 @@ def translate_congressional_district_facts_to_current_vintage(
         source_prefix=source_prefix,
         target_prefix=target_prefix,
     )
+    materialized_facts = tuple(facts)
+    materialized_facts = _with_state_total_proxy_source_districts(
+        materialized_facts,
+        prepared_crosswalk=prepared_crosswalk,
+        source_prefix=source_prefix,
+    )
     rows_by_source = {
         source_id: source_rows
         for source_id, source_rows in prepared_crosswalk.groupby(
@@ -102,7 +108,7 @@ def translate_congressional_district_facts_to_current_vintage(
     passthrough: list[dict[str, Any]] = []
     translated: dict[tuple[str, ...], dict[str, Any]] = {}
     contribution_order: list[tuple[str, ...]] = []
-    for fact in facts:
+    for fact in materialized_facts:
         geography = _mapping_at(fact, "geography")
         geography_id = str(geography.get("id") or "")
         geography_level = str(geography.get("level") or "")
@@ -152,6 +158,206 @@ def translate_congressional_district_facts_to_current_vintage(
                 crosswalk_basis=crosswalk_basis,
             )
     return tuple([*passthrough, *(translated[key] for key in contribution_order)])
+
+
+def _with_state_total_proxy_source_districts(
+    facts: tuple[Mapping[str, Any], ...],
+    *,
+    prepared_crosswalk: pd.DataFrame,
+    source_prefix: str,
+) -> tuple[Mapping[str, Any], ...]:
+    """Add source-vintage CD proxy facts for states absent from source CD rows."""
+
+    source_ids_by_state: dict[str, set[str]] = {}
+    for source_id in prepared_crosswalk["source_geography_id"].drop_duplicates():
+        source_id = str(source_id)
+        source_ids_by_state.setdefault(
+            _source_state_fips(source_id, source_prefix=source_prefix), set()
+        ).add(source_id)
+
+    source_cd_states_with_facts = {
+        _source_state_fips(
+            str(_mapping_at(fact, "geography").get("id") or ""),
+            source_prefix=source_prefix,
+        )
+        for fact in facts
+        if _is_source_soi_congressional_district_fact(
+            fact,
+            source_prefix=source_prefix,
+        )
+    }
+    source_cd_shapes = {
+        _proxy_shape_key(fact)
+        for fact in facts
+        if _is_source_soi_congressional_district_fact(
+            fact,
+            source_prefix=source_prefix,
+        )
+    }
+    proxy_source_by_state = {
+        state_fips: next(iter(source_ids))
+        for state_fips, source_ids in source_ids_by_state.items()
+        if len(source_ids) == 1 and state_fips not in source_cd_states_with_facts
+    }
+    if not proxy_source_by_state:
+        return facts
+
+    proxy_facts = [
+        _state_total_proxy_source_district_fact(
+            fact,
+            source_geography_id=source_geography_id,
+            source_prefix=source_prefix,
+        )
+        for fact in facts
+        for state_fips in [_state_fips_from_fact(fact)]
+        for source_geography_id in [proxy_source_by_state.get(state_fips or "")]
+        if source_geography_id is not None
+        and _is_state_proxy_candidate_fact(fact)
+        and source_cd_shapes
+        and _proxy_shape_key(fact) in source_cd_shapes
+    ]
+    if not proxy_facts:
+        return facts
+    return (*facts, *proxy_facts)
+
+
+def _state_total_proxy_source_district_fact(
+    fact: Mapping[str, Any],
+    *,
+    source_geography_id: str,
+    source_prefix: str,
+) -> dict[str, Any]:
+    proxy = copy.deepcopy(dict(fact))
+    source_geoid = source_geography_id.removeprefix(source_prefix)
+    state_geography_id = str(_mapping_at(fact, "geography").get("id") or "")
+
+    geography = dict(_mapping_at(proxy, "geography"))
+    geography["level"] = "congressional_district"
+    geography["id"] = source_geography_id
+    geography["vintage"] = "state_total_proxy_source_congressional_district"
+    proxy["geography"] = geography
+
+    layout = dict(_mapping_at(proxy, "layout"))
+    layout["groupby_dimension"] = "irs_soi.congressional_district"
+    layout["groupby_value_id"] = source_geoid
+    layout["source_row_id"] = source_geoid
+    proxy["layout"] = layout
+
+    original_source_record_id = _source_record_id(fact)
+    digest_payload = {
+        "source_record_id": original_source_record_id,
+        "source_geography_id": source_geography_id,
+        "value": fact.get("value"),
+    }
+    digest = hashlib.sha256(
+        json.dumps(digest_payload, sort_keys=True).encode()
+    ).hexdigest()[:16]
+    source_record_id = (
+        f"{original_source_record_id}.state_total_proxy_cd."
+        f"{source_geography_id}.{digest}"
+    )
+    proxy["source_record_id"] = source_record_id
+    proxy["aggregate_fact_key"] = (
+        f"populace.derived_fact.congressional_district_state_total_proxy.v1:{digest}"
+    )
+    proxy["semantic_fact_key"] = (
+        f"populace.semantic_fact.congressional_district_state_total_proxy.v1:{digest}"
+    )
+    proxy.pop("legacy_fact_key", None)
+
+    lineage = dict(_mapping_at(proxy, "lineage"))
+    lineage["source_record_id"] = source_record_id
+    lineage["congressional_district_state_total_proxy_source_record_id"] = (
+        original_source_record_id
+    )
+    lineage["congressional_district_state_total_proxy_source_geography_id"] = (
+        state_geography_id
+    )
+    lineage["congressional_district_state_total_proxy_cd_geography_id"] = (
+        source_geography_id
+    )
+    proxy["lineage"] = lineage
+    return proxy
+
+
+def _is_source_congressional_district_fact(
+    fact: Mapping[str, Any],
+    *,
+    source_prefix: str,
+) -> bool:
+    geography = _mapping_at(fact, "geography")
+    return str(geography.get("level") or "") == "congressional_district" and str(
+        geography.get("id") or ""
+    ).startswith(source_prefix)
+
+
+def _is_source_soi_congressional_district_fact(
+    fact: Mapping[str, Any],
+    *,
+    source_prefix: str,
+) -> bool:
+    return _source_name(fact) == "irs_soi" and _is_source_congressional_district_fact(
+        fact,
+        source_prefix=source_prefix,
+    )
+
+
+def _is_state_proxy_candidate_fact(fact: Mapping[str, Any]) -> bool:
+    geography = _mapping_at(fact, "geography")
+    return (
+        str(geography.get("level") or "") == "state"
+        and _source_name(fact) == "irs_soi"
+        and _state_fips_from_fact(fact) is not None
+    )
+
+
+def _state_fips_from_fact(fact: Mapping[str, Any]) -> str | None:
+    geography_id = str(_mapping_at(fact, "geography").get("id") or "")
+    if not geography_id.startswith("0400000US"):
+        return None
+    fips = geography_id.removeprefix("0400000US")
+    if len(fips) != 2 or not fips.isdigit():
+        return None
+    return fips
+
+
+def _source_state_fips(source_geography_id: str, *, source_prefix: str) -> str:
+    source_geoid = source_geography_id.removeprefix(source_prefix)
+    return source_geoid[:2]
+
+
+def _proxy_shape_key(fact: Mapping[str, Any]) -> tuple[str, ...]:
+    return (
+        _source_name(fact),
+        _measure_id(fact),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "aggregation", "method"),
+        _soi_return_universe(fact),
+        json.dumps(_mapping_at(fact, "dimensions"), sort_keys=True),
+        json.dumps(_mapping_at(fact, "universe_constraints"), sort_keys=True),
+    )
+
+
+def _soi_return_universe(fact: Mapping[str, Any]) -> str:
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    normalized = ".".join(
+        part for part in record_set_id.split(".") if not _is_period_token(part)
+    )
+    if "itemized_all_returns" in normalized:
+        return "itemized_returns"
+    if "all_returns_excluding_dependents" in normalized:
+        return "returns_excluding_dependents"
+    return "all_returns"
+
+
+def _is_period_token(value: str) -> bool:
+    normalized = value.lower().replace("-", "_")
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
+    if normalized[:2] in {"ty", "cy", "fy"}:
+        normalized = normalized[2:]
+    return normalized.isdigit() and len(normalized) == 4
 
 
 def _prepare_crosswalk(

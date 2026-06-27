@@ -396,11 +396,22 @@ def test_soi_congressional_district_hierarchy_uses_current_vintage_counts() -> N
     assert counts["06"] == 52
     assert counts["08"] == 8
     assert counts["12"] == 28
+    assert counts["02"] == 1
+    assert counts["11"] == 1
     assert counts["30"] == 2
     assert counts["36"] == 26
     assert counts["48"] == 38
-    assert "11" not in counts
-    assert sum(counts.values()) == 429
+    assert counts["56"] == 1
+    assert {key for key, count in counts.items() if count == 1} == {
+        "02",
+        "10",
+        "11",
+        "38",
+        "46",
+        "50",
+        "56",
+    }
+    assert sum(counts.values()) == 436
 
 
 def test_soi_congressional_district_reconciliation_requires_complete_children() -> None:
