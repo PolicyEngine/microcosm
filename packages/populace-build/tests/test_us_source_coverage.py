@@ -21,6 +21,7 @@ def test_us_source_coverage_snapshot_has_expected_roles() -> None:
     assert "cms-aca-oep-state-level" in hard_target_package_aliases()
     assert "cms-aca-oep-state-metal" not in hard_target_package_aliases()
     assert "cms-aca-oep-state-level-2025" in hard_target_package_aliases()
+    assert "soi-congressional-district-2022" in hard_target_package_aliases()
     assert "census_cps_spm" in validation_only_family_ids()
     assert "usda_wic" in source_gap_family_ids()
 

@@ -47,15 +47,17 @@ def test_runtime_versions_use_local_workspace_package_version(
     assert versions["populace-data"] == "0.1.0"
 
 
-def test_reviewed_exclusions_do_not_report_opted_in_acs_cd_source() -> None:
+def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
     builder = _load_builder_module()
     acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
+    soi_cd_alias = "soi-congressional-district-2022"
 
     reviewed = builder._reviewed_exclusions(
-        builder.DIRECT_ACTIVE_ALIASES + (acs_cd_alias,)
+        builder.DIRECT_ACTIVE_ALIASES + (acs_cd_alias, soi_cd_alias)
     )
 
     assert acs_cd_alias not in reviewed
+    assert soi_cd_alias not in reviewed
     assert "census-acs-s0101-national-age-2024" in reviewed
     assert "census-acs-s0101-state-age-2024" in reviewed
 
