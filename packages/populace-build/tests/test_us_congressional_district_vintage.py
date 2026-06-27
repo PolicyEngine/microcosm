@@ -56,7 +56,7 @@ def test_translate_cd_facts_conserves_values_and_records_lineage() -> None:
     assert by_geography["5001900US0601"]["value"] == pytest.approx(75.0)
     assert by_geography["5001900US0602"]["value"] == pytest.approx(85.0)
     merged_lineage = by_geography["5001900US0602"]["lineage"]
-    assert merged_lineage["target_geography_vintage"] == "118th_congress"
+    assert merged_lineage["target_geography_vintage"] == "119th_congress"
     assert (
         merged_lineage["congressional_district_vintage_crosswalk_basis"]
         == "block_population"
@@ -199,7 +199,7 @@ def test_compile_us_fiscal_targets_can_use_translated_current_cd_surface() -> No
     }
     assert set(cd_specs) == {"0601", "0602"}
     assert cd_specs["0601"].metadata["ledger_geography_id"] == "5001900US0601"
-    assert cd_specs["0601"].metadata["ledger_geography_vintage"] == "118th_congress"
+    assert cd_specs["0601"].metadata["ledger_geography_vintage"] == "119th_congress"
     assert "hierarchy_reconciliation_factor" not in cd_specs["0601"].metadata
     assert cd_specs["0601"].value == pytest.approx(75.0)
     assert cd_specs["0602"].value == pytest.approx(85.0)
