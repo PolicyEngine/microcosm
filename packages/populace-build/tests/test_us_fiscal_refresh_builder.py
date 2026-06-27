@@ -1772,7 +1772,11 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
             value=3.0,
             source="CMS Marketplace OEP",
             family="cms_aca",
-            metadata={"target_role": "aca_ptc_recipients", "state_fips": "01"},
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "01",
+                "ledger_geography_level": "state",
+            },
         ),
     )
     values = {
@@ -2055,7 +2059,11 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
             value=1.0,
             source="CMS Marketplace OEP",
             family="cms_aca",
-            metadata={"target_role": "aca_ptc_recipients", "state_fips": "06"},
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
         ),
         TargetSpec(
             name="cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers",
@@ -2067,6 +2075,7 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
             metadata={
                 "target_role": "aca_bronze_aptc_consumers",
                 "state_fips": "06",
+                "ledger_geography_level": "state",
             },
         ),
     )
@@ -2092,6 +2101,72 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
             "target": 1.0,
             "source_record_id": (
                 "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers"
+            ),
+        }
+    ]
+
+
+def test_aca_source_target_tables_ignore_congressional_district_targets() -> None:
+    builder = _load_builder_module()
+
+    specs = (
+        TargetSpec(
+            name="irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+            "premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=100.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_01.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=75.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "congressional_district",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_total.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=125.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+                "ledger_layout_groupby_dimension": ("irs_soi.congressional_district"),
+                "ledger_layout_groupby_value_id": "ca_total",
+            },
+        ),
+    )
+
+    tables = builder._aca_source_target_tables(specs)
+
+    amount_table = tables["irs_soi_premium_tax_credit_amount_by_state"]
+    assert amount_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 100.0,
+            "source_record_id": (
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "premium_tax_credit_amount"
             ),
         }
     ]
