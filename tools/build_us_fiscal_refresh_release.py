@@ -3764,6 +3764,31 @@ def main() -> None:
                 for failure in base_population_gate.failures
             )
         )
+    area_artifact_specs: tuple[AreaArtifactSpec, ...] = ()
+    if args.include_area_artifacts:
+        if telemetry is not None:
+            telemetry.stage(
+                "area_artifact_preflight",
+                message=(
+                    "Validating current state and congressional-district artifact "
+                    "surface before source materialization and calibration."
+                ),
+            )
+        area_artifact_specs = _strict_area_artifact_specs(base_frame)
+        if telemetry is not None:
+            telemetry.stage(
+                "area_artifact_preflight",
+                message="Validated current regional artifact surface.",
+                n_area_artifacts=len(area_artifact_specs),
+                n_state_artifacts=sum(
+                    1 for spec in area_artifact_specs if spec.key.startswith("states/")
+                ),
+                n_congressional_district_artifacts=sum(
+                    1
+                    for spec in area_artifact_specs
+                    if spec.key.startswith("districts/")
+                ),
+            )
     if telemetry is not None:
         telemetry.stage(
             "source_inputs",
@@ -3792,31 +3817,6 @@ def main() -> None:
                 for failure in health_input_gate.failures
             )
         )
-    area_artifact_specs: tuple[AreaArtifactSpec, ...] = ()
-    if args.include_area_artifacts:
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifact_preflight",
-                message=(
-                    "Validating current state and congressional-district artifact "
-                    "surface before calibration."
-                ),
-            )
-        area_artifact_specs = _strict_area_artifact_specs(base_frame)
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifact_preflight",
-                message="Validated current regional artifact surface.",
-                n_area_artifacts=len(area_artifact_specs),
-                n_state_artifacts=sum(
-                    1 for spec in area_artifact_specs if spec.key.startswith("states/")
-                ),
-                n_congressional_district_artifacts=sum(
-                    1
-                    for spec in area_artifact_specs
-                    if spec.key.startswith("districts/")
-                ),
-            )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
