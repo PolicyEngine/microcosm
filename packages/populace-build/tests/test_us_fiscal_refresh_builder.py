@@ -304,6 +304,12 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         np.array([5.0, -0.0, -0.0]),
     )
     assert np.array_equal(
+        builder._signed_component(
+            np.array([-5.0, 0.0, 7.0]), "rent_and_royalty_net_income"
+        ),
+        np.array([-5.0, 0.0, 7.0]),
+    )
+    assert np.array_equal(
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )

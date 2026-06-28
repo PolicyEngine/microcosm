@@ -1502,7 +1502,7 @@ def _dynamic_us_fiscal_target_references(
     include_congressional_district_targets: bool = False,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
-        tuple[tuple[str, ...], tuple[int, int, str], LedgerTargetReference]
+        tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
     ] = []
     for fact in facts:
         reference = _reference_from_ledger_fact(
@@ -1513,13 +1513,29 @@ def _dynamic_us_fiscal_target_references(
             ),
         )
         if reference is not None:
-            candidates.append((_dynamic_target_key(fact), _period_key(fact), reference))
+            candidates.append(
+                (
+                    _dynamic_target_key(fact),
+                    _period_key(fact),
+                    _numeric_value(fact),
+                    reference,
+                )
+            )
+    keys_with_positive_observations = {
+        key for key, _, value, _ in candidates if value > 0
+    }
     latest: dict[
         tuple[str, ...], tuple[tuple[int, int, str], LedgerTargetReference]
     ] = {}
     target_period_key = _period_key_from_value(target_period)
-    for key, period_key, reference in candidates:
+    for key, period_key, value, reference in candidates:
         if not _not_after_target_period(period_key, target_period_key):
+            continue
+        if (
+            key in keys_with_positive_observations
+            and value == 0
+            and _zero_value_means_missing_for_latest_selection(reference)
+        ):
             continue
         current = latest.get(key)
         if current is None:
@@ -1532,6 +1548,14 @@ def _dynamic_us_fiscal_target_references(
         ):
             latest[key] = (period_key, reference)
     return tuple(reference for _, reference in latest.values())
+
+
+def _zero_value_means_missing_for_latest_selection(
+    reference: LedgerTargetReference,
+) -> bool:
+    return reference.family == "cms_medicaid" and reference.metadata.get(
+        "target_role"
+    ) in {"medicaid_enrollment", "medicaid_chip_enrollment"}
 
 
 def _dynamic_target_key(fact: object) -> tuple[str, ...]:

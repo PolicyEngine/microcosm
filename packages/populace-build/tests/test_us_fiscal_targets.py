@@ -849,6 +849,82 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
     assert spec.period == 2024
 
 
+def test_dynamic_us_fiscal_targets_skip_zero_cms_month_when_prior_positive_exists() -> (
+    None
+):
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-11",
+                value=306_161,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=0,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert (
+        "cms_medicaid.month2024_12.ri.total_medicaid_chip_enrollment"
+        not in by_source_record_id
+    )
+    spec = by_source_record_id[
+        "cms_medicaid.month2024_11.ri.total_medicaid_chip_enrollment"
+    ]
+    assert spec.value == 306_161
+    assert spec.metadata["source_period"] == "2024-11"
+    assert spec.metadata["state_fips"] == "44"
+
+
+def test_dynamic_us_fiscal_targets_drop_zero_cms_month_when_only_future_positive_exists() -> (
+    None
+):
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=0,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2025-12",
+                value=301_340,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert (
+        "cms_medicaid.month2024_12.ri.total_medicaid_chip_enrollment"
+        not in source_record_ids
+    )
+    assert (
+        "cms_medicaid.month2025_12.ri.total_medicaid_chip_enrollment"
+        not in source_record_ids
+    )
+
+
 def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     marketplace_source_record_id = (
         "cms_aca.oep2024.state_marketplace.ca.marketplace_enrollment"
@@ -3293,10 +3369,14 @@ def _cms_medicaid_enrollment_fact(
     source_period: str,
     *,
     value: float,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    geography_slug: str = "us",
 ) -> dict[str, object]:
     normalized_period = source_period.replace("-", "_")
     source_record_id = (
-        f"cms_medicaid.month{normalized_period}.us.total_medicaid_chip_enrollment"
+        "cms_medicaid."
+        f"month{normalized_period}.{geography_slug}.total_medicaid_chip_enrollment"
     )
     return {
         "aggregate_fact_key": (
@@ -3311,7 +3391,7 @@ def _cms_medicaid_enrollment_fact(
         "period": {"type": "month", "value": source_period},
         "entity": {"name": "person"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {"level": geography_level, "id": geography_id},
         "dimensions": {},
         "universe_constraints": {"constraints": []},
         "layout": {
