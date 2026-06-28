@@ -183,6 +183,12 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
+            "premium_tax_credit_amount",
+            90_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
             "qualified_business_income_deduction_amount",
             2_000_000_000,
             groupby_value_id="hi_01",
@@ -233,6 +239,13 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
             geography_level="state",
             geography_id="0400000US15",
         ),
+        _soi_congressional_district_fact(
+            "premium_tax_credit_amount",
+            180_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
     ]
 
     default_registry = compile_us_fiscal_target_registry(facts)
@@ -254,6 +267,11 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
     ]
     assert not any("hi_01" in source_id for source_id in default_source_ids)
     assert not any("hi_total" in source_id for source_id in default_source_ids)
+    assert not any(
+        source_id.endswith("premium_tax_credit_amount")
+        and ".congressional_district_2022." in source_id
+        for source_id in cd_source_ids
+    )
     assert any("hi_total.return_count" in source_id for source_id in cd_source_ids)
     assert any(
         "hi_total.adjusted_gross_income" in source_id for source_id in cd_source_ids

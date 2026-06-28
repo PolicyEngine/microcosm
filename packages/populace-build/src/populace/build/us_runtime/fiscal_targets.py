@@ -1649,6 +1649,18 @@ def _is_soi_congressional_district_record_set(fact: object) -> bool:
     return ".congressional_district_2022." in record_set_id
 
 
+def _is_soi_cd_premium_tax_credit_amount_conflict(
+    fact: object, *, measure_id: str
+) -> bool:
+    # The SOI CD A85530 amount is not the same gross annual PTC control used by
+    # assigned_aca_ptc. Keep Historic Table 2 national/state PTC amount controls
+    # until Ledger has an explicit CD reconciliation for this concept.
+    return (
+        measure_id == "premium_tax_credit_amount"
+        and _is_soi_congressional_district_record_set(fact)
+    )
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -1777,6 +1789,8 @@ def _soi_reference_from_fact(
         include_congressional_district_targets
         and geography_level == "congressional_district"
     ):
+        return None
+    if _is_soi_cd_premium_tax_credit_amount_conflict(fact, measure_id=measure_id):
         return None
     variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
     is_count = False
