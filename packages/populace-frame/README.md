@@ -15,10 +15,10 @@ no operator ever re-derives structure or silently corrupts weights:
   (design → importance → calibrated), and can be held to mass conservation.
 - **Strata**: per-person provenance labels, so pool design is explicit survey
   design.
-- **Links** (documented placeholder): `LinkSpec` declares many-to-many
+- **Links** (experimental placeholder): `LinkSpec` declares many-to-many
   associations between entities (e.g. a `jobs` link between persons and
-  firms); the frame validates link tables on construction. The full link
-  operator comes later.
+  firms); the frame validates link tables on construction. Firm tables and
+  person-firm links are experimental, and the full link operator comes later.
 - **Weighted accounting** (`wsum`, `wmean`, `wquantile`, `wmedian`, `gini`,
   `groupby_wsum`) computed on the frame.
 - **US unit structure**: `assign_us_unit_structure` builds the PolicyEngine

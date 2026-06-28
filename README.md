@@ -13,6 +13,11 @@ will pin the constellation.
 | `populace-build` | `populace.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
 | `populace-data` | `populace.data` | published population registry and lazy engine loaders | country-specific data packages |
 
+Firm support is **experimental**. The frame kernel can declare firm entity
+tables and validate person-firm `jobs` link tables, but link-aware operators,
+firm calibration targets, and firm release pipelines are not production
+surfaces yet.
+
 See [DESIGN.md](DESIGN.md) for the charter: why the rebuild, the kernel
 semantics, the RulesEngine protocol (policyengine-us today, Axiom rulespec-us
 next), longitudinal design (one weight per trajectory), and the process rules
