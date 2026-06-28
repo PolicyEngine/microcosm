@@ -877,16 +877,28 @@ def _h5_attr_text(attrs: Mapping[str, object], key: str) -> str | None:
     return str(value)
 
 
-def _load_incumbent_diagnostics(
-    path: Path | None,
-) -> dict[str, Mapping[str, object]]:
+def _load_incumbent_diagnostics_payload(path: Path | None) -> dict[str, object]:
     if path is None:
         return {}
     payload = json.loads(path.read_text())
-    targets = payload.get("targets")
-    if not isinstance(targets, list):
+    if not isinstance(payload, dict):
         raise ValueError(
             f"{path} is not a Populace calibration_diagnostics.json file: "
+            "expected a JSON object."
+        )
+    return payload
+
+
+def _diagnostics_by_target_name(
+    payload: Mapping[str, object],
+    *,
+    path: Path | None = None,
+) -> dict[str, Mapping[str, object]]:
+    targets = payload.get("targets")
+    if not isinstance(targets, list):
+        label = str(path) if path is not None else "diagnostics payload"
+        raise ValueError(
+            f"{label} is not a Populace calibration_diagnostics.json file: "
             "missing targets list."
         )
     diagnostics: dict[str, Mapping[str, object]] = {}
@@ -897,6 +909,48 @@ def _load_incumbent_diagnostics(
         if isinstance(name, str) and name:
             diagnostics[name] = target
     return diagnostics
+
+
+def _load_incumbent_diagnostics(
+    path: Path | None,
+) -> dict[str, Mapping[str, object]]:
+    if path is None:
+        return {}
+    return _diagnostics_by_target_name(
+        _load_incumbent_diagnostics_payload(path),
+        path=path,
+    )
+
+
+def _assert_incumbent_target_surface_matches(
+    current_target_surface: Mapping[str, object],
+    incumbent_payload: Mapping[str, object],
+    *,
+    path: Path,
+) -> None:
+    incumbent_surface = incumbent_payload.get("target_surface")
+    if not isinstance(incumbent_surface, Mapping):
+        raise ValueError(
+            f"{path} cannot be used as incumbent diagnostics because it has no "
+            "target_surface fingerprint."
+        )
+    current_sha = current_target_surface.get("sha256")
+    incumbent_sha = incumbent_surface.get("sha256")
+    if not isinstance(current_sha, str) or not isinstance(incumbent_sha, str):
+        raise ValueError(
+            f"{path} cannot be used as incumbent diagnostics because its "
+            "target_surface SHA is missing or invalid."
+        )
+    if current_sha != incumbent_sha:
+        raise RuntimeError(
+            "Incumbent diagnostics target surface mismatch: "
+            f"current sha256={current_sha} "
+            f"n_targets={current_target_surface.get('n_targets')}; "
+            f"incumbent sha256={incumbent_sha} "
+            f"n_targets={incumbent_surface.get('n_targets')} "
+            f"path={path}. Score the incumbent on the current target surface "
+            "before using it for release gates."
+        )
 
 
 def _state_fips_text(values: Iterable[object]) -> list[str]:
@@ -3886,7 +3940,25 @@ def main() -> None:
                 "elapsed_through_calibration_seconds"
             ],
         )
-    incumbent_diagnostics = _load_incumbent_diagnostics(args.incumbent_diagnostics)
+    incumbent_payload = _load_incumbent_diagnostics_payload(args.incumbent_diagnostics)
+    if args.incumbent_diagnostics is not None:
+        current_target_surface = diagnostics_payload(
+            result,
+            target_registry=registry,
+        )["target_surface"]
+        _assert_incumbent_target_surface_matches(
+            current_target_surface,
+            incumbent_payload,
+            path=args.incumbent_diagnostics,
+        )
+    incumbent_diagnostics = (
+        _diagnostics_by_target_name(
+            incumbent_payload,
+            path=args.incumbent_diagnostics,
+        )
+        if args.incumbent_diagnostics is not None
+        else {}
+    )
     gate_failures = _release_gate_failures(
         result,
         compilation,

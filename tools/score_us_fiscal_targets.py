@@ -43,6 +43,19 @@ def _parse_args() -> argparse.Namespace:
         default=release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     )
     parser.add_argument(
+        "--target-materialization-cache-dir",
+        type=Path,
+        help=(
+            "Optional content-addressed cache for expensive target "
+            "materialization, such as JCT reform income-tax vectors."
+        ),
+    )
+    parser.add_argument(
+        "--no-target-materialization-cache",
+        action="store_true",
+        help="Disable the scorer target-materialization cache.",
+    )
+    parser.add_argument(
         "--diagnostic-skip-tax-expenditure-targets",
         action="store_true",
         help="Diagnostic only: drop JCT reform targets to avoid reform simulations.",
@@ -55,6 +68,16 @@ def _parse_args() -> argparse.Namespace:
             "by dropping those columns before target materialization. This is "
             "read-only compatibility for historical incumbents; release builds "
             "still fail on these columns."
+        ),
+    )
+    parser.add_argument(
+        "--allow-legacy-cd-provenance",
+        action="store_true",
+        help=(
+            "Score an old H5 that contains current congressional-district "
+            "geoids but predates CD vintage provenance attributes. The scorer "
+            "still requires the observed area artifact surface to be complete "
+            "and current. Release builds remain provenance-strict."
         ),
     )
     parser.add_argument(
@@ -110,6 +133,21 @@ def _drop_legacy_formula_owned_inputs(frame) -> tuple[object, dict[str, list[str
     )
 
 
+def _assert_legacy_cd_provenance_options(
+    *,
+    allow_legacy_cd_provenance: bool,
+    congressional_district_vintage_crosswalk_metadata: dict[str, object] | None,
+) -> None:
+    if allow_legacy_cd_provenance and (
+        congressional_district_vintage_crosswalk_metadata is None
+    ):
+        raise ValueError(
+            "--allow-legacy-cd-provenance requires "
+            "--congressional-district-vintage-crosswalk so the scorer can "
+            "verify the H5 has the current congressional-district surface."
+        )
+
+
 def score_frame(
     *,
     h5: Path,
@@ -118,8 +156,10 @@ def score_frame(
     | None = release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
+    allow_legacy_cd_provenance: bool = False,
     include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: Path | None = None,
+    target_materialization_cache_dir: Path | None = None,
 ) -> tuple[CalibrationResult, object, dict[str, object], dict[str, object]]:
     congressional_district_vintage_crosswalk_metadata = (
         {
@@ -129,9 +169,16 @@ def score_frame(
         if congressional_district_vintage_crosswalk is not None
         else None
     )
-    release._assert_cd_vintage_support_matches(
-        h5, congressional_district_vintage_crosswalk_metadata
+    _assert_legacy_cd_provenance_options(
+        allow_legacy_cd_provenance=allow_legacy_cd_provenance,
+        congressional_district_vintage_crosswalk_metadata=(
+            congressional_district_vintage_crosswalk_metadata
+        ),
     )
+    if not allow_legacy_cd_provenance:
+        release._assert_cd_vintage_support_matches(
+            h5, congressional_district_vintage_crosswalk_metadata
+        )
     target_registry = release.compile_us_fiscal_target_registry(
         release._load_ledger_facts(ledger_facts),
         target_period=release.PERIOD,
@@ -161,6 +208,11 @@ def score_frame(
         release.US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
     base_frame = release._load_frame(h5)
+    if (
+        allow_legacy_cd_provenance
+        and congressional_district_vintage_crosswalk_metadata is not None
+    ):
+        release._strict_area_artifact_specs(base_frame)
     legacy_formula_owned_inputs: dict[str, list[str]] = {}
     if allow_legacy_formula_owned_inputs:
         base_frame, legacy_formula_owned_inputs = _drop_legacy_formula_owned_inputs(
@@ -174,10 +226,29 @@ def score_frame(
         mass_repair=base_population_repair,
     )
     health_input_gate = release._health_input_signal_gate(base_frame)
+    target_materialization_cache_context = (
+        {
+            "base_dataset_sha256": release._sha256(h5),
+            "build_commit": release._git_output("rev-parse", "HEAD"),
+            "policyengine_us_version": release._package_or_workspace_version(
+                "policyengine-us"
+            ),
+            "seed": 0,
+            "target_period": release.PERIOD,
+            "target_registry_version": target_registry.version,
+            "congressional_district_vintage_crosswalk_sha256": (
+                congressional_district_vintage_crosswalk_metadata or {}
+            ).get("sha256"),
+        }
+        if target_materialization_cache_dir is not None
+        else None
+    )
     target_frame, registry, compilation = release._materialize_target_frame(
         base_frame,
         target_specs,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        target_materialization_cache_dir=target_materialization_cache_dir,
+        target_materialization_cache_context=target_materialization_cache_context,
     )
     result = score_targets(
         target_frame,
@@ -211,6 +282,17 @@ def score_frame(
         compilation = {
             **dict(compilation),
             "legacy_formula_owned_inputs_dropped": legacy_formula_owned_inputs,
+        }
+    if allow_legacy_cd_provenance:
+        compilation = {
+            **dict(compilation),
+            "legacy_cd_provenance_allowed": {
+                "reason": (
+                    "read-only incumbent scoring for an H5 that predates CD "
+                    "vintage provenance attributes"
+                ),
+                "area_artifact_surface_checked": True,
+            },
         }
     return result, registry, compilation, gates
 
@@ -267,9 +349,18 @@ def main() -> None:
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
+        allow_legacy_cd_provenance=args.allow_legacy_cd_provenance,
         include_congressional_district_targets=args.include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             args.congressional_district_vintage_crosswalk
+        ),
+        target_materialization_cache_dir=(
+            None
+            if args.no_target_materialization_cache
+            else (
+                args.target_materialization_cache_dir
+                or out / "target_materialization_cache"
+            )
         ),
     )
     write_calibration_diagnostics(
