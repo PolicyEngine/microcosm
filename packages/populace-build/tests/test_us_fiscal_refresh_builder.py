@@ -25,6 +25,19 @@ def _load_builder_module():
     return module
 
 
+def _load_scorer_module():
+    root = Path(__file__).resolve().parents[3]
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "score_us_fiscal_targets.py"
+    spec = importlib.util.spec_from_file_location("score_us_fiscal_targets", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_runtime_versions_use_local_workspace_package_version(
     monkeypatch, tmp_path
 ) -> None:
@@ -1939,6 +1952,44 @@ def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
             incumbent_diagnostics=incumbent,
         )
         == []
+    )
+
+
+def test_incumbent_diagnostics_must_match_current_target_surface(tmp_path) -> None:
+    builder = _load_builder_module()
+    incumbent_path = tmp_path / "calibration_diagnostics.json"
+    current_surface = {"sha256": "a" * 64, "n_targets": 33_127}
+    incumbent_payload = {
+        "target_surface": {"sha256": "b" * 64, "n_targets": 6_877},
+        "targets": [],
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Score the incumbent on the current target surface",
+    ):
+        builder._assert_incumbent_target_surface_matches(
+            current_surface,
+            incumbent_payload,
+            path=incumbent_path,
+        )
+
+
+def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
+    scorer = _load_scorer_module()
+
+    with pytest.raises(
+        ValueError,
+        match="requires --congressional-district-vintage-crosswalk",
+    ):
+        scorer._assert_legacy_cd_provenance_options(
+            allow_legacy_cd_provenance=True,
+            congressional_district_vintage_crosswalk_metadata=None,
+        )
+
+    scorer._assert_legacy_cd_provenance_options(
+        allow_legacy_cd_provenance=True,
+        congressional_district_vintage_crosswalk_metadata={"sha256": "x"},
     )
 
 
