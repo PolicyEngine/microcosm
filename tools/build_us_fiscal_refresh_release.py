@@ -1901,7 +1901,7 @@ def _assert_supported_ledger_filter_metadata(
 
 def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
     values = np.asarray(values, dtype=np.float64)
-    if source_name == "adjusted_gross_income":
+    if source_name in {"adjusted_gross_income", "rent_and_royalty_net_income"}:
         return values
     if source_name == "capital_gains_losses":
         return np.maximum(values, 0.0)
