@@ -10,6 +10,7 @@ a record budget with L0.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from populace.calibrate import (
@@ -19,14 +20,13 @@ from populace.calibrate import (
     default_target_loss_scales,
     relative_error_loss,
 )
-from populace.frame import WeightKind
+from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def _income_target(truth: float, factor: float) -> Target:
     return Target(
         name="income",
         entity="household",
-        aggregation="sum",
         value=truth * factor,
         measure="income",
     )
@@ -36,9 +36,257 @@ def _population_target(truth: float, factor: float) -> Target:
     return Target(
         name="population",
         entity="household",
-        aggregation="count",
         value=truth * factor,
+        measure="household_count",
     )
+
+
+def _effective_sample_size(weights: np.ndarray) -> float:
+    return float(weights.sum() ** 2 / np.square(weights).sum())
+
+
+def _l2_concentration_fixture() -> tuple[Frame, TargetSet, np.ndarray]:
+    rng = np.random.default_rng(0)
+    n = 160
+    income = rng.lognormal(10.5, 1.0, n)
+    is_renter = (income < np.quantile(income, 0.35)).astype(float)
+    initial_weights = np.full(n, 1000.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": range(n),
+                    "income": income,
+                    "is_renter": is_renter,
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * initial_weights).sum()) * 1.3,
+                measure="income",
+            ),
+            Target(
+                name="renters",
+                entity="household",
+                value=float((is_renter * initial_weights).sum()) * 0.7,
+                measure="is_renter",
+            ),
+        )
+    )
+    return frame, targets, initial_weights
+
+
+def test_method_prox_l1_selects_sparse_subset() -> None:
+    """method='prox' with an L1 penalty drives a strict subset to exact zero."""
+    frame, targets, w0 = _l2_concentration_fixture()
+    n = w0.size
+    dense = calibrate(frame, targets, method="prox", l1_lambda=0.0, epochs=300, seed=0)
+    assert dense.n_nonzero == n  # no penalty -> nothing pruned
+    assert dense.final_loss < dense.initial_loss  # the prox path actually fits
+
+    sparse = calibrate(frame, targets, method="prox", l1_lambda=0.5, epochs=300, seed=0)
+    weights = np.asarray(sparse.weights)
+    assert 0 < sparse.n_nonzero < n  # a budget-controllable sparse subset
+    assert np.all(weights >= 0.0)  # weights stay non-negative
+    assert (weights == 0.0).any()  # and exactly zero, not merely small
+
+
+def test_l1_lambda_is_budget_monotone() -> None:
+    """A larger L1 penalty retains no more records -- the budget knob is monotone."""
+    frame, targets, _ = _l2_concentration_fixture()
+    counts = [
+        calibrate(
+            frame, targets, method="prox", l1_lambda=lam, epochs=300, seed=0
+        ).n_nonzero
+        for lam in (0.3, 0.5, 1.0)
+    ]
+    assert counts[0] >= counts[1] >= counts[2]
+
+
+def test_apg_method_alias_normalizes_to_adam() -> None:
+    """Existing configs can pass 'apg', but manifests record the real Adam path."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.deprecated_call(match="method='apg' is deprecated"):
+        result = calibrate(frame, targets, method="apg", epochs=10, seed=0)
+
+    assert result.options["method"] == "adam"
+
+
+def test_l1_lambda_requires_prox_method() -> None:
+    """l1_lambda needs the proximal solver; Adam cannot soft-threshold to zero."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="l1_lambda requires method='prox'"):
+        calibrate(frame, targets, method="adam", l1_lambda=0.5, epochs=10, seed=0)
+
+
+def test_method_prox_rejects_l2_lambda() -> None:
+    """The prox path must not record an L2 objective it does not optimize."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="method='prox' does not implement l2_lambda"):
+        calibrate(frame, targets, method="prox", l2_lambda=0.001, epochs=10, seed=0)
+
+
+def test_method_prox_conserve_cap_infeasible_names_l1_remedy() -> None:
+    """The prox projection error must not tell users to tune L0 knobs."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(
+        ValueError,
+        match=(
+            "L1 proximal pruning.*mass='conserve'.*max_weight_ratio=.*lower l1_lambda"
+        ),
+    ):
+        calibrate(
+            frame,
+            targets,
+            method="prox",
+            l1_lambda=0.5,
+            epochs=300,
+            seed=0,
+            mass="conserve",
+            max_weight_ratio=1.05,
+        )
+
+
+def test_method_prox_zero_target_all_zero_raises_named_error() -> None:
+    """The prox path names all-zero optima before the frame kernel rejects them."""
+    initial_weights = np.full(8, 100.0)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(8), "person_household_id": range(8)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(8), "household_count": np.ones(8)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="zero_population",
+                entity="household",
+                value=0.0,
+                measure="household_count",
+            ),
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="method='prox' returned every calibrated weight as zero",
+    ):
+        calibrate(
+            frame,
+            targets,
+            method="prox",
+            l1_lambda=0.0,
+            learning_rate=1.0,
+            epochs=1,
+            seed=0,
+            target_loss_cap=1_000_000.0,
+        )
+
+
+def test_method_prox_l1_uses_mean_ratio_penalty_scale() -> None:
+    """The prox shrink matches l1_lambda * mean(weight / initial_weight)."""
+    initial_weights = np.array([100.0, 200.0, 300.0, 400.0])
+    n = initial_weights.size
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=float(initial_weights.sum()),
+                measure="household_count",
+            ),
+        )
+    )
+    learning_rate = 0.2
+    l1_lambda = 0.8
+
+    result = calibrate(
+        frame,
+        targets,
+        method="prox",
+        l1_lambda=l1_lambda,
+        learning_rate=learning_rate,
+        epochs=1,
+        seed=0,
+    )
+
+    expected_ratio = 1.0 - (learning_rate * l1_lambda / n)
+    np.testing.assert_allclose(result.weights / initial_weights, expected_ratio)
+    assert result.options["l1_penalty"] == "mean_initial_weight_ratio_abs"
+
+
+def test_method_prox_l1_uses_effective_step_with_nonzero_gradient() -> None:
+    """The L1 threshold uses the RMS-normalized smooth step, not raw lr."""
+    initial_weights = np.array([100.0, 200.0, 300.0, 400.0])
+    n = initial_weights.size
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    target = float(initial_weights.sum() * 2.0)
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=target,
+                measure="household_count",
+            ),
+        )
+    )
+    learning_rate = 0.2
+    l1_lambda = 0.8
+
+    result = calibrate(
+        frame,
+        targets,
+        method="prox",
+        l1_lambda=l1_lambda,
+        learning_rate=learning_rate,
+        epochs=1,
+        seed=0,
+    )
+
+    grad = -initial_weights / target
+    step_size = learning_rate / np.sqrt(np.mean(grad**2))
+    expected_ratio = 1.0 - (step_size * grad) - (step_size * l1_lambda / n)
+    np.testing.assert_allclose(result.weights / initial_weights, expected_ratio)
 
 
 def test_calibration_reduces_loss_and_hits_feasible_targets(feasible_frame) -> None:
@@ -87,14 +335,14 @@ def test_target_loss_weights_prioritize_conflicting_targets(feasible_frame) -> N
             Target(
                 name="population_low",
                 entity="household",
-                aggregation="count",
                 value=low,
+                measure="household_count",
             ),
             Target(
                 name="population_high",
                 entity="household",
-                aggregation="count",
                 value=high,
+                measure="household_count",
             ),
         )
     )
@@ -121,7 +369,6 @@ def test_target_loss_weights_follow_skipped_targets(feasible_frame) -> None:
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -148,7 +395,6 @@ def test_target_loss_weights_must_survive_skipped_targets(feasible_frame) -> Non
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -173,7 +419,6 @@ def test_target_loss_scales_follow_skipped_targets(feasible_frame) -> None:
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -203,7 +448,6 @@ def test_target_loss_scales_must_survive_skipped_targets(feasible_frame) -> None
             Target(
                 name="missing_measure",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="missing_measure",
             ),
@@ -244,7 +488,6 @@ def test_weight_ratio_bound_prevents_a_landmine(landmine_frame) -> None:
             Target(
                 name="capital_gains",
                 entity="household",
-                aggregation="sum",
                 value=donor_value * 5000.0,
                 measure="capital_gains",
             ),
@@ -268,7 +511,6 @@ def test_multi_period_targets_share_one_weight_vector(multiperiod_frame) -> None
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truth_2026 * 1.3,
                 measure="income_2026",
                 period=2026,
@@ -276,7 +518,6 @@ def test_multi_period_targets_share_one_weight_vector(multiperiod_frame) -> None
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truth_2030 * 1.3,
                 measure="income_2030",
                 period=2030,
@@ -369,6 +610,138 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
     assert strong.l0_lambda == 3e-3
+
+
+def test_l2_lambda_zero_matches_default(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=80)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.2),
+            _income_target(truths["income"], 1.2),
+        )
+    )
+
+    default = calibrate(frame, targets, epochs=120, seed=0)
+    explicit_zero = calibrate(frame, targets, epochs=120, seed=0, l2_lambda=0.0)
+
+    np.testing.assert_array_equal(explicit_zero.weights, default.weights)
+
+
+@pytest.mark.parametrize("l2_lambda", [-1.0, float("inf"), float("nan")])
+def test_l2_lambda_must_be_finite_and_non_negative(
+    feasible_frame,
+    l2_lambda: float,
+) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+
+    with pytest.raises(ValueError, match="l2_lambda"):
+        calibrate(frame, targets, epochs=50, seed=0, l2_lambda=l2_lambda)
+
+
+def test_l2_lambda_records_provenance(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.1),))
+
+    result = calibrate(frame, targets, epochs=50, seed=0, l2_lambda=0.001)
+
+    assert result.options["l2_lambda"] == 0.001
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
+
+
+def test_l2_lambda_reduces_weight_concentration() -> None:
+    """A positive L2 penalty is a smooth concentration/ESS control.
+
+    The shifted targets below are easiest to fit by moving mass toward the
+    highest-income non-renter records. A small L2 penalty keeps the fit close
+    while making that concentration materially less extreme.
+    """
+
+    frame, targets, initial_weights = _l2_concentration_fixture()
+
+    baseline = calibrate(
+        frame,
+        targets,
+        epochs=500,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+    )
+    penalized = calibrate(
+        frame,
+        targets,
+        epochs=500,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l2_lambda=0.001,
+    )
+
+    baseline_ratio = baseline.weights / initial_weights
+    penalized_ratio = penalized.weights / initial_weights
+    assert penalized_ratio.max() < baseline_ratio.max() * 0.5
+    assert _effective_sample_size(penalized.weights) > (
+        _effective_sample_size(baseline.weights) * 2.0
+    )
+    assert penalized.final_loss <= baseline.final_loss + 0.02
+
+
+def test_l2_lambda_reduces_concentration_with_l0_gates_active() -> None:
+    frame, targets, initial_weights = _l2_concentration_fixture()
+
+    baseline = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+    )
+    penalized = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+        l2_lambda=0.001,
+    )
+
+    assert baseline.n_nonzero < len(initial_weights)
+    assert penalized.n_nonzero < len(initial_weights)
+    baseline_ratio = baseline.weights / initial_weights
+    penalized_ratio = penalized.weights / initial_weights
+    assert penalized_ratio.max() < baseline_ratio.max() * 0.5
+    assert _effective_sample_size(penalized.weights) > (
+        _effective_sample_size(baseline.weights) * 1.5
+    )
+    assert penalized.final_loss <= baseline.final_loss + 0.1
+
+
+def test_l2_lambda_is_fixed_during_target_record_budget_search(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=400)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+
+    result = calibrate(
+        frame,
+        targets,
+        epochs=250,
+        seed=0,
+        target_records=120,
+        l2_lambda=0.001,
+    )
+
+    assert abs(result.n_nonzero - 120) <= 60, result.n_nonzero
+    assert result.l0_lambda > 0.0
+    assert result.options["l2_lambda"] == 0.001
+    assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
 
 
 def test_budget_iters_must_be_positive(feasible_frame) -> None:
@@ -559,64 +932,6 @@ def test_default_target_loss_scales_ignore_nonfinite_initial_estimates() -> None
     np.testing.assert_allclose(scales, np.asarray([1.0, 10.0, 1_000.0]))
 
 
-def test_mean_diagnostics_report_the_true_achieved_ratio(feasible_frame) -> None:
-    """``mean`` diagnostics describe the true ratio, not the linearized row value.
-
-    A ``mean`` row is linearized about the input weights; ``A @ w`` is the
-    linearized value, which after a large mass move is *not* the achieved mean.
-    Reporting it gave a near-zero ``relative_error`` and a spurious
-    ``within_tolerance=True`` even when the true achieved mean missed the target
-    and its tolerance (Finding 6). The diagnostic must recompute the true ratio
-    ``sum(measure*filter*w) / sum(filter*w)`` under the final weights.
-    """
-    frame, _ = feasible_frame(n=200, seed=1)
-    income = frame.table("household")["income"].to_numpy()
-    w0 = frame.resolve_weights("household").values
-    true_mean = float((income * w0).sum() / w0.sum())
-    target_mean = true_mean * 1.5  # a large move, so linearization is inexact
-    targets = TargetSet(
-        (
-            Target(
-                name="mean_income",
-                entity="household",
-                aggregation="mean",
-                value=target_mean,
-                measure="income",
-                tolerance=target_mean * 0.02,
-            ),
-        )
-    )
-    result = calibrate(frame, targets, epochs=500, seed=0)
-    diag = result.diagnostics[0]
-    w = result.frame.resolve_weights("household").values
-    w0_now = frame.resolve_weights("household").values
-    true_achieved = float((income * w).sum() / w.sum())
-
-    # The diagnostic's target is the user's declared mean, not the shifted
-    # linearization right-hand side.
-    assert abs(diag.target - target_mean) < 1e-9
-    # The reported final estimate IS the true achieved mean (a sane ratio in the
-    # tens of thousands), not the linearized row value the matrix produces.
-    assert abs(diag.final_estimate - true_achieved) < 1e-6 * abs(true_achieved)
-    assert diag.final_estimate > true_mean  # moved up toward the target
-    # The linearized value (what the old diagnostic reported) is materially
-    # different from the true ratio — proving the fix changed the number, not
-    # just relabeled it.
-    linearized = float(result.problem.estimates(w)[0])
-    assert abs(linearized - true_achieved) > 0.1 * abs(true_achieved)
-    # initial_estimate is the true ratio at the input weights, too.
-    true_initial = float((income * w0_now).sum() / w0_now.sum())
-    assert abs(diag.initial_estimate - true_initial) < 1e-6 * abs(true_initial)
-    # relative_error reflects the true ratio's miss, not a spurious ~0.
-    expected_rel = (true_achieved - target_mean) / target_mean
-    assert abs(diag.relative_error - expected_rel) < 1e-9
-    # within_tolerance is the TRUE-ratio tolerance decision (not the
-    # linearization's spurious "perfect hit").
-    assert diag.within_tolerance is (
-        abs(true_achieved - target_mean) <= target_mean * 0.02
-    )
-
-
 def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> None:
     """The loss is minimized at est == target, not est == target - 1.
 
@@ -635,13 +950,22 @@ def test_small_valued_targets_converge_to_the_value_not_value_minus_one() -> Non
             "person": pd.DataFrame(
                 {"person_id": range(n), "person_household_id": range(n)}
             ),
-            "household": pd.DataFrame({"household_id": range(n)}),
+            "household": pd.DataFrame(
+                {"household_id": range(n), "household_count": np.ones(n)}
+            ),
         },
         EntitySchema(group_entities=("household",)),
         {"household": Weights(values=np.full(n, 0.1), kind=WeightKind.DESIGN)},
     )
     targets = TargetSet(
-        (Target(name="count", entity="household", aggregation="count", value=5.0),)
+        (
+            Target(
+                name="count",
+                entity="household",
+                measure="household_count",
+                value=5.0,
+            ),
+        )
     )
     result = calibrate(frame, targets, epochs=400, seed=0)
     estimate = result.frame.resolve_weights("household").values.sum()

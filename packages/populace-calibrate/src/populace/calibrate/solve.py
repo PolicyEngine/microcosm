@@ -11,13 +11,15 @@ where ``s`` is a per-target scale fixed before optimization. By default,
 ``s = max(abs(b), 1)``: the loss is measured against the administrative target
 value, while zero-valued targets use one unit in their measure basis.
 
-with torch's Adam over the **log-weights** (so weights stay strictly positive by
-construction). It returns a
+The default ``method="adam"`` optimizes with torch's Adam over the
+**log-weights** (so weights stay strictly positive by construction).
+``method="prox"`` uses proximal gradient on raw non-negative weight ratios for
+the nonsmooth L1 selection path. It returns a
 :class:`CalibrationResult` carrying a new frame whose ``weight_entity`` weights
 are :class:`~populace.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
 
-Four declared options, each a real feature (and each its own test):
+Six declared options, each a real feature (and each its own test):
 
 - ``mass="free"`` (default) lets the total weight move to fit the targets;
   ``mass="conserve"`` projects every step's weights back to the input total, so
@@ -36,11 +38,23 @@ Four declared options, each a real feature (and each its own test):
 - ``l0_lambda`` alone (no ``target_records``) prunes at a fixed penalty: ``> 0``
   gates the pool, ``0.0`` keeps every record. It is the sole control when no
   budget is given.
+- ``l1_lambda`` adds a proximal L1 penalty on
+  ``mean(weight / initial_weight)`` under ``method="prox"``. The soft-threshold
+  step can send unneeded records to exact zero, so L1 is a sparse selection path
+  with a clear objective coefficient.
+- ``l2_lambda`` adds an experimental soft concentration penalty on
+  ``mean((pre_gate_weight / initial_weight) ** 2)``. With no L0 gates this is
+  the realized weight ratio; with L0 gates it intentionally penalizes the
+  latent pre-gate weight so a nearly closed gate cannot hide an exploding
+  ``log_w``. It is cleanest as an ESS/design-effect knob under
+  ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
+  This penalty is only implemented by ``method="adam"``.
 """
 
 from __future__ import annotations
 
 import math
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
@@ -51,7 +65,6 @@ from populace.calibrate.gates import HardConcrete
 from populace.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
-    _linearization_weights,
     build_constraint_matrix,
 )
 from populace.calibrate.target import TargetSet
@@ -102,22 +115,18 @@ class TargetDiagnostic:
 
     Attributes:
         name: The target's ``"name@period"`` row label.
-        target: The target value aimed at. For ``sum``/``count`` this is the
-            compiled right-hand side ``b``; for ``mean`` it is the user's declared
-            target mean (not the linearization's shifted right-hand side).
+        target: The sum target value aimed at; this is the compiled right-hand
+            side ``b``.
         initial_estimate: The achieved aggregate under the input weights —
-            ``row @ w0`` for ``sum``/``count``, the true ratio
-            ``sum(measure*filter*w0)/sum(filter*w0)`` for ``mean``.
+            ``row @ w0``.
         final_estimate: The achieved aggregate under the calibrated weights —
-            ``row @ w`` for ``sum``/``count``, the true ratio under ``w`` for
-            ``mean`` (the achieved mean, not the linearized row value).
+            ``row @ w``.
         relative_error: ``(final_estimate - target) / target`` (or
             ``final_estimate - target`` when ``target`` is zero, since the
-            relative form is undefined there). For ``mean`` this is the true
-            ratio's relative miss.
+            relative form is undefined there).
         within_tolerance: Whether ``|final_estimate - target|`` is within the
-            target's declared tolerance (the true achieved value for ``mean``).
-            ``None`` when the target declared no tolerance.
+            target's declared tolerance. ``None`` when the target declared no
+            tolerance.
     """
 
     name: str
@@ -154,11 +163,11 @@ class CalibrationResult:
             as :attr:`final_loss`; recorded separately from the trajectory, whose
             tail is a pre-step/pre-projection value.
         options: The solver configuration as passed (method, epochs,
-            learning_rate, mass, max_weight_ratio, target_records, seed) plus
-            the realized ``matrix_format`` (``"dense"`` or ``"sparse_csr"``).
-            This is what a build records in its release manifest — the
-            max_weight_ratio bound is part of the dataset's provenance, not a
-            local solver detail.
+            learning_rate, mass, max_weight_ratio, target_records, seed,
+            l1_lambda, l2_lambda) plus the realized ``matrix_format``
+            (``"dense"`` or ``"sparse_csr"``). This is what a build records in its release
+            manifest — the max_weight_ratio bound is part of the dataset's
+            provenance, not a local solver detail.
 
     The result is a frozen record; the calibrated frame is the primary product
     and every operator downstream consumes :attr:`frame`.
@@ -432,36 +441,16 @@ def _build_diagnostics(
 ) -> tuple[TargetDiagnostic, ...]:
     """Assemble per-target diagnostics from the problem and both weight vectors.
 
-    ``sum``/``count`` rows are exactly ``A @ w``, so their estimates and target
-    come straight from the compiled system. A ``mean`` row is only the *linearized*
-    value about the input weights — reporting ``A @ w`` for it after a large mass
-    move reads as a perfect hit even when the achieved ratio missed (Finding 6).
-    For ``mean`` targets the diagnostic instead reports the true ratio
-    ``sum(measure*filter*w)/sum(filter*w)`` under each weight vector, against the
-    user's declared target value (not the linearization's shifted right-hand
-    side).
+    Sum rows are exactly ``A @ w``, so their estimates and target come straight
+    from the compiled system.
     """
     initial_est = problem.estimates(initial_weights)
     final_est = problem.estimates(final_weights)
-    weight_entity = problem.weight_entity
     diagnostics: list[TargetDiagnostic] = []
     for i, target in enumerate(problem.targets):
-        if target.aggregation == "mean":
-            # True achieved ratio under the (entity-aligned) weights, against the
-            # user's declared mean value.
-            tgt = float(target.value)
-            w0_aligned = _linearization_weights(
-                target, frame, initial_weights, weight_entity
-            )
-            w_aligned = _linearization_weights(
-                target, frame, final_weights, weight_entity
-            )
-            initial_value = target.achieved_value(frame, w0_aligned)
-            final = target.achieved_value(frame, w_aligned)
-        else:
-            tgt = float(problem.target_vector[i])
-            initial_value = float(initial_est[i])
-            final = float(final_est[i])
+        tgt = float(problem.target_vector[i])
+        initial_value = float(initial_est[i])
+        final = float(final_est[i])
         if tgt != 0.0:
             rel = (final - tgt) / tgt
         else:
@@ -497,6 +486,7 @@ def _optimize(
     conserve_mass: bool,
     max_weight_ratio: float | None,
     l0_lambda: float,
+    l2_lambda: float,
     target_records: int | None,
     init_mean: float,
     temperature: float,
@@ -530,6 +520,7 @@ def _optimize(
         if max_weight_ratio is not None
         else None
     )
+    w0_t = torch.tensor(w0, dtype=torch.float32) if l2_lambda > 0.0 else None
 
     trajectory = np.empty(epochs, dtype=np.float64)
     for epoch in range(epochs):
@@ -550,7 +541,14 @@ def _optimize(
             if (gates is not None and l0_lambda > 0.0)
             else torch.zeros((), dtype=torch.float32)
         )
-        total_loss = loss + penalty
+        # Penalize latent pre-gate weights. Under L0, a nearly closed gate
+        # should not be able to hide a very large exp(log_w).
+        l2_penalty = (
+            ((torch.exp(log_w) / w0_t) ** 2).mean()
+            if w0_t is not None
+            else torch.zeros((), dtype=torch.float32)
+        )
+        total_loss = loss + penalty + l2_lambda * l2_penalty
         trajectory[epoch] = float(loss.item())
         if progress_callback is not None:
             progress_callback(
@@ -615,6 +613,114 @@ def _optimize(
     return final, trajectory
 
 
+def _optimize_proximal(
+    matrix: torch.Tensor,
+    targets: torch.Tensor,
+    target_loss_weights: torch.Tensor | None,
+    target_loss_scales: torch.Tensor,
+    target_loss_cap: float,
+    initial_weights: np.ndarray,
+    *,
+    epochs: int,
+    learning_rate: float,
+    conserve_mass: bool,
+    max_weight_ratio: float | None,
+    l1_lambda: float,
+    prune_atol: float,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    progress_context: Mapping[str, object] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Proximal gradient (ISTA-style) on weight ratios -- the L1 selection path.
+
+    Minimizes the same capped weighted-MAPE loss as :func:`_optimize` plus an L1
+    penalty ``l1_lambda * mean(w_i / w0_i)``. To keep the optimization well-scaled
+    it parameterizes the ratio ``r_i = w_i / w0_i`` (which starts at 1, the same
+    O(1) scale the log-weight path enjoys) rather than the raw weights, and uses
+    a gradient-RMS-normalized smooth step. After each smooth step the L1 prox --
+    the non-negative soft-threshold ``r <- max(r - eta * l1_lambda / n, 0)``
+    -- sends unneeded records to *exact* zero, so the returned weight vector is
+    sparse (the convex analog of the L0 gates; Adam on log-weights can never reach
+    exact zero). The same effective step size ``eta`` used for the smooth update
+    is used for the prox, so ``l1_lambda`` is the recorded mean-ratio objective
+    coefficient.
+    """
+    w0 = np.asarray(initial_weights, dtype=np.float64)
+    total0 = float(w0.sum())
+    n = w0.size
+    w0_t = torch.tensor(w0, dtype=torch.float32)
+    # r = w / w0, so a uniform start is r == 1 (O(1) scale, like the log-weight
+    # path). ISTA uses a *plain* gradient step, not Adam: Adam normalizes every
+    # coordinate's step to ~lr, which keeps even untargeted records alive and
+    # defeats the soft-threshold. Plain gradient lets low-pull records fall to the
+    # prox, which is what selects the sparse subset.
+    ratio = torch.ones(n, dtype=torch.float32, requires_grad=True)
+    trajectory = np.empty(epochs, dtype=np.float64)
+    for epoch in range(epochs):
+        if ratio.grad is not None:
+            ratio.grad = None
+        weights = torch.clamp(ratio, min=0.0) * w0_t
+        estimate = _apply_constraint(matrix, weights)
+        loss = _relative_error_loss(
+            estimate,
+            targets,
+            target_loss_weights,
+            target_loss_scales,
+            target_loss_cap,
+        )
+        trajectory[epoch] = float(loss.item())
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    **dict(progress_context or {}),
+                    "kind": "calibration_epoch",
+                    "epoch": epoch + 1,
+                    "epochs": epochs,
+                    "loss": trajectory[epoch],
+                }
+            )
+        loss.backward()
+        with torch.no_grad():
+            grad = ratio.grad
+            # Scale-robust step: normalize the gradient to unit RMS so the step is
+            # ~learning_rate in ratio space regardless of the loss's gradient scale,
+            # while preserving each record's *relative* pull (so low-pull records
+            # still fall to the prox).
+            rms = float(torch.sqrt((grad**2).mean()).item())
+            step_size = learning_rate / rms if rms > 0 else learning_rate
+            if rms > 0:
+                ratio.add_(grad, alpha=-step_size)
+            # Prox of l1_lambda * mean(r): max(r - step_size*l1_lambda/n, 0).
+            thresh = step_size * l1_lambda / n
+            if thresh > 0.0:
+                ratio.copy_(torch.clamp(ratio - thresh, min=0.0))
+            else:
+                ratio.clamp_(min=0.0)
+            if max_weight_ratio is not None:
+                ratio.clamp_(max=max_weight_ratio)
+            # Note: mass conservation is NOT enforced per step. A uniform rescale
+            # would multiply shrinking ratios back up and resurrect records the prox
+            # is trying to zero, defeating selection. The run optimizes at free mass
+            # and conservation is applied once at the end, over the survivors only.
+
+    final = (torch.clamp(ratio, min=0.0) * w0_t).detach().numpy().astype(np.float64)
+    # Make sub-threshold residuals exact zeros so the reported n_nonzero and the
+    # shipped dataset agree on which records survived.
+    final[final <= prune_atol] = 0.0
+    if max_weight_ratio is not None:
+        final = np.minimum(final, max_weight_ratio * w0)
+    if conserve_mass:
+        final = _project_to_total(
+            final,
+            total0,
+            max_weight_ratio,
+            w0,
+            pruned=(final <= 0.0),
+            pruning_label="L1 proximal pruning",
+            pruning_remedy="lower l1_lambda",
+        )
+    return final, trajectory
+
+
 def _search_l0_lambda_for_budget(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -628,6 +734,7 @@ def _search_l0_lambda_for_budget(
     learning_rate: float,
     conserve_mass: bool,
     max_weight_ratio: float | None,
+    l2_lambda: float,
     init_mean: float,
     temperature: float,
     seed: int,
@@ -661,6 +768,8 @@ def _search_l0_lambda_for_budget(
         target_records: The non-zero budget to hit.
         epochs, learning_rate, conserve_mass, max_weight_ratio, init_mean,
             temperature: Passed through to :func:`_optimize`.
+        l2_lambda: Fixed soft concentration penalty passed through to
+            :func:`_optimize`; the budget search varies only ``l0_lambda``.
         seed: Reseeded before every evaluation for a deterministic response.
         prune_atol: Threshold counting a weight as non-zero (a survivor).
         initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
@@ -692,6 +801,7 @@ def _search_l0_lambda_for_budget(
             conserve_mass=conserve_mass,
             max_weight_ratio=max_weight_ratio,
             l0_lambda=lam,
+            l2_lambda=l2_lambda,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -775,6 +885,8 @@ def _project_to_total(
     initial_weights: np.ndarray,
     *,
     pruned: np.ndarray | None = None,
+    pruning_label: str = "L0 pruning",
+    pruning_remedy: str = "loosen the record budget (smaller l0_lambda)",
 ) -> np.ndarray:
     """Scale ``weights`` to sum to ``total`` while respecting an optional cap.
 
@@ -797,6 +909,9 @@ def _project_to_total(
         pruned: Optional boolean mask of gate-closed records to hold at zero and
             exclude from deficit redistribution. ``None`` redistributes over
             every record with headroom (the no-pruning case).
+        pruning_label: Human-readable name of the pruning path for infeasibility
+            errors.
+        pruning_remedy: Path-specific remediation text for infeasibility errors.
 
     Raises:
         ValueError: If pruning is active and the surviving (non-pruned) records
@@ -830,13 +945,12 @@ def _project_to_total(
                 # short: the only way to close it would be to refill pruned
                 # records, which we refuse. Surface the joint infeasibility.
                 raise ValueError(
-                    "Infeasible combination: L0 pruning + mass='conserve' + "
+                    f"Infeasible combination: {pruning_label} + mass='conserve' + "
                     f"max_weight_ratio={max_weight_ratio!r}. After pruning "
                     f"{int(pruned.sum())} record(s), the {int(eligible.sum())} "
                     "surviving record(s) cannot absorb the freed mass under the "
                     "cap (sum of survivor caps < input total). Raise "
-                    "max_weight_ratio, loosen the record budget (smaller "
-                    "l0_lambda), or use mass='free'."
+                    f"max_weight_ratio, {pruning_remedy}, or use mass='free'."
                 )
             break  # no pruning: cap binds everywhere; total is the maximum.
         deficit = total - current
@@ -850,13 +964,15 @@ def calibrate(
     targets: TargetSet,
     *,
     weight_entity: str = "household",
-    method: str = "apg",
+    method: str = "adam",
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
     max_weight_ratio: float | None = None,
     target_records: int | None = None,
     l0_lambda: float = 0.0,
+    l1_lambda: float = 0.0,
+    l2_lambda: float = 0.0,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -878,11 +994,15 @@ def calibrate(
         targets: The :class:`~populace.calibrate.target.TargetSet` of facts.
         weight_entity: Entity whose weights to calibrate (default
             ``"household"``).
-        method: Optimization method label. ``"apg"`` (accelerated proximal
-            gradient, the charter's named core) and ``"adam"`` both run the
-            torch Adam optimizer described above — Adam *is* the accelerated
-            first-order method here; the label is carried for the manifest and
-            future solver swaps. Any other value is rejected.
+        method: Optimization method. ``"adam"`` (default) runs the torch Adam
+            optimizer on the log-weights described above (smooth objective; weights
+            stay strictly positive by construction). ``"prox"`` runs proximal
+            gradient (ISTA) on raw non-negative weight ratios with a
+            soft-threshold step, the optimizer required for the nonsmooth
+            ``l1_lambda`` penalty: it drives unneeded records to exact zero, so
+            L1 selects a sparse weighted subset. ``"apg"`` is accepted only as a
+            deprecated alias for ``"adam"`` and is recorded as ``"adam"`` in
+            result options. Any other value is rejected.
         epochs: Number of optimization steps.
         learning_rate: Adam learning rate on the log-weights. Capped MAPE has a
             nearly constant gradient away from zero, so the default is lower
@@ -904,6 +1024,20 @@ def calibrate(
             ``None``: ``> 0`` enables hard-concrete gates that prune the pool,
             ``0.0`` (default) keeps every record. When ``target_records`` is set,
             this is only the budget search's warm start (the search overrides it).
+        l1_lambda: L1 penalty strength for ``method="prox"``. Positive values
+            add ``l1_lambda * mean(weight / initial_weight)`` to the objective and
+            use a proximal soft-threshold step that can drive records to exact
+            zero. ``l1_lambda`` must be zero unless ``method="prox"``.
+        l2_lambda: Experimental soft concentration penalty strength. ``0.0``
+            (default) preserves the unpenalized path. Positive values add
+            ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
+            optimization loss while leaving ``max_weight_ratio`` as the hard
+            per-record cap. When L0 gates are active, this is a latent pre-gate
+            penalty on ``exp(log_w)``, not the realized gated returned weight;
+            that preserves the original L0 behavior of discouraging hidden
+            weight explosion behind partially closed gates. Its ESS/design-effect
+            interpretation is cleanest with ``mass="conserve"``; with
+            ``mass="free"`` it also penalizes total weight scale.
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -937,13 +1071,24 @@ def calibrate(
         ValueError: If ``method`` is unknown, ``mass`` is not ``"free"`` or
             ``"conserve"``, ``epochs`` is not positive, ``max_weight_ratio`` is
             given and is not ``> 0``, or ``target_records`` is given and is not
-            a positive integer; or if no targets compile (from the matrix
-            build).
+            a positive integer, if ``l1_lambda`` or ``l2_lambda`` is negative or
+            non-finite, if ``l1_lambda`` is used outside ``method="prox"``, if
+            ``method="prox"`` is combined with L0/budget pruning or
+            ``l2_lambda``, or if no targets compile (from the matrix build).
     """
-    if method not in ("apg", "adam"):
+    if method == "apg":
+        warnings.warn(
+            "method='apg' is deprecated and now aliases method='adam'; result "
+            "options record the normalized method='adam'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        method = "adam"
+    if method not in ("adam", "prox"):
         raise ValueError(
-            f"Unknown method {method!r}; supported: 'apg', 'adam' (both run the "
-            "torch Adam first-order optimizer on log-weights)."
+            f"Unknown method {method!r}; supported: 'adam' (Adam on log-weights), "
+            "'prox' (proximal gradient on raw weights, for the l1_lambda penalty), "
+            "and deprecated alias 'apg' -> 'adam'."
         )
     if mass not in (FREE_MASS, CONSERVE_MASS):
         raise ValueError(
@@ -971,6 +1116,29 @@ def calibrate(
     ):
         raise ValueError(
             f"target_records must be a positive integer, got {target_records!r}."
+        )
+    if not math.isfinite(l2_lambda) or l2_lambda < 0.0:
+        raise ValueError(
+            f"l2_lambda must be finite and non-negative, got {l2_lambda!r}."
+        )
+    if not math.isfinite(l1_lambda) or l1_lambda < 0.0:
+        raise ValueError(
+            f"l1_lambda must be finite and non-negative, got {l1_lambda!r}."
+        )
+    if l1_lambda > 0.0 and method != "prox":
+        raise ValueError(
+            "l1_lambda requires method='prox': the nonsmooth L1 penalty needs the "
+            "proximal soft-threshold step, which Adam cannot provide (no exact zeros)."
+        )
+    if method == "prox" and (l0_lambda > 0.0 or target_records is not None):
+        raise ValueError(
+            "method='prox' is the L1 selection path and does not use L0 gates; pass "
+            "l0_lambda=0 and target_records=None (use method='adam' for L0/budget search)."
+        )
+    if method == "prox" and l2_lambda > 0.0:
+        raise ValueError(
+            "method='prox' does not implement l2_lambda; use method='adam' for the "
+            "L2 concentration penalty or pass l2_lambda=0."
         )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
@@ -1037,7 +1205,40 @@ def calibrate(
     )
     target_loss_scales_t = torch.tensor(target_loss_scales_np, dtype=torch.float32)
 
-    if target_records is not None:
+    if method == "prox":
+        # L1 path: proximal gradient (ISTA) on raw weights. The soft-threshold
+        # drives unneeded records to exact zero, so L1 selects a sparse weighted
+        # subset jointly with calibrating it (the convex analog of the L0 gates).
+        effective_l0 = 0.0
+        final_weights, trajectory = _optimize_proximal(
+            matrix_t,
+            targets_t,
+            target_loss_weights_t,
+            target_loss_scales_t,
+            target_loss_cap,
+            w0,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            conserve_mass=(mass == CONSERVE_MASS),
+            max_weight_ratio=max_weight_ratio,
+            l1_lambda=l1_lambda,
+            prune_atol=prune_atol,
+            progress_callback=progress_callback,
+        )
+        n_nonzero = int((final_weights > prune_atol).sum())
+        if n_nonzero == 0:
+            if l1_lambda > 0.0:
+                raise ValueError(
+                    f"L1 penalty zeroed every weight: l1_lambda={l1_lambda!r} "
+                    "overwhelmed the fit loss. Lower l1_lambda."
+                )
+            raise ValueError(
+                "method='prox' returned every calibrated weight as zero. "
+                "Populace frames require at least one positive calibrated weight; "
+                "use method='adam', mass='conserve', or a target surface that "
+                "does not make zero total mass optimal."
+            )
+    elif target_records is not None:
         # Budget control (Finding 3): search l0_lambda so the achieved non-zero
         # count tracks target_records. The supplied l0_lambda (if any) is the
         # warm start; the search reports the penalty it settled on.
@@ -1054,6 +1255,7 @@ def calibrate(
                 learning_rate=learning_rate,
                 conserve_mass=(mass == CONSERVE_MASS),
                 max_weight_ratio=max_weight_ratio,
+                l2_lambda=l2_lambda,
                 init_mean=init_mean,
                 temperature=temperature,
                 seed=seed,
@@ -1077,6 +1279,7 @@ def calibrate(
             conserve_mass=(mass == CONSERVE_MASS),
             max_weight_ratio=max_weight_ratio,
             l0_lambda=effective_l0,
+            l2_lambda=l2_lambda,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -1131,6 +1334,10 @@ def calibrate(
             "mass": mass,
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
+            "l1_lambda": l1_lambda,
+            "l1_penalty": "mean_initial_weight_ratio_abs",
+            "l2_lambda": l2_lambda,
+            "l2_penalty": "mean_initial_pre_gate_weight_ratio_squared",
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "target_loss_scales": _target_loss_scale_options(

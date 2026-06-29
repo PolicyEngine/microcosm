@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pytest
 
-from populace.build.us.demographics import (
+from populace.build.us_runtime.demographics import (
     AGE_BANDS,
     DEMOGRAPHICS_SCHEMA_VERSION,
     compute_age_distribution,
@@ -43,7 +43,9 @@ def test_benchmark_relative_error_is_signed():
 def test_payload_shape_and_totals():
     ages = np.array([3, 30, 80])
     weights = np.array([10.0, 20.0, 30.0])
-    payload = demographics_payload(ages, weights, period=2024, release_id="rel-a", benchmark=None)
+    payload = demographics_payload(
+        ages, weights, period=2024, release_id="rel-a", benchmark=None
+    )
     assert payload["schema_version"] == DEMOGRAPHICS_SCHEMA_VERSION
     assert payload["period"] == 2024
     assert payload["total_population"] == 60.0

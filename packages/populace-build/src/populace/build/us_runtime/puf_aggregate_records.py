@@ -25,6 +25,7 @@ __all__ = [
     "PufAggregateDisaggregationSpec",
     "audit_puf_aggregate_disaggregation",
     "compute_aggregate_eligibility_scores",
+    "derive_puf_policyengine_variables",
     "disaggregate_puf_aggregate_records",
     "load_default_puf_aggregate_disaggregation_spec",
 ]
@@ -39,6 +40,12 @@ _SELECTION_POWER = 24
 _NUMERIC_TOL = 1e-9
 _WEIGHTED_TOTAL_ABS_TOL = 1e-4
 _WEIGHTED_TOTAL_REL_TOL = 1e-10
+_DIVIDEND_INVARIANT_ATOL = 1e-9
+_DIVIDEND_RAW_AMOUNT_COLUMNS = frozenset({"E00600", "E00650"})
+_DIVIDEND_COMPONENT_AMOUNT_COLUMNS = (
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+)
 _SPEC_ALLOWED_KEYS = {
     "enabled",
     "forbes_top_tail",
@@ -87,6 +94,13 @@ _SOURCE_FIELD_ATTRIBUTES = {
 _COMBINED_SOURCE_FIELDS = {
     "capital_gains_proxy": ("P22250", "P23250", "E01100"),
     "charitable_contributions": ("E19800", "E20100"),
+}
+
+_DEFAULT_PUF_POLICYENGINE_VARIABLES = {
+    "ordinary_dividend_source": "E00600",
+    "qualified_dividend_source": "E00650",
+    "qualified_dividend_output": "qualified_dividend_income",
+    "non_qualified_dividend_output": "non_qualified_dividend_income",
 }
 
 
@@ -188,6 +202,32 @@ def load_default_puf_aggregate_disaggregation_spec() -> PufAggregateDisaggregati
     )
 
 
+def derive_puf_policyengine_variables(
+    puf: pd.DataFrame,
+    *,
+    ordinary_dividend_source: str = "E00600",
+    qualified_dividend_source: str = "E00650",
+    qualified_dividend_output: str = "qualified_dividend_income",
+    non_qualified_dividend_output: str = "non_qualified_dividend_income",
+) -> pd.DataFrame:
+    """Translate raw IRS PUF columns into PolicyEngine input variables."""
+
+    _require_columns(puf, [ordinary_dividend_source, qualified_dividend_source])
+    result = puf.copy()
+    ordinary = _numeric_series(result[ordinary_dividend_source])
+    qualified = _numeric_series(result[qualified_dividend_source])
+    _assert_dividend_source_invariant(
+        ordinary,
+        qualified,
+        ordinary_source=ordinary_dividend_source,
+        qualified_source=qualified_dividend_source,
+    )
+
+    result[qualified_dividend_output] = qualified
+    result[non_qualified_dividend_output] = ordinary - qualified
+    return result
+
+
 def disaggregate_puf_aggregate_records(
     puf: pd.DataFrame,
     *,
@@ -201,6 +241,7 @@ def disaggregate_puf_aggregate_records(
     if not spec.enabled:
         return puf.copy()
     _require_columns(puf, ["RECID", "S006", "E00100"])
+    puf = _derive_default_puf_policyengine_variables_if_available(puf)
 
     aggregate_recids = list(spec.aggregate_recids)
     aggregate_mask = puf["RECID"].isin(aggregate_recids)
@@ -214,7 +255,7 @@ def disaggregate_puf_aggregate_records(
         )
 
     rng = np.random.default_rng(seed)
-    amount_columns = _get_amount_columns(puf.columns)
+    amount_columns = _get_disaggregation_amount_columns(puf.columns)
     aggregate_rows = puf[aggregate_mask].copy().set_index("RECID")
     regular = puf[~aggregate_mask].copy()
     donor_scores = compute_aggregate_eligibility_scores(
@@ -239,7 +280,8 @@ def disaggregate_puf_aggregate_records(
         pieces.append(synthetic[puf.columns])
 
     synthetic_df = pd.concat(pieces, ignore_index=True)
-    return pd.concat([regular, synthetic_df], ignore_index=True)
+    result = pd.concat([regular, synthetic_df], ignore_index=True)
+    return _reconcile_puf_dividend_columns_from_components(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -260,6 +302,7 @@ def audit_puf_aggregate_disaggregation(
 
     spec = spec or load_default_puf_aggregate_disaggregation_spec()
     _require_columns(puf, ["RECID", "S006", "E00100"])
+    puf = _derive_default_puf_policyengine_variables_if_available(puf)
 
     aggregate_mask = puf["RECID"].isin(spec.aggregate_recids)
     _require_raw_aggregate_rows(puf, spec)
@@ -709,6 +752,113 @@ def _assign_s006_values(
 
 def _get_amount_columns(columns: pd.Index | list[str]) -> list[str]:
     return [column for column in columns if _AMOUNT_COLUMN_PATTERN.match(column)]
+
+
+def _get_disaggregation_amount_columns(columns: pd.Index | list[str]) -> list[str]:
+    amount_columns = [
+        column
+        for column in _get_amount_columns(columns)
+        if column not in _DIVIDEND_RAW_AMOUNT_COLUMNS
+    ]
+    amount_columns.extend(
+        column
+        for column in _DIVIDEND_COMPONENT_AMOUNT_COLUMNS
+        if column in columns and column not in amount_columns
+    )
+    return amount_columns
+
+
+def _derive_default_puf_policyengine_variables_if_available(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    sources = {
+        _DEFAULT_PUF_POLICYENGINE_VARIABLES["ordinary_dividend_source"],
+        _DEFAULT_PUF_POLICYENGINE_VARIABLES["qualified_dividend_source"],
+    }
+    if not sources.issubset(puf.columns):
+        return puf.copy()
+    return derive_puf_policyengine_variables(
+        puf,
+        **_DEFAULT_PUF_POLICYENGINE_VARIABLES,
+    )
+
+
+def _numeric_series(values: pd.Series) -> pd.Series:
+    return (
+        pd.to_numeric(values, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .astype(float)
+    )
+
+
+def _assert_dividend_source_invariant(
+    ordinary: pd.Series,
+    qualified: pd.Series,
+    *,
+    ordinary_source: str,
+    qualified_source: str,
+) -> None:
+    negative_ordinary = ordinary < -_DIVIDEND_INVARIANT_ATOL
+    if bool(negative_ordinary.any()):
+        value = float(ordinary.loc[negative_ordinary].min())
+        raise ValueError(
+            f"PUF source column {ordinary_source!r} contains a negative ordinary "
+            f"dividend value ({value})."
+        )
+    negative_qualified = qualified < -_DIVIDEND_INVARIANT_ATOL
+    if bool(negative_qualified.any()):
+        value = float(qualified.loc[negative_qualified].min())
+        raise ValueError(
+            f"PUF source column {qualified_source!r} contains a negative qualified "
+            f"dividend value ({value})."
+        )
+    above_ordinary = qualified > ordinary + _DIVIDEND_INVARIANT_ATOL
+    if bool(above_ordinary.any()):
+        gap = float((qualified - ordinary).loc[above_ordinary].max())
+        raise ValueError(
+            f"PUF source column {qualified_source!r} has qualified dividends above "
+            f"ordinary dividends in {ordinary_source!r} by as much as {gap}."
+        )
+
+
+def _reconcile_puf_dividend_columns_from_components(puf: pd.DataFrame) -> pd.DataFrame:
+    required = {"qualified_dividend_income", "non_qualified_dividend_income"}
+    if not required.issubset(puf.columns):
+        return _derive_default_puf_policyengine_variables_if_available(puf)
+
+    result = puf.copy()
+    qualified = _numeric_series(result["qualified_dividend_income"])
+    non_qualified = _numeric_series(result["non_qualified_dividend_income"])
+    _assert_nonnegative_dividend_component(
+        qualified,
+        column="qualified_dividend_income",
+    )
+    _assert_nonnegative_dividend_component(
+        non_qualified,
+        column="non_qualified_dividend_income",
+    )
+    ordinary = qualified + non_qualified
+    result["qualified_dividend_income"] = qualified
+    result["non_qualified_dividend_income"] = non_qualified
+    if "E00650" in result.columns:
+        result["E00650"] = qualified
+    if "E00600" in result.columns:
+        result["E00600"] = ordinary
+    return result
+
+
+def _assert_nonnegative_dividend_component(
+    values: pd.Series,
+    *,
+    column: str,
+) -> None:
+    negative = values < -_DIVIDEND_INVARIANT_ATOL
+    if bool(negative.any()):
+        value = float(values.loc[negative].min())
+        raise ValueError(
+            f"PUF dividend component {column!r} contains a negative value ({value})."
+        )
 
 
 def _get_bucket_targets(row: pd.Series) -> tuple[float, float, float]:

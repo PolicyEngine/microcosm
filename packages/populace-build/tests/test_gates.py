@@ -109,6 +109,7 @@ class TestAggregateAdminGate:
         return TargetSpec(
             name="puf/net_short_term_capital_gains",
             entity="household",
+            measure="net_short_term_capital_gains",
             value=-76.8e9,
             signed=True,
             source="IRS SOI (PUF P22250, uprated)",
@@ -130,6 +131,7 @@ class TestAggregateAdminGate:
         anchor = TargetSpec(
             name="soi/investment_interest_expense",
             entity="household",
+            measure="investment_interest_expense",
             value=24.0e9,
             source="IRS SOI Table 1.4",
             family="irs_soi",
@@ -156,6 +158,7 @@ class TestAggregateAdminGate:
         anchor = TargetSpec(
             name="census/population",
             entity="household",
+            measure="household_count",
             value=334e6,
             tolerance=1e6,  # absolute
             source="Census",
@@ -257,6 +260,7 @@ class TestZeroValuedAnchor:
         anchor = TargetSpec(
             name="soi/net_operating_loss_carryforward_count",
             entity="household",
+            measure="net_operating_loss_carryforward_count",
             value=0.0,
             source="IRS SOI (no filers expected)",
             family="irs_soi",

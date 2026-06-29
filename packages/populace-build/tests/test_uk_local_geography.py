@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     LONG_GEOGRAPHY_COLUMNS,
     area_support_summary,
     assigned_weights_to_long,

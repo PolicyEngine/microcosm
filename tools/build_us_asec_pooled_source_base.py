@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build.us import AsecSource, build_pooled_asec_unit_frame
+from populace.build.us_runtime import AsecSource, build_pooled_asec_unit_frame
 
 
 def _parse_args() -> argparse.Namespace:

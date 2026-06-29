@@ -7,7 +7,7 @@ older build drivers fail with a clear migration error instead of a bare
 
 from __future__ import annotations
 
-from populace.build.us import (
+from populace.build.us_runtime import (
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,

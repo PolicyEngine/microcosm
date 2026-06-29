@@ -7,6 +7,7 @@ from populace.build.gates import TargetCoverageRequirement, target_profile_cover
 from populace.build.ledger_targets import (
     LedgerTargetMapping,
     LedgerTargetReference,
+    apply_ledger_target_profile,
     compile_ledger_target_references,
     ledger_target_registry_parity_report,
     select_ledger_targets,
@@ -179,6 +180,75 @@ def _monthly_consumer_fact_row(source_period: str, *, value: float):
     )
 
 
+def _hierarchy_target(
+    name: str,
+    *,
+    value: float,
+    geography_level: str,
+    geography_id: str,
+    state_fips: str | None = None,
+) -> TargetSpec:
+    metadata = {
+        "ledger_geography_level": geography_level,
+        "ledger_geography_id": geography_id,
+        "target_role": "population_age",
+        "source_measure_id": "population",
+        "target_period": "2024",
+        "materializer": "population_age",
+        "measure_mode": "indicator_sum",
+        "age_lower_bound": "0",
+        "age_upper_bound": "5",
+        "age_group": "age_0_to_4",
+    }
+    if state_fips is not None:
+        metadata["state_fips"] = state_fips
+    return TargetSpec(
+        name=name,
+        entity="household",
+        measure=name,
+        value=value,
+        period=2024,
+        source="source",
+        family="census_population",
+        metadata=metadata,
+    )
+
+
+def _hierarchy_profile() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "hierarchy_reconciliations": [
+            {
+                "id": "test_cd_to_state",
+                "method": "scale_children_to_parent",
+                "enabled_when": {"include_congressional_district_targets": True},
+                "child_geography_level": "congressional_district",
+                "parent_geography_level": "state",
+                "parent_geography_id": {"template": "0400000US{state_fips}"},
+                "child_completeness": {
+                    "child_id_metadata_key": "ledger_geography_id",
+                    "parent_key_metadata_key": "state_fips",
+                    "on_incomplete": "fail",
+                    "expected_child_count_by_parent_key": {"01": 2},
+                },
+                "match": {
+                    "spec_fields": ["entity", "period", "family", "filter"],
+                    "metadata_keys": [
+                        "target_period",
+                        "target_role",
+                        "source_measure_id",
+                        "materializer",
+                        "measure_mode",
+                        "age_lower_bound",
+                        "age_upper_bound",
+                        "age_group",
+                    ],
+                },
+            }
+        ],
+    }
+
+
 def test__given_supported_ledger_fact__then_populace_target_preserves_lineage() -> None:
     # Given
     mapping = LedgerTargetMapping(
@@ -266,7 +336,6 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         filter="is_tax_return",
         period=2024,
         source="IRS SOI Table 1.1",
@@ -296,6 +365,40 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
     assert spec.metadata["uprating_index"] == "cpi_u"
     assert spec.metadata["uprating_from_period"] == "2023"
     assert spec.metadata["uprating_to_period"] == "2024"
+
+
+def test__given_count_ledger_target_reference__then_compilation_fails() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="census_pep.cy2024.national_resident_population_age.0_to_4.population",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="person",
+        measure="person_count",
+        filter="age_0_to_4",
+        period=2024,
+        source="Census PEP",
+        family="census_population",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="unsupported aggregation 'count'"):
+        compile_ledger_target_references(
+            [
+                _consumer_fact_row(
+                    value=18_000_000,
+                    aggregation={"method": "count"},
+                    observed_measure={
+                        "source_name": "census_pep",
+                        "source_table": ("Annual Estimates of the Resident Population"),
+                        "source_measure_id": "population",
+                        "source_concept": "census_pep.resident_population",
+                        "unit": "count",
+                    },
+                )
+            ],
+            [reference],
+            country="us",
+        )
 
 
 def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compiles() -> (
@@ -339,7 +442,6 @@ def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compile
         ledger_fact_key="ledger.aggregate_fact.v2:def456",
         entity="tax_unit",
         measure="income_tax",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -416,12 +518,10 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -457,12 +557,10 @@ def test__given_selector_matches_future_year__then_latest_eligible_period_is_use
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -498,12 +596,10 @@ def test__given_selector_matches_future_month__then_latest_eligible_period_is_us
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "person",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "total_medicaid_chip_enrollment",
         },
         entity="person",
         measure="total_medicaid_chip_enrollment",
-        aggregation="sum",
         period=2024,
         family="cms_medicaid",
     )
@@ -539,12 +635,10 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "person",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "total_medicaid_chip_enrollment",
         },
         entity="person",
         measure="total_medicaid_chip_enrollment",
-        aggregation="sum",
         period=2024,
         family="cms_medicaid",
     )
@@ -578,12 +672,10 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
             "geography_level": "country",
             "geography_id": "0100000US",
             "entity_name": "tax_unit",
-            "aggregation_method": "sum",
             "layout_groupby_value_id": "all",
         },
         entity="tax_unit",
         measure="adjusted_gross_income",
-        aggregation="sum",
         period=2024,
         family="irs_soi",
     )
@@ -592,6 +684,27 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
     with pytest.raises(ValueError, match="at or before target period"):
         compile_ledger_target_references(
             [_consumer_fact_row_for_period(2025, value=17_000_000_000_000)],
+            [reference],
+            country="us",
+        )
+
+
+def test__given_aggregation_method_selector__then_compilation_fails() -> None:
+    # Given
+    reference = LedgerTargetReference(
+        name="no aggregation selector",
+        ledger_selector={"aggregation_method": "sum"},
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+    )
+
+    # When / Then
+    with pytest.raises(
+        ValueError,
+        match="Unsupported Ledger fact selector field 'aggregation_method'",
+    ):
+        compile_ledger_target_references(
+            [_consumer_fact_row()],
             [reference],
             country="us",
         )
@@ -607,11 +720,10 @@ def test__given_non_count_reference_without_measure__then_compilation_fails(
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure=measure,
-        aggregation="sum",
     )
 
     # When / Then
-    with pytest.raises(ValueError, match="requires a model measure column"):
+    with pytest.raises(ValueError, match="measure is required"):
         compile_ledger_target_references(
             [_consumer_fact_row()], [reference], country="us"
         )
@@ -837,6 +949,221 @@ def test__given_rate_fact__then_it_is_reported_as_unsupported() -> None:
     assert selection.unsupported[0].reason == "unsupported_aggregation:rate"
 
 
+def test__given_count_fact__then_it_is_reported_as_unsupported() -> None:
+    # Given
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+    )
+
+    # When
+    selection = select_ledger_targets(
+        [_ledger_fact(aggregation={"method": "count"}, value=10)],
+        mapping,
+    )
+
+    # Then
+    assert not selection.specs
+    assert selection.unsupported[0].reason == "unsupported_aggregation:count"
+
+
+def test__given_hierarchy_profile__then_children_scale_to_parent() -> None:
+    # Given
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "al_01",
+                value=30.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_02",
+                value=70.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0102",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_state",
+                value=200.0,
+                geography_level="state",
+                geography_id="0400000US01",
+                state_fips="01",
+            ),
+        ],
+        country="us",
+    )
+
+    # When
+    reconciled = apply_ledger_target_profile(
+        registry,
+        _hierarchy_profile(),
+        context={"include_congressional_district_targets": True},
+    )
+
+    # Then
+    first, second, parent = reconciled.specs
+    assert first.value == pytest.approx(60.0)
+    assert second.value == pytest.approx(140.0)
+    assert parent.value == pytest.approx(200.0)
+    assert first.metadata["hierarchy_reconciliation_rule"] == "test_cd_to_state"
+    assert first.metadata["hierarchy_raw_value"] == "30"
+    assert first.metadata["hierarchy_child_sum_raw"] == "100"
+    assert first.metadata["hierarchy_parent_value"] == "200"
+    assert first.metadata["hierarchy_coverage_ratio"] == "0.5"
+    assert first.metadata["hierarchy_reconciliation_factor"] == "2"
+    assert first.metadata["hierarchy_parent_geography_id"] == "0400000US01"
+    assert first.metadata["hierarchy_parent_key"] == "01"
+    assert first.metadata["hierarchy_expected_child_count"] == "2"
+    assert first.metadata["hierarchy_observed_child_count"] == "2"
+    assert first.metadata["hierarchy_child_ids"] == "5001900US0101,5001900US0102"
+
+
+def test__given_disabled_hierarchy_profile__then_children_are_unchanged() -> None:
+    # Given
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "al_01",
+                value=30.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_state",
+                value=200.0,
+                geography_level="state",
+                geography_id="0400000US01",
+                state_fips="01",
+            ),
+        ],
+        country="us",
+    )
+
+    # When
+    reconciled = apply_ledger_target_profile(
+        registry,
+        _hierarchy_profile(),
+        context={"include_congressional_district_targets": False},
+    )
+
+    # Then
+    assert reconciled.specs[0].value == pytest.approx(30.0)
+    assert "hierarchy_reconciliation_rule" not in reconciled.specs[0].metadata
+
+
+def test__given_nonzero_parent_and_zero_children__then_hierarchy_fails() -> None:
+    # Given
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "al_01",
+                value=0.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_02",
+                value=0.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0102",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_state",
+                value=200.0,
+                geography_level="state",
+                geography_id="0400000US01",
+                state_fips="01",
+            ),
+        ],
+        country="us",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="zero-valued children to nonzero parent"):
+        apply_ledger_target_profile(
+            registry,
+            _hierarchy_profile(),
+            context={"include_congressional_district_targets": True},
+        )
+
+
+def test__given_incomplete_hierarchy_children__then_reconciliation_fails() -> None:
+    # Given
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "al_01",
+                value=30.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_state",
+                value=200.0,
+                geography_level="state",
+                geography_id="0400000US01",
+                state_fips="01",
+            ),
+        ],
+        country="us",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="expected 2 child target"):
+        apply_ledger_target_profile(
+            registry,
+            _hierarchy_profile(),
+            context={"include_congressional_district_targets": True},
+        )
+
+
+def test__given_duplicate_hierarchy_child_ids__then_reconciliation_fails() -> None:
+    # Given
+    registry = TargetRegistry(
+        [
+            _hierarchy_target(
+                "al_01a",
+                value=30.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_01b",
+                value=70.0,
+                geography_level="congressional_district",
+                geography_id="5001900US0101",
+                state_fips="01",
+            ),
+            _hierarchy_target(
+                "al_state",
+                value=200.0,
+                geography_level="state",
+                geography_id="0400000US01",
+                state_fips="01",
+            ),
+        ],
+        country="us",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="duplicate child ids"):
+        apply_ledger_target_profile(
+            registry,
+            _hierarchy_profile(),
+            context={"include_congressional_district_targets": True},
+        )
+
+
 def test__given_malformed_value__then_it_is_reported_as_unsupported() -> None:
     # Given
     mapping = LedgerTargetMapping(
@@ -955,7 +1282,6 @@ def test__given_current_soi_like_row__then_ledger_adapter_matches_current_target
     # Then
     assert spec.entity == "tax_unit"
     assert spec.measure == "adjusted_gross_income"
-    assert spec.aggregation == "sum"
     assert spec.value == 15_286_017_359_000
     assert spec.period == 2023
     assert spec.family == "irs_soi"

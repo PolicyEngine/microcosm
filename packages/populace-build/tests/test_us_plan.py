@@ -6,16 +6,27 @@ from pathlib import Path
 
 import pytest
 
-from populace.build.source_manifest import SourceManifest, SourceOperationSpec
-from populace.build.us import (
+from populace.build.source_manifest import (
+    SourceManifest,
+    SourceOperationSpec,
+    SupportSpineSourceSpec,
+    SupportSpineSpec,
+)
+from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_STAGE_NAMES,
+    US_SUPPORT_SPINE_MANIFEST,
+    US_SUPPORT_SPINE_SPEC,
     BuildConfig,
     us_plan,
+)
+from populace.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -84,6 +95,79 @@ class TestUsSources:
         assert US_SOURCE_MANIFEST.version == 1
         assert len(US_SOURCE_STAGE_SPECS) >= len(US_DONORS)
 
+    def test_support_spine_manifest_declares_period_relative_asec_pool(self) -> None:
+        assert US_SUPPORT_SPINE_MANIFEST.country == "us"
+        assert US_SUPPORT_SPINE_SPEC.stage == "asec_load"
+        assert US_SUPPORT_SPINE_SPEC.method == "pool_raw_asec_years"
+        assert US_SUPPORT_SPINE_SPEC.target_year_from_build_config is True
+
+        sources = US_SUPPORT_SPINE_SPEC.sources
+        assert [source.role for source in sources] == [
+            "current_asec",
+            "prior_asec",
+        ]
+        assert [source.source_year_offset for source in sources] == [0, -1]
+        assert [source.share for source in sources] == [0.5, 0.5]
+        assert [source.resolved_year(2024) for source in sources] == [2024, 2023]
+        assert all(source.source.startswith("https://") for source in sources)
+
+    def test_support_spine_parser_rejects_non_period_relative_sources(self) -> None:
+        with pytest.raises(ValueError, match="target_year_from_build_config"):
+            SupportSpineSpec.from_mapping(
+                {
+                    "stage": "asec_load",
+                    "method": "pool_raw_asec_years",
+                    "target_year_from_build_config": False,
+                    "sources": [
+                        {
+                            "role": "current",
+                            "survey": "CPS ASEC",
+                            "source": "https://www.census.gov/programs-surveys/cps.html",
+                            "source_year_offset": 0,
+                        }
+                    ],
+                }
+            )
+
+    def test_support_spine_parser_requires_explicit_source_shares(self) -> None:
+        with pytest.raises(ValueError, match="explicit shares"):
+            SupportSpineSpec.from_mapping(
+                {
+                    "stage": "asec_load",
+                    "method": "pool_raw_asec_years",
+                    "target_year_from_build_config": True,
+                    "sources": [
+                        {
+                            "role": "current",
+                            "survey": "CPS ASEC",
+                            "source": "https://www.census.gov/programs-surveys/cps.html",
+                            "source_year_offset": 0,
+                        }
+                    ],
+                }
+            )
+
+    def test_support_spine_parser_rejects_boolean_numeric_fields(self) -> None:
+        with pytest.raises(ValueError, match="source_year_offset"):
+            SupportSpineSourceSpec.from_mapping(
+                {
+                    "role": "current",
+                    "survey": "CPS ASEC",
+                    "source": "https://www.census.gov/programs-surveys/cps.html",
+                    "source_year_offset": True,
+                }
+            )
+        with pytest.raises(ValueError, match="share"):
+            SupportSpineSourceSpec.from_mapping(
+                {
+                    "role": "current",
+                    "survey": "CPS ASEC",
+                    "source": "https://www.census.gov/programs-surveys/cps.html",
+                    "source_year_offset": 0,
+                    "share": True,
+                }
+            )
+
     def test_every_donor_stage_has_matching_source_spec(self) -> None:
         specs = US_SOURCE_MANIFEST.stage_map()
         for stage, donor in US_DONORS.items():
@@ -127,7 +211,7 @@ class TestUsSources:
                     "function": "add_scf_wealth",
                 }
             )
-        with pytest.raises(ValueError, match="allowed manifest operation"):
+        with pytest.raises(ValueError, match="executable-loader"):
             SourceOperationSpec.from_mapping({"kind": "custom_loader"})
         with pytest.raises(ValueError, match="executable-loader key"):
             SourceOperationSpec.from_mapping(
@@ -135,6 +219,38 @@ class TestUsSources:
                     "kind": "read_table",
                     "table": "scf_household",
                     "postprocess": [{"callable": "clean_scf"}],
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "callable_path": "populace.build.us_runtime.sources:clean",
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "entry-point": "populace.build.us_runtime.sources:clean",
+                }
+            )
+        with pytest.raises(ValueError, match="executable-loader key"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "handler": "clean_scf",
+                }
+            )
+        with pytest.raises(ValueError, match="executable Python entrypoint"):
+            SourceOperationSpec.from_mapping(
+                {
+                    "kind": "read_table",
+                    "table": "scf_household",
+                    "transform_path": "populace.build.us_runtime.sources:clean",
                 }
             )
 
@@ -167,8 +283,8 @@ class TestUsSources:
             )
 
     def test_legacy_sources_import_path_is_metadata_only(self) -> None:
-        from populace.build.us import sources
-        from populace.build.us.sources import (
+        from populace.build.us_runtime import sources
+        from populace.build.us_runtime.sources import (
             SCF_TARGETS,
             _support_guard,
             add_scf_wealth,
@@ -197,17 +313,45 @@ class TestUsSources:
         assert "partnership_income" in outputs
         assert "s_corp_income" in outputs
         assert "partnership_self_employment_net_earnings" in outputs
+        assert "qualified_dividend_income" in outputs
+        assert "non_qualified_dividend_income" in outputs
+        assert "home_mortgage_interest" in outputs
+        assert "charitable_cash_donations" in outputs
+        assert "charitable_non_cash_donations" in outputs
         assert "partnership_s_corp_income" not in outputs
         assert "partnership_se_income" not in outputs
+        assert "partnership_s_corp_loss" not in outputs
+        assert "qualified_business_income" not in outputs
+        assert "salt_deduction" not in outputs
+        assert "medical_expense_deduction" not in outputs
+        assert "charitable_deduction" not in outputs
+        assert "interest_deduction" not in outputs
+
+    def test_puf_stage_outputs_match_runtime_defaults(self) -> None:
+        outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
+        runtime_outputs = set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS) | set(
+            PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        )
+
+        assert outputs == runtime_outputs
 
     def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
         operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
         kinds = [operation.kind for operation in operations]
         assert (
             kinds.index("read_table")
+            < kinds.index("derive_puf_policyengine_variables")
             < kinds.index("disaggregate_aggregate_records")
             < kinds.index("uprate")
         )
+
+        derive_operation = operations[kinds.index("derive_puf_policyengine_variables")]
+        assert derive_operation.parameters == {
+            "ordinary_dividend_source": "E00600",
+            "qualified_dividend_source": "E00650",
+            "qualified_dividend_output": "qualified_dividend_income",
+            "non_qualified_dividend_output": "non_qualified_dividend_income",
+        }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]
         assert operation.parameters == {
@@ -250,7 +394,7 @@ class TestUsSources:
         for path in ROOT.rglob("*"):
             if not path.is_file() or path.suffix not in checked_suffixes:
                 continue
-            if ".git" in path.parts or ".venv" in path.parts:
+            if ".git" in path.parts or ".venv" in path.parts or "out" in path.parts:
                 continue
             text = path.read_text(encoding="utf-8")
             for needle in forbidden:

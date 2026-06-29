@@ -25,7 +25,7 @@ def _spec(**overrides) -> TargetSpec:
     base = dict(
         name="census/population",
         entity="household",
-        aggregation="count",
+        measure="household_count",
         value=1000.0,
         source="Census ACS 2024 table B01003",
         family="census",
@@ -54,6 +54,23 @@ class TestTargetSpec:
     def test_callable_measure_is_refused(self) -> None:
         with pytest.raises(TypeError, match="callables do not serialize"):
             _spec(measure=lambda frame: frame)
+
+    def test_missing_measure_is_refused_by_constructor(self) -> None:
+        with pytest.raises(TypeError, match="measure"):
+            TargetSpec(
+                name="census/population",
+                entity="household",
+                value=1000.0,
+                source="Census ACS 2024 table B01003",
+            )
+
+    def test_none_measure_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="measure must be a column name"):
+            _spec(measure=None)
+
+    def test_empty_measure_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="measure is required"):
+            _spec(measure="")
 
     def test_positive_se_only(self) -> None:
         with pytest.raises(ValueError, match="se must be positive"):
@@ -149,6 +166,15 @@ class TestArtifactRoundTrip:
         with pytest.raises(ValueError, match="not a populace target registry"):
             TargetRegistry.from_json(path)
 
+    def test_old_registry_format_is_refused(self, tmp_path) -> None:
+        registry = TargetRegistry([_spec()], country="us")
+        path = registry.to_json(tmp_path / "registry.json")
+        payload = json.loads(path.read_text())
+        payload["populace_target_registry"] = 1
+        path.write_text(json.dumps(payload))
+        with pytest.raises(ValueError, match="format revision 2"):
+            TargetRegistry.from_json(path)
+
 
 class TestEndToEnd:
     def test_registry_drives_a_real_calibration(self, feasible_frame) -> None:
@@ -159,7 +185,6 @@ class TestEndToEnd:
                 TargetSpec(
                     name="acs/income",
                     entity="household",
-                    aggregation="sum",
                     measure="income",
                     value=truths["income"] * 1.2,
                     source="ACS B19025",
@@ -184,14 +209,22 @@ class TestSurfaceIngest:
                 "puf": "IRS SOI / PUF uprated",
             },
             signed_names=["puf/net_short_term_capital_gains"],
+            measures={
+                "census/population": "household_count",
+                "puf/net_short_term_capital_gains": "net_short_term_capital_gains",
+            },
         )
         assert specs[0].family == "census"
         assert specs[1].signed and specs[1].value < 0
+        assert specs[0].measure == "household_count"
 
     def test_unknown_family_is_refused(self) -> None:
         with pytest.raises(ValueError, match="no source in"):
             specs_from_pe_surface(
-                ["mystery/thing"], [1.0], family_sources={"census": "x"}
+                ["mystery/thing"],
+                [1.0],
+                family_sources={"census": "x"},
+                measures={"mystery/thing": "thing"},
             )
 
     def test_unprefixed_name_is_refused(self) -> None:
@@ -201,6 +234,10 @@ class TestSurfaceIngest:
     def test_misaligned_lengths_refused(self) -> None:
         with pytest.raises(ValueError, match="must align"):
             specs_from_pe_surface(["a/b"], [1.0, 2.0], family_sources={"a": "s"})
+
+    def test_missing_measure_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="no measure"):
+            specs_from_pe_surface(["a/b"], [1.0], family_sources={"a": "s"})
 
 
 class TestVersionStability:

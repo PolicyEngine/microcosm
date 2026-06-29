@@ -1,17 +1,6 @@
-"""UK build helpers for Populace-owned raw-source and local artifacts."""
+"""UK build helpers for Populace-owned local-geography artifacts."""
 
-from __future__ import annotations
-
-from collections.abc import Callable, Mapping
-from importlib.resources import files
-
-from populace.build.plan import DonorSpec, Stage, StagePlan
-from populace.build.source_manifest import (
-    SourceManifest,
-    SourceStageSpec,
-    load_source_manifest,
-)
-from populace.build.uk.geography_sources import (
+from populace.build.uk_runtime.geography_sources import (
     ENGLAND_LAD_REGION_URL,
     ENGLAND_WALES_OA2021_COUNT,
     EW_OA_CONSTITUENCY_URL,
@@ -52,7 +41,7 @@ from populace.build.uk.geography_sources import (
     update_england_wales_lad_codes,
     write_geography_crosswalk,
 )
-from populace.build.uk.local_geography import (
+from populace.build.uk_runtime.local_geography import (
     AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN,
     LONG_GEOGRAPHY_COLUMNS,
     StackedLocalMatrix,
@@ -67,7 +56,7 @@ from populace.build.uk.local_geography import (
     stacked_weights_to_long,
     write_long_geography_weights,
 )
-from populace.build.uk.local_runner import (
+from populace.build.uk_runtime.local_runner import (
     UKLocalCandidateResult,
     build_local_candidate,
     build_local_candidate_from_dataset,
@@ -81,13 +70,14 @@ from populace.build.uk.local_runner import (
     summarize_local_candidate,
     write_local_candidate_outputs,
 )
-from populace.build.uk.local_solver import (
+from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     solve_assigned_local_weights,
     solve_stacked_local_weights,
 )
-from populace.build.uk.local_targets import (
+from populace.build.uk_runtime.local_targets import (
     AGE_BANDS,
+    AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
     AREA_TYPES,
     COUNTRY_TO_REGION,
     INCOME_VARIABLES,
@@ -95,9 +85,10 @@ from populace.build.uk.local_targets import (
     area_groups_from_codes,
     compute_household_metrics,
     metric_names,
+    metric_names_from_target_profile,
     metric_tables_by_area_group,
 )
-from populace.build.uk.rowwise_dataset import (
+from populace.build.uk_runtime.rowwise_dataset import (
     BENUNIT_ID_COLUMNS,
     HOUSEHOLD_ID_COLUMNS,
     PERSON_ID_COLUMNS,
@@ -108,7 +99,7 @@ from populace.build.uk.rowwise_dataset import (
     validate_uk_rowwise_dataset_tables,
     write_uk_rowwise_dataset,
 )
-from populace.build.uk.rowwise_geography import (
+from populace.build.uk_runtime.rowwise_geography import (
     AREA_TYPE_TO_CROSSWALK_COLUMN,
     CROSSWALK_COLUMNS,
     FRS_REGION_TO_COUNTRY,
@@ -122,7 +113,7 @@ from populace.build.uk.rowwise_geography import (
     prepare_geography_crosswalk,
     validate_geography_coverage,
 )
-from populace.build.uk.spi_support import (
+from populace.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
@@ -139,84 +130,10 @@ from populace.build.uk.spi_support import (
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.frame import Frame
-
-
-def _load_uk_source_manifest() -> SourceManifest:
-    return load_source_manifest(files(__package__).joinpath("source_stages.json"))
-
-
-UK_SOURCE_MANIFEST = _load_uk_source_manifest()
-UK_STAGE_NAMES: tuple[str, ...] = UK_SOURCE_MANIFEST.plan_stages
-_UK_SOURCE_STAGE_MAP = UK_SOURCE_MANIFEST.stage_map()
-_UNKNOWN_UK_SOURCE_STAGES = sorted(set(_UK_SOURCE_STAGE_MAP) - set(UK_STAGE_NAMES))
-if _UNKNOWN_UK_SOURCE_STAGES:
-    raise ValueError(
-        "UK source manifest stage(s) are not declared in plan_stages: "
-        f"{_UNKNOWN_UK_SOURCE_STAGES}."
-    )
-UK_SOURCE_STAGE_SPECS: tuple[SourceStageSpec, ...] = tuple(
-    _UK_SOURCE_STAGE_MAP[name] for name in UK_STAGE_NAMES if name in _UK_SOURCE_STAGE_MAP
-)
-UK_DONORS: Mapping[str, DonorSpec] = {
-    stage.stage: DonorSpec(
-        survey=stage.survey,
-        source=stage.source,
-        notes=stage.notes,
-    )
-    for stage in UK_SOURCE_STAGE_SPECS
-    if stage.role == "donor"
-}
-UK_STRUCTURAL_SOURCE_STAGES: tuple[str, ...] = tuple(
-    stage.stage for stage in UK_SOURCE_STAGE_SPECS if stage.role != "donor"
-)
-UK_SOURCE_OUTPUTS: frozenset[str] = frozenset(
-    output for stage in UK_SOURCE_STAGE_SPECS for output in stage.outputs
-)
-UK_SOURCE_OUTPUT_STAGES: Mapping[str, tuple[str, ...]] = {
-    output: tuple(
-        stage.stage for stage in UK_SOURCE_STAGE_SPECS if output in stage.outputs
-    )
-    for output in sorted(UK_SOURCE_OUTPUTS)
-}
-UK_REWRITTEN_SOURCE_OUTPUT_STAGES: Mapping[str, tuple[str, ...]] = {
-    output: stages
-    for output, stages in UK_SOURCE_OUTPUT_STAGES.items()
-    if len(stages) > 1
-}
-UK_NONNEGATIVE_SOURCE_OUTPUTS: frozenset[str] = frozenset(
-    output for stage in UK_SOURCE_STAGE_SPECS for output in stage.nonnegative_outputs
-)
-
-
-def uk_plan(
-    implementations: Mapping[str, Callable[[Frame], Frame]],
-) -> StagePlan:
-    """Assemble the UK build plan from injected stage implementations."""
-
-    missing = [name for name in UK_STAGE_NAMES if name not in implementations]
-    if missing:
-        raise ValueError(
-            f"uk_plan needs an implementation for every declared stage; "
-            f"missing {missing}. There are no stubs or fallbacks by design."
-        )
-    unknown = sorted(set(implementations) - set(UK_STAGE_NAMES))
-    if unknown:
-        raise ValueError(
-            f"Unknown stage implementation(s) {unknown}; declared stages "
-            f"are {list(UK_STAGE_NAMES)}."
-        )
-    return StagePlan(
-        Stage(
-            name=name,
-            transform=implementations[name],
-            donor=UK_DONORS.get(name),
-        )
-        for name in UK_STAGE_NAMES
-    )
 
 __all__ = [
     "AGE_BANDS",
+    "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",
     "AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN",
@@ -259,20 +176,11 @@ __all__ = [
     "StackedLocalSolveResult",
     "UK_POSTCODE_OA_MAY25_ZIP_URL",
     "UK_POSTCODE_PCON_MAY24_ZIP_URL",
-    "UK_DONORS",
     "UKLocalCandidateResult",
-    "UK_NONNEGATIVE_SOURCE_OUTPUTS",
     "UKRowwiseDatasetResult",
     "UKSPISupportResult",
-    "UK_SOURCE_MANIFEST",
-    "UK_SOURCE_OUTPUTS",
-    "UK_SOURCE_OUTPUT_STAGES",
-    "UK_SOURCE_STAGE_SPECS",
-    "UK_REWRITTEN_SOURCE_OUTPUT_STAGES",
     "UK_SINGLE_YEAR_TABLES",
     "UK_SPI_SUPPORT_STAGE_NAME",
-    "UK_STAGE_NAMES",
-    "UK_STRUCTURAL_SOURCE_STAGES",
     "align_area_targets",
     "assigned_weights_to_long",
     "area_support_summary",
@@ -314,6 +222,7 @@ __all__ = [
     "load_uk_postcode_oa_lookup",
     "load_uk_dataset",
     "metric_names",
+    "metric_names_from_target_profile",
     "metric_tables_by_area_group",
     "prepare_area_frame",
     "prepare_geography_crosswalk",
@@ -330,7 +239,6 @@ __all__ = [
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",
-    "uk_plan",
     "update_england_wales_lad_codes",
     "validate_uk_rowwise_dataset_tables",
     "validate_geography_coverage",

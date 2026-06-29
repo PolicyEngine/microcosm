@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.uk import (
+from populace.build.uk_runtime import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     assign_household_geography,
     clone_entity_frame,

@@ -3,7 +3,7 @@ from hashlib import sha256
 from importlib.resources import files
 
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
-from populace.build.us import (
+from populace.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_REFERENCES,
@@ -15,7 +15,9 @@ from populace.build.us import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
-from populace.build.us.fiscal_targets import US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES
+from populace.build.us_runtime.fiscal_targets import (
+    US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
+)
 
 REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -25,7 +27,7 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "charitable_deduction": (
         "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss"
     ),
-    "deductible_mortgage_interest": (
+    "interest_deduction": (
         "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss"
     ),
     "qualified_business_income_deduction": (
@@ -147,8 +149,382 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
     compile_us_fiscal_target_registry(facts)
 
 
+def test_soi_congressional_district_targets_are_opt_in() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact(
+            "return_count",
+            100_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "return_count",
+            215_360,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
+        _soi_congressional_district_fact(
+            "tax_filer_individual_count",
+            597_980,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            10_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "taxable_interest_amount",
+            135_822_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "premium_tax_credit_amount",
+            90_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "qualified_business_income_deduction_amount",
+            2_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "qualified_business_income_deduction_returns",
+            12_345,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "interest_paid_deduction_returns",
+            23_456,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "charitable_returns",
+            34_567,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "eitc_three_or_more_children_amount",
+            45_678_901,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+            dimensions={"eitc_child_count": "3plus"},
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            12_915_824_000,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
+        _soi_congressional_district_fact(
+            "return_count",
+            315_360,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            22_915_824_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+        _soi_congressional_district_fact(
+            "premium_tax_credit_amount",
+            180_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+
+    default_registry = compile_us_fiscal_target_registry(facts)
+    cd_registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    default_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
+    }
+    cd_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in cd_registry.specs
+    }
+    cd_specs = [
+        spec
+        for spec in cd_registry.specs
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+    ]
+    assert not any("hi_01" in source_id for source_id in default_source_ids)
+    assert not any("hi_total" in source_id for source_id in default_source_ids)
+    assert not any(
+        source_id.endswith("premium_tax_credit_amount")
+        and ".congressional_district_2022." in source_id
+        for source_id in cd_source_ids
+    )
+    assert any("hi_total.return_count" in source_id for source_id in cd_source_ids)
+    assert any(
+        "hi_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
+    )
+    assert len(cd_specs) == 11
+    by_measure = {
+        spec.metadata["source_measure_id"]: spec
+        for spec in cd_specs
+        if spec.metadata.get("congressional_district_geoid") == "1501"
+    }
+    returns = by_measure["return_count"]
+    assert returns.metadata["measure_mode"] == "indicator_sum"
+    assert returns.metadata["source_variable"] == "count"
+    assert returns.metadata["state_fips"] == "15"
+    assert returns.metadata["congressional_district_geoid"] == "1501"
+    assert returns.metadata["ledger_geography_id"] == "5001700US1501"
+    assert returns.value == 100_000
+
+    individuals = by_measure["tax_filer_individual_count"]
+    assert individuals.metadata["measure_mode"] == "sum"
+    assert individuals.metadata["source_variable"] == "tax_filer_individual_count"
+    assert individuals.metadata["base_variable"] == "tax_unit_size"
+    assert individuals.value == 597_980
+
+    agi = by_measure["adjusted_gross_income"]
+    assert agi.metadata["measure_mode"] == "sum"
+    assert agi.metadata["base_variable"] == "adjusted_gross_income"
+    assert agi.value == 10_000_000_000
+
+    taxable_interest = by_measure["taxable_interest_amount"]
+    assert taxable_interest.metadata["measure_mode"] == "sum"
+    assert taxable_interest.metadata["source_variable"] == "taxable_interest_income"
+    assert taxable_interest.metadata["base_variable"] == "taxable_interest_income"
+    assert taxable_interest.value == 135_822_000
+
+    qbi = by_measure["qualified_business_income_deduction_amount"]
+    assert qbi.metadata["measure_mode"] == "sum"
+    assert qbi.metadata["source_variable"] == "qualified_business_income_deduction"
+    assert qbi.metadata["base_variable"] == "qualified_business_income_deduction"
+    assert qbi.value == 2_000_000_000
+
+    qbi_returns = by_measure["qualified_business_income_deduction_returns"]
+    assert qbi_returns.metadata["measure_mode"] == "indicator_sum"
+    assert (
+        qbi_returns.metadata["base_variable"] == "qualified_business_income_deduction"
+    )
+    assert qbi_returns.value == 12_345
+
+    interest_returns = by_measure["interest_paid_deduction_returns"]
+    assert interest_returns.metadata["measure_mode"] == "indicator_sum"
+    assert interest_returns.metadata["base_variable"] == "interest_deduction"
+    assert interest_returns.metadata["itemized_only"] == "true"
+    assert interest_returns.value == 23_456
+
+    charitable_returns = by_measure["charitable_returns"]
+    assert charitable_returns.metadata["measure_mode"] == "indicator_sum"
+    assert charitable_returns.metadata["base_variable"] == "charitable_deduction"
+    assert charitable_returns.metadata["itemized_only"] == "true"
+    assert charitable_returns.value == 34_567
+
+    eitc_three_plus = by_measure["eitc_three_or_more_children_amount"]
+    assert eitc_three_plus.metadata["measure_mode"] == "sum"
+    assert eitc_three_plus.metadata["base_variable"] == "eitc"
+    assert eitc_three_plus.metadata["ledger_filter_eitc_child_count"] == "3plus"
+    assert eitc_three_plus.value == 45_678_901
+
+
+def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            30_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            70_000_000_000,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            200_000_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.hi.all."
+                "adjusted_gross_income"
+            ),
+            measure_id="adjusted_gross_income",
+            value=400_000_000_000,
+            geography_level="state",
+            geography_id="0400000US15",
+            layout_record_set_id="irs_soi.ty2022.historic_table_2.state_broad.hi",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    cd_specs = {
+        spec.metadata["congressional_district_geoid"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id") == "adjusted_gross_income"
+        and spec.metadata.get("ledger_geography_level") == "congressional_district"
+    }
+    assert cd_specs["1501"].value == 60_000_000_000
+    assert cd_specs["1502"].value == 140_000_000_000
+    assert (
+        cd_specs["1501"].metadata["hierarchy_reconciliation_rule"]
+        == "congressional_district_children_scale_to_state_parent"
+    )
+    assert cd_specs["1501"].metadata["hierarchy_parent_geography_id"] == "0400000US15"
+    assert (
+        cd_specs["1501"].metadata["hierarchy_parent_target_name"]
+        == "irs_soi.ty2023.congressional_district_2022.all_returns.hi_total."
+        "adjusted_gross_income"
+    )
+    assert cd_specs["1501"].metadata["hierarchy_expected_child_count"] == "2"
+    assert cd_specs["1501"].metadata["hierarchy_observed_child_count"] == "2"
+    assert cd_specs["1501"].metadata["hierarchy_reconciliation_factor"] == "2"
+
+
+def test_soi_congressional_district_hierarchy_uses_current_vintage_counts() -> None:
+    payload = json.loads(
+        files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
+    )
+    counts = payload["target_profile"]["hierarchy_reconciliations"][0][
+        "child_completeness"
+    ]["expected_child_count_by_parent_key"]
+
+    assert counts["06"] == 52
+    assert counts["08"] == 8
+    assert counts["12"] == 28
+    assert counts["02"] == 1
+    assert counts["11"] == 1
+    assert counts["30"] == 2
+    assert counts["36"] == 26
+    assert counts["48"] == 38
+    assert counts["56"] == 1
+    assert {key for key, count in counts.items() if count == 1} == {
+        "02",
+        "10",
+        "11",
+        "38",
+        "46",
+        "50",
+        "56",
+    }
+    assert sum(counts.values()) == 436
+
+
+def test_soi_congressional_district_reconciliation_requires_complete_children() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            30_000_000_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
+        ),
+        _soi_congressional_district_fact(
+            "adjusted_gross_income",
+            200_000_000_000,
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+
+    try:
+        compile_us_fiscal_target_registry(
+            facts,
+            include_congressional_district_targets=True,
+        )
+    except ValueError as exc:
+        assert "expected 2 child target" in str(exc)
+    else:
+        raise AssertionError("Expected incomplete CD hierarchy to fail.")
+
+
+def test_acs_congressional_district_age_targets_are_opt_in() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _census_acs_population_age_fact(
+            source_record_id=(
+                "census_acs.acs1_2024.s0101.national_age.age_0_to_4.population"
+            ),
+            value=3_000_000,
+        ),
+        _census_acs_population_age_fact(
+            source_record_id=(
+                "census_acs.acs1_2024.s0101.state_age.01.age_0_to_4.population"
+            ),
+            value=240_000,
+            geography_level="state",
+            geography_id="0400000US01",
+            layout_record_set_id="census_acs.acs1_2024.s0101.state_age.01",
+        ),
+        _census_acs_congressional_district_age_fact(),
+    ]
+
+    default_registry = compile_us_fiscal_target_registry(facts)
+    cd_registry = compile_us_fiscal_target_registry(
+        facts,
+        include_congressional_district_targets=True,
+    )
+
+    default_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
+    }
+    cd_specs = [
+        spec
+        for spec in cd_registry.specs
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+    ]
+    assert not any(
+        "s0101.congressional_district_age" in source_id
+        for source_id in default_source_ids
+    )
+    assert not any(
+        "s0101.national_age" in source_id for source_id in default_source_ids
+    )
+    assert not any("s0101.state_age" in source_id for source_id in default_source_ids)
+    assert not any(
+        "s0101.national_age" in spec.metadata["ledger_source_record_id"]
+        or "s0101.state_age" in spec.metadata["ledger_source_record_id"]
+        for spec in cd_registry.specs
+    )
+    assert len(cd_specs) == 1
+    target = cd_specs[0]
+    assert target.family == "census_population"
+    assert target.metadata["materializer"] == "population_age"
+    assert target.metadata["measure_mode"] == "indicator_sum"
+    assert target.metadata["geography_scope"] == "congressional_district"
+    assert target.metadata["state_fips"] == "01"
+    assert target.metadata["congressional_district_geoid"] == "0101"
+    assert target.metadata["ledger_geography_id"] == "5001900US0101"
+    assert target.metadata["age_lower_bound"] == "0"
+    assert target.metadata["age_upper_bound"] == "5"
+    assert target.value == 42_000
+
+
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 36
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -288,6 +664,7 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                 "value": 90_000_000,
                 "period": {"value": 2024},
                 "geography": {"level": "country", "id": "0100000US"},
+                "aggregation": {"method": "sum"},
                 "layout": {"measure_id": "total_medicaid_chip_enrollment"},
                 "observed_measure": {
                     "source_name": "cms_medicaid",
@@ -490,6 +867,82 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
     assert spec.period == 2024
 
 
+def test_dynamic_us_fiscal_targets_skip_zero_cms_month_when_prior_positive_exists() -> (
+    None
+):
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-11",
+                value=306_161,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=0,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert (
+        "cms_medicaid.month2024_12.ri.total_medicaid_chip_enrollment"
+        not in by_source_record_id
+    )
+    spec = by_source_record_id[
+        "cms_medicaid.month2024_11.ri.total_medicaid_chip_enrollment"
+    ]
+    assert spec.value == 306_161
+    assert spec.metadata["source_period"] == "2024-11"
+    assert spec.metadata["state_fips"] == "44"
+
+
+def test_dynamic_us_fiscal_targets_drop_zero_cms_month_when_only_future_positive_exists() -> (
+    None
+):
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=0,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2025-12",
+                value=301_340,
+                geography_level="state",
+                geography_id="0400000US44",
+                geography_slug="ri",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert (
+        "cms_medicaid.month2024_12.ri.total_medicaid_chip_enrollment"
+        not in source_record_ids
+    )
+    assert (
+        "cms_medicaid.month2025_12.ri.total_medicaid_chip_enrollment"
+        not in source_record_ids
+    )
+
+
 def test_cms_aca_references_use_current_annual_aca_variables() -> None:
     marketplace_source_record_id = (
         "cms_aca.oep2024.state_marketplace.ca.marketplace_enrollment"
@@ -568,6 +1021,12 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
     returns_source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns"
     )
+    state_amount_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.premium_tax_credit_amount"
+    )
+    state_returns_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.premium_tax_credit_returns"
+    )
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -587,6 +1046,26 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
                 period_value=2022,
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
+            _dynamic_ledger_fact(
+                source_record_id=state_amount_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_amount",
+                value=6_000_000_000,
+                period_value=2022,
+                geography_level="state",
+                geography_id="0400000US06",
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=state_returns_source_record_id,
+                source_name="irs_soi",
+                measure_id="premium_tax_credit_returns",
+                value=1_000_000,
+                period_value=2022,
+                geography_level="state",
+                geography_id="0400000US06",
+                dimensions={"income_range": "all", "filing_status": "all"},
+            ),
         ]
     )
 
@@ -602,9 +1081,18 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
 
     returns = specs[returns_source_record_id]
     assert returns.family == "irs_soi"
+    assert returns.metadata["target_role"] == "aca_ptc_returns"
     assert returns.metadata["variable"] == "assigned_aca_ptc"
     assert returns.metadata["materializer"] == "irs_soi_slice"
     assert returns.metadata["measure_mode"] == "indicator_sum"
+
+    state_amount = specs[state_amount_source_record_id]
+    assert state_amount.metadata["target_role"] == "aca_spending"
+    assert state_amount.metadata["state_fips"] == "06"
+
+    state_returns = specs[state_returns_source_record_id]
+    assert state_returns.metadata["target_role"] == "aca_ptc_returns"
+    assert state_returns.metadata["state_fips"] == "06"
     assert returns.metadata["base_variable"] == "assigned_aca_ptc"
     assert "count" not in returns.metadata
 
@@ -699,6 +1187,832 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
     assert spec.metadata["ledger_layout_record_set_id"] == (
         "irs_soi.ty2024.table_2_5.eitc_by_agi_children.no_qualifying_children"
     )
+
+
+def test_cross_period_soi_eitc_decomposition_uprates_to_active_total() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2024,
+                measure_id="total_earned_income_credit_amount",
+                value=1_200,
+            ),
+            _soi_eitc_total_fact(
+                2024,
+                measure_id="total_earned_income_credit_returns",
+                value=60,
+            ),
+            *_soi_eitc_child_total_facts(2023, measure_id="eitc_total"),
+            *_soi_eitc_child_total_facts(2023, measure_id="eitc_returns"),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=returns_source_record_id,
+                measure_id="eitc_returns",
+                value=10,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    amount = specs[amount_source_record_id]
+    assert amount.value == 30
+    assert amount.metadata["requires_total_eitc_uprating"] == "true"
+    assert amount.metadata["uprating_index"] == "total_eitc_amount"
+    assert amount.metadata["uprating_from_period"] == "2023"
+    assert amount.metadata["uprating_to_period"] == "2024"
+    assert amount.metadata["uprating_factor"] == "1.2"
+
+    returns = specs[returns_source_record_id]
+    assert returns.value == 12
+    assert returns.metadata["requires_total_eitc_uprating"] == "true"
+    assert returns.metadata["uprating_index"] == "total_eitc_returns"
+    assert returns.metadata["uprating_factor"] == "1.2"
+
+    scaled_child_total = specs[
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+        "one_qualifying_child.total.eitc_total"
+    ]
+    assert scaled_child_total.value == 240
+    assert scaled_child_total.metadata["uprating_factor"] == "1.2"
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_uprates_to_active_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_returns"
+                ),
+                measure_id="taxable_interest_returns",
+                value=30_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2024,
+                source_record_id=(
+                    "irs_soi.ty2024.state_2022.us.all.taxable_interest_amount"
+                ),
+                value=360_000_000_000,
+                layout_record_set_id="irs_soi.ty2024.state_2022.us",
+            ),
+            _soi_taxable_interest_fact(
+                2024,
+                source_record_id=(
+                    "irs_soi.ty2024.state_2022.us.all.taxable_interest_returns"
+                ),
+                measure_id="taxable_interest_returns",
+                value=33_000_000,
+                layout_record_set_id="irs_soi.ty2024.state_2022.us",
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=returns_source_record_id,
+                measure_id="taxable_interest_returns",
+                value=2_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.value == 25_200_000_000
+    assert spec.metadata["variable"] == "taxable_interest_income"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["requires_total_soi_uprating"] == "true"
+    assert spec.metadata["uprating_index"] == "total_taxable_interest_amount"
+    assert spec.metadata["uprating_from_period"] == "2022"
+    assert spec.metadata["uprating_to_period"] == "2024"
+    assert spec.metadata["uprating_index_source_period"] == "2024"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.state_2022.us.all.taxable_interest_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "1.2"
+
+    returns = specs[returns_source_record_id]
+    assert returns.value == 2_200_000
+    assert returns.metadata["variable"] == "taxable_interest_income"
+    assert returns.metadata["measure_mode"] == "indicator_sum"
+    assert returns.metadata["requires_total_soi_uprating"] == "true"
+    assert returns.metadata["uprating_index"] == "total_taxable_interest_returns"
+    assert returns.metadata["uprating_factor"] == "1.1"
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_ignores_itemized_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                    "taxable_interest_amount"
+                ),
+                value=165_000_000_000,
+                layout_record_set_id=("irs_soi.ty2023.table_2_1.itemized_all_returns"),
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 21_000_000_000
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "1"
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_uses_latest_available_total() -> (
+    None
+):
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 21_000_000_000
+    assert spec.metadata["uprating_index_source_period"] == "2022"
+    assert spec.metadata["uprating_factor"] == "1"
+
+
+def test_cross_period_soi_taxable_interest_open_ended_agi_slice_without_dimension_is_kept() -> (
+    None
+):
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.500k_plus.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="taxable_interest_amount",
+                value=90_000_000_000,
+                period_value=2022,
+                dimensions={"filing_status": "all"},
+                universe_constraints=[
+                    {
+                        "variable": "adjusted_gross_income",
+                        "operator": ">=",
+                        "value": 500_000,
+                    }
+                ],
+                layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
+                groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+                groupby_value_id="500k_plus",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.value == 90_000_000_000
+    assert spec.metadata["agi_lower_bound"] == "500000.0"
+    assert spec.metadata["agi_upper_bound"] == "inf"
+    assert spec.metadata["requires_total_soi_uprating"] == "true"
+    assert spec.metadata["uprating_factor"] == "1"
+
+
+def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+            ),
+            value=1_000.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns"
+            ),
+            measure_id="net_capital_gains_returns",
+            value=100.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ny.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US36",
+            value=150.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_returns"
+            ),
+            measure_id="net_capital_gains_returns",
+            geography_level="state",
+            geography_id="0400000US06",
+            value=25.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=800.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=(
+                "irs_soi.ty2023.itemized_all_returns.all.net_capital_gains_amount"
+            ),
+            layout_record_set_id="irs_soi.ty2023.itemized_all_returns",
+            value=600.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            measure_id="net_capital_gains_returns",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=40.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount" not in specs
+    )
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns" not in specs
+    )
+    ca_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    ]
+    ny_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ny.all.net_capital_gains_amount"
+    ]
+    ca_returns = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_returns"
+    ]
+    assert ca_amount.value == 200.0
+    assert ny_amount.value == 120.0
+    assert ca_returns.value == 10.0
+    assert ca_amount.metadata["uprating_index"] == "total_net_capital_gains_amount"
+    assert ca_amount.metadata["uprating_factor"] == "0.8"
+    assert (
+        ca_amount.metadata["uprating_index_source_record_id"]
+        == "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount"
+    )
+    assert ca_amount.metadata["stale_distribution_rebased_to_active_total"] == "true"
+    assert ca_returns.metadata["uprating_index"] == "total_net_capital_gains_returns"
+    assert ca_returns.metadata["uprating_factor"] == "0.4"
+
+
+def test_stale_soi_capital_gains_rebases_when_source_national_row_is_not_kept() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+            ),
+            value=1_000.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "net_capital_gains_amount"
+            ),
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id="irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=800.0,
+        ),
+        _soi_capital_gains_fact(
+            2024,
+            source_record_id="irs_soi.ty2024.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2024.table_1_4",
+            value=900.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount" not in specs
+    )
+    ca_amount = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    ]
+    assert ca_amount.value == 225.0
+    assert ca_amount.metadata["uprating_factor"] == "0.9"
+    assert (
+        ca_amount.metadata["uprating_index_source_record_id"]
+        == "irs_soi.ty2024.table_1_4.all.net_capital_gains_amount"
+    )
+
+
+def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
+    state_record_id = (
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=state_record_id,
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+        _soi_capital_gains_fact(
+            2024,
+            source_record_id="irs_soi.ty2024.table_1_4.all.net_capital_gains_amount",
+            layout_record_set_id="irs_soi.ty2024.table_1_4",
+            value=900.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert state_record_id not in source_record_ids
+
+
+def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() -> None:
+    source_record_id = (
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=source_record_id,
+                value=21_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    assert source_record_id not in {spec.name for spec in registry.specs}
+
+
+def test_cross_period_soi_eitc_decomposition_uses_latest_source_backed_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_amount",
+                value=66_270_000_000,
+            ),
+            *_soi_eitc_child_total_facts(
+                2023,
+                measure_id="eitc_total",
+                values={"all_qualifying_children": 66_270_000_000},
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=69_041_649_000,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=source_record_id,
+                measure_id="eitc_total",
+                value=66_270_000,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[source_record_id]
+    assert spec.value == 69_041_649
+    assert spec.metadata["uprating_index"] == "total_eitc_amount"
+    assert spec.metadata["uprating_index_source_period"] == "2024"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        "earned_income_credit.total_earned_income_credit_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "1.04182358533273"
+
+
+def test_cross_period_soi_eitc_decomposition_prefers_agi_specific_factor() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=100,
+                income_range="25k_to_30k",
+                lower=25_000,
+                upper=30_000,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                child_group="no_qualifying_children",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "two_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=15,
+                child_group="two_qualifying_children",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children.25k_to_30k.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                child_group="three_or_more_qualifying_children",
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "agi_eitc_amount"
+    assert spec.metadata["uprating_agi_lower_bound"] == "25000"
+    assert spec.metadata["uprating_agi_upper_bound"] == "30000"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "25k_to_30k.total_earned_income_credit_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_open_ended_decomposition_combines_agi_bins() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "50k_plus.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=80,
+                income_range="50k_to_75k",
+                lower=50_000,
+                upper=75_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=20,
+                income_range="75k_to_100k",
+                lower=75_000,
+                upper=100_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=0,
+                income_range="100k_plus",
+                lower=100_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=5,
+                income_range="50k_plus",
+                child_group="no_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+                income_range="50k_plus",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "two_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=10,
+                income_range="50k_plus",
+                child_group="two_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children.50k_plus.eitc_total"
+                ),
+                measure_id="eitc_total",
+                value=10,
+                income_range="50k_plus",
+                child_group="three_or_more_qualifying_children",
+                lower=50_000,
+                upper=None,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "agi_eitc_amount"
+    assert spec.metadata["uprating_agi_lower_bound"] == "50000"
+    assert spec.metadata["uprating_agi_upper_bound"] == "inf"
+    assert spec.metadata["uprating_index_source_record_ids"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "50k_to_75k.total_earned_income_credit_amount,"
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "75k_to_100k.total_earned_income_credit_amount,"
+        "irs_soi.ty2024.filing_season_week47.eitc_by_agi."
+        "100k_plus.total_earned_income_credit_amount"
+    )
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_uprating_ignores_state_agi_control() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_amount",
+                value=500,
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=10,
+                income_range="25k_to_30k",
+                lower=25_000,
+                upper=30_000,
+                geography_level="state",
+                geography_id="0400000US06",
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "total_eitc_amount"
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_uprating_requires_complete_agi_interval() -> None:
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "50k_plus.eitc_total"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_amount",
+                value=500,
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=1_000,
+            ),
+            _soi_eitc_filing_season_agi_fact(
+                measure_id="total_earned_income_credit_amount",
+                value=80,
+                income_range="50k_to_75k",
+                lower=50_000,
+                upper=75_000,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=amount_source_record_id,
+                measure_id="eitc_total",
+                value=25,
+                income_range="50k_plus",
+                lower=50_000,
+                upper=None,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
+    assert spec.value == 50
+    assert spec.metadata["uprating_index"] == "total_eitc_amount"
+    assert spec.metadata["uprating_factor"] == "2"
+
+
+def test_cross_period_soi_eitc_returns_uprate_to_filing_season_total() -> None:
+    source_record_id = (
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child."
+        "25k_to_30k.eitc_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_eitc_total_fact(
+                2023,
+                measure_id="total_earned_income_credit_returns",
+                value=24_439_936,
+            ),
+            *_soi_eitc_child_total_facts(
+                2023,
+                measure_id="eitc_returns",
+                values={"all_qualifying_children": 24_439_936},
+            ),
+            _soi_eitc_filing_season_total_fact(
+                measure_id="total_earned_income_credit_returns",
+                value=23_837_149,
+            ),
+            _soi_eitc_child_fact(
+                2023,
+                source_record_id=source_record_id,
+                measure_id="eitc_returns",
+                value=24_439.936,
+            ),
+        ],
+        target_period=2024,
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[source_record_id]
+    assert spec.value == 23_837.149
+    assert spec.metadata["uprating_index"] == "total_eitc_returns"
+    assert spec.metadata["uprating_index_source_period"] == "2024"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        "earned_income_credit.total_earned_income_credit_returns"
+    )
+    assert spec.metadata["uprating_factor"] == "0.975335982876551"
 
 
 def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
@@ -963,6 +2277,68 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
             assert spec.metadata["itemized_only"] == itemized_only
 
 
+def test_soi_itemized_return_universe_sets_itemized_filter_for_income_targets() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "taxable_interest_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="taxable_interest_amount",
+            value=165_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "taxable_interest_returns"
+            ),
+            source_name="irs_soi",
+            measure_id="taxable_interest_returns",
+            value=9_500_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "ordinary_dividends_amount"
+            ),
+            source_name="irs_soi",
+            measure_id="ordinary_dividends_amount",
+            value=270_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=(
+                "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+                "adjusted_gross_income"
+            ),
+            source_name="irs_soi",
+            measure_id="adjusted_gross_income",
+            value=7_000_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_2_1.itemized_all_returns",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    specs = {spec.name: spec for spec in registry.specs}
+    for fact in facts:
+        source_record_id = fact["lineage"]["source_record_id"]
+        if source_record_id.startswith("irs_soi.ty2023.table_2_1"):
+            assert specs[source_record_id].metadata["itemized_only"] == "true"
+
+
 def test_soi_qbi_historic_table_2_measures_are_not_direct_targets() -> None:
     registry = compile_us_fiscal_target_registry(
         [
@@ -1051,8 +2427,38 @@ def test_soi_alias_targets_expose_policyengine_base_variable() -> None:
     specs = {spec.name: spec for spec in registry.specs}
     spec = specs[source_record_id]
     assert spec.family == "irs_soi"
-    assert spec.metadata["variable"] == "ordinary_dividends"
-    assert spec.metadata["base_variable"] == "dividend_income"
+    assert spec.metadata["variable"] == "ordinary_dividend_income"
+    assert spec.metadata["source_variable"] == "ordinary_dividends"
+    assert spec.metadata["base_variables"] == (
+        "qualified_dividend_income,non_qualified_dividend_income"
+    )
+    assert "base_variable" not in spec.metadata
+    assert spec.metadata["measure_mode"] == "sum"
+
+
+def test_cbo_net_business_income_uses_source_aligned_policyengine_variable() -> None:
+    source_record_id = (
+        "cbo.cy2024.income_by_source.net_business_income.projected_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="cbo",
+                measure_id="projected_amount",
+                groupby_dimension="income_source",
+                groupby_value_id="net_business_income",
+                value=1_700_000_000_000,
+            ),
+        ]
+    )
+
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "cbo"
+    assert spec.metadata["target_role"] == "cbo_net_business_income"
+    assert spec.metadata["base_variable"] == "cbo_net_business_income"
     assert spec.metadata["measure_mode"] == "sum"
 
 
@@ -1258,7 +2664,6 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         {
             "name": "nation/cbo/income_tax_positive",
             "measure": "income_tax",
-            "aggregation": "positive_indicator_or_amount",
         },
         *complete_agi_distribution_rows(),
         *complete_income_source_rows(),
@@ -1297,6 +2702,35 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
     assert result.passed
+
+
+def test_interest_distribution_requirement_rejects_only_broad_state_totals() -> None:
+    requirement = next(
+        req
+        for req in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS
+        if req.requirement_id == "irs_interest_distribution"
+    )
+    state_total_targets = [
+        {
+            "name": f"irs_soi.ty2024.state_2022.state_{i}.all.taxable_interest_amount",
+            "measure": (
+                f"irs_soi.ty2024.state_2022.state_{i}.all.taxable_interest_amount"
+            ),
+            "family": "irs_soi",
+            "metadata": {
+                "source_measure_id": "taxable_interest_amount",
+                "target_role": "soi_fiscal_distribution",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+            },
+        }
+        for i in range(52)
+    ]
+
+    result = target_profile_coverage_gate(state_total_targets, [requirement])
+
+    assert not result.passed
+    assert any("irs_interest_distribution" in failure for failure in result.failures)
 
 
 def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
@@ -1489,7 +2923,6 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     geography_level = str(selector.get("geography_level") or "country")
     geography_id = str(selector.get("geography_id") or "0100000US")
     entity_name = str(selector.get("entity_name") or reference.entity)
-    aggregation = str(selector.get("aggregation_method") or reference.aggregation)
     fact_id = _fact_id(reference.name, period_value)
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
@@ -1502,7 +2935,7 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
             "value": period_value,
         },
         "entity": {"name": entity_name},
-        "aggregation": {"method": aggregation},
+        "aggregation": {"method": "sum"},
         "geography": {"level": geography_level, "id": geography_id},
         "dimensions": dimensions,
         "layout": {
@@ -1534,6 +2967,333 @@ def packaged_reference_facts() -> list[dict[str, object]]:
         _ledger_fact_for_reference(reference, value=index + 1)
         for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
     ]
+
+
+def _soi_eitc_total_fact(
+    source_period: int,
+    *,
+    measure_id: str,
+    value: float,
+) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty{source_period}.table_2_5.eitc_all_returns.total.{measure_id}"
+    )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id=f"irs_soi.ty{source_period}.table_2_5.eitc_all_returns",
+        groupby_dimension="irs_soi.eitc_return_group",
+        groupby_value_id="total",
+    )
+
+
+def _soi_eitc_filing_season_total_fact(
+    *,
+    measure_id: str,
+    value: float,
+) -> dict[str, object]:
+    source_record_id = (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        f"earned_income_credit.{measure_id}"
+    )
+    suffix = "count" if measure_id.endswith("_returns") else "amount"
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=2024,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id=(
+            f"irs_soi.ty2024.filing_season_week47.eitc_all_returns.{suffix}"
+        ),
+        groupby_dimension="irs_soi.filing_season_line",
+        groupby_value_id="earned_income_credit",
+    )
+
+
+def _soi_eitc_filing_season_agi_fact(
+    *,
+    measure_id: str,
+    value: float,
+    income_range: str,
+    lower: float,
+    upper: float | None,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{income_range}.{measure_id}"
+    )
+    suffix = "count" if measure_id.endswith("_returns") else "amount"
+    constraints: list[dict[str, object]] = [
+        {
+            "variable": "adjusted_gross_income",
+            "operator": ">=",
+            "value": lower,
+        }
+    ]
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=2024,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
+        layout_record_set_id=(
+            f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{suffix}"
+        ),
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id=income_range,
+    )
+
+
+def _soi_eitc_child_total_facts(
+    source_period: int,
+    *,
+    measure_id: str,
+    values: dict[str, float] | None = None,
+) -> list[dict[str, object]]:
+    if values is None and measure_id == "eitc_returns":
+        values = {
+            "no_qualifying_children": 5,
+            "one_qualifying_child": 10,
+            "two_qualifying_children": 15,
+            "three_or_more_qualifying_children": 20,
+        }
+    elif values is None:
+        values = {
+            "no_qualifying_children": 100,
+            "one_qualifying_child": 200,
+            "two_qualifying_children": 300,
+            "three_or_more_qualifying_children": 400,
+        }
+    return [
+        _dynamic_ledger_fact(
+            source_record_id=(
+                f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
+                f"{child_group}.total.{measure_id}"
+            ),
+            source_name="irs_soi",
+            measure_id=measure_id,
+            value=value,
+            period_value=source_period,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=(
+                f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children."
+                f"{child_group}"
+            ),
+            groupby_dimension="us.tax.earned_income_credit_qualifying_children",
+            groupby_value_id=child_group,
+        )
+        for child_group, value in values.items()
+    ]
+
+
+def _soi_eitc_child_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    measure_id: str,
+    value: float,
+    income_range: str = "25k_to_30k",
+    child_group: str = "one_qualifying_child",
+    lower: float = 25_000,
+    upper: float | None = 30_000,
+) -> dict[str, object]:
+    constraints: list[dict[str, object]] = [
+        {
+            "variable": "adjusted_gross_income",
+            "operator": ">=",
+            "value": lower,
+        }
+    ]
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
+        layout_record_set_id=(
+            f"irs_soi.ty{source_period}.table_2_5.eitc_by_agi_children.{child_group}"
+        ),
+        groupby_dimension="us.tax.earned_income_credit_qualifying_children",
+        groupby_value_id=child_group,
+    )
+
+
+def _soi_taxable_interest_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    value: float,
+    income_range: str = "all",
+    lower: float | None = None,
+    upper: float | None = None,
+    measure_id: str = "taxable_interest_amount",
+    layout_record_set_id: str | None = None,
+) -> dict[str, object]:
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        dimensions={"income_range": income_range, "filing_status": "all"},
+        universe_constraints=constraints,
+        layout_record_set_id=layout_record_set_id
+        or f"irs_soi.ty{source_period}.historic_table_2.us",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id=income_range,
+    )
+
+
+def _soi_capital_gains_fact(
+    source_period: int,
+    *,
+    source_record_id: str,
+    value: float,
+    measure_id: str = "net_capital_gains_amount",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    layout_record_set_id: str | None = None,
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"income_range": "all", "filing_status": "all"},
+        layout_record_set_id=layout_record_set_id
+        or f"irs_soi.ty{source_period}.historic_table_2.us",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id="all",
+    )
+
+
+def _soi_congressional_district_fact(
+    measure_id: str,
+    value: float,
+    *,
+    groupby_value_id: str = "al_01",
+    geography_level: str = "congressional_district",
+    geography_id: str = "5001700US0101",
+    dimensions: dict[str, object] | None = None,
+) -> dict[str, object]:
+    fact_dimensions = {"income_range": "all", "filing_status": "all"}
+    if dimensions:
+        fact_dimensions.update(dimensions)
+    return _dynamic_ledger_fact(
+        source_record_id=(
+            "irs_soi.ty2023.congressional_district_2022.all_returns."
+            f"{groupby_value_id}.{measure_id}"
+        ),
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=2023,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions=fact_dimensions,
+        layout_record_set_id="irs_soi.ty2023.congressional_district_2022.all_returns",
+        groupby_dimension="irs_soi.congressional_district",
+        groupby_value_id=groupby_value_id,
+    )
+
+
+def _census_acs_population_age_fact(
+    *,
+    source_record_id: str,
+    value: float,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    layout_record_set_id: str = "census_acs.acs1_2024.s0101.national_age",
+) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="census_acs",
+        measure_id="population",
+        value=value,
+        period_value=2024,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"age": "age_0_to_4"},
+        universe_constraints=[
+            {
+                "variable": "age",
+                "operator": ">=",
+                "value": 0,
+            },
+            {
+                "variable": "age",
+                "operator": "<",
+                "value": 5,
+            },
+        ],
+        layout_record_set_id=layout_record_set_id,
+        groupby_dimension="age",
+        groupby_value_id="age_0_to_4",
+    )
+
+
+def _census_acs_congressional_district_age_fact() -> dict[str, object]:
+    return _census_acs_population_age_fact(
+        source_record_id=(
+            "census_acs.acs1_2024.s0101.congressional_district_age."
+            "0101.age_0_to_4.population"
+        ),
+        value=42_000,
+        geography_level="congressional_district",
+        geography_id="5001900US0101",
+        layout_record_set_id=(
+            "census_acs.acs1_2024.s0101.congressional_district_age.0101"
+        ),
+    )
 
 
 def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, object]:
@@ -1627,10 +3387,14 @@ def _cms_medicaid_enrollment_fact(
     source_period: str,
     *,
     value: float,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    geography_slug: str = "us",
 ) -> dict[str, object]:
     normalized_period = source_period.replace("-", "_")
     source_record_id = (
-        f"cms_medicaid.month{normalized_period}.us.total_medicaid_chip_enrollment"
+        "cms_medicaid."
+        f"month{normalized_period}.{geography_slug}.total_medicaid_chip_enrollment"
     )
     return {
         "aggregate_fact_key": (
@@ -1645,7 +3409,7 @@ def _cms_medicaid_enrollment_fact(
         "period": {"type": "month", "value": source_period},
         "entity": {"name": "person"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {"level": geography_level, "id": geography_id},
         "dimensions": {},
         "universe_constraints": {"constraints": []},
         "layout": {
@@ -1793,7 +3557,7 @@ def complete_income_source_rows() -> list[dict[str, object]]:
             "family": "irs_soi",
         }
         for measure in source_measures
-        for i in range(5)
+        for i in range(100)
     ]
 
 

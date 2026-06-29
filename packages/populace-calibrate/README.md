@@ -10,21 +10,26 @@ reproduces them.
 ## What it does
 
 1. **Declare facts as targets.** A `Target` is a known population aggregate — a
-   control total (`sum`), a count, or an average (`mean`) — on some entity, with
-   an optional tolerance and provenance. A `TargetSet` groups them.
+   sum of a prepared measure column on some entity, with an optional tolerance
+   and provenance. Count-like facts use prepared indicator/count columns. A
+   `TargetSet` groups them.
 2. **Compile to a sparse system.** `build_constraint_matrix(frame, targets,
    weight_entity)` turns the targets into a `CalibrationProblem`: a CSR matrix
    `A` (one row per `(target, period)`, one column per record of the calibrated
    entity), the target vector `b`, and the initial weights. `A @ w` estimates
    every target's aggregate. Multi-period targets stack as extra rows over the
    **same** weight vector — the charter's "one weight per trajectory".
-   Uncompilable targets (missing column, zero `mean` denominator) are **skipped
-   and reported**, never dropped silently.
-3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` optimizes
-   the log-weights with torch Adam to minimize **capped weighted MAPE**:
+   Uncompilable targets (missing columns or invalid lengths) are **skipped and
+   reported**, never dropped silently.
+3. **Solve for calibrated weights.** `calibrate(frame, targets, ...)` minimizes
+   **capped weighted MAPE**:
    `weighted_mean(min(abs((A @ w - b) / scale), cap))`. By default
    `scale = max(abs(target), 1)` and `cap = 10`
-   (1000%). Weights stay strictly positive by construction (`w = exp(log_w)`).
+   (1000%). The default `method="adam"` optimizes log-weights with torch Adam,
+   keeping weights strictly positive by construction (`w = exp(log_w)`).
+   `method="prox"` optimizes non-negative weight ratios with a proximal
+   soft-threshold step for L1 selection, so unneeded records can become exact
+   zeros.
    The result carries a new `Frame` with `CALIBRATED` weights, per-target
    diagnostics, and the loss trajectory.
 
@@ -47,6 +52,17 @@ reproduces them.
   (300k → 3M → 30M pools). A supplied `l0_lambda` warm-starts the search.
 - **`l0_lambda`** alone (no `target_records`) prunes at a fixed penalty: `> 0`
   gates the pool, `0.0` keeps every record.
+- **`l1_lambda`** uses `method="prox"` and adds a proximal L1 penalty on
+  `mean(weight / initial_weight)`. The soft-threshold step can prune records to
+  exact zero while keeping the recorded objective coefficient explicit.
+- **`l2_lambda`** is an experimental soft concentration knob: positive values
+  add `l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)` to the loss.
+  With no L0 gates this is the calibrated weight ratio; with L0 gates it is
+  intentionally latent/pre-gate, so a nearly closed gate cannot hide an exploding
+  underlying weight. It is useful for ESS/design-effect sweeps when
+  `max_weight_ratio` is too blunt, especially with `mass="conserve"`; under
+  `mass="free"` it also penalizes total weight scale. It is not a safety
+  guarantee and does not replace the hard ratio cap.
 
 ## Example
 
@@ -54,10 +70,10 @@ reproduces them.
 from populace.calibrate import Target, TargetSet, calibrate
 
 targets = TargetSet([
-    Target(name="population", entity="household", aggregation="count",
+    Target(name="population", entity="household", measure="household_count",
            value=330_000_000, source="Census 2024 estimate"),
     Target(name="total_income", entity="household", measure="income",
-           aggregation="sum", value=23_000_000_000_000, tolerance=1e11),
+           value=23_000_000_000_000, tolerance=1e11),
 ])
 
 result = calibrate(frame, targets, weight_entity="household",

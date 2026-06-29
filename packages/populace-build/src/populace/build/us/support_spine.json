@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "country": "us",
+  "policy": "US support-spine sources are declared as period-relative primary-source inputs. Local file paths are runtime build inputs; this manifest owns the source-year roles, shares, and citations.",
+  "support_spine": {
+    "stage": "asec_load",
+    "method": "pool_raw_asec_years",
+    "target_year_from_build_config": true,
+    "sources": [
+      {
+        "role": "current_asec",
+        "survey": "CPS ASEC",
+        "source": "https://www.census.gov/programs-surveys/cps.html",
+        "source_year_offset": 0,
+        "share": 0.5,
+        "notes": "Target-year CPS ASEC source file; population mass is anchored to the target-year source."
+      },
+      {
+        "role": "prior_asec",
+        "survey": "CPS ASEC",
+        "source": "https://www.census.gov/programs-surveys/cps.html",
+        "source_year_offset": -1,
+        "share": 0.5,
+        "notes": "Prior-year CPS ASEC source file pooled before unit assignment to expand support while preserving total population mass."
+      }
+    ]
+  }
+}

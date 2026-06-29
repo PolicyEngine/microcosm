@@ -31,7 +31,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from populace.build.us.fiscal_targets import (
+from populace.build.us_runtime.fiscal_targets import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
@@ -108,7 +108,10 @@ class ReformValidationSpec:
                 f"{self.id}: provide exactly one of neutralized_variable or "
                 "parameter_changes."
             )
-        if self.effect_direction not in {"reform_minus_baseline", "baseline_minus_reform"}:
+        if self.effect_direction not in {
+            "reform_minus_baseline",
+            "baseline_minus_reform",
+        }:
             raise ValueError(
                 f"{self.id}: effect_direction must be 'reform_minus_baseline' or "
                 "'baseline_minus_reform'."
@@ -193,7 +196,7 @@ def in_sample_reform_specs(
 
 
 def _obbba_config_path() -> Path:
-    return Path(str(files(__package__).joinpath("obbba_reforms.json")))
+    return Path(str(files("populace.build.us").joinpath("obbba_reforms.json")))
 
 
 def out_of_sample_reform_specs(
@@ -216,7 +219,9 @@ def out_of_sample_reform_specs(
                 category=raw.get("category", "OBBBA"),
                 in_sample=False,
                 period=int(raw.get("period", period)),
-                jct_score=(float(jct["score"]) if jct.get("score") is not None else None),
+                jct_score=(
+                    float(jct["score"]) if jct.get("score") is not None else None
+                ),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
                 jct_source_url=str(jct.get("source_url", "")),
@@ -226,14 +231,18 @@ def out_of_sample_reform_specs(
                 parameter_changes=raw["parameter_changes"],
                 # OBBBA provisions are baked into the baseline, so the config
                 # encodes a revert; the provision's effect is baseline − reform.
-                effect_direction=str(raw.get("effect_direction", "baseline_minus_reform")),
+                effect_direction=str(
+                    raw.get("effect_direction", "baseline_minus_reform")
+                ),
             )
         )
     return tuple(specs)
 
 
 def _tax_expenditure_config_path() -> Path:
-    return Path(str(files(__package__).joinpath("tax_expenditure_reforms.json")))
+    return Path(
+        str(files("populace.build.us").joinpath("tax_expenditure_reforms.json"))
+    )
 
 
 def tax_expenditure_reform_specs(
@@ -264,7 +273,9 @@ def tax_expenditure_reform_specs(
                 category=raw.get("category", "Tax expenditure"),
                 in_sample=bool(raw.get("in_sample", False)),
                 period=int(raw.get("period", period)),
-                jct_score=(float(bench["score"]) if bench.get("score") is not None else None),
+                jct_score=(
+                    float(bench["score"]) if bench.get("score") is not None else None
+                ),
                 jct_window=str(bench.get("window", "")),
                 jct_source=str(bench.get("source", "")),
                 jct_source_url=str(bench.get("source_url", "")),
@@ -343,10 +354,12 @@ def reform_validation_payload(
     budget effect rather than failing the build. OBBBA rows are special because
     policyengine-us already carries OBBBA in its baseline, while JCX-35-25
     scores enactment relative to a pre-OBBBA present-law baseline. For those
-    rows, each spec's ``parameter_changes`` remains the counterfactual repeal
-    patch, but scoring first merges all OBBBA repeal patches into a pre-OBBBA
-    baseline and then adds the row's provision back. The shape matches the
-    calibration-diagnostics dashboard's reform_validation reader.
+    rows, each spec's ``parameter_changes`` is the counterfactual repeal patch;
+    scoring merges all repeals into a pre-OBBBA baseline, then enacts the
+    provisions one at a time in JCX order and scores each *stacked* — the
+    incremental effect given the lines above it — so the per-line effects sum to
+    the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
+    matches the calibration-diagnostics dashboard's reform_validation reader.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
@@ -355,6 +368,7 @@ def reform_validation_payload(
     parameter_reform_sims: dict[str, Any] = {}
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
+    obbba_stacked: dict[str, tuple[float, float, float]] | None = None
 
     def parameter_changes_key(changes: dict[str, Any]) -> str:
         return json.dumps(changes, sort_keys=True, separators=(",", ":"))
@@ -375,9 +389,60 @@ def reform_validation_payload(
             parameter_reform_sims[key] = simulate(reform)  # type: ignore[misc]
         return parameter_reform_sims[key]
 
-    def obbba_component_effect(
+    def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
+        """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
+
+        JCT presents each provision's budget effect incrementally — given the
+        provisions above it in the document — so the line items sum to the
+        bill's total. We mirror that: starting from the pre-OBBBA baseline (all
+        provisions reverted), enact the provisions one at a time in ``specs``
+        order, and score each as the change in its budget measure from enacting
+        it on top of the lines already enacted. The per-line effects then
+        telescope to the true total OBBBA effect, rather than each being
+        measured in isolation against pre-OBBBA law (which ignores the
+        interactions between provisions, e.g. the standard deduction and the
+        personal-exemption repeal).
+
+        All OBBBA specs must share one (budget_measure, period) for the
+        cumulative baseline to be coherent; a mixed group falls back to
+        isolated scoring.
+        """
+        if simulate is None or not obbba_specs:
+            return {}
+        measures = {(spec.budget_measure, spec.period) for spec in obbba_specs}
+        if len(measures) != 1:
+            return {
+                spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs
+            }
+        measure, period = next(iter(measures))
+        # state 0: pre-OBBBA (every provision reverted).
+        prev_total = _weighted_total(
+            simulation_for_parameter_changes(obbba_pre_baseline_changes),
+            measure,
+            period,
+        )
+        enacted: set[str] = set()
+        effects: dict[str, tuple[float, float, float]] = {}
+        for spec in obbba_specs:
+            # Enacting a provision means dropping its repeal from the baseline.
+            enacted |= set((spec.parameter_changes or {}).keys())
+            state_changes = {
+                path: change
+                for path, change in obbba_pre_baseline_changes.items()
+                if path not in enacted
+            }
+            cur_total = _weighted_total(
+                simulation_for_parameter_changes(state_changes), measure, period
+            )
+            effects[spec.id] = (cur_total - prev_total, prev_total, cur_total)
+            prev_total = cur_total
+        return effects
+
+    def _isolated_obbba_effect(
         spec: ReformValidationSpec,
     ) -> tuple[float | None, float | None, float | None]:
+        # One provision enacted alone on the pre-OBBBA baseline. Only used as a
+        # fallback when the OBBBA group spans multiple measures/periods.
         if simulate is None:
             return None, None, None
         component_paths = set((spec.parameter_changes or {}).keys())
@@ -392,13 +457,20 @@ def reform_validation_payload(
         reform_total = _weighted_total(component_on, spec.budget_measure, spec.period)
         return reform_total - base, base, reform_total
 
-    def simulated_effect(spec: ReformValidationSpec) -> tuple[float | None, float | None, float | None]:
+    def simulated_effect(
+        spec: ReformValidationSpec,
+    ) -> tuple[float | None, float | None, float | None]:
+        nonlocal obbba_stacked
         if simulate is None:
             return None, None, None
         if _is_obbba_spec(spec):
-            return obbba_component_effect(spec)
+            if obbba_stacked is None:
+                obbba_stacked = stacked_obbba_effects()
+            return obbba_stacked.get(spec.id, (None, None, None))
         base = baseline_total(spec.budget_measure, spec.period)
-        reform_total = _weighted_total(simulate(spec.build_reform()), spec.budget_measure, spec.period)
+        reform_total = _weighted_total(
+            simulate(spec.build_reform()), spec.budget_measure, spec.period
+        )
         raw = reform_total - base
         # A counterfactual revert measures the provision as baseline − reform.
         effect = raw if spec.effect_direction == "reform_minus_baseline" else -raw
@@ -436,16 +508,27 @@ def reform_validation_payload(
                     "period": spec.period,
                     "window": spec.jct_window or None,
                     "measure": spec.budget_measure,
-                    "baseline_total": None if base_total is None else _finite(base_total),
-                    "reform_total": None if reform_total is None else _finite(reform_total),
+                    "baseline_total": None
+                    if base_total is None
+                    else _finite(base_total),
+                    "reform_total": None
+                    if reform_total is None
+                    else _finite(reform_total),
                 },
             }
         )
 
+    # Self-describing flag so a null out-of-sample row can be told apart from a
+    # genuinely-zero one, and so a release built with simulation skipped is
+    # never mistaken for one where the dataset simply failed the fidelity test.
+    # False only when out-of-sample reforms exist but no simulate() was given.
+    has_out_of_sample = any(not spec.in_sample for spec in specs)
+    out_of_sample_simulated = simulate is not None or not has_out_of_sample
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "baseline_period": int(period),
         "scoring_window": "see per-reform jct.window",
+        "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
     }
     if release_id is not None:

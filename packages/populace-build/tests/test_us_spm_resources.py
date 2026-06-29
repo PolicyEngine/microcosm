@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import pytest
 
-from populace.build.us.spm_resources import (
+from populace.build.us_runtime.spm_resources import (
     spm_resource_diagnostics,
     write_spm_resource_diagnostics,
 )

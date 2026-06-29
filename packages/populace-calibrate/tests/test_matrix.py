@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from populace.calibrate import Target, TargetSet, build_constraint_matrix
 
@@ -15,13 +14,12 @@ def test_matrix_has_one_row_per_target_one_column_per_weight(feasible_frame) -> 
             Target(
                 name="population",
                 entity="household",
-                aggregation="count",
                 value=truths["population"],
+                measure="household_count",
             ),
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truths["income"],
                 measure="income",
             ),
@@ -41,6 +39,43 @@ def test_matrix_has_one_row_per_target_one_column_per_weight(feasible_frame) -> 
     )
 
 
+def test_matrix_compiler_does_not_dense_stack_target_rows(
+    feasible_frame, monkeypatch
+) -> None:
+    frame, truths = feasible_frame(n=150)
+    targets = TargetSet(
+        (
+            Target(
+                name="population",
+                entity="household",
+                value=truths["population"],
+                measure="household_count",
+            ),
+            Target(
+                name="income",
+                entity="household",
+                value=truths["income"],
+                measure="income",
+            ),
+        )
+    )
+
+    def fail_vstack(*args, **kwargs):
+        raise AssertionError("matrix compiler should not dense-stack rows")
+
+    monkeypatch.setattr(np, "vstack", fail_vstack)
+    problem = build_constraint_matrix(frame, targets)
+
+    assert problem.matrix.shape == (2, 150)
+    np.testing.assert_allclose(
+        problem.estimates(frame.resolve_weights("household").values),
+        [
+            truths["population"],
+            truths["income"],
+        ],
+    )
+
+
 def test_estimates_recover_the_weighted_aggregates(feasible_frame) -> None:
     frame, truths = feasible_frame(n=150)
     targets = TargetSet(
@@ -48,7 +83,6 @@ def test_estimates_recover_the_weighted_aggregates(feasible_frame) -> None:
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truths["income"],
                 measure="income",
             ),
@@ -67,7 +101,6 @@ def test_multi_period_targets_become_distinct_rows(multiperiod_frame) -> None:
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=t26,
                 measure="income_2026",
                 period=2026,
@@ -75,7 +108,6 @@ def test_multi_period_targets_become_distinct_rows(multiperiod_frame) -> None:
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=t30,
                 measure="income_2030",
                 period=2030,
@@ -98,34 +130,14 @@ def test_target_value_near_minus_one_compiles_under_scaled_mape(
             Target(
                 name="counts_to_neg_one",
                 entity="household",
-                aggregation="count",
                 value=-1.0,
+                measure="household_count",
             ),
         )
     )
     problem = build_constraint_matrix(frame, targets)
     assert problem.names == ("counts_to_neg_one@0",)
     assert problem.target_vector.tolist() == [-1.0]
-
-
-def test_mean_target_one_below_current_mean_compiles(feasible_frame) -> None:
-    """Mean rows whose compiled RHS lands at -1 are valid under scaled MAPE."""
-    frame, _ = feasible_frame(n=50)
-    current_mean = float(frame.table("household")["income"].to_numpy().mean())
-    targets = TargetSet(
-        (
-            Target(
-                name="mean_one_below",
-                entity="household",
-                aggregation="mean",
-                value=current_mean - 1.0,
-                measure="income",
-            ),
-        )
-    )
-    problem = build_constraint_matrix(frame, targets)
-    assert problem.names == ("mean_one_below@0",)
-    assert problem.target_vector.tolist() == pytest.approx([-1.0])
 
 
 def test_normal_target_value_compiles_fine(feasible_frame) -> None:
@@ -136,8 +148,8 @@ def test_normal_target_value_compiles_fine(feasible_frame) -> None:
             Target(
                 name="population",
                 entity="household",
-                aggregation="count",
                 value=truths["population"],
+                measure="household_count",
             ),
         )
     )
@@ -160,7 +172,6 @@ def test_person_sum_target_collapses_onto_multi_person_households(
             Target(
                 name="total_age",
                 entity="person",
-                aggregation="sum",
                 value=1.0,
                 measure="age",
             ),
@@ -178,45 +189,6 @@ def test_person_sum_target_collapses_onto_multi_person_households(
     np.testing.assert_allclose(problem.estimates(weights)[0], true_total, rtol=1e-9)
 
 
-def test_person_mean_target_compiles_on_multi_person_households(
-    multiperson_frame,
-) -> None:
-    """A person-level ``mean`` compiles on a multi-person frame (Finding 5).
-
-    The compiler builds the row at the person-aligned linearization point but
-    previously called ``Target.offset`` with the *group* weight vector, so its
-    internal ``filter_mask * weights`` broadcast (n_persons,) against
-    (n_households,) and raised — the target was silently skipped with a raw-numpy
-    reason. ``offset`` must see the same person-aligned weights the row does.
-    """
-    frame, age, person_household, weights = multiperson_frame()
-    person_weights = weights[person_household]
-    true_mean = float((age * person_weights).sum() / person_weights.sum())
-    targets = TargetSet(
-        (
-            Target(
-                name="mean_age",
-                entity="person",
-                aggregation="mean",
-                value=true_mean * 1.1,
-                measure="age",
-            ),
-        )
-    )
-    value = true_mean * 1.1
-    problem = build_constraint_matrix(frame, targets, "household")
-    assert problem.skipped == (), problem.skipped
-    assert problem.matrix.shape[0] == 1
-    # By the mean linearization, target_vector = value + (row @ w0 - current_mean)
-    # and estimates(w0) = row @ w0, so estimates(w0) - target_vector + value
-    # recovers the true current mean exactly — and the row solving to value would
-    # land the mean on the target. This identity holds only if offset saw the
-    # same person-aligned weights as the row (the Finding 5 fix).
-    est_at_w0 = float(problem.estimates(weights)[0])
-    recovered_mean = est_at_w0 - float(problem.target_vector[0]) + value
-    np.testing.assert_allclose(recovered_mean, true_mean, rtol=1e-6)
-
-
 def test_uncompilable_target_is_skipped_and_reported(feasible_frame) -> None:
     frame, truths = feasible_frame(n=100)
     targets = TargetSet(
@@ -224,14 +196,12 @@ def test_uncompilable_target_is_skipped_and_reported(feasible_frame) -> None:
             Target(
                 name="income",
                 entity="household",
-                aggregation="sum",
                 value=truths["income"],
                 measure="income",
             ),
             Target(
                 name="missing",
                 entity="household",
-                aggregation="sum",
                 value=1.0,
                 measure="not_a_column",
             ),

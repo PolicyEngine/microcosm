@@ -1,21 +1,26 @@
 """populace.calibrate: the representation operator of the populace stack.
 
 The only place :class:`~populace.frame.WeightKind.CALIBRATED` weights are
-produced. Compiles declared facts — population control totals, counts, averages
-with standard-error-style tolerances — into a sparse linear constraint system
-over a :class:`~populace.frame.Frame`, then solves for the weight vector that
-best reproduces them under capped weighted MAPE,
-``weighted_mean(min(abs((A @ w - b) / scale), cap))``, optimized with torch's
-Adam over the log-weights (positivity by construction). Multi-period targets stack as
-``(target, period)`` rows over the *same* weight vector — the charter's "one
-weight per trajectory".
+produced. Compiles declared facts as sum targets — including count-like facts
+represented by prepared indicator/count columns — into a sparse linear
+constraint system over a :class:`~populace.frame.Frame`, then solves for the
+weight vector that best reproduces them under capped weighted MAPE,
+``weighted_mean(min(abs((A @ w - b) / scale), cap))``. The default
+``method="adam"`` path uses torch Adam over log-weights (positivity by
+construction); ``method="prox"`` uses proximal gradient over non-negative weight
+ratios for L1 selection. Multi-period targets stack as ``(target, period)`` rows
+over the *same* weight vector — the charter's "one weight per trajectory".
 
-Three load-bearing options beyond the fit: ``mass`` ("free" or "conserve") to
+Load-bearing options beyond the fit include: ``mass`` ("free" or "conserve") to
 control the total; ``max_weight_ratio`` as a hard per-record bound (the guard
-against tail "landmine" records detonating on reweight); and ``target_records``
-for hard-concrete L0 pruning with budget control — the solver searches
+against tail "landmine" records detonating on reweight); ``target_records`` for
+hard-concrete L0 pruning with budget control — the solver searches
 ``l0_lambda`` so the achieved non-zero count tracks the budget (the
-generate-big-then-prune path). ``l0_lambda`` alone prunes at a fixed penalty.
+generate-big-then-prune path); ``l1_lambda`` with ``method="prox"`` as a
+proximal selection penalty; and experimental ``l2_lambda`` as a soft
+concentration penalty. Under L0 gates, ``l2_lambda`` penalizes latent pre-gate
+weights so a nearly closed gate cannot hide an exploding underlying weight.
+``l0_lambda`` alone prunes at a fixed penalty.
 
 Importing this shard asserts compatibility with the installed
 :mod:`populace.frame` kernel — the constellation mechanism from DESIGN.md: a
@@ -89,6 +94,7 @@ from populace.calibrate.registry import (  # noqa: E402 - after the compat gate
     TargetSpec,
     specs_from_pe_surface,
 )
+from populace.calibrate.score import score_targets  # noqa: E402 - after the compat gate
 from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     CONSERVE_MASS,
     FREE_MASS,
@@ -99,7 +105,6 @@ from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     relative_error_loss,
 )
 from populace.calibrate.target import (  # noqa: E402 - after the compat gate
-    AGGREGATIONS,
     Target,
     TargetSet,
 )
@@ -107,7 +112,6 @@ from populace.calibrate.target import (  # noqa: E402 - after the compat gate
 __version__ = "0.1.0"
 
 __all__ = [
-    "AGGREGATIONS",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CONSERVE_MASS",
     "FREE_MASS",
@@ -124,6 +128,7 @@ __all__ = [
     "default_target_loss_scales",
     "diagnostics_payload",
     "relative_error_loss",
+    "score_targets",
     "specs_from_pe_surface",
     "write_calibration_diagnostics",
     "__version__",

@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.uk.local_geography import (
+from populace.build.uk_runtime.local_geography import (
     StackedLocalMatrix,
     area_support_summary,
     assigned_weights_to_long,
@@ -28,12 +28,12 @@ from populace.build.uk.local_geography import (
     stacked_weights_to_long,
     write_long_geography_weights,
 )
-from populace.build.uk.local_solver import (
+from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
     solve_assigned_local_weights,
     solve_stacked_local_weights,
 )
-from populace.build.uk.local_targets import (
+from populace.build.uk_runtime.local_targets import (
     COUNTRY_TO_REGION,
     area_groups_from_codes,
     compute_household_metrics,
@@ -214,6 +214,7 @@ def build_metric_tables_from_dataset(
     period: int | str | None = None,
     household_ids: Sequence[Any] | None = None,
     simulation_factory: Callable[[Any], Any] | None = None,
+    target_profile: Mapping[str, Any] | Any | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Compute household metric tables once per country/devolution group."""
 
@@ -232,11 +233,10 @@ def build_metric_tables_from_dataset(
             period=run_period,
             n_households=len(simulation_household_ids),
         )
-        table = compute_household_metrics(
-            sim,
-            area_type,
-            period=run_period,
-        )
+        metric_kwargs: dict[str, Any] = {"period": run_period}
+        if target_profile is not None:
+            metric_kwargs["target_profile"] = target_profile
+        table = compute_household_metrics(sim, area_type, **metric_kwargs)
         if not table.index.equals(pd.Index(simulation_household_ids)):
             raise ValueError(
                 f"metric table {group!r} index must match simulation "
@@ -393,6 +393,7 @@ def build_local_candidate_from_dataset(
     support_mode: str = "auto",
     assignment_column: str | None = None,
     simulation_factory: Callable[[Any], Any] | None = None,
+    target_profile: Mapping[str, Any] | Any | None = None,
     solver_options: Mapping[str, Any] | None = None,
 ) -> UKLocalCandidateResult:
     """Build a UK local candidate from a Populace UK H5 or dataset object."""
@@ -424,6 +425,7 @@ def build_local_candidate_from_dataset(
         period=period,
         household_ids=household_ids,
         simulation_factory=simulation_factory,
+        target_profile=target_profile,
     )
     return build_local_candidate(
         area_type=area_type,

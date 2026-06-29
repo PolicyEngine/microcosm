@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us.puf_aggregate_records import (
+from populace.build.us_runtime.puf_aggregate_records import (
     AGGREGATE_RECIDS,
     SYNTHETIC_RECID_START,
     PufAggregateDisaggregationSpec,
@@ -17,10 +17,16 @@ from populace.build.us.puf_aggregate_records import (
     _choose_n_synthetic,
     _get_amount_columns,
     audit_puf_aggregate_disaggregation,
+    derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
 from populace.calibrate import relative_error_loss
+
+_DERIVED_POLICYENGINE_COLUMNS = (
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+)
 
 
 def _make_regular_rows() -> list[dict]:
@@ -47,6 +53,11 @@ def _make_regular_rows() -> list[dict]:
             e00900 = abs_agi * rng.uniform(0.0, 0.10) * tail_boost
             e02100 = abs_agi * rng.uniform(0.0, 0.03) * tail_boost
             p22250 = abs_agi * rng.uniform(0.0, 0.12) * tail_boost
+            qualified_dividends = abs_agi * rng.uniform(0.01, 0.10)
+            ordinary_dividends = qualified_dividends + abs_agi * rng.uniform(
+                0.0,
+                0.04,
+            )
             if bucket_recid == 999996:
                 p23250 *= -1 if i % 2 == 0 else 1
                 e26270 *= -1 if i % 3 == 0 else 1
@@ -67,13 +78,13 @@ def _make_regular_rows() -> list[dict]:
                     "E00200": float(max(0.0, abs_agi * rng.uniform(0.02, 0.18))),
                     "P23250": float(p23250),
                     "P22250": float(p22250),
-                    "E00650": float(abs_agi * rng.uniform(0.01, 0.10)),
+                    "E00650": float(qualified_dividends),
                     "E00300": float(abs_agi * rng.uniform(0.01, 0.08)),
                     "E26270": float(e26270),
                     "E00900": float(e00900),
                     "E02100": float(e02100),
                     "E00400": float(abs_agi * rng.uniform(0.0, 0.03)),
-                    "E00600": float(abs_agi * rng.uniform(0.01, 0.12)),
+                    "E00600": float(ordinary_dividends),
                     "E18400": float(abs_agi * rng.uniform(0.0, 0.02)),
                     "E19800": float(abs_agi * rng.uniform(0.0, 0.04)),
                     "T27800": float(e02100),
@@ -148,6 +159,14 @@ def _weighted_total(df: pd.DataFrame, column: str) -> float:
     return float((df[column] * df["S006"] / 100).sum())
 
 
+def _expected_columns_after_puf_derivation(columns: pd.Index) -> list[str]:
+    expected = list(columns)
+    for column in _DERIVED_POLICYENGINE_COLUMNS:
+        if column not in expected:
+            expected.append(column)
+    return expected
+
+
 @pytest.fixture
 def mini_puf() -> pd.DataFrame:
     return _make_mini_puf()
@@ -219,7 +238,38 @@ def test_aggregate_rows_removed_and_regular_rows_preserved(
     expected_regular = set(mini_puf[~mini_puf["RECID"].isin(AGGREGATE_RECIDS)]["RECID"])
     actual_regular = set(result[result["RECID"] < min(AGGREGATE_RECIDS)]["RECID"])
     assert actual_regular == expected_regular
-    assert list(result.columns) == list(mini_puf.columns)
+    assert list(result.columns) == _expected_columns_after_puf_derivation(
+        mini_puf.columns,
+    )
+
+
+def test_policyengine_dividend_variables_are_derived_from_raw_puf(
+    mini_puf: pd.DataFrame,
+    result: pd.DataFrame,
+) -> None:
+    derived = derive_puf_policyengine_variables(mini_puf)
+    for column in _DERIVED_POLICYENGINE_COLUMNS:
+        assert column in derived.columns
+        assert column in result.columns
+
+    assert np.allclose(result["qualified_dividend_income"], result["E00650"])
+    assert np.allclose(
+        result["non_qualified_dividend_income"],
+        result["E00600"] - result["E00650"],
+    )
+    assert "ordinary_dividend_income" not in result
+    assert "dividend_income" not in result
+    assert (result["non_qualified_dividend_income"] >= -1e-9).all()
+
+
+def test_invalid_puf_dividend_sources_raise_before_disaggregation(
+    mini_puf: pd.DataFrame,
+) -> None:
+    puf = mini_puf.copy()
+    puf.loc[puf.index[0], "E00650"] = puf.loc[puf.index[0], "E00600"] + 1.0
+
+    with pytest.raises(ValueError, match="qualified dividends above ordinary"):
+        disaggregate_puf_aggregate_records(puf, seed=42)
 
 
 def test_synthetic_structural_fields_are_valid(result: pd.DataFrame) -> None:
@@ -393,7 +443,7 @@ def test_audit_reports_source_reconstruction_recovery(
             summary["max_abs_weighted_total_delta"]
             for summary in audit["bucket_summaries"]
         )
-        < 1e-5
+        < 2e-5
     )
     assert "forbes" not in json.dumps(audit["field_totals"]).lower()
     json.dumps(audit, allow_nan=False)

@@ -13,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from populace.build.uk.rowwise_geography import (
+from populace.build.uk_runtime.rowwise_geography import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     RowwiseGeographyAssignment,
     assign_household_geography,
@@ -278,9 +278,7 @@ def _read_uk_single_year_h5(path: str | Path) -> dict[str, pd.DataFrame | str]:
         keys = {key.lstrip("/") for key in store.keys()}
         missing = sorted(set(UK_SINGLE_YEAR_TABLES) - keys)
         if missing:
-            raise ValueError(
-                f"UK single-year dataset is missing table(s): {missing}."
-            )
+            raise ValueError(f"UK single-year dataset is missing table(s): {missing}.")
         time_period = str(store["time_period"].iloc[0])
         return {
             "person": store["person"],

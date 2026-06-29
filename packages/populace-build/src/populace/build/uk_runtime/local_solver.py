@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from populace.build.uk.local_geography import (
+from populace.build.uk_runtime.local_geography import (
     StackedLocalMatrix,
     stacked_design_weights,
 )
@@ -64,7 +64,7 @@ def solve_stacked_local_weights(
     ``min_initial_weight`` floor is explicit because the torch log-weight
     optimizer requires strictly positive starting weights; callers that need
     exact zero-preserving design weights can use
-    :func:`populace.build.uk.local_geography.stacked_design_weights` directly.
+    :func:`populace.build.uk_runtime.local_geography.stacked_design_weights` directly.
     """
 
     initial_weights = stacked_design_weights(
@@ -222,6 +222,7 @@ def _solve_local_weights(
                 learning_rate=learning_rate,
                 conserve_mass=conserve_mass,
                 max_weight_ratio=max_weight_ratio,
+                l2_lambda=0.0,
                 init_mean=0.999,
                 temperature=0.25,
                 seed=seed,
@@ -243,6 +244,7 @@ def _solve_local_weights(
             conserve_mass=conserve_mass,
             max_weight_ratio=max_weight_ratio,
             l0_lambda=l0_lambda,
+            l2_lambda=0.0,
             target_records=None,
             init_mean=0.999,
             temperature=0.25,

@@ -1,4 +1,4 @@
-"""populace.build.us: the typed stage plan of the US dataset build.
+"""Runtime helpers for the US dataset build.
 
 This module is the declarative description of how the US population dataset
 is assembled — the stage order, what each stage produces, and **which primary
@@ -30,15 +30,40 @@ from populace.build.plan import DonorSpec, Stage, StagePlan
 from populace.build.source_manifest import (
     SourceManifest,
     SourceStageSpec,
+    SupportSpineManifest,
+    SupportSpineSpec,
     load_source_manifest,
+    load_support_spine_manifest,
 )
-from populace.build.us.asec_pool import (
+from populace.build.us_runtime.asec_pool import (
     AsecSource,
     build_pooled_asec_unit_frame,
     load_asec_h5_tables,
     pool_asec_sources,
 )
-from populace.build.us.demographics import (
+from populace.build.us_runtime.congressional_district_geography import (
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+    SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
+    assign_congressional_districts_to_households,
+    congressional_district_assignment_summary,
+    congressional_district_distribution_from_ledger_facts,
+    with_household_congressional_districts,
+)
+from populace.build.us_runtime.congressional_district_vintage import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+    CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+    load_congressional_district_vintage_crosswalk,
+    translate_congressional_district_facts_to_current_vintage,
+)
+from populace.build.us_runtime.cps_carried import (
+    CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+    CPS_CARRIED_PERSON_INPUTS,
+    derive_us_cps_carried_inputs,
+)
+from populace.build.us_runtime.demographics import (
     AGE_BANDS,
     DEMOGRAPHICS_SCHEMA_VERSION,
     AgeBand,
@@ -46,7 +71,7 @@ from populace.build.us.demographics import (
     demographics_payload,
     write_demographics,
 )
-from populace.build.us.fiscal_targets import (
+from populace.build.us_runtime.fiscal_targets import (
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
     US_FISCAL_LEDGER_PARITY_REPORT,
@@ -67,16 +92,20 @@ from populace.build.us.fiscal_targets import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
-from populace.build.us.puf_support import (
+from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_STAGE_NAME,
     clone_us_frame_for_puf_support,
+    impute_us_puf_tax_detail_support,
+    puf_tax_unit_donor_from_arrays,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.build.us.reform_validation import (
+from populace.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
     in_sample_reform_specs,
@@ -85,7 +114,7 @@ from populace.build.us.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
-from populace.build.us.source_coverage import (
+from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     US_SOURCE_COVERAGE,
     hard_target_package_aliases,
@@ -95,7 +124,7 @@ from populace.build.us.source_coverage import (
     validation_only_family_ids,
     write_us_source_coverage_diagnostics,
 )
-from populace.build.us.source_runtime import (
+from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
@@ -105,6 +134,8 @@ __all__ = [
     "BuildConfig",
     "AsecSource",
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
+    "CPS_CARRIED_PERSON_INPUTS",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -113,6 +144,13 @@ __all__ = [
     "AGE_BANDS",
     "DEMOGRAPHICS_SCHEMA_VERSION",
     "compute_age_distribution",
+    "CONGRESSIONAL_DISTRICT_GEOID_COLUMN",
+    "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR",
+    "CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR",
+    "CURRENT_CONGRESSIONAL_DISTRICT_PREFIX",
+    "CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE",
+    "SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID",
+    "SOURCE_CONGRESSIONAL_DISTRICT_PREFIX",
     "demographics_payload",
     "write_demographics",
     "US_DONORS",
@@ -134,21 +172,32 @@ __all__ = [
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_SOURCE_MANIFEST",
+    "US_SUPPORT_SPINE_MANIFEST",
+    "US_SUPPORT_SPINE_SPEC",
     "US_SOURCE_STAGE_SPECS",
     "US_STAGE_NAMES",
+    "PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS",
+    "PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "assign_congressional_districts_to_households",
     "build_pooled_asec_unit_frame",
     "clone_us_frame_for_puf_support",
+    "congressional_district_assignment_summary",
+    "congressional_district_distribution_from_ledger_facts",
+    "derive_us_cps_carried_inputs",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "hard_target_package_aliases",
+    "impute_us_puf_tax_detail_support",
     "in_sample_reform_specs",
     "load_default_reform_specs",
+    "load_congressional_district_vintage_crosswalk",
     "load_asec_h5_tables",
     "out_of_sample_reform_specs",
+    "puf_tax_unit_donor_from_arrays",
     "pool_asec_sources",
     "reform_validation_payload",
     "source_gap_family_ids",
@@ -162,6 +211,8 @@ __all__ = [
     "support_clone_index_column",
     "support_source_id_column",
     "validation_only_family_ids",
+    "translate_congressional_district_facts_to_current_vintage",
+    "with_household_congressional_districts",
 ]
 
 
@@ -311,10 +362,20 @@ US_STAGE_NAMES: tuple[str, ...] = (
 
 
 def _load_us_source_manifest() -> SourceManifest:
-    return load_source_manifest(files(__package__).joinpath("source_stages.json"))
+    return load_source_manifest(
+        files("populace.build.us").joinpath("source_stages.json")
+    )
+
+
+def _load_us_support_spine_manifest() -> SupportSpineManifest:
+    return load_support_spine_manifest(
+        files("populace.build.us").joinpath("support_spine.json")
+    )
 
 
 US_SOURCE_MANIFEST = _load_us_source_manifest()
+US_SUPPORT_SPINE_MANIFEST = _load_us_support_spine_manifest()
+US_SUPPORT_SPINE_SPEC: SupportSpineSpec = US_SUPPORT_SPINE_MANIFEST.support_spine
 US_SOURCE_STAGE_SPECS: tuple[SourceStageSpec, ...] = US_SOURCE_MANIFEST.stages
 US_NONNEGATIVE_SOURCE_OUTPUTS: frozenset[str] = frozenset(
     output for stage in US_SOURCE_STAGE_SPECS for output in stage.nonnegative_outputs

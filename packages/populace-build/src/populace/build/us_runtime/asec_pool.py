@@ -177,6 +177,7 @@ def build_pooled_asec_unit_frame(
         tax_unit_mode=tax_unit_mode,
         strata=strata,
     )
+    frame = _attach_household_attributes(frame, ("state_fips",))
     return frame, pooled.metadata
 
 
@@ -279,12 +280,60 @@ def _remap_source_year(
     result["source_household_id"] = result["PH_SEQ"].to_numpy()
     result["source_person_id"] = _source_person_id(result)
     result["source_row_id"] = np.arange(len(result), dtype=np.int64)
+    if "GESTFIPS" in household:
+        state_by_household = (
+            household[["H_SEQ", "GESTFIPS"]]
+            .drop_duplicates("H_SEQ")
+            .set_index("H_SEQ")["GESTFIPS"]
+        )
+        result["state_fips"] = (
+            result["source_household_id"]
+            .map(state_by_household)
+            .astype("int64")
+            .to_numpy()
+        )
     result["PH_SEQ"] = result["PH_SEQ"].map(household_map).astype("int64")
     result["household_id"] = result["PH_SEQ"]
     result[ASEC_PERSON_WEIGHT_COLUMN] = (
         result["source_household_id"].map(raw_weights).astype(float)
     )
     return result, next_offset
+
+
+def _attach_household_attributes(frame: Frame, columns: tuple[str, ...]) -> Frame:
+    person = frame.table("person")
+    available = [column for column in columns if column in person]
+    if not available:
+        return frame
+
+    household = frame.table("household").copy()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for column in available:
+        values = person.groupby("person_household_id", sort=True)[column]
+        low = values.min()
+        high = values.max()
+        unequal = low.to_numpy() != high.to_numpy()
+        if unequal.any():
+            bad = low.index.to_numpy()[unequal][:5].tolist()
+            raise ValueError(
+                f"Household attribute {column!r} must be constant within "
+                f"household; household id(s) {bad} carry unequal values."
+            )
+        household[column] = (
+            pd.Series(household["household_id"])
+            .map(low)
+            .astype(person[column].dtype)
+            .to_numpy()
+        )
+        tables["person"] = tables["person"].drop(columns=[column])
+    tables["household"] = household
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
 
 
 def _globalize_source_unit_column(person: pd.DataFrame, column: str) -> pd.DataFrame:

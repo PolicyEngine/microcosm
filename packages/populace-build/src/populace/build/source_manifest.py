@@ -9,6 +9,7 @@ country-specific donor loader.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,7 +23,11 @@ __all__ = [
     "SourceManifest",
     "SourceOperationSpec",
     "SourceStageSpec",
+    "SupportSpineManifest",
+    "SupportSpineSourceSpec",
+    "SupportSpineSpec",
     "load_source_manifest",
+    "load_support_spine_manifest",
 ]
 
 
@@ -40,11 +45,11 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_by_plan_type",
         "assign_binary_from_rate",
         "calibrate_binary_assignment",
-        "calibrate_weights",
-        "compile_ledger_targets",
+        "calibrate_binary_assignment_joint_targets",
         "convert_interest_to_structural_mortgage_inputs",
         "compute_ratio",
         "derive",
+        "derive_puf_policyengine_variables",
         "derive_mortgage_balance_hints",
         "disaggregate_aggregate_records",
         "fit_labor_market_models",
@@ -82,14 +87,20 @@ FORBIDDEN_EXECUTABLE_OPERATION_KINDS = frozenset(
 FORBIDDEN_EXECUTABLE_LOADER_KEYS = frozenset(
     {
         "callable",
+        "callback",
+        "entry",
         "entrypoint",
+        "entry_point",
         "function",
+        "handler",
         "import",
         "loader",
         "module",
         "python",
     }
 )
+
+ALLOWED_SUPPORT_SPINE_METHODS = frozenset({"pool_raw_asec_years"})
 
 
 @dataclass(frozen=True)
@@ -129,7 +140,6 @@ class SourceStageSpec:
     outputs: tuple[str, ...]
     nonnegative_outputs: tuple[str, ...] = ()
     notes: str = ""
-    role: str = "source"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> SourceStageSpec:
@@ -163,9 +173,6 @@ class SourceStageSpec:
         notes = raw.get("notes", "")
         if not isinstance(notes, str):
             raise ValueError("source stage 'notes' must be a string when provided.")
-        role = raw.get("role", "source")
-        if not isinstance(role, str) or not role:
-            raise ValueError("source stage 'role' must be a non-empty string.")
         _reject_executable_parameter_keys(raw, context=f"stage {raw['stage']!r}")
         _reject_incumbent_dependencies(raw, context=f"stage {raw['stage']!r}")
         return cls(
@@ -173,7 +180,6 @@ class SourceStageSpec:
             survey=raw["survey"],
             source=raw["source"],
             grain=raw["grain"],
-            role=role,
             artifacts=artifacts,
             operations=operations,
             outputs=outputs,
@@ -189,7 +195,6 @@ class SourceManifest:
     country: str
     version: int
     policy: str
-    plan_stages: tuple[str, ...]
     stages: tuple[SourceStageSpec, ...]
 
     @classmethod
@@ -211,21 +216,170 @@ class SourceManifest:
         duplicates = sorted({name for name in names if names.count(name) > 1})
         if duplicates:
             raise ValueError(f"duplicate source stage spec(s): {duplicates}.")
-        plan_stages = tuple(
-            _require_string_sequence(raw.get("plan_stages", names), key="plan_stages")
-        )
         _reject_executable_parameter_keys(raw, context=f"{country} source manifest")
         _reject_incumbent_dependencies(raw, context=f"{country} source manifest")
+        return cls(country=country, version=version, policy=policy, stages=stages)
+
+    def stage_map(self) -> Mapping[str, SourceStageSpec]:
+        return {stage.stage: stage for stage in self.stages}
+
+
+@dataclass(frozen=True)
+class SupportSpineSourceSpec:
+    """One source-year rule in a support-spine manifest.
+
+    ``source_year_offset`` is relative to the build target year so country
+    specs do not bake in a dataset period. For example, ``0`` means the
+    target-year ASEC file and ``-1`` means the prior ASEC file.
+    """
+
+    role: str
+    survey: str
+    source: str
+    source_year_offset: int
+    share: float | None = None
+    notes: str = ""
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> SupportSpineSourceSpec:
+        required = ("role", "survey", "source", "source_year_offset")
+        missing = [key for key in required if key not in raw]
+        if missing:
+            raise ValueError(
+                f"support-spine source is missing required key(s): {missing}."
+            )
+        for key in ("role", "survey", "source"):
+            if not isinstance(raw[key], str) or not raw[key]:
+                raise ValueError(
+                    f"support-spine source key {key!r} must be a non-empty string."
+                )
+        source_year_offset = raw["source_year_offset"]
+        if not isinstance(source_year_offset, int) or isinstance(
+            source_year_offset, bool
+        ):
+            raise ValueError("support-spine source_year_offset must be an integer.")
+        share = raw.get("share")
+        if share is not None:
+            if (
+                not isinstance(share, int | float)
+                or isinstance(share, bool)
+                or float(share) <= 0.0
+            ):
+                raise ValueError("support-spine source share must be positive.")
+            share = float(share)
+        notes = raw.get("notes", "")
+        if not isinstance(notes, str):
+            raise ValueError("support-spine source notes must be a string.")
+        _reject_executable_parameter_keys(
+            raw, context=f"support-spine source {raw['role']!r}"
+        )
+        _reject_incumbent_dependencies(
+            raw, context=f"support-spine source {raw['role']!r}"
+        )
+        return cls(
+            role=raw["role"],
+            survey=raw["survey"],
+            source=raw["source"],
+            source_year_offset=source_year_offset,
+            share=share,
+            notes=notes,
+        )
+
+    def resolved_year(self, target_year: int) -> int:
+        return int(target_year) + self.source_year_offset
+
+
+@dataclass(frozen=True)
+class SupportSpineSpec:
+    """Declarative support-spine construction contract."""
+
+    stage: str
+    method: str
+    target_year_from_build_config: bool
+    sources: tuple[SupportSpineSourceSpec, ...]
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> SupportSpineSpec:
+        required = ("stage", "method", "target_year_from_build_config", "sources")
+        missing = [key for key in required if key not in raw]
+        if missing:
+            raise ValueError(f"support-spine spec is missing key(s): {missing}.")
+        stage = raw["stage"]
+        method = raw["method"]
+        if not isinstance(stage, str) or not stage:
+            raise ValueError("support-spine stage must be a non-empty string.")
+        if method not in ALLOWED_SUPPORT_SPINE_METHODS:
+            raise ValueError(
+                f"support-spine method {method!r} is not supported; allowed "
+                f"methods are {sorted(ALLOWED_SUPPORT_SPINE_METHODS)}."
+            )
+        target_year_from_build_config = raw["target_year_from_build_config"]
+        if not isinstance(target_year_from_build_config, bool):
+            raise ValueError(
+                "support-spine target_year_from_build_config must be boolean."
+            )
+        if not target_year_from_build_config:
+            raise ValueError(
+                "support-spine target_year_from_build_config must be true; "
+                "period-specific source years belong in runtime build inputs."
+            )
+        sources = tuple(
+            SupportSpineSourceSpec.from_mapping(source)
+            for source in _require_mapping_sequence(raw["sources"])
+        )
+        if not sources:
+            raise ValueError("support-spine spec requires at least one source.")
+        shares = [source.share for source in sources]
+        if any(share is None for share in shares):
+            raise ValueError("support-spine sources must declare explicit shares.")
+        total = sum(float(share) for share in shares if share is not None)
+        if abs(total - 1.0) > 1e-9:
+            raise ValueError(f"support-spine source shares must sum to 1, got {total}.")
+        _reject_executable_parameter_keys(raw, context=f"support-spine {stage!r}")
+        _reject_incumbent_dependencies(raw, context=f"support-spine {stage!r}")
+        return cls(
+            stage=stage,
+            method=method,
+            target_year_from_build_config=target_year_from_build_config,
+            sources=sources,
+        )
+
+
+@dataclass(frozen=True)
+class SupportSpineManifest:
+    """Country support-spine manifest loaded from packaged JSON."""
+
+    country: str
+    version: int
+    policy: str
+    support_spine: SupportSpineSpec
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> SupportSpineManifest:
+        country = raw.get("country")
+        version = raw.get("version")
+        policy = raw.get("policy", "")
+        if not isinstance(country, str) or not country:
+            raise ValueError("support-spine manifest requires a non-empty 'country'.")
+        if not isinstance(version, int) or version < 1:
+            raise ValueError(
+                "support-spine manifest requires positive integer 'version'."
+            )
+        if not isinstance(policy, str) or not policy:
+            raise ValueError("support-spine manifest requires a non-empty 'policy'.")
+        support_spine = raw.get("support_spine")
+        if not isinstance(support_spine, Mapping):
+            raise ValueError("support-spine manifest requires object 'support_spine'.")
+        _reject_executable_parameter_keys(
+            raw, context=f"{country} support-spine manifest"
+        )
+        _reject_incumbent_dependencies(raw, context=f"{country} support-spine manifest")
         return cls(
             country=country,
             version=version,
             policy=policy,
-            plan_stages=plan_stages,
-            stages=stages,
+            support_spine=SupportSpineSpec.from_mapping(support_spine),
         )
-
-    def stage_map(self) -> Mapping[str, SourceStageSpec]:
-        return {stage.stage: stage for stage in self.stages}
 
 
 def load_source_manifest(resource: Any) -> SourceManifest:
@@ -238,6 +392,18 @@ def load_source_manifest(resource: Any) -> SourceManifest:
     if not isinstance(raw, Mapping):
         raise ValueError("source manifest root must be a JSON object.")
     return SourceManifest.from_mapping(raw)
+
+
+def load_support_spine_manifest(resource: Any) -> SupportSpineManifest:
+    """Load and validate a support-spine manifest from a path-like resource."""
+    if hasattr(resource, "read_text"):
+        text = resource.read_text(encoding="utf-8")
+    else:
+        text = Path(resource).read_text(encoding="utf-8")
+    raw = json.loads(text)
+    if not isinstance(raw, Mapping):
+        raise ValueError("support-spine manifest root must be a JSON object.")
+    return SupportSpineManifest.from_mapping(raw)
 
 
 def _require_mapping_sequence(raw: object) -> tuple[Mapping[str, Any], ...]:
@@ -284,7 +450,10 @@ def _reject_incumbent_dependencies(value: object, *, context: str) -> None:
 
 def _reject_executable_loader_shape(kind: str, parameters: Mapping[str, Any]) -> None:
     normalized_kind = _normalize_manifest_key(kind)
-    if normalized_kind in FORBIDDEN_EXECUTABLE_OPERATION_KINDS:
+    if (
+        normalized_kind in FORBIDDEN_EXECUTABLE_OPERATION_KINDS
+        or _is_executable_loader_key(normalized_kind)
+    ):
         raise ValueError(
             f"source operation {kind!r} is executable-loader content, not a "
             "declarative source operation."
@@ -302,7 +471,7 @@ def _reject_executable_parameter_keys(value: object, *, context: str) -> None:
         for key, nested in value.items():
             if isinstance(key, str):
                 normalized = _normalize_manifest_key(key)
-                if normalized in FORBIDDEN_EXECUTABLE_LOADER_KEYS:
+                if _is_executable_loader_key(normalized):
                     raise ValueError(
                         f"{context} uses executable-loader key {key!r}; source "
                         "manifests must be declarative."
@@ -312,7 +481,46 @@ def _reject_executable_parameter_keys(value: object, *, context: str) -> None:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for nested in value:
             _reject_executable_parameter_keys(nested, context=context)
+        return
+    if isinstance(value, str) and _looks_like_python_entrypoint(value):
+        raise ValueError(
+            f"{context} references executable Python entrypoint {value!r}; source "
+            "manifests must be declarative."
+        )
 
 
 def _normalize_manifest_key(value: str) -> str:
-    return value.lower().replace("-", "_").strip()
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
+def _is_executable_loader_key(normalized: str) -> bool:
+    if normalized in FORBIDDEN_EXECUTABLE_LOADER_KEYS:
+        return True
+    tokens = normalized.split("_")
+    return any(
+        token
+        in {
+            "callable",
+            "callback",
+            "entry",
+            "entrypoint",
+            "function",
+            "handler",
+            "import",
+            "loader",
+            "module",
+            "python",
+        }
+        for token in tokens
+    )
+
+
+def _looks_like_python_entrypoint(value: str) -> bool:
+    if "://" in value:
+        return False
+    return bool(
+        re.search(
+            r"\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+:[a-zA-Z_]\w*\b",
+            value,
+        )
+    )

@@ -1,11 +1,14 @@
+import builtins
 import importlib.util
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
+import pytest
 
 from populace.calibrate import TargetRegistry, TargetSpec
 from populace.frame import Frame, WeightKind
@@ -17,6 +20,19 @@ def _load_builder_module():
     spec = importlib.util.spec_from_file_location(
         "build_us_fiscal_refresh_release", path
     )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_scorer_module():
+    root = Path(__file__).resolve().parents[3]
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "score_us_fiscal_targets.py"
+    spec = importlib.util.spec_from_file_location("score_us_fiscal_targets", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -44,6 +60,151 @@ def test_runtime_versions_use_local_workspace_package_version(
     versions = builder._runtime_versions()
 
     assert versions["populace-data"] == "0.1.0"
+
+
+def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
+    builder = _load_builder_module()
+    acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
+    soi_cd_alias = "soi-congressional-district-2022"
+
+    reviewed = builder._reviewed_exclusions(
+        builder.DIRECT_ACTIVE_ALIASES + (acs_cd_alias, soi_cd_alias)
+    )
+
+    assert acs_cd_alias not in reviewed
+    assert soi_cd_alias not in reviewed
+    assert "census-acs-s0101-national-age-2024" in reviewed
+    assert "census-acs-s0101-state-age-2024" in reviewed
+
+
+def test_cd_vintage_support_provenance_requires_matching_h5_attrs(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {},
+    )
+
+    with pytest.raises(ValueError, match="crosswalk provenance mismatch"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "household_congressional_district_geoid": {
+                "exists": True,
+                "positive_unique_count": 436,
+            },
+        },
+    )
+
+    builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_rejects_missing_cd_lookup(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "household_congressional_district_geoid": {"exists": False},
+        },
+    )
+
+    with pytest.raises(ValueError, match="missing household congressional"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_counts_only_positive_numeric_lookup() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._positive_numeric_unique_count(
+            np.asarray(["", "0", "0000", "not-a-geoid"])
+        )
+        == 0
+    )
+    assert (
+        builder._positive_numeric_unique_count(np.asarray(["0101", "0101", "0200"]))
+        == 2
+    )
+
+
+def test_cd_vintage_support_provenance_names_us_extra_when_h5py_missing(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "h5py":
+            raise ModuleNotFoundError("No module named 'h5py'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._read_cd_vintage_support_provenance(h5_path)
+
+    message = str(excinfo.value)
+    assert "--extra us" in message
+    assert "before calibration or donor imputation" in message
+
+
+def _complete_area_artifact_results(builder, artifact_root: Path) -> tuple:
+    from populace.build.us_runtime.area_artifacts import (
+        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
+        EXPECTED_STATE_ARTIFACT_KEYS,
+    )
+
+    artifacts = []
+    for key in sorted(EXPECTED_STATE_ARTIFACT_KEYS) + sorted(
+        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS
+    ):
+        path = artifact_root / f"{key}.h5"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(key)
+        artifacts.append(
+            builder.AreaArtifactResult(
+                key=key,
+                path=f"{key}.h5",
+                kind=(
+                    "state_microdata"
+                    if key.startswith("states/")
+                    else "congressional_district_microdata"
+                ),
+                sha256=builder._sha256(path),
+                n_households=10,
+                n_persons=25,
+            )
+        )
+    return tuple(artifacts)
 
 
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
@@ -94,13 +255,15 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             17_100_000.0,
         ),
         diagnostic(
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
-            59_204_610_000.0,
-            63_000_000_000.0,
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            69_041_649_000.0,
+            70_000_000_000.0,
         ),
         diagnostic(
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_claims",
-            23_692_200.0,
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns",
+            23_837_149.0,
             23_800_000.0,
         ),
         diagnostic(
@@ -142,6 +305,12 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         np.array([5.0, -0.0, -0.0]),
     )
     assert np.array_equal(
+        builder._signed_component(
+            np.array([-5.0, 0.0, 7.0]), "rent_and_royalty_net_income"
+        ),
+        np.array([-5.0, 0.0, 7.0]),
+    )
+    assert np.array_equal(
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
@@ -178,6 +347,216 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     )
     args = builder._parse_args()
     assert args.audit_export_targets
+
+
+def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-congressional-district-targets",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-area-artifacts",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--include-congressional-district-targets",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.congressional_district_vintage_crosswalk == Path("crosswalk.csv")
+
+
+def test_area_artifact_preflight_runs_before_source_materialization(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("")
+    facts = tmp_path / "facts.jsonl"
+    facts.write_text("")
+    out = tmp_path / "out"
+    crosswalk = tmp_path / "crosswalk.csv"
+    crosswalk.write_text("source_geography_id,target_geography_id,weight\n")
+    release_id = "populace-us-test"
+    calls: list[str] = []
+
+    spec = TargetSpec(
+        name="target",
+        entity="household",
+        measure="household_count",
+        value=1.0,
+        source="source",
+        family="family",
+    )
+    registry = TargetRegistry((spec,), country="us")
+
+    class FakeFrame:
+        pass
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--base-h5",
+            str(base_h5),
+            "--ledger-facts",
+            str(facts),
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--include-area-artifacts",
+            "--congressional-district-vintage-crosswalk",
+            str(crosswalk),
+        ],
+    )
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "sha")
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "load_congressional_district_vintage_crosswalk",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, metadata: None,
+    )
+    monkeypatch.setattr(builder, "_load_ledger_facts", lambda path: ({"fact": 1},))
+    monkeypatch.setattr(
+        builder,
+        "compile_us_fiscal_target_registry",
+        lambda facts, **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        builder,
+        "target_profile_coverage_gate",
+        lambda specs, requirements: builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={},
+        ),
+    )
+    monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    monkeypatch.setattr(
+        builder,
+        "_with_base_population_mass_repair",
+        lambda frame: (frame, {"applied": False}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, {"applied": False}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_base_population_scale_gate",
+        lambda frame, *, mass_repair=None: builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={},
+        ),
+    )
+
+    def fail_area_preflight(frame):
+        calls.append("area_preflight")
+        raise ValueError("bad current CD lookup")
+
+    def source_inputs_should_not_run(
+        frame,
+        specs,
+        *,
+        seed,
+        maximum_microsim_batch_size=None,
+    ):
+        calls.append("source_inputs")
+        return frame
+
+    monkeypatch.setattr(builder, "_strict_area_artifact_specs", fail_area_preflight)
+    monkeypatch.setattr(
+        builder,
+        "_with_aca_marketplace_source_outputs",
+        source_inputs_should_not_run,
+    )
+
+    with pytest.raises(ValueError, match="bad current CD lookup"):
+        builder.main()
+
+    assert calls == ["area_preflight"]
+
+
+def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert (
+        args.maximum_microsim_batch_size == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--maximum-microsim-batch-size",
+            "0",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.maximum_microsim_batch_size == 0
 
 
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
@@ -323,6 +702,24 @@ def test_unsupported_soi_ledger_filters_require_materializer_support() -> None:
             "ledger_filter_new_dimension": "specific_slice",
         }
     ) == ("ledger_filter_new_dimension",)
+
+
+def test_unsupported_ledger_filter_metadata_all_value_is_noop() -> None:
+    builder = _load_builder_module()
+    specs = (
+        SimpleNamespace(
+            name="all_child_count",
+            metadata={"ledger_filter_qualifying_children": "all"},
+        ),
+        SimpleNamespace(
+            name="specific_child_count",
+            metadata={"ledger_filter_qualifying_children": "one"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "specific_child_count": ("ledger_filter_qualifying_children",)
+    }
 
 
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
@@ -589,6 +986,83 @@ def test_base_population_scale_gate_accepts_national_scale_base(small_frame) -> 
     assert gate.details["relative_error"] == 0.0
 
 
+def test_base_population_mass_repair_rescales_to_census_benchmark(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    benchmark = builder.US_BASE_PERSON_POPULATION_BENCHMARK
+
+    repaired, repair = builder._with_base_population_mass_repair(small_frame)
+
+    assert repair["applied"]
+    assert repair["method"] == "rescale_household_weights_to_census_person_population"
+    assert repair["initial_population"] == 6000.0
+    assert np.isclose(repair["factor"], benchmark / 6000.0)
+    assert np.isclose(repair["repaired_population"], benchmark)
+    assert np.isclose(float(repaired.resolve_weights("person").values.sum()), benchmark)
+    assert repaired.mass_log[-1].entity == "household"
+    assert (
+        repaired.mass_log[-1].reason == builder.US_BASE_PERSON_POPULATION_REPAIR_REASON
+    )
+
+    gate = builder._base_population_scale_gate(repaired, mass_repair=repair)
+    assert gate.passed
+    assert gate.details["mass_repair"]["initial_population"] == 6000.0
+    assert np.isclose(gate.details["mass_repair"]["factor"], benchmark / 6000.0)
+
+
+def test_social_security_component_value_repair_uses_registry_targets(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    person = small_frame.table("person").copy()
+    person["social_security_retirement"] = [1.0, 0.0, 2.0, 0.0]
+    person["social_security_disability"] = [0.0, 3.0, 0.0, 1.0]
+    person["social_security_dependents"] = [2.0, 0.0, 0.0, 1.0]
+    person["social_security_survivors"] = [0.0, 1.0, 2.0, 0.0]
+    frame = Frame(
+        {
+            "person": person,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    targets = {
+        "ssa_retirement_total": 10_000.0,
+        "ssa_disability_total": 8_000.0,
+        "ssa_dependents_total": 6_000.0,
+        "ssa_survivors_total": 12_000.0,
+    }
+    specs = tuple(
+        TargetSpec(
+            name=f"ssa.{role}",
+            entity="household",
+            value=value,
+            measure="unused",
+            period=builder.PERIOD,
+            source="SSA",
+            metadata={"target_role": role},
+        )
+        for role, value in targets.items()
+    )
+
+    repaired, repair = builder._with_social_security_component_value_repair(
+        frame,
+        specs,
+    )
+
+    assert repair["applied"]
+    weights = pd.Series(repaired.resolve_weights("person").values)
+    for role, column in builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.items():
+        total = float((repaired.table("person")[column] * weights).sum())
+        assert np.isclose(total, targets[role])
+        assert np.isclose(
+            repair["components"][column]["repaired_estimate"],
+            targets[role],
+        )
+
+
 def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -615,6 +1089,62 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     assert builder._release_gate_failures(result, {"dropped_target_names": []}) == [
         "1 positive fiscal targets have zero materialized support "
         f"(examples: nation/irs/zero@{builder.PERIOD})."
+    ]
+
+
+def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
+    builder = _load_builder_module()
+    cd_spec = TargetSpec(
+        name="irs_soi.ty2023.congressional_district_2022.all_returns."
+        "ak_00.tax_exempt_interest_amount",
+        entity="household",
+        measure="tax_exempt_interest",
+        value=1_000.0,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "ledger_geography_level": "congressional_district",
+            "congressional_district_geoid": "0200",
+        },
+    )
+    cd_target = cd_spec.to_target()
+    cd_row_name = f"{cd_spec.name}@{builder.PERIOD}"
+    result = SimpleNamespace(
+        skipped=(SimpleNamespace(target=cd_target, reason="missing column"),),
+        diagnostics=(
+            SimpleNamespace(
+                name=cd_row_name,
+                target=1_000.0,
+                initial_estimate=0.0,
+                final_estimate=0.0,
+            ),
+            *_passing_critical_diagnostics(builder),
+        ),
+        problem=SimpleNamespace(
+            names=(cd_row_name,),
+            targets=(cd_target,),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    compilation = {
+        "dropped_target_names": [cd_spec.name],
+        "gate_congressional_district_targets": False,
+        "diagnostic_only_dropped_target_names": [cd_spec.name],
+    }
+
+    assert builder._release_gate_failures(result, compilation) == []
+
+    gated_compilation = {
+        **compilation,
+        "gate_congressional_district_targets": True,
+    }
+
+    assert builder._release_gate_failures(result, gated_compilation) == [
+        "1 fiscal targets were not materialized.",
+        "1 fiscal targets were skipped by calibration.",
+        "1 positive fiscal targets have zero materialized support "
+        f"(examples: {cd_row_name}).",
     ]
 
 
@@ -680,6 +1210,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="national_critical_role",
                 entity="household",
+                measure="national_critical_role",
                 value=100.0,
                 source="fixture",
                 metadata={"target_role": "federal_income_tax_total"},
@@ -687,6 +1218,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="state_role_row",
                 entity="household",
+                measure="state_role_row",
                 value=100.0,
                 source="fixture",
                 metadata={"state_fips": "06", "target_role": "tanf_total"},
@@ -694,6 +1226,7 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
             TargetSpec(
                 name="ordinary_distribution_row",
                 entity="household",
+                measure="ordinary_distribution_row",
                 value=100.0,
                 source="fixture",
             ),
@@ -708,6 +1241,149 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
     assert np.array_equal(weights, np.ones(3))
 
 
+def test_fiscal_target_loss_weights_hold_concept_budget_when_geography_expands() -> (
+    None
+):
+    builder = _load_builder_module()
+
+    def spec(name: str, value: float, **metadata: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=metadata.get("variable", "amount"),
+            value=value,
+            source="fixture",
+            metadata={
+                "source_measure_id": "amount",
+                "source_period": "2024",
+                "target_role": "fixture_distribution",
+                "measure_mode": "sum",
+                **metadata,
+            },
+        )
+
+    national_income_tax = spec(
+        "income_tax_national",
+        100.0,
+        variable="income_tax",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_national = spec(
+        "ctc_national",
+        400.0,
+        variable="ctc",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_cd_1 = spec(
+        "ctc_cd_1",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0101",
+        ledger_geography_name="Alabama Congressional District 1",
+        congressional_district_geoid="0101",
+        state_fips="01",
+    )
+    ctc_cd_2 = spec(
+        "ctc_cd_2",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0102",
+        ledger_geography_name="Alabama Congressional District 2",
+        congressional_district_geoid="0102",
+        state_fips="01",
+    )
+
+    base_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry((national_income_tax, ctc_national), country="us")
+    )
+    one_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1),
+            country="us",
+        )
+    )
+    two_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1, ctc_cd_2),
+            country="us",
+        )
+    )
+
+    assert np.isclose(base_weights[1] / base_weights.sum(), 2 / 3)
+    assert np.isclose(
+        one_child_weights[2:].sum() / one_child_weights.sum(),
+        two_child_weights[2:].sum() / two_child_weights.sum(),
+    )
+    assert two_child_weights[1] > two_child_weights[2:].sum()
+    assert two_child_weights[2] == two_child_weights[3]
+
+
+def test_fiscal_target_loss_weights_budget_unparented_cd_rows_by_concept() -> None:
+    builder = _load_builder_module()
+
+    def cd_spec(name: str, geoid: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure="tax_filer_individual_count",
+            value=100.0,
+            source="fixture",
+            metadata={
+                "source_measure_id": "tax_filer_individual_count",
+                "source_period": "2023",
+                "target_role": "soi_fiscal_distribution",
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "measure_mode": "sum",
+                "ledger_geography_level": "congressional_district",
+                "ledger_geography_id": f"5001700US{geoid}",
+                "ledger_geography_name": f"Congressional District {geoid}",
+                "congressional_district_geoid": geoid,
+                "state_fips": geoid[:2],
+            },
+        )
+
+    comparison = TargetSpec(
+        name="comparison_amount",
+        entity="household",
+        measure="adjusted_gross_income",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "source_measure_id": "adjusted_gross_income",
+            "source_period": "2023",
+            "target_role": "soi_fiscal_distribution",
+            "variable": "adjusted_gross_income",
+            "source_variable": "adjusted_gross_income",
+            "measure_mode": "sum",
+        },
+    )
+    one_cd_registry = TargetRegistry(
+        (comparison, cd_spec("cd_1", "0101")), country="us"
+    )
+    many_cd_registry = TargetRegistry(
+        (
+            comparison,
+            cd_spec("cd_1", "0101"),
+            cd_spec("cd_2", "0102"),
+            cd_spec("cd_3", "0103"),
+            cd_spec("cd_4", "0104"),
+        ),
+        country="us",
+    )
+
+    one_cd_weights = builder._fiscal_target_loss_weights(one_cd_registry)
+    many_cd_weights = builder._fiscal_target_loss_weights(many_cd_registry)
+
+    assert np.isclose(one_cd_weights[1:].sum() / one_cd_weights.sum(), 0.5)
+    assert np.isclose(many_cd_weights[1:].sum() / many_cd_weights.sum(), 0.5)
+    assert np.allclose(many_cd_weights[1:], many_cd_weights[1])
+
+
 def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
     builder = _load_builder_module()
     registry = TargetRegistry(
@@ -715,6 +1391,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="amount_small",
                 entity="household",
+                measure="amount_small",
                 value=100.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -722,6 +1399,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="amount_large",
                 entity="household",
+                measure="amount_large",
                 value=300.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -729,6 +1407,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="returns_small",
                 entity="household",
+                measure="returns_small",
                 value=10.0,
                 source="fixture",
                 metadata={
@@ -739,6 +1418,7 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
             TargetSpec(
                 name="returns_large",
                 entity="household",
+                measure="returns_large",
                 value=30.0,
                 source="fixture",
                 metadata={
@@ -766,6 +1446,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="amount_small",
                 entity="household",
+                measure="amount_small",
                 value=100.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -773,6 +1454,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="amount_large",
                 entity="household",
+                measure="amount_large",
                 value=300.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -780,6 +1462,7 @@ def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> N
             TargetSpec(
                 name="returns",
                 entity="household",
+                measure="returns",
                 value=10.0,
                 source="fixture",
                 metadata={
@@ -809,6 +1492,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="zero",
                 entity="household",
+                measure="zero",
                 value=0.0,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -816,6 +1500,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="subunit",
                 entity="household",
+                measure="subunit",
                 value=0.25,
                 source="fixture",
                 metadata={"source_measure_id": "payment_amount"},
@@ -823,6 +1508,7 @@ def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
             TargetSpec(
                 name="negative",
                 entity="household",
+                measure="negative",
                 value=-9.0,
                 source="fixture",
                 signed=True,
@@ -844,6 +1530,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     amount = TargetSpec(
         name="amount",
         entity="household",
+        measure="amount",
         value=100.0,
         source="fixture",
         metadata={"source_measure_id": "payment_amount"},
@@ -851,6 +1538,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     return_count = TargetSpec(
         name="return_count",
         entity="household",
+        measure="return_count",
         value=100.0,
         source="fixture",
         metadata={
@@ -861,6 +1549,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     person_count = TargetSpec(
         name="person_count",
         entity="household",
+        measure="person_count",
         value=100.0,
         source="fixture",
         metadata={
@@ -873,6 +1562,7 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     bronze_count = TargetSpec(
         name="bronze_count",
         entity="household",
+        measure="bronze_count",
         value=100.0,
         source="fixture",
         metadata={
@@ -924,8 +1614,13 @@ def test_release_calibration_diagnostics_include_gate_failures(
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
         base_population_gate=base_population_gate,
+        support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
         gate_failures=["ctc failed"],
+        timing={
+            "target_compilation_seconds": 1.25,
+            "calibration_seconds": 2.5,
+        },
     )
 
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
@@ -946,6 +1641,13 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"population": 334_200_000.0},
+    }
+    assert build["support_value_repairs"] == {
+        "social_security_components": {"applied": True}
+    }
+    assert build["timing"] == {
+        "target_compilation_seconds": 1.25,
+        "calibration_seconds": 2.5,
     }
 
 
@@ -1001,7 +1703,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "compile_us_fiscal_target_registry",
-        lambda facts, *, target_period: registry,
+        lambda facts, **kwargs: registry,
     )
     monkeypatch.setattr(
         builder,
@@ -1013,19 +1715,38 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    repair_payload = {
+        "method": "rescale_household_weights_to_census_person_population",
+        "applied": True,
+        "factor": 2.0,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_base_population_mass_repair",
+        lambda frame: (frame, repair_payload),
+    )
+    ss_repair_payload = {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": True,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, ss_repair_payload),
+    )
     monkeypatch.setattr(
         builder,
         "_base_population_scale_gate",
-        lambda frame: builder.GateResult(
+        lambda frame, *, mass_repair=None: builder.GateResult(
             name="base_population_scale",
             passed=True,
-            details={"checked": True},
+            details={"checked": True, "mass_repair": mass_repair},
         ),
     )
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed: frame,
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
     )
     monkeypatch.setattr(
         builder,
@@ -1036,14 +1757,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["materialize_kwargs"] = kwargs
+        return frame, registry, {"dropped_target_names": []}
+
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, specs: (
-            frame,
-            registry,
-            {"dropped_target_names": []},
-        ),
+        fake_materialize_target_frame,
     )
 
     def fake_calibrate(*args, **kwargs):
@@ -1080,8 +1802,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
     assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    assert (
+        captured["diagnostics"]["base_population_gate"].details["mass_repair"]
+        == repair_payload
+    )
+    assert captured["diagnostics"]["support_value_repairs"] == {
+        "social_security_components": ss_repair_payload
+    }
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_dir"]
+        == out / "artifacts" / "target_materialization_cache"
+    )
+    assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
@@ -1100,10 +1834,11 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
             43_994_700.0,
         ),
         (
-            "irs_soi.ty2022.historic_table_2.us.all.eitc_amount",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
             "Earned Income Tax Credit amount",
-            59_204_610_000.0,
-            70_208_900_000.0,
+            69_041_649_000.0,
+            83_000_000_000.0,
         ),
         (
             "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
@@ -1158,7 +1893,35 @@ def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
 
         assert len(failures) == 1
         assert label in failures[0]
-        assert "exceeding 0.1" in failures[0]
+        assert "exceeding 0.15" in failures[0]
+
+
+def test_critical_gate_allows_eitc_amount_within_credit_tolerance() -> None:
+    builder = _load_builder_module()
+    name = (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        f"earned_income_credit.total_earned_income_credit_amount@{builder.PERIOD}"
+    )
+    target = 69_041_649_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=target,
+        final_estimate=58_954_970_066.74941,
+        relative_error=(58_954_970_066.74941 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
 
 
 def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
@@ -1199,6 +1962,166 @@ def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
     )
 
 
+def test_incumbent_diagnostics_must_match_current_target_surface(tmp_path) -> None:
+    builder = _load_builder_module()
+    incumbent_path = tmp_path / "calibration_diagnostics.json"
+    current_surface = {"sha256": "a" * 64, "n_targets": 33_127}
+    incumbent_payload = {
+        "target_surface": {"sha256": "b" * 64, "n_targets": 6_877},
+        "targets": [],
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Score the incumbent on the current target surface",
+    ):
+        builder._assert_incumbent_target_surface_matches(
+            current_surface,
+            incumbent_payload,
+            path=incumbent_path,
+        )
+
+
+def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
+    scorer = _load_scorer_module()
+
+    with pytest.raises(
+        ValueError,
+        match="requires --congressional-district-vintage-crosswalk",
+    ):
+        scorer._assert_legacy_cd_provenance_options(
+            allow_legacy_cd_provenance=True,
+            congressional_district_vintage_crosswalk_metadata=None,
+        )
+
+    scorer._assert_legacy_cd_provenance_options(
+        allow_legacy_cd_provenance=True,
+        congressional_district_vintage_crosswalk_metadata={"sha256": "x"},
+    )
+
+
+def test_scorer_accepts_legacy_pe_flat_h5_flag(
+    monkeypatch,
+) -> None:
+    scorer = _load_scorer_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "score_us_fiscal_targets.py",
+            "--h5",
+            "enhanced_cps_2024.h5",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "score",
+            "--legacy-pe-flat-h5",
+        ],
+    )
+
+    args = scorer._parse_args()
+
+    assert args.legacy_pe_flat_h5
+
+
+def test_legacy_pe_flat_h5_loads_entity_frame(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 300])
+    write_column("person_spm_unit_id", [1000, 1000, 1000, 1000])
+    write_column("person_family_id", [2000, 2000, 2001, 2002])
+    write_column("person_marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 200.0])
+    write_column("state_fips", [6, 36])
+    write_column("tax_unit_id", [100, 200, 300])
+    write_column("spm_unit_id", [1000])
+    write_column("family_id", [2000, 2001, 2002])
+    write_column("marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("age", [40, 38, 10, 7])
+    write_column("income_tax", [1_000.0, 2_000.0, 3_000.0])
+    write_column("unknown_household_signal", [1, 0])
+    write_column("bad_matrix", [[1, 2], [3, 4]])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={
+            "age": "person",
+            "income_tax": "tax_unit",
+            "state_fips": "household",
+        },
+    )
+
+    assert frame.n("person") == 4
+    assert frame.n("household") == 2
+    assert frame.n("tax_unit") == 3
+    assert frame.table("person")["age"].tolist() == [40, 38, 10, 7]
+    assert frame.table("tax_unit")["income_tax"].tolist() == [
+        1_000.0,
+        2_000.0,
+        3_000.0,
+    ]
+    assert frame.table("household")["unknown_household_signal"].tolist() == [1, 0]
+    assert frame.weights_for("household").values.tolist() == [100.0, 200.0]
+    assert metadata["layout"] == "legacy_pe_flat_h5"
+    assert metadata["inferred_unknown_columns_by_entity"] == {
+        "household": ["unknown_household_signal"]
+    }
+    assert any(
+        skipped["column"] == "bad_matrix" and "not one-dimensional" in skipped["reason"]
+        for skipped in metadata["skipped_columns"]
+    )
+
+
+def test_legacy_pe_flat_h5_drops_zero_weight_households(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data_zero_weights.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 200])
+    write_column("person_spm_unit_id", [1000, 1000, 2000, 2000])
+    write_column("person_family_id", [3000, 3000, 4000, 4000])
+    write_column("person_marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 0.0])
+    write_column("tax_unit_id", [100, 200])
+    write_column("spm_unit_id", [1000, 2000])
+    write_column("family_id", [3000, 4000])
+    write_column("marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("age", [40, 38, 10, 7])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={"age": "person"},
+    )
+
+    assert frame.n("household") == 1
+    assert frame.n("person") == 2
+    assert frame.table("household")["household_id"].tolist() == [10]
+    assert frame.table("person")["person_id"].tolist() == [1, 2]
+    assert frame.weights_for("household").values.tolist() == [100.0]
+    assert metadata["dropped_zero_weight_households"] == 1
+    assert metadata["dropped_zero_weight_persons"] == 2
+
+
 def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
     builder = _load_builder_module()
     name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
@@ -1235,7 +2158,7 @@ def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
 
     assert len(failures) == 1
     assert "Child Tax Credit amount" in failures[0]
-    assert "exceeding 0.1" in failures[0]
+    assert "exceeding 0.15" in failures[0]
     assert "incumbent_relative_error=" in failures[0]
     assert "improvement_hard_stop=0.25" in failures[0]
 
@@ -1324,6 +2247,24 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
         "selected_marketplace_plan_benchmark_ratio": 3,
         "takes_up_aca_if_eligible": 2,
     }
+    ratio_diagnostics = gate.details["selected_marketplace_plan_benchmark_ratio"]
+    assert ratio_diagnostics["support"] == {"lower": 0.5, "upper": 1.5}
+    assert ratio_diagnostics["all_tax_units"] == {
+        "count": 3,
+        "min": 0.8,
+        "max": 1.2,
+        "mean": 1.0,
+        "neutral_count": 1,
+        "below_benchmark_count": 1,
+        "above_benchmark_count": 1,
+        "below_support_count": 0,
+        "above_support_count": 0,
+    }
+    marketplace_takers = ratio_diagnostics["marketplace_takers"]
+    assert marketplace_takers["count"] == 2
+    assert abs(marketplace_takers["mean"] - 1.1) < 1e-12
+    assert marketplace_takers["below_benchmark_count"] == 0
+    assert marketplace_takers["above_benchmark_count"] == 1
 
 
 def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
@@ -1376,7 +2317,11 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
             value=3.0,
             source="CMS Marketplace OEP",
             family="cms_aca",
-            metadata={"target_role": "aca_ptc_recipients", "state_fips": "01"},
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "01",
+                "ledger_geography_level": "state",
+            },
         ),
     )
     values = {
@@ -1425,6 +2370,148 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
     )
 
 
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20, 30], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200, 300], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000, 3000], dtype="int64"),
+            "person_marital_unit_id": np.asarray(
+                [10000, 10000, 20000, 30000], dtype="int64"
+            ),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "state_fips": np.asarray([1, 1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2, 0.3],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200, 300]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000, 3000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000, 30000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 20.0, 30.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    target_tables = {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {
+                "state_fips": ["01"],
+                "target": [3.0],
+            }
+        )
+    }
+    tax_values = {
+        10: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 100.0,
+            "health_insurance_premiums_without_medicare_part_b": 400.0,
+            "slcsp": 1000.0,
+        },
+        20: {
+            "is_aca_ptc_eligible": 0.0,
+            "aca_ptc": 200.0,
+            "health_insurance_premiums_without_medicare_part_b": 500.0,
+            "slcsp": 1100.0,
+        },
+        30: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 300.0,
+            "health_insurance_premiums_without_medicare_part_b": 600.0,
+            "slcsp": 1200.0,
+        },
+    }
+    person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
+    seen_tax_unit_batches: list[tuple[int, ...]] = []
+    formula_owned_assertions: list[int] = []
+    dataset_assert_flags: list[bool | None] = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.dataset = dataset
+            seen_tax_unit_batches.append(
+                tuple(dataset.table("tax_unit")["tax_unit_id"].astype(int))
+            )
+
+        def _invalidate_all_caches(self):
+            pass
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        if map_to == "person":
+            return np.asarray(
+                [
+                    person_eligible[int(person_id)]
+                    for person_id in simulation.dataset.table("person")["person_id"]
+                ],
+                dtype=np.float64,
+            )
+        assert map_to == "tax_unit"
+        return np.asarray(
+            [
+                tax_values[int(tax_unit_id)][variable]
+                for tax_unit_id in simulation.dataset.table("tax_unit")["tax_unit_id"]
+            ],
+            dtype=np.float64,
+        )
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
+
+    def fake_dataset_from_frame(frame_arg, **kwargs):
+        dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        return frame_arg
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    tax_unit = builder._aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=FakeMicrosimulation,
+        maximum_microsim_batch_size=1,
+    ).set_index("tax_unit_id")
+
+    assert seen_tax_unit_batches == [(10,), (20,), (30,)]
+    assert formula_owned_assertions == [3]
+    assert dataset_assert_flags == [False, False, False]
+    assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
+    assert bool(tax_unit.loc[10, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[20, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[30, "is_aca_ptc_eligible"]) is False
+    assert tax_unit.loc[10, "assigned_aca_ptc"] == 100.0
+    assert (
+        tax_unit.loc[20, "health_insurance_premiums_without_medicare_part_b"] == 500.0
+    )
+    assert tax_unit.loc[30, "slcsp"] == 1200.0
+    assert tax_unit.loc[10, "aca_take_up_rate"] == 0.075
+    assert tax_unit.loc[30, "aca_take_up_rate"] == 0.0
+
+
 def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
     builder = _load_builder_module()
     specs = (
@@ -1452,8 +2539,187 @@ def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
         raise AssertionError("Expected enrollment-only ACA source refresh to fail.")
 
 
+def test_aca_source_runtime_uses_bronze_targets_when_available(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    captured: dict[str, object] = {}
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20],
+            "takes_up_aca_if_eligible": [False, False],
+            "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
+        }
+    )
+
+    class FakeFrame:
+        entities = ("tax_unit",)
+        schema = object()
+        weighted_entities = ()
+        strata = None
+
+        def table(self, entity):
+            assert entity == "tax_unit"
+            return tax_unit
+
+    def fake_run_source_stage(
+        stage,
+        *,
+        tables,
+        operation_handlers,
+        config,
+        stop_after,
+    ):
+        captured["stage"] = stage.stage
+        captured["tables"] = tables
+        captured["stop_after"] = stop_after
+        return pd.DataFrame(
+            {
+                "tax_unit_id": [10, 20],
+                "takes_up_aca_if_eligible": [True, False],
+                "selected_marketplace_plan_benchmark_ratio": [0.8, 1.0],
+            }
+        )
+
+    monkeypatch.setattr(builder, "_aca_source_person_table", lambda frame: object())
+    monkeypatch.setattr(
+        builder,
+        "_aca_source_tax_unit_table",
+        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None: (
+            pd.DataFrame({"tax_unit_id": [10, 20], "state_fips": ["06", "06"]})
+        ),
+    )
+    monkeypatch.setattr(builder, "run_source_stage", fake_run_source_stage)
+    monkeypatch.setattr(
+        builder,
+        "Frame",
+        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+    )
+
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.ca.aptc_recipients",
+            entity="household",
+            measure="takes_up_aca_if_eligible",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+        TargetSpec(
+            name="cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers",
+            entity="household",
+            measure="selected_marketplace_plan_benchmark_ratio",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_bronze_aptc_consumers",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+    )
+
+    builder._with_aca_marketplace_source_outputs(
+        FakeFrame(),
+        specs,
+        seed=42,
+        simulation=object(),
+    )
+
+    assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
+    assert captured["stop_after"] is None
+    target_tables = captured["tables"]
+    assert set(target_tables) >= {
+        builder.US_ACA_APTC_TARGET_TABLE,
+        "cms_aca_bronze_aptc_consumers_by_state",
+    }
+    bronze_table = target_tables["cms_aca_bronze_aptc_consumers_by_state"]
+    assert bronze_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 1.0,
+            "source_record_id": (
+                "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers"
+            ),
+        }
+    ]
+
+
+def test_aca_source_target_tables_ignore_congressional_district_targets() -> None:
+    builder = _load_builder_module()
+
+    specs = (
+        TargetSpec(
+            name="irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+            "premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=100.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_01.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=75.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "congressional_district",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_total.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=125.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+                "ledger_layout_groupby_dimension": ("irs_soi.congressional_district"),
+                "ledger_layout_groupby_value_id": "ca_total",
+            },
+        ),
+    )
+
+    tables = builder._aca_source_target_tables(specs)
+
+    amount_table = tables["irs_soi_premium_tax_credit_amount_by_state"]
+    assert amount_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 100.0,
+            "source_record_id": (
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "premium_tax_credit_amount"
+            ),
+        }
+    ]
+
+
 def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch,
+    tmp_path,
 ) -> None:
     builder = _load_builder_module()
     frame = Frame(
@@ -1510,6 +2776,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     datasets = []
     simulations = []
+    formula_owned_assertions: list[int] = []
 
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
@@ -1529,31 +2796,53 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
 
         def calculate(self, variable, *, period, **kwargs):
             assert period == builder.PERIOD
+            tax_unit_ids = (
+                self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
+            )
             if self.reform is not None:
                 assert variable == "income_tax"
                 assert kwargs == {}
-                return np.asarray([90.0, 25.0, 40.0])
-            arrays = {
-                "income_tax": np.asarray([100.0, 30.0, 70.0]),
-                "taxable_income": np.asarray([1000.0, 2000.0, 3000.0]),
-                "adjusted_gross_income": np.asarray([1100.0, 2100.0, 3100.0]),
-                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
-                "state_income_tax": np.asarray([5.0, 6.0, 7.0]),
+                reform_income_tax_by_id = {10: 90.0, 20: 25.0, 30: 40.0}
+                return np.asarray(
+                    [reform_income_tax_by_id[id_] for id_ in tax_unit_ids]
+                )
+            arrays_by_id = {
+                "income_tax": {10: 100.0, 20: 30.0, 30: 70.0},
+                "taxable_income": {10: 1000.0, 20: 2000.0, 30: 3000.0},
+                "adjusted_gross_income": {10: 1100.0, 20: 2100.0, 30: 3100.0},
+                "filing_status": {10: "SINGLE", 20: "SINGLE", 30: "SINGLE"},
+                "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
             }
             assert kwargs == {}
-            return arrays[variable]
+            return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
 
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
-    def fake_dataset_from_frame(frame_arg, *, zero_variables=(), system=None):
-        datasets.append((frame_arg, tuple(zero_variables), system))
-        return {"zero_variables": tuple(zero_variables)}
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        datasets.append(
+            (
+                frame_arg,
+                tuple(zero_variables),
+                system,
+                assert_no_formula_owned_columns,
+            )
+        )
+        return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
     def fake_make_zero_variable_reform(system, variable_name):
         assert isinstance(system, FakeSystem)
         assert variable_name == "mock_credit"
         return object()
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
 
     monkeypatch.setitem(
         sys.modules,
@@ -1563,6 +2852,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             Microsimulation=FakeMicrosimulation,
         ),
     )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
         builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
@@ -1570,8 +2864,20 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (reform_spec,))
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
 
+    cache_context = {
+        "base_dataset_sha256": "test-base-sha",
+        "build_commit": "test-commit",
+        "policyengine_us_version": "test-policyengine-us",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "test-target-registry",
+    }
     target_frame, registry, dropped = builder._materialize_target_frame(
-        frame, (target,)
+        frame,
+        (target,),
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=cache_context,
     )
 
     household = target_frame.table("household")
@@ -1581,9 +2887,80 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     assert len(registry) == 1
     assert dropped["dropped_target_names"] == []
-    assert [dataset[1] for dataset in datasets] == [(), ("mock_credit",)]
-    assert len(simulations) == 2
-    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1]
+    assert dropped["target_materialization_cache"]["hits"] == 0
+    assert dropped["target_materialization_cache"]["misses"] == 1
+    assert dropped["target_materialization_cache"]["writes"] == 1
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert len(list(tmp_path.glob("*.npy"))) == 1
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False]
+    assert formula_owned_assertions == [2, 2]
+    assert len(simulations) == 3
+    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
+
+    target_frame_again, registry_again, dropped_again = (
+        builder._materialize_target_frame(
+            frame,
+            (target,),
+            maximum_microsim_batch_size=1,
+            target_materialization_cache_dir=tmp_path,
+            target_materialization_cache_context=cache_context,
+        )
+    )
+
+    household_again = target_frame_again.table("household")
+    assert np.array_equal(
+        household_again["jct_mock_tax_expenditure"], np.asarray([-15.0, -30.0])
+    )
+    assert len(registry_again) == 1
+    assert dropped_again["dropped_target_names"] == []
+    assert dropped_again["target_materialization_cache"]["hits"] == 1
+    assert dropped_again["target_materialization_cache"]["misses"] == 0
+    assert dropped_again["target_materialization_cache"]["writes"] == 0
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+        (),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1, 2]
+    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
+    assert formula_owned_assertions == [2, 2, 2]
+    assert len(simulations) == 4
+    assert [simulation.cache_invalidations for simulation in simulations] == [
+        1,
+        1,
+        1,
+        1,
+    ]
+
+
+def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> None:
+    builder = _load_builder_module()
+    identity = {
+        "schema_version": builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION,
+        "kind": "jct_reform_income_tax_by_household",
+        "reform_measure": "mock_credit",
+    }
+    _, values_path = builder._write_reform_income_tax_cache(
+        tmp_path,
+        identity,
+        np.asarray([1.0, 2.0]),
+    )
+    with values_path.open("wb") as stream:
+        np.save(stream, np.asarray([3.0, 4.0]), allow_pickle=False)
+
+    with pytest.raises(RuntimeError, match="values hash mismatch"):
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            identity,
+            n_households=2,
+        )
 
 
 def test_soi_eitc_child_targets_materialize_distinct_child_slices(
@@ -1612,6 +2989,9 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 {
                     "household_id": np.asarray([1, 2], dtype="int64"),
                     "state_fips": np.asarray([6, 6], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        [601, 602], dtype="int64"
+                    ),
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -1663,6 +3043,45 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             count=True,
         ),
         TargetSpec(
+            name="eitc_return_agi",
+            entity="household",
+            measure="eitc_return_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+            },
+        ),
+        TargetSpec(
+            name="eitc_return_count",
+            entity="household",
+            measure="eitc_return_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "count",
+                "source_variable": "count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+                "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
             name="form_w2_social_security_tips",
             entity="household",
             measure="form_w2_social_security_tips",
@@ -1676,6 +3095,40 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "filing_status": "All",
                 "source_measure_id": "return_count",
                 "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_agi",
+            entity="household",
+            measure="cd_0601_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_tax_filer_individual_count",
+            entity="household",
+            measure="cd_0601_tax_filer_individual_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "tax_filer_individual_count",
+                "congressional_district_geoid": "0601",
             },
         ),
         TargetSpec(
@@ -1864,6 +3317,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "real_estate_taxes",
                 "salt_deduction",
                 "tip_income",
+                "tax_unit_size",
                 "tax_unit_itemizes",
             )
         }
@@ -1895,6 +3349,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
                 "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
                 "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
                 "tip_income": np.asarray([0.0, 50.0, 0.0, 0.0]),
+                "tax_unit_size": np.asarray([1.0, 2.0, 3.0, 4.0]),
                 "tax_unit_itemizes": np.asarray([False, True, False, False]),
             }
             return arrays[variable]
@@ -1915,6 +3370,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
         builder,
         "SOI_VARIABLE_MAP",
         {
+            "adjusted_gross_income": "adjusted_gross_income",
             "eitc": "eitc",
             "itemized_taxable_income_deductions": (
                 "itemized_taxable_income_deductions"
@@ -1925,6 +3381,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             "real_estate_taxes": "real_estate_taxes",
             "salt_deduction": "salt_deduction",
             "tip_income": "tip_income",
+            "tax_filer_individual_count": "tax_unit_size",
         },
     )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
@@ -1940,7 +3397,15 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["three_plus_return_count"], np.asarray([0.0, 1.0]))
     assert np.array_equal(
+        household["eitc_return_agi"], np.asarray([30_000.0, 30_000.0])
+    )
+    assert np.array_equal(household["eitc_return_count"], np.asarray([2.0, 1.0]))
+    assert np.array_equal(
         household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(household["cd_0601_agi"], np.asarray([30_000.0, 0.0]))
+    assert np.array_equal(
+        household["cd_0601_tax_filer_individual_count"], np.asarray([3.0, 0.0])
     )
     assert np.array_equal(
         household["medical_dental_expense_amount"], np.asarray([200.0, 0.0])
@@ -1968,7 +3433,7 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
     assert np.array_equal(
         household["interest_paid_deduction_amount"], np.asarray([2.0, 0.0])
     )
-    assert len(registry) == 16
+    assert len(registry) == 20
     assert compilation["dropped_target_names"] == []
 
 
@@ -2151,6 +3616,9 @@ def test_population_age_targets_materialize_person_age_counts(
                 {
                     "household_id": np.asarray([1, 2], dtype="int64"),
                     "state_fips": np.asarray([6, 12], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        ["0601", "1201"], dtype=object
+                    ),
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -2170,17 +3638,32 @@ def test_population_age_targets_materialize_person_age_counts(
         },
     )
 
-    def population_age_spec(name, lower, upper, *, state_fips=None):
+    def population_age_spec(
+        name,
+        lower,
+        upper,
+        *,
+        state_fips=None,
+        congressional_district_geoid=None,
+    ):
         metadata = {
             "materializer": "population_age",
             "measure_mode": "indicator_sum",
             "target_role": "population_age",
-            "geography_scope": "state" if state_fips else "national",
+            "geography_scope": (
+                "congressional_district"
+                if congressional_district_geoid
+                else "state"
+                if state_fips
+                else "national"
+            ),
             "age_lower_bound": str(lower),
             "age_upper_bound": str(upper),
         }
         if state_fips:
             metadata["state_fips"] = state_fips
+        if congressional_district_geoid:
+            metadata["congressional_district_geoid"] = congressional_district_geoid
         return TargetSpec(
             name=name,
             entity="household",
@@ -2195,6 +3678,13 @@ def test_population_age_targets_materialize_person_age_counts(
         population_age_spec("national_age_0_to_4", 0, 5),
         population_age_spec("ca_age_0_to_4", 0, 5, state_fips="06"),
         population_age_spec("ca_age_5_to_9", 5, 10, state_fips="06"),
+        population_age_spec(
+            "ca_01_age_0_to_4",
+            0,
+            5,
+            state_fips="06",
+            congressional_district_geoid="0601",
+        ),
     )
 
     class FakeVariable:
@@ -2252,7 +3742,8 @@ def test_population_age_targets_materialize_person_age_counts(
     assert np.array_equal(household["national_age_0_to_4"], np.asarray([1.0, 1.0]))
     assert np.array_equal(household["ca_age_0_to_4"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["ca_age_5_to_9"], np.asarray([1.0, 0.0]))
-    assert len(registry) == 3
+    assert np.array_equal(household["ca_01_age_0_to_4"], np.asarray([1.0, 0.0]))
+    assert len(registry) == 4
     assert compilation["dropped_target_names"] == []
 
 
@@ -2287,6 +3778,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     artifact_root.mkdir()
     (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    area_artifacts = _complete_area_artifact_results(builder, artifact_root)
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
 
@@ -2357,6 +3849,11 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 "population": 334_200_000.0,
                 "benchmark": 334_200_000.0,
                 "relative_error": 0.0,
+                "mass_repair": {
+                    "method": "rescale_household_weights_to_census_person_population",
+                    "applied": True,
+                    "factor": 5.87,
+                },
             },
         ),
         health_input_gate=builder.GateResult(
@@ -2369,6 +3866,12 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 }
             },
         ),
+        timing={
+            "target_compilation_seconds": 3.0,
+            "calibration_seconds": 4.0,
+            "total_build_seconds": 7.0,
+        },
+        area_artifacts=area_artifacts,
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -2392,18 +3895,61 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
         == 0.0
     )
+    assert (
+        build_manifest["gates"]["base_population_scale"]["details"]["mass_repair"][
+            "method"
+        ]
+        == "rescale_household_weights_to_census_person_population"
+    )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
     assert manifest["build"]["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",
     }
+    assert build_manifest["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
+    }
+    assert build_manifest["area_artifacts"]["count"] == 487
+    assert build_manifest["area_artifacts"]["states"] == 51
+    assert build_manifest["area_artifacts"]["congressional_districts"] == 436
+    area_manifest_artifacts = {
+        artifact["key"]: artifact
+        for artifact in build_manifest["area_artifacts"]["artifacts"]
+    }
+    assert area_manifest_artifacts["states/CA"]["path"] == "states/CA.h5"
+    assert area_manifest_artifacts["districts/TX-38"]["path"] == "districts/TX-38.h5"
+    assert manifest["build"]["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
+    }
+    assert (
+        manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
+        == 5.87
+    )
     assert manifest["compatible_core_packages"] == [
         {"name": "policyengine-core", "specifier": "==3.26.11"}
     ]
     assert manifest["compatible_model_packages"] == [
         {"name": "policyengine-us", "specifier": "==1.729.0"}
     ]
+    assert manifest["artifacts"]["states/CA"] == {
+        "repo_id": builder.REPO_ID,
+        "path": "states/CA.h5",
+        "revision": release_id,
+        "sha256": area_manifest_artifacts["states/CA"]["sha256"],
+        "kind": "state_microdata",
+    }
+    assert manifest["artifacts"]["districts/TX-38"] == {
+        "repo_id": builder.REPO_ID,
+        "path": "districts/TX-38.h5",
+        "revision": release_id,
+        "sha256": area_manifest_artifacts["districts/TX-38"]["sha256"],
+        "kind": "congressional_district_microdata",
+    }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id
@@ -2507,7 +4053,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     }
 
 
-def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> None:
+def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
 
     class FakePolicyEngineUSEngine:
@@ -2518,48 +4064,51 @@ def test_export_frame_drops_formula_owned_columns(monkeypatch, small_frame) -> N
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._strip_calibration_columns(
-        small_frame,
-        np.array([1000.0, 2000.0]),
-    )
-
-    assert "income" not in stripped.table("person")
-    assert stripped.weights_for("household").kind == WeightKind.CALIBRATED
+    with pytest.raises(ValueError, match="Formula-owned.*income"):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
 
 
-def test_export_frame_seeds_partnership_inputs_before_formula_drop(
-    monkeypatch, small_frame
+def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
+    monkeypatch,
+    small_frame,
 ) -> None:
     builder = _load_builder_module()
 
-    person = small_frame.table("person").copy()
-    person["partnership_s_corp_income"] = np.asarray([100.0, -5.0, 0.0, 40.0])
-    frame = Frame(
-        {"person": person, "household": small_frame.table("household").copy()},
-        small_frame.schema,
-        {"household": small_frame.weights_for("household")},
+    def fake_assert_no_formula_owned_columns(frame):
+        assert frame is small_frame
+        raise ValueError("formula-owned guard fired")
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
     )
+
+    with pytest.raises(ValueError, match="formula-owned guard fired"):
+        builder._dataset_from_frame(small_frame)
+
+
+def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
 
     class FakePolicyEngineUSEngine:
         def _engine_computed_columns(self, tables, *, period):
             assert period == builder.PERIOD
-            assert "partnership_income" in tables["person"]
-            assert "s_corp_income" in tables["person"]
-            return {"partnership_s_corp_income"}
+            assert "income" in tables["person"]
+            return set()
 
     monkeypatch.setattr(builder, "PolicyEngineUSEngine", FakePolicyEngineUSEngine)
 
-    stripped = builder._drop_formula_owned_columns(frame)
+    exported = builder._with_calibrated_weights(
+        small_frame,
+        np.array([1000.0, 2000.0]),
+    )
 
-    assert "partnership_s_corp_income" not in stripped.table("person")
-    assert np.array_equal(
-        stripped.table("person")["partnership_income"].to_numpy(),
-        np.asarray([100.0, -5.0, 0.0, 40.0]),
-    )
-    assert np.array_equal(
-        stripped.table("person")["s_corp_income"].to_numpy(),
-        np.zeros(4),
-    )
+    assert "income" in exported.table("person")
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
 
 
 def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) -> None:
@@ -2595,7 +4144,7 @@ def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) ->
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, target_specs: (
+        lambda frame, target_specs, **kwargs: (
             FakeFrame(),
             FakeRegistry(),
             {"dropped_target_names": []},
@@ -2636,7 +4185,7 @@ def test_post_export_sanity_rejects_dropped_export_targets(
     monkeypatch.setattr(
         builder,
         "_materialize_target_frame",
-        lambda frame, target_specs: (
+        lambda frame, target_specs, **kwargs: (
             object(),
             object(),
             {"dropped_target_names": ["missing"]},
@@ -2672,6 +4221,13 @@ def test_fiscal_refresh_uses_target_period_medicaid_source() -> None:
         "cms-medicaid-chip-monthly-enrollment-dataset"
         in builder.REVIEWED_EXCLUDED_ALIASES
     )
+
+
+def test_fiscal_refresh_keeps_unregistered_aca_state_metal_alias_inactive() -> None:
+    builder = _load_builder_module()
+
+    assert "cms-aca-oep-state-level" in builder.DIRECT_ACTIVE_ALIASES
+    assert "cms-aca-oep-state-metal" not in builder.DIRECT_ACTIVE_ALIASES
 
 
 def test_reviewed_exclusions_fail_when_hard_target_surface_changes(

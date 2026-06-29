@@ -20,6 +20,11 @@ from populace.data import (
     required_release_files,
     validate_release_dir,
 )
+from populace.data.contract import (
+    _EXPECTED_US_AREA_ARTIFACT_KEYS,
+    _EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
+    _EXPECTED_US_STATE_ARTIFACT_KEYS,
+)
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
@@ -30,7 +35,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 8
+TARGET_COUNT = 17
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -155,7 +160,7 @@ def _release_manifest(
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
@@ -235,9 +240,85 @@ def _calibration_diagnostics() -> dict:
                 family="irs_soi",
                 target_role="ctc_total",
             ),
+            *additional_critical_credit_rows(),
             *deduction_critical_target_rows(),
         ],
     }
+
+
+def additional_critical_credit_rows() -> list[dict]:
+    rows = [
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            38_068_980.0,
+            36_607_400.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+            33_858_000_000.0,
+            33_501_200_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+            17_691_400.0,
+            17_434_500.0,
+        ),
+        (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount@2024",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            69_041_649_000.0,
+            58_954_970_066.74941,
+        ),
+        (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns@2024",
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns",
+            23_837_149.0,
+            23_349_300.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            53_910_190_000.0,
+            56_821_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            7_841_370.0,
+            8_385_450.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            455_904_900_000.0,
+            454_551_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            24_475_100.0,
+            24_472_900.0,
+        ),
+    ]
+    return [
+        _target_row(
+            name,
+            target_name=target_name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final,
+            relative_error=(final - target) / target,
+            family="irs_soi",
+        )
+        for name, target_name, target, final in rows
+    ]
 
 
 def deduction_critical_target_rows() -> list[dict]:
@@ -273,8 +354,7 @@ def _target_row(
         "target_name": target_name,
         "period": 2024,
         "entity": "household",
-        "aggregation": "sum",
-        "measure": None,
+        "measure": {"kind": "column", "name": "household_count"},
         "filter": None,
         "source": "Fixture admin target",
         "metadata": metadata,
@@ -329,7 +409,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 6,
+                "target_count": 15,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },
@@ -384,6 +464,25 @@ def _write_json_and_refresh_manifest_hash(
     manifest = json.loads(manifest_path.read_text())
     manifest["artifacts"][artifact_key]["sha256"] = _sha256(release_dir / filename)
     manifest_path.write_text(json.dumps(manifest))
+
+
+def _area_artifact_entry(release_id: str, key: str) -> dict:
+    return {
+        "kind": (
+            "state_microdata"
+            if key.startswith("states/")
+            else "congressional_district_microdata"
+        ),
+        "path": f"{key}.h5",
+        "repo_id": "policyengine/populace-us",
+        "revision": release_id,
+        "sha256": "7" * 64,
+    }
+
+
+def _add_complete_area_artifacts(manifest: dict, release_id: str = RELEASE_ID) -> None:
+    for key in sorted(_EXPECTED_US_AREA_ARTIFACT_KEYS):
+        manifest["artifacts"][key] = _area_artifact_entry(release_id, key)
 
 
 def test_a_complete_release_passes(release_dir: Path) -> None:
@@ -494,7 +593,7 @@ def test_us_release_rejects_bad_deduction_fit(
 
     failures = "\n".join(excinfo.value.failures)
     assert deduction_name in failures
-    expected_cap = 0.15 if target_role == "medical_expense_deduction_total" else 0.1
+    expected_cap = 0.1 if target_role == "salt_deduction_total" else 0.15
     assert f"exceeding {expected_cap}" in failures
 
 
@@ -840,6 +939,52 @@ def test_release_manifest_must_list_us_source_coverage_for_us_release(
         validate_release_dir(release_dir)
     failures = "\n".join(excinfo.value.failures)
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
+
+
+def test_release_manifest_rejects_partial_us_area_artifact_surface(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["artifacts"]["states/CA"] = _area_artifact_entry(RELEASE_ID, "states/CA")
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "US area artifacts must be all-or-nothing" in failures
+    assert "missing=" in failures
+    assert "districts/AK-01" in failures
+
+
+def test_release_manifest_accepts_complete_us_area_artifact_surface(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    _add_complete_area_artifacts(manifest)
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    validate_release_dir(release_dir)
+
+    assert len(_EXPECTED_US_STATE_ARTIFACT_KEYS) == 51
+    assert len(_EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS) == 436
+
+
+def test_release_manifest_rejects_us_area_artifact_wrong_path_or_kind(
+    release_dir: Path,
+) -> None:
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    _add_complete_area_artifacts(manifest)
+    manifest["artifacts"]["states/CA"]["path"] = "states/california.h5"
+    manifest["artifacts"]["districts/TX-38"]["kind"] = "microdata"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "area artifact 'states/CA' path" in failures
+    assert "area artifact 'districts/TX-38' kind" in failures
 
 
 def test_release_manifest_local_calibration_diagnostics_hash_must_match(

@@ -61,3 +61,44 @@ def test_staging_telemetry_uploads_repo_paths(tmp_path) -> None:
     assert "runs/run-b/run_manifest.json" in uploaded_paths
     assert "latest_staging.json" in uploaded_paths
     assert "runs.json" in uploaded_paths
+
+
+def test_runs_index_keeps_existing_runs(tmp_path) -> None:
+    # An older run is already recorded in the repo's index.
+    existing = tmp_path / "existing.json"
+    existing.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-06-19T00:00:00+00:00",
+                "runs": [
+                    {
+                        "run_id": "older",
+                        "candidate_release_id": "populace-us-2024-old-20260619T000000Z",
+                        "status": "running",
+                        "stage": "write_calibration_npz",
+                        "updated_at": "2026-06-19T00:00:00+00:00",
+                    }
+                ],
+            }
+        )
+    )
+
+    class FakeApiWithDownload(FakeApi):
+        def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
+            return str(existing)
+
+    telemetry = StagingTelemetry(
+        run_id="newer",
+        candidate_release_id="populace-us-2024-new-20260620T000000Z",
+        run_dir=tmp_path / "newer",
+        repo_id="policyengine/populace-us-staging",
+        api=FakeApiWithDownload(),
+        upload_interval_seconds=0,
+    )
+    telemetry.complete()
+
+    index = json.loads((tmp_path / "newer" / "runs.json").read_text())
+    run_ids = [run["run_id"] for run in index["runs"]]
+    # Both the pre-existing run and this run survive (no overwrite).
+    assert run_ids == ["newer", "older"]

@@ -51,11 +51,132 @@ REQUIRED_RELEASE_FILES = (
     "calibration_diagnostics.json",
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 2
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 3
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_US_STATE_ABBREVIATIONS = frozenset(
+    (
+        "AL",
+        "AK",
+        "AZ",
+        "AR",
+        "CA",
+        "CO",
+        "CT",
+        "DE",
+        "DC",
+        "FL",
+        "GA",
+        "HI",
+        "ID",
+        "IL",
+        "IN",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "ME",
+        "MD",
+        "MA",
+        "MI",
+        "MN",
+        "MS",
+        "MO",
+        "MT",
+        "NE",
+        "NV",
+        "NH",
+        "NJ",
+        "NM",
+        "NY",
+        "NC",
+        "ND",
+        "OH",
+        "OK",
+        "OR",
+        "PA",
+        "RI",
+        "SC",
+        "SD",
+        "TN",
+        "TX",
+        "UT",
+        "VT",
+        "VA",
+        "WA",
+        "WV",
+        "WI",
+        "WY",
+    )
+)
+_US_CONGRESSIONAL_DISTRICT_COUNTS = {
+    "AL": 7,
+    "AK": 1,
+    "AZ": 9,
+    "AR": 4,
+    "CA": 52,
+    "CO": 8,
+    "CT": 5,
+    "DE": 1,
+    "DC": 1,
+    "FL": 28,
+    "GA": 14,
+    "HI": 2,
+    "ID": 2,
+    "IL": 17,
+    "IN": 9,
+    "IA": 4,
+    "KS": 4,
+    "KY": 6,
+    "LA": 6,
+    "ME": 2,
+    "MD": 8,
+    "MA": 9,
+    "MI": 13,
+    "MN": 8,
+    "MS": 4,
+    "MO": 8,
+    "MT": 2,
+    "NE": 3,
+    "NV": 4,
+    "NH": 2,
+    "NJ": 12,
+    "NM": 3,
+    "NY": 26,
+    "NC": 14,
+    "ND": 1,
+    "OH": 15,
+    "OK": 5,
+    "OR": 6,
+    "PA": 17,
+    "RI": 2,
+    "SC": 7,
+    "SD": 1,
+    "TN": 9,
+    "TX": 38,
+    "UT": 4,
+    "VT": 1,
+    "VA": 11,
+    "WA": 10,
+    "WV": 2,
+    "WI": 8,
+    "WY": 1,
+}
+_EXPECTED_US_STATE_ARTIFACT_KEYS = frozenset(
+    f"states/{abbreviation}" for abbreviation in _US_STATE_ABBREVIATIONS
+)
+_EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS = frozenset(
+    f"districts/{abbreviation}-{district_number:02d}"
+    for abbreviation, district_count in _US_CONGRESSIONAL_DISTRICT_COUNTS.items()
+    for district_number in range(1, district_count + 1)
+)
+_EXPECTED_US_AREA_ARTIFACT_KEYS = (
+    _EXPECTED_US_STATE_ARTIFACT_KEYS | _EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS
+)
+_US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
+_US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR = 0.15
 _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "federal_income_tax_amount",
@@ -70,7 +191,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "income_tax_liability_returns",
         "label": "income tax liability returns",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns@2024",
         ),
@@ -91,15 +212,101 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "ctc_amount",
         "label": "Child Tax Credit amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
         "families": ("irs_soi",),
         "target_roles": ("ctc_total",),
     },
     {
+        "requirement_id": "ctc_claims",
+        "label": "Child Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "actc_amount",
+        "label": "Additional Child Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "actc_claims",
+        "label": "Additional Child Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "eitc_amount",
+        "label": "Earned Income Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "eitc_claims",
+        "label": "Earned Income Tax Credit claims",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "premium_tax_credit_amount",
+        "label": "Premium Tax Credit amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "premium_tax_credit_returns",
+        "label": "Premium Tax Credit returns",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "taxable_social_security_amount",
+        "label": "taxable Social Security amount",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
+        "requirement_id": "taxable_social_security_returns",
+        "label": "taxable Social Security returns",
+        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        "names": (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
+        ),
+        "families": ("irs_soi",),
+        "target_roles": (),
+    },
+    {
         "requirement_id": "itemized_deduction_amount",
         "label": "itemized deduction amount",
-        "max_abs_relative_error": 0.10,
+        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
             "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
@@ -126,7 +333,7 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "medical_expense_deduction_amount",
         "label": "medical expense deduction amount",
-        "max_abs_relative_error": 0.15,
+        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         ),
@@ -450,6 +657,8 @@ def _check_release_manifest(
                     value=entry.get("sha256"),
                     failures=failures,
                 )
+        if release_id.startswith("populace-us-"):
+            _check_us_area_artifact_surface(artifacts, failures=failures)
         if (
             release_id.startswith("populace-us-")
             and _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None
@@ -476,6 +685,56 @@ def _check_release_manifest(
                         f"points to artifact {national!r}, whose kind is "
                         f"{default_artifact.get('kind')!r}, not 'microdata'."
                     )
+
+
+def _check_us_area_artifact_surface(artifacts: Mapping, *, failures: list[str]) -> None:
+    area_keys = {
+        key
+        for key in artifacts
+        if isinstance(key, str)
+        and (key.startswith("states/") or key.startswith("districts/"))
+    }
+    if not area_keys:
+        return
+    missing = sorted(_EXPECTED_US_AREA_ARTIFACT_KEYS - area_keys)
+    extra = sorted(area_keys - _EXPECTED_US_AREA_ARTIFACT_KEYS)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append(f"missing={_sample_values(missing)}")
+        if extra:
+            details.append(f"extra={_sample_values(extra)}")
+        failures.append(
+            "release_manifest.json US area artifacts must be all-or-nothing "
+            "for the current 51-state/436-district surface: " + ", ".join(details)
+        )
+    for key in sorted(area_keys & _EXPECTED_US_AREA_ARTIFACT_KEYS):
+        entry = artifacts.get(key)
+        if not isinstance(entry, Mapping):
+            continue
+        expected_kind = (
+            "state_microdata"
+            if key.startswith("states/")
+            else "congressional_district_microdata"
+        )
+        if entry.get("kind") != expected_kind:
+            failures.append(
+                f"release_manifest.json area artifact {key!r} kind must be "
+                f"{expected_kind!r}."
+            )
+        expected_path = f"{key}.h5"
+        if entry.get("path") != expected_path:
+            failures.append(
+                f"release_manifest.json area artifact {key!r} path must be "
+                f"{expected_path!r}."
+            )
+
+
+def _sample_values(values: list[object], limit: int = 10) -> list[object]:
+    sample = list(values[:limit])
+    if len(values) > limit:
+        sample.append(f"... +{len(values) - limit} more")
+    return sample
 
 
 def _check_release_manifest_package(
@@ -685,7 +944,8 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 "target_name",
                 "period",
                 "entity",
-                "aggregation",
+                "measure",
+                "filter",
                 "target",
                 "compiled_target",
                 "initial_estimate",
@@ -701,6 +961,17 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 failures.append(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
+                )
+            if not isinstance(target.get("measure"), Mapping):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} is missing 'measure' selector object."
+                )
+            target_filter = target.get("filter")
+            if target_filter is not None and not isinstance(target_filter, Mapping):
+                failures.append(
+                    "calibration_diagnostics.json target row "
+                    f"{index} has non-null 'filter' that is not a selector object."
                 )
             if not isinstance(target.get("metadata"), Mapping):
                 failures.append(

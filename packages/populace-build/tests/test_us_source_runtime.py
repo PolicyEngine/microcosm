@@ -11,14 +11,15 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
-from populace.build.us import US_SOURCE_MANIFEST
-from populace.build.us.puf_aggregate_records import (
+from populace.build.us_runtime import US_SOURCE_MANIFEST
+from populace.build.us_runtime.puf_aggregate_records import (
     AGGREGATE_RECIDS,
     SYNTHETIC_RECID_START,
     disaggregate_puf_aggregate_records,
 )
-from populace.build.us.source_runtime import (
+from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
+    derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
@@ -128,6 +129,7 @@ def _make_aca_tax_units() -> pd.DataFrame:
             "tax_unit_id": [10, 20, 30, 40, 50, 60],
             "state_fips": ["01", "01", "01", "01", "02", "02"],
             "tax_unit_weight": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "household_weight": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             "stable_tax_unit_draw": [0.90, 0.95, 0.10, 0.20, 0.80, 0.30],
             "aca_take_up_rate": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "is_aca_ptc_eligible": [True, True, True, True, True, True],
@@ -140,6 +142,7 @@ def _make_aca_tax_units() -> pd.DataFrame:
                 100.0,
             ],
             "assigned_aca_ptc": [0.0, 200.0, 200.0, 0.0, 0.0, 100.0],
+            "weighted_assigned_aca_ptc": [0.0, 200.0, 200.0, 0.0, 0.0, 100.0],
             "slcsp": [0.0, 500.0, 500.0, 500.0, 0.0, 500.0],
         }
     )
@@ -179,6 +182,15 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     pd.testing.assert_frame_equal(result, expected)
     assert not result["RECID"].isin(AGGREGATE_RECIDS).any()
     assert (result["RECID"] >= SYNTHETIC_RECID_START).any()
+    assert "ordinary_dividend_income" not in result.columns
+    assert "dividend_income" not in result.columns
+    assert "qualified_dividend_income" in result.columns
+    assert "non_qualified_dividend_income" in result.columns
+    assert np.allclose(result["qualified_dividend_income"], result["E00650"])
+    assert np.allclose(
+        result["non_qualified_dividend_income"],
+        result["E00600"] - result["E00650"],
+    )
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:
@@ -201,6 +213,23 @@ def test_us_puf_manifest_prefix_uses_build_seed() -> None:
     )
 
     assert not first.equals(second)
+
+
+def test_us_puf_manifest_rejects_invalid_dividend_sources() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"]
+    mini_puf = _make_runtime_mini_puf()
+    mini_puf.loc[mini_puf.index[0], "E00650"] = (
+        mini_puf.loc[mini_puf.index[0], "E00600"] + 1.0
+    )
+
+    with pytest.raises(SourceRuntimeError, match="qualified dividends above ordinary"):
+        run_source_stage(
+            stage,
+            tables={"puf_tax_unit": mini_puf},
+            operation_handlers=us_source_operation_handlers(),
+            config=SourceRuntimeConfig(seed=42, target_year=2024),
+            stop_after="derive_puf_policyengine_variables",
+        )
 
 
 def test_us_puf_handler_validates_packaged_spec_shape() -> None:
@@ -244,6 +273,28 @@ def test_us_puf_handler_rejects_unknown_parameters() -> None:
 
     with pytest.raises(SourceRuntimeError, match="unsupported parameter"):
         disaggregate_us_puf_aggregate_records_from_manifest(
+            mini_puf,
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={},
+            ),
+        )
+
+
+def test_us_puf_policyengine_variable_handler_rejects_unknown_parameters() -> None:
+    mini_puf = _make_runtime_mini_puf()
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "derive_puf_policyengine_variables",
+            "ordinary_dividend_source": "E00600",
+            "qualified_dividend_source": "E00650",
+            "unsupported": "field",
+        }
+    )
+
+    with pytest.raises(SourceRuntimeError, match="unsupported parameter"):
+        derive_us_puf_policyengine_variables_from_manifest(
             mini_puf,
             operation,
             context=SourceRuntimeContext(
@@ -469,6 +520,60 @@ def test_us_aca_take_up_calibration_uses_declared_weights() -> None:
     assert weighted.groupby(result["state_fips"]).sum().to_dict() == {
         "01": 3.0,
         "02": 2.0,
+    }
+
+
+def test_us_aca_take_up_calibration_uses_soi_ptc_targets() -> None:
+    stage = US_SOURCE_MANIFEST.stage_map()["aca_marketplace_inputs"]
+    people = _make_aca_people()
+    people["reported_has_subsidized_marketplace_health_coverage_at_interview"] = False
+    tax_units = _make_aca_tax_units()
+    tax_units["assigned_aca_ptc"] = [1000.0, 900.0, 100.0, 100.0, 500.0, 100.0]
+    tax_units["weighted_assigned_aca_ptc"] = tax_units["assigned_aca_ptc"]
+    cms_targets = pd.DataFrame({"state_fips": ["01", "02"], "target": [4.0, 2.0]})
+    soi_return_targets = pd.DataFrame(
+        {"state_fips": ["01", "02"], "target": [2.0, 1.0]}
+    )
+    soi_amount_targets = pd.DataFrame(
+        {"state_fips": ["01", "02"], "target": [200.0, 100.0]}
+    )
+
+    result = run_source_stage(
+        stage,
+        tables={
+            "cps_person": people,
+            "tax_unit": tax_units,
+            "cms_aca_aptc_recipients_by_state": cms_targets,
+            "irs_soi_premium_tax_credit_returns_by_state": soi_return_targets,
+            "irs_soi_premium_tax_credit_amount_by_state": soi_amount_targets,
+        },
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=42, target_year=2024),
+        stop_after="support_clip",
+    )
+
+    assigned = result.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert assigned.to_dict() == {
+        10: False,
+        20: False,
+        30: True,
+        40: True,
+        50: False,
+        60: True,
+    }
+    assigned_amount = result["assigned_aca_ptc"] * result[
+        "takes_up_aca_if_eligible"
+    ].astype(float)
+    assert assigned_amount.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 200.0,
+        "02": 100.0,
+    }
+    assigned_returns = result["household_weight"] * result[
+        "takes_up_aca_if_eligible"
+    ].astype(float)
+    assert assigned_returns.groupby(result["state_fips"]).sum().to_dict() == {
+        "01": 2.0,
+        "02": 1.0,
     }
 
 

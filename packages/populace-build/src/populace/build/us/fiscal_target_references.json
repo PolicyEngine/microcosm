@@ -4,9 +4,114 @@
   ],
   "country": "us",
   "description": "Hand-authored US fiscal target references. Observed values must be resolved from external PolicyEngine Ledger consumer facts; generated IRS, Census, SSA, CMS, SNAP, TANF, and CBO targets are compiled directly from the Ledger fact stream.",
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": [
+      {
+        "id": "congressional_district_children_scale_to_state_parent",
+        "method": "scale_children_to_parent",
+        "enabled_when": {
+          "include_congressional_district_targets": true
+        },
+        "child_geography_level": "congressional_district",
+        "parent_geography_level": "state",
+        "parent_geography_id": {
+          "template": "0400000US{state_fips}"
+        },
+        "child_completeness": {
+          "child_id_metadata_key": "congressional_district_geoid",
+          "parent_key_metadata_key": "state_fips",
+          "on_incomplete": "fail",
+          "expected_child_count_by_parent_key": {
+            "01": 7,
+            "02": 1,
+            "04": 9,
+            "05": 4,
+            "06": 52,
+            "08": 8,
+            "09": 5,
+            "10": 1,
+            "11": 1,
+            "12": 28,
+            "13": 14,
+            "15": 2,
+            "16": 2,
+            "17": 17,
+            "18": 9,
+            "19": 4,
+            "20": 4,
+            "21": 6,
+            "22": 6,
+            "23": 2,
+            "24": 8,
+            "25": 9,
+            "26": 13,
+            "27": 8,
+            "28": 4,
+            "29": 8,
+            "30": 2,
+            "31": 3,
+            "32": 4,
+            "33": 2,
+            "34": 12,
+            "35": 3,
+            "36": 26,
+            "37": 14,
+            "38": 1,
+            "39": 15,
+            "40": 5,
+            "41": 6,
+            "42": 17,
+            "44": 2,
+            "45": 7,
+            "46": 1,
+            "47": 9,
+            "48": 38,
+            "49": 4,
+            "50": 1,
+            "51": 11,
+            "53": 10,
+            "54": 2,
+            "55": 8,
+            "56": 1
+          }
+        },
+        "match": {
+          "spec_fields": [
+            "entity",
+            "period",
+            "family",
+            "filter"
+          ],
+          "metadata_keys": [
+            "target_period",
+            "target_role",
+            "source_measure_id",
+            "source_variable",
+            "variable",
+            "base_variable",
+            "base_variables",
+            "materializer",
+            "measure_mode",
+            "agi_lower_bound",
+            "agi_upper_bound",
+            "filing_status",
+            "soi_return_universe",
+            "itemized_only",
+            "ledger_filter_income_range",
+            "ledger_filter_filing_status",
+            "ledger_filter_eitc_child_count",
+            "ledger_layout_record_set_id",
+            "age_lower_bound",
+            "age_upper_bound",
+            "age_group"
+          ]
+        }
+      }
+    ]
+  },
   "target_references": [
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -23,7 +128,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
@@ -40,7 +144,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
@@ -57,7 +160,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
@@ -65,7 +167,7 @@
       "metadata": {
         "kind": "neutralize_variable",
         "matrix_row": "reform_minus_baseline_income_tax",
-        "neutralized_variable": "deductible_mortgage_interest",
+        "neutralized_variable": "interest_deduction",
         "output_variable": "income_tax",
         "target_role": "jct_tax_expenditure"
       },
@@ -74,7 +176,6 @@
       "value_operation": "identity"
     },
     {
-      "aggregation": "sum",
       "entity": "household",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",

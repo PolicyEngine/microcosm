@@ -1,97 +1,62 @@
-"""UK raw-source plan declaration: full surface or nothing."""
+"""UK source manifest contract: spec-only resource, full surface."""
 
 from __future__ import annotations
 
+import json
+from collections import defaultdict
+from importlib.resources import files
+
 import pytest
 
-from populace.build.source_manifest import SourceManifest, SourceOperationSpec
-from populace.build.uk import (
-    AREA_TYPES,
+from populace.build.source_manifest import (
+    ALLOWED_SOURCE_OPERATION_KINDS,
+    SourceManifest,
+    SourceOperationSpec,
+    load_source_manifest,
+)
+from populace.build.uk_runtime import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     ROWWISE_GEOGRAPHY_COLUMNS,
     SPI_INCOME_IMPUTATION_COLUMNS,
-    UK_DONORS,
-    UK_NONNEGATIVE_SOURCE_OUTPUTS,
-    UK_REWRITTEN_SOURCE_OUTPUT_STAGES,
-    UK_SOURCE_MANIFEST,
-    UK_SOURCE_OUTPUT_STAGES,
-    UK_SOURCE_OUTPUTS,
-    UK_SOURCE_STAGE_SPECS,
     UK_SPI_SUPPORT_STAGE_NAME,
-    UK_STAGE_NAMES,
-    UK_STRUCTURAL_SOURCE_STAGES,
-    uk_plan,
 )
 
-
-def _noop_implementations() -> dict:
-    return {name: (lambda frame: frame) for name in UK_STAGE_NAMES}
-
-
-class TestUkPlan:
-    def test_assembles_with_all_stages_and_donor_citations(self) -> None:
-        plan = uk_plan(_noop_implementations())
-
-        assert tuple(stage.name for stage in plan.stages) == UK_STAGE_NAMES
-        donor_stages = dict(plan.donors())
-        assert set(donor_stages) == set(UK_DONORS)
-        for spec in donor_stages.values():
-            assert spec.source.startswith("https://")
-
-    def test_missing_stage_refuses_to_assemble(self) -> None:
-        implementations = _noop_implementations()
-        del implementations["was_wealth"]
-
-        with pytest.raises(ValueError, match="missing \\['was_wealth'\\]"):
-            uk_plan(implementations)
-
-    def test_unknown_stage_is_refused(self) -> None:
-        implementations = _noop_implementations()
-        implementations["legacy_fill"] = lambda frame: frame
-
-        with pytest.raises(ValueError, match="Unknown stage implementation"):
-            uk_plan(implementations)
+UK_RESOURCE_ROOT = files("populace.build.uk")
+UK_SOURCE_RESOURCE = UK_RESOURCE_ROOT.joinpath("source_stages.json")
+UK_SOURCE_MANIFEST = load_source_manifest(UK_SOURCE_RESOURCE)
+UK_SOURCE_STAGE_SPECS = UK_SOURCE_MANIFEST.stages
+UK_STAGE_NAMES = tuple(stage.stage for stage in UK_SOURCE_STAGE_SPECS)
+UK_SOURCE_OUTPUT_STAGES: dict[str, list[str]] = defaultdict(list)
+for _stage in UK_SOURCE_STAGE_SPECS:
+    for _output in _stage.outputs:
+        UK_SOURCE_OUTPUT_STAGES[_output].append(_stage.stage)
+UK_SOURCE_OUTPUT_STAGES = dict(UK_SOURCE_OUTPUT_STAGES)
+UK_SOURCE_OUTPUTS = set(UK_SOURCE_OUTPUT_STAGES)
+UK_NONNEGATIVE_SOURCE_OUTPUTS = {
+    output for stage in UK_SOURCE_STAGE_SPECS for output in stage.nonnegative_outputs
+}
+UK_REWRITTEN_SOURCE_OUTPUT_STAGES = {
+    output: tuple(stages)
+    for output, stages in UK_SOURCE_OUTPUT_STAGES.items()
+    if len(stages) > 1
+}
 
 
 class TestUkSources:
     def test_source_manifest_loads_as_spec_contract(self) -> None:
         assert UK_SOURCE_MANIFEST.country == "uk"
         assert UK_SOURCE_MANIFEST.version == 1
-        assert len(UK_SOURCE_STAGE_SPECS) >= len(UK_DONORS)
+        assert len(UK_SOURCE_STAGE_SPECS) >= 12
+        assert "source_stages.json" in _country_package_resources()
 
-    def test_every_donor_stage_has_matching_source_spec(self) -> None:
-        specs = UK_SOURCE_MANIFEST.stage_map()
-        for stage, donor in UK_DONORS.items():
-            assert stage in specs
-            assert specs[stage].survey == donor.survey
-            assert specs[stage].source == donor.source
+    def test_source_specs_align_with_declared_resource_order(self) -> None:
+        raw = json.loads(UK_SOURCE_RESOURCE.read_text(encoding="utf-8"))
 
-    def test_source_specs_align_with_declared_plan(self) -> None:
-        source_stage_names = {spec.stage for spec in UK_SOURCE_STAGE_SPECS}
-
-        assert UK_STAGE_NAMES == UK_SOURCE_MANIFEST.plan_stages
-        assert set(UK_SOURCE_MANIFEST.stage_map()) == source_stage_names
-        assert source_stage_names == set(UK_DONORS) | set(UK_STRUCTURAL_SOURCE_STAGES)
-        assert source_stage_names.issubset(UK_STAGE_NAMES)
-        assert tuple(spec.stage for spec in UK_SOURCE_STAGE_SPECS) == tuple(
-            name for name in UK_STAGE_NAMES if name in source_stage_names
-        )
-        assert UK_STAGE_NAMES.index("rowwise_oa_geography") < UK_STAGE_NAMES.index(
-            "local_geography_weights"
-        )
-
-    def test_donor_and_structural_stage_groups_are_manifest_derived(self) -> None:
-        donor_stage_names = tuple(
-            spec.stage for spec in UK_SOURCE_STAGE_SPECS if spec.role == "donor"
-        )
-        structural_stage_names = tuple(
-            spec.stage for spec in UK_SOURCE_STAGE_SPECS if spec.role != "donor"
-        )
-
-        assert tuple(UK_DONORS) == donor_stage_names
-        assert UK_STRUCTURAL_SOURCE_STAGES == structural_stage_names
-        assert "national_calibration" in UK_STRUCTURAL_SOURCE_STAGES
-        assert "local_geography_weights" in UK_STRUCTURAL_SOURCE_STAGES
+        assert UK_STAGE_NAMES == tuple(stage["stage"] for stage in raw["stages"])
+        assert set(UK_SOURCE_MANIFEST.stage_map()) == set(UK_STAGE_NAMES)
+        assert "rowwise_oa_geography" in UK_STAGE_NAMES
+        assert "local_geography_weights" not in UK_STAGE_NAMES
+        assert "national_calibration" not in UK_STAGE_NAMES
 
     def test_stage_order_keeps_required_upstream_surfaces_available(self) -> None:
         assert UK_STAGE_NAMES.index("was_wealth") < UK_STAGE_NAMES.index(
@@ -100,23 +65,24 @@ class TestUkSources:
         assert UK_STAGE_NAMES.index("was_wealth") < UK_STAGE_NAMES.index(
             "lcfs_consumption"
         )
+        assert UK_STAGE_NAMES.index("lcfs_consumption") < UK_STAGE_NAMES.index(
+            "bus_public_service_calibration"
+        )
+        assert UK_STAGE_NAMES.index("etb_public_services") < UK_STAGE_NAMES.index(
+            "bus_public_service_calibration"
+        )
         assert UK_STAGE_NAMES.index(UK_SPI_SUPPORT_STAGE_NAME) < UK_STAGE_NAMES.index(
             "spi_income"
         )
         assert UK_STAGE_NAMES.index("spi_income") < UK_STAGE_NAMES.index(
             "frs_only_spi_fill"
         )
-        assert UK_STAGE_NAMES.index("local_geography_weights") < UK_STAGE_NAMES.index(
-            "rail_public_service_calibration"
-        )
-        assert UK_STAGE_NAMES.index("local_geography_weights") < UK_STAGE_NAMES.index(
-            "road_fuel_energy_calibration"
-        )
 
     def test_source_specs_are_manifest_only_not_python_loaders(self) -> None:
         for spec in UK_SOURCE_STAGE_SPECS:
             assert spec.operations
             for operation in spec.operations:
+                assert operation.kind in ALLOWED_SOURCE_OPERATION_KINDS
                 assert "module" not in operation.parameters
                 assert "function" not in operation.parameters
                 assert operation.kind not in {
@@ -125,58 +91,38 @@ class TestUkSources:
                     "import_module",
                 }
 
-    def test_weight_calibration_stages_are_manifest_declared(self) -> None:
-        specs = UK_SOURCE_MANIFEST.stage_map()
-        for stage in ("national_calibration", "local_geography_weights"):
-            artifact_kinds = {artifact["kind"] for artifact in specs[stage].artifacts}
-            kinds = [operation.kind for operation in specs[stage].operations]
-            compile_operation = next(
-                operation
-                for operation in specs[stage].operations
-                if operation.kind == "compile_ledger_targets"
-            )
+    def test_ledger_weight_calibration_is_not_declared_as_source_operations(
+        self,
+    ) -> None:
+        operation_kinds = {
+            operation.kind
+            for stage in UK_SOURCE_STAGE_SPECS
+            for operation in stage.operations
+        }
 
-            assert specs[stage].source == "https://github.com/PolicyEngine/arch-data"
-            assert artifact_kinds == {"ledger_consumer_facts"}
-            assert "target_registry" not in artifact_kinds
-            assert "target_tables" not in artifact_kinds
-            assert kinds.index("read_table") < kinds.index("compile_ledger_targets")
-            assert kinds.index("compile_ledger_targets") < kinds.index(
-                "calibrate_weights"
-            )
-            assert "calibrate_weights" in kinds
-            assert compile_operation.parameters["country"] == "uk"
+        assert "compile_ledger_targets" not in operation_kinds
+        assert "calibrate_weights" not in operation_kinds
 
-        assert (
-            next(
-                operation
-                for operation in specs["national_calibration"].operations
-                if operation.kind == "compile_ledger_targets"
-            ).parameters["target_profile"]
-            == "uk_national_calibration"
-        )
-        assert (
-            local_compile_operation := next(
-                operation
-                for operation in specs["local_geography_weights"].operations
-                if operation.kind == "compile_ledger_targets"
-            )
-        ).parameters["target_profile"] == "uk_local_geography"
-        assert tuple(local_compile_operation.parameters["area_types"]) == AREA_TYPES
-
-    def test_raw_source_surface_declares_salient_outputs_from_each_input(self) -> None:
+    def test_raw_source_surface_declares_salient_outputs_from_each_input(
+        self,
+    ) -> None:
         required_outputs = {
+            "employment_sector",
+            "sic_industry_division",
             "property_wealth",
             "mortgage_debt",
             "consumer_debt",
             "student_loan_balance",
             "num_vehicles",
+            "cash_isa",
+            "stocks_and_shares_isa",
             "full_rate_vat_expenditure_rate",
             "food_and_non_alcoholic_beverages_consumption",
             "electricity_consumption",
             "gas_consumption",
             "petrol_spending",
             "diesel_spending",
+            "bus_fare_spending",
             "dfe_education_spending",
             "rail_subsidy_spending",
             "bus_subsidy_spending",
@@ -193,7 +139,6 @@ class TestUkSources:
             "student_loan_plan",
             "household_is_spi_synthetic",
             "source_household_key",
-            "local_geography_weight",
         }
 
         required_outputs.update(SPI_INCOME_IMPUTATION_COLUMNS)
@@ -204,16 +149,21 @@ class TestUkSources:
 
     def test_nonnegative_surface_covers_key_money_and_count_outputs(self) -> None:
         required_nonnegative = {
+            "sic_industry_division",
             "owned_land",
             "property_wealth",
             "mortgage_debt",
             "consumer_debt",
             "student_loan_balance",
+            "cash_isa",
+            "stocks_and_shares_isa",
             "food_and_non_alcoholic_beverages_consumption",
             "electricity_consumption",
             "gas_consumption",
             "petrol_spending",
             "diesel_spending",
+            "bus_fare_spending",
+            "bus_subsidy_spending",
             "full_rate_vat_expenditure_rate",
             "a_and_e_visits",
             "nhs_spending",
@@ -223,16 +173,24 @@ class TestUkSources:
             "charitable_investment_gifts",
             "capital_gains",
             "pension_contributions_via_salary_sacrifice",
-            "local_geography_weight",
         }
 
         assert sorted(required_nonnegative - UK_NONNEGATIVE_SOURCE_OUTPUTS) == []
+        assert "employment_sector" not in UK_NONNEGATIVE_SOURCE_OUTPUTS
         assert "student_loan_plan" not in UK_NONNEGATIVE_SOURCE_OUTPUTS
 
     def test_rewritten_outputs_are_explicit_and_have_reviewed_final_writers(
         self,
     ) -> None:
         expected_rewrites = {
+            "bus_fare_spending": (
+                "lcfs_consumption",
+                "bus_public_service_calibration",
+            ),
+            "bus_subsidy_spending": (
+                "etb_public_services",
+                "bus_public_service_calibration",
+            ),
             "diesel_spending": (
                 "lcfs_consumption",
                 "road_fuel_energy_calibration",
@@ -260,10 +218,6 @@ class TestUkSources:
             "property_wealth": (
                 "was_wealth",
                 "regional_property_uprating",
-            ),
-            "household_weight": (
-                "frs_base",
-                "national_calibration",
             ),
             "employment_income": (
                 "frs_base",
@@ -295,9 +249,9 @@ class TestUkSources:
             ),
         }
 
-        assert dict(UK_REWRITTEN_SOURCE_OUTPUT_STAGES) == expected_rewrites
+        assert UK_REWRITTEN_SOURCE_OUTPUT_STAGES == expected_rewrites
         for output, stages in expected_rewrites.items():
-            assert UK_SOURCE_OUTPUT_STAGES[output] == stages
+            assert tuple(UK_SOURCE_OUTPUT_STAGES[output]) == stages
             indices = [UK_STAGE_NAMES.index(stage) for stage in stages]
             assert indices == sorted(indices)
 
@@ -319,6 +273,65 @@ class TestUkSources:
         derive = operations[kinds.index("derive")]
         assert tuple(derive.parameters["outputs"]) == ("domestic_energy_consumption",)
 
+    def test_bus_surface_matches_recent_uk_data_contract(self) -> None:
+        specs = UK_SOURCE_MANIFEST.stage_map()
+        lcfs_operations = specs["lcfs_consumption"].operations
+        lcfs_derive = next(
+            operation
+            for operation in lcfs_operations
+            if operation.kind == "derive"
+            and "bus_fare_spending" in operation.parameters["outputs"]
+        )
+        bus_operations = specs["bus_public_service_calibration"].operations
+        kinds = [operation.kind for operation in bus_operations]
+
+        assert tuple(lcfs_derive.parameters["source_codes"]["bus_fare_spending"]) == (
+            "c73212",
+            "c73213",
+            "c73214",
+        )
+        assert kinds == ["read_table", "uprate"]
+        assert tuple(bus_operations[1].parameters["variables"]) == (
+            "bus_fare_spending",
+            "bus_subsidy_spending",
+        )
+
+    def test_wealth_surface_splits_isa_outputs_and_preserves_back_compat(
+        self,
+    ) -> None:
+        stage = UK_SOURCE_MANIFEST.stage_map()["was_wealth"]
+        operations = stage.operations
+        derive = next(
+            operation
+            for operation in operations
+            if operation.kind == "derive"
+            and "cash_isa" in operation.parameters["outputs"]
+        )
+        folds = [operation for operation in operations if operation.kind == "fold_into"]
+
+        assert {
+            "cash_isa",
+            "stocks_and_shares_isa",
+        } <= set(stage.outputs)
+        assert derive.parameters["source_fields"] == {
+            "cash_isa": "DVCISAVR8",
+            "stocks_and_shares_isa": "DVIISAVR8",
+        }
+        assert any(
+            operation.parameters
+            == {
+                "target": "corporate_wealth",
+                "amount": "stocks_and_shares_isa",
+            }
+            for operation in folds
+        )
+
+    def test_frs_base_carries_employment_sector_and_sic_from_raw_frs(self) -> None:
+        stage = UK_SOURCE_MANIFEST.stage_map()["frs_base"]
+
+        assert {"employment_sector", "sic_industry_division"} <= set(stage.outputs)
+        assert "sic_industry_division" in stage.nonnegative_outputs
+
     def test_spi_stage_declares_support_channel_before_income_fit(self) -> None:
         specs = UK_SOURCE_MANIFEST.stage_map()
         spi_kinds = [operation.kind for operation in specs["spi_income"].operations]
@@ -336,6 +349,13 @@ class TestUkSources:
                     "function": "add_was_wealth",
                 }
             )
+
+    def test_source_operation_parser_rejects_old_weight_calibration_ops(self) -> None:
+        with pytest.raises(ValueError, match="allowed manifest operation vocabulary"):
+            SourceOperationSpec.from_mapping({"kind": "compile_ledger_targets"})
+
+        with pytest.raises(ValueError, match="allowed manifest operation vocabulary"):
+            SourceOperationSpec.from_mapping({"kind": "calibrate_weights"})
 
     def test_source_manifest_parser_rejects_incumbent_package_artifacts(self) -> None:
         with pytest.raises(ValueError, match="forbidden incumbent dependency"):
@@ -364,3 +384,10 @@ class TestUkSources:
                     ],
                 }
             )
+
+
+def _country_package_resources() -> set[str]:
+    package = json.loads(
+        UK_RESOURCE_ROOT.joinpath("country_package.json").read_text(encoding="utf-8")
+    )
+    return set(package["resources"])

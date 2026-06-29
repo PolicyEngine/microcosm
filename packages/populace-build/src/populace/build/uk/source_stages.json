@@ -1,28 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "UK source stages are manifest-defined. Country/source content may declare primary artifacts, columns, sentinel handling, derivations, imputation recipes, outputs, and validation requirements here; executable Python belongs only in shared Populace runtimes.",
-  "plan_stages": [
-    "frs_base",
-    "was_wealth",
-    "regional_property_uprating",
-    "lcfs_consumption",
-    "etb_vat",
-    "nhs_usage",
-    "etb_public_services",
-    "spi_support_channel",
-    "spi_income",
-    "frs_only_spi_fill",
-    "advani_summers_capital_gains",
-    "frs_salary_sacrifice",
-    "slc_student_loan_plan",
-    "rowwise_oa_geography",
-    "national_calibration",
-    "local_geography_weights",
-    "rail_public_service_calibration",
-    "road_fuel_energy_calibration",
-    "export"
-  ],
+  "policy": "UK source stages are manifest-defined. Country/source content may declare primary artifacts, columns, sentinel handling, derivations, imputation recipes, outputs, and validation requirements here; executable Python belongs only in shared Populace runtimes. Weight calibration and Ledger target-profile consumption live in shared calibration/local-target runtimes rather than country package manifests.",
   "stages": [
     {
       "stage": "frs_base",
@@ -59,7 +38,9 @@
             "source_household_lineage",
             "household_income_predictors",
             "education_counts",
-            "housing_predictors"
+            "housing_predictors",
+            "employment_sector",
+            "sic_industry_division"
           ]
         }
       ],
@@ -73,6 +54,8 @@
         "region",
         "age",
         "gender",
+        "employment_sector",
+        "sic_industry_division",
         "employment_income",
         "self_employment_income",
         "private_pension_income",
@@ -89,6 +72,7 @@
       "nonnegative_outputs": [
         "household_weight",
         "age",
+        "sic_industry_division",
         "employment_income",
         "self_employment_income",
         "private_pension_income",
@@ -126,6 +110,17 @@
           "scope": "was_missing_or_not_applicable_fields"
         },
         {
+          "kind": "derive",
+          "outputs": [
+            "cash_isa",
+            "stocks_and_shares_isa"
+          ],
+          "source_fields": {
+            "cash_isa": "DVCISAVR8",
+            "stocks_and_shares_isa": "DVIISAVR8"
+          }
+        },
+        {
           "kind": "fit_weighted_qrf",
           "predictors": [
             "household_net_income",
@@ -142,6 +137,11 @@
           ]
         },
         {
+          "kind": "fold_into",
+          "target": "corporate_wealth",
+          "amount": "stocks_and_shares_isa"
+        },
+        {
           "kind": "support_clip",
           "range": "donor_realized"
         }
@@ -156,6 +156,8 @@
         "other_residential_property_value",
         "non_residential_property_value",
         "savings",
+        "cash_isa",
+        "stocks_and_shares_isa",
         "num_vehicles",
         "student_loan_balance",
         "mortgage_debt",
@@ -170,12 +172,14 @@
         "other_residential_property_value",
         "non_residential_property_value",
         "savings",
+        "cash_isa",
+        "stocks_and_shares_isa",
         "num_vehicles",
         "student_loan_balance",
         "mortgage_debt",
         "consumer_debt"
       ],
-      "notes": "Northern Ireland can borrow the Wales region support when the donor survey does not identify Northern Ireland with enough detail."
+      "notes": "Northern Ireland can borrow the Wales region support when the donor survey does not identify Northern Ireland with enough detail. Cash ISA and stocks-and-shares ISA holdings are surfaced separately; the investment ISA component is also folded into corporate_wealth for backward-compatible wealth totals."
     },
     {
       "stage": "regional_property_uprating",
@@ -242,9 +246,17 @@
           "kind": "derive",
           "outputs": [
             "lcfs_coicop_consumption",
+            "bus_fare_spending",
             "lcfs_fuel_spending",
             "has_fuel_consumption"
-          ]
+          ],
+          "source_codes": {
+            "bus_fare_spending": [
+              "c73212",
+              "c73213",
+              "c73214"
+            ]
+          }
         },
         {
           "kind": "fit_weighted_qrf",
@@ -280,6 +292,7 @@
         "education_consumption",
         "restaurants_and_hotels_consumption",
         "miscellaneous_consumption",
+        "bus_fare_spending",
         "petrol_spending",
         "diesel_spending",
         "domestic_energy_consumption",
@@ -299,6 +312,7 @@
         "education_consumption",
         "restaurants_and_hotels_consumption",
         "miscellaneous_consumption",
+        "bus_fare_spending",
         "petrol_spending",
         "diesel_spending",
         "domestic_energy_consumption",
@@ -533,6 +547,47 @@
         "bus_subsidy_spending",
         "rail_usage"
       ]
+    },
+    {
+      "stage": "bus_public_service_calibration",
+      "role": "donor",
+      "survey": "DfT annual bus statistics",
+      "source": "https://www.gov.uk/government/collections/bus-statistics",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_table",
+          "vintage": "build_year",
+          "locator": "DfT bus fare receipts and net government support totals"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "bus_public_service_targets"
+        },
+        {
+          "kind": "uprate",
+          "variables": [
+            "bus_fare_spending",
+            "bus_subsidy_spending"
+          ],
+          "targets": [
+            "bus_public_service_targets"
+          ],
+          "weight": "household_weight"
+        }
+      ],
+      "outputs": [
+        "bus_fare_spending",
+        "bus_subsidy_spending"
+      ],
+      "nonnegative_outputs": [
+        "bus_fare_spending",
+        "bus_subsidy_spending"
+      ],
+      "notes": "Anchors LCFS fare spending and ETB subsidy allocation to DfT Annual Bus Statistics totals. Fare spending is households' passenger fare outlay; subsidy spending is net government support allocated to households."
     },
     {
       "stage": "rail_public_service_calibration",
@@ -947,100 +1002,6 @@
         "region_code_oa"
       ],
       "notes": "This is the long-format local geography path: each household row receives one finest-area assignment, and later local weights export as area-household rows rather than a dense area-by-household matrix."
-    },
-    {
-      "stage": "national_calibration",
-      "role": "calibration",
-      "survey": "PolicyEngine Ledger UK national calibration facts",
-      "source": "https://github.com/PolicyEngine/arch-data",
-      "grain": "household",
-      "artifacts": [
-        {
-          "kind": "ledger_consumer_facts",
-          "format": "jsonl",
-          "vintage": "build_year",
-          "locator": "Ledger consumer facts filtered to the UK national calibration target profile"
-        }
-      ],
-      "operations": [
-        {
-          "kind": "read_table",
-          "table": "ledger_consumer_facts"
-        },
-        {
-          "kind": "compile_ledger_targets",
-          "country": "uk",
-          "target_profile": "uk_national_calibration",
-          "geography_levels": [
-            "country"
-          ],
-          "target_table": "national_calibration_targets"
-        },
-        {
-          "kind": "calibrate_weights",
-          "weight": "household_weight",
-          "targets": "national_calibration_targets",
-          "metrics": "household_metric_tables",
-          "outputs": [
-            "household_weight"
-          ]
-        }
-      ],
-      "outputs": [
-        "household_weight"
-      ],
-      "nonnegative_outputs": [
-        "household_weight"
-      ],
-      "notes": "This stage rewrites design weights to national target weights before local and post-weight amount scaling stages."
-    },
-    {
-      "stage": "local_geography_weights",
-      "role": "calibration",
-      "survey": "PolicyEngine Ledger UK local geography facts",
-      "source": "https://github.com/PolicyEngine/arch-data",
-      "grain": "household_area",
-      "artifacts": [
-        {
-          "kind": "ledger_consumer_facts",
-          "format": "jsonl",
-          "vintage": "build_year",
-          "locator": "Ledger consumer facts filtered to the UK constituency and local-authority target profile"
-        }
-      ],
-      "operations": [
-        {
-          "kind": "read_table",
-          "table": "ledger_consumer_facts"
-        },
-        {
-          "kind": "compile_ledger_targets",
-          "country": "uk",
-          "target_profile": "uk_local_geography",
-          "area_types": [
-            "constituency",
-            "la"
-          ],
-          "target_table": "local_area_targets"
-        },
-        {
-          "kind": "calibrate_weights",
-          "weight": "household_weight",
-          "targets": "local_area_targets",
-          "metrics": "household_metric_tables",
-          "outputs": [
-            "local_geography_weight"
-          ]
-        }
-      ],
-      "outputs": [
-        "local_geography_weight",
-        "local_solve_diagnostic"
-      ],
-      "nonnegative_outputs": [
-        "local_geography_weight"
-      ],
-      "notes": "Assigned long local weights are solved after row-wise geography assignment and before post-weight rail/fuel amount scaling."
     }
   ]
 }

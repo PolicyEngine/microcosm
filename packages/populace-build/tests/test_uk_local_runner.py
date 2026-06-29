@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import populace.build.uk.local_runner as local_runner
-from populace.build.uk import (
+import populace.build.uk_runtime.local_runner as local_runner
+from populace.build.uk_runtime import (
     build_local_candidate,
     build_local_candidate_from_dataset,
     build_metric_tables_from_dataset,
@@ -350,12 +350,28 @@ def test_build_local_candidate_from_dataset_computes_metrics(monkeypatch) -> Non
     areas = pd.DataFrame({"code": ["E001"], "country": ["England"]})
     targets = pd.DataFrame({"code": ["E001"], "population": [1.0]})
     households = pd.DataFrame({"household_id": [101], "household_weight": [1.0]})
+    target_profile = {
+        "targets": [
+            {
+                "geography_levels": ["constituency"],
+                "bindings": {"policyengine": {"metric_name": "population"}},
+            }
+        ]
+    }
 
-    def fake_compute(sim, area_type, *, period=None, household_ids=None):
+    def fake_compute(
+        sim,
+        area_type,
+        *,
+        period=None,
+        household_ids=None,
+        target_profile=None,
+    ):
         assert area_type == "constituency"
         assert period == 2023
         assert sim.inputs[("region", 2023)] == ["SOUTH_EAST"]
         assert household_ids is None
+        assert target_profile is not None
         return pd.DataFrame({"population": [1.0]}, index=pd.Index([101]))
 
     monkeypatch.setattr(local_runner, "compute_household_metrics", fake_compute)
@@ -367,6 +383,7 @@ def test_build_local_candidate_from_dataset_computes_metrics(monkeypatch) -> Non
         targets=targets,
         household_frame=households,
         simulation_factory=SingleHouseholdSimulation,
+        target_profile=target_profile,
         solver_options={"epochs": 2},
     )
 

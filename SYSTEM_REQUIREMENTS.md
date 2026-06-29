@@ -218,19 +218,24 @@ income = rng.lognormal(10.7, 0.8, n_hh); county = rng.integers(0, n_cty, n_hh)
 ids = np.arange(n_hh, dtype="int64")
 frame = Frame(
     {"person": pd.DataFrame({"person_id": ids, "person_household_id": ids}),
-     "household": pd.DataFrame({"household_id": ids, "income": income, "county": county})},
+     "household": pd.DataFrame({
+         "household_id": ids,
+         "household_count": np.ones(n_hh),
+         "income": income,
+         "county": county,
+     })},
     EntitySchema(group_entities=("household",)),
     {"household": Weights(values=np.full(n_hh, 150.0), kind=WeightKind.DESIGN)})
 pop, inc = n_hh * 150.0, float(income.sum()) * 150.0
 mask = lambda c: (lambda f, c=c: f.table("household")["county"].to_numpy() == c)
-ts = [Target("pop", "household", aggregation="count", value=pop * 1.05),
-      Target("income", "household", measure="income", aggregation="sum", value=inc * 1.05)]
+ts = [Target("pop", "household", measure="household_count", value=pop * 1.05),
+      Target("income", "household", measure="income", value=inc * 1.05)]
 for c in np.unique(county):
     if len(ts) >= n_t: break
-    ts.append(Target(f"pop_c{c}", "household", aggregation="count",
+    ts.append(Target(f"pop_c{c}", "household", measure="household_count",
                      value=pop / n_cty * 1.05, filter=mask(c)))
     if len(ts) >= n_t: break
-    ts.append(Target(f"inc_c{c}", "household", measure="income", aggregation="sum",
+    ts.append(Target(f"inc_c{c}", "household", measure="income",
                      value=inc / n_cty * 1.05, filter=mask(c)))
 kw = dict(epochs=epochs, max_weight_ratio=10.0, seed=0)
 if mode == "l0": kw.update(target_records=int(n_hh * 0.6), budget_iters=6)

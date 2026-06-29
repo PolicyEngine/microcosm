@@ -18,7 +18,11 @@ from populace.build.gates import TargetCoverageRequirement
 from populace.build.ledger_targets import (
     LedgerTargetParityReport,
     LedgerTargetReference,
+    apply_ledger_target_profile,
     compile_ledger_target_references,
+)
+from populace.build.us_runtime.congressional_district_vintage import (
+    translate_congressional_district_facts_to_current_vintage,
 )
 from populace.calibrate import TargetRegistry, TargetSpec
 
@@ -123,17 +127,22 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "ordinary_dividends_amount": "ordinary_dividends",
     "partnership_scorp_income_amount": "partnership_and_s_corp_income",
     "premium_tax_credit_amount": "assigned_aca_ptc",
+    "qualified_business_income_deduction_amount": (
+        "qualified_business_income_deduction"
+    ),
     "qualified_dividends_amount": "qualified_dividends",
     "real_estate_taxes_amount": "real_estate_taxes",
     "rental_royalty_income_amount": "rent_and_royalty_net_income",
     "schedule_c_income_amount": "business_net_profits",
     "tax_exempt_interest_amount": "tax_exempt_interest_income",
+    "tax_filer_individual_count": "tax_filer_individual_count",
     "taxable_income_amount": "taxable_income",
     "taxable_interest_amount": "taxable_interest_income",
     "taxable_ira_distributions_amount": "ira_distributions",
     "taxable_pension_income_amount": "taxable_pension_income",
     "taxable_social_security_amount": "taxable_social_security",
     "total_itemized_deductions_amount": "itemized_taxable_income_deductions",
+    "total_earned_income_credit_amount": "eitc",
     "unemployment_compensation_amount": "unemployment_compensation",
     "wages_salaries_amount": "employment_income",
     "charitable_amount": "charitable_deduction",
@@ -151,12 +160,16 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "eitc_two_children_claims": "eitc",
     "income_tax_before_credits_returns": "income_tax_before_credits",
     "income_tax_liability_returns": "income_tax",
+    "interest_paid_deduction_returns": "interest_deduction",
     "limited_state_local_taxes_returns": "salt_deduction",
     "medical_dental_expense_returns": "medical_expense_deduction",
     "net_capital_gains_returns": "capital_gains_gross",
     "ordinary_dividends_returns": "ordinary_dividends",
     "partnership_scorp_income_returns": "partnership_and_s_corp_income",
     "premium_tax_credit_returns": "assigned_aca_ptc",
+    "qualified_business_income_deduction_returns": (
+        "qualified_business_income_deduction"
+    ),
     "qualified_dividends_returns": "qualified_dividends",
     "real_estate_taxes_claims": "real_estate_taxes",
     "rental_royalty_income_returns": "rent_and_royalty_net_income",
@@ -168,8 +181,10 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "taxable_ira_distributions_returns": "ira_distributions",
     "taxable_pension_income_returns": "taxable_pension_income",
     "taxable_social_security_returns": "taxable_social_security",
+    "total_earned_income_credit_returns": "eitc",
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
+    "charitable_returns": "charitable_deduction",
 }
 
 
@@ -193,7 +208,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ira_distributions": "taxable_ira_distributions",
     "itemized_taxable_income_deductions": "itemized_taxable_income_deductions",
     "medical_expense_deduction": "medical_expense_deduction",
-    "ordinary_dividends": "dividend_income",
+    "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
@@ -207,6 +222,7 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "tax_exempt_interest_income": "tax_exempt_interest_income",
     "taxable_income": "taxable_income",
     "taxable_interest_income": "taxable_interest_income",
+    "tax_filer_individual_count": "tax_unit_size",
     "taxable_pension_income": "taxable_pension_income",
     "taxable_social_security": "tax_unit_taxable_social_security",
     "tip_income": "tip_income",
@@ -217,6 +233,10 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "ctc": ("ctc", "ctc_limiting_tax_liability"),
+    "ordinary_dividends": (
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    ),
     "rent_and_royalty_net_income": ("rental_income", "farm_rent_income"),
     "rent_and_royalty_net_losses": ("rental_income", "farm_rent_income"),
 }
@@ -226,6 +246,19 @@ _SOI_EITC_CHILD_COUNT_LAYOUT_DIMENSIONS = frozenset(
         "us.tax.earned_income_credit_qualifying_children",
         "us.tax.eitc_qualifying_children",
     }
+)
+_SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES = frozenset({"eitc_total"})
+_SOI_EITC_DECOMPOSITION_RETURN_MEASURES = frozenset({"eitc_returns"})
+_SOI_EITC_TOTAL_AMOUNT_MEASURES = frozenset(
+    {"eitc_amount", "total_earned_income_credit_amount"}
+)
+_SOI_EITC_TOTAL_RETURN_MEASURES = frozenset(
+    {"eitc_claims", "total_earned_income_credit_returns"}
+)
+_SOI_TOTAL_UPRATED_AMOUNT_MEASURES = frozenset({"taxable_interest_amount"})
+_SOI_TOTAL_UPRATED_RETURN_MEASURES = frozenset({"taxable_interest_returns"})
+_SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES = (
+    _SOI_TOTAL_UPRATED_AMOUNT_MEASURES | _SOI_TOTAL_UPRATED_RETURN_MEASURES
 )
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
@@ -269,7 +302,7 @@ DIRECT_LEDGER_TARGETS: dict[
         {"target_role": "cbo_net_capital_gain"},
     ),
     ("cbo", "projected_amount", "net_business_income"): (
-        "self_employment_income",
+        "cbo_net_business_income",
         "cbo",
         {"target_role": "cbo_net_business_income"},
     ),
@@ -383,10 +416,40 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 
 
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    "census_stc.fy2023.individual_income_tax_collections.tn.t40.collections": (
+        "Tennessee has no modeled 2024 state individual income tax support in "
+        "PolicyEngine-US; this STC residual collection row cannot be estimated "
+        "from the current state_income_tax variable."
+    ),
     "census_stc.fy2024.individual_income_tax_collections.tn.t40.collections": (
         "Tennessee has no modeled 2024 state individual income tax support in "
         "PolicyEngine-US; this STC residual collection row cannot be estimated "
         "from the current state_income_tax variable."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.ia.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero Iowa taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero North Dakota taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
+        "Current US support does not yet materialize a positive tip_income source "
+        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
+        "source stage wired into the fiscal refresh before calibration."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -613,9 +676,7 @@ class SimpleTaxExpenditureReform:
 
 
 def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
-    payload = json.loads(
-        files(__package__).joinpath("fiscal_target_references.json").read_text()
-    )
+    payload = _load_us_fiscal_target_manifest()
     if payload.get("country") != "us":
         raise ValueError("US fiscal target manifest must declare country='us'.")
     allowed_operations = set(payload.get("allowed_value_operations") or ())
@@ -627,48 +688,854 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
     return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
 
 
+def _load_us_fiscal_target_profile() -> dict[str, Any]:
+    payload = _load_us_fiscal_target_manifest()
+    profile = payload.get("target_profile") or {}
+    if not isinstance(profile, dict):
+        raise ValueError("US fiscal target manifest target_profile must be an object.")
+    return profile
+
+
+def _load_us_fiscal_target_manifest() -> dict[str, Any]:
+    payload = json.loads(
+        files("populace.build.us").joinpath("fiscal_target_references.json").read_text()
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("US fiscal target manifest must be a JSON object.")
+    return payload
+
+
 def compile_us_fiscal_target_registry(
     facts: object,
     *,
     target_period: int | str = 2024,
+    include_congressional_district_targets: bool = False,
+    congressional_district_vintage_crosswalk: object | None = None,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed."""
     materialized_facts = tuple(facts)
+    if congressional_district_vintage_crosswalk is not None:
+        materialized_facts = translate_congressional_district_facts_to_current_vintage(
+            materialized_facts,
+            congressional_district_vintage_crosswalk,
+        )
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
             target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
         ),
         *_references_for_target_period(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
             target_period=target_period,
         ),
     )
-    return compile_ledger_target_references(
+    registry = compile_ledger_target_references(
         materialized_facts,
         references,
         country="us",
     )
+    registry = _uprate_cross_period_eitc_decompositions(registry)
+    registry = _uprate_cross_period_soi_decompositions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
+    registry = _rebase_stale_soi_capital_gains_distributions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
+    return apply_ledger_target_profile(
+        registry,
+        _load_us_fiscal_target_profile(),
+        context={
+            "country": "us",
+            "target_period": target_period,
+            "include_congressional_district_targets": (
+                include_congressional_district_targets
+            ),
+        },
+    )
+
+
+def _uprate_cross_period_eitc_decompositions(
+    registry: TargetRegistry,
+) -> TargetRegistry:
+    """Scale stale EITC AGI/child decompositions to active EITC controls.
+
+    SOI Table 2.5 releases AGI-by-qualifying-child EITC distributions later
+    than all-return totals. When Populace uses a prior-year decomposition for a
+    target-year build, it must not treat old nominal bins as hard target-year
+    levels. Prefer active AGI-bucket EITC facts when Ledger has them, preserving
+    the latest child split inside each AGI bucket. Fall back to all-return EITC
+    totals when only totals are available.
+    """
+
+    target_totals = _eitc_active_totals(registry)
+    target_agi_totals = _eitc_active_agi_totals(registry)
+    source_totals = _eitc_source_decomposition_totals(registry)
+    source_totals = {
+        **_eitc_source_total_fallbacks(registry),
+        **source_totals,
+    }
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get("requires_total_eitc_uprating") != "true":
+            specs.append(spec)
+            continue
+        kind = _eitc_total_kind(spec)
+        source_period = spec.metadata.get("source_period", "")
+        agi_uprating_group = _eitc_agi_uprating_group(
+            spec,
+            target_agi_totals.get(kind or "", ()),
+        )
+        if agi_uprating_group is not None:
+            source_total = _eitc_source_decomposition_total_for_bounds(
+                registry,
+                kind=kind,
+                source_period=source_period,
+                lower=agi_uprating_group.lower,
+                upper=agi_uprating_group.upper,
+            )
+            if source_total not in (None, 0):
+                factor = agi_uprating_group.value / source_total
+                metadata = {
+                    **dict(spec.metadata),
+                    "uprating_index": _eitc_agi_uprating_index(kind),
+                    "uprating_from_period": source_period,
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": ",".join(
+                        agi_uprating_group.source_periods
+                    ),
+                    "uprating_agi_lower_bound": _format_bound(agi_uprating_group.lower),
+                    "uprating_agi_upper_bound": _format_bound(agi_uprating_group.upper),
+                    "uprating_factor": _format_float(factor),
+                }
+                if len(agi_uprating_group.source_record_ids) == 1:
+                    metadata["uprating_index_source_record_id"] = (
+                        agi_uprating_group.source_record_ids[0]
+                    )
+                else:
+                    metadata["uprating_index_source_record_ids"] = ",".join(
+                        agi_uprating_group.source_record_ids
+                    )
+                specs.append(
+                    replace(
+                        spec,
+                        value=spec.value * factor,
+                        metadata=metadata,
+                    )
+                )
+                continue
+
+        target_total = target_totals.get(kind or "")
+        source_total = source_totals.get((kind, source_period))
+        if target_total is None or source_total in (None, 0):
+            continue
+        factor = target_total.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _eitc_uprating_index(kind),
+                    "uprating_from_period": source_period,
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": target_total.source_period,
+                    "uprating_index_source_record_id": target_total.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+@dataclass(frozen=True)
+class _SoiTotalControl:
+    value: float
+    source_period: str
+    source_record_id: str
+    period_key: tuple[int, int, str]
+
+
+def _rebase_stale_soi_capital_gains_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Use stale SOI capital-gains rows as shares, not hard old-year totals."""
+
+    controls = _soi_capital_gains_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    stale_national_totals = _soi_capital_gains_stale_national_totals(facts)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        kind = _soi_capital_gains_kind(spec)
+        if kind is None or not _is_stale_soi_historic_capital_gains_spec(spec):
+            specs.append(spec)
+            continue
+
+        key = _soi_capital_gains_control_key_from_spec(spec)
+        control = controls.get(key)
+        source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
+        if control is None:
+            specs.append(spec)
+            continue
+        if source_total in (None, 0):
+            continue
+        if not _period_not_before(
+            control.period_key, _period_key_from_value(spec.metadata["source_period"])
+        ):
+            specs.append(spec)
+            continue
+
+        if _is_national_all_agi_spec(spec):
+            continue
+
+        factor = control.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _soi_capital_gains_uprating_index(kind),
+                    "uprating_from_period": spec.metadata["source_period"],
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_capital_gains_active_totals(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None:
+            continue
+        if _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        current = controls.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=target_period_key,
+        ):
+            controls[key] = candidate
+    return controls
+
+
+def _soi_capital_gains_stale_national_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str], float] = {}
+    for fact in facts:
+        key = _soi_capital_gains_control_key_from_fact(fact)
+        if key is None or not _is_stale_soi_historic_capital_gains_fact(fact):
+            continue
+        totals[(*key, str(_period_value(fact)))] = _numeric_value(fact)
+    return totals
+
+
+def _soi_capital_gains_kind(spec: TargetSpec) -> str | None:
+    return _soi_capital_gains_kind_from_measure(
+        spec.metadata.get("source_measure_id", "")
+    )
+
+
+def _soi_capital_gains_kind_from_measure(measure_id: str) -> str | None:
+    if measure_id == "net_capital_gains_amount":
+        return "amount"
+    if measure_id == "net_capital_gains_returns":
+        return "returns"
+    return None
+
+
+def _is_stale_soi_historic_capital_gains_spec(spec: TargetSpec) -> bool:
+    if spec.family != "irs_soi":
+        return False
+    if _soi_capital_gains_kind(spec) is None:
+        return False
+    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+
+
+def _is_stale_soi_historic_capital_gains_fact(fact: object) -> bool:
+    if _source_name(fact) != "irs_soi":
+        return False
+    if _soi_capital_gains_kind_from_measure(_measure_id(fact)) is None:
+        return False
+    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
+
+
+def _soi_capital_gains_control_key_from_fact(
+    fact: object,
+) -> tuple[str, str, str] | None:
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if _soi_capital_gains_kind_from_measure(measure_id) is None:
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    if not _is_all_agi_range_fact(fact):
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    return (
+        measure_id,
+        status,
+        _soi_return_universe_from_fact(fact),
+    )
+
+
+def _soi_capital_gains_control_key_from_spec(
+    spec: TargetSpec,
+) -> tuple[str, str, str]:
+    return (
+        spec.metadata.get("source_measure_id", ""),
+        spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
+    )
+
+
+def _is_national_all_agi_spec(spec: TargetSpec) -> bool:
+    if spec.metadata.get("state_fips"):
+        return False
+    lower, upper = _bounds_from_metadata(spec)
+    return lower == -float("inf") and upper == float("inf")
+
+
+def _soi_capital_gains_uprating_index(kind: str) -> str:
+    if kind == "returns":
+        return "total_net_capital_gains_returns"
+    return "total_net_capital_gains_amount"
+
+
+def _uprate_cross_period_soi_decompositions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Scale stale SOI AGI slices to same-scope active SOI totals."""
+
+    source_totals = _soi_total_controls_by_source_period(facts)
+    active_totals = _soi_active_total_controls(facts, target_period=target_period)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get("requires_total_soi_uprating") != "true":
+            specs.append(spec)
+            continue
+
+        measure_id = spec.metadata.get("source_measure_id", "")
+        source_period = spec.metadata.get("source_period", "")
+        key = _soi_total_control_key_from_spec(spec)
+        source_total = source_totals.get((*key, source_period))
+        active_total = active_totals.get(key)
+        if source_total in (None, 0) or active_total is None:
+            continue
+
+        factor = active_total.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _soi_total_uprating_index(measure_id),
+                    "uprating_from_period": source_period,
+                    "uprating_to_period": str(spec.period),
+                    "uprating_index_source_period": active_total.source_period,
+                    "uprating_index_source_record_id": active_total.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _soi_total_controls_by_source_period(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str, str], float] = {}
+    for fact in facts:
+        if not _is_soi_total_uprating_control_fact(fact):
+            continue
+        key = (
+            *_soi_total_control_key_from_fact(fact),
+            str(_period_value(fact)),
+        )
+        totals[key] = _numeric_value(fact)
+    return totals
+
+
+def _soi_active_total_controls(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[tuple[str, str, str, str], _SoiTotalControl]:
+    totals: dict[tuple[str, str, str, str], _SoiTotalControl] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for fact in facts:
+        if not _is_soi_total_uprating_control_fact(fact):
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        key = _soi_total_control_key_from_fact(fact)
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        current = totals.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=target_period_key,
+        ):
+            totals[key] = candidate
+    return totals
+
+
+def _is_soi_total_uprating_control_fact(fact: object) -> bool:
+    if _source_name(fact) != "irs_soi":
+        return False
+    if _measure_id(fact) not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+        return False
+    if _geography_level(fact) not in {"country", "state"}:
+        return False
+    if not _source_record_id(fact):
+        return False
+    if not _is_all_income_range(fact):
+        return False
+    lower, upper = _agi_bounds(fact)
+    return lower == "-inf" and upper == "inf"
+
+
+def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str, str]:
+    state_fips = _state_fips(fact)
+    geography_key = f"state:{state_fips}" if state_fips else "country"
+    return (
+        _measure_id(fact),
+        geography_key,
+        _filing_status_label(_dimensions(fact).get("filing_status")) or "",
+        _soi_return_universe_from_fact(fact),
+    )
+
+
+def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str, str]:
+    state_fips = spec.metadata.get("state_fips", "")
+    geography_key = f"state:{state_fips}" if state_fips else "country"
+    return (
+        spec.metadata.get("source_measure_id", ""),
+        geography_key,
+        spec.metadata.get("filing_status", ""),
+        spec.metadata.get("soi_return_universe", "all_returns"),
+    )
+
+
+def _soi_total_uprating_index(measure_id: str) -> str:
+    if measure_id in _SOI_TOTAL_UPRATED_RETURN_MEASURES:
+        return "total_taxable_interest_returns"
+    return "total_taxable_interest_amount"
+
+
+@dataclass(frozen=True)
+class _EitcActiveTotal:
+    value: float
+    source_period: str
+    source_record_id: str
+    period_key: tuple[int, int, str]
+
+
+@dataclass(frozen=True)
+class _EitcAgiTotal:
+    value: float
+    source_periods: tuple[str, ...]
+    source_record_ids: tuple[str, ...]
+    period_key: tuple[int, int, str]
+    lower: float
+    upper: float
+
+
+def _eitc_active_totals(registry: TargetRegistry) -> dict[str, _EitcActiveTotal]:
+    totals: dict[str, _EitcActiveTotal] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        if spec.metadata.get("target_role") not in _eitc_total_roles(kind):
+            continue
+        source_period = spec.metadata.get("source_period", "")
+        candidate = _EitcActiveTotal(
+            value=spec.value,
+            source_period=source_period,
+            source_record_id=spec.metadata.get("ledger_source_record_id", spec.name),
+            period_key=_period_key_from_value(source_period),
+        )
+        current = totals.get(kind)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=_period_key_from_value(spec.period),
+        ):
+            totals[kind] = candidate
+    return totals
+
+
+def _eitc_active_agi_totals(
+    registry: TargetRegistry,
+) -> dict[str, tuple[_EitcAgiTotal, ...]]:
+    latest: dict[tuple[str, float, float], _EitcAgiTotal] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None or not _is_eitc_agi_total_spec(spec):
+            continue
+        lower, upper = _bounds_from_metadata(spec)
+        candidate = _EitcAgiTotal(
+            value=spec.value,
+            source_periods=(spec.metadata.get("source_period", ""),),
+            source_record_ids=(
+                spec.metadata.get("ledger_source_record_id", spec.name),
+            ),
+            period_key=_period_key_from_value(spec.metadata.get("source_period", "")),
+            lower=lower,
+            upper=upper,
+        )
+        key = (kind, lower, upper)
+        current = latest.get(key)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=_period_key_from_value(spec.period),
+        ):
+            latest[key] = candidate
+
+    by_kind: dict[str, list[_EitcAgiTotal]] = {}
+    for (kind, _, _), total in latest.items():
+        by_kind.setdefault(kind, []).append(total)
+    return {
+        kind: tuple(sorted(totals, key=lambda item: (item.lower, item.upper)))
+        for kind, totals in by_kind.items()
+    }
+
+
+def _eitc_source_decomposition_totals(
+    registry: TargetRegistry,
+) -> dict[tuple[str, str], float]:
+    totals: dict[tuple[str, str], float] = {}
+    for spec in registry.specs:
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if spec.metadata.get("agi_lower_bound") != "-inf":
+            continue
+        if spec.metadata.get("agi_upper_bound") != "inf":
+            continue
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        source_period = spec.metadata.get("source_period", "")
+        key = (kind, source_period)
+        totals[key] = totals.get(key, 0.0) + spec.value
+    return totals
+
+
+def _eitc_source_total_fallbacks(
+    registry: TargetRegistry,
+) -> dict[tuple[str, str], float]:
+    totals: dict[tuple[str, str], float] = {}
+    for spec in registry.specs:
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        if spec.metadata.get("target_role") not in _eitc_total_roles(kind):
+            continue
+        source_period = spec.metadata.get("source_period", "")
+        totals[(kind, source_period)] = spec.value
+    return totals
+
+
+def _eitc_source_decomposition_total_for_bounds(
+    registry: TargetRegistry,
+    *,
+    kind: str | None,
+    source_period: str,
+    lower: float,
+    upper: float,
+) -> float | None:
+    total = 0.0
+    matched = False
+    for spec in registry.specs:
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if _eitc_total_kind(spec) != kind:
+            continue
+        if spec.metadata.get("source_period", "") != source_period:
+            continue
+        spec_lower, spec_upper = _bounds_from_metadata(spec)
+        if _contains_bounds(lower, upper, spec_lower, spec_upper):
+            total += spec.value
+            matched = True
+    return total if matched else None
+
+
+def _eitc_agi_uprating_group(
+    spec: TargetSpec,
+    active_agi_totals: tuple[_EitcAgiTotal, ...],
+) -> _EitcAgiTotal | None:
+    if not active_agi_totals:
+        return None
+    source_period_key = _period_key_from_value(spec.metadata.get("source_period", ""))
+    spec_lower, spec_upper = _bounds_from_metadata(spec)
+    containing = [
+        total
+        for total in active_agi_totals
+        if _period_not_before(total.period_key, source_period_key)
+        and _contains_bounds(total.lower, total.upper, spec_lower, spec_upper)
+    ]
+    if containing:
+        return min(containing, key=lambda total: total.upper - total.lower)
+
+    contained = [
+        total
+        for total in active_agi_totals
+        if _period_not_before(total.period_key, source_period_key)
+        and _contains_bounds(spec_lower, spec_upper, total.lower, total.upper)
+    ]
+    if not _covers_interval(contained, lower=spec_lower, upper=spec_upper):
+        return None
+    return _merge_eitc_agi_totals(contained, lower=spec_lower, upper=spec_upper)
+
+
+def _merge_eitc_agi_totals(
+    totals: list[_EitcAgiTotal],
+    *,
+    lower: float,
+    upper: float,
+) -> _EitcAgiTotal:
+    source_periods = tuple(
+        dict.fromkeys(period for total in totals for period in total.source_periods)
+    )
+    source_record_ids = tuple(
+        dict.fromkeys(
+            source_record_id
+            for total in totals
+            for source_record_id in total.source_record_ids
+        )
+    )
+    return _EitcAgiTotal(
+        value=sum(total.value for total in totals),
+        source_periods=source_periods,
+        source_record_ids=source_record_ids,
+        period_key=max(total.period_key for total in totals),
+        lower=lower,
+        upper=upper,
+    )
+
+
+def _is_eitc_agi_total_spec(spec: TargetSpec) -> bool:
+    if _is_eitc_decomposition_spec(spec):
+        return False
+    if spec.metadata.get("ledger_filter_eitc_child_count"):
+        return False
+    if spec.metadata.get("filing_status") != "All":
+        return False
+    if spec.metadata.get("state_fips"):
+        return False
+    if spec.metadata.get("source_measure_id") not in (
+        _SOI_EITC_TOTAL_AMOUNT_MEASURES | _SOI_EITC_TOTAL_RETURN_MEASURES
+    ):
+        return False
+    lower, upper = _bounds_from_metadata(spec)
+    return not (lower == -float("inf") and upper == float("inf"))
+
+
+def _bounds_from_metadata(spec: TargetSpec) -> tuple[float, float]:
+    return (
+        _bound_from_metadata_value(spec.metadata.get("agi_lower_bound", "-inf")),
+        _bound_from_metadata_value(spec.metadata.get("agi_upper_bound", "inf")),
+    )
+
+
+def _bound_from_metadata_value(value: str) -> float:
+    if value == "-inf":
+        return -float("inf")
+    if value == "inf":
+        return float("inf")
+    return float(value)
+
+
+def _contains_bounds(
+    outer_lower: float,
+    outer_upper: float,
+    inner_lower: float,
+    inner_upper: float,
+) -> bool:
+    return outer_lower <= inner_lower and inner_upper <= outer_upper
+
+
+def _covers_interval(
+    totals: list[_EitcAgiTotal],
+    *,
+    lower: float,
+    upper: float,
+) -> bool:
+    if not totals:
+        return False
+    cursor = lower
+    for total in sorted(totals, key=lambda item: (item.lower, item.upper)):
+        if total.lower != cursor:
+            return False
+        cursor = total.upper
+        if cursor == upper:
+            return True
+        if cursor > upper:
+            return False
+    return cursor == upper
+
+
+def _period_not_before(
+    candidate: tuple[int, int, str],
+    minimum: tuple[int, int, str],
+) -> bool:
+    if not candidate[0] or not minimum[0]:
+        return True
+    return candidate[1] >= minimum[1]
+
+
+def _format_bound(value: float) -> str:
+    if value == -float("inf"):
+        return "-inf"
+    if value == float("inf"):
+        return "inf"
+    return _format_float(value)
+
+
+def _is_eitc_decomposition_spec(spec: TargetSpec) -> bool:
+    metadata = spec.metadata
+    if metadata.get("source_measure_id") not in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES
+        | _SOI_EITC_DECOMPOSITION_RETURN_MEASURES
+    ):
+        return False
+    return ".table_2_5.eitc_by_agi_children." in metadata.get(
+        "ledger_layout_record_set_id", ""
+    )
+
+
+def _eitc_total_kind(spec: TargetSpec) -> str | None:
+    measure_id = spec.metadata.get("source_measure_id", "")
+    if measure_id in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES | _SOI_EITC_TOTAL_AMOUNT_MEASURES
+    ):
+        return "amount"
+    if measure_id in (
+        _SOI_EITC_DECOMPOSITION_RETURN_MEASURES | _SOI_EITC_TOTAL_RETURN_MEASURES
+    ):
+        return "returns"
+    return None
+
+
+def _eitc_total_roles(kind: str) -> frozenset[str]:
+    if kind == "amount":
+        return frozenset({"eitc_total"})
+    if kind == "returns":
+        return frozenset({"eitc_returns_total"})
+    return frozenset()
+
+
+def _eitc_uprating_index(kind: str | None) -> str:
+    if kind == "returns":
+        return "total_eitc_returns"
+    return "total_eitc_amount"
+
+
+def _eitc_agi_uprating_index(kind: str | None) -> str:
+    if kind == "returns":
+        return "agi_eitc_returns"
+    return "agi_eitc_amount"
+
+
+def _format_float(value: float) -> str:
+    return f"{value:.15g}"
 
 
 def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
-        tuple[tuple[str, ...], tuple[int, int, str], LedgerTargetReference]
+        tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
     ] = []
     for fact in facts:
-        reference = _reference_from_ledger_fact(fact, target_period=target_period)
+        reference = _reference_from_ledger_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
         if reference is not None:
-            candidates.append((_dynamic_target_key(fact), _period_key(fact), reference))
+            candidates.append(
+                (
+                    _dynamic_target_key(fact),
+                    _period_key(fact),
+                    _numeric_value(fact),
+                    reference,
+                )
+            )
+    keys_with_positive_observations = {
+        key for key, _, value, _ in candidates if value > 0
+    }
     latest: dict[
         tuple[str, ...], tuple[tuple[int, int, str], LedgerTargetReference]
     ] = {}
     target_period_key = _period_key_from_value(target_period)
-    for key, period_key, reference in candidates:
+    for key, period_key, value, reference in candidates:
         if not _not_after_target_period(period_key, target_period_key):
+            continue
+        if (
+            key in keys_with_positive_observations
+            and value == 0
+            and _zero_value_means_missing_for_latest_selection(reference)
+        ):
             continue
         current = latest.get(key)
         if current is None:
@@ -681,6 +1548,14 @@ def _dynamic_us_fiscal_target_references(
         ):
             latest[key] = (period_key, reference)
     return tuple(reference for _, reference in latest.values())
+
+
+def _zero_value_means_missing_for_latest_selection(
+    reference: LedgerTargetReference,
+) -> bool:
+    return reference.family == "cms_medicaid" and reference.metadata.get(
+        "target_role"
+    ) in {"medicaid_enrollment", "medicaid_chip_enrollment"}
 
 
 def _dynamic_target_key(fact: object) -> tuple[str, ...]:
@@ -754,6 +1629,38 @@ def _normalized_record_set_id(record_set_id: str) -> str:
     )
 
 
+def _soi_return_universe_from_fact(fact: object) -> str:
+    return _soi_return_universe_from_record_set_id(
+        _str_at(fact, "layout", "record_set_id")
+    )
+
+
+def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
+    normalized = _normalized_record_set_id(record_set_id)
+    if "itemized_all_returns" in normalized:
+        return "itemized_returns"
+    if "all_returns_excluding_dependents" in normalized:
+        return "returns_excluding_dependents"
+    return "all_returns"
+
+
+def _is_soi_congressional_district_record_set(fact: object) -> bool:
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    return ".congressional_district_2022." in record_set_id
+
+
+def _is_soi_cd_premium_tax_credit_amount_conflict(
+    fact: object, *, measure_id: str
+) -> bool:
+    # The SOI CD A85530 amount is not the same gross annual PTC control used by
+    # assigned_aca_ptc. Keep Historic Table 2 national/state PTC amount controls
+    # until Ledger has an explicit CD reconciliation for this concept.
+    return (
+        measure_id == "premium_tax_credit_amount"
+        and _is_soi_congressional_district_record_set(fact)
+    )
+
+
 def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
@@ -814,17 +1721,43 @@ def _reference_from_ledger_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
-        return _soi_reference_from_fact(fact, target_period=target_period)
+        return _soi_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
+    if source_name == "census_acs":
+        if (
+            not include_congressional_district_targets
+            or _geography_level(fact) != "congressional_district"
+        ):
+            return None
+        return _population_age_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "census_pep":
-        return _population_age_reference_from_fact(fact, target_period=target_period)
+        return _population_age_reference_from_fact(
+            fact,
+            target_period=target_period,
+            include_congressional_district_targets=(
+                include_congressional_district_targets
+            ),
+        )
     if source_name == "jct":
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
@@ -834,10 +1767,31 @@ def _soi_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
-    if _geography_level(fact) not in {"country", "state"}:
+    if (
+        _is_soi_congressional_district_record_set(fact)
+        and not include_congressional_district_targets
+    ):
         return None
+    geography_level = _geography_level(fact)
+    if geography_level not in {"country", "state", "congressional_district"}:
+        return None
+    congressional_district_geoid: str | None = None
+    if geography_level == "congressional_district":
+        if not include_congressional_district_targets:
+            return None
+        congressional_district_geoid = _congressional_district_geoid(fact)
+        if congressional_district_geoid is None:
+            return None
     measure_id = _measure_id(fact)
+    if measure_id == "tax_filer_individual_count" and not (
+        include_congressional_district_targets
+        and geography_level == "congressional_district"
+    ):
+        return None
+    if _is_soi_cd_premium_tax_credit_amount_conflict(fact, measure_id=measure_id):
+        return None
     variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
     is_count = False
     if variable is None:
@@ -850,11 +1804,24 @@ def _soi_reference_from_fact(
         variable, is_count = override
 
     lower, upper = _agi_bounds(fact)
-    if _is_untransformed_cross_period_agi_slice(
+    cross_period_agi_slice = _is_untransformed_cross_period_agi_slice(
         fact,
         agi_lower_bound=lower,
         agi_upper_bound=upper,
         target_period=target_period,
+    )
+    requires_total_eitc_uprating = _is_cross_period_fact(
+        fact, target_period=target_period
+    ) and _is_soi_eitc_decomposition_fact(fact, measure_id)
+    requires_total_soi_uprating = (
+        cross_period_agi_slice
+        and _is_cross_period_fact(fact, target_period=target_period)
+        and _is_soi_total_uprated_decomposition_fact(fact, measure_id)
+    )
+    if (
+        cross_period_agi_slice
+        and not requires_total_eitc_uprating
+        and not requires_total_soi_uprating
     ):
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
@@ -864,17 +1831,21 @@ def _soi_reference_from_fact(
     source_record_id = _source_record_id(fact)
     if not source_record_id:
         return None
+    display_variable = _soi_display_variable(variable)
+    soi_return_universe = _soi_return_universe_from_fact(fact)
     metadata = {
         "source_measure_id": measure_id,
+        "source_variable": variable,
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
         "target_role": _soi_target_role(fact, measure_id),
-        "variable": variable,
+        "variable": display_variable,
         "materializer": "irs_soi_slice",
         "measure_mode": _soi_measure_mode(variable, is_count=is_count),
         "agi_lower_bound": lower,
         "agi_upper_bound": upper,
         "filing_status": status,
+        "soi_return_universe": soi_return_universe,
         **_soi_layout_filter_metadata(fact),
     }
     base_variables = _soi_base_variables(variable)
@@ -882,17 +1853,27 @@ def _soi_reference_from_fact(
         metadata["base_variable"] = base_variables[0]
     elif len(base_variables) > 1:
         metadata["base_variables"] = ",".join(base_variables)
-    if variable in _SOI_ITEMIZED_ONLY_VARIABLES:
+    if (
+        variable in _SOI_ITEMIZED_ONLY_VARIABLES
+        or soi_return_universe == "itemized_returns"
+    ):
         metadata["itemized_only"] = "true"
     state_fips = _state_fips(fact)
+    if congressional_district_geoid is not None:
+        state_fips = congressional_district_geoid[:2]
     if state_fips:
         metadata["state_fips"] = state_fips
+    if congressional_district_geoid is not None:
+        metadata["congressional_district_geoid"] = congressional_district_geoid
+    if requires_total_eitc_uprating:
+        metadata["requires_total_eitc_uprating"] = "true"
+    if requires_total_soi_uprating:
+        metadata["requires_total_soi_uprating"] = "true"
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
         entity="household",
         measure=source_record_id,
-        aggregation="sum",
         period=target_period,
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
@@ -904,6 +1885,12 @@ def _soi_measure_mode(variable: str, *, is_count: bool) -> str:
     if is_count:
         return "indicator_sum"
     return "sum"
+
+
+def _soi_display_variable(variable: str) -> str:
+    if variable == "ordinary_dividends":
+        return "ordinary_dividend_income"
+    return variable
 
 
 def _soi_base_variables(variable: str) -> tuple[str, ...]:
@@ -934,6 +1921,9 @@ def _soi_layout_variable_override(
 
 
 def _soi_layout_filter_metadata(fact: object) -> dict[str, str]:
+    eitc_child_count = _dimensions(fact).get("eitc_child_count")
+    if eitc_child_count is not None:
+        return {"ledger_filter_eitc_child_count": str(eitc_child_count)}
     groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
     groupby_value = _str_at(fact, "layout", "groupby_value_id")
     if (
@@ -943,6 +1933,25 @@ def _soi_layout_filter_metadata(fact: object) -> dict[str, str]:
     ):
         return {"ledger_filter_eitc_child_count": groupby_value}
     return {}
+
+
+def _is_soi_eitc_decomposition_fact(fact: object, measure_id: str) -> bool:
+    if measure_id not in (
+        _SOI_EITC_DECOMPOSITION_AMOUNT_MEASURES
+        | _SOI_EITC_DECOMPOSITION_RETURN_MEASURES
+    ):
+        return False
+    record_set_id = _str_at(fact, "layout", "record_set_id")
+    return ".table_2_5.eitc_by_agi_children." in record_set_id
+
+
+def _is_soi_total_uprated_decomposition_fact(
+    fact: object,
+    measure_id: str,
+) -> bool:
+    if measure_id not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+        return False
+    return not _is_all_income_range(fact)
 
 
 def _state_income_tax_reference_from_fact(
@@ -961,7 +1970,6 @@ def _state_income_tax_reference_from_fact(
         ledger_source_record_id=source_record_id,
         entity="household",
         measure=source_record_id,
-        aggregation="sum",
         period=target_period,
         family="state_income_tax",
         metadata={
@@ -978,10 +1986,12 @@ def _population_age_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
+    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
     if _measure_id(fact) != "population":
         return None
     geography_level = _geography_level(fact)
+    congressional_district_geoid: str | None = None
     if geography_level == "country":
         state_fips = None
         geography_scope = "national"
@@ -990,6 +2000,14 @@ def _population_age_reference_from_fact(
         if state_fips is None:
             return None
         geography_scope = "state"
+    elif geography_level == "congressional_district":
+        if not include_congressional_district_targets:
+            return None
+        congressional_district_geoid = _congressional_district_geoid(fact)
+        if congressional_district_geoid is None:
+            return None
+        state_fips = congressional_district_geoid[:2]
+        geography_scope = "congressional_district"
     else:
         return None
     source_record_id = _source_record_id(fact)
@@ -1014,12 +2032,13 @@ def _population_age_reference_from_fact(
         metadata["age_group"] = groupby_value_id
     if state_fips:
         metadata["state_fips"] = state_fips
+    if congressional_district_geoid is not None:
+        metadata["congressional_district_geoid"] = congressional_district_geoid
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
         entity="household",
         measure=source_record_id,
-        aggregation="sum",
         period=target_period,
         family="census_population",
         metadata=metadata,
@@ -1078,7 +2097,6 @@ def _direct_reference_from_fact(
         ledger_source_record_id=source_record_id,
         entity="household",
         measure=source_record_id,
-        aggregation="sum",
         period=target_period,
         family=family,
         signed=_numeric_value(fact) < 0,
@@ -1116,15 +2134,21 @@ def _references_for_target_period(
 
 
 def _soi_target_role(fact: object, measure_id: str) -> str:
+    if _is_all_income_range(fact):
+        if measure_id == "premium_tax_credit_amount":
+            return "aca_spending"
+        if measure_id == "premium_tax_credit_returns":
+            return "aca_ptc_returns"
     if _geography_level(fact) == "country" and _is_all_income_range(fact):
         roles = {
             "income_tax_before_credits_amount": "income_tax_before_credits_total",
             "income_tax_liability_amount": "federal_income_tax_total",
             "eitc_amount": "eitc_total",
+            "total_earned_income_credit_amount": "eitc_total",
+            "total_earned_income_credit_returns": "eitc_returns_total",
             "actc_amount": "refundable_ctc_total",
             "ctc_amount": "ctc_total",
             "charitable_amount": "charitable_deduction_total",
-            "premium_tax_credit_amount": "aca_spending",
             "interest_paid_deduction_amount": "interest_deduction_total",
             "itemized_deductions_amount": "itemized_deduction_total",
             "limited_state_local_taxes_amount": "salt_deduction_total",
@@ -1139,9 +2163,18 @@ def _soi_target_role(fact: object, measure_id: str) -> str:
 
 def _is_all_income_range(fact: object) -> bool:
     dimensions = _dimensions(fact)
+    return _is_all_agi_range_fact(fact) and (
+        str(dimensions.get("filing_status", "all")) == "all"
+    )
+
+
+def _is_all_agi_range_fact(fact: object) -> bool:
+    dimensions = _dimensions(fact)
+    lower, upper = _agi_bounds(fact)
     return (
         str(dimensions.get("income_range", "all")) == "all"
-        and str(dimensions.get("filing_status", "all")) == "all"
+        and lower == "-inf"
+        and upper == "inf"
     )
 
 
@@ -1162,13 +2195,18 @@ def _is_untransformed_cross_period_agi_slice(
     return source_period_key[1] != target_period_key[1]
 
 
+def _is_cross_period_fact(fact: object, *, target_period: int | str) -> bool:
+    source_period_key = _period_key(fact)
+    target_period_key = _period_key_from_value(target_period)
+    if not source_period_key[0] or not target_period_key[0]:
+        return False
+    return source_period_key[1] != target_period_key[1]
+
+
 def _agi_bounds(fact: object) -> tuple[str, str]:
     lower = "-inf"
     upper = "inf"
-    constraints = _at(fact, "universe_constraints", "constraints") or ()
-    if not isinstance(constraints, list):
-        constraints = ()
-    for constraint in constraints:
+    for constraint in _constraint_rows(fact):
         if not isinstance(constraint, dict):
             continue
         variable = str(constraint.get("variable") or "")
@@ -1233,6 +2271,24 @@ def _state_fips(fact: object) -> str | None:
     if fips not in STATE_FIPS_TO_POSTAL:
         return None
     return fips
+
+
+def _congressional_district_geoid(fact: object) -> str | None:
+    geoid = _geography_id(fact)
+    for prefix in ("5001700US", "5001900US"):
+        if geoid.startswith(prefix):
+            congressional_district_geoid = geoid.removeprefix(prefix)
+            break
+    else:
+        return None
+    if len(congressional_district_geoid) != 4:
+        return None
+    if not congressional_district_geoid.isdigit():
+        return None
+    state_fips = congressional_district_geoid[:2]
+    if state_fips not in STATE_FIPS_TO_POSTAL:
+        return None
+    return congressional_district_geoid
 
 
 def _numeric_value(fact: object) -> float:
@@ -1394,7 +2450,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         requirement_id="irs_interest_distribution",
         label="SOI taxable interest by AGI bracket",
         accepted_name_substrings=(".taxable_interest_amount",),
-        min_matches=5,
+        min_matches=100,
     ),
     TargetCoverageRequirement(
         requirement_id="irs_pension_distribution",
