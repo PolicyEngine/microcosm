@@ -4,10 +4,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from populace.data.release import publish_release
 from populace.data.slack import notify_release
+
+
+def _reform_validation_skipped(release_dir: Path) -> bool:
+    """True if the release carries a reform_validation.json that was built with
+    out-of-sample reforms skipped (``out_of_sample_simulated`` false).
+
+    Such a release publishes blank out-of-sample (OBBBA) rows on the dashboard,
+    indistinguishable from a real result — so publishing one is refused unless
+    explicitly allowed. Absent/unreadable file or a true flag → not skipped.
+    """
+    path = release_dir / "reform_validation.json"
+    if not path.exists():
+        return False
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    return payload.get("out_of_sample_simulated") is False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,7 +73,29 @@ def main(argv: list[str] | None = None) -> int:
         "--updated-at",
         help="Optional latest.json timestamp override for reproducible tests.",
     )
+    parser.add_argument(
+        "--allow-incomplete-reform-validation",
+        action="store_true",
+        help=(
+            "Publish even if reform_validation.json was built with out-of-sample "
+            "reforms skipped (out_of_sample_simulated false). Off by default so a "
+            "release never silently ships blank OBBBA validation."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
+        Path(args.release_dir)
+    ):
+        print(
+            "refusing to publish: reform_validation.json has "
+            "out_of_sample_simulated=false (built with "
+            "--skip-out-of-sample-reforms), so the dashboard would show blank "
+            "out-of-sample reforms. Rebuild without skipping, or pass "
+            "--allow-incomplete-reform-validation to publish anyway.",
+            file=sys.stderr,
+        )
+        return 1
 
     pointer = publish_release(
         Path(args.release_dir),
