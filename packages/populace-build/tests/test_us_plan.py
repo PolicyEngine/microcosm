@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from populace.build.source_manifest import SourceManifest, SourceOperationSpec
+from populace.build.source_manifest import (
+    SourceManifest,
+    SourceOperationSpec,
+    SupportSpineSourceSpec,
+    SupportSpineSpec,
+)
 from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
@@ -14,6 +19,8 @@ from populace.build.us_runtime import (
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_STAGE_NAMES,
+    US_SUPPORT_SPINE_MANIFEST,
+    US_SUPPORT_SPINE_SPEC,
     BuildConfig,
     us_plan,
 )
@@ -87,6 +94,79 @@ class TestUsSources:
         assert US_SOURCE_MANIFEST.country == "us"
         assert US_SOURCE_MANIFEST.version == 1
         assert len(US_SOURCE_STAGE_SPECS) >= len(US_DONORS)
+
+    def test_support_spine_manifest_declares_period_relative_asec_pool(self) -> None:
+        assert US_SUPPORT_SPINE_MANIFEST.country == "us"
+        assert US_SUPPORT_SPINE_SPEC.stage == "asec_load"
+        assert US_SUPPORT_SPINE_SPEC.method == "pool_raw_asec_years"
+        assert US_SUPPORT_SPINE_SPEC.target_year_from_build_config is True
+
+        sources = US_SUPPORT_SPINE_SPEC.sources
+        assert [source.role for source in sources] == [
+            "current_asec",
+            "prior_asec",
+        ]
+        assert [source.source_year_offset for source in sources] == [0, -1]
+        assert [source.share for source in sources] == [0.5, 0.5]
+        assert [source.resolved_year(2024) for source in sources] == [2024, 2023]
+        assert all(source.source.startswith("https://") for source in sources)
+
+    def test_support_spine_parser_rejects_non_period_relative_sources(self) -> None:
+        with pytest.raises(ValueError, match="target_year_from_build_config"):
+            SupportSpineSpec.from_mapping(
+                {
+                    "stage": "asec_load",
+                    "method": "pool_raw_asec_years",
+                    "target_year_from_build_config": False,
+                    "sources": [
+                        {
+                            "role": "current",
+                            "survey": "CPS ASEC",
+                            "source": "https://www.census.gov/programs-surveys/cps.html",
+                            "source_year_offset": 0,
+                        }
+                    ],
+                }
+            )
+
+    def test_support_spine_parser_requires_explicit_source_shares(self) -> None:
+        with pytest.raises(ValueError, match="explicit shares"):
+            SupportSpineSpec.from_mapping(
+                {
+                    "stage": "asec_load",
+                    "method": "pool_raw_asec_years",
+                    "target_year_from_build_config": True,
+                    "sources": [
+                        {
+                            "role": "current",
+                            "survey": "CPS ASEC",
+                            "source": "https://www.census.gov/programs-surveys/cps.html",
+                            "source_year_offset": 0,
+                        }
+                    ],
+                }
+            )
+
+    def test_support_spine_parser_rejects_boolean_numeric_fields(self) -> None:
+        with pytest.raises(ValueError, match="source_year_offset"):
+            SupportSpineSourceSpec.from_mapping(
+                {
+                    "role": "current",
+                    "survey": "CPS ASEC",
+                    "source": "https://www.census.gov/programs-surveys/cps.html",
+                    "source_year_offset": True,
+                }
+            )
+        with pytest.raises(ValueError, match="share"):
+            SupportSpineSourceSpec.from_mapping(
+                {
+                    "role": "current",
+                    "survey": "CPS ASEC",
+                    "source": "https://www.census.gov/programs-surveys/cps.html",
+                    "source_year_offset": 0,
+                    "share": True,
+                }
+            )
 
     def test_every_donor_stage_has_matching_source_spec(self) -> None:
         specs = US_SOURCE_MANIFEST.stage_map()
