@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -1997,6 +1998,128 @@ def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
         allow_legacy_cd_provenance=True,
         congressional_district_vintage_crosswalk_metadata={"sha256": "x"},
     )
+
+
+def test_scorer_accepts_legacy_pe_flat_h5_flag(
+    monkeypatch,
+) -> None:
+    scorer = _load_scorer_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "score_us_fiscal_targets.py",
+            "--h5",
+            "enhanced_cps_2024.h5",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "score",
+            "--legacy-pe-flat-h5",
+        ],
+    )
+
+    args = scorer._parse_args()
+
+    assert args.legacy_pe_flat_h5
+
+
+def test_legacy_pe_flat_h5_loads_entity_frame(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 300])
+    write_column("person_spm_unit_id", [1000, 1000, 1000, 1000])
+    write_column("person_family_id", [2000, 2000, 2001, 2002])
+    write_column("person_marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 200.0])
+    write_column("state_fips", [6, 36])
+    write_column("tax_unit_id", [100, 200, 300])
+    write_column("spm_unit_id", [1000])
+    write_column("family_id", [2000, 2001, 2002])
+    write_column("marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("age", [40, 38, 10, 7])
+    write_column("income_tax", [1_000.0, 2_000.0, 3_000.0])
+    write_column("unknown_household_signal", [1, 0])
+    write_column("bad_matrix", [[1, 2], [3, 4]])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={
+            "age": "person",
+            "income_tax": "tax_unit",
+            "state_fips": "household",
+        },
+    )
+
+    assert frame.n("person") == 4
+    assert frame.n("household") == 2
+    assert frame.n("tax_unit") == 3
+    assert frame.table("person")["age"].tolist() == [40, 38, 10, 7]
+    assert frame.table("tax_unit")["income_tax"].tolist() == [
+        1_000.0,
+        2_000.0,
+        3_000.0,
+    ]
+    assert frame.table("household")["unknown_household_signal"].tolist() == [1, 0]
+    assert frame.weights_for("household").values.tolist() == [100.0, 200.0]
+    assert metadata["layout"] == "legacy_pe_flat_h5"
+    assert metadata["inferred_unknown_columns_by_entity"] == {
+        "household": ["unknown_household_signal"]
+    }
+    assert any(
+        skipped["column"] == "bad_matrix" and "not one-dimensional" in skipped["reason"]
+        for skipped in metadata["skipped_columns"]
+    )
+
+
+def test_legacy_pe_flat_h5_drops_zero_weight_households(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data_zero_weights.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 200])
+    write_column("person_spm_unit_id", [1000, 1000, 2000, 2000])
+    write_column("person_family_id", [3000, 3000, 4000, 4000])
+    write_column("person_marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 0.0])
+    write_column("tax_unit_id", [100, 200])
+    write_column("spm_unit_id", [1000, 2000])
+    write_column("family_id", [3000, 4000])
+    write_column("marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("age", [40, 38, 10, 7])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={"age": "person"},
+    )
+
+    assert frame.n("household") == 1
+    assert frame.n("person") == 2
+    assert frame.table("household")["household_id"].tolist() == [10]
+    assert frame.table("person")["person_id"].tolist() == [1, 2]
+    assert frame.weights_for("household").values.tolist() == [100.0]
+    assert metadata["dropped_zero_weight_households"] == 1
+    assert metadata["dropped_zero_weight_persons"] == 2
 
 
 def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
