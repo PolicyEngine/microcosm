@@ -464,6 +464,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
+        required=True,
         help=(
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
@@ -521,12 +522,6 @@ def _parse_args() -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args()
-    if args.congressional_district_vintage_crosswalk is None:
-        parser.error(
-            "--congressional-district-vintage-crosswalk is required because "
-            "release builds always compile the full congressional-district "
-            "target surface."
-        )
     return args
 
 
@@ -2892,6 +2887,22 @@ def _congressional_district_release_gates_enabled(
     return bool(compilation.get("gate_congressional_district_targets", True))
 
 
+def _assert_complete_target_compilation(
+    compilation: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    dropped = tuple(str(name) for name in compilation.get("dropped_target_names") or ())
+    if not dropped:
+        return
+    preview = ", ".join(dropped[:5])
+    suffix = "" if len(dropped) <= 5 else f", and {len(dropped) - 5} more"
+    raise RuntimeError(
+        f"{context}: {len(dropped)} fiscal targets were not materialized "
+        f"({preview}{suffix})."
+    )
+
+
 def _release_gate_failures(
     result,
     compilation: Mapping[str, object],
@@ -3340,7 +3351,7 @@ def _in_sample_targets(result) -> dict[str, float]:
 def _write_reform_validation(
     *,
     release_dir: Path,
-    export_frame: Frame,
+    dataset_path: Path,
     result,
     registry: TargetRegistry,
     release_id: str,
@@ -3372,14 +3383,12 @@ def _write_reform_validation(
             ),
             file=sys.stderr,
         )
-    simulate = (
-        _batched_reform_validation_simulate_factory_from_frame(
-            export_frame,
+    simulate = None
+    if simulate_out_of_sample:
+        simulate = _batched_reform_validation_simulate_factory_from_frame(
+            _load_frame(dataset_path),
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
-        if simulate_out_of_sample
-        else None
-    )
     payload = reform_validation_payload(
         specs,
         period=PERIOD,
@@ -3665,7 +3674,7 @@ def _strict_area_artifact_specs(frame: Frame) -> tuple[AreaArtifactSpec, ...]:
     except ValueError as exc:
         raise ValueError(
             "Area artifact preflight failed. Populace area artifacts require "
-            "current 118th/2020-apportionment congressional district support; "
+            "current 119th-congress congressional district support; "
             "older SOI congressional-district vintages must be translated "
             "through Ledger target aging before publishing regional artifacts. "
             f"{exc}"
@@ -4150,7 +4159,7 @@ def main() -> None:
             )
         _write_reform_validation(
             release_dir=release_dir,
-            export_frame=export_frame,
+            dataset_path=dataset_path,
             result=result,
             registry=registry,
             release_id=release_id,

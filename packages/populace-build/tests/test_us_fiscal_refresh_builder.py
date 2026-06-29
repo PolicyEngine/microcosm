@@ -612,6 +612,78 @@ def test_batched_reform_validation_simulation_sums_and_caches_batches() -> None:
     ]
 
 
+def test_reform_validation_batches_from_written_h5(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    loaded_frame = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(builder, "load_default_reform_specs", lambda period: ("spec",))
+
+    def fake_load_frame(path):
+        captured["path"] = path
+        return loaded_frame
+
+    monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+
+    def fake_simulate_factory(frame, *, maximum_microsim_batch_size):
+        captured["frame"] = frame
+        captured["batch_size"] = maximum_microsim_batch_size
+        return "simulate"
+
+    monkeypatch.setattr(
+        builder,
+        "_batched_reform_validation_simulate_factory_from_frame",
+        fake_simulate_factory,
+    )
+
+    def fake_reform_validation_payload(
+        specs,
+        *,
+        period,
+        simulate,
+        in_sample_estimates,
+        in_sample_targets,
+        release_id,
+    ):
+        captured["payload"] = {
+            "specs": specs,
+            "period": period,
+            "simulate": simulate,
+            "in_sample_estimates": in_sample_estimates,
+            "in_sample_targets": in_sample_targets,
+            "release_id": release_id,
+        }
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        builder,
+        "reform_validation_payload",
+        fake_reform_validation_payload,
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_reform_validation",
+        lambda payload, path: captured.setdefault("write_path", path),
+    )
+
+    dataset_path = tmp_path / "populace_us_2024.h5"
+    builder._write_reform_validation(
+        release_dir=tmp_path,
+        dataset_path=dataset_path,
+        result=SimpleNamespace(diagnostics=(), problem=SimpleNamespace(targets=())),
+        registry=SimpleNamespace(),
+        release_id="release-id",
+        simulate_out_of_sample=True,
+        maximum_microsim_batch_size=7,
+    )
+
+    assert captured["path"] == dataset_path
+    assert captured["frame"] is loaded_frame
+    assert captured["batch_size"] == 7
+    assert captured["payload"]["simulate"] == "simulate"
+    assert captured["write_path"] == tmp_path / "reform_validation.json"
+
+
 def _three_household_frame(builder) -> Frame:
     ids = np.asarray([1, 2, 3], dtype=np.int64)
     tables = {
@@ -2108,6 +2180,73 @@ def test_scorer_requires_crosswalk_for_full_surface_programmatic_call(tmp_path) 
             h5=tmp_path / "populace_us_2024.h5",
             ledger_facts=tmp_path / "facts.jsonl",
             congressional_district_vintage_crosswalk=None,
+        )
+
+
+def test_scorer_rejects_dropped_standard_targets_before_scoring(
+    monkeypatch, tmp_path
+) -> None:
+    scorer = _load_scorer_module()
+    release = scorer.release
+    monkeypatch.setattr(release, "_sha256", lambda path: "sha")
+    monkeypatch.setattr(release, "_assert_cd_vintage_support_matches", lambda *a: None)
+    monkeypatch.setattr(release, "_load_ledger_facts", lambda path: ())
+    monkeypatch.setattr(
+        release,
+        "load_congressional_district_vintage_crosswalk",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        release,
+        "compile_us_fiscal_target_registry",
+        lambda *a, **k: SimpleNamespace(specs=(object(),), version="targets"),
+    )
+    monkeypatch.setattr(
+        release,
+        "target_profile_coverage_gate",
+        lambda *a, **k: SimpleNamespace(passed=True, failures=(), details={}),
+    )
+    monkeypatch.setattr(release, "_load_frame", lambda path: object())
+    monkeypatch.setattr(
+        release,
+        "_with_base_population_mass_repair",
+        lambda frame: (frame, None),
+    )
+    monkeypatch.setattr(
+        release,
+        "_base_population_scale_gate",
+        lambda *a, **k: SimpleNamespace(passed=True, failures=(), details={}),
+    )
+    monkeypatch.setattr(
+        release,
+        "_health_input_signal_gate",
+        lambda frame: SimpleNamespace(passed=True, failures=(), details={}),
+    )
+    monkeypatch.setattr(
+        release,
+        "_materialize_target_frame",
+        lambda *a, **k: (
+            object(),
+            SimpleNamespace(to_target_set=lambda: ()),
+            {"dropped_target_names": ["state/soi/missing@2024"]},
+        ),
+    )
+    monkeypatch.setattr(
+        scorer,
+        "score_targets",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("score_targets should not run")
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="1 fiscal targets were not materialized",
+    ):
+        scorer.score_frame(
+            h5=tmp_path / "candidate.h5",
+            ledger_facts=tmp_path / "facts.jsonl",
+            congressional_district_vintage_crosswalk=tmp_path / "crosswalk.csv",
         )
 
 

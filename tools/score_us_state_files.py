@@ -427,6 +427,10 @@ def score_state_files(
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context=target_materialization_cache_context,
     )
+    release._assert_complete_target_compilation(
+        compilation,
+        context="State-file fiscal target materialization",
+    )
     result = score_targets(
         target_frame,
         registry.to_target_set(),
