@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -24,6 +25,9 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_SUPPORT_SPINE_SPEC,
+    AsecSource,
+    build_pooled_asec_unit_frame,
     clone_us_frame_for_puf_support,
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
@@ -46,7 +50,28 @@ SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-h5", required=True, type=Path)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--base-h5", type=Path)
+    source.add_argument(
+        "--asec-h5",
+        action="append",
+        help="Raw ASEC source as YEAR=PATH. Pass once per source year.",
+    )
+    parser.add_argument("--target-year", default=PERIOD, type=int)
+    parser.add_argument(
+        "--asec-max-households",
+        type=int,
+        help="Optional smoke limit applied to every raw ASEC source.",
+    )
+    parser.add_argument(
+        "--support-spine-spec",
+        type=Path,
+        help=(
+            "Optional support-spine manifest. When provided, --asec-h5 values "
+            "are YEAR=PATH file mappings and the manifest owns source roles, "
+            "relative years, and shares."
+        ),
+    )
     parser.add_argument("--puf-h5", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--seed", default=0, type=int)
@@ -89,6 +114,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.assign_congressional_districts and args.ledger_facts is None:
         parser.error("--assign-congressional-districts requires --ledger-facts")
+    if args.support_spine_spec is not None and args.asec_h5 is None:
+        parser.error("--support-spine-spec requires --asec-h5")
     return args
 
 
@@ -97,10 +124,11 @@ def main() -> None:
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    output_h5 = out_dir / DATASET_FILENAME
-    summary_path = out_dir / SUMMARY_FILENAME
+    output_h5 = out_dir / _dataset_filename(args.target_year)
+    summary_path = out_dir / _summary_filename(args.target_year)
 
-    base = derive_us_cps_carried_inputs(_load_frame(args.base_h5))
+    raw_base, base_source = _load_base_frame_from_args(args)
+    base = derive_us_cps_carried_inputs(raw_base)
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
@@ -149,7 +177,7 @@ def main() -> None:
                 "seed": args.congressional_district_seed,
             }
         )
-    PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=PERIOD)
+    PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=args.target_year)
     if args.congressional_district_vintage_crosswalk is not None:
         import h5py
 
@@ -162,8 +190,9 @@ def main() -> None:
             )
 
     summary = {
-        "base_h5": str(args.base_h5.resolve()),
-        "base_sha256": _sha256(args.base_h5),
+        "base_source": base_source,
+        "base_h5": (str(args.base_h5.resolve()) if args.base_h5 is not None else None),
+        "base_sha256": _sha256(args.base_h5) if args.base_h5 is not None else None,
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
         "output_h5": str(output_h5),
@@ -184,6 +213,165 @@ def main() -> None:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+
+
+def _dataset_filename(period: int) -> str:
+    if period == PERIOD:
+        return DATASET_FILENAME
+    return f"base_populace_us_{period}_puf_support.h5"
+
+
+def _summary_filename(period: int) -> str:
+    if period == PERIOD:
+        return SUMMARY_FILENAME
+    return f"base_populace_us_{period}_puf_support.summary.json"
+
+
+def _load_base_frame_from_args(args: argparse.Namespace) -> tuple[Frame, dict]:
+    if args.base_h5 is not None:
+        frame = _load_frame(args.base_h5)
+        return frame, {
+            "kind": "base_h5",
+            "path": str(args.base_h5.resolve()),
+            "sha256": _sha256(args.base_h5),
+        }
+    support_spine_spec = _support_spine_spec_from_args(args)
+    sources = _asec_sources_from_args(
+        args,
+        support_spine_spec=support_spine_spec,
+    )
+    frame, metadata = build_pooled_asec_unit_frame(
+        sources,
+        target_year=args.target_year,
+    )
+    return frame, {
+        "kind": "pooled_asec",
+        "target_year": args.target_year,
+        "sources": [
+            {
+                "year": source.year,
+                "path": str(source.path.resolve()),
+                "sha256": _sha256(source.path),
+                "share": source.share,
+                "max_households": source.max_households,
+            }
+            for source in sources
+        ],
+        "support_spine_spec": _support_spine_spec_metadata(
+            args,
+            support_spine_spec=support_spine_spec,
+        ),
+        "metadata": metadata,
+    }
+
+
+def _support_spine_spec_from_args(args: argparse.Namespace) -> SupportSpineSpec | None:
+    if args.support_spine_spec is None:
+        return None
+    if args.support_spine_spec.name == "default":
+        return US_SUPPORT_SPINE_SPEC
+    return load_support_spine_manifest(args.support_spine_spec).support_spine
+
+
+def _asec_sources_from_args(
+    args: argparse.Namespace,
+    *,
+    support_spine_spec: SupportSpineSpec | None,
+) -> tuple[AsecSource, ...]:
+    if support_spine_spec is None:
+        return tuple(
+            _parse_asec_source(value, max_households=args.asec_max_households)
+            for value in args.asec_h5
+        )
+    path_by_year = _parse_asec_source_paths(args.asec_h5)
+    expected_years = {
+        source_spec.resolved_year(args.target_year)
+        for source_spec in support_spine_spec.sources
+    }
+    extra_years = sorted(set(path_by_year) - expected_years)
+    if extra_years:
+        expected = ", ".join(str(value) for value in sorted(expected_years))
+        raise ValueError(
+            "Support-spine spec mode received unused --asec-h5 mapping(s) for "
+            f"year(s) {extra_years}. Expected year(s): {expected or 'none'}."
+        )
+    sources: list[AsecSource] = []
+    for source_spec in support_spine_spec.sources:
+        year = source_spec.resolved_year(args.target_year)
+        if year not in path_by_year:
+            available = ", ".join(str(value) for value in sorted(path_by_year))
+            raise ValueError(
+                f"Support-spine spec source {source_spec.role!r} resolves to "
+                f"ASEC year {year}, but no --asec-h5 mapping was provided for "
+                f"that year. Available year(s): {available or 'none'}."
+            )
+        sources.append(
+            AsecSource(
+                year=year,
+                path=path_by_year[year],
+                share=source_spec.share,
+                max_households=args.asec_max_households,
+            )
+        )
+    return tuple(sources)
+
+
+def _support_spine_spec_metadata(
+    args: argparse.Namespace,
+    *,
+    support_spine_spec: SupportSpineSpec | None,
+) -> dict | None:
+    if support_spine_spec is None:
+        return None
+    return {
+        "path": (
+            "package:populace.build.us/support_spine.json"
+            if args.support_spine_spec is not None
+            and args.support_spine_spec.name == "default"
+            else str(args.support_spine_spec.resolve())
+        ),
+        "stage": support_spine_spec.stage,
+        "method": support_spine_spec.method,
+        "target_year_from_build_config": (
+            support_spine_spec.target_year_from_build_config
+        ),
+        "sources": [
+            {
+                "role": source.role,
+                "survey": source.survey,
+                "source": source.source,
+                "source_year_offset": source.source_year_offset,
+                "resolved_year": source.resolved_year(args.target_year),
+                "share": source.share,
+                "notes": source.notes,
+            }
+            for source in support_spine_spec.sources
+        ],
+    }
+
+
+def _parse_asec_source(value: str, *, max_households: int | None) -> AsecSource:
+    if "=" not in value:
+        raise ValueError(f"ASEC source must be YEAR=PATH, got {value!r}.")
+    raw_year, raw_path = value.split("=", 1)
+    return AsecSource(
+        year=int(raw_year),
+        path=Path(raw_path),
+        max_households=max_households,
+    )
+
+
+def _parse_asec_source_paths(values: list[str]) -> dict[int, Path]:
+    paths: dict[int, Path] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"ASEC source must be YEAR=PATH, got {value!r}.")
+        raw_year, raw_path = value.split("=", 1)
+        year = int(raw_year)
+        if year in paths:
+            raise ValueError(f"Duplicate --asec-h5 mapping for year {year}.")
+        paths[year] = Path(raw_path)
+    return paths
 
 
 def _load_frame(path: Path) -> Frame:

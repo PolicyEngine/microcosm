@@ -30,7 +30,10 @@ from populace.build.plan import DonorSpec, Stage, StagePlan
 from populace.build.source_manifest import (
     SourceManifest,
     SourceStageSpec,
+    SupportSpineManifest,
+    SupportSpineSpec,
     load_source_manifest,
+    load_support_spine_manifest,
 )
 from populace.build.us_runtime.asec_pool import (
     AsecSource,
@@ -169,6 +172,8 @@ __all__ = [
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_SOURCE_MANIFEST",
+    "US_SUPPORT_SPINE_MANIFEST",
+    "US_SUPPORT_SPINE_SPEC",
     "US_SOURCE_STAGE_SPECS",
     "US_STAGE_NAMES",
     "PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS",
@@ -362,7 +367,15 @@ def _load_us_source_manifest() -> SourceManifest:
     )
 
 
+def _load_us_support_spine_manifest() -> SupportSpineManifest:
+    return load_support_spine_manifest(
+        files("populace.build.us").joinpath("support_spine.json")
+    )
+
+
 US_SOURCE_MANIFEST = _load_us_source_manifest()
+US_SUPPORT_SPINE_MANIFEST = _load_us_support_spine_manifest()
+US_SUPPORT_SPINE_SPEC: SupportSpineSpec = US_SUPPORT_SPINE_MANIFEST.support_spine
 US_SOURCE_STAGE_SPECS: tuple[SourceStageSpec, ...] = US_SOURCE_MANIFEST.stages
 US_NONNEGATIVE_SOURCE_OUTPUTS: frozenset[str] = frozenset(
     output for stage in US_SOURCE_STAGE_SPECS for output in stage.nonnegative_outputs

@@ -15,9 +15,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.fit import QRF
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
+
+QRF: Any | None = None
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
@@ -367,6 +368,12 @@ def impute_us_puf_tax_detail_support(
         raise ValueError(
             f"PUF donor tax-unit table missing column(s): {missing_donor}."
         )
+
+    global QRF
+    if QRF is None:
+        from importlib import import_module
+
+        QRF = import_module("populace.fit").QRF
 
     donor = donor_tax_units.loc[:, [*predictors, *outputs, "weight"]].copy()
     for column in donor.columns:
