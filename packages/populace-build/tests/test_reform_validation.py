@@ -234,6 +234,24 @@ def test_shipped_obbba_config_is_out_of_sample_counterfactual():
             assert spec.jct_source.startswith("JCX-35-25")
 
 
+def test_itemized_benefit_limit_counterfactual_keeps_pease():
+    # OBBBA line 11 = OBBBA itemized-deduction cap vs present-law Pease. The
+    # counterfactual must revert ONLY the OBBBA cap (obbb.applies); disabling
+    # the whole limitation (limitation.applies=False) drops present-law Pease,
+    # which flips the sign (measures cap-vs-nothing, +, instead of cap-vs-Pease,
+    # the JCT-scored cost).
+    spec = next(
+        s
+        for s in out_of_sample_reform_specs(period=2026)
+        if s.id == "obbba_itemized_tax_benefit_limit"
+    )
+    paths = set(spec.parameter_changes or {})
+    assert paths == {"gov.irs.deductions.itemized.limitation.obbb.applies"}, paths
+    assert (
+        "gov.irs.deductions.itemized.limitation.applies" not in paths
+    ), "must not disable the whole limitation (drops present-law Pease)"
+
+
 def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     specs = tax_expenditure_reform_specs(period=2024)
     by_id = {s.id for s in specs}

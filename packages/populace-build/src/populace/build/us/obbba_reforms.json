@@ -276,12 +276,11 @@
       "id": "obbba_itemized_tax_benefit_limit",
       "name": "OBBBA - Limitation on itemized deduction tax benefit",
       "category": "OBBBA",
-      "description": "Limitation on tax benefit of itemized deductions. Validated by disabling the OBBBA itemized-deduction limitation structure in 2026.",
+      "description": "OBBBA limitation on the tax benefit of itemized deductions (a ~2/37 cap for top-bracket taxpayers that replaces the reinstated Pease limitation). Validated by reverting only the OBBBA cap (obbb.applies=False); limitation.applies stays True so the counterfactual is present-law Pease, and the effect is OBBBA cap minus Pease.",
       "period": 2026,
       "budget_measure": "income_tax",
       "effect_direction": "baseline_minus_reform",
       "parameter_changes": {
-        "gov.irs.deductions.itemized.limitation.applies": { "2026-01-01.2026-12-31": false },
         "gov.irs.deductions.itemized.limitation.obbb.applies": { "2026-01-01.2026-12-31": false }
       },
       "jct": {
