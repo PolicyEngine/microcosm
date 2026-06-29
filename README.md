@@ -42,6 +42,7 @@ JSON files while the build runs:
 ```bash
 python tools/build_us_fiscal_refresh_release.py \
   --ledger-facts consumer_facts.jsonl \
+  --congressional-district-vintage-crosswalk cd117_to_cd119_population_crosswalk.csv \
   --out /tmp/populace-build \
   --staging-repo-id policyengine/populace-us-staging
 ```

@@ -1,6 +1,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -77,6 +78,50 @@ def test__given_state_file_metadata__then_collection_hash_is_order_stable():
 
     assert forward == reverse
     assert len(forward) == 64
+
+
+def test__given_state_file__then_cd_provenance_is_validated_unless_legacy_allowed(
+    tmp_path,
+) -> None:
+    scorer = _load_state_scorer_module()
+    path = tmp_path / "CA.h5"
+    path.write_bytes(b"h5")
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    release = SimpleNamespace(
+        _assert_cd_vintage_support_matches=lambda h5, metadata: calls.append(
+            (h5, dict(metadata))
+        ),
+        _load_frame=lambda h5: _minimal_state_frame(6, 10.0),
+        _sha256=lambda h5: "a" * 64,
+    )
+
+    frame, metadata = scorer._load_state_frame(
+        path,
+        release=release,
+        fiscal_scorer=SimpleNamespace(),
+        state_abbreviation="CA",
+        legacy_pe_flat_h5=False,
+        allow_legacy_cd_provenance=False,
+        congressional_district_vintage_crosswalk_metadata={"sha256": "crosswalk"},
+    )
+
+    assert calls == [(path, {"sha256": "crosswalk"})]
+    assert frame.n("household") == 1
+    assert metadata["legacy_cd_provenance_allowed"] is False
+
+    calls.clear()
+    scorer._load_state_frame(
+        path,
+        release=release,
+        fiscal_scorer=SimpleNamespace(),
+        state_abbreviation="CA",
+        legacy_pe_flat_h5=False,
+        allow_legacy_cd_provenance=True,
+        congressional_district_vintage_crosswalk_metadata={"sha256": "crosswalk"},
+    )
+
+    assert calls == []
 
 
 def _minimal_state_frame(state_fips: int, weight: float) -> Frame:

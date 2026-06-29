@@ -149,7 +149,7 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
     compile_us_fiscal_target_registry(facts)
 
 
-def test_soi_congressional_district_targets_are_opt_in() -> None:
+def test_soi_congressional_district_targets_are_included_by_default() -> None:
     facts = [
         *packaged_reference_facts(),
         _soi_congressional_district_fact(
@@ -248,33 +248,33 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts)
-    cd_registry = compile_us_fiscal_target_registry(
+    registry = compile_us_fiscal_target_registry(facts)
+    diagnostic_registry = compile_us_fiscal_target_registry(
         facts,
-        include_congressional_district_targets=True,
+        include_congressional_district_targets=False,
     )
 
-    default_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
-    }
-    cd_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in cd_registry.specs
+    source_ids = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    diagnostic_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in diagnostic_registry.specs
     }
     cd_specs = [
         spec
-        for spec in cd_registry.specs
+        for spec in registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
-    assert not any("hi_01" in source_id for source_id in default_source_ids)
-    assert not any("hi_total" in source_id for source_id in default_source_ids)
+    assert any("hi_01" in source_id for source_id in source_ids)
+    assert any("hi_total" in source_id for source_id in source_ids)
+    assert not any("hi_01" in source_id for source_id in diagnostic_source_ids)
+    assert not any("hi_total" in source_id for source_id in diagnostic_source_ids)
     assert not any(
         source_id.endswith("premium_tax_credit_amount")
         and ".congressional_district_2022." in source_id
-        for source_id in cd_source_ids
+        for source_id in source_ids
     )
-    assert any("hi_total.return_count" in source_id for source_id in cd_source_ids)
+    assert any("hi_total.return_count" in source_id for source_id in source_ids)
     assert any(
-        "hi_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
+        "hi_total.adjusted_gross_income" in source_id for source_id in source_ids
     )
     assert len(cd_specs) == 11
     by_measure = {
@@ -375,10 +375,7 @@ def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(
-        facts,
-        include_congressional_district_targets=True,
-    )
+    registry = compile_us_fiscal_target_registry(facts)
 
     cd_specs = {
         spec.metadata["congressional_district_geoid"]: spec
@@ -451,17 +448,14 @@ def test_soi_congressional_district_reconciliation_requires_complete_children() 
     ]
 
     try:
-        compile_us_fiscal_target_registry(
-            facts,
-            include_congressional_district_targets=True,
-        )
+        compile_us_fiscal_target_registry(facts)
     except ValueError as exc:
         assert "expected 2 child target" in str(exc)
     else:
         raise AssertionError("Expected incomplete CD hierarchy to fail.")
 
 
-def test_acs_congressional_district_age_targets_are_opt_in() -> None:
+def test_acs_congressional_district_age_targets_are_included_by_default() -> None:
     facts = [
         *packaged_reference_facts(),
         _census_acs_population_age_fact(
@@ -482,32 +476,34 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
         _census_acs_congressional_district_age_fact(),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts)
-    cd_registry = compile_us_fiscal_target_registry(
+    registry = compile_us_fiscal_target_registry(facts)
+    diagnostic_registry = compile_us_fiscal_target_registry(
         facts,
-        include_congressional_district_targets=True,
+        include_congressional_district_targets=False,
     )
 
-    default_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
+    source_ids = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    diagnostic_source_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in diagnostic_registry.specs
     }
     cd_specs = [
         spec
-        for spec in cd_registry.specs
+        for spec in registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
+    assert any(
+        "s0101.congressional_district_age" in source_id for source_id in source_ids
+    )
     assert not any(
         "s0101.congressional_district_age" in source_id
-        for source_id in default_source_ids
+        for source_id in diagnostic_source_ids
     )
-    assert not any(
-        "s0101.national_age" in source_id for source_id in default_source_ids
-    )
-    assert not any("s0101.state_age" in source_id for source_id in default_source_ids)
+    assert not any("s0101.national_age" in source_id for source_id in source_ids)
+    assert not any("s0101.state_age" in source_id for source_id in source_ids)
     assert not any(
         "s0101.national_age" in spec.metadata["ledger_source_record_id"]
         or "s0101.state_age" in spec.metadata["ledger_source_record_id"]
-        for spec in cd_registry.specs
+        for spec in registry.specs
     )
     assert len(cd_specs) == 1
     target = cd_specs[0]

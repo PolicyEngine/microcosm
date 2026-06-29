@@ -328,6 +328,8 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
             "facts.jsonl",
             "--out",
             "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
         ],
     )
     args = builder._parse_args()
@@ -342,6 +344,8 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
             "facts.jsonl",
             "--out",
             "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
             "--audit-export-targets",
         ],
     )
@@ -349,7 +353,7 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
-def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) -> None:
+def test_release_build_requires_vintage_crosswalk(monkeypatch) -> None:
     builder = _load_builder_module()
 
     monkeypatch.setattr(
@@ -361,7 +365,6 @@ def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) ->
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
         ],
     )
     with pytest.raises(SystemExit):
@@ -391,7 +394,6 @@ def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) ->
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
             "--congressional-district-vintage-crosswalk",
             "crosswalk.csv",
         ],
@@ -535,6 +537,8 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
             "facts.jsonl",
             "--out",
             "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
         ],
     )
     args = builder._parse_args()
@@ -551,12 +555,92 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
             "facts.jsonl",
             "--out",
             "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
             "--maximum-microsim-batch-size",
             "0",
         ],
     )
     args = builder._parse_args()
     assert args.maximum_microsim_batch_size == 0
+
+
+def test_batched_reform_validation_simulation_sums_and_caches_batches() -> None:
+    builder = _load_builder_module()
+    frame = _three_household_frame(builder)
+    calls: list[tuple[tuple[int, ...], object, str, int]] = []
+
+    class FakeSeries:
+        def __init__(self, value: float):
+            self.value = value
+
+        def sum(self) -> float:
+            return self.value
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = tuple(dataset)
+            self.reform = reform
+
+        def calculate(self, measure, period):
+            calls.append((self.dataset, self.reform, measure, period))
+            reform_bonus = 1_000.0 if self.reform == "reform" else 0.0
+            return FakeSeries(sum(self.dataset) + reform_bonus)
+
+        def _invalidate_all_caches(self):
+            calls.append((self.dataset, self.reform, "invalidate", 0))
+
+    def dataset_from_frame(batch_frame):
+        return tuple(batch_frame.table("household")["household_id"].to_numpy())
+
+    simulate = builder._batched_reform_validation_simulate_factory_from_frame(
+        frame,
+        maximum_microsim_batch_size=2,
+        microsimulation_cls=FakeMicrosimulation,
+        dataset_from_frame=dataset_from_frame,
+    )
+
+    reformed = simulate("reform")
+
+    assert reformed.calculate("income_tax", 2024).sum() == 2_006.0
+    assert reformed.calculate("income_tax", 2024).sum() == 2_006.0
+    assert calls == [
+        ((1, 2), "reform", "income_tax", 2024),
+        ((1, 2), "reform", "invalidate", 0),
+        ((3,), "reform", "income_tax", 2024),
+        ((3,), "reform", "invalidate", 0),
+    ]
+
+
+def _three_household_frame(builder) -> Frame:
+    ids = np.asarray([1, 2, 3], dtype=np.int64)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_household_id": ids,
+                "person_tax_unit_id": ids,
+                "person_spm_unit_id": ids,
+                "person_family_id": ids,
+                "person_marital_unit_id": ids,
+            }
+        ),
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    return Frame(
+        tables,
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                np.ones(len(ids), dtype=np.float64),
+                WeightKind.CALIBRATED,
+            )
+        },
+    )
 
 
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
@@ -572,6 +656,8 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
             "facts.jsonl",
             "--out",
             "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
         ],
     )
 
@@ -1092,7 +1178,7 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
     ]
 
 
-def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
+def test_release_gate_failures_reject_missing_cd_targets_by_default() -> None:
     builder = _load_builder_module()
     cd_spec = TargetSpec(
         name="irs_soi.ty2023.congressional_district_2022.all_returns."
@@ -1129,23 +1215,22 @@ def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
     )
     compilation = {
         "dropped_target_names": [cd_spec.name],
-        "gate_congressional_district_targets": False,
         "diagnostic_only_dropped_target_names": [cd_spec.name],
     }
 
-    assert builder._release_gate_failures(result, compilation) == []
-
-    gated_compilation = {
-        **compilation,
-        "gate_congressional_district_targets": True,
-    }
-
-    assert builder._release_gate_failures(result, gated_compilation) == [
+    assert builder._release_gate_failures(result, compilation) == [
         "1 fiscal targets were not materialized.",
         "1 fiscal targets were skipped by calibration.",
         "1 positive fiscal targets have zero materialized support "
         f"(examples: {cd_row_name}).",
     ]
+
+    diagnostic_compilation = {
+        **compilation,
+        "gate_congressional_district_targets": False,
+    }
+
+    assert builder._release_gate_failures(result, diagnostic_compilation) == []
 
 
 def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
@@ -1694,11 +1779,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             str(out),
             "--release-id",
             release_id,
+            "--congressional-district-vintage-crosswalk",
+            str(tmp_path / "crosswalk.csv"),
         ],
     )
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "load_congressional_district_vintage_crosswalk",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, metadata: None,
+    )
     monkeypatch.setattr(builder, "_load_ledger_facts", lambda path: ({"fact": 1},))
     monkeypatch.setattr(
         builder,
@@ -1815,7 +1912,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["materialize_kwargs"]["target_materialization_cache_dir"]
         == out / "artifacts" / "target_materialization_cache"
     )
-    assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
+    assert captured["materialize_kwargs"]["gate_congressional_district_targets"]
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
@@ -2000,6 +2097,20 @@ def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
     )
 
 
+def test_scorer_requires_crosswalk_for_full_surface_programmatic_call(tmp_path) -> None:
+    scorer = _load_scorer_module()
+
+    with pytest.raises(
+        ValueError,
+        match="requires crosswalk metadata",
+    ):
+        scorer.score_frame(
+            h5=tmp_path / "populace_us_2024.h5",
+            ledger_facts=tmp_path / "facts.jsonl",
+            congressional_district_vintage_crosswalk=None,
+        )
+
+
 def test_scorer_accepts_legacy_pe_flat_h5_flag(
     monkeypatch,
 ) -> None:
@@ -2015,6 +2126,8 @@ def test_scorer_accepts_legacy_pe_flat_h5_flag(
             "facts.jsonl",
             "--out",
             "score",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
             "--legacy-pe-flat-h5",
         ],
     )

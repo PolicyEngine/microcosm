@@ -68,7 +68,6 @@ from populace.build.us_runtime.demographics import (
     write_demographics,
 )
 from populace.build.us_runtime.reform_validation import (
-    default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
     write_reform_validation,
@@ -463,21 +462,13 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "support frame to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
-            "weight columns. Required when congressional-district targets or "
-            "area artifacts are requested."
+            "weight columns. Required because the standard fiscal target "
+            "surface includes congressional-district rows."
         ),
     )
     parser.add_argument(
@@ -487,16 +478,6 @@ def _parse_args() -> argparse.Namespace:
             "After writing the national H5, derive state and congressional-"
             "district H5 root artifacts from the calibrated national frame and "
             "declare them in release_manifest.json for upload."
-        ),
-    )
-    parser.add_argument(
-        "--gate-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Treat congressional-district targets as hard release gates. "
-            "The default small-dataset path keeps them diagnostic-only because "
-            "sparse CD support can make zero-support rows expected rather than "
-            "release blockers."
         ),
     )
     parser.add_argument(
@@ -540,13 +521,11 @@ def _parse_args() -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args()
-    if (
-        args.include_congressional_district_targets or args.include_area_artifacts
-    ) and args.congressional_district_vintage_crosswalk is None:
+    if args.congressional_district_vintage_crosswalk is None:
         parser.error(
-            "--congressional-district-vintage-crosswalk is required when "
-            "--include-congressional-district-targets or --include-area-artifacts "
-            "is set."
+            "--congressional-district-vintage-crosswalk is required because "
+            "release builds always compile the full congressional-district "
+            "target surface."
         )
     return args
 
@@ -777,7 +756,10 @@ def _assert_cd_vintage_support_matches(
     crosswalk_metadata: Mapping[str, object] | None,
 ) -> None:
     if crosswalk_metadata is None:
-        return
+        raise ValueError(
+            "Congressional-district support validation requires "
+            "crosswalk metadata for the full target surface."
+        )
     expected_sha256 = str(crosswalk_metadata.get("sha256") or "")
     support_provenance = _read_cd_vintage_support_provenance(h5_path)
     actual_sha256 = support_provenance.get(
@@ -1525,6 +1507,105 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
+class _BatchedScalarTotal:
+    def __init__(self, value: float):
+        self.value = float(value)
+
+    def sum(self) -> float:
+        return self.value
+
+
+class _BatchedReformValidationSimulation:
+    def __init__(
+        self,
+        frame: Frame,
+        *,
+        reform,
+        maximum_microsim_batch_size: int | None,
+        microsimulation_cls,
+        dataset_from_frame,
+    ):
+        self._frame = frame
+        self._reform = reform
+        self._maximum_microsim_batch_size = maximum_microsim_batch_size
+        self._microsimulation_cls = microsimulation_cls
+        self._dataset_from_frame = dataset_from_frame
+        self._cache: dict[tuple[str, int], float] = {}
+
+    def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
+        key = (str(measure), int(period))
+        if key not in self._cache:
+            self._cache[key] = self._calculate_total(str(measure), int(period))
+        return _BatchedScalarTotal(self._cache[key])
+
+    def _calculate_total(self, measure: str, period: int) -> float:
+        n_households = self._frame.n("household")
+        batches = tuple(
+            _household_position_batches(
+                n_households,
+                self._maximum_microsim_batch_size,
+            )
+        )
+        if len(batches) > 1:
+            print(
+                "Scoring reform validation measure "
+                f"{measure} in {len(batches)} batches of up to "
+                f"{self._maximum_microsim_batch_size:,} households.",
+                flush=True,
+            )
+        total = 0.0
+        for household_positions in batches:
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                self._frame
+                if full_batch
+                else _select_households_by_position(self._frame, household_positions)
+            )
+            dataset = self._dataset_from_frame(batch_frame)
+            simulation = (
+                self._microsimulation_cls(dataset=dataset)
+                if self._reform is None
+                else self._microsimulation_cls(dataset=dataset, reform=self._reform)
+            )
+            total += float(simulation.calculate(measure, period).sum())
+            if hasattr(simulation, "_invalidate_all_caches"):
+                simulation._invalidate_all_caches()
+            del simulation, dataset, batch_frame
+            gc.collect()
+        return total
+
+
+def _batched_reform_validation_simulate_factory_from_frame(
+    frame: Frame,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    microsimulation_cls=None,
+    dataset_from_frame=None,
+):
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
+
+        microsimulation_cls = Microsimulation
+    if dataset_from_frame is None:
+
+        def dataset_from_frame(batch_frame: Frame):
+            return _dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
+
+    def simulate(reform):
+        return _BatchedReformValidationSimulation(
+            frame,
+            reform=reform,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            microsimulation_cls=microsimulation_cls,
+            dataset_from_frame=dataset_from_frame,
+        )
+
+    return simulate
+
+
 def _reform_household_income_tax(
     *,
     base_frame: Frame,
@@ -1973,7 +2054,7 @@ def _materialize_target_frame(
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
-    gate_congressional_district_targets: bool = False,
+    gate_congressional_district_targets: bool = True,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -3259,11 +3340,12 @@ def _in_sample_targets(result) -> dict[str, float]:
 def _write_reform_validation(
     *,
     release_dir: Path,
-    dataset_path: Path,
+    export_frame: Frame,
     result,
     registry: TargetRegistry,
     release_id: str,
     simulate_out_of_sample: bool,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     """Emit reform_validation.json: populace budget effects vs JCT scores.
 
@@ -3291,7 +3373,12 @@ def _write_reform_validation(
             file=sys.stderr,
         )
     simulate = (
-        default_simulate_factory(dataset_path) if simulate_out_of_sample else None
+        _batched_reform_validation_simulate_factory_from_frame(
+            export_frame,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        if simulate_out_of_sample
+        else None
     )
     payload = reform_validation_payload(
         specs,
@@ -3716,9 +3803,6 @@ def main() -> None:
     target_registry = compile_us_fiscal_target_registry(
         _load_ledger_facts(args.ledger_facts),
         target_period=PERIOD,
-        include_congressional_district_targets=(
-            args.include_congressional_district_targets
-        ),
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
@@ -3890,7 +3974,7 @@ def main() -> None:
                 congressional_district_vintage_crosswalk_metadata or {}
             ).get("sha256"),
         },
-        gate_congressional_district_targets=args.gate_congressional_district_targets,
+        gate_congressional_district_targets=True,
     )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
@@ -4066,11 +4150,12 @@ def main() -> None:
             )
         _write_reform_validation(
             release_dir=release_dir,
-            dataset_path=dataset_path,
+            export_frame=export_frame,
             result=result,
             registry=registry,
             release_id=release_id,
             simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -4094,12 +4179,8 @@ def main() -> None:
             "source_coverage", message="Writing source coverage diagnostics."
         )
     active_aliases = DIRECT_ACTIVE_ALIASES + (
-        (
-            "census-acs-s0101-congressional-district-age-2024",
-            "soi-congressional-district-2022",
-        )
-        if args.include_congressional_district_targets
-        else ()
+        "census-acs-s0101-congressional-district-age-2024",
+        "soi-congressional-district-2022",
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,

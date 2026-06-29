@@ -85,21 +85,14 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "scored H5 to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
+        required=True,
         help=(
-            "Optional source-to-current congressional-district crosswalk "
+            "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
-            "weight columns. Used to score old-vintage SOI CD targets on the "
-            "current regional surface."
+            "weight columns. Required because the standard fiscal target "
+            "surface includes congressional-district rows."
         ),
     )
     parser.add_argument(
@@ -380,7 +373,6 @@ def score_frame(
     diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
     allow_legacy_cd_provenance: bool = False,
-    include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: Path | None = None,
     target_materialization_cache_dir: Path | None = None,
     legacy_pe_flat_h5: bool = False,
@@ -406,7 +398,6 @@ def score_frame(
     target_registry = release.compile_us_fiscal_target_registry(
         release._load_ledger_facts(ledger_facts),
         target_period=release.PERIOD,
-        include_congressional_district_targets=include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             release.load_congressional_district_vintage_crosswalk(
                 congressional_district_vintage_crosswalk
@@ -583,7 +574,6 @@ def main() -> None:
         diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
         allow_legacy_cd_provenance=args.allow_legacy_cd_provenance,
-        include_congressional_district_targets=args.include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             args.congressional_district_vintage_crosswalk
         ),

@@ -102,6 +102,16 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         help="Ledger consumer facts JSONL used to compile the fiscal target surface.",
     )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        required=True,
+        help=(
+            "Source-to-current congressional-district crosswalk artifact. "
+            "Required because the standard fiscal target surface includes "
+            "congressional-district rows."
+        ),
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -132,6 +142,15 @@ def _parse_args() -> argparse.Namespace:
             "Score old state H5 files that contain formula/adds-owned PE output "
             "columns by dropping those columns before target materialization. "
             "This is read-only compatibility for historical evals."
+        ),
+    )
+    parser.add_argument(
+        "--allow-legacy-cd-provenance",
+        action="store_true",
+        help=(
+            "Score old state H5 files that contain current congressional-district "
+            "geoids but predate CD vintage provenance attributes. This is "
+            "read-only compatibility for historical evals."
         ),
     )
     parser.add_argument(
@@ -233,7 +252,14 @@ def _load_state_frame(
     fiscal_scorer,
     state_abbreviation: str,
     legacy_pe_flat_h5: bool,
+    allow_legacy_cd_provenance: bool,
+    congressional_district_vintage_crosswalk_metadata: Mapping[str, object],
 ) -> tuple[Any, dict[str, object]]:
+    if not allow_legacy_cd_provenance:
+        release._assert_cd_vintage_support_matches(
+            path,
+            congressional_district_vintage_crosswalk_metadata,
+        )
     if legacy_pe_flat_h5:
         frame, layout_metadata = fiscal_scorer._load_legacy_pe_flat_frame(path)
     else:
@@ -247,6 +273,7 @@ def _load_state_frame(
         "n_households": int(tagged.n("household")),
         "n_persons": int(tagged.n("person")),
         **layout_metadata,
+        "legacy_cd_provenance_allowed": bool(allow_legacy_cd_provenance),
     }
 
 
@@ -266,6 +293,8 @@ def _load_state_collection(
     release,
     fiscal_scorer,
     legacy_pe_flat_h5: bool,
+    allow_legacy_cd_provenance: bool,
+    congressional_district_vintage_crosswalk_metadata: Mapping[str, object],
 ) -> tuple[Any, list[dict[str, object]], str]:
     root = _state_h5_root(state_h5_dir)
     combined: Any | None = None
@@ -278,6 +307,10 @@ def _load_state_collection(
             fiscal_scorer=fiscal_scorer,
             state_abbreviation=state_abbreviation,
             legacy_pe_flat_h5=legacy_pe_flat_h5,
+            allow_legacy_cd_provenance=allow_legacy_cd_provenance,
+            congressional_district_vintage_crosswalk_metadata=(
+                congressional_district_vintage_crosswalk_metadata
+            ),
         )
         if combined is None:
             combined = frame
@@ -298,14 +331,26 @@ def score_state_files(
     *,
     state_h5_dir: Path,
     ledger_facts: Path,
+    congressional_district_vintage_crosswalk: Path,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
+    allow_legacy_cd_provenance: bool = False,
     legacy_pe_flat_h5: bool = False,
     target_materialization_cache_dir: Path | None = None,
 ) -> tuple[Any, object, dict[str, object], dict[str, object]]:
     assert_required_state_files_present(required_state_file_inventory(state_h5_dir))
     release, fiscal_scorer, score_targets, _ = _load_runtime()
+    congressional_district_vintage_crosswalk_metadata = {
+        "path": str(congressional_district_vintage_crosswalk.resolve()),
+        "sha256": release._sha256(congressional_district_vintage_crosswalk),
+    }
+    fiscal_scorer._assert_legacy_cd_provenance_options(
+        allow_legacy_cd_provenance=allow_legacy_cd_provenance,
+        congressional_district_vintage_crosswalk_metadata=(
+            congressional_district_vintage_crosswalk_metadata
+        ),
+    )
     if maximum_microsim_batch_size is None:
         maximum_microsim_batch_size = release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
     base_frame, state_files, collection_sha256 = _load_state_collection(
@@ -313,12 +358,19 @@ def score_state_files(
         release=release,
         fiscal_scorer=fiscal_scorer,
         legacy_pe_flat_h5=legacy_pe_flat_h5,
+        allow_legacy_cd_provenance=allow_legacy_cd_provenance,
+        congressional_district_vintage_crosswalk_metadata=(
+            congressional_district_vintage_crosswalk_metadata
+        ),
     )
     target_registry = release.compile_us_fiscal_target_registry(
         release._load_ledger_facts(ledger_facts),
         target_period=release.PERIOD,
-        include_congressional_district_targets=False,
-        congressional_district_vintage_crosswalk=None,
+        congressional_district_vintage_crosswalk=(
+            release.load_congressional_district_vintage_crosswalk(
+                congressional_district_vintage_crosswalk
+            )
+        ),
     )
     target_specs = target_registry.specs
     if diagnostic_skip_tax_expenditure_targets:
@@ -360,6 +412,10 @@ def score_state_files(
             "target_period": release.PERIOD,
             "target_registry_version": target_registry.version,
             "state_file_collection": collection_sha256,
+            "congressional_district_vintage_crosswalk_sha256": (
+                congressional_district_vintage_crosswalk_metadata["sha256"]
+            ),
+            "legacy_cd_provenance_allowed": bool(allow_legacy_cd_provenance),
         }
         if target_materialization_cache_dir is not None
         else None
@@ -410,6 +466,11 @@ def score_state_files(
             "state_h5_dir": str(_state_h5_root(state_h5_dir)),
             "state_file_collection_sha256": collection_sha256,
             "state_files": state_files,
+            "congressional_district_vintage_crosswalk": {
+                "path": congressional_district_vintage_crosswalk_metadata["path"],
+                "sha256": congressional_district_vintage_crosswalk_metadata["sha256"],
+            },
+            "legacy_cd_provenance_allowed": bool(allow_legacy_cd_provenance),
         },
     }
     if legacy_formula_owned_inputs:
@@ -464,11 +525,15 @@ def main() -> None:
     result, registry, compilation, gates = score_state_files(
         state_h5_dir=args.state_h5_dir,
         ledger_facts=args.ledger_facts,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         diagnostic_skip_tax_expenditure_targets=(
             args.diagnostic_skip_tax_expenditure_targets
         ),
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
+        allow_legacy_cd_provenance=args.allow_legacy_cd_provenance,
         legacy_pe_flat_h5=args.legacy_pe_flat_h5,
         target_materialization_cache_dir=(
             None

@@ -729,7 +729,7 @@ def compile_us_fiscal_target_registry(
     facts: object,
     *,
     target_period: int | str = 2024,
-    include_congressional_district_targets: bool = False,
+    include_congressional_district_targets: bool = True,
     congressional_district_vintage_crosswalk: object | None = None,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed."""
@@ -1519,7 +1519,7 @@ def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
+    include_congressional_district_targets: bool = True,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
         tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
@@ -1741,7 +1741,7 @@ def _reference_from_ledger_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
+    include_congressional_district_targets: bool = True,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
@@ -1787,7 +1787,7 @@ def _soi_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
+    include_congressional_district_targets: bool = True,
 ) -> LedgerTargetReference | None:
     if (
         _is_soi_congressional_district_record_set(fact)
@@ -2006,7 +2006,7 @@ def _population_age_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
+    include_congressional_district_targets: bool = True,
 ) -> LedgerTargetReference | None:
     if _measure_id(fact) != "population":
         return None
