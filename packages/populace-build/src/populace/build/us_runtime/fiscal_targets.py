@@ -436,6 +436,26 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
         "state/tail support before it can be calibrated."
     ),
+    "irs_soi.ty2022.historic_table_2.state_agi.me.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero Maine taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.me.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero Maine taxable-interest support "
+        "in the under-$1 AGI slice; this narrow offset-income cell needs richer "
+        "state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nh.under_1.taxable_interest_amount": (
+        "Current national CPS+PUF support has zero New Hampshire taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
+    "irs_soi.ty2022.historic_table_2.state_agi.nh.under_1.taxable_interest_returns": (
+        "Current national CPS+PUF support has zero New Hampshire taxable-interest "
+        "support in the under-$1 AGI slice; this narrow offset-income cell needs "
+        "richer state/tail support before it can be calibrated."
+    ),
     "irs_soi.ty2022.historic_table_2.state_agi.nd.under_1.taxable_interest_amount": (
         "Current national CPS+PUF support has zero North Dakota taxable-interest "
         "support in the under-$1 AGI slice; this narrow offset-income cell needs "

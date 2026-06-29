@@ -524,12 +524,21 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 46
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     )
     assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
+
+
+def test_reviewed_zero_support_taxable_interest_under_one_state_cells() -> None:
+    assert {
+        "irs_soi.ty2022.historic_table_2.state_agi.me.under_1.taxable_interest_amount",
+        "irs_soi.ty2022.historic_table_2.state_agi.me.under_1.taxable_interest_returns",
+        "irs_soi.ty2022.historic_table_2.state_agi.nh.under_1.taxable_interest_amount",
+        "irs_soi.ty2022.historic_table_2.state_agi.nh.under_1.taxable_interest_returns",
+    }.issubset(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS)
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
