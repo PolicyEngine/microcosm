@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
 import build_us_fiscal_refresh_release as release
+import h5py
+import numpy as np
+import pandas as pd
 
 from populace.calibrate import score_targets
 from populace.calibrate.diagnostics import write_calibration_diagnostics
@@ -98,7 +102,226 @@ def _parse_args() -> argparse.Namespace:
             "current regional surface."
         ),
     )
+    parser.add_argument(
+        "--legacy-pe-flat-h5",
+        action="store_true",
+        help=(
+            "Read-only compatibility mode for legacy flat H5 files that "
+            "store variables as root-level variable/<period> datasets instead "
+            "of Populace entity tables."
+        ),
+    )
     return parser.parse_args()
+
+
+_LEGACY_STRUCTURAL_ENTITY_BY_COLUMN = {
+    "person_id": "person",
+    "person_household_id": "person",
+    "person_tax_unit_id": "person",
+    "person_spm_unit_id": "person",
+    "person_family_id": "person",
+    "person_marital_unit_id": "person",
+    "household_id": "household",
+    "household_weight": "household",
+    "tax_unit_id": "tax_unit",
+    "spm_unit_id": "spm_unit",
+    "family_id": "family",
+    "marital_unit_id": "marital_unit",
+}
+
+
+def _legacy_period_dataset(
+    root: h5py.File,
+    name: str,
+    *,
+    period: int = release.PERIOD,
+) -> h5py.Dataset:
+    obj = root[name]
+    if isinstance(obj, h5py.Dataset):
+        return obj
+    period_key = str(period)
+    if period_key in obj:
+        child = obj[period_key]
+        if isinstance(child, h5py.Dataset):
+            return child
+    dataset_children = [
+        child for child in obj.values() if isinstance(child, h5py.Dataset)
+    ]
+    if len(dataset_children) == 1:
+        return dataset_children[0]
+    raise ValueError(
+        f"legacy flat H5 root key {name!r} does not contain a usable "
+        f"{period_key!r} dataset"
+    )
+
+
+def _legacy_h5_values(dataset: h5py.Dataset) -> np.ndarray:
+    values = np.asarray(dataset[()])
+    if values.ndim != 1:
+        raise ValueError(
+            f"legacy flat H5 dataset {dataset.name!r} is not one-dimensional: "
+            f"shape={values.shape}"
+        )
+    if values.dtype.kind == "S":
+        return values.astype(str)
+    return values
+
+
+def _policyengine_variable_entity_map() -> dict[str, str]:
+    from policyengine_us import CountryTaxBenefitSystem
+
+    return {
+        name: variable.entity.key
+        for name, variable in CountryTaxBenefitSystem().variables.items()
+    }
+
+
+def _legacy_entity_lengths(arrays: Mapping[str, np.ndarray]) -> dict[str, int]:
+    required = {
+        "person": "person_id",
+        "household": "household_id",
+        "tax_unit": "tax_unit_id",
+        "spm_unit": "spm_unit_id",
+        "family": "family_id",
+        "marital_unit": "marital_unit_id",
+    }
+    missing = [column for column in required.values() if column not in arrays]
+    if missing:
+        raise ValueError(
+            "legacy flat H5 is missing required structural columns: "
+            + ", ".join(sorted(missing))
+        )
+    return {entity: len(arrays[column]) for entity, column in required.items()}
+
+
+def _infer_legacy_variable_entity(
+    *,
+    name: str,
+    values: np.ndarray,
+    variable_entity_by_name: Mapping[str, str],
+    lengths_by_entity: Mapping[str, int],
+) -> tuple[str | None, str | None]:
+    if name in _LEGACY_STRUCTURAL_ENTITY_BY_COLUMN:
+        return _LEGACY_STRUCTURAL_ENTITY_BY_COLUMN[name], None
+    if name in variable_entity_by_name:
+        entity = variable_entity_by_name[name]
+        expected = lengths_by_entity.get(entity)
+        if expected is None:
+            return None, f"PolicyEngine entity {entity!r} is not in the US schema"
+        if len(values) != expected:
+            return (
+                None,
+                f"PolicyEngine entity {entity!r} expects {expected} rows, "
+                f"found {len(values)}",
+            )
+        return entity, None
+
+    matches = [
+        entity
+        for entity, expected in lengths_by_entity.items()
+        if len(values) == expected
+    ]
+    if len(matches) == 1:
+        return matches[0], "inferred_by_unique_row_count"
+    if len(matches) > 1:
+        return None, f"ambiguous row count {len(values)} matches {matches}"
+    return None, f"row count {len(values)} matches no US entity"
+
+
+def _load_legacy_pe_flat_frame(
+    path: Path,
+    *,
+    period: int = release.PERIOD,
+    variable_entity_by_name: Mapping[str, str] | None = None,
+) -> tuple[release.Frame, dict[str, object]]:
+    """Load the historical flat PE H5 layout for scoring.
+
+    Old eCPS-style artifacts predate Populace entity-table H5s and store each
+    variable as ``/<variable>/<period>``. This compatibility path exists only so
+    the read-only scorer can compare old artifacts against the current target
+    surface before replacing them.
+    """
+
+    variable_entity_by_name = (
+        variable_entity_by_name or _policyengine_variable_entity_map()
+    )
+    arrays: dict[str, np.ndarray] = {}
+    skipped: list[dict[str, str]] = []
+    with h5py.File(path, "r") as h5:
+        for name in h5.keys():
+            try:
+                dataset = _legacy_period_dataset(h5, name, period=period)
+                arrays[name] = _legacy_h5_values(dataset)
+            except ValueError as exc:
+                skipped.append({"column": name, "reason": str(exc)})
+
+    lengths_by_entity = _legacy_entity_lengths(arrays)
+    table_columns: dict[str, dict[str, np.ndarray]] = {
+        entity: {} for entity in release.US_SCHEMA.entities
+    }
+    inferred_unknown_columns: dict[str, list[str]] = {}
+    skipped_columns = list(skipped)
+
+    for name, values in arrays.items():
+        entity, note = _infer_legacy_variable_entity(
+            name=name,
+            values=values,
+            variable_entity_by_name=variable_entity_by_name,
+            lengths_by_entity=lengths_by_entity,
+        )
+        if entity is None:
+            skipped_columns.append({"column": name, "reason": note or "unknown"})
+            continue
+        table_columns[entity][name] = values
+        if note == "inferred_by_unique_row_count":
+            inferred_unknown_columns.setdefault(entity, []).append(name)
+
+    missing_weight = "household_weight" not in table_columns["household"]
+    if missing_weight:
+        raise ValueError("legacy flat H5 is missing household_weight")
+    weights = np.asarray(
+        table_columns["household"].pop("household_weight"), dtype=np.float64
+    )
+    tables = {
+        entity: pd.DataFrame(columns) for entity, columns in table_columns.items()
+    }
+    frame = release.Frame(
+        tables,
+        release.US_SCHEMA,
+        {"household": release.Weights(weights, release.WeightKind.CALIBRATED)},
+    )
+    positive_household_weights = weights > 0
+    dropped_zero_weight_households = int((~positive_household_weights).sum())
+    dropped_zero_weight_persons = 0
+    if dropped_zero_weight_households:
+        household_id_column = release.US_SCHEMA.id_column("household")
+        positive_household_ids = set(
+            tables["household"].loc[positive_household_weights, household_id_column]
+        )
+        person_household_column = release.US_SCHEMA.membership_column("household")
+        person_mask = (
+            tables["person"][person_household_column]
+            .isin(positive_household_ids)
+            .to_numpy()
+        )
+        dropped_zero_weight_persons = int((~person_mask).sum())
+        frame = frame.select(person_mask)
+    metadata = {
+        "layout": "legacy_pe_flat_h5",
+        "period": period,
+        "loaded_columns_by_entity": {
+            entity: sorted(columns) for entity, columns in table_columns.items()
+        },
+        "inferred_unknown_columns_by_entity": {
+            entity: sorted(columns)
+            for entity, columns in inferred_unknown_columns.items()
+        },
+        "skipped_columns": skipped_columns,
+        "entity_row_counts": dict(lengths_by_entity),
+        "dropped_zero_weight_households": dropped_zero_weight_households,
+        "dropped_zero_weight_persons": dropped_zero_weight_persons,
+    }
+    return frame, metadata
 
 
 def _drop_legacy_formula_owned_inputs(frame) -> tuple[object, dict[str, list[str]]]:
@@ -160,6 +383,7 @@ def score_frame(
     include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: Path | None = None,
     target_materialization_cache_dir: Path | None = None,
+    legacy_pe_flat_h5: bool = False,
 ) -> tuple[CalibrationResult, object, dict[str, object], dict[str, object]]:
     congressional_district_vintage_crosswalk_metadata = (
         {
@@ -207,7 +431,11 @@ def score_frame(
         target_specs,
         release.US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    base_frame = release._load_frame(h5)
+    legacy_h5_layout: dict[str, object] = {}
+    if legacy_pe_flat_h5:
+        base_frame, legacy_h5_layout = _load_legacy_pe_flat_frame(h5)
+    else:
+        base_frame = release._load_frame(h5)
     if (
         allow_legacy_cd_provenance
         and congressional_district_vintage_crosswalk_metadata is not None
@@ -283,6 +511,11 @@ def score_frame(
             **dict(compilation),
             "legacy_formula_owned_inputs_dropped": legacy_formula_owned_inputs,
         }
+    if legacy_h5_layout:
+        compilation = {
+            **dict(compilation),
+            "legacy_pe_flat_h5": legacy_h5_layout,
+        }
     if allow_legacy_cd_provenance:
         compilation = {
             **dict(compilation),
@@ -354,6 +587,7 @@ def main() -> None:
         congressional_district_vintage_crosswalk=(
             args.congressional_district_vintage_crosswalk
         ),
+        legacy_pe_flat_h5=args.legacy_pe_flat_h5,
         target_materialization_cache_dir=(
             None
             if args.no_target_materialization_cache
