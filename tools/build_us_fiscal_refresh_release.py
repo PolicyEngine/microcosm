@@ -95,6 +95,8 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 
 
@@ -462,6 +464,26 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--target-frame-checkpoint",
+        type=Path,
+        help=(
+            "Override the standard materialized target-frame checkpoint path. "
+            "Defaults to <out>/artifacts/target_frame_checkpoint.h5. This "
+            "checkpoint stores the full post-source, post-target-materialized "
+            "Frame used by calibration, so warm-start-only reruns can skip "
+            "PolicyEngine materialization entirely when the input identity "
+            "matches."
+        ),
+    )
+    parser.add_argument(
+        "--no-target-frame-checkpoint",
+        action="store_true",
+        help=(
+            "Diagnostic only: disable the full target-frame checkpoint. "
+            "This does not affect the lower-level per-reform target cache."
+        ),
+    )
+    parser.add_argument(
         "--audit-export-targets",
         action="store_true",
         help=(
@@ -751,6 +773,241 @@ def _write_reform_income_tax_cache(
     os.replace(tmp_values_path, values_path)
     os.replace(tmp_metadata_path, metadata_path)
     return digest, values_path
+
+
+def _target_frame_checkpoint_identity(
+    *,
+    base_dataset_sha256: str,
+    policyengine_us_version: str,
+    seed: int,
+    target_period: int,
+    target_registry_version: str,
+    congressional_district_vintage_crosswalk_sha256: object,
+) -> dict[str, object]:
+    return {
+        "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
+        "kind": "us_fiscal_refresh_target_frame",
+        "country": "us",
+        "base_dataset_sha256": str(base_dataset_sha256),
+        "policyengine_us_version": str(policyengine_us_version),
+        "seed": int(seed),
+        "target_period": int(target_period),
+        "target_registry_version": str(target_registry_version),
+        "congressional_district_vintage_crosswalk_sha256": (
+            None
+            if congressional_district_vintage_crosswalk_sha256 is None
+            else str(congressional_district_vintage_crosswalk_sha256)
+        ),
+    }
+
+
+def _target_frame_checkpoint_digest(identity: Mapping[str, object]) -> str:
+    return hashlib.sha256(_strict_json_bytes(identity)).hexdigest()
+
+
+def _write_target_frame_checkpoint(
+    path: Path,
+    *,
+    frame: Frame,
+    identity: Mapping[str, object],
+    compilation: Mapping[str, object],
+) -> dict[str, object]:
+    import h5py
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    with h5py.File(tmp_path, "w") as h5:
+        h5.attrs["schema_version"] = TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION
+        h5.attrs["identity_json"] = _strict_json_text(identity)
+        h5.attrs["identity_sha256"] = _target_frame_checkpoint_digest(identity)
+        h5.attrs["compilation_json"] = _strict_json_text(compilation)
+        tables_group = h5.create_group("tables")
+        for entity in frame.entities:
+            _write_checkpoint_dataframe(
+                tables_group.create_group(entity), frame.table(entity)
+            )
+        weights_group = h5.create_group("weights")
+        weights_group.attrs["entities_json"] = _strict_json_text(
+            frame.weighted_entities
+        )
+        for entity in frame.weighted_entities:
+            weights = frame.weights_for(entity)
+            entity_group = weights_group.create_group(entity)
+            entity_group.attrs["kind"] = weights.kind.value
+            entity_group.create_dataset(
+                "values",
+                data=np.asarray(weights.values, dtype=np.float64),
+                compression="gzip",
+            )
+        _write_checkpoint_series(h5.create_group("strata"), frame.strata)
+    os.replace(tmp_path, path)
+    return {
+        "enabled": True,
+        "status": "miss_written",
+        "path": str(path),
+        "identity_sha256": _target_frame_checkpoint_digest(identity),
+        "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+    }
+
+
+def _read_target_frame_checkpoint(
+    path: Path,
+    *,
+    identity: Mapping[str, object],
+    target_specs: tuple,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[Frame, TargetRegistry, dict[str, object]] | None:
+    if not path.exists():
+        return None
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        schema_version = int(h5.attrs.get("schema_version", -1))
+        if schema_version != TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION:
+            raise RuntimeError(
+                "Target-frame checkpoint schema mismatch for "
+                f"{path}: got {schema_version}, expected "
+                f"{TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION}."
+            )
+        stored_identity = json.loads(str(h5.attrs["identity_json"]))
+        if stored_identity != dict(identity):
+            return None
+        stored_digest = str(h5.attrs.get("identity_sha256", ""))
+        expected_digest = _target_frame_checkpoint_digest(identity)
+        if stored_digest != expected_digest:
+            raise RuntimeError(
+                "Target-frame checkpoint identity hash mismatch for "
+                f"{path}: got {stored_digest}, expected {expected_digest}."
+            )
+        tables_group = h5["tables"]
+        tables = {
+            entity: _read_checkpoint_dataframe(tables_group[entity])
+            for entity in US_SCHEMA.entities
+        }
+        weights_group = h5["weights"]
+        weighted_entities = json.loads(str(weights_group.attrs["entities_json"]))
+        weights = {}
+        for entity in weighted_entities:
+            entity_group = weights_group[entity]
+            kind = WeightKind(str(entity_group.attrs["kind"]))
+            values = np.asarray(entity_group["values"], dtype=np.float64)
+            weights[str(entity)] = Weights(values, kind)
+        strata = _read_checkpoint_series(h5["strata"])
+        stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
+    frame = Frame(tables, US_SCHEMA, weights, strata)
+    registry, compilation = _compile_materialized_target_registry(
+        frame,
+        target_specs,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    compilation = {
+        **compilation,
+        "target_frame_checkpoint": {
+            "enabled": True,
+            "status": "hit",
+            "path": str(path),
+            "identity_sha256": _target_frame_checkpoint_digest(identity),
+            "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "stored_compilation": stored_compilation,
+        },
+        "target_materialization_cache": {
+            "enabled": False,
+            "status": "skipped_target_frame_checkpoint_hit",
+        },
+    }
+    return frame, registry, compilation
+
+
+def _write_checkpoint_dataframe(group, frame: pd.DataFrame) -> None:
+    group.attrs["columns_json"] = _strict_json_text(
+        [str(column) for column in frame.columns]
+    )
+    columns_group = group.create_group("columns")
+    for index, column in enumerate(frame.columns):
+        column_group = columns_group.create_group(f"{index:05d}")
+        column_group.attrs["name"] = str(column)
+        _write_checkpoint_column(column_group, frame[column])
+
+
+def _read_checkpoint_dataframe(group) -> pd.DataFrame:
+    columns = json.loads(str(group.attrs["columns_json"]))
+    data: dict[str, np.ndarray] = {}
+    columns_group = group["columns"]
+    for index, column in enumerate(columns):
+        column_group = columns_group[f"{index:05d}"]
+        stored_name = str(column_group.attrs["name"])
+        if stored_name != column:
+            raise RuntimeError(
+                "Target-frame checkpoint column order mismatch: "
+                f"slot {index} is {stored_name!r}, expected {column!r}."
+            )
+        data[column] = _read_checkpoint_column(column_group)
+    return pd.DataFrame(data, columns=columns)
+
+
+def _write_checkpoint_series(group, series: pd.Series) -> None:
+    group.attrs["name"] = "" if series.name is None else str(series.name)
+    _write_checkpoint_column(group, series)
+
+
+def _read_checkpoint_series(group) -> pd.Series:
+    return pd.Series(
+        _read_checkpoint_column(group), name=str(group.attrs.get("name", "")) or None
+    )
+
+
+def _write_checkpoint_column(group, series: pd.Series) -> None:
+    import h5py
+
+    dtype = series.dtype
+    group.attrs["pandas_dtype"] = str(dtype)
+    if pd.api.types.is_bool_dtype(dtype):
+        group.attrs["storage_kind"] = "bool"
+        values = series.to_numpy(dtype=np.bool_)
+        group.create_dataset("values", data=values, compression="gzip")
+    elif pd.api.types.is_integer_dtype(dtype):
+        if bool(series.isna().any()):
+            raise ValueError(
+                f"Target-frame checkpoint cannot serialize missing integer column "
+                f"{series.name!r}."
+            )
+        group.attrs["storage_kind"] = "int64"
+        values = series.to_numpy(dtype=np.int64)
+        group.create_dataset("values", data=values, compression="gzip")
+    elif pd.api.types.is_float_dtype(dtype):
+        group.attrs["storage_kind"] = "float64"
+        values = series.to_numpy(dtype=np.float64)
+        group.create_dataset("values", data=values, compression="gzip")
+    else:
+        group.attrs["storage_kind"] = "string"
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        values = np.asarray(
+            [
+                "" if pd.isna(value) else str(value)
+                for value in series.to_numpy(dtype=object)
+            ],
+            dtype=object,
+        )
+        group.create_dataset(
+            "values", data=values, dtype=string_dtype, compression="gzip"
+        )
+
+
+def _read_checkpoint_column(group) -> np.ndarray:
+    storage_kind = str(group.attrs["storage_kind"])
+    dataset = group["values"]
+    if storage_kind == "string":
+        return np.asarray(dataset.asstr()[()], dtype=object)
+    if storage_kind == "bool":
+        return np.asarray(dataset[()], dtype=np.bool_)
+    if storage_kind == "int64":
+        return np.asarray(dataset[()], dtype=np.int64)
+    if storage_kind == "float64":
+        return np.asarray(dataset[()], dtype=np.float64)
+    raise RuntimeError(f"Unknown checkpoint storage kind {storage_kind!r}.")
 
 
 def _local_workspace_package_version(package: str) -> str:
@@ -2103,6 +2360,95 @@ def _make_zero_variable_reform(system, variable_name: str):
     return NeutralizeVariableReform
 
 
+def _compile_materialized_target_registry(
+    target_frame: Frame,
+    target_specs: tuple,
+    *,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[TargetRegistry, dict[str, object]]:
+    household = target_frame.table("household")
+    compileable_specs = [
+        spec for spec in target_specs if _target_spec_is_materialized(spec, household)
+    ]
+    registry = TargetRegistry(compileable_specs, country="us")
+    dropped_specs = tuple(
+        spec for spec in target_specs if spec not in compileable_specs
+    )
+    dropped = sorted(spec.name for spec in dropped_specs)
+    diagnostic_only_dropped = sorted(
+        spec.name for spec in dropped_specs if _target_is_congressional_district(spec)
+    )
+    return registry, {
+        "declared_targets": len(target_specs),
+        "compiled_candidate_targets": len(compileable_specs),
+        "dropped_target_names": dropped,
+        "gate_congressional_district_targets": (gate_congressional_district_targets),
+        "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
+    }
+
+
+def _load_or_materialize_target_frame(
+    base_frame: Frame,
+    target_specs: tuple,
+    *,
+    target_frame_checkpoint_path: Path | None = None,
+    target_frame_checkpoint_identity: Mapping[str, object] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    target_materialization_cache_dir: Path | None = None,
+    target_materialization_cache_context: Mapping[str, object] | None = None,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is None
+    ):
+        raise ValueError(
+            "target_frame_checkpoint_identity is required when "
+            "target_frame_checkpoint_path is set."
+        )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is not None
+    ):
+        loaded = _read_target_frame_checkpoint(
+            target_frame_checkpoint_path,
+            identity=target_frame_checkpoint_identity,
+            target_specs=target_specs,
+            gate_congressional_district_targets=gate_congressional_district_targets,
+        )
+        if loaded is not None:
+            return loaded
+
+    target_frame, registry, compilation = _materialize_target_frame(
+        base_frame,
+        target_specs,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        target_materialization_cache_dir=target_materialization_cache_dir,
+        target_materialization_cache_context=target_materialization_cache_context,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is not None
+    ):
+        checkpoint_payload = _write_target_frame_checkpoint(
+            target_frame_checkpoint_path,
+            frame=target_frame,
+            identity=target_frame_checkpoint_identity,
+            compilation=compilation,
+        )
+    else:
+        checkpoint_payload = {
+            "enabled": False,
+            "status": "disabled",
+        }
+    compilation = {
+        **dict(compilation),
+        "target_frame_checkpoint": checkpoint_payload,
+    }
+    return target_frame, registry, compilation
+
+
 def _materialize_target_frame(
     base_frame: Frame,
     target_specs: tuple,
@@ -2498,36 +2844,25 @@ def _materialize_target_frame(
         del reform_income_tax
         _collect_batch_garbage()
 
-    compileable_specs = [
-        spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
-    ]
-    registry = TargetRegistry(compileable_specs, country="us")
-    dropped_specs = tuple(
-        spec for spec in target_specs if spec not in compileable_specs
-    )
-    dropped = sorted(spec.name for spec in dropped_specs)
-    diagnostic_only_dropped = sorted(
-        spec.name for spec in dropped_specs if _target_is_congressional_district(spec)
-    )
     target_frame = Frame(
         materialized,
         US_SCHEMA,
         {"household": base_frame.weights_for("household")},
         base_frame.strata,
     )
+    registry, compilation = _compile_materialized_target_registry(
+        target_frame,
+        target_specs,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    compilation = {
+        **compilation,
+        "target_materialization_cache": cache_stats,
+    }
     return (
         target_frame,
         registry,
-        {
-            "declared_targets": len(target_specs),
-            "compiled_candidate_targets": len(compileable_specs),
-            "dropped_target_names": dropped,
-            "gate_congressional_district_targets": (
-                gate_congressional_district_targets
-            ),
-            "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
-            "target_materialization_cache": cache_stats,
-        },
+        compilation,
     )
 
 
@@ -3977,6 +4312,13 @@ def main() -> None:
             or artifact_root / "target_materialization_cache"
         )
     )
+    target_frame_checkpoint_path = (
+        None
+        if args.no_target_frame_checkpoint
+        else (
+            args.target_frame_checkpoint or artifact_root / "target_frame_checkpoint.h5"
+        )
+    )
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
@@ -4091,15 +4433,28 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
-    target_frame, registry, compilation = _materialize_target_frame(
+    policyengine_us_version = _package_or_workspace_version("policyengine-us")
+    target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
+        base_dataset_sha256=base_dataset_sha256,
+        policyengine_us_version=policyengine_us_version,
+        seed=args.seed,
+        target_period=PERIOD,
+        target_registry_version=active_target_registry.version,
+        congressional_district_vintage_crosswalk_sha256=(
+            congressional_district_vintage_crosswalk_metadata or {}
+        ).get("sha256"),
+    )
+    target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
         target_specs,
+        target_frame_checkpoint_path=target_frame_checkpoint_path,
+        target_frame_checkpoint_identity=target_frame_checkpoint_identity,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
             "base_dataset_sha256": base_dataset_sha256,
             "build_commit": full_commit,
-            "policyengine_us_version": _package_or_workspace_version("policyengine-us"),
+            "policyengine_us_version": policyengine_us_version,
             "seed": args.seed,
             "target_period": PERIOD,
             "target_registry_version": active_target_registry.version,
