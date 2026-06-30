@@ -30,6 +30,15 @@ All gate losses use the calibrator's capped weighted-MAPE helper
 `weighted_mean(min(abs((estimate − target) / scale), cap))` — scorers consume
 the same functions, so there is no calibrator-vs-scorer objective mismatch.
 
+## Target source contract
+
+Populace calibration targets are Ledger-owned. Production Populace builds must
+materialize target values from Ledger target profiles before calibration; raw
+ONS, HMRC, IRS, Census, DWP, or other administrative tables are source inputs
+for Ledger, not direct calibration targets inside Populace. Temporary migration
+harnesses may accept processed tables only when they are explicitly labelled
+experimental and are not used to publish a production Populace artifact.
+
 The `us` extra adds the rules engine for formula/export checks. Country source
 loaders are not Python dependencies: source stages are declared in packaged
 JSON manifests and executed by shared Populace runtimes.
@@ -80,6 +89,27 @@ solves and writes `local_geography_weights.csv.gz`,
 It accepts already-pooled or already-cloned household pools, so the compact UK
 artifact can remain the fast national default while a separate `local` variant
 scales up with pooled FRS years, cloned records, and L0 budget control.
+
+## UK firm generation
+
+`populace.build.uk_runtime.firm_generation` is the experimental migration of
+the UK firm generator from `PolicyEngine/firm-microsim-paper`. Its preferred
+input is Ledger consumer facts reshaped with
+`uk_firm_source_data_from_ledger_facts`; it draws a synthetic firm population,
+calibrates firm weights through Populace's shared calibration optimizer, and
+returns rows with Populace-style identifiers and `firm_weight`.
+HMRC band tables select the configured `data_vintage` from a `Year` or
+`Financial_Year` column; sector tables select a matching vintage column, or a
+single available value when the caller supplies already-single-vintage source
+data.
+
+This is not yet the production firm microsimulation path: Ledger currently
+covers the current paper target surface used by the adapter, including ONS
+SIC-by-turnover, ONS SIC-by-employment, HMRC VAT-registered firms by SIC, and
+HMRC net VAT liability by SIC. VAT metrics still use the paper generator's
+turnover/input heuristics rather than Axiom RuleSpec execution, so production
+activation should wait for Axiom-backed VAT metrics. The processed-table reader
+remains only for paper-repository migration comparisons.
 
 Build the row-wise local-geography H5 from a compact Populace UK H5 with:
 
