@@ -1882,11 +1882,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         diagnostics=(),
         initial_loss=2.0,
         final_loss=1.0,
+        l0_lambda=0.2,
+        n_nonzero=2,
+        frame=SimpleNamespace(n=lambda entity: 2),
+        weight_entity="household",
+        selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
     captured: dict[str, object] = {}
 
     class FakeFrame:
-        pass
+        def n(self, entity):
+            assert entity == "household"
+            return 4
 
     monkeypatch.setattr(
         sys,
@@ -1976,7 +1983,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_materialize_target_frame,
     )
 
-    def fake_calibrate(*args, **kwargs):
+    def fake_calibrate_l0_refit(*args, **kwargs):
+        captured["l0_args"] = args
+        captured["l0_kwargs"] = kwargs
         captured["target_loss_weights"] = kwargs["target_loss_weights"]
         captured["target_loss_cap"] = kwargs["target_loss_cap"]
         return result
@@ -1988,7 +1997,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         (release_dir / "calibration_diagnostics.json").write_text("{}")
         return release_dir / "calibration_diagnostics.json"
 
-    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
+    monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
@@ -2017,6 +2026,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload
     }
+    assert captured["diagnostics"]["default_dataset"] == {
+        "method": "l0_refit",
+        "sparse": True,
+        "n_candidate_households": 4,
+        "n_selected_households": 2,
+        "n_exported_households": 2,
+        "l0_lambda_share": 0.8,
+        "l0_lambda": 0.2,
+        "selection_epochs": 1500,
+        "refit_epochs": 1500,
+        "selection_final_loss": 1.5,
+        "refit_initial_loss": 2.0,
+        "refit_final_loss": 1.0,
+    }
+    assert captured["l0_kwargs"]["l0_lambda"] == 0.2
+    assert captured["l0_kwargs"]["epochs"] == 1500
+    assert captured["l0_kwargs"]["refit_epochs"] == 1500
+    assert captured["l0_kwargs"]["warm_start_weights"] is None
     assert captured["target_loss_cap"] == 1.0
     assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
     assert (
@@ -4079,6 +4106,14 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "calibration_seconds": 4.0,
             "total_build_seconds": 7.0,
         },
+        default_dataset={
+            "method": "l0_refit",
+            "sparse": True,
+            "n_candidate_households": 337_704,
+            "n_selected_households": 57_240,
+            "n_exported_households": 57_240,
+            "l0_lambda_share": 0.8,
+        },
         area_artifacts=area_artifacts,
     )
 
@@ -4120,6 +4155,14 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
+    assert build_manifest["dataset"]["default"] == {
+        "method": "l0_refit",
+        "sparse": True,
+        "n_candidate_households": 337_704,
+        "n_selected_households": 57_240,
+        "n_exported_households": 57_240,
+        "l0_lambda_share": 0.8,
+    }
     assert build_manifest["area_artifacts"]["count"] == 487
     assert build_manifest["area_artifacts"]["states"] == 51
     assert build_manifest["area_artifacts"]["congressional_districts"] == 436
@@ -4134,6 +4177,9 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
+    assert manifest["build"]["default_dataset"] == build_manifest["dataset"][
+        "default"
+    ]
     assert (
         manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
         == 5.87
@@ -4316,6 +4362,26 @@ def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> Non
     )
 
     assert "income" in exported.table("person")
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
+
+
+def test_l0_refit_export_subsets_clean_base_frame(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    result = SimpleNamespace(
+        selected_entity_ids=np.asarray([2], dtype="int64"),
+        weight_entity="household",
+        weights=np.asarray([3333.0]),
+    )
+
+    exported = builder._with_l0_refit_weights(small_frame, result)
+
+    assert exported.table("household")["household_id"].to_list() == [2]
+    assert exported.table("person")["person_id"].to_list() == [2, 3]
+    np.testing.assert_allclose(
+        exported.weights_for("household").values,
+        np.asarray([3333.0]),
+    )
     assert exported.weights_for("household").kind == WeightKind.CALIBRATED
 
 

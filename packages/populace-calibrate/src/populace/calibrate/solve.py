@@ -1689,6 +1689,7 @@ def calibrate_l0_refit(
     target_loss_weights: np.ndarray | None = None,
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
@@ -1727,6 +1728,7 @@ def calibrate_l0_refit(
         target_loss_weights=target_loss_weights,
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
+        warm_start_weights=warm_start_weights,
         progress_callback=_phase_callback(progress_callback, "l0_selection"),
     )
     return refit_l0_selection(
