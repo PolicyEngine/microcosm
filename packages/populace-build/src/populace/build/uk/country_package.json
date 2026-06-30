@@ -2,5 +2,5 @@
   "schema_version": 1,
   "country": "uk",
   "policy": "spec-only country package; Python execution lives in shared runtime modules",
-  "resources": []
+  "resources": ["source_stages.json"]
 }

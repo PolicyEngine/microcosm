@@ -209,7 +209,7 @@ def test_spi_fill_only_updates_spi_channel_and_can_initialize_new_columns() -> N
     assert spi["gift_aid"].tolist() == [9.0, 10.0, 11.0, 12.0]
 
 
-def test_spi_variable_surfaces_include_efrs_stage1_and_stage2_fixes() -> None:
+def test_spi_variable_surfaces_include_recent_stage1_and_stage2_fixes() -> None:
     assert SPI_INCOME_COMPONENT_COLUMNS == (
         "employment_income",
         "self_employment_income",

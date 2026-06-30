@@ -24,7 +24,8 @@ The gates encode the build lessons of 2026:
   member names, not raw source-system codes.
 - :func:`export_surface_gate` and :func:`target_surface_gate` — replacement
   builds can prove they cover a reference artifact's export variables and
-  calibration targets, e.g. UK Populace against eFRS.
+  calibration targets. Reference artifacts are comparison surfaces, not build
+  inputs.
 
 Scoring uses :func:`relative_error_loss` — the calibrator's own objective —
 so there is no calibrator-vs-scorer objective mismatch: what the solver
@@ -750,10 +751,9 @@ def export_surface_gate(
     This is stricter than :func:`parity_gate`: parity checks whether populated
     reference layers are also populated, while this gate checks the exported
     variable *surface* itself. It is intended for live release blocking where a
-    country has a known incumbent-compatible artifact, such as UK Populace
-    matching eFRS exported variables. Extra columns are refused unless the
-    build declares them as structural/compatibility additions; missing
-    reference columns require a named reviewed exclusion.
+    country has a known reference export surface. Extra columns are refused
+    unless the build declares them as structural/compatibility additions;
+    missing reference columns require a named reviewed exclusion.
     """
     candidate = {str(name) for name in candidate_columns}
     reference = {str(name) for name in reference_columns}

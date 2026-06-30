@@ -42,11 +42,15 @@ from populace.build.uk_runtime.geography_sources import (
     write_geography_crosswalk,
 )
 from populace.build.uk_runtime.local_geography import (
+    AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN,
     LONG_GEOGRAPHY_COLUMNS,
     StackedLocalMatrix,
     align_area_targets,
     area_support_summary,
+    assigned_weights_to_long,
+    build_assigned_local_matrix,
     build_stacked_local_matrix,
+    rowwise_assignment_column,
     sort_households_by_id,
     stacked_design_weights,
     stacked_weights_to_long,
@@ -68,6 +72,7 @@ from populace.build.uk_runtime.local_runner import (
 )
 from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
+    solve_assigned_local_weights,
     solve_stacked_local_weights,
 )
 from populace.build.uk_runtime.local_targets import (
@@ -131,6 +136,7 @@ __all__ = [
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",
+    "AREA_TYPE_TO_ROWWISE_HOUSEHOLD_COLUMN",
     "BASE_FRS_SUPPORT_CHANNEL",
     "BENUNIT_ID_COLUMNS",
     "COUNTRY_TO_REGION",
@@ -176,11 +182,13 @@ __all__ = [
     "UK_SINGLE_YEAR_TABLES",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "align_area_targets",
+    "assigned_weights_to_long",
     "area_support_summary",
     "area_groups_from_codes",
     "assign_household_geography",
     "build_local_candidate",
     "build_local_candidate_from_dataset",
+    "build_assigned_local_matrix",
     "build_complete_uk_geography_crosswalk",
     "build_england_wales_crosswalk",
     "build_great_britain_crosswalk",
@@ -220,7 +228,9 @@ __all__ = [
     "prepare_geography_crosswalk",
     "prepare_household_frame",
     "read_local_table",
+    "rowwise_assignment_column",
     "set_simulation_area_group",
+    "solve_assigned_local_weights",
     "solve_stacked_local_weights",
     "sort_households_by_id",
     "stacked_design_weights",
