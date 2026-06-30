@@ -39,6 +39,48 @@ def _load_scorer_module():
     return module
 
 
+def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    path = tmp_path / "populace_us_2024_calibration.npz"
+    initial = np.asarray([10.0, 20.0, 30.0])
+    weights = np.asarray([12.0, 18.0, 35.0])
+    np.savez_compressed(
+        path,
+        household_weight=weights,
+        initial_household_weight=initial,
+    )
+
+    loaded, payload = builder._load_warm_start_calibration_npz(
+        path,
+        expected_initial_weights=initial.copy(),
+    )
+
+    np.testing.assert_allclose(loaded, weights)
+    assert payload["enabled"] is True
+    assert payload["n_households"] == 3
+    assert payload["sha256"] == builder._sha256(path)
+
+
+def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    path = tmp_path / "populace_us_2024_calibration.npz"
+    np.savez_compressed(
+        path,
+        household_weight=np.asarray([12.0, 18.0, 35.0]),
+        initial_household_weight=np.asarray([10.0, 20.0, 30.0]),
+    )
+
+    with pytest.raises(ValueError, match="different initial household weights"):
+        builder._load_warm_start_calibration_npz(
+            path,
+            expected_initial_weights=np.asarray([10.0, 20.0, 31.0]),
+        )
+
+
 def test_runtime_versions_use_local_workspace_package_version(
     monkeypatch, tmp_path
 ) -> None:

@@ -914,6 +914,64 @@ def test_final_loss_describes_the_returned_weights(feasible_frame) -> None:
     assert abs(result.initial_loss - true_initial) < 1e-5
 
 
+def test__given_warm_start_weights__then_optimizer_starts_from_warm_loss(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame(n=80)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.2),
+            _income_target(truths["income"], 0.9),
+        )
+    )
+
+    cold = calibrate(frame, targets, epochs=1, seed=0, mass="conserve")
+    prior = calibrate(frame, targets, epochs=80, seed=0, mass="conserve")
+    warm = calibrate(
+        frame,
+        targets,
+        epochs=1,
+        seed=0,
+        mass="conserve",
+        warm_start_weights=prior.weights,
+    )
+
+    assert warm.initial_loss < cold.initial_loss
+    assert warm.options["warm_start_weights"] == {
+        "enabled": True,
+        "kind": "explicit",
+    }
+    np.testing.assert_allclose(warm.initial_weights, prior.initial_weights)
+    assert warm.diagnostics[0].initial_estimate == cold.diagnostics[0].initial_estimate
+
+
+def test__given_bad_warm_start_shape__then_solver_rejects_it(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=20)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    bad = np.ones(19)
+
+    with pytest.raises(ValueError, match="warm_start_weights shape"):
+        calibrate(frame, targets, epochs=1, seed=0, warm_start_weights=bad)
+
+
+def test__given_l0_budget_and_warm_start__then_solver_rejects_it(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+    weights = frame.resolve_weights("household").values.copy()
+
+    with pytest.raises(ValueError, match="warm_start_weights.*L0"):
+        calibrate(
+            frame,
+            targets,
+            epochs=1,
+            seed=0,
+            target_records=20,
+            warm_start_weights=weights,
+        )
+
+
 def test_default_target_loss_scales_ignore_initial_estimates() -> None:
     targets = np.asarray([0.0, 10.0, 1_000.0])
     initial_estimates = np.asarray([1_000_000.0, 20_000.0, 1.0])
