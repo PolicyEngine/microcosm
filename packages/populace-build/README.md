@@ -104,12 +104,12 @@ single available value when the caller supplies already-single-vintage source
 data.
 
 This is not yet the production firm microsimulation path: Ledger currently
-covers the national firm target surface used by the adapter, while the remaining
-SIC-sector surface from the paper generator must also move into Ledger before it
-can be activated for production. VAT metrics also still use the paper
-generator's turnover/input heuristics rather than Axiom RuleSpec execution.
-The processed-table reader remains only for paper-repository migration
-comparisons.
+covers the current paper target surface used by the adapter, including ONS
+SIC-by-turnover, ONS SIC-by-employment, HMRC VAT-registered firms by SIC, and
+HMRC net VAT liability by SIC. VAT metrics still use the paper generator's
+turnover/input heuristics rather than Axiom RuleSpec execution, so production
+activation should wait for Axiom-backed VAT metrics. The processed-table reader
+remains only for paper-repository migration comparisons.
 
 Build the row-wise local-geography H5 from a compact Populace UK H5 with:
 

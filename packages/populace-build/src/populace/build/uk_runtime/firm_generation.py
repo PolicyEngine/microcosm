@@ -61,11 +61,23 @@ LEDGER_ONS_TURNOVER_RECORD_SET = (
 LEDGER_ONS_EMPLOYMENT_RECORD_SET = (
     "ons.uk_business.cy2025.enterprise_count.by_employment_band"
 )
+LEDGER_ONS_SIC_TURNOVER_RECORD_SET = (
+    "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band"
+)
+LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET = (
+    "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band"
+)
 LEDGER_HMRC_POPULATION_RECORD_SET = (
     "hmrc.vat.fy2024_25.registered_trader_count.by_turnover_band"
 )
 LEDGER_HMRC_LIABILITY_RECORD_SET = (
     "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
+)
+LEDGER_HMRC_POPULATION_SIC_RECORD_SET = (
+    "hmrc.vat.fy2024_25.registered_trader_count.by_sic"
+)
+LEDGER_HMRC_LIABILITY_SIC_RECORD_SET = (
+    "hmrc.vat.fy2024_25.net_liability.by_sic"
 )
 LEDGER_ONS_TURNOVER_BANDS: dict[str, str] = {
     "0_49k": "0-49",
@@ -347,7 +359,6 @@ def uk_firm_source_data_from_ledger_facts(
     facts: Iterable[Mapping[str, Any] | object],
     *,
     data_vintage: str = "2024-25",
-    sic_code: int = 1,
 ) -> UKFirmSourceData:
     """Build UK firm inputs from Ledger consumer facts.
 
@@ -358,17 +369,19 @@ def uk_firm_source_data_from_ledger_facts(
     """
 
     fact_rows = tuple(facts)
-    ons_turnover_values = _ledger_values_by_band(
+    ons_turnover = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_TURNOVER_RECORD_SET,
-        measure_id="enterprise_count",
+        record_set_id=LEDGER_ONS_SIC_TURNOVER_RECORD_SET,
         band_map=LEDGER_ONS_TURNOVER_BANDS,
+        band_dimension="uk.firm.turnover_band",
+        table_name="ONS SIC turnover",
     )
-    ons_employment_values = _ledger_values_by_band(
+    ons_employment = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_EMPLOYMENT_RECORD_SET,
-        measure_id="enterprise_count",
+        record_set_id=LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET,
         band_map=LEDGER_ONS_EMPLOYMENT_BANDS,
+        band_dimension="uk.firm.employment_band",
+        table_name="ONS SIC employment",
     )
     hmrc_population_values = _ledger_values_by_band(
         fact_rows,
@@ -386,48 +399,25 @@ def uk_firm_source_data_from_ledger_facts(
         band: value / 1_000_000.0
         for band, value in hmrc_liability_values_gbp.items()
     }
-
-    ons_turnover = pd.DataFrame(
-        [
-            {
-                "SIC Code": sic_code,
-                "Description": "Ledger UK firm national turnover targets",
-                **ons_turnover_values,
-                "Total": sum(ons_turnover_values.values()),
-            }
-        ]
-    )
-    ons_employment = pd.DataFrame(
-        [
-            {
-                "SIC Code": sic_code,
-                "Description": "Ledger UK firm national employment targets",
-                **ons_employment_values,
-                "Total": sum(ons_employment_values.values()),
-            }
-        ]
-    )
     hmrc_population_band = pd.DataFrame(
         [{"Financial_Year": data_vintage, **hmrc_population_values}]
     )
-    hmrc_population_sector = pd.DataFrame(
-        [
-            {
-                "Trade_Sector": "Total",
-                data_vintage: sum(hmrc_population_values.values()),
-            }
-        ]
+    hmrc_population_sector = _ledger_sic_series(
+        fact_rows,
+        record_set_id=LEDGER_HMRC_POPULATION_SIC_RECORD_SET,
+        measure_id="vat_registered_trader_count",
+        data_vintage=data_vintage,
+        value_scale=1.0,
     )
     hmrc_liability_band = pd.DataFrame(
         [{"Financial_Year": data_vintage, **hmrc_liability_values_m}]
     )
-    hmrc_liability_sector = pd.DataFrame(
-        [
-            {
-                "Trade_Sector": "Total",
-                data_vintage: sum(hmrc_liability_values_m.values()),
-            }
-        ]
+    hmrc_liability_sector = _ledger_sic_series(
+        fact_rows,
+        record_set_id=LEDGER_HMRC_LIABILITY_SIC_RECORD_SET,
+        measure_id="net_vat_liability",
+        data_vintage=data_vintage,
+        value_scale=1 / 1_000_000.0,
     )
     return uk_firm_source_data_from_frames(
         ons_turnover=ons_turnover,
@@ -1251,6 +1241,92 @@ def _extract_ons_total(ons_turnover: pd.DataFrame) -> int:
     return int(sector_rows["Total"].sum())
 
 
+def _ledger_ons_sic_band_matrix(
+    facts: tuple[Mapping[str, Any] | object, ...],
+    *,
+    record_set_id: str,
+    band_map: Mapping[str, str],
+    band_dimension: str,
+    table_name: str,
+) -> pd.DataFrame:
+    rows_by_sic: dict[str, dict[str, object]] = {}
+    seen: set[tuple[str, str]] = set()
+    for fact in facts:
+        if not _ledger_record_matches(fact, record_set_id, "enterprise_count"):
+            continue
+        _validate_ledger_firm_fact(fact, record_set_id, "enterprise_count")
+        sic = _ledger_sic_code(fact)
+        ledger_band = _ledger_dimension_value(fact, band_dimension)
+        if ledger_band not in band_map:
+            continue
+        key = (sic, str(ledger_band))
+        if key in seen:
+            raise ValueError(
+                f"Duplicate Ledger UK firm fact for {record_set_id}/{sic}/"
+                f"{ledger_band}."
+            )
+        seen.add(key)
+        target_band = band_map[str(ledger_band)]
+        row = rows_by_sic.setdefault(
+            sic,
+            {
+                "SIC Code": int(sic),
+                "Description": f"Ledger SIC {sic}",
+            },
+        )
+        row[target_band] = _numeric_ledger_value(fact)
+
+    if not rows_by_sic:
+        raise ValueError(f"Ledger UK firm facts are missing {table_name} facts.")
+
+    rows: list[dict[str, object]] = []
+    missing: list[str] = []
+    for sic in sorted(rows_by_sic, key=int):
+        row = rows_by_sic[sic]
+        for band in band_map.values():
+            if band not in row:
+                missing.append(f"{sic}/{band}")
+                row[band] = 0.0
+        row["Total"] = sum(float(row[band]) for band in band_map.values())
+        rows.append(row)
+
+    if missing:
+        raise ValueError(
+            f"Ledger UK firm facts are missing {table_name} cell(s): {missing}."
+        )
+    return pd.DataFrame(rows)
+
+
+def _ledger_sic_series(
+    facts: tuple[Mapping[str, Any] | object, ...],
+    *,
+    record_set_id: str,
+    measure_id: str,
+    data_vintage: str,
+    value_scale: float,
+) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for fact in facts:
+        if not _ledger_record_matches(fact, record_set_id, measure_id):
+            continue
+        _validate_ledger_firm_fact(fact, record_set_id, measure_id)
+        sic = _ledger_sic_code(fact)
+        if sic in seen:
+            raise ValueError(f"Duplicate Ledger UK firm fact for {record_set_id}/{sic}.")
+        seen.add(sic)
+        rows.append(
+            {
+                "Trade_Sector": int(sic),
+                data_vintage: _numeric_ledger_value(fact) * value_scale,
+            }
+        )
+
+    if not rows:
+        raise ValueError(f"Ledger UK firm facts are missing {record_set_id} facts.")
+    return pd.DataFrame(sorted(rows, key=lambda row: int(row["Trade_Sector"])))
+
+
 def _ledger_values_by_band(
     facts: tuple[Mapping[str, Any] | object, ...],
     *,
@@ -1260,9 +1336,7 @@ def _ledger_values_by_band(
 ) -> dict[str, float]:
     values_by_band: dict[str, float] = {}
     for fact in facts:
-        layout_record_set_id = _fact_at(fact, "layout", "record_set_id")
-        layout_measure_id = _fact_at(fact, "layout", "measure_id")
-        if layout_record_set_id != record_set_id or layout_measure_id != measure_id:
+        if not _ledger_record_matches(fact, record_set_id, measure_id):
             continue
         _validate_ledger_firm_fact(fact, record_set_id, measure_id)
         ledger_band = _fact_at(fact, "layout", "groupby_value_id")
@@ -1281,6 +1355,40 @@ def _ledger_values_by_band(
             f"Ledger UK firm facts are missing {record_set_id} band(s): {missing}."
         )
     return values_by_band
+
+
+def _ledger_record_matches(
+    fact: Mapping[str, Any] | object,
+    record_set_id: str,
+    measure_id: str,
+) -> bool:
+    return (
+        _fact_at(fact, "layout", "record_set_id") == record_set_id
+        and _fact_at(fact, "layout", "measure_id") == measure_id
+    )
+
+
+def _ledger_sic_code(fact: Mapping[str, Any] | object) -> str:
+    sic = (
+        _ledger_dimension_value(fact, "uk.firm.sic_code")
+        or _fact_at(fact, "layout", "groupby_value_id")
+    )
+    if sic is None:
+        raise ValueError("Ledger UK firm fact is missing uk.firm.sic_code.")
+    try:
+        return str(int(float(str(sic)))).zfill(5)
+    except ValueError as exc:
+        raise ValueError(f"Ledger UK firm fact has invalid SIC code {sic!r}.") from exc
+
+
+def _ledger_dimension_value(
+    fact: Mapping[str, Any] | object,
+    dimension: str,
+) -> Any:
+    value = _fact_at(fact, "dimensions", dimension)
+    if value is not None:
+        return value
+    return _fact_at(fact, "filters", dimension)
 
 
 def _validate_ledger_firm_fact(

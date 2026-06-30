@@ -38,12 +38,16 @@ def test_uk_firm_source_data_from_ledger_facts_uses_ledger_targets() -> None:
     )
 
     assert data.ons_total == 7
+    assert data.ons_turnover["SIC Code"].tolist() == [11, 12]
     assert data.ons_turnover.loc[0, "0-49"] == 2.0
-    assert data.ons_employment.loc[0, "20-49"] == 1.0
+    assert data.ons_turnover.loc[1, "500-999"] == 1.0
+    assert data.ons_employment.loc[1, "20-49"] == 1.0
     assert data.hmrc_bands["Negative_or_Zero"] == 3.0
     assert data.hmrc_bands["£Threshold_to_£150k"] == 2.0
     assert data.vat_liability_bands["£Threshold_to_£150k"] == 1.2
-    assert data.hmrc_population_sector["Trade_Sector"].tolist() == ["Total"]
+    assert data.hmrc_population_sector["Trade_Sector"].tolist() == [11, 12]
+    assert data.hmrc_population_sector["2024-25"].tolist() == [3.0, 2.0]
+    assert data.hmrc_liability_sector["2024-25"].tolist() == [2.0, 1.5]
 
 
 def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
@@ -57,9 +61,9 @@ def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
         UKFirmGenerationConfig(data_vintage="2024-25", n_iterations=4, seed=7),
     )
 
-    assert not result.target_diagnostics["target_name"].str.startswith(
-        "hmrc_vat_population_sector/"
-    ).any()
+    diagnostics = result.target_diagnostics.set_index("target_name")
+    assert diagnostics.loc["hmrc_vat_population_sector/11", "target"] == 3.0
+    assert diagnostics.loc["hmrc_vat_population_sector/12", "target"] == 2.0
     assert len(result.firms[result.firms["annual_turnover_k"] == 0]) == 3
     assert result.calibration.final_loss <= result.calibration.initial_loss
 
@@ -68,7 +72,11 @@ def test_uk_firm_source_data_from_ledger_facts_requires_complete_profile() -> No
     facts = [
         fact
         for fact in _ledger_facts()
-        if fact["layout"]["groupby_value_id"] != "500k_to_1m"
+        if not (
+            fact["layout"]["record_set_id"]
+            == "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
+            and fact["layout"]["groupby_value_id"] == "500k_to_1m"
+        )
     ]
 
     with pytest.raises(ValueError, match="£500k_to_£1m"):
@@ -223,6 +231,82 @@ def _source_data():
 
 def _ledger_facts() -> list[dict[str, object]]:
     facts: list[dict[str, object]] = []
+    for sic, values in {
+        "00011": {
+            "0_49k": 2,
+            "50_99k": 1,
+            "100_249k": 1,
+            "250_499k": 0,
+            "500_999k": 0,
+            "1000_4999k": 0,
+            "5000k_plus": 0,
+        },
+        "00012": {
+            "0_49k": 1,
+            "50_99k": 0,
+            "100_249k": 1,
+            "250_499k": 0,
+            "500_999k": 1,
+            "1000_4999k": 0,
+            "5000k_plus": 0,
+        },
+    }.items():
+        for band, value in values.items():
+            facts.append(
+                _ledger_fact(
+                    "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band",
+                    f"sic_{sic}__{band}",
+                    "enterprise_count",
+                    value,
+                    period_type="calendar_year",
+                    period=2025,
+                    source_name="ons",
+                    unit="count",
+                    groupby_dimension="uk.firm.sic_code",
+                    dimensions={
+                        "uk.firm.sic_code": sic,
+                        "uk.firm.turnover_band": band,
+                    },
+                )
+            )
+    for sic, values in {
+        "00011": {
+            "0_4": 2,
+            "5_9": 1,
+            "10_19": 1,
+            "20_49": 0,
+            "50_99": 0,
+            "100_249": 0,
+            "250_plus": 0,
+        },
+        "00012": {
+            "0_4": 1,
+            "5_9": 1,
+            "10_19": 0,
+            "20_49": 1,
+            "50_99": 0,
+            "100_249": 0,
+            "250_plus": 0,
+        },
+    }.items():
+        for band, value in values.items():
+            facts.append(
+                _ledger_fact(
+                    "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band",
+                    f"sic_{sic}__{band}",
+                    "enterprise_count",
+                    value,
+                    period_type="calendar_year",
+                    period=2025,
+                    source_name="ons",
+                    unit="count",
+                    groupby_dimension="uk.firm.sic_code",
+                    dimensions={
+                        "uk.firm.sic_code": sic,
+                        "uk.firm.employment_band": band,
+                    },
+                )
+            )
     for band, value in {
         "0_49k": 2,
         "50_99k": 1,
@@ -242,6 +326,7 @@ def _ledger_facts() -> list[dict[str, object]]:
                 period=2025,
                 source_name="ons",
                 unit="count",
+                groupby_dimension="uk.firm.annual_turnover",
             )
         )
     for band, value in {
@@ -263,6 +348,7 @@ def _ledger_facts() -> list[dict[str, object]]:
                 period=2025,
                 source_name="ons",
                 unit="count",
+                groupby_dimension="uk.firm.employees",
             )
         )
     for band, value in {
@@ -285,6 +371,7 @@ def _ledger_facts() -> list[dict[str, object]]:
                 period=2024,
                 source_name="hmrc",
                 unit="count",
+                groupby_dimension="uk.firm.annual_turnover",
             )
         )
     for band, value in {
@@ -307,6 +394,37 @@ def _ledger_facts() -> list[dict[str, object]]:
                 period=2024,
                 source_name="hmrc",
                 unit="gbp",
+                groupby_dimension="uk.firm.annual_turnover",
+            )
+        )
+    for sic, value in {"00011": 3, "00012": 2}.items():
+        facts.append(
+            _ledger_fact(
+                "hmrc.vat.fy2024_25.registered_trader_count.by_sic",
+                f"sic_{sic}",
+                "vat_registered_trader_count",
+                value,
+                period_type="fiscal_year",
+                period=2024,
+                source_name="hmrc",
+                unit="count",
+                groupby_dimension="uk.firm.sic_code",
+                dimensions={"uk.firm.sic_code": sic},
+            )
+        )
+    for sic, value in {"00011": 2_000_000.0, "00012": 1_500_000.0}.items():
+        facts.append(
+            _ledger_fact(
+                "hmrc.vat.fy2024_25.net_liability.by_sic",
+                f"sic_{sic}",
+                "net_vat_liability",
+                value,
+                period_type="fiscal_year",
+                period=2024,
+                source_name="hmrc",
+                unit="gbp",
+                groupby_dimension="uk.firm.sic_code",
+                dimensions={"uk.firm.sic_code": sic},
             )
         )
     return facts
@@ -322,6 +440,8 @@ def _ledger_fact(
     period: int,
     source_name: str,
     unit: str,
+    groupby_dimension: str,
+    dimensions: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "schema_version": "arch.consumer_fact.v1",
@@ -335,10 +455,11 @@ def _ledger_fact(
             "source_measure_id": measure_id,
             "unit": unit,
         },
+        "dimensions": dimensions or {},
         "aggregation": {"method": "sum"},
         "layout": {
             "record_set_id": record_set_id,
-            "groupby_dimension": "uk.firm.annual_turnover",
+            "groupby_dimension": groupby_dimension,
             "groupby_value_id": band,
             "measure_id": measure_id,
         },
