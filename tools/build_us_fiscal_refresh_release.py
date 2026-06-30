@@ -23,6 +23,7 @@ import sys
 import time
 import tomllib
 from collections.abc import Iterable, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -95,6 +96,28 @@ US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
+
+
+def _collect_batch_garbage() -> None:
+    """Keep batch loops tidy without traversing the full object graph."""
+
+    gc.collect(0)
+
+
+@contextmanager
+def _automatic_gc_suspended():
+    """Avoid surprise full-graph cyclic GC inside memory-heavy PE batches."""
+
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
@@ -394,6 +417,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=512)
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
+    parser.add_argument(
+        "--warm-start-calibration-npz",
+        type=Path,
+        help=(
+            "Optional populace_us_2024_calibration.npz artifact from an earlier "
+            "run on the same base frame. The builder validates that the stored "
+            "initial_household_weight vector matches the current calibration "
+            "frame before using household_weight as the optimizer start."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -1231,40 +1264,41 @@ def _aca_source_tax_unit_table_batched(
         )
 
     for household_positions in batches:
-        full_batch = len(household_positions) == n_households
-        batch_frame = (
-            frame
-            if full_batch
-            else _select_households_by_position(frame, household_positions)
-        )
-        batch_simulation = microsimulation_cls(
-            dataset=_dataset_from_frame(
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = microsimulation_cls(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
                 batch_frame,
-                assert_no_formula_owned_columns=False,
+                target_tables,
+                simulation=batch_simulation,
             )
-        )
-        batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
-            batch_frame,
-            target_tables,
-            simulation=batch_simulation,
-        )
-        full_positions = tax_unit_positions.reindex(
-            batch_tax_unit["tax_unit_id"].to_numpy()
-        ).to_numpy()
-        if np.isnan(full_positions).any():
-            raise RuntimeError(
-                "ACA source batch produced tax_unit_id values not present in "
-                "the full tax_unit table."
-            )
-        full_positions = full_positions.astype(np.int64)
-        for column in fill_columns:
-            tax_unit.iloc[
-                full_positions,
-                tax_unit.columns.get_loc(column),
-            ] = batch_tax_unit[column].to_numpy()
-        batch_simulation._invalidate_all_caches()
-        del batch_tax_unit, batch_simulation, batch_frame
-        gc.collect()
+            full_positions = tax_unit_positions.reindex(
+                batch_tax_unit["tax_unit_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(full_positions).any():
+                raise RuntimeError(
+                    "ACA source batch produced tax_unit_id values not present in "
+                    "the full tax_unit table."
+                )
+            full_positions = full_positions.astype(np.int64)
+            for column in fill_columns:
+                tax_unit.iloc[
+                    full_positions,
+                    tax_unit.columns.get_loc(column),
+                ] = batch_tax_unit[column].to_numpy()
+            batch_simulation._invalidate_all_caches()
+            del batch_tax_unit, batch_simulation, batch_frame
+        _collect_batch_garbage()
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
@@ -1525,6 +1559,108 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
+class _BatchedScalarTotal:
+    def __init__(self, value: float):
+        self.value = float(value)
+
+    def sum(self) -> float:
+        return self.value
+
+
+class _BatchedReformValidationSimulation:
+    def __init__(
+        self,
+        frame: Frame,
+        *,
+        reform,
+        maximum_microsim_batch_size: int | None,
+        microsimulation_cls,
+        dataset_from_frame,
+    ):
+        self._frame = frame
+        self._reform = reform
+        self._maximum_microsim_batch_size = maximum_microsim_batch_size
+        self._microsimulation_cls = microsimulation_cls
+        self._dataset_from_frame = dataset_from_frame
+        self._cache: dict[tuple[str, int], float] = {}
+
+    def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
+        key = (str(measure), int(period))
+        if key not in self._cache:
+            self._cache[key] = self._calculate_total(str(measure), int(period))
+        return _BatchedScalarTotal(self._cache[key])
+
+    def _calculate_total(self, measure: str, period: int) -> float:
+        n_households = self._frame.n("household")
+        batches = tuple(
+            _household_position_batches(
+                n_households,
+                self._maximum_microsim_batch_size,
+            )
+        )
+        if len(batches) > 1:
+            print(
+                "Scoring reform validation measure "
+                f"{measure} in {len(batches)} batches of up to "
+                f"{self._maximum_microsim_batch_size:,} households.",
+                flush=True,
+            )
+        total = 0.0
+        for household_positions in batches:
+            with _automatic_gc_suspended():
+                full_batch = len(household_positions) == n_households
+                batch_frame = (
+                    self._frame
+                    if full_batch
+                    else _select_households_by_position(
+                        self._frame, household_positions
+                    )
+                )
+                dataset = self._dataset_from_frame(batch_frame)
+                simulation = (
+                    self._microsimulation_cls(dataset=dataset)
+                    if self._reform is None
+                    else self._microsimulation_cls(dataset=dataset, reform=self._reform)
+                )
+                total += float(simulation.calculate(measure, period).sum())
+                if hasattr(simulation, "_invalidate_all_caches"):
+                    simulation._invalidate_all_caches()
+                del simulation, dataset, batch_frame
+            _collect_batch_garbage()
+        return total
+
+
+def _batched_reform_validation_simulate_factory_from_frame(
+    frame: Frame,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    microsimulation_cls=None,
+    dataset_from_frame=None,
+):
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
+
+        microsimulation_cls = Microsimulation
+    if dataset_from_frame is None:
+
+        def dataset_from_frame(batch_frame: Frame):
+            return _dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
+
+    def simulate(reform):
+        return _BatchedReformValidationSimulation(
+            frame,
+            reform=reform,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            microsimulation_cls=microsimulation_cls,
+            dataset_from_frame=dataset_from_frame,
+        )
+
+    return simulate
+
+
 def _reform_household_income_tax(
     *,
     base_frame: Frame,
@@ -1546,29 +1682,30 @@ def _reform_household_income_tax(
             flush=True,
         )
     for household_positions in batches:
-        full_batch = len(household_positions) == n_households
-        batch_frame = (
-            base_frame
-            if full_batch
-            else _select_households_by_position(base_frame, household_positions)
-        )
-        batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
-        reformed_dataset = _dataset_from_frame(
-            batch_frame,
-            zero_variables=(reform_spec.neutralized_variable,),
-            system=system,
-            assert_no_formula_owned_columns=False,
-        )
-        reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
-        batch_income_tax = _collapse_tax_unit(
-            _calculate_array(reformed, "income_tax"),
-            batch_tax_unit_positions,
-            batch_frame.n("household"),
-        )
-        reform_income_tax[household_positions] = batch_income_tax
-        reformed._invalidate_all_caches()
-        del batch_income_tax, reformed, reformed_dataset, batch_frame
-        gc.collect()
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                base_frame
+                if full_batch
+                else _select_households_by_position(base_frame, household_positions)
+            )
+            batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
+            reformed_dataset = _dataset_from_frame(
+                batch_frame,
+                zero_variables=(reform_spec.neutralized_variable,),
+                system=system,
+                assert_no_formula_owned_columns=False,
+            )
+            reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
+            batch_income_tax = _collapse_tax_unit(
+                _calculate_array(reformed, "income_tax"),
+                batch_tax_unit_positions,
+                batch_frame.n("household"),
+            )
+            reform_income_tax[household_positions] = batch_income_tax
+            reformed._invalidate_all_caches()
+            del batch_income_tax, reformed, reformed_dataset, batch_frame
+        _collect_batch_garbage()
     return reform_income_tax
 
 
@@ -2264,7 +2401,7 @@ def _materialize_target_frame(
     )
     simulation._invalidate_all_caches()
     del simulation, dataset
-    gc.collect()
+    _collect_batch_garbage()
     requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
@@ -2359,7 +2496,7 @@ def _materialize_target_frame(
             entries.append(cache_entry)
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
         del reform_income_tax
-        gc.collect()
+        _collect_batch_garbage()
 
     compileable_specs = [
         spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
@@ -2675,6 +2812,72 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
         ),
         registry_version=np.asarray(registry.version),
     )
+
+
+def _load_warm_start_calibration_npz(
+    path: Path,
+    *,
+    expected_initial_weights: np.ndarray,
+) -> tuple[np.ndarray, Mapping[str, object]]:
+    expected_initial = np.asarray(expected_initial_weights, dtype=np.float64)
+    if expected_initial.ndim != 1:
+        raise ValueError(
+            "expected_initial_weights must be a one-dimensional household vector."
+        )
+    if not path.exists():
+        raise FileNotFoundError(f"Warm-start calibration NPZ not found: {path}")
+
+    with np.load(path, allow_pickle=False) as data:
+        required = {"household_weight", "initial_household_weight"}
+        missing = sorted(required - set(data.files))
+        if missing:
+            raise ValueError(
+                f"{path} is missing warm-start calibration arrays: {missing}."
+            )
+        weights = np.asarray(data["household_weight"], dtype=np.float64)
+        stored_initial = np.asarray(data["initial_household_weight"], dtype=np.float64)
+
+    if weights.shape != expected_initial.shape:
+        raise ValueError(
+            "warm-start household_weight shape does not match current calibration "
+            f"frame: got {weights.shape}, expected {expected_initial.shape}."
+        )
+    if stored_initial.shape != expected_initial.shape:
+        raise ValueError(
+            "warm-start initial_household_weight shape does not match current "
+            f"calibration frame: got {stored_initial.shape}, expected "
+            f"{expected_initial.shape}."
+        )
+    if not np.isfinite(weights).all():
+        raise ValueError("warm-start household_weight values must be finite.")
+    if (weights <= 0.0).any():
+        raise ValueError(
+            "warm-start household_weight values must be strictly positive."
+        )
+    if not np.isfinite(stored_initial).all():
+        raise ValueError("warm-start initial_household_weight values must be finite.")
+    if (stored_initial <= 0.0).any():
+        raise ValueError(
+            "warm-start initial_household_weight values must be strictly positive."
+        )
+    delta = np.abs(stored_initial - expected_initial)
+    if not np.allclose(stored_initial, expected_initial, rtol=1e-9, atol=1e-6):
+        raise ValueError(
+            "warm-start calibration was built from different initial household "
+            "weights; refusing to continue a run on a different support frame "
+            "or record order."
+        )
+
+    payload = {
+        "enabled": True,
+        "path": str(path),
+        "sha256": _sha256(path),
+        "n_households": int(weights.shape[0]),
+        "household_weight_sum": float(weights.sum()),
+        "initial_household_weight_sum": float(stored_initial.sum()),
+        "max_abs_initial_household_weight_delta": float(delta.max(initial=0.0)),
+    }
+    return weights, payload
 
 
 def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
@@ -3091,6 +3294,7 @@ def _write_release_calibration_diagnostics(
     audit_export_targets: bool,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
+    warm_start_calibration: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
@@ -3139,6 +3343,11 @@ def _write_release_calibration_diagnostics(
                 else None
             ),
             "support_value_repairs": support_value_repairs,
+            "warm_start_calibration": (
+                dict(warm_start_calibration)
+                if warm_start_calibration is not None
+                else {"enabled": False}
+            ),
             "timing": dict(timing or {}),
             "release_gates": {
                 "passed": not failures,
@@ -3337,6 +3546,7 @@ def _build_manifests(
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     timing: Mapping[str, object] | None = None,
+    warm_start_calibration: Mapping[str, object] | None = None,
     area_artifacts: tuple[AreaArtifactResult, ...] = (),
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
@@ -3363,6 +3573,11 @@ def _build_manifests(
     built_at = datetime.now(UTC).isoformat()
     runtime = _runtime_versions()
     timing_payload = dict(timing or {})
+    warm_start_payload = (
+        dict(warm_start_calibration)
+        if warm_start_calibration is not None
+        else {"enabled": False}
+    )
     manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
@@ -3381,6 +3596,7 @@ def _build_manifests(
         "calibration": {
             "filename": CALIBRATION_FILENAME,
             "sha256": calibration_sha,
+            "warm_start": warm_start_payload,
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -3481,6 +3697,7 @@ def _build_manifests(
                 "version": runtime["policyengine-us"],
             },
             "timing": timing_payload,
+            "warm_start_calibration": warm_start_payload,
             **(
                 {
                     "base_population_scale": {
@@ -3902,6 +4119,13 @@ def main() -> None:
     timing["target_compilation_seconds"] = (
         time.perf_counter() - target_compilation_started
     )
+    warm_start_weights: np.ndarray | None = None
+    warm_start_calibration: Mapping[str, object] | None = None
+    if args.warm_start_calibration_npz is not None:
+        warm_start_weights, warm_start_calibration = _load_warm_start_calibration_npz(
+            args.warm_start_calibration_npz,
+            expected_initial_weights=target_frame.resolve_weights("household").values,
+        )
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -3910,6 +4134,11 @@ def main() -> None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             n_targets=len(registry),
+            warm_start_calibration=(
+                dict(warm_start_calibration)
+                if warm_start_calibration is not None
+                else {"enabled": False}
+            ),
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
@@ -3923,6 +4152,7 @@ def main() -> None:
         mass="conserve",
         target_loss_weights=_fiscal_target_loss_weights(registry),
         target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        warm_start_weights=warm_start_weights,
         progress_callback=(
             telemetry.calibration_progress if telemetry is not None else None
         ),
@@ -3979,6 +4209,7 @@ def main() -> None:
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
+        warm_start_calibration=warm_start_calibration,
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         timing=timing,
@@ -4138,6 +4369,7 @@ def main() -> None:
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
         timing=timing,
+        warm_start_calibration=warm_start_calibration,
         area_artifacts=area_artifacts,
     )
     if telemetry is not None:
