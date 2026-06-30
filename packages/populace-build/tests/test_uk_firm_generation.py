@@ -6,8 +6,10 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime.firm_generation import (
+    DEFAULT_UK_FIRM_TARGET_PROFILE,
     HMRC_BAND_COLUMNS,
     INPUT_FILES,
+    UK_FIRM_TARGET_IDS,
     UKFirmGenerationConfig,
     employment_band_name,
     generate_uk_firm_population,
@@ -15,6 +17,7 @@ from populace.build.uk_runtime.firm_generation import (
     read_uk_firm_source_data,
     uk_firm_source_data_from_frames,
     uk_firm_source_data_from_ledger_facts,
+    uk_firm_target_profile_from_mapping,
     write_uk_firm_population,
 )
 
@@ -48,6 +51,40 @@ def test_uk_firm_source_data_from_ledger_facts_uses_ledger_targets() -> None:
     assert data.hmrc_population_sector["Trade_Sector"].tolist() == [11, 12]
     assert data.hmrc_population_sector["2024-25"].tolist() == [3.0, 2.0]
     assert data.hmrc_liability_sector["2024-25"].tolist() == [2.0, 1.5]
+
+
+def test_uk_firm_source_data_from_ledger_facts_uses_target_profile_mapping() -> None:
+    custom_record_set_id = "custom.ons.enterprise_count.by_sic_turnover_band"
+    facts = _replace_fact_record_set(
+        _ledger_facts(),
+        old_record_set_id=DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_turnover_record_set,
+        new_record_set_id=custom_record_set_id,
+    )
+    target_profile = _ledger_target_profile_mapping(
+        ons_sic_turnover=custom_record_set_id,
+    )
+
+    data = uk_firm_source_data_from_ledger_facts(
+        facts,
+        data_vintage="2024-25",
+        target_profile=target_profile,
+    )
+
+    assert data.ons_turnover.loc[0, "0-49"] == 2.0
+    assert data.ons_turnover.loc[1, "500-999"] == 1.0
+
+
+def test_uk_firm_target_profile_from_mapping_requires_declared_targets() -> None:
+    target_profile = _ledger_target_profile_mapping()
+    missing_target_id = UK_FIRM_TARGET_IDS["hmrc_liability_sic"]
+    target_profile["targets"] = [
+        row
+        for row in target_profile["targets"]
+        if row["target_id"] != missing_target_id
+    ]
+
+    with pytest.raises(ValueError, match=missing_target_id):
+        uk_firm_target_profile_from_mapping(target_profile)
 
 
 def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
@@ -227,6 +264,54 @@ def test_employment_band_name(employment: int, expected: str) -> None:
 
 def _source_data():
     return uk_firm_source_data_from_frames(**_source_frames())
+
+
+def _ledger_target_profile_mapping(**overrides: str) -> dict[str, object]:
+    record_sets = {
+        "ons_turnover": DEFAULT_UK_FIRM_TARGET_PROFILE.ons_turnover_record_set,
+        "ons_employment": DEFAULT_UK_FIRM_TARGET_PROFILE.ons_employment_record_set,
+        "hmrc_population_band": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_population_band_record_set
+        ),
+        "hmrc_liability_band": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_liability_band_record_set
+        ),
+        "ons_sic_turnover": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_turnover_record_set
+        ),
+        "ons_sic_employment": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_employment_record_set
+        ),
+        "hmrc_population_sic": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_population_sic_record_set
+        ),
+        "hmrc_liability_sic": DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_liability_sic_record_set,
+        **overrides,
+    }
+    return {
+        "targets": [
+            {
+                "target_id": target_id,
+                "ledger_selector": {"record_set_id": record_sets[logical_key]},
+            }
+            for logical_key, target_id in UK_FIRM_TARGET_IDS.items()
+        ]
+    }
+
+
+def _replace_fact_record_set(
+    facts: list[dict[str, object]],
+    *,
+    old_record_set_id: str,
+    new_record_set_id: str,
+) -> list[dict[str, object]]:
+    updated_facts: list[dict[str, object]] = []
+    for fact in facts:
+        updated = {**fact, "layout": dict(fact["layout"])}
+        if updated["layout"]["record_set_id"] == old_record_set_id:
+            updated["layout"]["record_set_id"] = new_record_set_id
+        updated_facts.append(updated)
+    return updated_facts
 
 
 def _ledger_facts() -> list[dict[str, object]]:

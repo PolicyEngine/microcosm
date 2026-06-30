@@ -55,30 +55,67 @@ INPUT_FILES: dict[str, str] = {
     "hmrc_liability_band": "hmrc_vat_liability_by_turnover_band.csv",
     "hmrc_liability_sector": "hmrc_vat_liability_by_sector.csv",
 }
-LEDGER_ONS_TURNOVER_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_turnover_band"
+UK_FIRM_TARGET_IDS: dict[str, str] = {
+    "ons_turnover": "ons.uk_business.enterprise_count.turnover_bands",
+    "ons_employment": "ons.uk_business.enterprise_count.employment_bands",
+    "hmrc_population_band": "hmrc.vat.registered_trader_count.turnover_bands",
+    "hmrc_liability_band": "hmrc.vat.net_liability.turnover_bands",
+    "ons_sic_turnover": "ons.uk_business.enterprise_count.sic_turnover_bands",
+    "ons_sic_employment": "ons.uk_business.enterprise_count.sic_employment_bands",
+    "hmrc_population_sic": "hmrc.vat.registered_trader_count.sic_sectors",
+    "hmrc_liability_sic": "hmrc.vat.net_liability.sic_sectors",
+}
+
+
+@dataclass(frozen=True)
+class UKFirmLedgerTargetProfile:
+    """Ledger record-set selectors for the ``uk_firms`` target profile."""
+
+    ons_turnover_record_set: str
+    ons_employment_record_set: str
+    hmrc_population_band_record_set: str
+    hmrc_liability_band_record_set: str
+    ons_sic_turnover_record_set: str
+    ons_sic_employment_record_set: str
+    hmrc_population_sic_record_set: str
+    hmrc_liability_sic_record_set: str
+
+
+DEFAULT_UK_FIRM_TARGET_PROFILE = UKFirmLedgerTargetProfile(
+    ons_turnover_record_set="ons.uk_business.cy2025.enterprise_count.by_turnover_band",
+    ons_employment_record_set="ons.uk_business.cy2025.enterprise_count.by_employment_band",
+    hmrc_population_band_record_set=(
+        "hmrc.vat.fy2024_25.registered_trader_count.by_turnover_band"
+    ),
+    hmrc_liability_band_record_set=(
+        "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
+    ),
+    ons_sic_turnover_record_set=(
+        "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band"
+    ),
+    ons_sic_employment_record_set=(
+        "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band"
+    ),
+    hmrc_population_sic_record_set=(
+        "hmrc.vat.fy2024_25.registered_trader_count.by_sic"
+    ),
+    hmrc_liability_sic_record_set="hmrc.vat.fy2024_25.net_liability.by_sic",
 )
-LEDGER_ONS_EMPLOYMENT_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_employment_band"
-)
-LEDGER_ONS_SIC_TURNOVER_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band"
-)
-LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band"
-)
-LEDGER_HMRC_POPULATION_RECORD_SET = (
-    "hmrc.vat.fy2024_25.registered_trader_count.by_turnover_band"
-)
-LEDGER_HMRC_LIABILITY_RECORD_SET = (
-    "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
-)
-LEDGER_HMRC_POPULATION_SIC_RECORD_SET = (
-    "hmrc.vat.fy2024_25.registered_trader_count.by_sic"
-)
-LEDGER_HMRC_LIABILITY_SIC_RECORD_SET = (
-    "hmrc.vat.fy2024_25.net_liability.by_sic"
-)
+
+_UK_FIRM_TARGET_PROFILE_FIELDS: dict[str, str] = {
+    "ons_turnover": "ons_turnover_record_set",
+    "ons_employment": "ons_employment_record_set",
+    "hmrc_population_band": "hmrc_population_band_record_set",
+    "hmrc_liability_band": "hmrc_liability_band_record_set",
+    "ons_sic_turnover": "ons_sic_turnover_record_set",
+    "ons_sic_employment": "ons_sic_employment_record_set",
+    "hmrc_population_sic": "hmrc_population_sic_record_set",
+    "hmrc_liability_sic": "hmrc_liability_sic_record_set",
+}
+
+# These maps translate Ledger value IDs into the generator's temporary support
+# matrix. The source selectors above are profile-owned; support layout should be
+# the next piece lifted into a declarative spec.
 LEDGER_ONS_TURNOVER_BANDS: dict[str, str] = {
     "0_49k": "0-49",
     "50_99k": "50-99",
@@ -355,10 +392,64 @@ def uk_firm_source_data_from_frames(
     )
 
 
+def uk_firm_target_profile_from_mapping(
+    raw: Mapping[str, Any],
+) -> UKFirmLedgerTargetProfile:
+    """Extract UK firm record-set selectors from a Ledger target profile."""
+
+    target_rows = raw.get("targets")
+    if not isinstance(target_rows, Iterable) or isinstance(
+        target_rows, str | bytes | Mapping
+    ):
+        raise ValueError("UK firm target profile must contain a targets list.")
+
+    targets_by_id: dict[str, Mapping[str, Any]] = {}
+    for row in target_rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("UK firm target profile targets must be objects.")
+        target_id = row.get("target_id")
+        if isinstance(target_id, str):
+            targets_by_id[target_id] = row
+
+    record_sets: dict[str, str] = {}
+    for logical_key, target_id in UK_FIRM_TARGET_IDS.items():
+        target = targets_by_id.get(target_id)
+        if target is None:
+            raise ValueError(f"UK firm target profile missing target {target_id!r}.")
+
+        selector = target.get("ledger_selector")
+        if not isinstance(selector, Mapping):
+            raise ValueError(
+                f"UK firm target {target_id!r} must define ledger_selector."
+            )
+
+        record_set_id = selector.get("record_set_id")
+        if not isinstance(record_set_id, str) or not record_set_id:
+            raise ValueError(
+                f"UK firm target {target_id!r} must define "
+                "ledger_selector.record_set_id."
+            )
+
+        record_sets[_UK_FIRM_TARGET_PROFILE_FIELDS[logical_key]] = record_set_id
+
+    return UKFirmLedgerTargetProfile(**record_sets)
+
+
+def _coerce_uk_firm_target_profile(
+    target_profile: UKFirmLedgerTargetProfile | Mapping[str, Any] | None,
+) -> UKFirmLedgerTargetProfile:
+    if target_profile is None:
+        return DEFAULT_UK_FIRM_TARGET_PROFILE
+    if isinstance(target_profile, UKFirmLedgerTargetProfile):
+        return target_profile
+    return uk_firm_target_profile_from_mapping(target_profile)
+
+
 def uk_firm_source_data_from_ledger_facts(
     facts: Iterable[Mapping[str, Any] | object],
     *,
     data_vintage: str = "2024-25",
+    target_profile: UKFirmLedgerTargetProfile | Mapping[str, Any] | None = None,
 ) -> UKFirmSourceData:
     """Build UK firm inputs from Ledger consumer facts.
 
@@ -368,30 +459,31 @@ def uk_firm_source_data_from_ledger_facts(
     contract while firm support is being migrated.
     """
 
+    profile = _coerce_uk_firm_target_profile(target_profile)
     fact_rows = tuple(facts)
     ons_turnover = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_SIC_TURNOVER_RECORD_SET,
+        record_set_id=profile.ons_sic_turnover_record_set,
         band_map=LEDGER_ONS_TURNOVER_BANDS,
         band_dimension="uk.firm.turnover_band",
         table_name="ONS SIC turnover",
     )
     ons_employment = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET,
+        record_set_id=profile.ons_sic_employment_record_set,
         band_map=LEDGER_ONS_EMPLOYMENT_BANDS,
         band_dimension="uk.firm.employment_band",
         table_name="ONS SIC employment",
     )
     hmrc_population_values = _ledger_values_by_band(
         fact_rows,
-        record_set_id=LEDGER_HMRC_POPULATION_RECORD_SET,
+        record_set_id=profile.hmrc_population_band_record_set,
         measure_id="vat_registered_trader_count",
         band_map=LEDGER_HMRC_BANDS,
     )
     hmrc_liability_values_gbp = _ledger_values_by_band(
         fact_rows,
-        record_set_id=LEDGER_HMRC_LIABILITY_RECORD_SET,
+        record_set_id=profile.hmrc_liability_band_record_set,
         measure_id="net_vat_liability",
         band_map=LEDGER_HMRC_BANDS,
     )
@@ -404,7 +496,7 @@ def uk_firm_source_data_from_ledger_facts(
     )
     hmrc_population_sector = _ledger_sic_series(
         fact_rows,
-        record_set_id=LEDGER_HMRC_POPULATION_SIC_RECORD_SET,
+        record_set_id=profile.hmrc_population_sic_record_set,
         measure_id="vat_registered_trader_count",
         data_vintage=data_vintage,
         value_scale=1.0,
@@ -414,7 +506,7 @@ def uk_firm_source_data_from_ledger_facts(
     )
     hmrc_liability_sector = _ledger_sic_series(
         fact_rows,
-        record_set_id=LEDGER_HMRC_LIABILITY_SIC_RECORD_SET,
+        record_set_id=profile.hmrc_liability_sic_record_set,
         measure_id="net_vat_liability",
         data_vintage=data_vintage,
         value_scale=1 / 1_000_000.0,
