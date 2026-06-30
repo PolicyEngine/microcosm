@@ -146,10 +146,14 @@ class CalibrationResult:
             weights are :class:`~populace.frame.WeightKind.CALIBRATED`.
         weight_entity: The entity whose weights were calibrated.
         weights: The calibrated weight values (also on :attr:`frame`).
-        initial_weights: The input weight values (the starting point).
+        initial_weights: The input weight values. These remain the frame's
+            original weights even when the optimizer is initialized from
+            ``warm_start_weights``.
         diagnostics: Per-target :class:`TargetDiagnostic`, aligned to the
             compiled problem rows.
-        loss_trajectory: The loss at each epoch (length ``epochs``).
+        loss_trajectory: The optimizer-start loss at each epoch (length
+            ``epochs``). With no warm start, the first value is the input-weight
+            loss; with a warm start, the first value is the warm-start loss.
         skipped: Targets that could not be compiled (carried through from the
             matrix build), each with its reason.
         problem: The compiled :class:`CalibrationProblem` (matrix, b, names).
@@ -188,7 +192,12 @@ class CalibrationResult:
 
     @property
     def initial_loss(self) -> float:
-        """The capped weighted-MAPE calibration loss under the input weights."""
+        """The capped weighted-MAPE loss at the optimizer's starting weights.
+
+        Without ``warm_start_weights`` this is the input-weight loss. With a warm
+        start this is the supplied starting vector's loss; per-target diagnostic
+        ``initial_estimate`` values still describe the original input weights.
+        """
         return float(self.loss_trajectory[0])
 
     @property
@@ -473,6 +482,36 @@ def _build_diagnostics(
     return tuple(diagnostics)
 
 
+def _prepare_warm_start_weights(
+    initial_weights: np.ndarray,
+    warm_start_weights: np.ndarray | None,
+    *,
+    conserve_mass: bool,
+    max_weight_ratio: float | None,
+) -> np.ndarray:
+    w0 = np.asarray(initial_weights, dtype=np.float64)
+    if warm_start_weights is None:
+        return w0.copy()
+    start = np.asarray(warm_start_weights, dtype=np.float64)
+    if start.shape != w0.shape:
+        raise ValueError(
+            "warm_start_weights shape must match the calibration weights: "
+            f"got {start.shape}, expected {w0.shape}."
+        )
+    if not np.isfinite(start).all():
+        raise ValueError("warm_start_weights must be finite.")
+    if (start <= 0.0).any():
+        raise ValueError(
+            "warm_start_weights must be strictly positive for log-weight optimization."
+        )
+    prepared = start.copy()
+    if max_weight_ratio is not None:
+        prepared = np.minimum(prepared, max_weight_ratio * w0)
+    if conserve_mass:
+        prepared = _project_to_total(prepared, float(w0.sum()), max_weight_ratio, w0)
+    return prepared
+
+
 def _optimize(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -481,6 +520,7 @@ def _optimize(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    warm_start_weights: np.ndarray | None = None,
     epochs: int,
     learning_rate: float,
     conserve_mass: bool,
@@ -502,11 +542,17 @@ def _optimize(
     returned vector exactly, not merely in expectation.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
+    start = _prepare_warm_start_weights(
+        w0,
+        warm_start_weights,
+        conserve_mass=conserve_mass,
+        max_weight_ratio=max_weight_ratio,
+    )
     total0 = float(w0.sum())
     # Same prune threshold the result's n_nonzero uses, so "pruned" here means
     # exactly what the reported non-zero count means.
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
-    log_w = torch.tensor(np.log(w0), dtype=torch.float32, requires_grad=True)
+    log_w = torch.tensor(np.log(start), dtype=torch.float32, requires_grad=True)
 
     gates: HardConcrete | None = None
     params: list[torch.Tensor] = [log_w]
@@ -621,6 +667,7 @@ def _optimize_proximal(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    warm_start_weights: np.ndarray | None = None,
     epochs: int,
     learning_rate: float,
     conserve_mass: bool,
@@ -645,6 +692,12 @@ def _optimize_proximal(
     coefficient.
     """
     w0 = np.asarray(initial_weights, dtype=np.float64)
+    start = _prepare_warm_start_weights(
+        w0,
+        warm_start_weights,
+        conserve_mass=conserve_mass,
+        max_weight_ratio=max_weight_ratio,
+    )
     total0 = float(w0.sum())
     n = w0.size
     w0_t = torch.tensor(w0, dtype=torch.float32)
@@ -653,7 +706,7 @@ def _optimize_proximal(
     # coordinate's step to ~lr, which keeps even untargeted records alive and
     # defeats the soft-threshold. Plain gradient lets low-pull records fall to the
     # prox, which is what selects the sparse subset.
-    ratio = torch.ones(n, dtype=torch.float32, requires_grad=True)
+    ratio = torch.tensor(start / w0, dtype=torch.float32, requires_grad=True)
     trajectory = np.empty(epochs, dtype=np.float64)
     for epoch in range(epochs):
         if ratio.grad is not None:
@@ -980,6 +1033,7 @@ def calibrate(
     target_loss_weights: np.ndarray | None = None,
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
@@ -1057,6 +1111,12 @@ def calibrate(
             Supplying scales is mainly for harnesses and specialized releases.
         target_loss_cap: Positive per-row cap on scaled absolute misses. The
             default caps each target's objective contribution at 1000%.
+        warm_start_weights: Optional positive starting weights aligned to
+            ``weight_entity``. These initialize the optimizer only; the frame's
+            original weights still define mass conservation, hard ratio caps,
+            diagnostics' initial estimates, and release provenance. Warm starts
+            are not yet supported with L0 gates or record-budget search because
+            that would also need persisted gate state.
         progress_callback: Optional observer called during optimization with
             JSON-serializable dictionaries such as ``{"kind":
             "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
@@ -1140,6 +1200,14 @@ def calibrate(
             "method='prox' does not implement l2_lambda; use method='adam' for the "
             "L2 concentration penalty or pass l2_lambda=0."
         )
+    if warm_start_weights is not None and (
+        l0_lambda > 0.0 or target_records is not None
+    ):
+        raise ValueError(
+            "warm_start_weights is not supported with L0 pruning or target_records "
+            "budget search yet; persisted gate state is needed for a faithful "
+            "warm start of sparse calibration."
+        )
     if budget_iters <= 0:
         raise ValueError(f"budget_iters must be positive, got {budget_iters!r}.")
     target_loss_cap = _validate_target_loss_cap(target_loss_cap)
@@ -1221,6 +1289,7 @@ def calibrate(
             learning_rate=learning_rate,
             conserve_mass=(mass == CONSERVE_MASS),
             max_weight_ratio=max_weight_ratio,
+            warm_start_weights=warm_start_weights,
             l1_lambda=l1_lambda,
             prune_atol=prune_atol,
             progress_callback=progress_callback,
@@ -1278,6 +1347,7 @@ def calibrate(
             learning_rate=learning_rate,
             conserve_mass=(mass == CONSERVE_MASS),
             max_weight_ratio=max_weight_ratio,
+            warm_start_weights=warm_start_weights,
             l0_lambda=effective_l0,
             l2_lambda=l2_lambda,
             target_records=target_records,
@@ -1345,6 +1415,10 @@ def calibrate(
                 kind=target_loss_scale_kind,
                 target_loss_cap=target_loss_cap,
             ),
+            "warm_start_weights": {
+                "enabled": warm_start_weights is not None,
+                "kind": "explicit" if warm_start_weights is not None else None,
+            },
             "matrix_format": (
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),

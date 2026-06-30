@@ -23,6 +23,7 @@ import sys
 import time
 import tomllib
 from collections.abc import Iterable, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,31 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
+
+
+def _collect_batch_garbage() -> None:
+    """Keep batch loops tidy without traversing the full object graph."""
+
+    gc.collect(0)
+
+
+@contextmanager
+def _automatic_gc_suspended():
+    """Avoid surprise full-graph cyclic GC inside memory-heavy PE batches."""
+
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
@@ -394,6 +419,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=512)
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
+    parser.add_argument(
+        "--warm-start-calibration-npz",
+        type=Path,
+        help=(
+            "Optional populace_us_2024_calibration.npz artifact from an earlier "
+            "run on the same base frame. The builder validates that the stored "
+            "initial_household_weight vector matches the current calibration "
+            "frame before using household_weight as the optimizer start."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -426,6 +461,26 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Diagnostic only: disable the standard target-materialization "
             "checkpoint. Release builds should leave caching enabled."
+        ),
+    )
+    parser.add_argument(
+        "--target-frame-checkpoint",
+        type=Path,
+        help=(
+            "Override the standard materialized target-frame checkpoint path. "
+            "Defaults to <out>/artifacts/target_frame_checkpoint.h5. This "
+            "checkpoint stores the full post-source, post-target-materialized "
+            "Frame used by calibration, so warm-start-only reruns can skip "
+            "PolicyEngine materialization entirely when the input identity "
+            "matches."
+        ),
+    )
+    parser.add_argument(
+        "--no-target-frame-checkpoint",
+        action="store_true",
+        help=(
+            "Diagnostic only: disable the full target-frame checkpoint. "
+            "This does not affect the lower-level per-reform target cache."
         ),
     )
     parser.add_argument(
@@ -718,6 +773,241 @@ def _write_reform_income_tax_cache(
     os.replace(tmp_values_path, values_path)
     os.replace(tmp_metadata_path, metadata_path)
     return digest, values_path
+
+
+def _target_frame_checkpoint_identity(
+    *,
+    base_dataset_sha256: str,
+    policyengine_us_version: str,
+    seed: int,
+    target_period: int,
+    target_registry_version: str,
+    congressional_district_vintage_crosswalk_sha256: object,
+) -> dict[str, object]:
+    return {
+        "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
+        "kind": "us_fiscal_refresh_target_frame",
+        "country": "us",
+        "base_dataset_sha256": str(base_dataset_sha256),
+        "policyengine_us_version": str(policyengine_us_version),
+        "seed": int(seed),
+        "target_period": int(target_period),
+        "target_registry_version": str(target_registry_version),
+        "congressional_district_vintage_crosswalk_sha256": (
+            None
+            if congressional_district_vintage_crosswalk_sha256 is None
+            else str(congressional_district_vintage_crosswalk_sha256)
+        ),
+    }
+
+
+def _target_frame_checkpoint_digest(identity: Mapping[str, object]) -> str:
+    return hashlib.sha256(_strict_json_bytes(identity)).hexdigest()
+
+
+def _write_target_frame_checkpoint(
+    path: Path,
+    *,
+    frame: Frame,
+    identity: Mapping[str, object],
+    compilation: Mapping[str, object],
+) -> dict[str, object]:
+    import h5py
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    with h5py.File(tmp_path, "w") as h5:
+        h5.attrs["schema_version"] = TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION
+        h5.attrs["identity_json"] = _strict_json_text(identity)
+        h5.attrs["identity_sha256"] = _target_frame_checkpoint_digest(identity)
+        h5.attrs["compilation_json"] = _strict_json_text(compilation)
+        tables_group = h5.create_group("tables")
+        for entity in frame.entities:
+            _write_checkpoint_dataframe(
+                tables_group.create_group(entity), frame.table(entity)
+            )
+        weights_group = h5.create_group("weights")
+        weights_group.attrs["entities_json"] = _strict_json_text(
+            frame.weighted_entities
+        )
+        for entity in frame.weighted_entities:
+            weights = frame.weights_for(entity)
+            entity_group = weights_group.create_group(entity)
+            entity_group.attrs["kind"] = weights.kind.value
+            entity_group.create_dataset(
+                "values",
+                data=np.asarray(weights.values, dtype=np.float64),
+                compression="gzip",
+            )
+        _write_checkpoint_series(h5.create_group("strata"), frame.strata)
+    os.replace(tmp_path, path)
+    return {
+        "enabled": True,
+        "status": "miss_written",
+        "path": str(path),
+        "identity_sha256": _target_frame_checkpoint_digest(identity),
+        "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+    }
+
+
+def _read_target_frame_checkpoint(
+    path: Path,
+    *,
+    identity: Mapping[str, object],
+    target_specs: tuple,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[Frame, TargetRegistry, dict[str, object]] | None:
+    if not path.exists():
+        return None
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        schema_version = int(h5.attrs.get("schema_version", -1))
+        if schema_version != TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION:
+            raise RuntimeError(
+                "Target-frame checkpoint schema mismatch for "
+                f"{path}: got {schema_version}, expected "
+                f"{TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION}."
+            )
+        stored_identity = json.loads(str(h5.attrs["identity_json"]))
+        if stored_identity != dict(identity):
+            return None
+        stored_digest = str(h5.attrs.get("identity_sha256", ""))
+        expected_digest = _target_frame_checkpoint_digest(identity)
+        if stored_digest != expected_digest:
+            raise RuntimeError(
+                "Target-frame checkpoint identity hash mismatch for "
+                f"{path}: got {stored_digest}, expected {expected_digest}."
+            )
+        tables_group = h5["tables"]
+        tables = {
+            entity: _read_checkpoint_dataframe(tables_group[entity])
+            for entity in US_SCHEMA.entities
+        }
+        weights_group = h5["weights"]
+        weighted_entities = json.loads(str(weights_group.attrs["entities_json"]))
+        weights = {}
+        for entity in weighted_entities:
+            entity_group = weights_group[entity]
+            kind = WeightKind(str(entity_group.attrs["kind"]))
+            values = np.asarray(entity_group["values"], dtype=np.float64)
+            weights[str(entity)] = Weights(values, kind)
+        strata = _read_checkpoint_series(h5["strata"])
+        stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
+    frame = Frame(tables, US_SCHEMA, weights, strata)
+    registry, compilation = _compile_materialized_target_registry(
+        frame,
+        target_specs,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    compilation = {
+        **compilation,
+        "target_frame_checkpoint": {
+            "enabled": True,
+            "status": "hit",
+            "path": str(path),
+            "identity_sha256": _target_frame_checkpoint_digest(identity),
+            "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "stored_compilation": stored_compilation,
+        },
+        "target_materialization_cache": {
+            "enabled": False,
+            "status": "skipped_target_frame_checkpoint_hit",
+        },
+    }
+    return frame, registry, compilation
+
+
+def _write_checkpoint_dataframe(group, frame: pd.DataFrame) -> None:
+    group.attrs["columns_json"] = _strict_json_text(
+        [str(column) for column in frame.columns]
+    )
+    columns_group = group.create_group("columns")
+    for index, column in enumerate(frame.columns):
+        column_group = columns_group.create_group(f"{index:05d}")
+        column_group.attrs["name"] = str(column)
+        _write_checkpoint_column(column_group, frame[column])
+
+
+def _read_checkpoint_dataframe(group) -> pd.DataFrame:
+    columns = json.loads(str(group.attrs["columns_json"]))
+    data: dict[str, np.ndarray] = {}
+    columns_group = group["columns"]
+    for index, column in enumerate(columns):
+        column_group = columns_group[f"{index:05d}"]
+        stored_name = str(column_group.attrs["name"])
+        if stored_name != column:
+            raise RuntimeError(
+                "Target-frame checkpoint column order mismatch: "
+                f"slot {index} is {stored_name!r}, expected {column!r}."
+            )
+        data[column] = _read_checkpoint_column(column_group)
+    return pd.DataFrame(data, columns=columns)
+
+
+def _write_checkpoint_series(group, series: pd.Series) -> None:
+    group.attrs["name"] = "" if series.name is None else str(series.name)
+    _write_checkpoint_column(group, series)
+
+
+def _read_checkpoint_series(group) -> pd.Series:
+    return pd.Series(
+        _read_checkpoint_column(group), name=str(group.attrs.get("name", "")) or None
+    )
+
+
+def _write_checkpoint_column(group, series: pd.Series) -> None:
+    import h5py
+
+    dtype = series.dtype
+    group.attrs["pandas_dtype"] = str(dtype)
+    if pd.api.types.is_bool_dtype(dtype):
+        group.attrs["storage_kind"] = "bool"
+        values = series.to_numpy(dtype=np.bool_)
+        group.create_dataset("values", data=values, compression="gzip")
+    elif pd.api.types.is_integer_dtype(dtype):
+        if bool(series.isna().any()):
+            raise ValueError(
+                f"Target-frame checkpoint cannot serialize missing integer column "
+                f"{series.name!r}."
+            )
+        group.attrs["storage_kind"] = "int64"
+        values = series.to_numpy(dtype=np.int64)
+        group.create_dataset("values", data=values, compression="gzip")
+    elif pd.api.types.is_float_dtype(dtype):
+        group.attrs["storage_kind"] = "float64"
+        values = series.to_numpy(dtype=np.float64)
+        group.create_dataset("values", data=values, compression="gzip")
+    else:
+        group.attrs["storage_kind"] = "string"
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        values = np.asarray(
+            [
+                "" if pd.isna(value) else str(value)
+                for value in series.to_numpy(dtype=object)
+            ],
+            dtype=object,
+        )
+        group.create_dataset(
+            "values", data=values, dtype=string_dtype, compression="gzip"
+        )
+
+
+def _read_checkpoint_column(group) -> np.ndarray:
+    storage_kind = str(group.attrs["storage_kind"])
+    dataset = group["values"]
+    if storage_kind == "string":
+        return np.asarray(dataset.asstr()[()], dtype=object)
+    if storage_kind == "bool":
+        return np.asarray(dataset[()], dtype=np.bool_)
+    if storage_kind == "int64":
+        return np.asarray(dataset[()], dtype=np.int64)
+    if storage_kind == "float64":
+        return np.asarray(dataset[()], dtype=np.float64)
+    raise RuntimeError(f"Unknown checkpoint storage kind {storage_kind!r}.")
 
 
 def _local_workspace_package_version(package: str) -> str:
@@ -1231,40 +1521,41 @@ def _aca_source_tax_unit_table_batched(
         )
 
     for household_positions in batches:
-        full_batch = len(household_positions) == n_households
-        batch_frame = (
-            frame
-            if full_batch
-            else _select_households_by_position(frame, household_positions)
-        )
-        batch_simulation = microsimulation_cls(
-            dataset=_dataset_from_frame(
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = microsimulation_cls(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
                 batch_frame,
-                assert_no_formula_owned_columns=False,
+                target_tables,
+                simulation=batch_simulation,
             )
-        )
-        batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
-            batch_frame,
-            target_tables,
-            simulation=batch_simulation,
-        )
-        full_positions = tax_unit_positions.reindex(
-            batch_tax_unit["tax_unit_id"].to_numpy()
-        ).to_numpy()
-        if np.isnan(full_positions).any():
-            raise RuntimeError(
-                "ACA source batch produced tax_unit_id values not present in "
-                "the full tax_unit table."
-            )
-        full_positions = full_positions.astype(np.int64)
-        for column in fill_columns:
-            tax_unit.iloc[
-                full_positions,
-                tax_unit.columns.get_loc(column),
-            ] = batch_tax_unit[column].to_numpy()
-        batch_simulation._invalidate_all_caches()
-        del batch_tax_unit, batch_simulation, batch_frame
-        gc.collect()
+            full_positions = tax_unit_positions.reindex(
+                batch_tax_unit["tax_unit_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(full_positions).any():
+                raise RuntimeError(
+                    "ACA source batch produced tax_unit_id values not present in "
+                    "the full tax_unit table."
+                )
+            full_positions = full_positions.astype(np.int64)
+            for column in fill_columns:
+                tax_unit.iloc[
+                    full_positions,
+                    tax_unit.columns.get_loc(column),
+                ] = batch_tax_unit[column].to_numpy()
+            batch_simulation._invalidate_all_caches()
+            del batch_tax_unit, batch_simulation, batch_frame
+        _collect_batch_garbage()
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
@@ -1525,6 +1816,108 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
+class _BatchedScalarTotal:
+    def __init__(self, value: float):
+        self.value = float(value)
+
+    def sum(self) -> float:
+        return self.value
+
+
+class _BatchedReformValidationSimulation:
+    def __init__(
+        self,
+        frame: Frame,
+        *,
+        reform,
+        maximum_microsim_batch_size: int | None,
+        microsimulation_cls,
+        dataset_from_frame,
+    ):
+        self._frame = frame
+        self._reform = reform
+        self._maximum_microsim_batch_size = maximum_microsim_batch_size
+        self._microsimulation_cls = microsimulation_cls
+        self._dataset_from_frame = dataset_from_frame
+        self._cache: dict[tuple[str, int], float] = {}
+
+    def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
+        key = (str(measure), int(period))
+        if key not in self._cache:
+            self._cache[key] = self._calculate_total(str(measure), int(period))
+        return _BatchedScalarTotal(self._cache[key])
+
+    def _calculate_total(self, measure: str, period: int) -> float:
+        n_households = self._frame.n("household")
+        batches = tuple(
+            _household_position_batches(
+                n_households,
+                self._maximum_microsim_batch_size,
+            )
+        )
+        if len(batches) > 1:
+            print(
+                "Scoring reform validation measure "
+                f"{measure} in {len(batches)} batches of up to "
+                f"{self._maximum_microsim_batch_size:,} households.",
+                flush=True,
+            )
+        total = 0.0
+        for household_positions in batches:
+            with _automatic_gc_suspended():
+                full_batch = len(household_positions) == n_households
+                batch_frame = (
+                    self._frame
+                    if full_batch
+                    else _select_households_by_position(
+                        self._frame, household_positions
+                    )
+                )
+                dataset = self._dataset_from_frame(batch_frame)
+                simulation = (
+                    self._microsimulation_cls(dataset=dataset)
+                    if self._reform is None
+                    else self._microsimulation_cls(dataset=dataset, reform=self._reform)
+                )
+                total += float(simulation.calculate(measure, period).sum())
+                if hasattr(simulation, "_invalidate_all_caches"):
+                    simulation._invalidate_all_caches()
+                del simulation, dataset, batch_frame
+            _collect_batch_garbage()
+        return total
+
+
+def _batched_reform_validation_simulate_factory_from_frame(
+    frame: Frame,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    microsimulation_cls=None,
+    dataset_from_frame=None,
+):
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
+
+        microsimulation_cls = Microsimulation
+    if dataset_from_frame is None:
+
+        def dataset_from_frame(batch_frame: Frame):
+            return _dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
+
+    def simulate(reform):
+        return _BatchedReformValidationSimulation(
+            frame,
+            reform=reform,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            microsimulation_cls=microsimulation_cls,
+            dataset_from_frame=dataset_from_frame,
+        )
+
+    return simulate
+
+
 def _reform_household_income_tax(
     *,
     base_frame: Frame,
@@ -1546,29 +1939,30 @@ def _reform_household_income_tax(
             flush=True,
         )
     for household_positions in batches:
-        full_batch = len(household_positions) == n_households
-        batch_frame = (
-            base_frame
-            if full_batch
-            else _select_households_by_position(base_frame, household_positions)
-        )
-        batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
-        reformed_dataset = _dataset_from_frame(
-            batch_frame,
-            zero_variables=(reform_spec.neutralized_variable,),
-            system=system,
-            assert_no_formula_owned_columns=False,
-        )
-        reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
-        batch_income_tax = _collapse_tax_unit(
-            _calculate_array(reformed, "income_tax"),
-            batch_tax_unit_positions,
-            batch_frame.n("household"),
-        )
-        reform_income_tax[household_positions] = batch_income_tax
-        reformed._invalidate_all_caches()
-        del batch_income_tax, reformed, reformed_dataset, batch_frame
-        gc.collect()
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                base_frame
+                if full_batch
+                else _select_households_by_position(base_frame, household_positions)
+            )
+            batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
+            reformed_dataset = _dataset_from_frame(
+                batch_frame,
+                zero_variables=(reform_spec.neutralized_variable,),
+                system=system,
+                assert_no_formula_owned_columns=False,
+            )
+            reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
+            batch_income_tax = _collapse_tax_unit(
+                _calculate_array(reformed, "income_tax"),
+                batch_tax_unit_positions,
+                batch_frame.n("household"),
+            )
+            reform_income_tax[household_positions] = batch_income_tax
+            reformed._invalidate_all_caches()
+            del batch_income_tax, reformed, reformed_dataset, batch_frame
+        _collect_batch_garbage()
     return reform_income_tax
 
 
@@ -1966,6 +2360,95 @@ def _make_zero_variable_reform(system, variable_name: str):
     return NeutralizeVariableReform
 
 
+def _compile_materialized_target_registry(
+    target_frame: Frame,
+    target_specs: tuple,
+    *,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[TargetRegistry, dict[str, object]]:
+    household = target_frame.table("household")
+    compileable_specs = [
+        spec for spec in target_specs if _target_spec_is_materialized(spec, household)
+    ]
+    registry = TargetRegistry(compileable_specs, country="us")
+    dropped_specs = tuple(
+        spec for spec in target_specs if spec not in compileable_specs
+    )
+    dropped = sorted(spec.name for spec in dropped_specs)
+    diagnostic_only_dropped = sorted(
+        spec.name for spec in dropped_specs if _target_is_congressional_district(spec)
+    )
+    return registry, {
+        "declared_targets": len(target_specs),
+        "compiled_candidate_targets": len(compileable_specs),
+        "dropped_target_names": dropped,
+        "gate_congressional_district_targets": (gate_congressional_district_targets),
+        "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
+    }
+
+
+def _load_or_materialize_target_frame(
+    base_frame: Frame,
+    target_specs: tuple,
+    *,
+    target_frame_checkpoint_path: Path | None = None,
+    target_frame_checkpoint_identity: Mapping[str, object] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    target_materialization_cache_dir: Path | None = None,
+    target_materialization_cache_context: Mapping[str, object] | None = None,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is None
+    ):
+        raise ValueError(
+            "target_frame_checkpoint_identity is required when "
+            "target_frame_checkpoint_path is set."
+        )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is not None
+    ):
+        loaded = _read_target_frame_checkpoint(
+            target_frame_checkpoint_path,
+            identity=target_frame_checkpoint_identity,
+            target_specs=target_specs,
+            gate_congressional_district_targets=gate_congressional_district_targets,
+        )
+        if loaded is not None:
+            return loaded
+
+    target_frame, registry, compilation = _materialize_target_frame(
+        base_frame,
+        target_specs,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        target_materialization_cache_dir=target_materialization_cache_dir,
+        target_materialization_cache_context=target_materialization_cache_context,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_identity is not None
+    ):
+        checkpoint_payload = _write_target_frame_checkpoint(
+            target_frame_checkpoint_path,
+            frame=target_frame,
+            identity=target_frame_checkpoint_identity,
+            compilation=compilation,
+        )
+    else:
+        checkpoint_payload = {
+            "enabled": False,
+            "status": "disabled",
+        }
+    compilation = {
+        **dict(compilation),
+        "target_frame_checkpoint": checkpoint_payload,
+    }
+    return target_frame, registry, compilation
+
+
 def _materialize_target_frame(
     base_frame: Frame,
     target_specs: tuple,
@@ -2264,7 +2747,7 @@ def _materialize_target_frame(
     )
     simulation._invalidate_all_caches()
     del simulation, dataset
-    gc.collect()
+    _collect_batch_garbage()
     requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
@@ -2359,38 +2842,27 @@ def _materialize_target_frame(
             entries.append(cache_entry)
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
         del reform_income_tax
-        gc.collect()
+        _collect_batch_garbage()
 
-    compileable_specs = [
-        spec for spec in target_specs if _target_spec_is_materialized(spec, hh)
-    ]
-    registry = TargetRegistry(compileable_specs, country="us")
-    dropped_specs = tuple(
-        spec for spec in target_specs if spec not in compileable_specs
-    )
-    dropped = sorted(spec.name for spec in dropped_specs)
-    diagnostic_only_dropped = sorted(
-        spec.name for spec in dropped_specs if _target_is_congressional_district(spec)
-    )
     target_frame = Frame(
         materialized,
         US_SCHEMA,
         {"household": base_frame.weights_for("household")},
         base_frame.strata,
     )
+    registry, compilation = _compile_materialized_target_registry(
+        target_frame,
+        target_specs,
+        gate_congressional_district_targets=gate_congressional_district_targets,
+    )
+    compilation = {
+        **compilation,
+        "target_materialization_cache": cache_stats,
+    }
     return (
         target_frame,
         registry,
-        {
-            "declared_targets": len(target_specs),
-            "compiled_candidate_targets": len(compileable_specs),
-            "dropped_target_names": dropped,
-            "gate_congressional_district_targets": (
-                gate_congressional_district_targets
-            ),
-            "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
-            "target_materialization_cache": cache_stats,
-        },
+        compilation,
     )
 
 
@@ -2675,6 +3147,72 @@ def _write_npz(path: Path, *, result, registry: TargetRegistry) -> None:
         ),
         registry_version=np.asarray(registry.version),
     )
+
+
+def _load_warm_start_calibration_npz(
+    path: Path,
+    *,
+    expected_initial_weights: np.ndarray,
+) -> tuple[np.ndarray, Mapping[str, object]]:
+    expected_initial = np.asarray(expected_initial_weights, dtype=np.float64)
+    if expected_initial.ndim != 1:
+        raise ValueError(
+            "expected_initial_weights must be a one-dimensional household vector."
+        )
+    if not path.exists():
+        raise FileNotFoundError(f"Warm-start calibration NPZ not found: {path}")
+
+    with np.load(path, allow_pickle=False) as data:
+        required = {"household_weight", "initial_household_weight"}
+        missing = sorted(required - set(data.files))
+        if missing:
+            raise ValueError(
+                f"{path} is missing warm-start calibration arrays: {missing}."
+            )
+        weights = np.asarray(data["household_weight"], dtype=np.float64)
+        stored_initial = np.asarray(data["initial_household_weight"], dtype=np.float64)
+
+    if weights.shape != expected_initial.shape:
+        raise ValueError(
+            "warm-start household_weight shape does not match current calibration "
+            f"frame: got {weights.shape}, expected {expected_initial.shape}."
+        )
+    if stored_initial.shape != expected_initial.shape:
+        raise ValueError(
+            "warm-start initial_household_weight shape does not match current "
+            f"calibration frame: got {stored_initial.shape}, expected "
+            f"{expected_initial.shape}."
+        )
+    if not np.isfinite(weights).all():
+        raise ValueError("warm-start household_weight values must be finite.")
+    if (weights <= 0.0).any():
+        raise ValueError(
+            "warm-start household_weight values must be strictly positive."
+        )
+    if not np.isfinite(stored_initial).all():
+        raise ValueError("warm-start initial_household_weight values must be finite.")
+    if (stored_initial <= 0.0).any():
+        raise ValueError(
+            "warm-start initial_household_weight values must be strictly positive."
+        )
+    delta = np.abs(stored_initial - expected_initial)
+    if not np.allclose(stored_initial, expected_initial, rtol=1e-9, atol=1e-6):
+        raise ValueError(
+            "warm-start calibration was built from different initial household "
+            "weights; refusing to continue a run on a different support frame "
+            "or record order."
+        )
+
+    payload = {
+        "enabled": True,
+        "path": str(path),
+        "sha256": _sha256(path),
+        "n_households": int(weights.shape[0]),
+        "household_weight_sum": float(weights.sum()),
+        "initial_household_weight_sum": float(stored_initial.sum()),
+        "max_abs_initial_household_weight_delta": float(delta.max(initial=0.0)),
+    }
+    return weights, payload
 
 
 def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
@@ -3091,6 +3629,7 @@ def _write_release_calibration_diagnostics(
     audit_export_targets: bool,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
+    warm_start_calibration: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
@@ -3139,6 +3678,11 @@ def _write_release_calibration_diagnostics(
                 else None
             ),
             "support_value_repairs": support_value_repairs,
+            "warm_start_calibration": (
+                dict(warm_start_calibration)
+                if warm_start_calibration is not None
+                else {"enabled": False}
+            ),
             "timing": dict(timing or {}),
             "release_gates": {
                 "passed": not failures,
@@ -3337,6 +3881,7 @@ def _build_manifests(
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     timing: Mapping[str, object] | None = None,
+    warm_start_calibration: Mapping[str, object] | None = None,
     area_artifacts: tuple[AreaArtifactResult, ...] = (),
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
@@ -3363,6 +3908,11 @@ def _build_manifests(
     built_at = datetime.now(UTC).isoformat()
     runtime = _runtime_versions()
     timing_payload = dict(timing or {})
+    warm_start_payload = (
+        dict(warm_start_calibration)
+        if warm_start_calibration is not None
+        else {"enabled": False}
+    )
     manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
@@ -3381,6 +3931,7 @@ def _build_manifests(
         "calibration": {
             "filename": CALIBRATION_FILENAME,
             "sha256": calibration_sha,
+            "warm_start": warm_start_payload,
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -3481,6 +4032,7 @@ def _build_manifests(
                 "version": runtime["policyengine-us"],
             },
             "timing": timing_payload,
+            "warm_start_calibration": warm_start_payload,
             **(
                 {
                     "base_population_scale": {
@@ -3760,6 +4312,13 @@ def main() -> None:
             or artifact_root / "target_materialization_cache"
         )
     )
+    target_frame_checkpoint_path = (
+        None
+        if args.no_target_frame_checkpoint
+        else (
+            args.target_frame_checkpoint or artifact_root / "target_frame_checkpoint.h5"
+        )
+    )
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
@@ -3874,15 +4433,28 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
-    target_frame, registry, compilation = _materialize_target_frame(
+    policyengine_us_version = _package_or_workspace_version("policyengine-us")
+    target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
+        base_dataset_sha256=base_dataset_sha256,
+        policyengine_us_version=policyengine_us_version,
+        seed=args.seed,
+        target_period=PERIOD,
+        target_registry_version=active_target_registry.version,
+        congressional_district_vintage_crosswalk_sha256=(
+            congressional_district_vintage_crosswalk_metadata or {}
+        ).get("sha256"),
+    )
+    target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
         target_specs,
+        target_frame_checkpoint_path=target_frame_checkpoint_path,
+        target_frame_checkpoint_identity=target_frame_checkpoint_identity,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
             "base_dataset_sha256": base_dataset_sha256,
             "build_commit": full_commit,
-            "policyengine_us_version": _package_or_workspace_version("policyengine-us"),
+            "policyengine_us_version": policyengine_us_version,
             "seed": args.seed,
             "target_period": PERIOD,
             "target_registry_version": active_target_registry.version,
@@ -3902,6 +4474,13 @@ def main() -> None:
     timing["target_compilation_seconds"] = (
         time.perf_counter() - target_compilation_started
     )
+    warm_start_weights: np.ndarray | None = None
+    warm_start_calibration: Mapping[str, object] | None = None
+    if args.warm_start_calibration_npz is not None:
+        warm_start_weights, warm_start_calibration = _load_warm_start_calibration_npz(
+            args.warm_start_calibration_npz,
+            expected_initial_weights=target_frame.resolve_weights("household").values,
+        )
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -3910,6 +4489,11 @@ def main() -> None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             n_targets=len(registry),
+            warm_start_calibration=(
+                dict(warm_start_calibration)
+                if warm_start_calibration is not None
+                else {"enabled": False}
+            ),
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
@@ -3923,6 +4507,7 @@ def main() -> None:
         mass="conserve",
         target_loss_weights=_fiscal_target_loss_weights(registry),
         target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        warm_start_weights=warm_start_weights,
         progress_callback=(
             telemetry.calibration_progress if telemetry is not None else None
         ),
@@ -3979,6 +4564,7 @@ def main() -> None:
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
+        warm_start_calibration=warm_start_calibration,
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         timing=timing,
@@ -4138,6 +4724,7 @@ def main() -> None:
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
         timing=timing,
+        warm_start_calibration=warm_start_calibration,
         area_artifacts=area_artifacts,
     )
     if telemetry is not None:
