@@ -25,6 +25,9 @@ us = ["policyengine-us>=1.745.0,<2", "h5py>=3", "microunit>=0.1.0", "tables>=3"]
 # still does not import policyengine-uk at import time.
 uk = ["policyengine-uk>=2.88", "h5py>=3", "tables>=3"]
 
+[project.scripts]
+populace-export-us-l0-refit-h5 = "populace.build.us_runtime.l0_refit_export:main"
+
 [project.urls]
 Homepage = "https://populace.dev"
 Repository = "https://github.com/PolicyEngine/populace"

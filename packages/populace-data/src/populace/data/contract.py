@@ -56,125 +56,6 @@ US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-_US_STATE_ABBREVIATIONS = frozenset(
-    (
-        "AL",
-        "AK",
-        "AZ",
-        "AR",
-        "CA",
-        "CO",
-        "CT",
-        "DE",
-        "DC",
-        "FL",
-        "GA",
-        "HI",
-        "ID",
-        "IL",
-        "IN",
-        "IA",
-        "KS",
-        "KY",
-        "LA",
-        "ME",
-        "MD",
-        "MA",
-        "MI",
-        "MN",
-        "MS",
-        "MO",
-        "MT",
-        "NE",
-        "NV",
-        "NH",
-        "NJ",
-        "NM",
-        "NY",
-        "NC",
-        "ND",
-        "OH",
-        "OK",
-        "OR",
-        "PA",
-        "RI",
-        "SC",
-        "SD",
-        "TN",
-        "TX",
-        "UT",
-        "VT",
-        "VA",
-        "WA",
-        "WV",
-        "WI",
-        "WY",
-    )
-)
-_US_CONGRESSIONAL_DISTRICT_COUNTS = {
-    "AL": 7,
-    "AK": 1,
-    "AZ": 9,
-    "AR": 4,
-    "CA": 52,
-    "CO": 8,
-    "CT": 5,
-    "DE": 1,
-    "DC": 1,
-    "FL": 28,
-    "GA": 14,
-    "HI": 2,
-    "ID": 2,
-    "IL": 17,
-    "IN": 9,
-    "IA": 4,
-    "KS": 4,
-    "KY": 6,
-    "LA": 6,
-    "ME": 2,
-    "MD": 8,
-    "MA": 9,
-    "MI": 13,
-    "MN": 8,
-    "MS": 4,
-    "MO": 8,
-    "MT": 2,
-    "NE": 3,
-    "NV": 4,
-    "NH": 2,
-    "NJ": 12,
-    "NM": 3,
-    "NY": 26,
-    "NC": 14,
-    "ND": 1,
-    "OH": 15,
-    "OK": 5,
-    "OR": 6,
-    "PA": 17,
-    "RI": 2,
-    "SC": 7,
-    "SD": 1,
-    "TN": 9,
-    "TX": 38,
-    "UT": 4,
-    "VT": 1,
-    "VA": 11,
-    "WA": 10,
-    "WV": 2,
-    "WI": 8,
-    "WY": 1,
-}
-_EXPECTED_US_STATE_ARTIFACT_KEYS = frozenset(
-    f"states/{abbreviation}" for abbreviation in _US_STATE_ABBREVIATIONS
-)
-_EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS = frozenset(
-    f"districts/{abbreviation}-{district_number:02d}"
-    for abbreviation, district_count in _US_CONGRESSIONAL_DISTRICT_COUNTS.items()
-    for district_number in range(1, district_count + 1)
-)
-_EXPECTED_US_AREA_ARTIFACT_KEYS = (
-    _EXPECTED_US_STATE_ARTIFACT_KEYS | _EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS
-)
 _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
 _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR = 0.15
 _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
@@ -658,7 +539,10 @@ def _check_release_manifest(
                     failures=failures,
                 )
         if release_id.startswith("populace-us-"):
-            _check_us_area_artifact_surface(artifacts, failures=failures)
+            _check_us_release_has_no_split_microdata_artifacts(
+                artifacts,
+                failures=failures,
+            )
         if (
             release_id.startswith("populace-us-")
             and _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None
@@ -687,47 +571,22 @@ def _check_release_manifest(
                     )
 
 
-def _check_us_area_artifact_surface(artifacts: Mapping, *, failures: list[str]) -> None:
-    area_keys = {
+def _check_us_release_has_no_split_microdata_artifacts(
+    artifacts: Mapping, *, failures: list[str]
+) -> None:
+    split_keys = {
         key
         for key in artifacts
         if isinstance(key, str)
         and (key.startswith("states/") or key.startswith("districts/"))
     }
-    if not area_keys:
+    if not split_keys:
         return
-    missing = sorted(_EXPECTED_US_AREA_ARTIFACT_KEYS - area_keys)
-    extra = sorted(area_keys - _EXPECTED_US_AREA_ARTIFACT_KEYS)
-    if missing or extra:
-        details = []
-        if missing:
-            details.append(f"missing={_sample_values(missing)}")
-        if extra:
-            details.append(f"extra={_sample_values(extra)}")
-        failures.append(
-            "release_manifest.json US area artifacts must be all-or-nothing "
-            "for the current 51-state/436-district surface: " + ", ".join(details)
-        )
-    for key in sorted(area_keys & _EXPECTED_US_AREA_ARTIFACT_KEYS):
-        entry = artifacts.get(key)
-        if not isinstance(entry, Mapping):
-            continue
-        expected_kind = (
-            "state_microdata"
-            if key.startswith("states/")
-            else "congressional_district_microdata"
-        )
-        if entry.get("kind") != expected_kind:
-            failures.append(
-                f"release_manifest.json area artifact {key!r} kind must be "
-                f"{expected_kind!r}."
-            )
-        expected_path = f"{key}.h5"
-        if entry.get("path") != expected_path:
-            failures.append(
-                f"release_manifest.json area artifact {key!r} path must be "
-                f"{expected_path!r}."
-            )
+    failures.append(
+        "release_manifest.json US releases must publish a single national "
+        "microdata artifact; split state/district microdata artifacts are no "
+        f"longer part of the release contract: {_sample_values(sorted(split_keys))}"
+    )
 
 
 def _sample_values(values: list[object], limit: int = 10) -> list[object]:

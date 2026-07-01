@@ -72,9 +72,12 @@ from populace.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
     "calibrate",
+    "calibrate_l0_refit",
+    "refit_l0_selection",
     "default_target_loss_scales",
     "relative_error_loss",
     "CalibrationResult",
+    "L0RefitResult",
     "TargetDiagnostic",
     "FREE_MASS",
     "CONSERVE_MASS",
@@ -224,6 +227,95 @@ class CalibrationResult:
             return 0.0
         hits = sum(abs(d.relative_error) <= 0.10 for d in self.diagnostics)
         return hits / len(self.diagnostics)
+
+
+@dataclass(frozen=True)
+class L0RefitResult:
+    """Two-stage sparse calibration: L0 support selection, then ordinary refit.
+
+    The :attr:`selection` stage is a normal :func:`calibrate` call with
+    hard-concrete L0 gates. The :attr:`refit` stage keeps exactly the selected
+    support, removes the gates and L0 penalty, and runs ordinary calibration on
+    the pruned frame. Convenience properties delegate to :attr:`refit`, because
+    the refit frame and weights are the production artifact.
+    """
+
+    selection: CalibrationResult
+    refit: CalibrationResult
+    selected_entity_ids: np.ndarray
+    selected_mask: np.ndarray
+
+    @property
+    def frame(self) -> Frame:
+        """The post-L0-refit sparse frame."""
+        return self.refit.frame
+
+    @property
+    def weight_entity(self) -> str:
+        """The entity whose weights were calibrated."""
+        return self.refit.weight_entity
+
+    @property
+    def weights(self) -> np.ndarray:
+        """The post-L0-refit weights on the sparse frame."""
+        return self.refit.weights
+
+    @property
+    def initial_weights(self) -> np.ndarray:
+        """The refit's starting weights, inherited from the L0 selected support."""
+        return self.refit.initial_weights
+
+    @property
+    def diagnostics(self) -> tuple[TargetDiagnostic, ...]:
+        """Per-target diagnostics from the post-L0 refit."""
+        return self.refit.diagnostics
+
+    @property
+    def loss_trajectory(self) -> np.ndarray:
+        """The post-L0 refit's loss trajectory."""
+        return self.refit.loss_trajectory
+
+    @property
+    def skipped(self) -> tuple[SkippedTarget, ...]:
+        """Targets skipped by the post-L0 refit."""
+        return self.refit.skipped
+
+    @property
+    def problem(self) -> CalibrationProblem:
+        """The post-L0 refit's compiled calibration problem."""
+        return self.refit.problem
+
+    @property
+    def l0_lambda(self) -> float:
+        """The L0 penalty used by the selection stage."""
+        return self.selection.l0_lambda
+
+    @property
+    def n_nonzero(self) -> int:
+        """Number of positive weights in the post-L0 refit."""
+        return self.refit.n_nonzero
+
+    @property
+    def initial_loss(self) -> float:
+        """The refit's initial loss on the selected support."""
+        return self.refit.initial_loss
+
+    @property
+    def final_loss(self) -> float:
+        """The post-L0 refit's final penalty-free target loss."""
+        return self.refit.final_loss
+
+    @property
+    def options(self) -> Mapping[str, object]:
+        """Combined production options and selection provenance."""
+        return {
+            **dict(self.refit.options),
+            "post_l0_refit": True,
+            "selection_l0_lambda": self.selection.l0_lambda,
+            "selection_n_nonzero": self.selection.n_nonzero,
+            "selection_final_loss": self.selection.final_loss,
+            "selection_options": dict(self.selection.options),
+        }
 
 
 #: Density above which a sparse matrix gains nothing over dense compute.
@@ -1455,4 +1547,207 @@ def _apply_weights(
         weight_entity,
         calibrated,
         mass=MassChange(factor=factor, reason=reason),
+    )
+
+
+def _phase_callback(
+    progress_callback: Callable[[dict[str, object]], None] | None,
+    phase: str,
+) -> Callable[[dict[str, object]], None] | None:
+    if progress_callback is None:
+        return None
+
+    def callback(event: dict[str, object]) -> None:
+        progress_callback({"phase": phase, **event})
+
+    return callback
+
+
+def _selected_person_mask(
+    frame: Frame,
+    weight_entity: str,
+    selected_mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Map a selected weight-entity row mask to person rows and entity ids."""
+    schema = frame.schema
+    entity_table = frame.table(weight_entity)
+    entity_ids = entity_table[schema.entity_id_column(weight_entity)].to_numpy()
+    if selected_mask.shape != (len(entity_ids),):
+        raise ValueError(
+            "selected_mask must align with the calibrated weight entity: "
+            f"got {selected_mask.shape}, expected {(len(entity_ids),)}."
+        )
+    selected_ids = entity_ids[selected_mask]
+    if weight_entity == schema.person_entity:
+        return selected_mask.copy(), selected_ids.copy()
+    if weight_entity not in schema.group_entities:
+        raise ValueError(
+            f"Post-L0 refit can only map the person entity or a group entity; "
+            f"got {weight_entity!r}."
+        )
+    membership = frame.person[schema.membership_column(weight_entity)].to_numpy()
+    person_mask = np.isin(membership, selected_ids)
+    return person_mask, selected_ids.copy()
+
+
+def refit_l0_selection(
+    frame: Frame,
+    targets: TargetSet,
+    selection: CalibrationResult,
+    *,
+    weight_entity: str | None = None,
+    epochs: int = 256,
+    learning_rate: float = 0.02,
+    mass: str = FREE_MASS,
+    max_weight_ratio: float | None = None,
+    init_mean: float = 0.999,
+    temperature: float = 0.25,
+    budget_iters: int = _DEFAULT_BUDGET_ITERS,
+    seed: int = 0,
+    target_loss_weights: np.ndarray | None = None,
+    target_loss_scales: np.ndarray | None = None,
+    target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+) -> L0RefitResult:
+    """Refit ordinary calibration on an existing L0-selected support.
+
+    Use this when the caller has already run :func:`calibrate` with L0 pruning
+    and wants to reuse that exact selection. The refit subsets to records whose
+    L0 weights survived, removes the L0 gates and penalty, and calls
+    :func:`calibrate` again with ``l0_lambda=0`` on that selected support.
+    """
+    refit_entity = selection.weight_entity if weight_entity is None else weight_entity
+    if selection.weight_entity != refit_entity:
+        raise ValueError(
+            "weight_entity must match the L0 selection weight entity: "
+            f"{refit_entity!r} != {selection.weight_entity!r}."
+        )
+    if selection.l0_lambda <= 0.0:
+        raise ValueError(
+            "refit_l0_selection requires a selection result produced with "
+            "positive L0 pruning."
+        )
+
+    selected_mask = selection.weights > (
+        _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
+    )
+    if not selected_mask.any():
+        raise ValueError("Cannot refit an L0 selection with no retained records.")
+    person_mask, selected_ids = _selected_person_mask(
+        frame, refit_entity, selected_mask
+    )
+    subset = selection.frame.select(person_mask)
+
+    refit = calibrate(
+        subset,
+        targets,
+        weight_entity=refit_entity,
+        method="adam",
+        epochs=epochs,
+        learning_rate=learning_rate,
+        mass=mass,
+        max_weight_ratio=max_weight_ratio,
+        target_records=None,
+        l0_lambda=0.0,
+        l2_lambda=0.0,
+        init_mean=init_mean,
+        temperature=temperature,
+        budget_iters=budget_iters,
+        seed=seed,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        progress_callback=progress_callback,
+    )
+    return L0RefitResult(
+        selection=selection,
+        refit=refit,
+        selected_entity_ids=selected_ids,
+        selected_mask=selected_mask.copy(),
+    )
+
+
+def calibrate_l0_refit(
+    frame: Frame,
+    targets: TargetSet,
+    *,
+    weight_entity: str = "household",
+    epochs: int = 256,
+    refit_epochs: int | None = None,
+    learning_rate: float = 0.02,
+    refit_learning_rate: float | None = None,
+    mass: str = FREE_MASS,
+    max_weight_ratio: float | None = None,
+    target_records: int | None = None,
+    l0_lambda: float = 0.0,
+    l2_lambda: float = 0.0,
+    init_mean: float = 0.999,
+    temperature: float = 0.25,
+    budget_iters: int = _DEFAULT_BUDGET_ITERS,
+    seed: int = 0,
+    refit_seed: int | None = None,
+    target_loss_weights: np.ndarray | None = None,
+    target_loss_scales: np.ndarray | None = None,
+    target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    warm_start_weights: np.ndarray | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+) -> L0RefitResult:
+    """Select a sparse support with L0 gates, then refit ordinary calibration.
+
+    This is the production "generate big, then prune" path when the final
+    artifact should be a sparse calibrated frame rather than the raw gated L0
+    weights. The first stage is exactly :func:`calibrate` with L0 pruning
+    enabled by ``target_records`` or a positive fixed ``l0_lambda``. The second
+    stage delegates to :func:`refit_l0_selection`.
+    """
+    if target_records is None and not (math.isfinite(l0_lambda) and l0_lambda > 0.0):
+        raise ValueError(
+            "calibrate_l0_refit requires L0 pruning: pass target_records or a "
+            "positive fixed l0_lambda."
+        )
+    if not math.isfinite(l0_lambda) or l0_lambda < 0.0:
+        raise ValueError(
+            f"l0_lambda must be finite and non-negative, got {l0_lambda!r}."
+        )
+    selection = calibrate(
+        frame,
+        targets,
+        weight_entity=weight_entity,
+        method="adam",
+        epochs=epochs,
+        learning_rate=learning_rate,
+        mass=mass,
+        max_weight_ratio=max_weight_ratio,
+        target_records=target_records,
+        l0_lambda=l0_lambda,
+        l2_lambda=l2_lambda,
+        init_mean=init_mean,
+        temperature=temperature,
+        budget_iters=budget_iters,
+        seed=seed,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        warm_start_weights=warm_start_weights,
+        progress_callback=_phase_callback(progress_callback, "l0_selection"),
+    )
+    return refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        weight_entity=weight_entity,
+        epochs=epochs if refit_epochs is None else refit_epochs,
+        learning_rate=(
+            learning_rate if refit_learning_rate is None else refit_learning_rate
+        ),
+        mass=mass,
+        max_weight_ratio=max_weight_ratio,
+        init_mean=init_mean,
+        temperature=temperature,
+        budget_iters=budget_iters,
+        seed=seed if refit_seed is None else refit_seed,
+        target_loss_weights=target_loss_weights,
+        target_loss_scales=target_loss_scales,
+        target_loss_cap=target_loss_cap,
+        progress_callback=_phase_callback(progress_callback, "post_l0_refit"),
     )

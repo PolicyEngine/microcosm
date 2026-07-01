@@ -213,10 +213,64 @@ def test_obbba_components_score_stacked_in_jcx_order(monkeypatch):
     assert rows["obbba_b"]["populace"]["reform_total"] == pytest.approx(960.0)
     assert rows["obbba_b"]["populace"]["budget_effect"] == pytest.approx(60.0)
     # Stacked line effects telescope to the true total OBBBA effect.
-    total = sum(
-        rows[i]["populace"]["budget_effect"] for i in ("obbba_a", "obbba_b")
-    )
+    total = sum(rows[i]["populace"]["budget_effect"] for i in ("obbba_a", "obbba_b"))
     assert total == pytest.approx(960.0 - 1_000.0)
+
+
+def test_obbba_stacked_scoring_releases_intermediate_simulations(monkeypatch):
+    specs = tuple(
+        ReformValidationSpec(
+            id=f"obbba_{name}",
+            name=f"OBBBA {name}",
+            category="OBBBA",
+            in_sample=False,
+            period=2026,
+            jct_score=None,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={
+                f"gov.example.{name}": {"2026-01-01.2026-12-31": 0},
+            },
+            effect_direction="baseline_minus_reform",
+        )
+        for name in ("a", "b", "c")
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
+
+    live_simulations = 0
+
+    class _TrackedSim(_FakeSim):
+        def __init__(self, total: float) -> None:
+            nonlocal live_simulations
+            assert live_simulations == 0
+            live_simulations += 1
+            super().__init__({"income_tax": total})
+
+        def __del__(self) -> None:
+            nonlocal live_simulations
+            live_simulations -= 1
+
+    def simulate(reform):
+        totals = {
+            frozenset({"gov.example.a", "gov.example.b", "gov.example.c"}): 1000.0,
+            frozenset({"gov.example.b", "gov.example.c"}): 900.0,
+            frozenset({"gov.example.c"}): 960.0,
+            None: 970.0,
+        }
+        return _TrackedSim(totals[reform])
+
+    payload = reform_validation_payload(specs, period=2026, simulate=simulate)
+    assert [row["id"] for row in payload["reforms"]] == [
+        "obbba_a",
+        "obbba_b",
+        "obbba_c",
+    ]
+    assert live_simulations == 0
 
 
 def test_shipped_obbba_config_is_out_of_sample_counterfactual():
@@ -247,9 +301,9 @@ def test_itemized_benefit_limit_counterfactual_keeps_pease():
     )
     paths = set(spec.parameter_changes or {})
     assert paths == {"gov.irs.deductions.itemized.limitation.obbb.applies"}, paths
-    assert (
-        "gov.irs.deductions.itemized.limitation.applies" not in paths
-    ), "must not disable the whole limitation (drops present-law Pease)"
+    assert "gov.irs.deductions.itemized.limitation.applies" not in paths, (
+        "must not disable the whole limitation (drops present-law Pease)"
+    )
 
 
 def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
@@ -269,6 +323,16 @@ def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     assert eitc.in_sample is True  # calibrated to SOI EITC targets
     std = next(s for s in specs if s.id == "te_standard_deduction")
     assert std.jct_score is None  # baseline in both JCT and Treasury — no benchmark
+
+
+def test_out_of_sample_specs_carry_fy2027_and_emit_it():
+    specs = out_of_sample_reform_specs(period=2026)
+    rates = next(s for s in specs if s.id == "obbba_reduced_rates")
+    # FY2027 (first full fiscal year) is larger than the FY2026 ramp figure.
+    assert rates.jct_score_fy2027 == -222154000000
+    assert abs(rates.jct_score_fy2027) > abs(rates.jct_score)
+    payload = reform_validation_payload([rates], period=2026, simulate=None)
+    assert payload["reforms"][0]["jct"]["score_fy2027"] == -222154000000
 
 
 def test_null_benchmark_row_publishes_magnitude_only(monkeypatch):

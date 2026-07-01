@@ -86,6 +86,11 @@ class ReformValidationSpec:
     jct_source: str
     jct_source_url: str
     jct_score_type: str = "conventional"
+    # JCT's first full fiscal year (FY2027). FY2026 is a partial ramp year for
+    # provisions effective 1/1/2026, so it understates the annual effect; the
+    # dashboard shows this as the fairer like-for-like against calendar-year
+    # populace liability.
+    jct_score_fy2027: float | None = None
     budget_measure: str = DEFAULT_BUDGET_MEASURE
     description: str = ""
     neutralized_variable: str | None = None
@@ -221,6 +226,11 @@ def out_of_sample_reform_specs(
                 period=int(raw.get("period", period)),
                 jct_score=(
                     float(jct["score"]) if jct.get("score") is not None else None
+                ),
+                jct_score_fy2027=(
+                    float(jct["score_fy2027"])
+                    if jct.get("score_fy2027") is not None
+                    else None
                 ),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
@@ -365,13 +375,9 @@ def reform_validation_payload(
     targets = in_sample_targets or {}
     baseline: Any = None
     baseline_totals: dict[tuple[int, str], float] = {}
-    parameter_reform_sims: dict[str, Any] = {}
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
     obbba_stacked: dict[str, tuple[float, float, float]] | None = None
-
-    def parameter_changes_key(changes: dict[str, Any]) -> str:
-        return json.dumps(changes, sort_keys=True, separators=(",", ":"))
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -383,11 +389,8 @@ def reform_validation_payload(
         return baseline_totals[key]
 
     def simulation_for_parameter_changes(changes: dict[str, Any]) -> Any:
-        key = parameter_changes_key(changes)
-        if key not in parameter_reform_sims:
-            reform = None if not changes else _build_parameter_reform(changes)
-            parameter_reform_sims[key] = simulate(reform)  # type: ignore[misc]
-        return parameter_reform_sims[key]
+        reform = None if not changes else _build_parameter_reform(changes)
+        return simulate(reform)  # type: ignore[misc]
 
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
@@ -411,9 +414,7 @@ def reform_validation_payload(
             return {}
         measures = {(spec.budget_measure, spec.period) for spec in obbba_specs}
         if len(measures) != 1:
-            return {
-                spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs
-            }
+            return {spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs}
         measure, period = next(iter(measures))
         # state 0: pre-OBBBA (every provision reverted).
         prev_total = _weighted_total(
@@ -498,6 +499,11 @@ def reform_validation_payload(
                 "description": spec.description or None,
                 "jct": {
                     "score": None if effective_jct is None else _finite(effective_jct),
+                    "score_fy2027": (
+                        None
+                        if spec.jct_score_fy2027 is None
+                        else _finite(spec.jct_score_fy2027)
+                    ),
                     "score_type": spec.jct_score_type,
                     "window": spec.jct_window or None,
                     "source": spec.jct_source or None,
