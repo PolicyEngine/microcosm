@@ -3864,6 +3864,9 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / builder.SNAP_LOCAL_PROXY_FILENAME).write_text(
+        json.dumps({"schema_version": 1, "classification": "validation_only"})
+    )
 
     monkeypatch.setattr(
         builder,
@@ -3993,6 +3996,11 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     )
     assert manifest["data_package"] == {"name": "populace-data", "version": "0.1.0"}
     assert manifest["default_datasets"] == {"national": "populace_us_2024"}
+    assert manifest["artifacts"]["snap_local_proxy"]["kind"] == "diagnostics"
+    assert (
+        manifest["artifacts"]["snap_local_proxy"]["path"]
+        == builder.SNAP_LOCAL_PROXY_FILENAME
+    )
     assert manifest["build"]["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",

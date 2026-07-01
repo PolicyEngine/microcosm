@@ -88,6 +88,7 @@ PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+SNAP_LOCAL_PROXY_FILENAME = "snap_local_proxy.json"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -4304,6 +4305,18 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "demographics.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "snap_local_proxy": _artifact_entry(
+                        SNAP_LOCAL_PROXY_FILENAME,
+                        _sha256(release_dir / SNAP_LOCAL_PROXY_FILENAME),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / SNAP_LOCAL_PROXY_FILENAME).exists()
                 else {}
             ),
         },
