@@ -9,18 +9,20 @@ kept only for migration comparisons against the paper repository.
 Scope is intentionally narrow and labelled experimental. Populace production
 calibration targets must be materialized from Ledger target profiles; the
 processed ONS/HMRC tables accepted here are a migration harness only, not a
-production target source. Ledger-backed firm target activation and Axiom
-VAT-rule execution are later integration steps, so this module does not claim
-production firm microsimulation support.
+production target source. VAT liability must be supplied by a configured rule
+evaluator; the production path is an Axiom RuleSpec artifact, so this module
+does not claim production firm microsimulation support without that artifact.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -55,30 +57,67 @@ INPUT_FILES: dict[str, str] = {
     "hmrc_liability_band": "hmrc_vat_liability_by_turnover_band.csv",
     "hmrc_liability_sector": "hmrc_vat_liability_by_sector.csv",
 }
-LEDGER_ONS_TURNOVER_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_turnover_band"
+UK_FIRM_TARGET_IDS: dict[str, str] = {
+    "ons_turnover": "ons.uk_business.enterprise_count.turnover_bands",
+    "ons_employment": "ons.uk_business.enterprise_count.employment_bands",
+    "hmrc_population_band": "hmrc.vat.registered_trader_count.turnover_bands",
+    "hmrc_liability_band": "hmrc.vat.net_liability.turnover_bands",
+    "ons_sic_turnover": "ons.uk_business.enterprise_count.sic_turnover_bands",
+    "ons_sic_employment": "ons.uk_business.enterprise_count.sic_employment_bands",
+    "hmrc_population_sic": "hmrc.vat.registered_trader_count.sic_sectors",
+    "hmrc_liability_sic": "hmrc.vat.net_liability.sic_sectors",
+}
+
+
+@dataclass(frozen=True)
+class UKFirmLedgerTargetProfile:
+    """Ledger record-set selectors for the ``uk_firms`` target profile."""
+
+    ons_turnover_record_set: str
+    ons_employment_record_set: str
+    hmrc_population_band_record_set: str
+    hmrc_liability_band_record_set: str
+    ons_sic_turnover_record_set: str
+    ons_sic_employment_record_set: str
+    hmrc_population_sic_record_set: str
+    hmrc_liability_sic_record_set: str
+
+
+DEFAULT_UK_FIRM_TARGET_PROFILE = UKFirmLedgerTargetProfile(
+    ons_turnover_record_set="ons.uk_business.cy2025.enterprise_count.by_turnover_band",
+    ons_employment_record_set="ons.uk_business.cy2025.enterprise_count.by_employment_band",
+    hmrc_population_band_record_set=(
+        "hmrc.vat.fy2024_25.registered_trader_count.by_turnover_band"
+    ),
+    hmrc_liability_band_record_set=(
+        "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
+    ),
+    ons_sic_turnover_record_set=(
+        "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band"
+    ),
+    ons_sic_employment_record_set=(
+        "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band"
+    ),
+    hmrc_population_sic_record_set=(
+        "hmrc.vat.fy2024_25.registered_trader_count.by_sic"
+    ),
+    hmrc_liability_sic_record_set="hmrc.vat.fy2024_25.net_liability.by_sic",
 )
-LEDGER_ONS_EMPLOYMENT_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_employment_band"
-)
-LEDGER_ONS_SIC_TURNOVER_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_sic_turnover_band"
-)
-LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET = (
-    "ons.uk_business.cy2025.enterprise_count.by_sic_employment_band"
-)
-LEDGER_HMRC_POPULATION_RECORD_SET = (
-    "hmrc.vat.fy2024_25.registered_trader_count.by_turnover_band"
-)
-LEDGER_HMRC_LIABILITY_RECORD_SET = (
-    "hmrc.vat.fy2024_25.net_liability.by_turnover_band"
-)
-LEDGER_HMRC_POPULATION_SIC_RECORD_SET = (
-    "hmrc.vat.fy2024_25.registered_trader_count.by_sic"
-)
-LEDGER_HMRC_LIABILITY_SIC_RECORD_SET = (
-    "hmrc.vat.fy2024_25.net_liability.by_sic"
-)
+
+_UK_FIRM_TARGET_PROFILE_FIELDS: dict[str, str] = {
+    "ons_turnover": "ons_turnover_record_set",
+    "ons_employment": "ons_employment_record_set",
+    "hmrc_population_band": "hmrc_population_band_record_set",
+    "hmrc_liability_band": "hmrc_liability_band_record_set",
+    "ons_sic_turnover": "ons_sic_turnover_record_set",
+    "ons_sic_employment": "ons_sic_employment_record_set",
+    "hmrc_population_sic": "hmrc_population_sic_record_set",
+    "hmrc_liability_sic": "hmrc_liability_sic_record_set",
+}
+
+# These maps translate Ledger value IDs into the generator's temporary support
+# matrix. The source selectors above are profile-owned; support layout should be
+# the next piece lifted into a declarative spec.
 LEDGER_ONS_TURNOVER_BANDS: dict[str, str] = {
     "0_49k": "0-49",
     "50_99k": "50-99",
@@ -169,6 +208,136 @@ NEGATIVE_LIABILITY_SECTORS = {
 }
 HIGH_LIABILITY_SECTORS = {11, 12, 69, 70, 78}
 
+AXIOM_UK_VAT_NET_LIABILITY_OUTPUT = (
+    "uk:statutes/ukpga/1994/23/25#net_vat_liability_after_input_tax_credit"
+)
+AXIOM_UK_VAT_TAXABLE_PERSON_INPUT = "uk:statutes/ukpga/1994/23/24#input.taxable_person"
+AXIOM_UK_VAT_SUPPLIES_INPUT = (
+    "uk:statutes/ukpga/1994/23/24#input.standard_rated_taxable_supplies_value"
+)
+AXIOM_UK_VAT_PURCHASES_INPUT = (
+    "uk:statutes/ukpga/1994/23/24#input.standard_rated_deductible_business_purchase_value"
+)
+AXIOM_UK_VAT_ALLOWABLE_PROPORTION_INPUT = (
+    "uk:statutes/ukpga/1994/23/26#input.allowable_input_tax_proportion"
+)
+
+
+class UKFirmVATRuleEvaluator(Protocol):
+    """Evaluate VAT liability for candidate firms before weight optimization."""
+
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        """Return net VAT liability in thousands of pounds."""
+
+
+@dataclass(frozen=True)
+class AxiomVATRuleEvaluator:
+    """Run UK VAT liability through a compiled Axiom RuleSpec artifact."""
+
+    artifact_path: str | Path
+    engine_binary: str | Path = "axiom-rules-engine"
+    allowable_input_tax_proportion: float = 1.0
+    output_id: str = AXIOM_UK_VAT_NET_LIABILITY_OUTPUT
+
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        turnover = np.asarray(turnover_k, dtype=np.float64)
+        input_cost = np.asarray(input_cost_k, dtype=np.float64)
+        registered = np.asarray(vat_registered, dtype=bool)
+        if turnover.shape != input_cost.shape or turnover.shape != registered.shape:
+            raise ValueError("VAT rule inputs must have matching shapes.")
+
+        period = _vat_rule_period(data_vintage)
+        interval = {"start": period["start"], "end": period["end"]}
+        request_inputs: list[dict[str, object]] = []
+        queries: list[dict[str, object]] = []
+        for index, (sales_k, purchases_k, taxable) in enumerate(
+            zip(turnover, input_cost, registered, strict=True),
+        ):
+            entity_id = f"firm:{index + 1}"
+            request_inputs.extend(
+                [
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_TAXABLE_PERSON_INPUT,
+                        entity_id,
+                        interval,
+                        {"kind": "bool", "value": bool(taxable)},
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_SUPPLIES_INPUT,
+                        entity_id,
+                        interval,
+                        {"kind": "decimal", "value": _decimal_string(sales_k * 1000.0)},
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_PURCHASES_INPUT,
+                        entity_id,
+                        interval,
+                        {
+                            "kind": "decimal",
+                            "value": _decimal_string(purchases_k * 1000.0),
+                        },
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_ALLOWABLE_PROPORTION_INPUT,
+                        entity_id,
+                        interval,
+                        {
+                            "kind": "decimal",
+                            "value": _decimal_string(self.allowable_input_tax_proportion),
+                        },
+                    ),
+                ]
+            )
+            queries.append(
+                {
+                    "entity_id": entity_id,
+                    "period": period,
+                    "outputs": [self.output_id],
+                }
+            )
+
+        request = {
+            "mode": "fast",
+            "dataset": {"inputs": request_inputs, "relations": []},
+            "queries": queries,
+        }
+        process = subprocess.run(
+            [
+                str(self.engine_binary),
+                "run-compiled",
+                "--artifact",
+                str(self.artifact_path),
+            ],
+            input=json.dumps(request),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            stderr = process.stderr.strip() or "Axiom VAT rule evaluation failed"
+            raise RuntimeError(stderr)
+
+        response = json.loads(process.stdout)
+        values = []
+        for result in response["results"]:
+            output = result["outputs"][self.output_id]
+            values.append(float(output["value"]["value"]) / 1000.0)
+        return np.asarray(values, dtype=np.float32)
+
 
 @dataclass(frozen=True)
 class UKFirmGenerationConfig:
@@ -190,6 +359,7 @@ class UKFirmGenerationConfig:
     vat_liability_band_importance: float = 2.0
     calibrate_vat_liability_sector: bool = False
     input_files: dict[str, str] = field(default_factory=lambda: dict(INPUT_FILES))
+    vat_rule_evaluator: UKFirmVATRuleEvaluator | None = None
 
     def __post_init__(self) -> None:
         if self.data_vintage not in VINTAGES:
@@ -207,6 +377,34 @@ class UKFirmGenerationConfig:
             raise ValueError("vat_threshold must be positive.")
         if self.n_iterations <= 0:
             raise ValueError("n_iterations must be positive.")
+
+
+def _vat_rule_period(data_vintage: str) -> dict[str, str]:
+    start_year = int(data_vintage.split("-", 1)[0])
+    return {
+        "period_kind": "tax_year",
+        "start": f"{start_year}-04-06",
+        "end": f"{start_year + 1}-04-05",
+    }
+
+
+def _axiom_input_record(
+    name: str,
+    entity_id: str,
+    interval: Mapping[str, str],
+    value: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "entity": "Firm",
+        "entity_id": entity_id,
+        "interval": dict(interval),
+        "value": dict(value),
+    }
+
+
+def _decimal_string(value: float) -> str:
+    return format(float(value), ".12g")
 
 
 @dataclass(frozen=True)
@@ -355,10 +553,64 @@ def uk_firm_source_data_from_frames(
     )
 
 
+def uk_firm_target_profile_from_mapping(
+    raw: Mapping[str, Any],
+) -> UKFirmLedgerTargetProfile:
+    """Extract UK firm record-set selectors from a Ledger target profile."""
+
+    target_rows = raw.get("targets")
+    if not isinstance(target_rows, Iterable) or isinstance(
+        target_rows, str | bytes | Mapping
+    ):
+        raise ValueError("UK firm target profile must contain a targets list.")
+
+    targets_by_id: dict[str, Mapping[str, Any]] = {}
+    for row in target_rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("UK firm target profile targets must be objects.")
+        target_id = row.get("target_id")
+        if isinstance(target_id, str):
+            targets_by_id[target_id] = row
+
+    record_sets: dict[str, str] = {}
+    for logical_key, target_id in UK_FIRM_TARGET_IDS.items():
+        target = targets_by_id.get(target_id)
+        if target is None:
+            raise ValueError(f"UK firm target profile missing target {target_id!r}.")
+
+        selector = target.get("ledger_selector")
+        if not isinstance(selector, Mapping):
+            raise ValueError(
+                f"UK firm target {target_id!r} must define ledger_selector."
+            )
+
+        record_set_id = selector.get("record_set_id")
+        if not isinstance(record_set_id, str) or not record_set_id:
+            raise ValueError(
+                f"UK firm target {target_id!r} must define "
+                "ledger_selector.record_set_id."
+            )
+
+        record_sets[_UK_FIRM_TARGET_PROFILE_FIELDS[logical_key]] = record_set_id
+
+    return UKFirmLedgerTargetProfile(**record_sets)
+
+
+def _coerce_uk_firm_target_profile(
+    target_profile: UKFirmLedgerTargetProfile | Mapping[str, Any] | None,
+) -> UKFirmLedgerTargetProfile:
+    if target_profile is None:
+        return DEFAULT_UK_FIRM_TARGET_PROFILE
+    if isinstance(target_profile, UKFirmLedgerTargetProfile):
+        return target_profile
+    return uk_firm_target_profile_from_mapping(target_profile)
+
+
 def uk_firm_source_data_from_ledger_facts(
     facts: Iterable[Mapping[str, Any] | object],
     *,
     data_vintage: str = "2024-25",
+    target_profile: UKFirmLedgerTargetProfile | Mapping[str, Any] | None = None,
 ) -> UKFirmSourceData:
     """Build UK firm inputs from Ledger consumer facts.
 
@@ -368,30 +620,31 @@ def uk_firm_source_data_from_ledger_facts(
     contract while firm support is being migrated.
     """
 
+    profile = _coerce_uk_firm_target_profile(target_profile)
     fact_rows = tuple(facts)
     ons_turnover = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_SIC_TURNOVER_RECORD_SET,
+        record_set_id=profile.ons_sic_turnover_record_set,
         band_map=LEDGER_ONS_TURNOVER_BANDS,
         band_dimension="uk.firm.turnover_band",
         table_name="ONS SIC turnover",
     )
     ons_employment = _ledger_ons_sic_band_matrix(
         fact_rows,
-        record_set_id=LEDGER_ONS_SIC_EMPLOYMENT_RECORD_SET,
+        record_set_id=profile.ons_sic_employment_record_set,
         band_map=LEDGER_ONS_EMPLOYMENT_BANDS,
         band_dimension="uk.firm.employment_band",
         table_name="ONS SIC employment",
     )
     hmrc_population_values = _ledger_values_by_band(
         fact_rows,
-        record_set_id=LEDGER_HMRC_POPULATION_RECORD_SET,
+        record_set_id=profile.hmrc_population_band_record_set,
         measure_id="vat_registered_trader_count",
         band_map=LEDGER_HMRC_BANDS,
     )
     hmrc_liability_values_gbp = _ledger_values_by_band(
         fact_rows,
-        record_set_id=LEDGER_HMRC_LIABILITY_RECORD_SET,
+        record_set_id=profile.hmrc_liability_band_record_set,
         measure_id="net_vat_liability",
         band_map=LEDGER_HMRC_BANDS,
     )
@@ -404,7 +657,7 @@ def uk_firm_source_data_from_ledger_facts(
     )
     hmrc_population_sector = _ledger_sic_series(
         fact_rows,
-        record_set_id=LEDGER_HMRC_POPULATION_SIC_RECORD_SET,
+        record_set_id=profile.hmrc_population_sic_record_set,
         measure_id="vat_registered_trader_count",
         data_vintage=data_vintage,
         value_scale=1.0,
@@ -414,7 +667,7 @@ def uk_firm_source_data_from_ledger_facts(
     )
     hmrc_liability_sector = _ledger_sic_series(
         fact_rows,
-        record_set_id=LEDGER_HMRC_LIABILITY_SIC_RECORD_SET,
+        record_set_id=profile.hmrc_liability_sic_record_set,
         measure_id="net_vat_liability",
         data_vintage=data_vintage,
         value_scale=1 / 1_000_000.0,
@@ -472,6 +725,12 @@ def generate_uk_firm_population(
         cfg.device,
     )
     base_vat_registered = assign_vat_flags(base_turnover, hmrc_bands, cfg)
+    base_vat_liability = calculate_vat_liability_values(
+        cfg,
+        base_turnover,
+        base_input,
+        base_vat_registered,
+    )
     employment_band_indices = torch.tensor(
         [_employment_band_index(value.item()) for value in base_employment],
         dtype=torch.long,
@@ -486,6 +745,7 @@ def generate_uk_firm_population(
         employment_band_indices,
         base_vat_registered,
         data,
+        vat_liability_values=base_vat_liability,
     )
     calibration = solve_firm_weights(cfg, target_matrix, target_values, layout)
     weights = calibration.weights
@@ -508,10 +768,17 @@ def generate_uk_firm_population(
         data.ons_employment,
         cfg.device,
     )
+    final_vat_liability = calculate_vat_liability_values(
+        cfg,
+        final_turnover,
+        final_input,
+        final_vat_registered,
+    )
     firms = _assemble_firm_rows(
         final_sic,
         final_turnover,
         final_input,
+        final_vat_liability,
         final_employment,
         final_weights,
         final_vat_registered,
@@ -680,6 +947,7 @@ def build_firm_target_matrix(
     employment_band_indices: Tensor,
     vat_registered: Tensor,
     data: UKFirmSourceData,
+    vat_liability_values: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, UKFirmTargetLayout, tuple[str, ...]]:
     """Construct the firm calibration target matrix and target vector."""
 
@@ -726,7 +994,16 @@ def build_firm_target_matrix(
         matrix[row, employment_band_indices == band_idx] = 1.0
         target_names.append(f"ons_firm_employment/{band}")
 
-    vat_liability = turnover_values - input_values
+    vat_liability = (
+        vat_liability_values
+        if vat_liability_values is not None
+        else calculate_vat_liability_values(
+            config,
+            turnover_values,
+            input_values,
+            vat_registered,
+        )
+    )
     for offset, (_, vat_row) in enumerate(vat_sector_rows.iterrows()):
         row = layout.vat_sector_start + offset
         sic_code = int(vat_row["Trade_Sector"])
@@ -873,6 +1150,40 @@ def target_diagnostics(
             "relative_error": relative_error,
         }
     )
+
+
+def calculate_vat_liability_values(
+    config: UKFirmGenerationConfig,
+    turnover_values: Tensor,
+    input_values: Tensor,
+    vat_registered: Tensor,
+) -> Tensor:
+    """Evaluate net VAT liability for candidate firms via configured VAT rules."""
+
+    evaluator = config.vat_rule_evaluator
+    if evaluator is None:
+        raise ValueError(
+            "UK firm VAT liability requires a VAT rule evaluator. "
+            "Pass AxiomVATRuleEvaluator with a compiled UK VAT RuleSpec artifact."
+        )
+    turnover_np = turnover_values.detach().cpu().numpy()
+    input_np = input_values.detach().cpu().numpy()
+    registered_np = vat_registered.detach().cpu().numpy().astype(bool)
+    liability_np = np.asarray(
+        evaluator.net_liability_k(
+            turnover_k=turnover_np,
+            input_cost_k=input_np,
+            vat_registered=registered_np,
+            data_vintage=config.data_vintage,
+        ),
+        dtype=np.float32,
+    )
+    if liability_np.shape != turnover_np.shape:
+        raise ValueError(
+            "VAT rule evaluator returned shape "
+            f"{liability_np.shape}, expected {turnover_np.shape}."
+        )
+    return torch.tensor(liability_np, dtype=torch.float32, device=config.device)
 
 
 def validate_uk_firm_population(
@@ -1131,6 +1442,7 @@ def _assemble_firm_rows(
     sic_codes: Tensor,
     turnover: Tensor,
     input_values: Tensor,
+    vat_liability: Tensor,
     employment: Tensor,
     weights: Tensor,
     vat_registered: Tensor,
@@ -1139,6 +1451,7 @@ def _assemble_firm_rows(
     sic_np = sic_codes.detach().cpu().numpy().astype(int)
     turnover_np = turnover.detach().cpu().numpy()
     input_np = input_values.detach().cpu().numpy()
+    vat_liability_np = vat_liability.detach().cpu().numpy()
     firm_ids = np.arange(1, len(sic_np) + 1, dtype=np.int64)
     return pd.DataFrame(
         {
@@ -1152,7 +1465,7 @@ def _assemble_firm_rows(
             "sic_code": [str(sic).zfill(5) for sic in sic_np],
             "annual_turnover_k": turnover_np,
             "annual_input_k": input_np,
-            "vat_liability_k": turnover_np - input_np,
+            "vat_liability_k": vat_liability_np,
             "employment": employment.detach().cpu().numpy().astype(int),
             "firm_weight": weights.detach().cpu().numpy(),
             "vat_registered": vat_registered.detach().cpu().numpy().astype(bool),

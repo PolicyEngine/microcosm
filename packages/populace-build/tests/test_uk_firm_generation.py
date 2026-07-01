@@ -2,21 +2,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
+import torch
 
+from populace.build.uk_runtime import (
+    AxiomVATRuleEvaluator as PublicAxiomVATRuleEvaluator,
+)
 from populace.build.uk_runtime.firm_generation import (
+    DEFAULT_UK_FIRM_TARGET_PROFILE,
     HMRC_BAND_COLUMNS,
     INPUT_FILES,
+    UK_FIRM_TARGET_IDS,
+    AxiomVATRuleEvaluator,
     UKFirmGenerationConfig,
+    calculate_vat_liability_values,
     employment_band_name,
     generate_uk_firm_population,
     hmrc_band_name,
     read_uk_firm_source_data,
     uk_firm_source_data_from_frames,
     uk_firm_source_data_from_ledger_facts,
+    uk_firm_target_profile_from_mapping,
     write_uk_firm_population,
 )
+
+
+def test_axiom_vat_rule_evaluator_is_public_uk_runtime_api() -> None:
+    assert PublicAxiomVATRuleEvaluator is AxiomVATRuleEvaluator
 
 
 def test_uk_firm_source_data_reads_processed_directory(tmp_path: Path) -> None:
@@ -50,6 +64,40 @@ def test_uk_firm_source_data_from_ledger_facts_uses_ledger_targets() -> None:
     assert data.hmrc_liability_sector["2024-25"].tolist() == [2.0, 1.5]
 
 
+def test_uk_firm_source_data_from_ledger_facts_uses_target_profile_mapping() -> None:
+    custom_record_set_id = "custom.ons.enterprise_count.by_sic_turnover_band"
+    facts = _replace_fact_record_set(
+        _ledger_facts(),
+        old_record_set_id=DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_turnover_record_set,
+        new_record_set_id=custom_record_set_id,
+    )
+    target_profile = _ledger_target_profile_mapping(
+        ons_sic_turnover=custom_record_set_id,
+    )
+
+    data = uk_firm_source_data_from_ledger_facts(
+        facts,
+        data_vintage="2024-25",
+        target_profile=target_profile,
+    )
+
+    assert data.ons_turnover.loc[0, "0-49"] == 2.0
+    assert data.ons_turnover.loc[1, "500-999"] == 1.0
+
+
+def test_uk_firm_target_profile_from_mapping_requires_declared_targets() -> None:
+    target_profile = _ledger_target_profile_mapping()
+    missing_target_id = UK_FIRM_TARGET_IDS["hmrc_liability_sic"]
+    target_profile["targets"] = [
+        row
+        for row in target_profile["targets"]
+        if row["target_id"] != missing_target_id
+    ]
+
+    with pytest.raises(ValueError, match=missing_target_id):
+        uk_firm_target_profile_from_mapping(target_profile)
+
+
 def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
     data = uk_firm_source_data_from_ledger_facts(
         _ledger_facts(),
@@ -58,7 +106,7 @@ def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
 
     result = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2024-25", n_iterations=4, seed=7),
+        _firm_config(data_vintage="2024-25", n_iterations=4, seed=7),
     )
 
     diagnostics = result.target_diagnostics.set_index("target_name")
@@ -86,6 +134,7 @@ def test_uk_firm_source_data_from_ledger_facts_requires_complete_profile() -> No
 def test_generate_uk_firm_population_returns_experimental_firm_rows() -> None:
     data = _source_data()
     config = UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
         data_vintage="2024-25",
         n_iterations=8,
         seed=7,
@@ -146,11 +195,11 @@ def test_generate_uk_firm_population_uses_configured_vintage_targets() -> None:
 
     result_2023 = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2023-24", n_iterations=2, seed=7),
+        _firm_config(data_vintage="2023-24", n_iterations=2, seed=7),
     )
     result_2024 = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2024-25", n_iterations=2, seed=7),
+        _firm_config(data_vintage="2024-25", n_iterations=2, seed=7),
     )
 
     targets_2023 = result_2023.target_diagnostics.set_index("target_name")["target"]
@@ -169,13 +218,14 @@ def test_generate_uk_firm_population_requires_requested_hmrc_vintage() -> None:
     with pytest.raises(ValueError, match="does not include vintage '2023-24'"):
         generate_uk_firm_population(
             data,
-            UKFirmGenerationConfig(data_vintage="2023-24", n_iterations=1),
+            _firm_config(data_vintage="2023-24", n_iterations=1),
         )
 
 
 def test_generate_uk_firm_population_is_seed_reproducible() -> None:
     data = _source_data()
     config = UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
         n_iterations=3,
         seed=11,
     )
@@ -189,7 +239,7 @@ def test_generate_uk_firm_population_is_seed_reproducible() -> None:
 def test_write_uk_firm_population_writes_csv(tmp_path: Path) -> None:
     result = generate_uk_firm_population(
         _source_data(),
-        UKFirmGenerationConfig(n_iterations=2, seed=1),
+        _firm_config(n_iterations=2, seed=1),
     )
 
     path = write_uk_firm_population(result, tmp_path / "firms.csv")
@@ -225,8 +275,95 @@ def test_employment_band_name(employment: int, expected: str) -> None:
     assert employment_band_name(employment) == expected
 
 
+def test_generate_uk_firm_population_requires_vat_rule_evaluator() -> None:
+    with pytest.raises(ValueError, match="requires a VAT rule evaluator"):
+        generate_uk_firm_population(
+            _source_data(),
+            UKFirmGenerationConfig(n_iterations=1, seed=1),
+        )
+
+
+def test_vat_liability_uses_input_tax_credit_not_full_input_cost() -> None:
+    result = calculate_vat_liability_values(
+        _firm_config(),
+        torch.tensor([100.0, 100.0], dtype=torch.float32),
+        torch.tensor([40.0, 120.0], dtype=torch.float32),
+        torch.tensor([True, True], dtype=torch.bool),
+    )
+
+    assert result.tolist() == pytest.approx([12.0, -4.0])
+
+
+class _TestVATRuleEvaluator:
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        del data_vintage
+        return np.where(vat_registered, 0.2 * (turnover_k - input_cost_k), 0.0)
+
+
+def _firm_config(**overrides) -> UKFirmGenerationConfig:
+    return UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
+        **overrides,
+    )
+
+
 def _source_data():
     return uk_firm_source_data_from_frames(**_source_frames())
+
+
+def _ledger_target_profile_mapping(**overrides: str) -> dict[str, object]:
+    record_sets = {
+        "ons_turnover": DEFAULT_UK_FIRM_TARGET_PROFILE.ons_turnover_record_set,
+        "ons_employment": DEFAULT_UK_FIRM_TARGET_PROFILE.ons_employment_record_set,
+        "hmrc_population_band": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_population_band_record_set
+        ),
+        "hmrc_liability_band": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_liability_band_record_set
+        ),
+        "ons_sic_turnover": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_turnover_record_set
+        ),
+        "ons_sic_employment": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.ons_sic_employment_record_set
+        ),
+        "hmrc_population_sic": (
+            DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_population_sic_record_set
+        ),
+        "hmrc_liability_sic": DEFAULT_UK_FIRM_TARGET_PROFILE.hmrc_liability_sic_record_set,
+        **overrides,
+    }
+    return {
+        "targets": [
+            {
+                "target_id": target_id,
+                "ledger_selector": {"record_set_id": record_sets[logical_key]},
+            }
+            for logical_key, target_id in UK_FIRM_TARGET_IDS.items()
+        ]
+    }
+
+
+def _replace_fact_record_set(
+    facts: list[dict[str, object]],
+    *,
+    old_record_set_id: str,
+    new_record_set_id: str,
+) -> list[dict[str, object]]:
+    updated_facts: list[dict[str, object]] = []
+    for fact in facts:
+        updated = {**fact, "layout": dict(fact["layout"])}
+        if updated["layout"]["record_set_id"] == old_record_set_id:
+            updated["layout"]["record_set_id"] = new_record_set_id
+        updated_facts.append(updated)
+    return updated_facts
 
 
 def _ledger_facts() -> list[dict[str, object]]:
