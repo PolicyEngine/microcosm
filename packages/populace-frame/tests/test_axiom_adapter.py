@@ -43,10 +43,15 @@ if _ENGINE_INSTALLED:
     _DENSE_AVAILABLE = NativeCompiledDenseProgram is not None
 else:
     _DENSE_AVAILABLE = False
+_TABLES_INSTALLED = importlib.util.find_spec("tables") is not None
 
 needs_engine = pytest.mark.skipif(
     not _DENSE_AVAILABLE,
     reason="axiom_rules_engine (with the dense native extension) is not installed",
+)
+needs_tables = pytest.mark.skipif(
+    not _TABLES_INSTALLED,
+    reason="pytables (populace-frame[axiom]) is not installed",
 )
 
 FIXTURE_MODULE = Path(__file__).parent / "fixtures" / "axiom_toy_country.yaml"
@@ -243,6 +248,7 @@ class TestMaterialize:
 
 
 @needs_engine
+@needs_tables
 class TestWriteDataset:
     def test_round_trips_and_carries_household_weight(self, tmp_path) -> None:
         adapter = AxiomEngine(FIXTURE_MODULE)
@@ -359,6 +365,7 @@ class TestAxiomEntityTableDataset:
         with pytest.raises(FileNotFoundError, match="nothing.h5"):
             AxiomEntityTableDataset(file_path=tmp_path / "nothing.h5")
 
+    @needs_tables
     def test_save_and_reload_without_an_engine(self, tmp_path) -> None:
         tables = {
             "person": pd.DataFrame({"person_id": [1, 2], "age": [40.0, 8.0]}),
