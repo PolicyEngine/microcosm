@@ -68,6 +68,7 @@ from populace.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
+from populace.build.us_runtime.l0_refit_export import attach_l0_refit_entity_weights
 from populace.build.us_runtime.reform_validation import (
     default_simulate_factory,
     load_default_reform_specs,
@@ -637,8 +638,7 @@ def _parse_args() -> argparse.Namespace:
             "is set."
         )
     if not args.dense_default_dataset and not (
-        math.isfinite(args.l0_refit_lambda_share)
-        and args.l0_refit_lambda_share > 0.0
+        math.isfinite(args.l0_refit_lambda_share) and args.l0_refit_lambda_share > 0.0
     ):
         parser.error(
             "--l0-refit-lambda-share must be positive unless "
@@ -2929,29 +2929,14 @@ def _with_calibrated_weights(
 
 def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
     """Attach post-L0 refit weights to the clean selected base-frame support."""
-    selected_ids = np.asarray(result.selected_entity_ids)
-    schema = base_frame.schema
-    weight_entity = result.weight_entity
-    if weight_entity == schema.person_entity:
-        person_ids = base_frame.person[schema.person_id_column].to_numpy()
-        person_mask = np.isin(person_ids, selected_ids)
-    elif weight_entity in schema.group_entities:
-        membership = base_frame.person[schema.membership_column(weight_entity)].to_numpy()
-        person_mask = np.isin(membership, selected_ids)
-    else:
-        raise ValueError(
-            f"L0 refit default export cannot map weight entity {weight_entity!r}."
-        )
-    selected_base = base_frame.select(person_mask)
-    exported_ids = selected_base.table(weight_entity)[
-        schema.id_column(weight_entity)
-    ].to_numpy()
-    if not np.array_equal(exported_ids, selected_ids):
-        raise ValueError(
-            "L0 refit selected support is not aligned with the base-frame export "
-            f"support for {weight_entity!r}."
-        )
-    return _with_calibrated_weights(selected_base, result.weights)
+    _assert_no_formula_owned_columns(base_frame)
+    return attach_l0_refit_entity_weights(
+        base_frame,
+        weight_entity=result.weight_entity,
+        selected_entity_ids=np.asarray(result.selected_entity_ids),
+        selected_weights=np.asarray(result.weights),
+        reason="US fiscal target refresh L0/refit calibration",
+    )
 
 
 def _selected_plan_ratio_bucket(values: np.ndarray) -> dict[str, object]:
