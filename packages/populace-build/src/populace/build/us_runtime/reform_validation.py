@@ -86,6 +86,11 @@ class ReformValidationSpec:
     jct_source: str
     jct_source_url: str
     jct_score_type: str = "conventional"
+    # JCT's first full fiscal year (FY2027). FY2026 is a partial ramp year for
+    # provisions effective 1/1/2026, so it understates the annual effect; the
+    # dashboard shows this as the fairer like-for-like against calendar-year
+    # populace liability.
+    jct_score_fy2027: float | None = None
     budget_measure: str = DEFAULT_BUDGET_MEASURE
     description: str = ""
     neutralized_variable: str | None = None
@@ -221,6 +226,11 @@ def out_of_sample_reform_specs(
                 period=int(raw.get("period", period)),
                 jct_score=(
                     float(jct["score"]) if jct.get("score") is not None else None
+                ),
+                jct_score_fy2027=(
+                    float(jct["score_fy2027"])
+                    if jct.get("score_fy2027") is not None
+                    else None
                 ),
                 jct_window=str(jct.get("window", "")),
                 jct_source=str(jct.get("source", "")),
@@ -489,6 +499,11 @@ def reform_validation_payload(
                 "description": spec.description or None,
                 "jct": {
                     "score": None if effective_jct is None else _finite(effective_jct),
+                    "score_fy2027": (
+                        None
+                        if spec.jct_score_fy2027 is None
+                        else _finite(spec.jct_score_fy2027)
+                    ),
                     "score_type": spec.jct_score_type,
                     "window": spec.jct_window or None,
                     "source": spec.jct_source or None,
