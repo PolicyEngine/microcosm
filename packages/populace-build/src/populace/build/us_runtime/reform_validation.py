@@ -38,10 +38,12 @@ from populace.build.us_runtime.fiscal_targets import (
 
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
+    "BaselineLevelSpec",
     "ReformValidationSpec",
     "in_sample_reform_specs",
     "out_of_sample_reform_specs",
     "tax_expenditure_reform_specs",
+    "soi_baseline_level_specs",
     "load_default_reform_specs",
     "reform_validation_payload",
     "write_reform_validation",
@@ -301,6 +303,63 @@ def tax_expenditure_reform_specs(
     return tuple(specs)
 
 
+@dataclass(frozen=True)
+class BaselineLevelSpec:
+    """A baseline total compared to a published actual (no counterfactual).
+
+    Unlike a reform, a level row needs no reform simulation: the populace value
+    is the plain baseline weighted total of ``variable`` at ``period``, so
+    every level shares the one baseline simulation. Levels are only meaningful
+    as validation when the variable is NOT a calibration target — the shipped
+    config is restricted to SOI tax items outside the target set.
+    """
+
+    id: str
+    name: str
+    variable: str
+    period: int
+    benchmark_value: float
+    benchmark_year: str
+    source: str
+    source_url: str
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.id or not self.variable:
+            raise ValueError("BaselineLevelSpec requires id and variable.")
+
+
+def _soi_baseline_levels_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("soi_baseline_levels.json")))
+
+
+def soi_baseline_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Curated SOI-actual baseline levels from JSON config."""
+    config_path = path or _soi_baseline_levels_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    specs: list[BaselineLevelSpec] = []
+    for raw in payload.get("levels", ()):
+        bench = raw.get("benchmark", {})
+        specs.append(
+            BaselineLevelSpec(
+                id=raw["id"],
+                name=raw["name"],
+                variable=raw["variable"],
+                period=int(raw["period"]),
+                benchmark_value=float(bench["value"]),
+                benchmark_year=str(bench.get("year", "")),
+                source=str(bench.get("source", "")),
+                source_url=str(bench.get("source_url", "")),
+                description=str(raw.get("description", "")),
+            )
+        )
+    return tuple(specs)
+
+
 def load_default_reform_specs(
     *,
     period: int,
@@ -348,6 +407,7 @@ def reform_validation_payload(
     simulate: SimulateFn | None = None,
     in_sample_estimates: dict[str, float] | None = None,
     in_sample_targets: dict[str, float] | None = None,
+    baseline_levels: Sequence[BaselineLevelSpec] = (),
     release_id: str | None = None,
 ) -> dict[str, Any]:
     """Score each reform on the dataset and render the JSON-stable payload.
@@ -516,7 +576,43 @@ def reform_validation_payload(
     # genuinely-zero one, and so a release built with simulation skipped is
     # never mistaken for one where the dataset simply failed the fidelity test.
     # False only when out-of-sample reforms exist but no simulate() was given.
-    has_out_of_sample = any(not spec.in_sample for spec in specs)
+    # Baseline-level backtest rows (SOI actuals): no counterfactual — every
+    # level reads the shared baseline simulation, so together they cost one
+    # extra measure per line, not one simulation per line.
+    for level in baseline_levels:
+        total = (
+            None if simulate is None else baseline_total(level.variable, level.period)
+        )
+        rows.append(
+            {
+                "id": level.id,
+                "name": level.name,
+                "category": "IRS SOI actual",
+                "in_sample": False,
+                "period": level.period,
+                "description": level.description or None,
+                "jct": {
+                    "score": _finite(level.benchmark_value),
+                    "score_fy2027": None,
+                    "score_type": "actual",
+                    "window": level.benchmark_year or None,
+                    "source": level.source or None,
+                    "source_url": level.source_url or None,
+                },
+                "populace": {
+                    "budget_effect": None if total is None else _finite(total),
+                    "period": level.period,
+                    "window": level.benchmark_year or None,
+                    "measure": level.variable,
+                    "baseline_total": None if total is None else _finite(total),
+                    "reform_total": None,
+                },
+            }
+        )
+
+    has_out_of_sample = any(not spec.in_sample for spec in specs) or bool(
+        baseline_levels
+    )
     out_of_sample_simulated = simulate is not None or not has_out_of_sample
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,

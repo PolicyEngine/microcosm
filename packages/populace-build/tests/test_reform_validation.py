@@ -478,3 +478,97 @@ def test_write_round_trips(tmp_path):
     payload = reform_validation_payload([_oos_spec(-1.0)], period=2024, simulate=None)
     path = write_reform_validation(payload, tmp_path / "reform_validation.json")
     assert json.loads(path.read_text())["reforms"][0]["id"] == "obbba_salt"
+
+
+def test_soi_baseline_levels_load_from_default_config():
+    from populace.build.us_runtime.reform_validation import soi_baseline_level_specs
+
+    levels = soi_baseline_level_specs()
+    assert len(levels) >= 8
+    ids = [lv.id for lv in levels]
+    assert len(ids) == len(set(ids))
+    for lv in levels:
+        assert lv.benchmark_value > 0
+        assert lv.benchmark_year.startswith("TY")
+        assert "SOI" in lv.source
+        assert lv.source_url
+        # Levels must be OUT of the calibration target set; the calibrated
+        # national SOI concepts are income lines, EITC, and itemized
+        # components — none of these variables.
+        assert lv.variable not in {
+            "adjusted_gross_income",
+            "eitc",
+            "taxable_income",
+            "itemized_taxable_income_deductions",
+        }
+    income_tax = next(lv for lv in levels if lv.id == "soi_income_tax_net")
+    assert income_tax.benchmark_value == pytest.approx(2_042_047_899_000)
+
+
+def test_baseline_levels_share_one_simulation_and_emit_rows():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    calls = []
+
+    def simulate(reform):
+        calls.append(reform)
+        return _FakeSim({"cdcc": 3.6e9, "savers_credit": 2.2e9})
+
+    levels = (
+        BaselineLevelSpec(
+            id="soi_cdcc",
+            name="CDCC",
+            variable="cdcc",
+            period=2024,
+            benchmark_value=3.47e9,
+            benchmark_year="TY2023",
+            source="IRS SOI Pub 1304 TY2023, Table 3.3",
+            source_url="https://www.irs.gov/pub/irs-soi/23in33ar.xls",
+        ),
+        BaselineLevelSpec(
+            id="soi_savers",
+            name="Saver's credit",
+            variable="savers_credit",
+            period=2024,
+            benchmark_value=2.04e9,
+            benchmark_year="TY2023",
+            source="IRS SOI Pub 1304 TY2023, Table 3.3",
+            source_url="https://www.irs.gov/pub/irs-soi/23in33ar.xls",
+        ),
+    )
+    payload = reform_validation_payload(
+        (), period=2024, simulate=simulate, baseline_levels=levels
+    )
+    # Both levels read the one shared baseline simulation.
+    assert calls == [None]
+    rows = {row["id"]: row for row in payload["reforms"]}
+    cdcc = rows["soi_cdcc"]
+    assert cdcc["category"] == "IRS SOI actual"
+    assert cdcc["in_sample"] is False
+    assert cdcc["jct"]["score"] == pytest.approx(3.47e9)
+    assert cdcc["jct"]["score_type"] == "actual"
+    assert cdcc["jct"]["window"] == "TY2023"
+    assert cdcc["populace"]["budget_effect"] == pytest.approx(3.6e9)
+    assert rows["soi_savers"]["populace"]["budget_effect"] == pytest.approx(2.2e9)
+    assert payload["out_of_sample_simulated"] is True
+
+
+def test_baseline_levels_null_without_simulate():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    level = BaselineLevelSpec(
+        id="soi_cdcc",
+        name="CDCC",
+        variable="cdcc",
+        period=2024,
+        benchmark_value=3.47e9,
+        benchmark_year="TY2023",
+        source="IRS SOI",
+        source_url="https://example.test",
+    )
+    payload = reform_validation_payload(
+        (), period=2024, simulate=None, baseline_levels=(level,)
+    )
+    assert payload["reforms"][0]["populace"]["budget_effect"] is None
+    # An unsimulated backtest must mark itself, same as skipped OBBBA rows.
+    assert payload["out_of_sample_simulated"] is False
