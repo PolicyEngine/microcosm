@@ -51,10 +51,12 @@ from populace.build.us_runtime import (
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    snap_local_proxy_diagnostics,
     us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
     with_us_immigration_inputs,
+    write_snap_local_proxy_diagnostics,
     write_us_source_coverage_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
@@ -89,6 +91,9 @@ REPO_ID = "policyengine/populace-us"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 SNAP_LOCAL_PROXY_FILENAME = "snap_local_proxy.json"
+SNAP_LOCAL_PROXY_PACKAGE_ALIAS = "census-acs-s2201-congressional-district-snap-2024"
+RAW_SPM_SNAP_COLUMN = "SPM_SNAPSUB"
+CONGRESSIONAL_DISTRICT_GEOID_COLUMN = "congressional_district_geoid"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -620,6 +625,14 @@ def _parse_args() -> argparse.Namespace:
         "--skip-demographics",
         action="store_true",
         help="Do not emit demographics.json (weighted population by age) for this release.",
+    )
+    parser.add_argument(
+        "--skip-snap-local-proxy",
+        action="store_true",
+        help=(
+            "Do not emit snap_local_proxy.json (validation-only congressional "
+            "district SNAP support diagnostics) for this release."
+        ),
     )
     parser.add_argument(
         "--staging-dir",
@@ -4068,6 +4081,264 @@ def _write_demographics(
     write_demographics(payload, release_dir / "demographics.json")
 
 
+def _text_value(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode().strip()
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _fact_at(fact: object, *path: str) -> object:
+    current = fact
+    for key in path:
+        if current is None:
+            return None
+        if isinstance(current, Mapping):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+    return current
+
+
+def _fact_text(fact: object, *path: str) -> str:
+    return _text_value(_fact_at(fact, *path))
+
+
+def _fact_numeric_value(fact: object) -> float | None:
+    try:
+        value = float(_fact_at(fact, "value"))
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _raw_spm_snap_by_household(frame: Frame) -> np.ndarray | None:
+    person = frame.table("person")
+    household = frame.table("household")
+    required = {"person_household_id", RAW_SPM_SNAP_COLUMN}
+    if not required.issubset(person.columns):
+        return None
+
+    snap = (
+        pd.to_numeric(person[RAW_SPM_SNAP_COLUMN], errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    household_ids = household["household_id"].to_numpy()
+    if "person_spm_unit_id" in person.columns:
+        spm = pd.DataFrame(
+            {
+                "spm_unit_id": person["person_spm_unit_id"].to_numpy(),
+                "household_id": person["person_household_id"].to_numpy(),
+                "snap": snap,
+            }
+        )
+        household_counts = spm.groupby("spm_unit_id")["household_id"].nunique()
+        ambiguous = household_counts[household_counts != 1]
+        if not ambiguous.empty:
+            raise ValueError(
+                "SPM units must be nested in households for SNAP local proxy "
+                f"diagnostics; examples: {ambiguous.index[:5].tolist()}."
+            )
+        by_unit = spm.groupby("spm_unit_id", sort=False).agg(
+            household_id=("household_id", "first"),
+            snap=("snap", "max"),
+        )
+        by_household = by_unit.groupby("household_id")["snap"].sum()
+    else:
+        by_household = (
+            pd.DataFrame(
+                {
+                    "household_id": person["person_household_id"].to_numpy(),
+                    "snap": snap,
+                }
+            )
+            .groupby("household_id")["snap"]
+            .sum()
+        )
+    return by_household.reindex(household_ids).fillna(0.0).to_numpy(dtype=np.float64)
+
+
+def _state_snap_relative_errors(result, registry: TargetRegistry) -> dict[str, float]:
+    diagnostics = tuple(getattr(result, "diagnostics", ()))
+    errors: dict[str, float] = {}
+    for spec, diagnostic in zip(registry.specs, diagnostics, strict=False):
+        metadata = getattr(spec, "metadata", {})
+        if not isinstance(metadata, Mapping):
+            continue
+        if metadata.get("target_role") != "snap_total":
+            continue
+        state_fips = metadata.get("state_fips")
+        if not state_fips:
+            continue
+        relative_error = getattr(diagnostic, "relative_error", None)
+        if relative_error is None:
+            target = getattr(diagnostic, "target", None)
+            final_estimate = getattr(diagnostic, "final_estimate", None)
+            if target in (None, 0) or final_estimate is None:
+                continue
+            relative_error = (float(final_estimate) - float(target)) / float(target)
+        errors[str(state_fips).zfill(2)] = float(relative_error)
+    return errors
+
+
+def _snap_local_proxy_household_frame(
+    frame: Frame,
+    *,
+    result,
+    registry: TargetRegistry,
+) -> pd.DataFrame | None:
+    household = frame.table("household")
+    if CONGRESSIONAL_DISTRICT_GEOID_COLUMN not in household.columns:
+        return None
+    if "state_fips" not in household.columns:
+        return None
+    snap_amount = _raw_spm_snap_by_household(frame)
+    if snap_amount is None:
+        return None
+
+    state_fips = _state_fips_text(household["state_fips"])
+    state_errors = _state_snap_relative_errors(result, registry)
+    district = [
+        value or None
+        for value in (
+            _text_value(value)
+            for value in household[CONGRESSIONAL_DISTRICT_GEOID_COLUMN].to_numpy()
+        )
+    ]
+    return pd.DataFrame(
+        {
+            "congressional_district": district,
+            "state_fips": state_fips,
+            "household_weight": frame.weights_for("household").values,
+            "raw_spm_snap_receipt": snap_amount > 0,
+            "raw_spm_snap_amount": snap_amount,
+            "state_snap_relative_error": [
+                state_errors.get(state_fip) for state_fip in state_fips
+            ],
+        }
+    )
+
+
+def _is_snap_local_proxy_fact(fact: object) -> bool:
+    source_record_id = _fact_text(fact, "lineage", "source_record_id")
+    source_name = _fact_text(fact, "observed_measure", "source_name") or _fact_text(
+        fact, "source", "source_name"
+    )
+    source_file = _fact_text(fact, "source", "source_file")
+    source_table = _fact_text(fact, "source", "source_table")
+    geography_level = _fact_text(fact, "geography", "level")
+    geography_id = _fact_text(fact, "geography", "id")
+    source_haystack = " ".join(
+        (
+            source_record_id,
+            source_name,
+            source_file,
+            source_table,
+            geography_level,
+            geography_id,
+        )
+    ).lower()
+    measure_haystack = " ".join(
+        (
+            source_record_id,
+            _fact_text(fact, "observed_measure", "source_measure_id"),
+            _fact_text(fact, "observed_measure", "source_concept"),
+            _fact_text(fact, "layout", "measure_id"),
+            _fact_text(fact, "layout", "groupby_dimension"),
+            _fact_text(fact, "layout", "groupby_value_id"),
+        )
+    ).lower()
+    return (
+        ("s2201" in source_haystack or SNAP_LOCAL_PROXY_PACKAGE_ALIAS in source_haystack)
+        and ("congressional" in source_haystack or "district" in source_haystack)
+        and ("snap" in measure_haystack or "food_stamp" in measure_haystack)
+        and "household" in measure_haystack
+    )
+
+
+def _is_acs_margin_of_error_fact(fact: object) -> bool:
+    haystack = " ".join(
+        (
+            _fact_text(fact, "lineage", "source_record_id"),
+            _fact_text(fact, "observed_measure", "source_measure_id"),
+            _fact_text(fact, "observed_measure", "source_concept"),
+            _fact_text(fact, "layout", "measure_id"),
+        )
+    ).lower()
+    return "margin_of_error" in haystack or "moe" in haystack
+
+
+def _acs_s2201_snap_reference(ledger_facts: Iterable[object]) -> pd.DataFrame | None:
+    rows: dict[str, dict[str, float | str | None]] = {}
+    for fact in ledger_facts:
+        if not _is_snap_local_proxy_fact(fact):
+            continue
+        district = _fact_text(fact, "geography", "id")
+        value = _fact_numeric_value(fact)
+        if not district or value is None:
+            continue
+        row = rows.setdefault(
+            district,
+            {
+                "congressional_district": district,
+                "acs_snap_households": None,
+                "acs_snap_households_moe": None,
+            },
+        )
+        if _is_acs_margin_of_error_fact(fact):
+            row["acs_snap_households_moe"] = value
+        else:
+            row["acs_snap_households"] = value
+
+    records = [
+        row for row in rows.values() if row.get("acs_snap_households") is not None
+    ]
+    if not records:
+        return None
+    return pd.DataFrame(records)
+
+
+def _write_snap_local_proxy(
+    *,
+    release_dir: Path,
+    frame: Frame,
+    result,
+    registry: TargetRegistry,
+    ledger_facts: Iterable[object],
+    release_id: str,
+) -> Path | None:
+    household_frame = _snap_local_proxy_household_frame(
+        frame,
+        result=result,
+        registry=registry,
+    )
+    if household_frame is None:
+        return None
+    payload = snap_local_proxy_diagnostics(
+        household_frame,
+        district_column="congressional_district",
+        weight_column="household_weight",
+        snap_receipt_column="raw_spm_snap_receipt",
+        snap_amount_column="raw_spm_snap_amount",
+        state_column="state_fips",
+        state_snap_relative_error_column="state_snap_relative_error",
+        acs_reference=_acs_s2201_snap_reference(ledger_facts),
+        acs_snap_households_moe_column="acs_snap_households_moe",
+        validation_source={
+            "package_alias": SNAP_LOCAL_PROXY_PACKAGE_ALIAS,
+            "source_family": "snap_local_proxy",
+            "measure": "ACS S2201 congressional-district SNAP household estimates",
+        },
+    )
+    payload["release_id"] = release_id
+    return write_snap_local_proxy_diagnostics(
+        payload, release_dir / SNAP_LOCAL_PROXY_FILENAME
+    )
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -4456,8 +4727,9 @@ def main() -> None:
     _assert_cd_vintage_support_matches(
         base_h5, congressional_district_vintage_crosswalk_metadata
     )
+    ledger_facts = _load_ledger_facts(args.ledger_facts)
     target_registry = compile_us_fiscal_target_registry(
-        _load_ledger_facts(args.ledger_facts),
+        ledger_facts,
         target_period=PERIOD,
         include_congressional_district_targets=(
             args.include_congressional_district_targets
@@ -4990,6 +5262,23 @@ def main() -> None:
         )
         if telemetry is not None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
+
+    if not args.skip_snap_local_proxy:
+        if telemetry is not None:
+            telemetry.stage(
+                "snap_local_proxy",
+                message="Writing SNAP local proxy diagnostics.",
+            )
+        snap_local_proxy_path = _write_snap_local_proxy(
+            release_dir=release_dir,
+            frame=export_frame,
+            result=result,
+            registry=registry,
+            ledger_facts=ledger_facts,
+            release_id=release_id,
+        )
+        if telemetry is not None and snap_local_proxy_path is not None:
+            telemetry.attach_artifact("snap_local_proxy", snap_local_proxy_path)
 
     if telemetry is not None:
         telemetry.stage(

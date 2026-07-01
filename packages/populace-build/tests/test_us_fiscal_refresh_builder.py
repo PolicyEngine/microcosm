@@ -1619,6 +1619,175 @@ def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
     assert builder._fiscal_target_value_basis(bronze_count) == "count"
 
 
+def _snap_local_proxy_frame(builder, *, include_cd: bool = True) -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "SPM_SNAPSUB": np.asarray([100.0, 100.0, 0.0]),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2], dtype="int64"),
+            "state_fips": np.asarray([6, 36], dtype="int64"),
+        }
+    )
+    if include_cd:
+        household["congressional_district_geoid"] = ["CA-01", "NY-01"]
+    return Frame(
+        {
+            "person": person,
+            "household": household,
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([100, 200], dtype="int64")}
+            ),
+            "family": pd.DataFrame(
+                {"family_id": np.asarray([1000, 2000], dtype="int64")}
+            ),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000], dtype="int64")}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 5.0]),
+                kind=WeightKind.CALIBRATED,
+            )
+        },
+    )
+
+
+def _snap_local_proxy_facts() -> tuple[dict[str, object], ...]:
+    base = {
+        "geography": {"level": "congressional_district", "id": "CA-01"},
+        "source": {
+            "source_name": "census_acs",
+            "source_table": "ACS S2201 congressional district SNAP",
+            "source_file": (
+                "census-acs-s2201-congressional-district-snap-2024"
+            ),
+        },
+        "observed_measure": {
+            "source_name": "census_acs",
+            "source_measure_id": "snap_households",
+            "source_concept": "acs.s2201.snap_households",
+        },
+        "layout": {"measure_id": "snap_households"},
+    }
+    estimate = {
+        **base,
+        "lineage": {
+            "source_record_id": "census_acs.s2201.ca_01.snap_households.estimate"
+        },
+        "value": 8.0,
+    }
+    margin = {
+        **base,
+        "lineage": {
+            "source_record_id": (
+                "census_acs.s2201.ca_01.snap_households.margin_of_error"
+            )
+        },
+        "layout": {"measure_id": "snap_households_moe"},
+        "value": 1.0,
+    }
+    return (estimate, margin)
+
+
+def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        diagnostics=(
+            SimpleNamespace(relative_error=0.12),
+            SimpleNamespace(relative_error=0.01),
+        )
+    )
+    registry = SimpleNamespace(
+        specs=(
+            SimpleNamespace(
+                metadata={"target_role": "snap_total", "state_fips": "06"}
+            ),
+            SimpleNamespace(
+                metadata={"target_role": "snap_total", "state_fips": "36"}
+            ),
+        )
+    )
+
+    path = builder._write_snap_local_proxy(
+        release_dir=tmp_path,
+        frame=_snap_local_proxy_frame(builder),
+        result=result,
+        registry=registry,
+        ledger_facts=_snap_local_proxy_facts(),
+        release_id="populace-us-2024-fixture",
+    )
+
+    assert path == tmp_path / "snap_local_proxy.json"
+    payload = json.loads(path.read_text())
+    assert payload["classification"] == "validation_only"
+    assert payload["release_id"] == "populace-us-2024-fixture"
+    assert payload["validation_source"] == {
+        "package_alias": "census-acs-s2201-congressional-district-snap-2024",
+        "source_family": "snap_local_proxy",
+        "measure": "ACS S2201 congressional-district SNAP household estimates",
+    }
+    assert payload["summary"]["districts"] == 2
+    assert payload["summary"]["districts_with_acs_reference"] == 1
+    assert payload["summary"]["weighted_snap_households"] == 10.0
+    assert payload["summary"]["snap_dollars"] == 1000.0
+    assert payload["summary"]["outside_acs_moe_districts"] == 1
+
+    districts = {
+        row["congressional_district"]: row for row in payload["districts"]
+    }
+    ca = districts["CA-01"]
+    assert ca["state"] == "06"
+    assert ca["weighted_snap_households"] == 10.0
+    assert ca["raw_positive_snap_households"] == 1
+    assert ca["snap_dollars"] == 1000.0
+    assert ca["state_snap_relative_error"] == 0.12
+    assert ca["acs_snap_households"] == 8.0
+    assert ca["acs_snap_households_moe"] == 1.0
+    assert ca["snap_household_difference"] == 2.0
+    assert ca["outside_acs_moe"] is True
+    assert ca["flags"] == [
+        "low_positive_ess",
+        "low_positive_sample",
+        "outside_acs_moe",
+        "state_snap_outlier",
+    ]
+    assert districts["NY-01"]["flags"] == [
+        "low_positive_sample",
+        "missing_acs_reference",
+    ]
+
+
+def test__given_missing_cd_column__then_builder_skips_snap_proxy(tmp_path) -> None:
+    builder = _load_builder_module()
+
+    path = builder._write_snap_local_proxy(
+        release_dir=tmp_path,
+        frame=_snap_local_proxy_frame(builder, include_cd=False),
+        result=SimpleNamespace(diagnostics=()),
+        registry=SimpleNamespace(specs=()),
+        ledger_facts=_snap_local_proxy_facts(),
+        release_id="populace-us-2024-fixture",
+    )
+
+    assert path is None
+
+
 def test_release_calibration_diagnostics_include_gate_failures(
     monkeypatch, tmp_path
 ) -> None:
