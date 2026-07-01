@@ -1724,7 +1724,7 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
         )
     )
 
-    path = builder._write_snap_local_proxy(
+    result = builder._write_snap_local_proxy(
         release_dir=tmp_path,
         frame=_snap_local_proxy_frame(builder),
         result=result,
@@ -1733,7 +1733,10 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
         release_id="populace-us-2024-fixture",
     )
 
+    path = result.path
     assert path == tmp_path / "snap_local_proxy.json"
+    assert result.skipped_reason is None
+    assert result.missing_inputs == ()
     payload = json.loads(path.read_text())
     assert payload["classification"] == "validation_only"
     assert payload["release_id"] == "populace-us-2024-fixture"
@@ -1776,7 +1779,7 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
 def test__given_missing_cd_column__then_builder_skips_snap_proxy(tmp_path) -> None:
     builder = _load_builder_module()
 
-    path = builder._write_snap_local_proxy(
+    result = builder._write_snap_local_proxy(
         release_dir=tmp_path,
         frame=_snap_local_proxy_frame(builder, include_cd=False),
         result=SimpleNamespace(diagnostics=()),
@@ -1785,7 +1788,9 @@ def test__given_missing_cd_column__then_builder_skips_snap_proxy(tmp_path) -> No
         release_id="populace-us-2024-fixture",
     )
 
-    assert path is None
+    assert result.path is None
+    assert result.skipped_reason == "missing required input columns"
+    assert result.missing_inputs == ("household.congressional_district_geoid",)
 
 
 def test_release_calibration_diagnostics_include_gate_failures(

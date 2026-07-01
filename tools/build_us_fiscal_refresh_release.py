@@ -278,6 +278,21 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     },
 )
 
+
+class _SnapLocalProxyWriteResult:
+    __slots__ = ("missing_inputs", "path", "skipped_reason")
+
+    def __init__(
+        self,
+        *,
+        path: Path | None = None,
+        skipped_reason: str | None = None,
+        missing_inputs: tuple[str, ...] = (),
+    ) -> None:
+        self.path = path
+        self.skipped_reason = skipped_reason
+        self.missing_inputs = missing_inputs
+
 DIRECT_ACTIVE_ALIASES = (
     "census-pep-2024-national-age-sex",
     "census-pep-2024-state-age-sex",
@@ -4184,17 +4199,31 @@ def _state_snap_relative_errors(result, registry: TargetRegistry) -> dict[str, f
     return errors
 
 
+def _missing_snap_local_proxy_inputs(frame: Frame) -> tuple[str, ...]:
+    person = frame.table("person")
+    household = frame.table("household")
+    required = {
+        "household": (CONGRESSIONAL_DISTRICT_GEOID_COLUMN, "state_fips"),
+        "person": ("person_household_id", RAW_SPM_SNAP_COLUMN),
+    }
+    missing: list[str] = []
+    for entity, columns in required.items():
+        table = household if entity == "household" else person
+        missing.extend(
+            f"{entity}.{column}" for column in columns if column not in table.columns
+        )
+    return tuple(missing)
+
+
 def _snap_local_proxy_household_frame(
     frame: Frame,
     *,
     result,
     registry: TargetRegistry,
 ) -> pd.DataFrame | None:
+    if _missing_snap_local_proxy_inputs(frame):
+        return None
     household = frame.table("household")
-    if CONGRESSIONAL_DISTRICT_GEOID_COLUMN not in household.columns:
-        return None
-    if "state_fips" not in household.columns:
-        return None
     snap_amount = _raw_spm_snap_by_household(frame)
     if snap_amount is None:
         return None
@@ -4309,14 +4338,20 @@ def _write_snap_local_proxy(
     registry: TargetRegistry,
     ledger_facts: Iterable[object],
     release_id: str,
-) -> Path | None:
+) -> _SnapLocalProxyWriteResult:
+    missing_inputs = _missing_snap_local_proxy_inputs(frame)
+    if missing_inputs:
+        return _SnapLocalProxyWriteResult(
+            skipped_reason="missing required input columns",
+            missing_inputs=missing_inputs,
+        )
     household_frame = _snap_local_proxy_household_frame(
         frame,
         result=result,
         registry=registry,
     )
     if household_frame is None:
-        return None
+        return _SnapLocalProxyWriteResult(skipped_reason="no household SNAP proxy rows")
     payload = snap_local_proxy_diagnostics(
         household_frame,
         district_column="congressional_district",
@@ -4334,8 +4369,10 @@ def _write_snap_local_proxy(
         },
     )
     payload["release_id"] = release_id
-    return write_snap_local_proxy_diagnostics(
-        payload, release_dir / SNAP_LOCAL_PROXY_FILENAME
+    return _SnapLocalProxyWriteResult(
+        path=write_snap_local_proxy_diagnostics(
+            payload, release_dir / SNAP_LOCAL_PROXY_FILENAME
+        )
     )
 
 
@@ -5269,7 +5306,7 @@ def main() -> None:
                 "snap_local_proxy",
                 message="Writing SNAP local proxy diagnostics.",
             )
-        snap_local_proxy_path = _write_snap_local_proxy(
+        snap_local_proxy_result = _write_snap_local_proxy(
             release_dir=release_dir,
             frame=export_frame,
             result=result,
@@ -5277,8 +5314,16 @@ def main() -> None:
             ledger_facts=ledger_facts,
             release_id=release_id,
         )
-        if telemetry is not None and snap_local_proxy_path is not None:
-            telemetry.attach_artifact("snap_local_proxy", snap_local_proxy_path)
+        if telemetry is not None and snap_local_proxy_result.path is not None:
+            telemetry.attach_artifact("snap_local_proxy", snap_local_proxy_result.path)
+        elif telemetry is not None:
+            telemetry.stage(
+                "snap_local_proxy",
+                message="Skipped SNAP local proxy diagnostics.",
+                skipped=True,
+                skipped_reason=snap_local_proxy_result.skipped_reason,
+                missing_inputs=snap_local_proxy_result.missing_inputs,
+            )
 
     if telemetry is not None:
         telemetry.stage(
