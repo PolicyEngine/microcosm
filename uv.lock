@@ -1314,6 +1314,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+axiom = [
+    { name = "tables" },
+]
 policyengine = [
     { name = "microunit" },
     { name = "policyengine-us" },
@@ -1326,6 +1329,7 @@ us = [
 dev = [
     { name = "microunit" },
     { name = "pytest" },
+    { name = "tables" },
 ]
 
 [package.metadata]
@@ -1335,13 +1339,15 @@ requires-dist = [
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.745.0,<2" },
+    { name = "tables", marker = "extra == 'axiom'", specifier = ">=3" },
 ]
-provides-extras = ["us", "policyengine"]
+provides-extras = ["us", "policyengine", "axiom"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "microunit", specifier = ">=0.1.0" },
     { name = "pytest", specifier = ">=8" },
+    { name = "tables", specifier = ">=3" },
 ]
 
 [[package]]
