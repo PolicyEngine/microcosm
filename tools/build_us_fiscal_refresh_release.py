@@ -65,6 +65,7 @@ from populace.build.us_runtime.reform_validation import (
     default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
+    soi_baseline_level_specs,
     write_reform_validation,
 )
 from populace.calibrate import TargetRegistry, calibrate, calibrate_l0_refit
@@ -3883,6 +3884,7 @@ def _write_reform_validation(
         simulate=simulate,
         in_sample_estimates=_in_sample_estimates(result),
         in_sample_targets=_in_sample_targets(result),
+        baseline_levels=soi_baseline_level_specs(),
         release_id=release_id,
     )
     write_reform_validation(payload, release_dir / "reform_validation.json")
