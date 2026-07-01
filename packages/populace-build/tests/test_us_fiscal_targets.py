@@ -699,6 +699,49 @@ def test_extra_support_exclusions_reject_empty_reason() -> None:
             pass
 
 
+def test_state_level_snap_benefits_fact_compiles_to_state_hard_target() -> None:
+    california_source_record_id = (
+        "usda_snap.fy2024.state_benefits.wro.ca.total_benefits"
+    )
+    guam_source_record_id = "usda_snap.fy2024.state_benefits.wro.gu.total_benefits"
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=california_source_record_id,
+            source_name="usda_snap",
+            measure_id="total_benefits",
+            value=12_000_000_000,
+            geography_level="state",
+            geography_id="0400000US06",
+            groupby_value_id="ca",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=guam_source_record_id,
+            source_name="usda_snap",
+            measure_id="total_benefits",
+            value=250_000_000,
+            geography_level="state",
+            geography_id="0400000US66",
+            groupby_value_id="gu",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert california_source_record_id in by_source_record_id
+    california = by_source_record_id[california_source_record_id]
+    assert california.family == "usda_snap"
+    assert california.metadata["target_role"] == "snap_total"
+    assert california.metadata["base_variable"] == "snap"
+    assert california.metadata["state_fips"] == "06"
+    assert california.value == 12_000_000_000
+    # Guam has no PolicyEngine state FIPS, so the row must not become a target.
+    assert guam_source_record_id not in by_source_record_id
+
+
 def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
     source_record_id = (
         "cms_nhe.cy2024.medicaid_title_xix_expenditures."

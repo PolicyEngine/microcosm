@@ -2786,6 +2786,19 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         required_metadata=(("target_role", "snap_total"),),
     ),
     TargetCoverageRequirement(
+        requirement_id="snap_state_benefits",
+        label="USDA SNAP state benefit totals",
+        accepted_families=("usda_snap",),
+        required_metadata=(("target_role", "snap_total"),),
+        required_metadata_keys=("state_fips",),
+        min_matches=51,
+        notes=(
+            "FNS FY69-to-current state activity rows: 50 states plus DC. "
+            "Territory rows (Guam, USVI) resolve no PolicyEngine state FIPS "
+            "and are skipped at reference compilation, so they do not count."
+        ),
+    ),
+    TargetCoverageRequirement(
         requirement_id="unemployment_compensation_total",
         label="SOI unemployment compensation total",
         accepted_families=("irs_soi",),

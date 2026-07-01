@@ -874,6 +874,46 @@ class TestTargetProfileCoverageGate:
         )
         assert with_metadata.passed
 
+    def test_required_metadata_keys_must_be_present(self) -> None:
+        requirement = TargetCoverageRequirement(
+            requirement_id="snap_state_benefits",
+            label="SNAP state benefit totals",
+            accepted_families=("usda_snap",),
+            required_metadata_keys=("state_fips",),
+        )
+        missing_key = target_profile_coverage_gate(
+            [
+                {
+                    "name": "usda_snap.fy2024.national_benefits.total_benefits",
+                    "family": "usda_snap",
+                    "metadata": {"target_role": "snap_total"},
+                }
+            ],
+            [requirement],
+        )
+        assert not missing_key.passed
+
+        with_key = target_profile_coverage_gate(
+            [
+                {
+                    "name": "usda_snap.fy2024.state_benefits.wro.ca.total_benefits",
+                    "family": "usda_snap",
+                    "metadata": {"target_role": "snap_total", "state_fips": "06"},
+                }
+            ],
+            [requirement],
+        )
+        assert with_key.passed
+
+    def test_required_metadata_keys_reject_empty_key(self) -> None:
+        with pytest.raises(ValueError, match="non-empty keys"):
+            TargetCoverageRequirement(
+                requirement_id="bad",
+                label="Bad requirement",
+                accepted_families=("usda_snap",),
+                required_metadata_keys=("",),
+            )
+
     def test_minimum_match_count_is_enforced(self) -> None:
         requirement = TargetCoverageRequirement(
             requirement_id="state_income_tax",
