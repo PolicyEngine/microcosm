@@ -20,11 +20,6 @@ from populace.data import (
     required_release_files,
     validate_release_dir,
 )
-from populace.data.contract import (
-    _EXPECTED_US_AREA_ARTIFACT_KEYS,
-    _EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
-    _EXPECTED_US_STATE_ARTIFACT_KEYS,
-)
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2024-9f1260b-20260611"
@@ -466,7 +461,7 @@ def _write_json_and_refresh_manifest_hash(
     manifest_path.write_text(json.dumps(manifest))
 
 
-def _area_artifact_entry(release_id: str, key: str) -> dict:
+def _split_microdata_artifact_entry(release_id: str, key: str) -> dict:
     return {
         "kind": (
             "state_microdata"
@@ -478,11 +473,6 @@ def _area_artifact_entry(release_id: str, key: str) -> dict:
         "revision": release_id,
         "sha256": "7" * 64,
     }
-
-
-def _add_complete_area_artifacts(manifest: dict, release_id: str = RELEASE_ID) -> None:
-    for key in sorted(_EXPECTED_US_AREA_ARTIFACT_KEYS):
-        manifest["artifacts"][key] = _area_artifact_entry(release_id, key)
 
 
 def test_a_complete_release_passes(release_dir: Path) -> None:
@@ -941,50 +931,27 @@ def test_release_manifest_must_list_us_source_coverage_for_us_release(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
 
 
-def test_release_manifest_rejects_partial_us_area_artifact_surface(
+def test_release_manifest_rejects_us_split_microdata_artifacts(
     release_dir: Path,
 ) -> None:
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    manifest["artifacts"]["states/CA"] = _area_artifact_entry(RELEASE_ID, "states/CA")
+    manifest["artifacts"]["states/CA"] = _split_microdata_artifact_entry(
+        RELEASE_ID,
+        "states/CA",
+    )
+    manifest["artifacts"]["districts/AK-01"] = _split_microdata_artifact_entry(
+        RELEASE_ID,
+        "districts/AK-01",
+    )
     (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "US area artifacts must be all-or-nothing" in failures
-    assert "missing=" in failures
+    assert "single national microdata artifact" in failures
+    assert "states/CA" in failures
     assert "districts/AK-01" in failures
-
-
-def test_release_manifest_accepts_complete_us_area_artifact_surface(
-    release_dir: Path,
-) -> None:
-    manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    _add_complete_area_artifacts(manifest)
-    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
-
-    validate_release_dir(release_dir)
-
-    assert len(_EXPECTED_US_STATE_ARTIFACT_KEYS) == 51
-    assert len(_EXPECTED_US_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS) == 436
-
-
-def test_release_manifest_rejects_us_area_artifact_wrong_path_or_kind(
-    release_dir: Path,
-) -> None:
-    manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    _add_complete_area_artifacts(manifest)
-    manifest["artifacts"]["states/CA"]["path"] = "states/california.h5"
-    manifest["artifacts"]["districts/TX-38"]["kind"] = "microdata"
-    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(release_dir)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "area artifact 'states/CA' path" in failures
-    assert "area artifact 'districts/TX-38' kind" in failures
 
 
 def test_release_manifest_local_calibration_diagnostics_hash_must_match(

@@ -54,14 +54,6 @@ from populace.build.us_runtime import (
     us_source_operation_handlers,
     write_us_source_coverage_diagnostics,
 )
-from populace.build.us_runtime.area_artifacts import (
-    AreaArtifactResult,
-    AreaArtifactSpec,
-    assert_complete_area_artifacts,
-    congressional_district_artifact_specs,
-    state_artifact_specs,
-    write_area_artifacts,
-)
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
@@ -565,17 +557,8 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
-            "weight columns. Required when congressional-district targets or "
-            "area artifacts are requested."
-        ),
-    )
-    parser.add_argument(
-        "--include-area-artifacts",
-        action="store_true",
-        help=(
-            "After writing the national H5, derive state and congressional-"
-            "district H5 root artifacts from the calibrated national frame and "
-            "declare them in release_manifest.json for upload."
+            "weight columns. Required when congressional-district targets "
+            "are requested."
         ),
     )
     parser.add_argument(
@@ -630,12 +613,12 @@ def _parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     if (
-        args.include_congressional_district_targets or args.include_area_artifacts
-    ) and args.congressional_district_vintage_crosswalk is None:
+        args.include_congressional_district_targets
+        and args.congressional_district_vintage_crosswalk is None
+    ):
         parser.error(
             "--congressional-district-vintage-crosswalk is required when "
-            "--include-congressional-district-targets or --include-area-artifacts "
-            "is set."
+            "--include-congressional-district-targets is set."
         )
     if not args.dense_default_dataset and not (
         math.isfinite(args.l0_refit_lambda_share) and args.l0_refit_lambda_share > 0.0
@@ -3940,14 +3923,11 @@ def _build_manifests(
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
-    area_artifacts: tuple[AreaArtifactResult, ...] = (),
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     coverage_path = release_dir / "us_source_coverage.json"
-    assert_complete_area_artifacts(area_artifacts)
-
     dataset_sha = _sha256(dataset_path)
     calibration_sha = _sha256(calibration_path)
     diagnostics_sha = _sha256(diagnostics_path)
@@ -4040,36 +4020,6 @@ def _build_manifests(
                 else {}
             ),
         },
-        **(
-            {
-                "area_artifacts": {
-                    "count": len(area_artifacts),
-                    "states": sum(
-                        1
-                        for artifact in area_artifacts
-                        if artifact.key.startswith("states/")
-                    ),
-                    "congressional_districts": sum(
-                        1
-                        for artifact in area_artifacts
-                        if artifact.key.startswith("districts/")
-                    ),
-                    "artifacts": [
-                        {
-                            "key": artifact.key,
-                            "path": artifact.path,
-                            "kind": artifact.kind,
-                            "sha256": artifact.sha256,
-                            "n_households": artifact.n_households,
-                            "n_persons": artifact.n_persons,
-                        }
-                        for artifact in area_artifacts
-                    ],
-                }
-            }
-            if area_artifacts
-            else {}
-        ),
     }
     (release_dir / "build_manifest.json").write_text(
         json.dumps(manifest, indent=1, allow_nan=False)
@@ -4168,36 +4118,11 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
-            **{
-                artifact.key: _artifact_entry(
-                    artifact.path,
-                    artifact.sha256,
-                    kind=artifact.kind,
-                    revision=release_id,
-                )
-                for artifact in area_artifacts
-            },
         },
     }
     (release_dir / "release_manifest.json").write_text(
         json.dumps(release_manifest, indent=1, allow_nan=False)
     )
-
-
-def _strict_area_artifact_specs(frame: Frame) -> tuple[AreaArtifactSpec, ...]:
-    try:
-        return (
-            *state_artifact_specs(frame),
-            *congressional_district_artifact_specs(frame),
-        )
-    except ValueError as exc:
-        raise ValueError(
-            "Area artifact preflight failed. Populace area artifacts require "
-            "current 118th/2020-apportionment congressional district support; "
-            "older SOI congressional-district vintages must be translated "
-            "through Ledger target aging before publishing regional artifacts. "
-            f"{exc}"
-        ) from exc
 
 
 def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
@@ -4440,31 +4365,6 @@ def main() -> None:
                 for failure in base_population_gate.failures
             )
         )
-    area_artifact_specs: tuple[AreaArtifactSpec, ...] = ()
-    if args.include_area_artifacts:
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifact_preflight",
-                message=(
-                    "Validating current state and congressional-district artifact "
-                    "surface before source materialization and calibration."
-                ),
-            )
-        area_artifact_specs = _strict_area_artifact_specs(base_frame)
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifact_preflight",
-                message="Validated current regional artifact surface.",
-                n_area_artifacts=len(area_artifact_specs),
-                n_state_artifacts=sum(
-                    1 for spec in area_artifact_specs if spec.key.startswith("states/")
-                ),
-                n_congressional_district_artifacts=sum(
-                    1
-                    for spec in area_artifact_specs
-                    if spec.key.startswith("districts/")
-                ),
-            )
     if telemetry is not None:
         telemetry.stage(
             "source_inputs",
@@ -4736,40 +4636,6 @@ def main() -> None:
             maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         )
 
-    area_artifacts: tuple[AreaArtifactResult, ...] = ()
-    if args.include_area_artifacts:
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifacts",
-                message="Writing state and congressional-district H5 artifacts.",
-            )
-        area_artifact_started = time.perf_counter()
-        area_specs = area_artifact_specs or _strict_area_artifact_specs(export_frame)
-        area_artifacts = write_area_artifacts(
-            export_frame,
-            area_specs,
-            output_root=artifact_root,
-            period=PERIOD,
-        )
-        timing["area_artifact_seconds"] = time.perf_counter() - area_artifact_started
-        if telemetry is not None:
-            telemetry.stage(
-                "area_artifacts",
-                message="Wrote state and congressional-district H5 artifacts.",
-                n_area_artifacts=len(area_artifacts),
-                n_state_artifacts=sum(
-                    1
-                    for artifact in area_artifacts
-                    if artifact.key.startswith("states/")
-                ),
-                n_congressional_district_artifacts=sum(
-                    1
-                    for artifact in area_artifacts
-                    if artifact.key.startswith("districts/")
-                ),
-                area_artifact_seconds=timing["area_artifact_seconds"],
-            )
-
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -4857,7 +4723,6 @@ def main() -> None:
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         default_dataset=default_dataset,
-        area_artifacts=area_artifacts,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
