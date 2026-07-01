@@ -406,57 +406,45 @@ def reform_validation_payload(
         interactions between provisions, e.g. the standard deduction and the
         personal-exemption repeal).
 
-        All OBBBA specs must share one (budget_measure, period) for the
-        cumulative baseline to be coherent; a mixed group falls back to
-        isolated scoring.
+        Provisions are stacked per (budget_measure, period) group: the
+        income-tax provisions form one cumulative stack in JCX order, while a
+        provision scored on a different measure — e.g. the estate exemption,
+        whose budget_measure is estate_tax because estate tax is not a
+        component of income_tax — stacks within its own group (a single-member
+        group reduces to enacting that provision alone). The pre-OBBBA baseline
+        always merges every provision's revert, so each group is scored in the
+        context of the whole bill; measures are disjoint taxes, so cross-group
+        interactions are nil by construction.
         """
         if simulate is None or not obbba_specs:
             return {}
-        measures = {(spec.budget_measure, spec.period) for spec in obbba_specs}
-        if len(measures) != 1:
-            return {spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs}
-        measure, period = next(iter(measures))
-        # state 0: pre-OBBBA (every provision reverted).
-        prev_total = _weighted_total(
-            simulation_for_parameter_changes(obbba_pre_baseline_changes),
-            measure,
-            period,
-        )
-        enacted: set[str] = set()
-        effects: dict[str, tuple[float, float, float]] = {}
+        groups: dict[tuple[str, int], list[ReformValidationSpec]] = {}
         for spec in obbba_specs:
-            # Enacting a provision means dropping its repeal from the baseline.
-            enacted |= set((spec.parameter_changes or {}).keys())
-            state_changes = {
-                path: change
-                for path, change in obbba_pre_baseline_changes.items()
-                if path not in enacted
-            }
-            cur_total = _weighted_total(
-                simulation_for_parameter_changes(state_changes), measure, period
+            groups.setdefault((spec.budget_measure, spec.period), []).append(spec)
+        effects: dict[str, tuple[float, float, float]] = {}
+        for (measure, period), group in groups.items():
+            # state 0: pre-OBBBA (every provision reverted, across all groups).
+            prev_total = _weighted_total(
+                simulation_for_parameter_changes(obbba_pre_baseline_changes),
+                measure,
+                period,
             )
-            effects[spec.id] = (cur_total - prev_total, prev_total, cur_total)
-            prev_total = cur_total
+            enacted: set[str] = set()
+            for spec in group:
+                # Enacting a provision means dropping its repeal from the
+                # baseline; other groups' provisions stay reverted throughout.
+                enacted |= set((spec.parameter_changes or {}).keys())
+                state_changes = {
+                    path: change
+                    for path, change in obbba_pre_baseline_changes.items()
+                    if path not in enacted
+                }
+                cur_total = _weighted_total(
+                    simulation_for_parameter_changes(state_changes), measure, period
+                )
+                effects[spec.id] = (cur_total - prev_total, prev_total, cur_total)
+                prev_total = cur_total
         return effects
-
-    def _isolated_obbba_effect(
-        spec: ReformValidationSpec,
-    ) -> tuple[float | None, float | None, float | None]:
-        # One provision enacted alone on the pre-OBBBA baseline. Only used as a
-        # fallback when the OBBBA group spans multiple measures/periods.
-        if simulate is None:
-            return None, None, None
-        component_paths = set((spec.parameter_changes or {}).keys())
-        component_on_changes = {
-            path: change
-            for path, change in obbba_pre_baseline_changes.items()
-            if path not in component_paths
-        }
-        pre_obbba = simulation_for_parameter_changes(obbba_pre_baseline_changes)
-        component_on = simulation_for_parameter_changes(component_on_changes)
-        base = _weighted_total(pre_obbba, spec.budget_measure, spec.period)
-        reform_total = _weighted_total(component_on, spec.budget_measure, spec.period)
-        return reform_total - base, base, reform_total
 
     def simulated_effect(
         spec: ReformValidationSpec,

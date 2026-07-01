@@ -217,6 +217,76 @@ def test_obbba_components_score_stacked_in_jcx_order(monkeypatch):
     assert total == pytest.approx(960.0 - 1_000.0)
 
 
+def test_obbba_mixed_measures_stack_per_group(monkeypatch):
+    # The estate exemption is scored on estate_tax (not a component of
+    # income_tax). A mixed-measure set must NOT degrade the income-tax
+    # provisions to isolated scoring: they keep stacking as one group while the
+    # estate provision scores within its own single-member group, with the
+    # other group's reverts still applied.
+    def spec(id_, path, measure):
+        return ReformValidationSpec(
+            id=id_,
+            name=id_,
+            category="OBBBA",
+            in_sample=False,
+            period=2026,
+            jct_score=-1.0,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={path: {"2026-01-01.2026-12-31": 0}},
+            effect_direction="baseline_minus_reform",
+            budget_measure=measure,
+        )
+
+    specs = (
+        spec("obbba_a", "gov.example.a", "income_tax"),
+        spec("obbba_b", "gov.example.b", "income_tax"),
+        spec("obbba_estate", "gov.example.estate", "estate_tax"),
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
+
+    def simulate(reform):
+        # Keys are the provisions still repealed. Income group: A enacted
+        # ({b, estate} repealed) then B enacted ({estate} repealed). Estate
+        # group: estate enacted ({a, b} repealed). An isolated-fallback state
+        # like {a, estate} is not in the table and would KeyError.
+        totals = {
+            frozenset({"gov.example.a", "gov.example.b", "gov.example.estate"}): {
+                "income_tax": 1_000.0,
+                "estate_tax": 50.0,
+            },
+            frozenset({"gov.example.b", "gov.example.estate"}): {
+                "income_tax": 900.0,
+                "estate_tax": 50.0,
+            },
+            frozenset({"gov.example.estate"}): {
+                "income_tax": 960.0,
+                "estate_tax": 50.0,
+            },
+            frozenset({"gov.example.a", "gov.example.b"}): {
+                "income_tax": 1_000.0,
+                "estate_tax": 30.0,
+            },
+        }
+        return _FakeSim(totals[reform])
+
+    payload = reform_validation_payload(specs, period=2026, simulate=simulate)
+    rows = {row["id"]: row for row in payload["reforms"]}
+    # Income-tax provisions still stack: B scores against the post-A state.
+    assert rows["obbba_a"]["populace"]["budget_effect"] == pytest.approx(-100.0)
+    assert rows["obbba_b"]["populace"]["baseline_total"] == pytest.approx(900.0)
+    assert rows["obbba_b"]["populace"]["budget_effect"] == pytest.approx(60.0)
+    # The estate provision scores on its own measure.
+    assert rows["obbba_estate"]["populace"]["baseline_total"] == pytest.approx(50.0)
+    assert rows["obbba_estate"]["populace"]["reform_total"] == pytest.approx(30.0)
+    assert rows["obbba_estate"]["populace"]["budget_effect"] == pytest.approx(-20.0)
+
+
 def test_obbba_stacked_scoring_releases_intermediate_simulations(monkeypatch):
     specs = tuple(
         ReformValidationSpec(

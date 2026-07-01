@@ -171,7 +171,7 @@
       "id": "obbba_estate_gift_exemption",
       "name": "OBBBA - Estate and gift tax exemption",
       "category": "OBBBA",
-      "description": "Extension and enhancement of increased estate and gift tax exemption amounts. Validated by reverting the 2026 estate-tax base exclusion to the post-TCJA-expiration counterfactual.",
+      "description": "Extension and enhancement of increased estate and gift tax exemption amounts. Validated by reverting the 2026 estate-tax base exclusion to the post-TCJA-expiration counterfactual, measured on estate_tax (estate tax is not a component of income_tax, so it stacks as its own measure group). Caveat: decedent estates are essentially absent from living-household survey microdata, so populace is expected to understate this provision regardless of calibration.",
       "period": 2026,
       "budget_measure": "estate_tax",
       "effect_direction": "baseline_minus_reform",
