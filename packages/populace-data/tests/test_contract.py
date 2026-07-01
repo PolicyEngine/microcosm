@@ -587,6 +587,61 @@ def test_us_release_rejects_bad_deduction_fit(
     assert f"exceeding {expected_cap}" in failures
 
 
+def test_us_release_ignores_congressional_district_layout_critical_fit(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    salt_target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"]
+        == "irs_soi.ty2022.historic_table_2.us.all."
+        "limited_state_local_taxes_amount@2024"
+    )
+    cd_layout_target = dict(salt_target)
+    cd_layout_target["name"] = (
+        "irs_soi.ty2023.congressional_district_2022.all_returns.us."
+        "limited_state_local_taxes_amount@2024"
+    )
+    cd_layout_target["target_name"] = cd_layout_target["name"].removesuffix("@2024")
+    cd_layout_target["target"] = 250_437_565_000.0
+    cd_layout_target["compiled_target"] = 250_437_565_000.0
+    cd_layout_target["final_estimate"] = 130_722_333_208.88704
+    cd_layout_target["relative_error"] = (
+        cd_layout_target["final_estimate"] - cd_layout_target["target"]
+    ) / cd_layout_target["target"]
+    cd_layout_target["metadata"] = {
+        **salt_target["metadata"],
+        "ledger_source_record_id": cd_layout_target["target_name"],
+        "ledger_layout_groupby_dimension": "irs_soi.congressional_district",
+        "ledger_layout_groupby_value_id": "us",
+        "target_role": "salt_deduction_total",
+    }
+    diagnostics["targets"].append(cd_layout_target)
+    diagnostics["target_surface"]["n_targets"] += 1
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+    source_coverage = json.loads(
+        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
+    )
+    source_coverage["fiscal_target_sources"]["irs_soi"]["target_count"] += 1
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=source_coverage,
+    )
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    build_manifest["calibration"]["target_surface"]["n_targets"] += 1
+    (release_dir / "build_manifest.json").write_text(json.dumps(build_manifest))
+
+    validate_release_dir(release_dir)
+
+
 @pytest.mark.parametrize(
     "deduction",
     DEDUCTION_CRITICAL_TARGETS,
