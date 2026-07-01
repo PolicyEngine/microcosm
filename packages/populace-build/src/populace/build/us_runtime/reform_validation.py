@@ -365,13 +365,9 @@ def reform_validation_payload(
     targets = in_sample_targets or {}
     baseline: Any = None
     baseline_totals: dict[tuple[int, str], float] = {}
-    parameter_reform_sims: dict[str, Any] = {}
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
     obbba_stacked: dict[str, tuple[float, float, float]] | None = None
-
-    def parameter_changes_key(changes: dict[str, Any]) -> str:
-        return json.dumps(changes, sort_keys=True, separators=(",", ":"))
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -383,11 +379,8 @@ def reform_validation_payload(
         return baseline_totals[key]
 
     def simulation_for_parameter_changes(changes: dict[str, Any]) -> Any:
-        key = parameter_changes_key(changes)
-        if key not in parameter_reform_sims:
-            reform = None if not changes else _build_parameter_reform(changes)
-            parameter_reform_sims[key] = simulate(reform)  # type: ignore[misc]
-        return parameter_reform_sims[key]
+        reform = None if not changes else _build_parameter_reform(changes)
+        return simulate(reform)  # type: ignore[misc]
 
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
@@ -411,9 +404,7 @@ def reform_validation_payload(
             return {}
         measures = {(spec.budget_measure, spec.period) for spec in obbba_specs}
         if len(measures) != 1:
-            return {
-                spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs
-            }
+            return {spec.id: _isolated_obbba_effect(spec) for spec in obbba_specs}
         measure, period = next(iter(measures))
         # state 0: pre-OBBBA (every provision reverted).
         prev_total = _weighted_total(
