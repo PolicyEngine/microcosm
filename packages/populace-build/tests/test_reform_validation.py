@@ -572,3 +572,71 @@ def test_baseline_levels_null_without_simulate():
     assert payload["reforms"][0]["populace"]["budget_effect"] is None
     # An unsimulated backtest must mark itself, same as skipped OBBBA rows.
     assert payload["out_of_sample_simulated"] is False
+
+
+def test_capped_baseline_level_limits_credit_to_liability():
+    import numpy as np
+
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    class _WeightedSeries:
+        def __init__(self, values, weights):
+            self._values = np.asarray(values, dtype=float)
+            self.weights = np.asarray(weights, dtype=float)
+
+        def __array__(self, dtype=None):
+            return self._values if dtype is None else self._values.astype(dtype)
+
+        def sum(self):
+            return float((self._values * self.weights).sum())
+
+    class _ArraySim:
+        # Two tax units (weights 10 and 1): the first has a $2,000 credit but
+        # only $500 of pre-credit liability, so only $500 is usable.
+        data = {
+            "cdcc": ([2_000.0, 1_000.0], [10.0, 1.0]),
+            "income_tax_before_credits": ([500.0, 5_000.0], [10.0, 1.0]),
+        }
+
+        def calculate(self, measure, period):
+            values, weights = self.data[measure]
+            return _WeightedSeries(values, weights)
+
+    def simulate(reform):
+        assert reform is None
+        return _ArraySim()
+
+    level = BaselineLevelSpec(
+        id="soi_cdcc",
+        name="CDCC",
+        variable="cdcc",
+        period=2024,
+        benchmark_value=3.47e9,
+        benchmark_year="TY2023",
+        source="IRS SOI",
+        source_url="https://example.test",
+        cap_variable="income_tax_before_credits",
+    )
+    payload = reform_validation_payload(
+        (), period=2024, simulate=simulate, baseline_levels=(level,)
+    )
+    row = payload["reforms"][0]
+    # min(2000, 500)*10 + min(1000, 5000)*1 — NOT the uncapped 2000*10 + 1000.
+    assert row["populace"]["budget_effect"] == pytest.approx(500 * 10 + 1_000)
+
+
+def test_shipped_soi_levels_cap_nonrefundable_credits():
+    from populace.build.us_runtime.reform_validation import soi_baseline_level_specs
+
+    levels = {lv.id: lv for lv in soi_baseline_level_specs()}
+    for capped in (
+        "soi_cdcc",
+        "soi_education_credits",
+        "soi_savers_credit",
+        "soi_ctc_nonrefundable",
+    ):
+        assert levels[capped].cap_variable == "income_tax_before_credits"
+    # Taxes and refundable credits are clean concepts — no cap.
+    for uncapped in ("soi_income_tax_net", "soi_amt", "soi_niit", "soi_se_tax",
+                     "soi_ctc_refundable"):
+        assert levels[uncapped].cap_variable is None

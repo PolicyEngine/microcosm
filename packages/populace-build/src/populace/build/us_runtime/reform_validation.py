@@ -323,6 +323,13 @@ class BaselineLevelSpec:
     source: str
     source_url: str
     description: str = ""
+    # SOI credit columns report the amount USED to offset tax (liability-
+    # limited), while PE per-credit variables are the amount AVAILABLE. For
+    # nonrefundable-credit lines, set cap_variable (income_tax_before_credits)
+    # to compare min(available, cap) per tax unit — an approximation that
+    # ignores IRS credit-ordering, so the populace side remains a slight upper
+    # bound.
+    cap_variable: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
@@ -355,6 +362,7 @@ def soi_baseline_level_specs(
                 source=str(bench.get("source", "")),
                 source_url=str(bench.get("source_url", "")),
                 description=str(raw.get("description", "")),
+                cap_variable=raw.get("cap_variable") or None,
             )
         )
     return tuple(specs)
@@ -383,6 +391,26 @@ def _weighted_total(simulation: Any, measure: str, period: int) -> float:
     """Weighted population total of ``measure`` (MicroSeries .sum() is
     weight-aware in policyengine-us)."""
     return float(simulation.calculate(measure, period).sum())
+
+
+def _capped_weighted_total(
+    simulation: Any, measure: str, cap_measure: str, period: int
+) -> float:
+    """Weighted total of ``min(measure, cap_measure)`` per unit.
+
+    Used for SOI credit columns, which report the amount USED to offset tax
+    rather than the amount available. Weights are applied explicitly because
+    elementwise numpy ops do not reliably preserve MicroSeries weights.
+    """
+    import numpy as np
+
+    values = simulation.calculate(measure, period)
+    caps = simulation.calculate(cap_measure, period)
+    capped = np.minimum(np.asarray(values), np.asarray(caps))
+    weights = getattr(values, "weights", None)
+    if weights is None:
+        return float(capped.sum())
+    return float((capped * np.asarray(weights)).sum())
 
 
 def default_simulate_factory(dataset_path: Path) -> SimulateFn:
@@ -579,10 +607,18 @@ def reform_validation_payload(
     # Baseline-level backtest rows (SOI actuals): no counterfactual — every
     # level reads the shared baseline simulation, so together they cost one
     # extra measure per line, not one simulation per line.
+    def _level_total(level: BaselineLevelSpec) -> float:
+        nonlocal baseline
+        if level.cap_variable:
+            if baseline is None:
+                baseline = simulate(None)  # type: ignore[misc]
+            return _capped_weighted_total(
+                baseline, level.variable, level.cap_variable, level.period
+            )
+        return baseline_total(level.variable, level.period)
+
     for level in baseline_levels:
-        total = (
-            None if simulate is None else baseline_total(level.variable, level.period)
-        )
+        total = None if simulate is None else _level_total(level)
         rows.append(
             {
                 "id": level.id,
