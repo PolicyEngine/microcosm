@@ -74,7 +74,7 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
-from populace.calibrate import TargetRegistry, calibrate
+from populace.calibrate import TargetRegistry, calibrate, calibrate_l0_refit
 from populace.calibrate.diagnostics import (
     diagnostics_payload,
     write_calibration_diagnostics,
@@ -98,6 +98,8 @@ TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
+DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
+DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
 
 
 def _collect_batch_garbage() -> None:
@@ -416,9 +418,40 @@ def _parse_args() -> argparse.Namespace:
             "still pass if they improve on this incumbent row by row."
         ),
     )
-    parser.add_argument("--epochs", type=int, default=512)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        help=(
+            "Optimization epochs for each calibration stage. The default "
+            "matches the current L0+refit release run: L0 selection for 1,500 "
+            "epochs followed by a 1,500-epoch ordinary refit."
+        ),
+    )
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
+    parser.add_argument(
+        "--l0-refit-lambda-share",
+        type=float,
+        default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
+        help=(
+            "Default national dataset sparsity control. The builder divides "
+            "this value by the candidate household count and uses the result "
+            "as the fixed L0 penalty before refitting ordinary calibration on "
+            "the selected support. The default 0.8 reproduces the current "
+            "57k-household US fiscal surface run from the 337k support."
+        ),
+    )
+    parser.add_argument(
+        "--dense-default-dataset",
+        action="store_true",
+        help=(
+            "Diagnostic only: publish the dense no-L0 calibrated frame as the "
+            "default national dataset. Release builds should leave this unset "
+            "so populace_us_2024.h5 is the sparse L0+refit dataset that runs "
+            "on standard machines."
+        ),
+    )
     parser.add_argument(
         "--warm-start-calibration-npz",
         type=Path,
@@ -602,6 +635,14 @@ def _parse_args() -> argparse.Namespace:
             "--congressional-district-vintage-crosswalk is required when "
             "--include-congressional-district-targets or --include-area-artifacts "
             "is set."
+        )
+    if not args.dense_default_dataset and not (
+        math.isfinite(args.l0_refit_lambda_share)
+        and args.l0_refit_lambda_share > 0.0
+    ):
+        parser.error(
+            "--l0-refit-lambda-share must be positive unless "
+            "--dense-default-dataset is set."
         )
     return args
 
@@ -2886,6 +2927,33 @@ def _with_calibrated_weights(
     )
 
 
+def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
+    """Attach post-L0 refit weights to the clean selected base-frame support."""
+    selected_ids = np.asarray(result.selected_entity_ids)
+    schema = base_frame.schema
+    weight_entity = result.weight_entity
+    if weight_entity == schema.person_entity:
+        person_ids = base_frame.person[schema.person_id_column].to_numpy()
+        person_mask = np.isin(person_ids, selected_ids)
+    elif weight_entity in schema.group_entities:
+        membership = base_frame.person[schema.membership_column(weight_entity)].to_numpy()
+        person_mask = np.isin(membership, selected_ids)
+    else:
+        raise ValueError(
+            f"L0 refit default export cannot map weight entity {weight_entity!r}."
+        )
+    selected_base = base_frame.select(person_mask)
+    exported_ids = selected_base.table(weight_entity)[
+        schema.id_column(weight_entity)
+    ].to_numpy()
+    if not np.array_equal(exported_ids, selected_ids):
+        raise ValueError(
+            "L0 refit selected support is not aligned with the base-frame export "
+            f"support for {weight_entity!r}."
+        )
+    return _with_calibrated_weights(selected_base, result.weights)
+
+
 def _selected_plan_ratio_bucket(values: np.ndarray) -> dict[str, object]:
     finite = np.asarray(values, dtype=np.float64)
     finite = finite[np.isfinite(finite)]
@@ -3630,6 +3698,7 @@ def _write_release_calibration_diagnostics(
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
+    default_dataset: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
 ) -> None:
@@ -3682,6 +3751,9 @@ def _write_release_calibration_diagnostics(
                 dict(warm_start_calibration)
                 if warm_start_calibration is not None
                 else {"enabled": False}
+            ),
+            "default_dataset": (
+                dict(default_dataset) if default_dataset is not None else None
             ),
             "timing": dict(timing or {}),
             "release_gates": {
@@ -3882,6 +3954,7 @@ def _build_manifests(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
+    default_dataset: Mapping[str, object] | None = None,
     area_artifacts: tuple[AreaArtifactResult, ...] = (),
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
@@ -3913,6 +3986,9 @@ def _build_manifests(
         if warm_start_calibration is not None
         else {"enabled": False}
     )
+    default_dataset_payload = (
+        dict(default_dataset) if default_dataset is not None else None
+    )
     manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
@@ -3927,6 +4003,7 @@ def _build_manifests(
         "dataset": {
             "filename": DATASET_FILENAME,
             "sha256": dataset_sha,
+            "default": default_dataset_payload,
         },
         "calibration": {
             "filename": CALIBRATION_FILENAME,
@@ -4033,6 +4110,7 @@ def _build_manifests(
             },
             "timing": timing_payload,
             "warm_start_calibration": warm_start_payload,
+            "default_dataset": default_dataset_payload,
             **(
                 {
                     "base_population_scale": {
@@ -4481,14 +4559,35 @@ def main() -> None:
             args.warm_start_calibration_npz,
             expected_initial_weights=target_frame.resolve_weights("household").values,
         )
+    candidate_households = int(target_frame.n("household"))
+    l0_refit_lambda = (
+        None
+        if args.dense_default_dataset
+        else args.l0_refit_lambda_share / float(candidate_households)
+    )
+    target_loss_weights = _fiscal_target_loss_weights(registry)
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
-            message="Calibrating household weights.",
+            message=(
+                "Calibrating dense household weights."
+                if args.dense_default_dataset
+                else "Selecting sparse L0 support and refitting household weights."
+            ),
+            default_dataset_method=(
+                "dense_no_l0" if args.dense_default_dataset else "l0_refit"
+            ),
             epochs=args.epochs,
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             n_targets=len(registry),
+            n_candidate_households=candidate_households,
+            l0_refit_lambda_share=(
+                None
+                if args.dense_default_dataset
+                else float(args.l0_refit_lambda_share)
+            ),
+            l0_lambda=l0_refit_lambda,
             warm_start_calibration=(
                 dict(warm_start_calibration)
                 if warm_start_calibration is not None
@@ -4497,21 +4596,62 @@ def main() -> None:
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
-    result = calibrate(
-        target_frame,
-        registry.to_target_set(),
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        max_weight_ratio=args.max_weight_ratio,
-        seed=args.seed,
-        mass="conserve",
-        target_loss_weights=_fiscal_target_loss_weights(registry),
-        target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
-        warm_start_weights=warm_start_weights,
-        progress_callback=(
-            telemetry.calibration_progress if telemetry is not None else None
-        ),
-    )
+    if args.dense_default_dataset:
+        result = calibrate(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=(
+                telemetry.calibration_progress if telemetry is not None else None
+            ),
+        )
+        default_dataset = {
+            "method": "dense_no_l0",
+            "sparse": False,
+            "n_candidate_households": candidate_households,
+            "n_exported_households": int(target_frame.n("household")),
+            "epochs": int(args.epochs),
+            "final_loss": float(result.final_loss),
+        }
+    else:
+        result = calibrate_l0_refit(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            refit_epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            l0_lambda=float(l0_refit_lambda),
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=(
+                telemetry.calibration_progress if telemetry is not None else None
+            ),
+        )
+        default_dataset = {
+            "method": "l0_refit",
+            "sparse": True,
+            "n_candidate_households": candidate_households,
+            "n_selected_households": int(result.selection.n_nonzero),
+            "n_exported_households": int(result.frame.n("household")),
+            "l0_lambda_share": float(args.l0_refit_lambda_share),
+            "l0_lambda": float(result.l0_lambda),
+            "selection_epochs": int(args.epochs),
+            "refit_epochs": int(args.epochs),
+            "selection_final_loss": float(result.selection.final_loss),
+            "refit_initial_loss": float(result.initial_loss),
+            "refit_final_loss": float(result.final_loss),
+        }
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
     if telemetry is not None:
@@ -4520,6 +4660,7 @@ def main() -> None:
             message="Evaluating release gates.",
             final_loss=result.final_loss,
             n_nonzero=result.n_nonzero,
+            default_dataset=default_dataset,
             calibration_seconds=timing["calibration_seconds"],
             elapsed_through_calibration_seconds=timing[
                 "elapsed_through_calibration_seconds"
@@ -4570,6 +4711,7 @@ def main() -> None:
         timing=timing,
         incumbent_diagnostics_path=args.incumbent_diagnostics,
         incumbent_diagnostics=incumbent_diagnostics,
+        default_dataset=default_dataset,
     )
     if telemetry is not None:
         telemetry.attach_artifact(
@@ -4589,7 +4731,11 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
-    export_frame = _with_calibrated_weights(base_frame, result.weights)
+    export_frame = (
+        _with_calibrated_weights(base_frame, result.weights)
+        if args.dense_default_dataset
+        else _with_l0_refit_weights(base_frame, result)
+    )
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
     if args.audit_export_targets:
@@ -4725,6 +4871,7 @@ def main() -> None:
         incumbent_diagnostics=incumbent_diagnostics,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
+        default_dataset=default_dataset,
         area_artifacts=area_artifacts,
     )
     if telemetry is not None:

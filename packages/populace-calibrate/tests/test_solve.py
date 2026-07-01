@@ -14,10 +14,13 @@ import pandas as pd
 import pytest
 
 from populace.calibrate import (
+    L0RefitResult,
     Target,
     TargetSet,
     calibrate,
+    calibrate_l0_refit,
     default_target_loss_scales,
+    refit_l0_selection,
     relative_error_loss,
 )
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
@@ -610,6 +613,79 @@ def test_l0_lambda_alone_is_a_fixed_penalty_pruning_control(feasible_frame) -> N
     # Reported penalty is the value supplied, unchanged.
     assert weak.l0_lambda == 3e-4
     assert strong.l0_lambda == 3e-3
+
+
+def test_l0_refit_returns_refit_on_selected_support(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=220)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+
+    result = calibrate_l0_refit(
+        frame,
+        targets,
+        epochs=180,
+        refit_epochs=180,
+        seed=0,
+        target_records=80,
+        mass="conserve",
+    )
+
+    assert isinstance(result, L0RefitResult)
+    assert result.selection.l0_lambda > 0.0
+    assert result.refit.l0_lambda == 0.0
+    assert result.l0_lambda == result.selection.l0_lambda
+    assert result.final_loss == result.refit.final_loss
+    assert result.frame is result.refit.frame
+    assert result.frame.n("household") == result.selection.n_nonzero
+    assert len(result.selected_entity_ids) == result.selection.n_nonzero
+    assert result.n_nonzero == result.selection.n_nonzero
+    # The production weights are the ordinary no-L0 refit on the L0-selected
+    # support, not the raw gated selection weights.
+    assert result.final_loss <= result.selection.final_loss + 0.02
+
+
+def test_refit_l0_selection_reuses_existing_selection(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=180)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=160,
+        seed=0,
+        target_records=70,
+        mass="conserve",
+    )
+
+    result = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        epochs=160,
+        seed=0,
+        mass="conserve",
+    )
+
+    assert result.selection is selection
+    assert result.refit.l0_lambda == 0.0
+    assert result.frame.n("household") == selection.n_nonzero
+    assert len(result.selected_entity_ids) == selection.n_nonzero
+
+
+def test_l0_refit_requires_l0_pruning_control(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.0),))
+
+    with pytest.raises(ValueError, match="target_records|l0_lambda"):
+        calibrate_l0_refit(frame, targets, epochs=10, seed=0)
 
 
 def test_l2_lambda_zero_matches_default(feasible_frame) -> None:
