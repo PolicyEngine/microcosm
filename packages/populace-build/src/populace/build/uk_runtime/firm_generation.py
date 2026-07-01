@@ -9,18 +9,20 @@ kept only for migration comparisons against the paper repository.
 Scope is intentionally narrow and labelled experimental. Populace production
 calibration targets must be materialized from Ledger target profiles; the
 processed ONS/HMRC tables accepted here are a migration harness only, not a
-production target source. Ledger-backed firm target activation and Axiom
-VAT-rule execution are later integration steps, so this module does not claim
-production firm microsimulation support.
+production target source. VAT liability must be supplied by a configured rule
+evaluator; the production path is an Axiom RuleSpec artifact, so this module
+does not claim production firm microsimulation support without that artifact.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -206,6 +208,136 @@ NEGATIVE_LIABILITY_SECTORS = {
 }
 HIGH_LIABILITY_SECTORS = {11, 12, 69, 70, 78}
 
+AXIOM_UK_VAT_NET_LIABILITY_OUTPUT = (
+    "uk:statutes/ukpga/1994/23/25#net_vat_liability_after_input_tax_credit"
+)
+AXIOM_UK_VAT_TAXABLE_PERSON_INPUT = "uk:statutes/ukpga/1994/23/24#input.taxable_person"
+AXIOM_UK_VAT_SUPPLIES_INPUT = (
+    "uk:statutes/ukpga/1994/23/24#input.standard_rated_taxable_supplies_value"
+)
+AXIOM_UK_VAT_PURCHASES_INPUT = (
+    "uk:statutes/ukpga/1994/23/24#input.standard_rated_deductible_business_purchase_value"
+)
+AXIOM_UK_VAT_ALLOWABLE_PROPORTION_INPUT = (
+    "uk:statutes/ukpga/1994/23/26#input.allowable_input_tax_proportion"
+)
+
+
+class UKFirmVATRuleEvaluator(Protocol):
+    """Evaluate VAT liability for candidate firms before weight optimization."""
+
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        """Return net VAT liability in thousands of pounds."""
+
+
+@dataclass(frozen=True)
+class AxiomVATRuleEvaluator:
+    """Run UK VAT liability through a compiled Axiom RuleSpec artifact."""
+
+    artifact_path: str | Path
+    engine_binary: str | Path = "axiom-rules-engine"
+    allowable_input_tax_proportion: float = 1.0
+    output_id: str = AXIOM_UK_VAT_NET_LIABILITY_OUTPUT
+
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        turnover = np.asarray(turnover_k, dtype=np.float64)
+        input_cost = np.asarray(input_cost_k, dtype=np.float64)
+        registered = np.asarray(vat_registered, dtype=bool)
+        if turnover.shape != input_cost.shape or turnover.shape != registered.shape:
+            raise ValueError("VAT rule inputs must have matching shapes.")
+
+        period = _vat_rule_period(data_vintage)
+        interval = {"start": period["start"], "end": period["end"]}
+        request_inputs: list[dict[str, object]] = []
+        queries: list[dict[str, object]] = []
+        for index, (sales_k, purchases_k, taxable) in enumerate(
+            zip(turnover, input_cost, registered, strict=True),
+        ):
+            entity_id = f"firm:{index + 1}"
+            request_inputs.extend(
+                [
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_TAXABLE_PERSON_INPUT,
+                        entity_id,
+                        interval,
+                        {"kind": "bool", "value": bool(taxable)},
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_SUPPLIES_INPUT,
+                        entity_id,
+                        interval,
+                        {"kind": "decimal", "value": _decimal_string(sales_k * 1000.0)},
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_PURCHASES_INPUT,
+                        entity_id,
+                        interval,
+                        {
+                            "kind": "decimal",
+                            "value": _decimal_string(purchases_k * 1000.0),
+                        },
+                    ),
+                    _axiom_input_record(
+                        AXIOM_UK_VAT_ALLOWABLE_PROPORTION_INPUT,
+                        entity_id,
+                        interval,
+                        {
+                            "kind": "decimal",
+                            "value": _decimal_string(self.allowable_input_tax_proportion),
+                        },
+                    ),
+                ]
+            )
+            queries.append(
+                {
+                    "entity_id": entity_id,
+                    "period": period,
+                    "outputs": [self.output_id],
+                }
+            )
+
+        request = {
+            "mode": "fast",
+            "dataset": {"inputs": request_inputs, "relations": []},
+            "queries": queries,
+        }
+        process = subprocess.run(
+            [
+                str(self.engine_binary),
+                "run-compiled",
+                "--artifact",
+                str(self.artifact_path),
+            ],
+            input=json.dumps(request),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            stderr = process.stderr.strip() or "Axiom VAT rule evaluation failed"
+            raise RuntimeError(stderr)
+
+        response = json.loads(process.stdout)
+        values = []
+        for result in response["results"]:
+            output = result["outputs"][self.output_id]
+            values.append(float(output["value"]["value"]) / 1000.0)
+        return np.asarray(values, dtype=np.float32)
+
 
 @dataclass(frozen=True)
 class UKFirmGenerationConfig:
@@ -227,6 +359,7 @@ class UKFirmGenerationConfig:
     vat_liability_band_importance: float = 2.0
     calibrate_vat_liability_sector: bool = False
     input_files: dict[str, str] = field(default_factory=lambda: dict(INPUT_FILES))
+    vat_rule_evaluator: UKFirmVATRuleEvaluator | None = None
 
     def __post_init__(self) -> None:
         if self.data_vintage not in VINTAGES:
@@ -244,6 +377,34 @@ class UKFirmGenerationConfig:
             raise ValueError("vat_threshold must be positive.")
         if self.n_iterations <= 0:
             raise ValueError("n_iterations must be positive.")
+
+
+def _vat_rule_period(data_vintage: str) -> dict[str, str]:
+    start_year = int(data_vintage.split("-", 1)[0])
+    return {
+        "period_kind": "tax_year",
+        "start": f"{start_year}-04-06",
+        "end": f"{start_year + 1}-04-05",
+    }
+
+
+def _axiom_input_record(
+    name: str,
+    entity_id: str,
+    interval: Mapping[str, str],
+    value: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "entity": "Firm",
+        "entity_id": entity_id,
+        "interval": dict(interval),
+        "value": dict(value),
+    }
+
+
+def _decimal_string(value: float) -> str:
+    return format(float(value), ".12g")
 
 
 @dataclass(frozen=True)
@@ -564,6 +725,12 @@ def generate_uk_firm_population(
         cfg.device,
     )
     base_vat_registered = assign_vat_flags(base_turnover, hmrc_bands, cfg)
+    base_vat_liability = calculate_vat_liability_values(
+        cfg,
+        base_turnover,
+        base_input,
+        base_vat_registered,
+    )
     employment_band_indices = torch.tensor(
         [_employment_band_index(value.item()) for value in base_employment],
         dtype=torch.long,
@@ -578,6 +745,7 @@ def generate_uk_firm_population(
         employment_band_indices,
         base_vat_registered,
         data,
+        vat_liability_values=base_vat_liability,
     )
     calibration = solve_firm_weights(cfg, target_matrix, target_values, layout)
     weights = calibration.weights
@@ -600,10 +768,17 @@ def generate_uk_firm_population(
         data.ons_employment,
         cfg.device,
     )
+    final_vat_liability = calculate_vat_liability_values(
+        cfg,
+        final_turnover,
+        final_input,
+        final_vat_registered,
+    )
     firms = _assemble_firm_rows(
         final_sic,
         final_turnover,
         final_input,
+        final_vat_liability,
         final_employment,
         final_weights,
         final_vat_registered,
@@ -772,6 +947,7 @@ def build_firm_target_matrix(
     employment_band_indices: Tensor,
     vat_registered: Tensor,
     data: UKFirmSourceData,
+    vat_liability_values: Tensor | None = None,
 ) -> tuple[Tensor, Tensor, UKFirmTargetLayout, tuple[str, ...]]:
     """Construct the firm calibration target matrix and target vector."""
 
@@ -818,7 +994,16 @@ def build_firm_target_matrix(
         matrix[row, employment_band_indices == band_idx] = 1.0
         target_names.append(f"ons_firm_employment/{band}")
 
-    vat_liability = turnover_values - input_values
+    vat_liability = (
+        vat_liability_values
+        if vat_liability_values is not None
+        else calculate_vat_liability_values(
+            config,
+            turnover_values,
+            input_values,
+            vat_registered,
+        )
+    )
     for offset, (_, vat_row) in enumerate(vat_sector_rows.iterrows()):
         row = layout.vat_sector_start + offset
         sic_code = int(vat_row["Trade_Sector"])
@@ -965,6 +1150,40 @@ def target_diagnostics(
             "relative_error": relative_error,
         }
     )
+
+
+def calculate_vat_liability_values(
+    config: UKFirmGenerationConfig,
+    turnover_values: Tensor,
+    input_values: Tensor,
+    vat_registered: Tensor,
+) -> Tensor:
+    """Evaluate net VAT liability for candidate firms via configured VAT rules."""
+
+    evaluator = config.vat_rule_evaluator
+    if evaluator is None:
+        raise ValueError(
+            "UK firm VAT liability requires a VAT rule evaluator. "
+            "Pass AxiomVATRuleEvaluator with a compiled UK VAT RuleSpec artifact."
+        )
+    turnover_np = turnover_values.detach().cpu().numpy()
+    input_np = input_values.detach().cpu().numpy()
+    registered_np = vat_registered.detach().cpu().numpy().astype(bool)
+    liability_np = np.asarray(
+        evaluator.net_liability_k(
+            turnover_k=turnover_np,
+            input_cost_k=input_np,
+            vat_registered=registered_np,
+            data_vintage=config.data_vintage,
+        ),
+        dtype=np.float32,
+    )
+    if liability_np.shape != turnover_np.shape:
+        raise ValueError(
+            "VAT rule evaluator returned shape "
+            f"{liability_np.shape}, expected {turnover_np.shape}."
+        )
+    return torch.tensor(liability_np, dtype=torch.float32, device=config.device)
 
 
 def validate_uk_firm_population(
@@ -1223,6 +1442,7 @@ def _assemble_firm_rows(
     sic_codes: Tensor,
     turnover: Tensor,
     input_values: Tensor,
+    vat_liability: Tensor,
     employment: Tensor,
     weights: Tensor,
     vat_registered: Tensor,
@@ -1231,6 +1451,7 @@ def _assemble_firm_rows(
     sic_np = sic_codes.detach().cpu().numpy().astype(int)
     turnover_np = turnover.detach().cpu().numpy()
     input_np = input_values.detach().cpu().numpy()
+    vat_liability_np = vat_liability.detach().cpu().numpy()
     firm_ids = np.arange(1, len(sic_np) + 1, dtype=np.int64)
     return pd.DataFrame(
         {
@@ -1244,7 +1465,7 @@ def _assemble_firm_rows(
             "sic_code": [str(sic).zfill(5) for sic in sic_np],
             "annual_turnover_k": turnover_np,
             "annual_input_k": input_np,
-            "vat_liability_k": turnover_np - input_np,
+            "vat_liability_k": vat_liability_np,
             "employment": employment.detach().cpu().numpy().astype(int),
             "firm_weight": weights.detach().cpu().numpy(),
             "vat_registered": vat_registered.detach().cpu().numpy().astype(bool),

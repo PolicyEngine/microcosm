@@ -2,15 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
+import torch
 
+from populace.build.uk_runtime import (
+    AxiomVATRuleEvaluator as PublicAxiomVATRuleEvaluator,
+)
 from populace.build.uk_runtime.firm_generation import (
     DEFAULT_UK_FIRM_TARGET_PROFILE,
     HMRC_BAND_COLUMNS,
     INPUT_FILES,
     UK_FIRM_TARGET_IDS,
+    AxiomVATRuleEvaluator,
     UKFirmGenerationConfig,
+    calculate_vat_liability_values,
     employment_band_name,
     generate_uk_firm_population,
     hmrc_band_name,
@@ -20,6 +27,10 @@ from populace.build.uk_runtime.firm_generation import (
     uk_firm_target_profile_from_mapping,
     write_uk_firm_population,
 )
+
+
+def test_axiom_vat_rule_evaluator_is_public_uk_runtime_api() -> None:
+    assert PublicAxiomVATRuleEvaluator is AxiomVATRuleEvaluator
 
 
 def test_uk_firm_source_data_reads_processed_directory(tmp_path: Path) -> None:
@@ -95,7 +106,7 @@ def test_generate_uk_firm_population_accepts_ledger_source_data() -> None:
 
     result = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2024-25", n_iterations=4, seed=7),
+        _firm_config(data_vintage="2024-25", n_iterations=4, seed=7),
     )
 
     diagnostics = result.target_diagnostics.set_index("target_name")
@@ -123,6 +134,7 @@ def test_uk_firm_source_data_from_ledger_facts_requires_complete_profile() -> No
 def test_generate_uk_firm_population_returns_experimental_firm_rows() -> None:
     data = _source_data()
     config = UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
         data_vintage="2024-25",
         n_iterations=8,
         seed=7,
@@ -183,11 +195,11 @@ def test_generate_uk_firm_population_uses_configured_vintage_targets() -> None:
 
     result_2023 = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2023-24", n_iterations=2, seed=7),
+        _firm_config(data_vintage="2023-24", n_iterations=2, seed=7),
     )
     result_2024 = generate_uk_firm_population(
         data,
-        UKFirmGenerationConfig(data_vintage="2024-25", n_iterations=2, seed=7),
+        _firm_config(data_vintage="2024-25", n_iterations=2, seed=7),
     )
 
     targets_2023 = result_2023.target_diagnostics.set_index("target_name")["target"]
@@ -206,13 +218,14 @@ def test_generate_uk_firm_population_requires_requested_hmrc_vintage() -> None:
     with pytest.raises(ValueError, match="does not include vintage '2023-24'"):
         generate_uk_firm_population(
             data,
-            UKFirmGenerationConfig(data_vintage="2023-24", n_iterations=1),
+            _firm_config(data_vintage="2023-24", n_iterations=1),
         )
 
 
 def test_generate_uk_firm_population_is_seed_reproducible() -> None:
     data = _source_data()
     config = UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
         n_iterations=3,
         seed=11,
     )
@@ -226,7 +239,7 @@ def test_generate_uk_firm_population_is_seed_reproducible() -> None:
 def test_write_uk_firm_population_writes_csv(tmp_path: Path) -> None:
     result = generate_uk_firm_population(
         _source_data(),
-        UKFirmGenerationConfig(n_iterations=2, seed=1),
+        _firm_config(n_iterations=2, seed=1),
     )
 
     path = write_uk_firm_population(result, tmp_path / "firms.csv")
@@ -260,6 +273,45 @@ def test_hmrc_band_name_uses_configurable_threshold(
 )
 def test_employment_band_name(employment: int, expected: str) -> None:
     assert employment_band_name(employment) == expected
+
+
+def test_generate_uk_firm_population_requires_vat_rule_evaluator() -> None:
+    with pytest.raises(ValueError, match="requires a VAT rule evaluator"):
+        generate_uk_firm_population(
+            _source_data(),
+            UKFirmGenerationConfig(n_iterations=1, seed=1),
+        )
+
+
+def test_vat_liability_uses_input_tax_credit_not_full_input_cost() -> None:
+    result = calculate_vat_liability_values(
+        _firm_config(),
+        torch.tensor([100.0, 100.0], dtype=torch.float32),
+        torch.tensor([40.0, 120.0], dtype=torch.float32),
+        torch.tensor([True, True], dtype=torch.bool),
+    )
+
+    assert result.tolist() == pytest.approx([12.0, -4.0])
+
+
+class _TestVATRuleEvaluator:
+    def net_liability_k(
+        self,
+        *,
+        turnover_k: np.ndarray,
+        input_cost_k: np.ndarray,
+        vat_registered: np.ndarray,
+        data_vintage: str,
+    ) -> np.ndarray:
+        del data_vintage
+        return np.where(vat_registered, 0.2 * (turnover_k - input_cost_k), 0.0)
+
+
+def _firm_config(**overrides) -> UKFirmGenerationConfig:
+    return UKFirmGenerationConfig(
+        vat_rule_evaluator=_TestVATRuleEvaluator(),
+        **overrides,
+    )
 
 
 def _source_data():
