@@ -325,6 +325,16 @@ def test_shipped_tax_expenditure_specs_neutralize_big_provisions():
     assert std.jct_score is None  # baseline in both JCT and Treasury — no benchmark
 
 
+def test_out_of_sample_specs_carry_fy2027_and_emit_it():
+    specs = out_of_sample_reform_specs(period=2026)
+    rates = next(s for s in specs if s.id == "obbba_reduced_rates")
+    # FY2027 (first full fiscal year) is larger than the FY2026 ramp figure.
+    assert rates.jct_score_fy2027 == -222154000000
+    assert abs(rates.jct_score_fy2027) > abs(rates.jct_score)
+    payload = reform_validation_payload([rates], period=2026, simulate=None)
+    assert payload["reforms"][0]["jct"]["score_fy2027"] == -222154000000
+
+
 def test_null_benchmark_row_publishes_magnitude_only(monkeypatch):
     spec = ReformValidationSpec(
         id="te_std",
