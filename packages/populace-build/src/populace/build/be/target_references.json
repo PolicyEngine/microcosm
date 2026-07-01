@@ -1,0 +1,108 @@
+{
+  "country": "be",
+  "description": "Initial Belgian target references, by reference only — observed values live in Ledger. Source names bind to the ledger-be packages (PolicyEngine/ledger#69); the full profile with criticality tiers and basis-period declarations is the target-profile issue (PolicyEngine/ledger#70). Every reference here names its intended series and publisher so the profile work binds facts without any populace-side value copying.",
+  "allowed_value_operations": ["identity"],
+  "target_references": [
+    {
+      "name": "statbel_population_by_age_sex_region",
+      "ledger_selector": {
+        "source_name": "statbel_population_structure",
+        "geography_level": "nuts1"
+      },
+      "entity": "person",
+      "measure": "people",
+      "family": "demography",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "Statbel",
+        "series": "Structure of the population: age band by sex by region"
+      },
+      "notes": "The demographic anchor (age band x sex x NUTS1), mirroring the US demographics posture. Reference-date population; basis period declared by the profile."
+    },
+    {
+      "name": "statbel_fiscal_income_by_commune",
+      "ledger_selector": {
+        "source_name": "statbel_fiscal_income",
+        "geography_level": "commune"
+      },
+      "entity": "household",
+      "measure": "belgium_pit_taxable_income",
+      "family": "fiscal_income",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "Statbel",
+        "series": "Fiscal statistics of income: total net taxable income by municipality",
+        "nis_vintage": "2025"
+      },
+      "notes": "The flagship open subnational series. Commune rows start diagnostic-only until the spine demonstrably supports them (the US congressional-district posture, populace#204); geography vintage must match the spine's declared NIS vintage or compilation fails."
+    },
+    {
+      "name": "spf_finances_pit_total",
+      "ledger_selector": {
+        "source_name": "spf_finances_pit",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "belgium_pit_final_income_tax_payable",
+      "family": "income_tax",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "SPF Finances / Statbel",
+        "series": "Personal income tax: assessed total"
+      },
+      "notes": "National PIT aggregate against the Axiom-computed final liability (rulespec-be settlement output). Assessment-year vs income-year basis is declared by the profile; a stale-level rerun of the populace#212 lesson is what the projection basis (PolicyEngine/ledger#71) exists to prevent."
+    },
+    {
+      "name": "onss_employee_contribution_total",
+      "ledger_selector": {
+        "source_name": "onss_contributions",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "belgium_worker_article_17_uncapped_component_contribution",
+      "family": "social_security",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ONSS/RSZ",
+        "series": "Employee social-security contributions"
+      },
+      "notes": "Worker-side article 17 contributions on the encoded slice; employer-side and capped-regime totals join as the encodings and ledger-be packages grow."
+    },
+    {
+      "name": "onem_unemployment_caseload",
+      "ledger_selector": {
+        "source_name": "onem_rva_unemployment",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "receives_unemployment_benefit",
+      "family": "caseloads",
+      "metadata": {
+        "criticality": "release_blocking",
+        "publisher": "ONEM/RVA",
+        "series": "Unemployment benefit recipients"
+      },
+      "notes": "First caseload family; pensions (SFPD) and the post-2019 regional child-benefit caseloads (per region) are declared with the ledger-be packages and enter through the profile."
+    },
+    {
+      "name": "nbb_household_disposable_income",
+      "ledger_selector": {
+        "source_name": "nbb_national_accounts",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "household_disposable_income",
+      "family": "national_accounts",
+      "metadata": {
+        "criticality": "diagnostic",
+        "publisher": "NBB",
+        "series": "Household-sector disposable income (national accounts)"
+      },
+      "notes": "Validation-tier levels anchor, never hard-calibrated: the concept bridge between survey/fiscal income and national accounts makes exact hits meaningless (the populace#212 levels-sanity lesson); the macro-realism gate reads it as a band."
+    }
+  ],
+  "target_profile": {
+    "schema_version": 1,
+    "hierarchy_reconciliations": []
+  }
+}

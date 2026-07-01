@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "country": "be",
+  "policy": "BE source stages are manifest-defined. The base microdata is BE-SILC under Statbel/Eurostat scientific-use terms: the raw registers exist only in the licensed environment, artifacts publish to the private BE repo only (see release_contract.json), and executable Python belongs only in shared Populace runtimes.",
+  "stages": [
+    {
+      "stage": "silc_load",
+      "survey": "BE-SILC (Statbel national SILC)",
+      "source": "https://statbel.fgov.be/en/themes/households/poverty-and-living-conditions",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "restricted_microdata",
+          "format": "csv_or_spss",
+          "vintage": "2023",
+          "locator": "Statbel BE-SILC scientific-use files: D (household register), R (personal register), H (household data), P (personal data)",
+          "licence": "Statbel/Eurostat scientific-use; restricted — private artifacts only"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "tables": [
+            "silc_household_register",
+            "silc_personal_register",
+            "silc_household_data",
+            "silc_personal_data"
+          ],
+          "weight": "DB090"
+        },
+        {
+          "kind": "join",
+          "left": "silc_personal_register",
+          "right": "silc_household_register",
+          "linkage": "eu_silc_id_arithmetic",
+          "notes": "EU-SILC register linkage: personal ids embed the household id (RB030 carries DB030 plus the person sequence); the shared runtime owns the arithmetic."
+        },
+        {
+          "kind": "declare_income_reference_offset",
+          "years": -1,
+          "notes": "SILC survey year N carries year N-1 incomes. The build's period bookkeeping and every target profile bind to the income reference year through this declaration; see PolicyEngine/ledger#71 for the facts-vs-projections basis this feeds."
+        },
+        {
+          "kind": "map_columns",
+          "mapping": {
+            "DB030": "household_id",
+            "RB030": "person_id",
+            "DB040": "region_nuts1",
+            "RB080": "birth_year",
+            "RB090": "sex",
+            "PY010G": "belgium_pit_article_23_worker_remuneration"
+          },
+          "notes": "EU-SILC names to frame/engine names. PY010G (gross employee cash or near-cash income) feeds the Axiom CIR 1992 article 23 worker-remuneration input; further income and contribution inputs join this mapping as the encoded slice grows."
+        },
+        {
+          "kind": "derive",
+          "output": "age",
+          "from": ["birth_year"],
+          "notes": "Age at the end of the income reference year."
+        },
+        {
+          "kind": "derive",
+          "output": "person_household_id",
+          "from": ["household_id"],
+          "notes": "Frame membership column per the kernel linkage convention."
+        }
+      ],
+      "outputs": [
+        "person_id",
+        "household_id",
+        "person_household_id",
+        "age",
+        "sex",
+        "region_nuts1",
+        "belgium_pit_article_23_worker_remuneration"
+      ],
+      "nonnegative_outputs": [
+        "belgium_pit_article_23_worker_remuneration"
+      ],
+      "notes": "The base population stage (populace#262 owns the runtime). Entity posture per the adapter (populace#260): person plus household; Belgian PIT is individual with household-level elements, so no separate fiscal unit enters until the encoded slice needs one."
+    }
+  ]
+}
