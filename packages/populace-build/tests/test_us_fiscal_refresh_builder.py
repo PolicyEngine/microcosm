@@ -384,36 +384,6 @@ def test_cd_vintage_support_provenance_names_us_extra_when_h5py_missing(
     assert "before calibration or donor imputation" in message
 
 
-def _complete_area_artifact_results(builder, artifact_root: Path) -> tuple:
-    from populace.build.us_runtime.area_artifacts import (
-        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS,
-        EXPECTED_STATE_ARTIFACT_KEYS,
-    )
-
-    artifacts = []
-    for key in sorted(EXPECTED_STATE_ARTIFACT_KEYS) + sorted(
-        EXPECTED_CONGRESSIONAL_DISTRICT_ARTIFACT_KEYS
-    ):
-        path = artifact_root / f"{key}.h5"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(key)
-        artifacts.append(
-            builder.AreaArtifactResult(
-                key=key,
-                path=f"{key}.h5",
-                kind=(
-                    "state_microdata"
-                    if key.startswith("states/")
-                    else "congressional_district_microdata"
-                ),
-                sha256=builder._sha256(path),
-                n_households=10,
-                n_persons=25,
-            )
-        )
-    return tuple(artifacts)
-
-
 def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     def diagnostic(name, target, final_estimate):
         return SimpleNamespace(
@@ -556,7 +526,7 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
-def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) -> None:
+def test_cd_targets_require_vintage_crosswalk(monkeypatch) -> None:
     builder = _load_builder_module()
 
     monkeypatch.setattr(
@@ -569,21 +539,6 @@ def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) ->
             "--out",
             "release",
             "--include-congressional-district-targets",
-        ],
-    )
-    with pytest.raises(SystemExit):
-        builder._parse_args()
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "build_us_fiscal_refresh_release.py",
-            "--ledger-facts",
-            "facts.jsonl",
-            "--out",
-            "release",
-            "--include-area-artifacts",
         ],
     )
     with pytest.raises(SystemExit):
@@ -607,127 +562,6 @@ def test_cd_targets_and_area_artifacts_require_vintage_crosswalk(monkeypatch) ->
     args = builder._parse_args()
 
     assert args.congressional_district_vintage_crosswalk == Path("crosswalk.csv")
-
-
-def test_area_artifact_preflight_runs_before_source_materialization(
-    monkeypatch, tmp_path
-) -> None:
-    builder = _load_builder_module()
-    base_h5 = tmp_path / "base.h5"
-    base_h5.write_text("")
-    facts = tmp_path / "facts.jsonl"
-    facts.write_text("")
-    out = tmp_path / "out"
-    crosswalk = tmp_path / "crosswalk.csv"
-    crosswalk.write_text("source_geography_id,target_geography_id,weight\n")
-    release_id = "populace-us-test"
-    calls: list[str] = []
-
-    spec = TargetSpec(
-        name="target",
-        entity="household",
-        measure="household_count",
-        value=1.0,
-        source="source",
-        family="family",
-    )
-    registry = TargetRegistry((spec,), country="us")
-
-    class FakeFrame:
-        pass
-
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "build_us_fiscal_refresh_release.py",
-            "--base-h5",
-            str(base_h5),
-            "--ledger-facts",
-            str(facts),
-            "--out",
-            str(out),
-            "--release-id",
-            release_id,
-            "--include-area-artifacts",
-            "--congressional-district-vintage-crosswalk",
-            str(crosswalk),
-        ],
-    )
-    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_sha256", lambda path: "sha")
-    monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
-    monkeypatch.setattr(
-        builder,
-        "load_congressional_district_vintage_crosswalk",
-        lambda path: object(),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_assert_cd_vintage_support_matches",
-        lambda h5_path, metadata: None,
-    )
-    monkeypatch.setattr(builder, "_load_ledger_facts", lambda path: ({"fact": 1},))
-    monkeypatch.setattr(
-        builder,
-        "compile_us_fiscal_target_registry",
-        lambda facts, **kwargs: registry,
-    )
-    monkeypatch.setattr(
-        builder,
-        "target_profile_coverage_gate",
-        lambda specs, requirements: builder.GateResult(
-            name="target_profile_coverage",
-            passed=True,
-            details={},
-        ),
-    )
-    monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
-    monkeypatch.setattr(
-        builder,
-        "_with_base_population_mass_repair",
-        lambda frame: (frame, {"applied": False}),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_with_social_security_component_value_repair",
-        lambda frame, specs: (frame, {"applied": False}),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_base_population_scale_gate",
-        lambda frame, *, mass_repair=None: builder.GateResult(
-            name="base_population_scale",
-            passed=True,
-            details={},
-        ),
-    )
-
-    def fail_area_preflight(frame):
-        calls.append("area_preflight")
-        raise ValueError("bad current CD lookup")
-
-    def source_inputs_should_not_run(
-        frame,
-        specs,
-        *,
-        seed,
-        maximum_microsim_batch_size=None,
-    ):
-        calls.append("source_inputs")
-        return frame
-
-    monkeypatch.setattr(builder, "_strict_area_artifact_specs", fail_area_preflight)
-    monkeypatch.setattr(
-        builder,
-        "_with_aca_marketplace_source_outputs",
-        source_inputs_should_not_run,
-    )
-
-    with pytest.raises(ValueError, match="bad current CD lookup"):
-        builder.main()
-
-    assert calls == ["area_preflight"]
 
 
 def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
@@ -4013,7 +3847,6 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     artifact_root.mkdir()
     (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
-    area_artifacts = _complete_area_artifact_results(builder, artifact_root)
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
 
@@ -4114,7 +3947,6 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "n_exported_households": 57_240,
             "l0_lambda_share": 0.8,
         },
-        area_artifacts=area_artifacts,
     )
 
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
@@ -4163,23 +3995,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "n_exported_households": 57_240,
         "l0_lambda_share": 0.8,
     }
-    assert build_manifest["area_artifacts"]["count"] == 487
-    assert build_manifest["area_artifacts"]["states"] == 51
-    assert build_manifest["area_artifacts"]["congressional_districts"] == 436
-    area_manifest_artifacts = {
-        artifact["key"]: artifact
-        for artifact in build_manifest["area_artifacts"]["artifacts"]
-    }
-    assert area_manifest_artifacts["states/CA"]["path"] == "states/CA.h5"
-    assert area_manifest_artifacts["districts/TX-38"]["path"] == "districts/TX-38.h5"
+    assert "area_artifacts" not in build_manifest
     assert manifest["build"]["timing"] == {
         "target_compilation_seconds": 3.0,
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
-    assert manifest["build"]["default_dataset"] == build_manifest["dataset"][
-        "default"
-    ]
+    assert manifest["build"]["default_dataset"] == build_manifest["dataset"]["default"]
     assert (
         manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
         == 5.87
@@ -4190,20 +4012,9 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     assert manifest["compatible_model_packages"] == [
         {"name": "policyengine-us", "specifier": "==1.729.0"}
     ]
-    assert manifest["artifacts"]["states/CA"] == {
-        "repo_id": builder.REPO_ID,
-        "path": "states/CA.h5",
-        "revision": release_id,
-        "sha256": area_manifest_artifacts["states/CA"]["sha256"],
-        "kind": "state_microdata",
-    }
-    assert manifest["artifacts"]["districts/TX-38"] == {
-        "repo_id": builder.REPO_ID,
-        "path": "districts/TX-38.h5",
-        "revision": release_id,
-        "sha256": area_manifest_artifacts["districts/TX-38"]["sha256"],
-        "kind": "congressional_district_microdata",
-    }
+    assert not any(
+        key.startswith(("states/", "districts/")) for key in manifest["artifacts"]
+    )
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id
