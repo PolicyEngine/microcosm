@@ -37,7 +37,9 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_immigration_composition_summary,
     with_household_congressional_districts,
+    with_us_immigration_inputs,
 )
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -129,6 +131,11 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_immigration_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
@@ -210,6 +217,7 @@ def main() -> None:
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "congressional_district_assignment": congressional_district_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
+        "immigration_composition": us_immigration_composition_summary(imputed),
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
