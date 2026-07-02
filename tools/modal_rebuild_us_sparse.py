@@ -191,7 +191,10 @@ def _local_repo_commit() -> str:
 
 
 def _image() -> modal.Image:
-    commit = _local_repo_commit()
+    # The image spec is only materialized from the local client; inside the
+    # container this module is re-imported but the spec is never rebuilt, so
+    # skip the git lookup there (no repo at REPO_ROOT in-container).
+    commit = _local_repo_commit() if modal.is_local() else "unused-in-container"
     return (
         modal.Image.debian_slim(python_version="3.13")
         .apt_install("git", "build-essential")
