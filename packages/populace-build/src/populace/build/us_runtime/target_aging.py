@@ -15,12 +15,16 @@ hardcodes a numeric factor: every factor is a ratio of two source-published
 CBO ``projected_amount`` facts, and each aged (or deliberately un-aged) target
 records the fact lineage it used.
 
-The eventual schema home for the *fact-vs-computed* boundary is
+The schema home for the *fact-vs-computed* boundary is
 PolicyEngine/ledger#71 (facts-only store; PolicyEngine-computed aged levels
 live in Populace as a named, versioned aging implementation that consumes
 growth-factor facts from Ledger). This module is that Populace-side
-implementation. It is deliberately consumption-side and opt-in: with aging
-off (the default), the compiled surface is byte-identical to today.
+implementation: :data:`AGING_MODEL_ID`/:data:`AGING_MODEL_VERSION` are the
+alignment declaration recorded on every aged target. Aging the values stays
+opt-in, but the period contract itself is enforced:
+:func:`enforce_period_contract` makes silently consuming an observation
+dollar level at a period other than its fact period a hard error — the
+populace#212 failure mode — unless the build explicitly waives it.
 
 Factor policy (priority order):
 
@@ -43,11 +47,25 @@ is explicit in diagnostics rather than silent.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from populace.calibrate import TargetRegistry, TargetSpec
 
-__all__ = ["age_us_dollar_targets"]
+__all__ = [
+    "AGING_MODEL_ID",
+    "AGING_MODEL_VERSION",
+    "PeriodContractError",
+    "PeriodContractViolation",
+    "age_us_dollar_targets",
+    "enforce_period_contract",
+    "find_period_contract_violations",
+]
+
+# The named, versioned Populace-side alignment model (PolicyEngine/ledger#71).
+# Bump the version whenever the factor policy changes; no Ledger fact and no
+# consumer-artifact hash changes when it does — only Populace build outputs.
+AGING_MODEL_ID = "cbo_growth_factor_aging"
+AGING_MODEL_VERSION = "1.0.0"
 
 
 # CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
@@ -127,6 +145,136 @@ def age_us_dollar_targets(
     return TargetRegistry(specs, country=registry.country)
 
 
+@dataclass(frozen=True)
+class PeriodContractViolation:
+    """One dollar target consumed at a period its fact does not cover."""
+
+    target_name: str
+    fact_period: str
+    build_period: str
+    reason: str
+
+
+class PeriodContractError(ValueError):
+    """Raised when observation dollar levels would calibrate at the wrong period.
+
+    This is the populace#212 guard, mirroring the Ledger consumption contract
+    (PolicyEngine/ledger#71): a fact's value refers to its own reference
+    period, and consuming it at any other period must be an explicit,
+    declared transformation — never a silent default. Fix a violation by
+    enabling compile-time aging (the ``cbo_growth_factor_aging`` model),
+    supplying the missing CBO projection facts, or passing
+    ``allow_unaged_dollar_targets=True`` to record a deliberate waiver.
+    """
+
+    def __init__(self, violations: tuple[PeriodContractViolation, ...]) -> None:
+        self.violations = violations
+        preview = "; ".join(
+            f"{violation.target_name} (fact {violation.fact_period} != build "
+            f"{violation.build_period}: {violation.reason})"
+            for violation in violations[:5]
+        )
+        suffix = "" if len(violations) <= 5 else f"; +{len(violations) - 5} more"
+        super().__init__(
+            f"Period contract violation on {len(violations)} dollar "
+            "target(s): observation facts cannot calibrate at a period other "
+            "than their reference period without a declared alignment "
+            "(PolicyEngine/ledger#71; populace#212). Enable age_targets, "
+            "supply the missing CBO projection facts, or pass "
+            f"allow_unaged_dollar_targets=True to waive explicitly. {preview}"
+            f"{suffix}"
+        )
+
+
+def find_period_contract_violations(
+    registry: TargetRegistry,
+    *,
+    target_period: int | str,
+) -> tuple[PeriodContractViolation, ...]:
+    """Find ageable observation dollar targets consumed at the wrong period.
+
+    A spec violates the contract when it is an ageable nominal dollar amount
+    (USD ``sum``, not already period-aligned within-surface), its backing
+    fact is an observation (publisher projections are already statements
+    about other periods), its fact year differs from the build year, and no
+    alignment transformed it (``basis`` is not ``projection``).
+    """
+
+    build_year = _period_year(target_period)
+    if build_year is None:
+        return ()
+    violations: list[PeriodContractViolation] = []
+    for spec in registry.specs:
+        if _not_ageable_reason(spec) is not None:
+            continue
+        metadata = spec.metadata
+        if metadata.get("ledger_assertion") == "source_projection":
+            continue
+        if metadata.get("basis") == "projection":
+            continue
+        if metadata.get("period_contract_waiver"):
+            continue
+        fact_period = (
+            metadata.get("source_period")
+            or metadata.get("ledger_fact_period")
+            or str(spec.period)
+        )
+        fact_year = _period_year(fact_period)
+        if fact_year is None or fact_year == build_year:
+            continue
+        reason = (
+            "aging_factor_unavailable"
+            if metadata.get("aging_factor_source") == "unavailable"
+            else "un_aged_dollar_target"
+        )
+        violations.append(
+            PeriodContractViolation(
+                target_name=spec.name,
+                fact_period=str(fact_period),
+                build_period=str(target_period),
+                reason=reason,
+            )
+        )
+    return tuple(violations)
+
+
+def enforce_period_contract(
+    registry: TargetRegistry,
+    *,
+    target_period: int | str,
+    allow_unaged_dollar_targets: bool = False,
+) -> TargetRegistry:
+    """Raise on silent cross-period dollar consumption, or record a waiver.
+
+    With ``allow_unaged_dollar_targets`` the violating specs keep their raw
+    values but carry ``period_contract_waiver`` metadata so the waived state
+    is auditable in diagnostics instead of invisible.
+    """
+
+    violations = find_period_contract_violations(
+        registry,
+        target_period=target_period,
+    )
+    if not violations:
+        return registry
+    if not allow_unaged_dollar_targets:
+        raise PeriodContractError(violations)
+    violating_names = {violation.target_name for violation in violations}
+    specs = tuple(
+        replace(
+            spec,
+            metadata={
+                **dict(spec.metadata),
+                "period_contract_waiver": "allow_unaged_dollar_targets",
+            },
+        )
+        if spec.name in violating_names
+        else spec
+        for spec in registry.specs
+    )
+    return TargetRegistry(specs, country=registry.country)
+
+
 def _age_spec(
     spec: TargetSpec,
     *,
@@ -198,13 +346,24 @@ def _age_spec(
         )
 
     factor, factor_source = factor_result
-    return _with_aging_metadata(
+    aged = _with_aging_metadata(
         replace(spec, value=spec.value * factor),
         basis="projection",
         source_period=source_period,
         aged_to=aged_to,
         aging_factor=factor,
         aging_factor_source=factor_source,
+    )
+    # The alignment declaration: which named, versioned model computed this
+    # level (PolicyEngine/ledger#71 — the declaration Ledger records but
+    # never executes).
+    return replace(
+        aged,
+        metadata={
+            **dict(aged.metadata),
+            "alignment_model_id": AGING_MODEL_ID,
+            "alignment_model_version": AGING_MODEL_VERSION,
+        },
     )
 
 
@@ -310,7 +469,14 @@ def _is_cbo_income_source_projection_fact(fact: object) -> bool:
     groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
     if groupby_dimension != _CBO_INCOME_SOURCE_GROUPBY_DIMENSION:
         return False
-    return "revenue_projection" in _str_at(fact, "layout", "record_set_id")
+    if "revenue_projection" not in _str_at(fact, "layout", "record_set_id"):
+        return False
+    # Post-ledger#73 feeds type publisher projections explicitly. A row that
+    # structurally looks like a CBO projection but is typed as an observation
+    # is inconsistent data; refuse to use it as a growth factor. Feeds
+    # predating the assertion field omit the key and stay eligible.
+    assertion = _str_at(fact, "assertion")
+    return assertion in ("", "source_projection")
 
 
 def _with_aging_metadata(

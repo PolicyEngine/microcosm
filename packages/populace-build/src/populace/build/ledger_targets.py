@@ -1087,6 +1087,8 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "layout", "measure_id"),)
     if key == "domain":
         return (_domain(fact),)
+    if key == "assertion":
+        return (_str_at(fact, "assertion") or "observation",)
     raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
 
 
@@ -1230,6 +1232,8 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_legal_vintage": _str_at(fact, "measure", "legal_vintage")
         or _str_at(fact, "concept_alignment", "legal_vintage"),
         "ledger_period_type": _str_at(fact, "period", "type"),
+        "ledger_fact_period": _str_at(fact, "period", "value"),
+        "ledger_assertion": _str_at(fact, "assertion") or "observation",
         "ledger_geography_level": _str_at(fact, "geography", "level"),
         "ledger_geography_id": _str_at(fact, "geography", "id"),
         "ledger_geography_name": _str_at(fact, "geography", "name"),

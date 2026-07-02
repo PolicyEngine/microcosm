@@ -25,7 +25,10 @@ from populace.build.ledger_targets import (
 from populace.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
-from populace.build.us_runtime.target_aging import age_us_dollar_targets
+from populace.build.us_runtime.target_aging import (
+    age_us_dollar_targets,
+    enforce_period_contract,
+)
 from populace.calibrate import TargetRegistry, TargetSpec
 
 __all__ = [
@@ -724,6 +727,7 @@ def compile_us_fiscal_target_registry(
     include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
+    allow_unaged_dollar_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -734,11 +738,18 @@ def compile_us_fiscal_target_registry(
         congressional_district_vintage_crosswalk: Optional CD vintage crosswalk.
         age_targets: Opt into compile-time period aging of dollar-amount
             targets whose source period differs from ``target_period``
-            (PolicyEngine/populace#116, #212). Defaults to ``False`` so the
-            compiled surface is unchanged unless a build explicitly enables it.
-            When enabled, dollar amounts are scaled by CBO revenue-projection
-            growth ratios drawn from the facts feed; counts stay raw. See
+            (PolicyEngine/populace#116, #212). When enabled, dollar amounts
+            are scaled by CBO revenue-projection growth ratios drawn from the
+            facts feed under the named ``cbo_growth_factor_aging`` model;
+            counts stay raw. See
             :mod:`populace.build.us_runtime.target_aging`.
+        allow_unaged_dollar_targets: The period contract is always enforced
+            (PolicyEngine/ledger#71): compiling an ageable observation dollar
+            level at a period other than its fact period raises
+            :class:`~populace.build.us_runtime.target_aging.PeriodContractError`
+            unless aging transformed it. Set this to record an explicit,
+            auditable waiver instead of raising; every waived target carries
+            ``period_contract_waiver`` metadata in diagnostics.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -789,15 +800,19 @@ def compile_us_fiscal_target_registry(
     )
     if age_targets:
         # Final nominal transform: age dollar amounts from their source period
-        # to the build period on the fully within-surface-aligned registry.
-        # Opt-in and inert by default (PolicyEngine/populace#116, #212; eventual
-        # fact/computed boundary in PolicyEngine/ledger#71).
+        # to the build period on the fully within-surface-aligned registry
+        # (PolicyEngine/populace#116, #212; fact/computed boundary in
+        # PolicyEngine/ledger#71).
         registry = age_us_dollar_targets(
             registry,
             materialized_facts,
             target_period=target_period,
         )
-    return registry
+    return enforce_period_contract(
+        registry,
+        target_period=target_period,
+        allow_unaged_dollar_targets=allow_unaged_dollar_targets,
+    )
 
 
 def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetRegistry:
