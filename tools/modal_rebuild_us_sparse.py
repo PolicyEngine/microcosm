@@ -135,15 +135,25 @@ Full run (heavy). Do NOT launch without the main session's go-ahead. Recommended
   modal run --detach tools/modal_rebuild_us_sparse.py --full
 
 which runs `run_full_build.remote(...)` on a 64 GB / 16-CPU container. It:
-  1. rebuilds the base carrying the #278 columns (build_us_puf_support_base.py);
-  2. recalibrates + writes the corrected sparse release
-     (build_us_fiscal_refresh_release.py --base-h5 <rebuilt>
-      --input-mass-reference-h5 <dense f0af251>), default L0+refit;
+  1. fetches the certified DENSE f0af251 base (already carries every #278 input
+     column — the smoke run proved it) and calibrates it to a sparse L0+refit
+     selection: build_us_fiscal_refresh_release.py --base-h5 <dense f0af251>
+     --ledger-facts <consumer_facts.jsonl> --input-mass-reference-h5 <dense
+     f0af251>, default sparse L0+refit, staging ON;
+  2. the #279 base-vs-reference gate is trivially satisfied (base == reference)
+     and the export-vs-base gate ensures the L0 selection keeps the #278 mass;
   3. persists the release dir + all gate verdicts to the output volume.
 
-Post-run: review gates (input_mass_parity.json, calibration_diagnostics.json),
-then publish from a machine with the release env via tools/publish_release.sh,
-then certify with policyengine.py.
+Pass --rebuild-base to additionally run a from-source base rebuild
+(build_us_puf_support_base.py) on the dense base first; unnecessary given the
+dense base is already correct, and slower.
+
+Post-run: `modal volume get populace-us-sparse-rebuild full/release <local>` and
+`.../full/release/artifacts <local>`, review gates (input_mass_parity.json,
+calibration_diagnostics.json), then publish from a machine with the release env:
+  tools/publish_release.sh <release_dir> --repo-id policyengine/populace-us \\
+    --artifact-root <artifact_root>
+then certify by loading the published latest.json dataset in policyengine.py.
 """
 
 
@@ -433,6 +443,7 @@ def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
 )
 def run_full_build(
     *,
+    rebuild_base: bool = False,
     base_h5_override: str | None = None,
     epochs: int = 1500,
     skip_out_of_sample_reforms: bool = False,
@@ -440,8 +451,23 @@ def run_full_build(
     no_staging: bool = False,
     release_id: str | None = None,
 ) -> dict:
-    """Rebuild the base carrying the #278 inputs, then calibrate + write the
-    corrected sparse release, gated against the dense f0af251 reference.
+    """Calibrate + write the corrected sparse release, gated against the dense
+    f0af251 reference.
+
+    The smoke run proved the DENSE f0af251 base already carries every #278 input
+    column (IRA $16.1B, HSA $10.5B, SE-pension $1.0B, childcare $74.7B) plus 68
+    other material bases the broken sparse base dropped. The corrected sparse
+    release is therefore that correct dense base, recalibrated to a sparse
+    L0+refit selection:
+
+    * ``rebuild_base=False`` (default, recommended): feed the dense f0af251 base
+      straight to the fiscal-refresh builder. base-vs-reference parity is
+      trivially satisfied (base == reference) and export-vs-base parity ensures
+      the L0 selection keeps the #278 mass.
+    * ``rebuild_base=True``: additionally re-run ``build_us_puf_support_base.py``
+      (PUF/childcare/immigration) on the dense base first — a genuine from-source
+      base rebuild. Use only if a from-scratch base is specifically wanted; it
+      re-clones the PUF support channel and is slower.
 
     NOTE: this is the expensive path (target compilation + L0+refit + reform
     validation). Do not launch without the main session's go-ahead.
@@ -454,34 +480,39 @@ def run_full_build(
         "dataset", POPULACE_US_REPO, DEFAULT_BASE_FILENAME, DENSE_REFERENCE_REVISION
     )
     result["reference_h5"] = reference_path
+    result["rebuild_base"] = rebuild_base
 
-    # Phase 1 — base rebuild carrying the #278 columns.
-    # Start from the published DENSE base support frame (it carries the full
-    # donor surface — SCF/SIPP/ORG/MEPS/ACS — and, if it retains the raw ASEC
-    # scratch columns, lets build_us_puf_support_base.py derive childcare), and
-    # layer the #278 PUF/childcare/immigration inputs onto it. The processed PUF
-    # donor is fetched from the us-data model repo (licensed; never logged).
+    # Phase 1 — choose the calibration base.
     base_support_h5 = base_h5_override or reference_path
-    puf_h5 = _fetch("model", US_DATA_MODEL_REPO, PUF_2024_PATH, US_DATA_DONOR_REVISION)
-    base_out = work / "base"
-    base_rebuild = _run(
-        [
-            VENV_PYTHON,
-            "tools/build_us_puf_support_base.py",
-            "--base-h5",
-            base_support_h5,
-            "--puf-h5",
-            puf_h5,
-            "--out",
-            str(base_out),
-        ]
-    )
-    result["base_rebuild"] = {"returncode": base_rebuild["returncode"]}
-    if base_rebuild["returncode"] != 0:
-        result["base_rebuild"]["stderr_tail"] = base_rebuild["stderr_tail"]
-        output_volume.commit()
-        return result
-    rebuilt_base_h5 = base_out / "base_populace_us_2024_puf_support.h5"
+    if not rebuild_base:
+        # Recommended: the dense base is already correct; calibrate it to sparse.
+        calibration_base_h5 = base_support_h5
+    else:
+        # From-source base rebuild: layer the #278 PUF/childcare/immigration
+        # inputs onto the dense base. The processed PUF donor is fetched from the
+        # us-data model repo (licensed; never logged/committed).
+        puf_h5 = _fetch(
+            "model", US_DATA_MODEL_REPO, PUF_2024_PATH, US_DATA_DONOR_REVISION
+        )
+        base_out = work / "base"
+        base_rebuild = _run(
+            [
+                VENV_PYTHON,
+                "tools/build_us_puf_support_base.py",
+                "--base-h5",
+                base_support_h5,
+                "--puf-h5",
+                puf_h5,
+                "--out",
+                str(base_out),
+            ]
+        )
+        result["base_rebuild"] = {"returncode": base_rebuild["returncode"]}
+        if base_rebuild["returncode"] != 0:
+            result["base_rebuild"]["stderr_tail"] = base_rebuild["stderr_tail"]
+            output_volume.commit()
+            return result
+        calibration_base_h5 = base_out / "base_populace_us_2024_puf_support.h5"
 
     # Phase 2 — calibrate + write the corrected sparse release.
     facts_path = Path(FACTS_MOUNT) / CONSUMER_FACTS_FILENAME
@@ -490,7 +521,7 @@ def run_full_build(
         VENV_PYTHON,
         "tools/build_us_fiscal_refresh_release.py",
         "--base-h5",
-        str(rebuilt_base_h5),
+        str(calibration_base_h5),
         "--ledger-facts",
         str(facts_path),
         "--input-mass-reference-h5",
@@ -524,11 +555,19 @@ def run_full_build(
 # --------------------------------------------------------------------------- #
 
 @app.local_entrypoint()
-def main(full: bool = False):
+def main(full: bool = False, rebuild_base: bool = False, no_staging: bool = False):
     """Default: run the smoke path. Pass --full only with the go-ahead."""
     if full:
         print("Launching FULL corrected build (heavy).")
-        print(json.dumps(run_full_build.remote(), indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                run_full_build.remote(
+                    rebuild_base=rebuild_base, no_staging=no_staging
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return
     print("Running smoke (wiring proof) ...")
     result = smoke.remote()
