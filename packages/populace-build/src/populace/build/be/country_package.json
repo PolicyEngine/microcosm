@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "country": "be",
+  "policy": "spec-only country package; Python execution lives in shared runtime modules",
+  "resources": [
+    "source_stages.json",
+    "geography_spine.json",
+    "target_references.json",
+    "gates.json",
+    "release_contract.json"
+  ]
+}
