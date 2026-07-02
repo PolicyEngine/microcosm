@@ -25,7 +25,7 @@ Regenerate with:
 ```
 uv run --python 3.13 --package populace-build --group dev python \
     tools/build_us_congressional_district_vintage_crosswalk.py \
-    --out packages/populace-build/src/populace/build/us/congressional_district_vintage_crosswalk.csv \
+    --out packages/populace-build/src/populace/build/us_runtime/data/congressional_district_vintage_crosswalk.csv \
     --cache-dir ~/.cache/populace-us-geography
 ```
 

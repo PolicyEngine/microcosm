@@ -18,8 +18,8 @@ translation that PolicyEngine/populace#205 requires.
 Example:
     uv run --python 3.13 --package populace-build --group dev python \
         tools/build_us_congressional_district_vintage_crosswalk.py \
-        --out packages/populace-build/src/populace/build/us/data/\
-cd117_to_cd119_population_crosswalk.csv \
+        --out packages/populace-build/src/populace/build/us_runtime/data/\
+congressional_district_vintage_crosswalk.csv \
         --cache-dir ~/.cache/populace-us-geography
 
     # Smoke run over a few states:

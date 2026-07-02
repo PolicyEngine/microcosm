@@ -17,9 +17,10 @@ SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
 #: The packaged default crosswalk, built from Census sources by
-#: ``tools/build_us_congressional_district_vintage_crosswalk.py``. See the
-#: sibling ``.provenance.json`` and ``CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md``
-#: for exact source files and per-state population conservation.
+#: ``tools/build_us_congressional_district_vintage_crosswalk.py`` and shipped
+#: under ``populace.build.us_runtime.data``. See the sibling ``.provenance.json``
+#: and ``CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md`` for exact source files and
+#: per-state population conservation.
 DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE = (
     "congressional_district_vintage_crosswalk.csv"
 )
@@ -83,7 +84,7 @@ def default_congressional_district_vintage_crosswalk_path() -> Path:
 
     return Path(
         str(
-            files("populace.build.us").joinpath(
+            files("populace.build.us_runtime.data").joinpath(
                 DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE
             )
         )
