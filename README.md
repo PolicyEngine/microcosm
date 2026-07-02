@@ -44,8 +44,7 @@ Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
 ```bash
 python tools/build_us_fiscal_refresh_release.py \
   --ledger-facts consumer_facts.jsonl \
-  --out /tmp/populace-build \
-  --staging-repo-id policyengine/populace-us-staging
+  --out /tmp/populace-build
 ```
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
