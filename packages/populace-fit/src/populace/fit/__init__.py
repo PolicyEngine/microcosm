@@ -1,9 +1,11 @@
 """populace.fit: the conditional-models operator of the populace stack.
 
 Fits conditional distributions ``P(targets | predictors)`` over a
-:class:`~populace.frame.Frame` and draws from them. The operator is
-**weight-aware by construction**: a fit reads the frame's typed weights, and the
-only way to fit unweighted is to pass ``weights="none"`` explicitly
+:class:`~populace.frame.Frame` — or a plain :class:`pandas.DataFrame` — and
+draws from them. The operator is **weight-aware by construction**: a Frame fit
+reads the frame's typed weights, a DataFrame fit requires the weights
+explicitly (a weight column name or vector), and on either input the only way
+to fit unweighted is to pass ``weights="none"`` and mean it
 (:mod:`populace.fit.model`). The canonical model is a regime-gated, chained,
 weighted-bootstrap quantile-regression-forest imputer (:mod:`populace.fit.qrf`).
 
@@ -87,26 +89,29 @@ QRF = RegimeGatedQRF
 
 
 def fit(
-    frame,
+    frame_or_df,
     predictors: list[str],
     targets: list[str],
     *,
     weights: WeightSpec = DESIGN_WEIGHTS,
     **model_kwargs,
 ) -> FittedModel:
-    """Fit the canonical conditional model over ``frame``.
+    """Fit the canonical conditional model over ``frame_or_df``.
 
     Convenience constructor: builds a :class:`RegimeGatedQRF` with
     ``model_kwargs`` and fits it. For a different model, instantiate it directly
     and call its :meth:`~populace.fit.model.ConditionalModel.fit`.
 
     Args:
-        frame: The :class:`~populace.frame.Frame` to fit on.
-        predictors: Conditioning variable names (one entity).
-        targets: Variable names to learn the conditional of (same entity).
-        weights: Which typed weight vector to weight the fit by; defaults to the
-            owning entity's ``"design"`` weights. ``"none"`` fits unweighted —
-            the only way to do so.
+        frame_or_df: The :class:`~populace.frame.Frame` or
+            :class:`pandas.DataFrame` to fit on.
+        predictors: Conditioning variable names (one entity / one table).
+        targets: Variable names to learn the conditional of (same entity /
+            same table).
+        weights: On a Frame: which typed weight vector to weight the fit by;
+            defaults to the owning entity's ``"design"`` weights. On a
+            DataFrame: required — a weight column name or a weight vector.
+            ``"none"`` fits unweighted — the only way to do so.
         **model_kwargs: Forwarded to :class:`RegimeGatedQRF` (e.g.
             ``n_estimators``, ``zero_atol``, ``seed``).
 
@@ -114,7 +119,7 @@ def fit(
         A :class:`~populace.fit.model.FittedModel`.
     """
     return RegimeGatedQRF(**model_kwargs).fit(
-        frame, predictors, targets, weights=weights
+        frame_or_df, predictors, targets, weights=weights
     )
 
 

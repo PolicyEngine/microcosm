@@ -36,6 +36,13 @@ Draws sample the weighted conditional: a quantile ``q ~ Uniform(0, 1)`` is drawn
 per row from the model's seeded RNG and the forest is queried at it, so over
 rows the draws reproduce the (weighted) conditional distribution, not a point
 estimate.
+
+The model has two front doors. Fitting on a :class:`~populace.frame.Frame`
+resolves the owning entity and its typed weights (design by default). Fitting
+on a plain :class:`pandas.DataFrame` — for use outside a populace stack —
+requires the weights explicitly (a weight column name, a weight vector, or
+``weights="none"``), because a bare table has no typed weights to default to.
+Past that resolution the two paths are the same model.
 """
 
 from __future__ import annotations
@@ -50,7 +57,9 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from populace.fit.model import (
     DESIGN_WEIGHTS,
     WeightSpec,
+    dataframe_fit_columns,
     predictors_targets_entity,
+    resolve_dataframe_fit_weights,
     resolve_fit_weights,
 )
 from populace.frame import Frame
@@ -370,10 +379,11 @@ class RegimeGatedQRF:
     """The canonical :class:`~populace.fit.model.ConditionalModel`.
 
     Fits a regime-gated, sequentially-chained quantile-regression-forest model
-    of ``P(targets | predictors)`` over a :class:`~populace.frame.Frame`, with
-    the frame's typed weights materialized by weighted bootstrap. See the module
-    docstring for the three mechanisms (weighted bootstrap, regime gates,
-    chaining).
+    of ``P(targets | predictors)`` over a :class:`~populace.frame.Frame` — or a
+    plain :class:`pandas.DataFrame` with explicit weights — with the weights
+    materialized by weighted bootstrap. See the module docstring for the three
+    mechanisms (weighted bootstrap, regime gates, chaining) and the two front
+    doors.
 
     Args:
         n_estimators: Trees per forest.
@@ -407,7 +417,7 @@ class RegimeGatedQRF:
 
     def fit(
         self,
-        frame: Frame,
+        frame_or_df: Frame | pd.DataFrame,
         predictors: list[str],
         targets: list[str],
         *,
@@ -416,22 +426,37 @@ class RegimeGatedQRF:
         """Fit the conditional model. See
         :meth:`~populace.fit.model.ConditionalModel.fit`.
 
-        Resolves the single entity owning the predictors and targets, reads its
-        typed weights per ``weights`` (``"none"`` is the only unweighted path),
-        detects each target's regime structurally, and grows the gated,
-        weighted-bootstrap forests in chain order.
+        On a Frame: resolves the single entity owning the predictors and
+        targets and reads its typed weights per ``weights`` (``"none"`` is the
+        only unweighted path). On a DataFrame: validates the columns and
+        resolves the *explicit* ``weights`` — a weight column name, a weight
+        vector, or ``"none"``; omitting them raises, because a bare table has
+        no typed weights to default to. Either way it then detects each
+        target's regime structurally and grows the gated, weighted-bootstrap
+        forests in chain order.
 
         Raises:
             ValueError: If predictors/targets are empty, span more than one
-                entity, name unknown columns, request a weight kind the
-                entity's resolved weights are not, or a target column contains
-                non-finite (NaN/inf) values. Messages name the culprits.
+                entity (Frame) or are missing from the columns, request a
+                weight spec the input cannot resolve, or a target column
+                contains non-finite (NaN/inf) values. Messages name the
+                culprits.
         """
         predictors = list(predictors)
         targets = list(targets)
-        entity = predictors_targets_entity(frame, predictors, targets)
-        weight_values = resolve_fit_weights(frame, entity, weights)
-        table = frame.table(entity)
+        if isinstance(frame_or_df, Frame):
+            entity = predictors_targets_entity(frame_or_df, predictors, targets)
+            weight_values = resolve_fit_weights(frame_or_df, entity, weights)
+            table = frame_or_df.table(entity)
+        else:
+            # The standalone front door: no entity to resolve, no typed
+            # weights to default to — the caller must state the weights.
+            entity = None
+            dataframe_fit_columns(frame_or_df, predictors, targets)
+            weight_values = resolve_dataframe_fit_weights(
+                frame_or_df, weights, predictors=predictors, targets=targets
+            )
+            table = frame_or_df
         _validate_targets_finite(table, targets)
 
         # Split the model seed into two independent streams: one drives the
@@ -591,7 +616,8 @@ class FittedRegimeGatedQRF:
     state and give independent draws.
 
     Attributes:
-        entity: The entity the predictors and targets live on.
+        entity: The entity the predictors and targets live on, or ``None`` for
+            a model fit on a plain DataFrame (which has no entities).
         predictors: The conditioning columns.
         targets: The drawn columns, in chain order.
     """
@@ -599,7 +625,7 @@ class FittedRegimeGatedQRF:
     def __init__(
         self,
         *,
-        entity: str,
+        entity: str | None,
         predictors: list[str],
         targets: list[str],
         target_models: dict[str, _TargetModel],
@@ -638,6 +664,12 @@ class FittedRegimeGatedQRF:
     def _predictor_frame(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:
         """Extract the predictor columns from a Frame or DataFrame input."""
         if isinstance(frame_or_df, Frame):
+            if self.entity is None:
+                raise ValueError(
+                    "This model was fit on a plain DataFrame, so it has no "
+                    "entity to read from a Frame. Pass a DataFrame with the "
+                    "predictor columns, or fit on a Frame to draw from frames."
+                )
             table = frame_or_df.table(self.entity)
         else:
             table = frame_or_df
