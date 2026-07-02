@@ -166,16 +166,32 @@ then certify by loading the published latest.json dataset in policyengine.py.
 # creates /root/populace/.venv; every populace/HF operation runs under that
 # venv as a subprocess, so the Modal function interpreter never needs the deps.
 
+REPO_CLONE_URL = "https://github.com/PolicyEngine/populace"
+
+
+def _local_repo_commit() -> str:
+    """Pinned commit for the image: the worktree's pushed HEAD.
+
+    The release builder records git provenance (commit, dirty state) from
+    inside the container, so the image must hold a real clone at the exact
+    commit being run — not a .git-less file copy. Refuse to build from a
+    dirty tree so the image always matches what's on the remote.
+    """
+    dirty = subprocess.check_output(
+        ["git", "-C", str(REPO_ROOT), "status", "--porcelain"], text=True
+    ).strip()
+    if dirty:
+        raise RuntimeError(
+            "Local worktree is dirty; commit and push before launching so the "
+            "image clone matches the code being run:\n" + dirty
+        )
+    return subprocess.check_output(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+
 def _image() -> modal.Image:
-    ignore = [
-        ".venv",
-        "**/__pycache__",
-        ".git",
-        ".pytest_cache",
-        ".ruff_cache",
-        "**/*.pyc",
-        ".claude",
-    ]
+    commit = _local_repo_commit()
     return (
         modal.Image.debian_slim(python_version="3.13")
         .apt_install("git", "build-essential")
@@ -186,13 +202,14 @@ def _image() -> modal.Image:
                 "POPULACE_STAGING_REPO_ID": "policyengine/populace-us-staging",
             }
         )
-        .add_local_dir(
-            str(REPO_ROOT),
-            IMAGE_REPO_ROOT,
-            ignore=ignore,
-            copy=True,
-        )
         .run_commands(
+            # Blobless clone keeps the image light; checkout materializes the
+            # pinned commit with a real .git so the builder's provenance
+            # (_git_dirty/_git_output) sees a clean tree at the right sha.
+            f"git clone --filter=blob:none {REPO_CLONE_URL} {IMAGE_REPO_ROOT}"
+            f" && cd {IMAGE_REPO_ROOT}"
+            f" && git fetch origin {commit}"
+            f" && git checkout --detach {commit}",
             f"cd {IMAGE_REPO_ROOT} && uv sync --all-packages --extra us --frozen",
         )
     )
