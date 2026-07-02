@@ -4491,3 +4491,127 @@ def test_compile_enforces_the_period_contract_without_a_waiver() -> None:
         if spec.metadata.get("period_contract_waiver")
     ]
     assert waived, "expected un-ageable rows to carry an explicit waiver"
+
+
+def _soi_national_actual_fact(source_period: int, *, value: float) -> dict[str, object]:
+    source_record_id = (
+        f"irs_soi.ty{source_period}.table_1_1.all.adjusted_gross_income"
+    )
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:soi-nat-{source_period}",
+        "value": value,
+        "period": {"type": "tax_year", "value": source_period},
+        "geography": {"level": "country", "id": "0100000US"},
+        "entity": {"name": "tax_unit", "role": "filing_unit"},
+        "aggregation": {"method": "sum"},
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "unit": "usd",
+        },
+        "source": {"source_name": "irs_soi"},
+        "lineage": {"source_record_id": source_record_id},
+        "layout": {
+            "record_set_id": f"irs_soi.ty{source_period}.table_1_1",
+            "groupby_value_id": "all",
+            "measure_id": "adjusted_gross_income",
+        },
+    }
+
+
+def test_chained_aging_bridges_years_the_cbo_series_does_not_cover() -> None:
+    # Factor policy (2), model v1.1: the CBO projection detail starts at
+    # TY2023, so a TY2022 dollar level ages by observed national SOI growth
+    # 2022->2023 chained into CBO projected growth 2023->2024. Observed
+    # growth for observed years; projected growth only where nothing is
+    # observed.
+    import pytest as _pytest
+
+    from populace.build.us_runtime.target_aging import (
+        AGING_MODEL_VERSION,
+        age_us_dollar_targets,
+    )
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="state_agi_al",
+                entity="household",
+                measure="adjusted_gross_income",
+                value=500_000_000_000,
+                period=2024,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "source_measure_id": "adjusted_gross_income",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+        _soi_national_actual_fact(2022, value=14_000_000_000_000),
+        _soi_national_actual_fact(2023, value=14_700_000_000_000),
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2024)
+    spec = aged.specs[0]
+    expected_factor = (14_700 / 14_000) * (16_500 / 15_000)  # 1.05 * 1.10
+    assert spec.metadata["basis"] == "projection"
+    assert float(spec.metadata["aging_factor"]) == _pytest.approx(expected_factor)
+    assert spec.metadata["aging_factor_source"].startswith(
+        "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+"
+    )
+    assert spec.metadata["alignment_model_version"] == AGING_MODEL_VERSION
+    assert spec.value == _pytest.approx(500_000_000_000 * expected_factor)
+
+
+def test_chained_aging_requires_the_observed_bridge() -> None:
+    # Without the national SOI pair the chain cannot form; the row stays raw
+    # and explicit, and the period contract flags it.
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="state_agi_al",
+                entity="household",
+                measure="adjusted_gross_income",
+                value=500_000_000_000,
+                period=2024,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "source_measure_id": "adjusted_gross_income",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2024)
+    spec = aged.specs[0]
+    assert spec.value == 500_000_000_000
+    assert spec.metadata["aging_factor_source"] == "unavailable"

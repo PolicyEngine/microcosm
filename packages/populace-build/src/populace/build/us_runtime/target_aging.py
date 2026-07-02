@@ -33,9 +33,17 @@ Factor policy (priority order):
    dividends, net business income) is aged by that series' own projection
    ratio ``projected_amount(series, build) / projected_amount(series,
    source)``.
-2. **CBO AGI default.** Any other dollar amount is aged by the CBO AGI
-   projection ratio.
-3. **Counts stay raw.** Return/claim counts (``measure_mode ==
+2. **Chained observed growth (v1.1).** When the CBO series does not cover
+   the source year (the published projection detail starts at TY2023), the
+   observed span is bridged with national SOI actuals for the same series
+   and only the unobserved span uses the projection:
+   ``soi(series, pivot) / soi(series, source) × cbo(series, build) /
+   cbo(series, pivot)`` where the pivot is the earliest CBO year. Observed
+   growth for observed years, projected growth only where nothing is
+   observed.
+3. **CBO AGI default.** Any other dollar amount is aged by the CBO AGI
+   ratio, direct or chained by the national SOI AGI series.
+4. **Counts stay raw.** Return/claim counts (``measure_mode ==
    "indicator_sum"``) and population counts are never aged here; a growing
    nominal aggregate does not imply a growing return count.
 
@@ -65,7 +73,7 @@ __all__ = [
 # Bump the version whenever the factor policy changes; no Ledger fact and no
 # consumer-artifact hash changes when it does — only Populace build outputs.
 AGING_MODEL_ID = "cbo_growth_factor_aging"
-AGING_MODEL_VERSION = "1.0.0"
+AGING_MODEL_VERSION = "1.1.0"
 
 
 # CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
@@ -93,6 +101,19 @@ _SOI_MEASURE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
     "schedule_c_income_amount": "net_business_income",
     "partnership_scorp_income_amount": "net_business_income",
 }
+
+# Chain sources for factor policy (2): the national SOI actual series that
+# bridges source years the CBO projection detail does not cover. Keyed by CBO
+# income source; the value names the canonical all-return national table and
+# measure whose year-over-year growth is the observed segment of a chained
+# factor. Series without a clean national SOI analogue fall back to the AGI
+# chain via the existing AGI default.
+_CBO_INCOME_SOURCE_TO_SOI_CHAIN: dict[str, tuple[str, str]] = {
+    "adjusted_gross_income": ("table_1_1", "adjusted_gross_income"),
+    "wages_and_salaries": ("table_1_4", "wages_salaries_amount"),
+    "net_capital_gain": ("table_1_4", "net_capital_gains_amount"),
+}
+_SOI_SOURCE_NAME = "irs_soi"
 
 # Direct-target roles (CBO-sourced calibration targets) map to their own CBO
 # income source so a build-year CBO target is aged by its own series when the
@@ -131,6 +152,7 @@ def age_us_dollar_targets(
     """
 
     projections = _cbo_projection_series(facts)
+    chain_series = _soi_national_chain_series(facts)
     build_period_key = _period_year(target_period)
     specs: list[TargetSpec] = []
     for spec in registry.specs:
@@ -138,6 +160,7 @@ def age_us_dollar_targets(
             _age_spec(
                 spec,
                 projections=projections,
+                chain_series=chain_series,
                 target_period=target_period,
                 build_period_key=build_period_key,
             )
@@ -279,6 +302,7 @@ def _age_spec(
     spec: TargetSpec,
     *,
     projections: dict[str, dict[int, tuple[float, str]]],
+    chain_series: dict[str, dict[int, tuple[float, str]]],
     target_period: int | str,
     build_period_key: int | None,
 ) -> TargetSpec:
@@ -320,15 +344,17 @@ def _age_spec(
     income_source = _cbo_income_source_for_spec(spec)
     factor_result = _projection_factor(
         projections,
+        chain_series,
         income_source=income_source,
         build_period_key=build_period_key,
         source_period_key=source_period_key,
     )
     if factor_result is None and income_source != _CBO_AGI_INCOME_SOURCE:
-        # Priority (b): fall back to the CBO AGI growth ratio when the
+        # Fall back to the CBO AGI growth ratio (direct or chained) when the
         # source-aligned series is unavailable for one of the two periods.
         factor_result = _projection_factor(
             projections,
+            chain_series,
             income_source=_CBO_AGI_INCOME_SOURCE,
             build_period_key=build_period_key,
             source_period_key=source_period_key,
@@ -406,30 +432,106 @@ def _cbo_income_source_for_spec(spec: TargetSpec) -> str:
 
 def _projection_factor(
     projections: dict[str, dict[int, tuple[float, str]]],
+    chain_series: dict[str, dict[int, tuple[float, str]]],
     *,
     income_source: str,
     build_period_key: int,
     source_period_key: int,
 ) -> tuple[float, str] | None:
-    """``projected(build) / projected(source)`` for one CBO series, if usable.
+    """The growth factor for one series, direct or chained, if usable.
 
-    Returns the ratio and the build-year fact's source_record_id (the factor's
-    lineage), or ``None`` when either period's projection is missing or the
-    source-year projection is non-positive.
+    Direct: ``projected(build) / projected(source)`` when the CBO series
+    covers both years. Chained (factor policy 2): when the CBO series does
+    not reach back to the source year, bridge the observed span with the
+    series' national SOI actuals through the earliest CBO year (the pivot):
+    ``soi(pivot) / soi(source) × projected(build) / projected(pivot)``.
+
+    Returns the ratio and the factor's lineage — the build-year projection
+    fact's source_record_id, prefixed ``chained:<soi pivot record>+`` for
+    chained factors — or ``None`` when no usable pair exists.
     """
 
     series = projections.get(income_source)
     if not series:
         return None
     build = series.get(build_period_key)
-    source = series.get(source_period_key)
-    if build is None or source is None:
+    if build is None:
         return None
     build_value, build_record_id = build
-    source_value, _ = source
-    if source_value <= 0 or build_value <= 0:
+    if build_value <= 0:
         return None
-    return build_value / source_value, build_record_id
+
+    source = series.get(source_period_key)
+    if source is not None:
+        source_value, _ = source
+        if source_value <= 0:
+            return None
+        return build_value / source_value, build_record_id
+
+    soi_series = chain_series.get(income_source)
+    if not soi_series:
+        return None
+    pivot_year = min(series)
+    if not (source_period_key < pivot_year <= build_period_key):
+        return None
+    pivot_projection = series.get(pivot_year)
+    soi_source = soi_series.get(source_period_key)
+    soi_pivot = soi_series.get(pivot_year)
+    if pivot_projection is None or soi_source is None or soi_pivot is None:
+        return None
+    pivot_value, _ = pivot_projection
+    soi_source_value, _ = soi_source
+    soi_pivot_value, soi_pivot_record_id = soi_pivot
+    if min(pivot_value, soi_source_value, soi_pivot_value) <= 0:
+        return None
+    factor = (soi_pivot_value / soi_source_value) * (build_value / pivot_value)
+    return factor, f"chained:{soi_pivot_record_id}+{build_record_id}"
+
+
+def _soi_national_chain_series(
+    facts: tuple[object, ...],
+) -> dict[str, dict[int, tuple[float, str]]]:
+    """Index national SOI actuals usable as chained-factor bridges.
+
+    Result maps CBO ``income_source`` -> ``{tax_year -> (value,
+    source_record_id)}`` drawn from the canonical all-return national tables
+    declared in ``_CBO_INCOME_SOURCE_TO_SOI_CHAIN``.
+    """
+
+    wanted = {
+        (table, measure): income_source
+        for income_source, (table, measure) in (
+            _CBO_INCOME_SOURCE_TO_SOI_CHAIN.items()
+        )
+    }
+    series: dict[str, dict[int, tuple[float, str]]] = {}
+    for fact in facts:
+        if _source_name(fact) != _SOI_SOURCE_NAME:
+            continue
+        if _str_at(fact, "geography", "level") != "country":
+            continue
+        if _str_at(fact, "layout", "groupby_value_id") not in ("all", "total"):
+            continue
+        record_set_id = _str_at(fact, "layout", "record_set_id")
+        segments = set(record_set_id.split("."))
+        measure = _measure_id(fact)
+        income_source = next(
+            (
+                mapped
+                for (table, chain_measure), mapped in wanted.items()
+                if table in segments and chain_measure == measure
+            ),
+            None,
+        )
+        if income_source is None:
+            continue
+        year = _period_year(_at(fact, "period", "value"))
+        if year is None:
+            continue
+        value = _numeric_value(fact)
+        record_id = _str_at(fact, "lineage", "source_record_id")
+        series.setdefault(income_source, {})[year] = (value, record_id)
+    return series
 
 
 def _cbo_projection_series(
