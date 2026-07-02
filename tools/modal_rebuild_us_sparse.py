@@ -19,10 +19,15 @@ score ~$0 while the release still hits its own calibration target surface
   builder gates base-vs-``--input-mass-reference-h5`` **before** calibration and
   export-vs-base before writing the H5.
 
-This app stands the corrected rebuild up on Modal. Two phases run inside one
+This app stands the corrected rebuild up on Modal. Everything runs inside one
 container image built from the repo at the pinned ``uv.lock`` (policyengine-us
 1.752.2, policyengine-core 3.26.11 — exactly the July-1 sparse build engine, so
-the only change from that release is the #278 data fix):
+the only change from that release is the #278 data fix). The heavy build tools
+and the in-container inspection both run under the workspace venv
+(``/root/populace/.venv/bin/python``) as subprocesses; the Modal function body
+is pure stdlib orchestration, so there is no interpreter mismatch.
+
+Two phases:
 
 1. **base rebuild** — ``tools/build_us_puf_support_base.py`` layers the #278
    PUF/childcare/immigration inputs onto a base support frame;
@@ -32,11 +37,12 @@ the only change from that release is the #278 data fix):
    f0af251 reference and export-vs-base for input-mass parity, and writes the
    release contract files.
 
-A ``--smoke`` mode proves the plumbing cheaply before any real money is spent:
-it wires up the HF secret, the volumes, and the gate machinery, inspects the
-published base for the #278 columns, and exercises the fast base-vs-reference
-input-mass gate (which legitimately *fails* on the broken published base — that
-failure is the point of #278/#279 and demonstrates the gate fires end-to-end).
+A ``--smoke`` (default) mode proves the plumbing cheaply before any real money
+is spent: it wires up the HF secret, the volumes, and the gate machinery,
+inspects the published base for the #278 columns, and exercises the fast
+base-vs-reference input-mass gate (which legitimately *fails* on the broken
+published base — that failure is the point of #278/#279 and demonstrates the
+gate fires end to end).
 
 Licensing
 ---------
@@ -49,7 +55,7 @@ Usage
 -----
 Smoke (cheap wiring proof; safe to run):
 
-    modal run tools/modal_rebuild_us_sparse.py --smoke
+    modal run tools/modal_rebuild_us_sparse.py
 
 Full corrected build (heavy; only with the main session's go-ahead):
 
@@ -64,7 +70,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import modal
@@ -101,9 +106,10 @@ PUF_2024_PATH = "staging/1.73.0_22f922eb_20260329_223332/datasets/puf_2024.h5"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent  # the populace worktree root
 
-# Where the repo is baked inside the image.
+# Where the repo is baked inside the image, and the workspace venv uv sync
+# creates there.
 IMAGE_REPO_ROOT = "/root/populace"
-VENV_PYTHON = "/opt/venv/bin/python"
+VENV_PYTHON = f"{IMAGE_REPO_ROOT}/.venv/bin/python"
 
 # Output + reference caches on a persistent Modal volume.
 OUTPUT_VOLUME_NAME = "populace-us-sparse-rebuild"
@@ -146,8 +152,9 @@ then certify with policyengine.py.
 # --------------------------------------------------------------------------- #
 # Build from the repo at its pinned uv.lock so the engine is exactly the
 # July-1 sparse build's (policyengine-us 1.752.2, policyengine-core 3.26.11).
-# Only the #278 data fix differs. h5py/tables/microunit come from the `us`
-# extra.
+# Only the #278 data fix differs. `uv sync --all-packages --extra us --frozen`
+# creates /root/populace/.venv; every populace/HF operation runs under that
+# venv as a subprocess, so the Modal function interpreter never needs the deps.
 
 def _image() -> modal.Image:
     ignore = [
@@ -166,7 +173,6 @@ def _image() -> modal.Image:
         .env(
             {
                 "HF_HUB_ENABLE_HF_TRANSFER": "0",
-                "UV_PROJECT_ENVIRONMENT": "/opt/venv",
                 "POPULACE_STAGING_REPO_ID": "policyengine/populace-us-staging",
             }
         )
@@ -193,6 +199,121 @@ facts_volume = modal.Volume.from_name(FACTS_VOLUME_NAME, create_if_missing=True)
 
 
 # --------------------------------------------------------------------------- #
+# The in-container worker script (runs under the workspace venv).               #
+# --------------------------------------------------------------------------- #
+# Kept as a string so it executes under VENV_PYTHON (where huggingface_hub and
+# populace.* resolve) rather than the Modal function interpreter.
+
+_SMOKE_WORKER = r'''
+import json, os, sys
+from pathlib import Path
+
+REPO = os.environ["POPULACE_REPO"]
+sys.path.insert(0, f"{REPO}/packages/populace-build/src")
+
+POPULACE_US_REPO = os.environ["POPULACE_US_REPO"]
+DEFAULT_BASE_FILENAME = os.environ["DEFAULT_BASE_FILENAME"]
+SPARSE_DEFAULT_REVISION = os.environ["SPARSE_DEFAULT_REVISION"]
+DENSE_REFERENCE_REVISION = os.environ["DENSE_REFERENCE_REVISION"]
+ISSUE_278_COLUMNS = os.environ["ISSUE_278_COLUMNS"].split(",")
+OUT = Path(os.environ["SMOKE_OUT"])
+OUT.mkdir(parents=True, exist_ok=True)
+
+from huggingface_hub import HfApi, hf_hub_download
+
+verdict = {"steps": {}}
+
+who = HfApi().whoami()
+verdict["steps"]["hf_whoami"] = {
+    "name": who.get("name"),
+    "type": who.get("type"),
+    "orgs": [o.get("name") for o in who.get("orgs", [])],
+    "hf_token_present": bool(os.environ.get("HF_TOKEN")),
+}
+print("hf whoami:", verdict["steps"]["hf_whoami"], flush=True)
+
+base_path = hf_hub_download(
+    repo_id=POPULACE_US_REPO, filename=DEFAULT_BASE_FILENAME,
+    revision=SPARSE_DEFAULT_REVISION, repo_type="dataset",
+)
+reference_path = hf_hub_download(
+    repo_id=POPULACE_US_REPO, filename=DEFAULT_BASE_FILENAME,
+    revision=DENSE_REFERENCE_REVISION, repo_type="dataset",
+)
+verdict["steps"]["downloads"] = {
+    "sparse_base_bytes": Path(base_path).stat().st_size,
+    "dense_reference_bytes": Path(reference_path).stat().st_size,
+}
+
+from populace.build.gates import input_mass_parity_gate
+from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.l0_refit_export import load_us_frame
+from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+input_variables = tuple(PolicyEngineUSEngine().variables())
+base_frame = load_us_frame(base_path)
+reference_frame = load_us_frame(reference_path)
+base_totals = us_input_mass_totals(base_frame, columns=input_variables)
+reference_totals = us_input_mass_totals(reference_frame, columns=input_variables)
+
+issue_278 = {}
+for col in ISSUE_278_COLUMNS:
+    issue_278[col] = {
+        "sparse_base_total": float(base_totals.get(col, 0.0)),
+        "dense_reference_total": float(reference_totals.get(col, 0.0)),
+        "present_in_base": col in base_totals,
+        "present_in_reference": col in reference_totals,
+    }
+verdict["steps"]["issue_278_columns"] = issue_278
+print("issue #278 column totals:", json.dumps(issue_278, indent=2), flush=True)
+
+gate = input_mass_parity_gate(
+    base_totals, reference_totals,
+    candidate_name="published_sparse_base",
+    reference_name="dense_f0af251_reference",
+    relative_tolerance=0.5, minimum_reference_total=1e9,
+)
+verdict["steps"]["input_mass_parity_gate"] = {
+    "passed": gate.passed,
+    "n_failures": len(gate.failures),
+    "failures_head": list(gate.failures)[:12],
+    "columns_checked": gate.details.get("columns_checked"),
+    "worst_drifts": gate.details.get("worst_drifts"),
+}
+print(
+    "input_mass_parity_gate on published sparse base: "
+    f"passed={gate.passed} n_failures={len(gate.failures)}",
+    flush=True,
+)
+
+# Does the published base retain the raw ASEC childcare column the base
+# rebuild's CPS-carried derivation needs? Informs the base-rebuild strategy.
+raw_asec_present = {}
+for raw_col, table in (("SPM_CHILDCAREXPNS", "spm_unit"), ("SPM_CHILDCAREXPNS", "person")):
+    try:
+        df = base_frame.table(table)
+        raw_asec_present[f"{table}.{raw_col}"] = raw_col in df.columns
+    except Exception:
+        raw_asec_present[f"{table}.{raw_col}"] = "no_such_table"
+verdict["steps"]["raw_asec_columns_in_published_base"] = raw_asec_present
+
+facts_path = Path(os.environ["FACTS_PATH"])
+verdict["steps"]["ledger_facts"] = {
+    "path": str(facts_path),
+    "exists": facts_path.exists(),
+    "bytes": facts_path.stat().st_size if facts_path.exists() else 0,
+}
+
+(OUT / "smoke_verdict.json").write_text(
+    json.dumps(verdict, indent=2, sort_keys=True) + "\n"
+)
+print("SMOKE_VERDICT_JSON_BEGIN")
+print(json.dumps(verdict, sort_keys=True))
+print("SMOKE_VERDICT_JSON_END")
+'''
+
+
+# --------------------------------------------------------------------------- #
 # In-container helpers                                                          #
 # --------------------------------------------------------------------------- #
 
@@ -205,48 +326,19 @@ def _run(cmd: list[str], *, cwd: str = IMAGE_REPO_ROOT, env: dict | None = None)
     print(f"$ {' '.join(cmd)}", flush=True)
     run_env = {**os.environ, **(env or {})}
     proc = subprocess.run(cmd, cwd=cwd, env=run_env, text=True, capture_output=True)
-    tail = "\n".join((proc.stdout or "").splitlines()[-40:])
+    tail = "\n".join((proc.stdout or "").splitlines()[-60:])
     err_tail = "\n".join((proc.stderr or "").splitlines()[-40:])
+    if tail:
+        print(tail, flush=True)
     if proc.returncode != 0:
-        print(f"[exit {proc.returncode}] stdout tail:\n{tail}", flush=True)
         print(f"[exit {proc.returncode}] stderr tail:\n{err_tail}", flush=True)
     return {
         "cmd": cmd,
         "returncode": proc.returncode,
+        "stdout": proc.stdout or "",
         "stdout_tail": tail,
         "stderr_tail": err_tail,
     }
-
-
-def _hf_download(repo: str, filename: str, *, revision: str, repo_type: str) -> str:
-    from huggingface_hub import hf_hub_download
-
-    return hf_hub_download(
-        repo_id=repo,
-        filename=filename,
-        revision=revision,
-        repo_type=repo_type,
-    )
-
-
-def _prepend_build_src() -> None:
-    src = f"{IMAGE_REPO_ROOT}/packages/populace-build/src"
-    if src not in sys.path:
-        sys.path.insert(0, src)
-
-
-def _load_us_frame(path: str):
-    _prepend_build_src()
-    from populace.build.us_runtime.l0_refit_export import load_us_frame
-
-    return load_us_frame(path)
-
-
-def _engine_input_variables() -> tuple[str, ...]:
-    _prepend_build_src()
-    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
-
-    return tuple(PolicyEngineUSEngine().variables())
 
 
 # --------------------------------------------------------------------------- #
@@ -264,132 +356,72 @@ def _engine_input_variables() -> tuple[str, ...]:
 def smoke() -> dict:
     """Prove the wiring end-to-end without a real (expensive) calibration.
 
-    Steps, each recorded in the returned verdict dict and staged to the output
-    volume under ``smoke/``:
-
-    1. HF secret works: authenticate + report the token's whoami (name only).
-    2. Fetch the published sparse base and the DENSE f0af251 reference from HF
-       (PUF-derived — fetched only here, never logged/committed).
-    3. Inspect the published base for the four #278 input columns and confirm
-       the DENSE reference carries their weighted mass.
-    4. Run the fast base-vs-reference input-mass parity gate on the published
-       sparse base. On the *broken* published base this legitimately FAILS —
-       demonstrating the #279 gate fires end to end (its output shape is the
-       deliverable, not a pass).
-    5. Confirm the consumer-facts ledger artifact is present for --ledger-facts.
-    6. Exercise the base-rebuild + fiscal-refresh entrypoints' import + arg
-       plumbing under the built env.
+    All populace/HF work runs under the workspace venv (VENV_PYTHON) via the
+    _SMOKE_WORKER script. The function body only orchestrates + parses the
+    verdict, so it needs no third-party imports itself.
     """
-    out_dir = Path(OUTPUT_MOUNT) / "smoke"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    verdict: dict = {"steps": {}}
-
-    # 1. HF secret / whoami --------------------------------------------------- #
-    from huggingface_hub import HfApi
-
-    who = HfApi().whoami()
-    verdict["steps"]["hf_whoami"] = {
-        "name": who.get("name"),
-        "type": who.get("type"),
-        "orgs": [o.get("name") for o in who.get("orgs", [])],
-        "hf_token_present": bool(os.environ.get("HF_TOKEN")),
-    }
-    print("hf whoami:", verdict["steps"]["hf_whoami"], flush=True)
-
-    # 2. Fetch base + dense reference ---------------------------------------- #
-    base_path = _hf_download(
-        POPULACE_US_REPO,
-        DEFAULT_BASE_FILENAME,
-        revision=SPARSE_DEFAULT_REVISION,
-        repo_type="dataset",
-    )
-    reference_path = _hf_download(
-        POPULACE_US_REPO,
-        DEFAULT_BASE_FILENAME,
-        revision=DENSE_REFERENCE_REVISION,
-        repo_type="dataset",
-    )
-    verdict["steps"]["downloads"] = {
-        "sparse_base_bytes": Path(base_path).stat().st_size,
-        "dense_reference_bytes": Path(reference_path).stat().st_size,
-    }
-
-    # 3+4. Column inspection + input-mass parity gate ------------------------ #
-    _prepend_build_src()
-    from populace.build.gates import input_mass_parity_gate
-    from populace.build.us_runtime.input_mass import us_input_mass_totals
-
-    input_variables = _engine_input_variables()
-    base_frame = _load_us_frame(base_path)
-    reference_frame = _load_us_frame(reference_path)
-
-    base_totals = us_input_mass_totals(base_frame, columns=input_variables)
-    reference_totals = us_input_mass_totals(reference_frame, columns=input_variables)
-
-    issue_278 = {}
-    for col in ISSUE_278_COLUMNS:
-        issue_278[col] = {
-            "sparse_base_total": float(base_totals.get(col, 0.0)),
-            "dense_reference_total": float(reference_totals.get(col, 0.0)),
-            "present_in_base": col in base_totals,
-            "present_in_reference": col in reference_totals,
-        }
-    verdict["steps"]["issue_278_columns"] = issue_278
-    print("issue #278 column totals:", json.dumps(issue_278, indent=2), flush=True)
-
-    gate = input_mass_parity_gate(
-        base_totals,
-        reference_totals,
-        candidate_name="published_sparse_base",
-        reference_name="dense_f0af251_reference",
-        relative_tolerance=0.5,
-        minimum_reference_total=1e9,
-    )
-    verdict["steps"]["input_mass_parity_gate"] = {
-        "passed": gate.passed,
-        "n_failures": len(gate.failures),
-        "failures_head": list(gate.failures)[:12],
-        "columns_checked": gate.details.get("columns_checked"),
-        "worst_drifts": gate.details.get("worst_drifts"),
-    }
-    print(
-        f"input_mass_parity_gate on published sparse base: passed={gate.passed} "
-        f"n_failures={len(gate.failures)}",
-        flush=True,
-    )
-
-    # 5. Ledger facts present? ----------------------------------------------- #
+    smoke_out = Path(OUTPUT_MOUNT) / "smoke"
     facts_path = Path(FACTS_MOUNT) / CONSUMER_FACTS_FILENAME
-    verdict["steps"]["ledger_facts"] = {
-        "path": str(facts_path),
-        "exists": facts_path.exists(),
-        "bytes": facts_path.stat().st_size if facts_path.exists() else 0,
-    }
 
-    # 6. Entrypoint plumbing -------------------------------------------------- #
-    help_probe = _run([VENV_PYTHON, "tools/build_us_puf_support_base.py", "--help"])
-    verdict["steps"]["base_builder_help"] = {
-        "returncode": help_probe["returncode"],
-        "ok": help_probe["returncode"] == 0,
+    worker_env = {
+        "POPULACE_REPO": IMAGE_REPO_ROOT,
+        "POPULACE_US_REPO": POPULACE_US_REPO,
+        "DEFAULT_BASE_FILENAME": DEFAULT_BASE_FILENAME,
+        "SPARSE_DEFAULT_REVISION": SPARSE_DEFAULT_REVISION,
+        "DENSE_REFERENCE_REVISION": DENSE_REFERENCE_REVISION,
+        "ISSUE_278_COLUMNS": ",".join(ISSUE_278_COLUMNS),
+        "SMOKE_OUT": str(smoke_out),
+        "FACTS_PATH": str(facts_path),
     }
+    worker = _run(
+        [VENV_PYTHON, "-c", _SMOKE_WORKER],
+        env=worker_env,
+    )
+
+    # Also confirm the build tools import + parse args under the venv.
+    base_help = _run([VENV_PYTHON, "tools/build_us_puf_support_base.py", "--help"])
     refresh_help = _run(
         [VENV_PYTHON, "tools/build_us_fiscal_refresh_release.py", "--help"]
     )
-    verdict["steps"]["fiscal_refresh_help"] = {
-        "returncode": refresh_help["returncode"],
-        "ok": refresh_help["returncode"] == 0,
-    }
 
-    verdict_path = out_dir / "smoke_verdict.json"
-    verdict_path.write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
     output_volume.commit()
-    verdict["verdict_path"] = str(verdict_path)
+
+    verdict: dict = {"worker_returncode": worker["returncode"]}
+    # Extract the machine-readable verdict the worker printed.
+    stdout = worker["stdout"]
+    if "SMOKE_VERDICT_JSON_BEGIN" in stdout and "SMOKE_VERDICT_JSON_END" in stdout:
+        payload = stdout.split("SMOKE_VERDICT_JSON_BEGIN", 1)[1]
+        payload = payload.split("SMOKE_VERDICT_JSON_END", 1)[0].strip()
+        try:
+            verdict["worker"] = json.loads(payload)
+        except json.JSONDecodeError:
+            verdict["worker_parse_error"] = True
+    if worker["returncode"] != 0:
+        verdict["worker_stderr_tail"] = worker["stderr_tail"]
+    verdict["base_builder_help_ok"] = base_help["returncode"] == 0
+    verdict["fiscal_refresh_help_ok"] = refresh_help["returncode"] == 0
+    verdict["verdict_path"] = str(smoke_out / "smoke_verdict.json")
     return verdict
 
 
 # --------------------------------------------------------------------------- #
 # Full build (heavy — gated on go-ahead)                                        #
 # --------------------------------------------------------------------------- #
+
+_HF_FETCH = r'''
+import os, sys
+from huggingface_hub import hf_hub_download
+kind, repo, filename, revision = sys.argv[1:5]
+print(hf_hub_download(repo_id=repo, filename=filename, revision=revision, repo_type=kind))
+'''
+
+
+def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
+    res = _run([VENV_PYTHON, "-c", _HF_FETCH, kind, repo, filename, revision])
+    if res["returncode"] != 0:
+        raise RuntimeError(f"HF fetch failed for {repo}/{filename}@{revision}")
+    return res["stdout"].strip().splitlines()[-1]
+
 
 @app.function(
     image=image,
@@ -405,6 +437,7 @@ def run_full_build(
     epochs: int = 1500,
     skip_out_of_sample_reforms: bool = False,
     allow_input_mass_drift: bool = False,
+    no_staging: bool = False,
     release_id: str | None = None,
 ) -> dict:
     """Rebuild the base carrying the #278 inputs, then calibrate + write the
@@ -417,11 +450,8 @@ def run_full_build(
     work.mkdir(parents=True, exist_ok=True)
     result: dict = {}
 
-    reference_path = _hf_download(
-        POPULACE_US_REPO,
-        DEFAULT_BASE_FILENAME,
-        revision=DENSE_REFERENCE_REVISION,
-        repo_type="dataset",
+    reference_path = _fetch(
+        "dataset", POPULACE_US_REPO, DEFAULT_BASE_FILENAME, DENSE_REFERENCE_REVISION
     )
     result["reference_h5"] = reference_path
 
@@ -432,12 +462,7 @@ def run_full_build(
     # layer the #278 PUF/childcare/immigration inputs onto it. The processed PUF
     # donor is fetched from the us-data model repo (licensed; never logged).
     base_support_h5 = base_h5_override or reference_path
-    puf_h5 = _hf_download(
-        US_DATA_MODEL_REPO,
-        PUF_2024_PATH,
-        revision=US_DATA_DONOR_REVISION,
-        repo_type="model",
-    )
+    puf_h5 = _fetch("model", US_DATA_MODEL_REPO, PUF_2024_PATH, US_DATA_DONOR_REVISION)
     base_out = work / "base"
     base_rebuild = _run(
         [
@@ -474,8 +499,12 @@ def run_full_build(
         str(release_out),
         "--epochs",
         str(epochs),
-        "--no-staging",
     ]
+    # Staging telemetry is ON by default so the candidate appears on the
+    # populace-us-staging dashboard and `populace-publish-release` does not warn
+    # about a missing staging block. The HF secret carries the write token.
+    if no_staging:
+        cmd += ["--no-staging"]
     if release_id:
         cmd += ["--release-id", release_id]
     if skip_out_of_sample_reforms:
