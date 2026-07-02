@@ -13,6 +13,13 @@ from typing import Any
 import numpy as np
 
 from populace.build.gates import input_mass_parity_gate
+from populace.build.us_runtime.congressional_district_geography import (
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+)
+from populace.build.us_runtime.geography_ladder import (
+    US_GEOGRAPHY_LADDER_COLUMNS,
+    us_geography_ladder_gate,
+)
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -26,6 +33,16 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
 )
 
 US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS
+
+#: The geography spine a US release carries by default: state and district,
+#: plus the block-anchored ladder (populace #275). A release missing or
+#: constant on any of these silently loses local computability — the same
+#: failure family as #225's everyone-is-a-citizen surface.
+US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS = (
+    "state_fips",
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+    *US_GEOGRAPHY_LADDER_COLUMNS,
+)
 
 
 @dataclass(frozen=True)
@@ -229,21 +246,32 @@ def assert_required_us_release_source_columns(
     *,
     columns: tuple[str, ...] = US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
     person_columns: tuple[str, ...] = US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
+    household_columns: tuple[str, ...] = (US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS),
 ) -> None:
     """Require source-stage columns needed by US release gates.
 
     Tax-unit columns come from the ACA Marketplace source stage; person
     columns are the SSN/immigration surface (a missing or constant
     ``ssn_card_type`` reproduces the everyone-is-a-citizen failure of
-    populace issue #225).
+    populace issue #225); household columns are the geography spine (a
+    release without the block-anchored ladder of populace #275 cannot be
+    filtered below state or recompute county-driven programs). Household
+    columns are presence-checked only — their value quality is the
+    geography-ladder gate's job.
     """
 
     failures: list[str] = []
-    for entity, required in (("tax_unit", columns), ("person", person_columns)):
+    for entity, required, check_nonconstant in (
+        ("tax_unit", columns, True),
+        ("person", person_columns, True),
+        ("household", household_columns, False),
+    ):
         table = frame.table(entity)
         for column in required:
             if column not in table.columns:
                 failures.append(f"{entity}.{column}: missing")
+                continue
+            if not check_nonconstant:
                 continue
             unique = table[column].dropna().unique()
             if len(unique) < 2:
@@ -314,6 +342,7 @@ def export_us_l0_refit_h5(
     input_mass_minimum_reference_total: float = 0.0,
     input_mass_reviewed_exclusions: Mapping[str, str] | None = None,
     require_input_mass_parity: bool = True,
+    require_geography_ladder: bool = True,
 ) -> dict[str, Any]:
     """Write a selected US H5 from a base H5 and saved L0/refit weights.
 
@@ -322,7 +351,9 @@ def export_us_l0_refit_h5(
     (or against ``reference_h5``, e.g. the certified dense release) via
     :func:`populace.build.gates.input_mass_parity_gate`, so a selection that
     zeroes an untargeted input base (populace issue #278) fails instead of
-    shipping.
+    shipping. The geography-ladder gate runs on the selected support with
+    its calibrated weights (populace #275/#34): a release whose spine is
+    inconsistent or whose NYC mass collapsed fails by default.
     """
 
     root_attrs_source = (
@@ -338,6 +369,15 @@ def export_us_l0_refit_h5(
     export_frame = attach_l0_refit_weights(base_frame, solution)
     if require_source_columns:
         assert_required_us_release_source_columns(export_frame)
+    geography_ladder_gate = us_geography_ladder_gate(
+        export_frame.table("household"),
+        export_frame.weights_for("household").values,
+    )
+    if require_geography_ladder and not geography_ladder_gate.passed:
+        raise ValueError(
+            "US L0/refit release export failed the geography-ladder gate: "
+            + "; ".join(geography_ladder_gate.failures)
+        )
     reference_frame = (
         load_us_frame(reference_h5) if reference_h5 is not None else base_frame
     )
@@ -372,7 +412,16 @@ def export_us_l0_refit_h5(
         "required_person_source_columns": list(
             US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
         ),
+        "required_household_source_columns": list(
+            US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS
+        ),
         "required_source_columns_checked": bool(require_source_columns),
+        "geography_ladder_gate_enforced": bool(require_geography_ladder),
+        "geography_ladder_gate": {
+            "passed": geography_ladder_gate.passed,
+            "failures": list(geography_ladder_gate.failures),
+            "details": dict(geography_ladder_gate.details),
+        },
         "input_mass_reference_h5": (
             _file_manifest(reference_h5) if reference_h5 is not None else None
         ),
@@ -474,6 +523,16 @@ def _parser() -> argparse.ArgumentParser:
             "the gate result is recorded in the summary either way."
         ),
     )
+    parser.add_argument(
+        "--allow-geography-ladder-gate-failures",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch. By default, the export fails when the "
+            "geography-ladder gate fails (issues #275/#34: spine "
+            "inconsistency or NYC mass collapse); the gate result is "
+            "recorded in the summary either way."
+        ),
+    )
     return parser
 
 
@@ -493,12 +552,14 @@ def main(argv: list[str] | None = None) -> None:
         input_mass_relative_tolerance=args.input_mass_relative_tolerance,
         input_mass_minimum_reference_total=args.input_mass_minimum_reference_total,
         require_input_mass_parity=not args.allow_input_mass_drift,
+        require_geography_ladder=not args.allow_geography_ladder_gate_failures,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
 
 
 __all__ = [
     "L0RefitWeights",
+    "US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS",
     "attach_l0_refit_entity_weights",

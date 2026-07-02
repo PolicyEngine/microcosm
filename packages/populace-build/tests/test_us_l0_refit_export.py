@@ -37,7 +37,20 @@ def _us_frame(**person_extra: object) -> Frame:
         {
             "person": person,
             "household": pd.DataFrame(
-                {"household_id": np.asarray([10, 20], dtype="int64")}
+                {
+                    "household_id": np.asarray([10, 20], dtype="int64"),
+                    "state_fips": np.asarray([36, 6], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        [3612, 653], dtype="int64"
+                    ),
+                    "block_geoid": ["360610001001000", "060370001001000"],
+                    "tract_geoid": ["36061000100", "06037000100"],
+                    "county_fips": ["36061", "06037"],
+                    "place_fips": ["51000", "44000"],
+                    "sldu": ["027", "024"],
+                    "sldl": ["075", "051"],
+                    "cbsa_code": ["35620", "31080"],
+                }
             ),
             "tax_unit": pd.DataFrame(
                 {
@@ -198,6 +211,8 @@ def test_export_us_l0_refit_h5_uses_existing_policyengine_writer(
         # The two-household fixture reweights its single kept household from
         # 200 to 333, a +66% drift on every kept column.
         input_mass_relative_tolerance=1.0,
+        # A single kept household cannot satisfy national NYC-share bounds.
+        require_geography_ladder=False,
     )
 
     assert output.read_text() == "sentinel"
@@ -259,6 +274,7 @@ def test_export_us_l0_refit_h5_fails_when_selection_zeroes_input_mass(
             weights_npz=_l0_refit_npz(tmp_path),
             output_h5=output,
             input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
         )
     assert not output.exists()
 
@@ -290,6 +306,7 @@ def test_export_us_l0_refit_h5_records_input_mass_drift_when_allowed(
         weights_npz=_l0_refit_npz(tmp_path),
         output_h5=output,
         input_mass_relative_tolerance=1.0,
+        require_geography_ladder=False,
         require_input_mass_parity=False,
     )
 
@@ -335,5 +352,86 @@ def test_export_us_l0_refit_h5_gates_against_external_reference(
             output_h5=output,
             reference_h5=reference_h5,
             input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
         )
     assert not output.exists()
+
+
+def test_required_us_release_source_columns_rejects_missing_geography_spine() -> None:
+    frame = _us_frame()
+    raw_households = frame.table("household").drop(columns=["county_fips"])
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "household": raw_households,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(ValueError, match="household.county_fips: missing"):
+        assert_required_us_release_source_columns(raw_frame)
+
+
+def test_export_us_l0_refit_h5_fails_geography_ladder_gate_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # A single kept household concentrates all weight outside the national
+    # NYC-share bounds — the gate must stop the export before the writer.
+    frame = _us_frame()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "PolicyEngineUSEngine",
+        lambda: pytest.fail("a gated export must not reach the writer"),
+    )
+
+    with pytest.raises(ValueError, match="geography-ladder gate"):
+        export_us_l0_refit_h5(
+            base_h5=base_h5,
+            weights_npz=_l0_refit_npz(tmp_path),
+            output_h5=output,
+            input_mass_relative_tolerance=1.0,
+        )
+    assert not output.exists()
+
+
+def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _us_frame()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "copy_populace_root_attrs",
+        lambda source, destination: (),
+    )
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=1.0,
+        require_geography_ladder=False,
+    )
+
+    assert output.read_text() == "sentinel"
+    assert summary["geography_ladder_gate_enforced"] is False
+    assert summary["geography_ladder_gate"]["passed"] is False
+    assert summary["required_household_source_columns"][0] == "state_fips"
