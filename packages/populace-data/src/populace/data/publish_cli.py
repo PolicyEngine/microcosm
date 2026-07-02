@@ -11,6 +11,23 @@ from populace.data.release import publish_release
 from populace.data.slack import notify_release
 
 
+def _staging_missing(release_dir: Path) -> bool:
+    """True if the release's build manifest records no staging telemetry.
+
+    Releases are expected to publish staging runs while building (the builder
+    now stages by default); a missing block means the build predates that or
+    was run with --no-staging. Non-fatal — surfaced as a warning at publish.
+    """
+    path = release_dir / "build_manifest.json"
+    if not path.exists():
+        return False
+    try:
+        manifest = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    return not manifest.get("staging")
+
+
 def _reform_validation_skipped(release_dir: Path) -> bool:
     """True if the release carries a reform_validation.json that was built with
     out-of-sample reforms skipped (``out_of_sample_simulated`` false).
@@ -96,6 +113,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if _staging_missing(Path(args.release_dir)):
+        print(
+            "warning: this release's build_manifest records no staging "
+            "telemetry — the build ran with --no-staging or predates "
+            "staging-by-default, so it will not appear on the staging "
+            "dashboard.",
+            file=sys.stderr,
+        )
 
     pointer = publish_release(
         Path(args.release_dir),

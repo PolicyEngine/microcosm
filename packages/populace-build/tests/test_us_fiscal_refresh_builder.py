@@ -1743,6 +1743,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "--release-id",
             release_id,
             "--no-target-frame-checkpoint",
+            "--no-staging",
         ],
     )
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
@@ -4393,3 +4394,30 @@ def test_us_release_id_guard() -> None:
         assert "must start with 'populace-us-'" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected non-US release id to fail.")
+
+
+def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path):
+    module = _load_builder_module()
+
+    def namespace(no_staging: bool) -> SimpleNamespace:
+        return SimpleNamespace(
+            no_staging=no_staging,
+            staging_dir=None,
+            staging_repo_id="policyengine/populace-us-staging",
+            staging_run_id=None,
+            staging_prefix="runs",
+            staging_upload_interval_seconds=60.0,
+        )
+
+    telemetry = module._staging_telemetry(
+        namespace(no_staging=False), release_root=tmp_path, release_id="rel-1"
+    )
+    assert telemetry is not None
+    assert telemetry.run_id == "rel-1"
+
+    assert (
+        module._staging_telemetry(
+            namespace(no_staging=True), release_root=tmp_path, release_id="rel-1"
+        )
+        is None
+    )

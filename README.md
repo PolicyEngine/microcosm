@@ -33,11 +33,13 @@ uv run ruff check .
 
 ## Staging build telemetry
 
-Long-running US fiscal refresh builds can emit pre-release telemetry before the
-candidate is published as the production Hugging Face release. Pass
-`--staging-dir` to write local staging artifacts, and optionally
-`--staging-repo-id policyengine/populace-us-staging` to upload small progress
-JSON files while the build runs:
+US fiscal refresh builds emit pre-release staging telemetry **by default**:
+progress JSON is uploaded to `policyengine/populace-us-staging` while the build
+runs (best-effort — a missing token or failed upload never fails the build), so
+every candidate shows up on the staging dashboard before it is published.
+Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
+`POPULACE_STAGING_REPO_ID`. The build manifest records the staging run id, and
+`populace-publish-release` warns when publishing a release that has none:
 
 ```bash
 python tools/build_us_fiscal_refresh_release.py \
