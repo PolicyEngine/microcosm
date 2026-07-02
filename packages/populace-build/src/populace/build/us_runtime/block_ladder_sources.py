@@ -17,9 +17,9 @@ Sources and their formats (verified against the published files):
   ``BLOCKID|DISTRICT`` (``ZZZ`` = unassigned), ``_INCPLACE_CDP`` carries
   ``BLOCKID|PLACEFP`` (blank = in no place).
 - 2020 P.L. 94-171 legacy geographic header (``{usps}geo2020.pl``):
-  pipe-delimited; summary level 750 rows are blocks, with the 15-digit
-  geocode at field 9 and ``POP100`` at field 90 (validated per state against
-  the summary-level 040 state row).
+  pipe-delimited, 97 fields; summary level 750 rows are blocks, with the
+  15-digit geocode at field 9 and ``POP100`` at field 90 (validated per
+  state against the summary-level 040 state row).
 - OMB CBSA delineations (``list1_2023.xlsx``): county → CBSA rows keyed by
   the FIPS state + county code columns.
 """
@@ -315,11 +315,18 @@ def parse_cbsa_delineations(
         county_raw = cells[county_index]
         if not (cbsa_raw and state_raw and county_raw):
             continue
-        if not (cbsa_raw.isdigit() and len(cbsa_raw) == 5):
-            # Footnote rows below the table are not data.
+        cbsa = _five_digit_code(cbsa_raw)
+        if cbsa is None:
+            # Footnote rows below the table are not data. (A numeric-typed
+            # CBSA cell such as 35620.0 still parses.)
             continue
-        county = f"{int(float(state_raw)):02d}{int(float(county_raw)):03d}"
-        cbsa = int(cbsa_raw)
+        try:
+            county = f"{int(float(state_raw)):02d}{int(float(county_raw)):03d}"
+        except ValueError as exc:
+            raise ValueError(
+                f"OMB delineation row with CBSA {cbsa_raw!r} has malformed "
+                f"FIPS cell(s): state {state_raw!r}, county {county_raw!r}."
+            ) from exc
         existing = result.get(county)
         if existing is not None and existing != cbsa:
             raise ValueError(
@@ -385,6 +392,15 @@ def assemble_us_block_ladder(
         "cbsa_code": cbsa,
         "metadata_json": np.asarray(json.dumps(dict(metadata), sort_keys=True)),
     }
+
+
+def _five_digit_code(value: str) -> int | None:
+    """Normalize a spreadsheet cell to a 5-digit code; None if it is not one."""
+    if value.endswith(".0"):
+        value = value[:-2]
+    if value.isdigit() and len(value) == 5:
+        return int(value)
+    return None
 
 
 def _required_header(iterator: Iterable[str], *, source: str) -> str:

@@ -153,7 +153,11 @@ def _download(url: str, cache_dir: Path) -> Path:
         payload = response.read()
     if not payload:
         raise RuntimeError(f"Empty download from {url}")
-    destination.write_bytes(payload)
+    # Write-then-rename: a crash mid-write must not leave a truncated file
+    # the next run would treat as a valid cache hit.
+    partial = destination.with_suffix(destination.suffix + ".partial")
+    partial.write_bytes(payload)
+    partial.replace(destination)
     return destination
 
 

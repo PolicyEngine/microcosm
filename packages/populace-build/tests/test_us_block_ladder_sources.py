@@ -98,7 +98,8 @@ def test_parse_baf_place_file_maps_blank_to_zero() -> None:
 
 def test_parse_pl_geo_blocks_keeps_populated_blocks_and_validates_totals() -> None:
     def geo_row(summary_level: str, geocode: str, population: int) -> str:
-        fields = [""] * 93
+        # The real 2020 legacy geoheader has 97 pipe-delimited fields.
+        fields = [""] * 97
         fields[2] = summary_level
         fields[9] = geocode
         fields[90] = str(population)
@@ -179,6 +180,39 @@ def test_parse_cbsa_delineations_reads_past_title_rows_and_footnotes() -> None:
     )
 
     assert result == {"36061": 35620, "46013": 10100}
+
+
+def test_parse_cbsa_delineations_accepts_numeric_cells() -> None:
+    header = (
+        "CBSA Code",
+        "FIPS State Code",
+        "FIPS County Code",
+    )
+
+    result = parse_cbsa_delineations(
+        [
+            header,
+            (35620.0, 36.0, 61.0),
+        ]
+    )
+
+    assert result == {"36061": 35620}
+
+
+def test_parse_cbsa_delineations_refuses_malformed_fips_on_a_data_row() -> None:
+    header = (
+        "CBSA Code",
+        "FIPS State Code",
+        "FIPS County Code",
+    )
+
+    with pytest.raises(ValueError, match="malformed"):
+        parse_cbsa_delineations(
+            [
+                header,
+                ("35620", "NY", "061"),
+            ]
+        )
 
 
 def test_parse_cbsa_delineations_refuses_conflicting_assignments() -> None:
