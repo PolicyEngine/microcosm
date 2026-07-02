@@ -1351,13 +1351,17 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "openpyxl" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.8" }]
+dev = [
+    { name = "openpyxl", specifier = ">=3.1" },
+    { name = "ruff", specifier = ">=0.8" },
+]
 
 [[package]]
 name = "prompt-toolkit"
