@@ -33,6 +33,7 @@ import pandas as pd
 
 from populace.build.gates import (
     GateResult,
+    default_valued_columns_gate,
     input_mass_parity_gate,
     nonconstant_columns_gate,
     target_profile_coverage_gate,
@@ -349,6 +350,81 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
 )
+# Persisted input columns known to be constant at the PolicyEngine-US default
+# in current bases. Each is accepted with the issue tracking its fix; a new
+# degenerate column, or one of these becoming non-degenerate, fails the
+# default-valued-columns gate so this list cannot rot.
+US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
+    "weekly_hours_worked_before_lsr": (
+        "Hours-worked inputs not yet carried through (PolicyEngine/populace"
+        "#242, #248); constant at the 40-hour engine default."
+    ),
+    "takes_up_snap_if_eligible": (
+        "SNAP take-up inputs not yet carried through (PolicyEngine/populace"
+        "#243); constant True forces 100% take-up."
+    ),
+    "takes_up_tanf_if_eligible": (
+        "TANF take-up imputation backlog; constant True forces 100% take-up."
+    ),
+    "takes_up_ssi_if_eligible": (
+        "SSI take-up imputation backlog; constant True forces 100% take-up."
+    ),
+    "takes_up_medicaid_if_eligible": (
+        "Medicaid take-up imputation backlog (PolicyEngine/populace#98)."
+    ),
+    "takes_up_medicare_if_eligible": (
+        "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
+    ),
+    "takes_up_eitc": ("EITC take-up imputation backlog; constant True."),
+    "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
+    "takes_up_head_start_if_eligible": (
+        "Head Start take-up imputation backlog; constant True."
+    ),
+    "takes_up_early_head_start_if_eligible": (
+        "Early Head Start take-up imputation backlog; constant True."
+    ),
+    # ssn_card_type and immigration_status_str are intentionally NOT excluded:
+    # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
+    # still constant at CITIZEN skipped that stage and should fail this gate.
+    "spm_unit_tenure_type": (
+        "SPM tenure input not yet carried through (PolicyEngine/populace#32); "
+        "constant RENTER misstates SNAP shelter deductions and SPM housing."
+    ),
+    "is_wic_at_nutritional_risk": (
+        "WIC inputs not yet carried through (PolicyEngine/populace#32)."
+    ),
+    "would_claim_wic": (
+        "WIC take-up inputs not yet carried through (PolicyEngine/populace#32)."
+    ),
+    "s_corp_income": (
+        "Combined partnership/S-corp income is carried in partnership_income "
+        "in pre-PUF-support bases; the S-corp leaf is constant zero there."
+    ),
+    "estate_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+    "farm_operations_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+    "farm_rent_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+    "partnership_s_corp_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+    "rental_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+    "self_employment_income_would_be_qualified": (
+        "QBI qualification flags default True pending formula-constrained "
+        "leaf imputation (PolicyEngine/populace#186)."
+    ),
+}
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
 US_ACA_SOURCE_OUTPUT_COLUMNS = US_HEALTH_INPUT_NONCONSTANT_COLUMNS
 US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
@@ -3034,6 +3110,47 @@ def _selected_plan_ratio_diagnostics(tax_unit: pd.DataFrame) -> dict[str, object
     return diagnostics
 
 
+def _structural_frame_columns() -> set[str]:
+    structural = {US_SCHEMA.person_id_column, "household_weight"}
+    for group in US_SCHEMA.group_entities:
+        structural.add(US_SCHEMA.id_column(group))
+        structural.add(US_SCHEMA.membership_column(group))
+    return structural
+
+
+def _degenerate_input_signal_gate(
+    frame: Frame,
+    engine: PolicyEngineUSEngine,
+) -> GateResult:
+    """Sweep every persisted input column for values stuck at the engine default.
+
+    Unlike the health-input gate's named allowlist, this covers the whole
+    export surface: any PolicyEngine input column whose values all equal the
+    engine default fails unless it carries a reviewed exclusion naming the
+    tracking issue.
+    """
+    structural = _structural_frame_columns()
+    column_values: dict[str, object] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        for column in table.columns:
+            if column in structural:
+                continue
+            column_values[column] = table[column].to_numpy()
+    defaults = engine.default_values(sorted(column_values))
+    gate = default_valued_columns_gate(
+        column_values,
+        defaults,
+        reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+    )
+    return GateResult(
+        name="degenerate_input_signal",
+        passed=gate.passed,
+        failures=gate.failures,
+        details=gate.details,
+    )
+
+
 def _health_input_signal_gate(frame: Frame) -> GateResult:
     tax_unit = frame.table("tax_unit")
     gate = nonconstant_columns_gate(
@@ -3518,6 +3635,7 @@ def _release_gate_failures(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
     input_mass_reference_gate: GateResult | None = None,
+    degenerate_input_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3544,6 +3662,11 @@ def _release_gate_failures(
         failures.extend(
             f"Input mass parity failed: {failure}"
             for failure in input_mass_reference_gate.failures
+        )
+    if degenerate_input_gate is not None and not degenerate_input_gate.passed:
+        failures.extend(
+            f"Degenerate input signal failed: {failure}"
+            for failure in degenerate_input_gate.failures
         )
     gate_congressional_district_targets = _congressional_district_release_gates_enabled(
         compilation
@@ -3775,6 +3898,7 @@ def _assert_release_gates(
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
+    degenerate_input_gate: GateResult | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
@@ -3784,6 +3908,7 @@ def _assert_release_gates(
         base_population_gate,
         incumbent_diagnostics,
         immigration_gate,
+        degenerate_input_gate=degenerate_input_gate,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
@@ -3809,6 +3934,7 @@ def _write_release_calibration_diagnostics(
     default_dataset: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    degenerate_input_gate: GateResult | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -3843,6 +3969,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(health_input_gate.details),
                 }
                 if health_input_gate is not None
+                else None
+            ),
+            "degenerate_input_signal": (
+                {
+                    "passed": degenerate_input_gate.passed,
+                    "failures": list(degenerate_input_gate.failures),
+                    "details": dict(degenerate_input_gate.details),
+                }
+                if degenerate_input_gate is not None
                 else None
             ),
             "base_population_scale": (
@@ -4081,6 +4216,7 @@ def _build_manifests(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
     input_mass_reference_gate: GateResult | None = None,
+    degenerate_input_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
@@ -4104,6 +4240,7 @@ def _build_manifests(
         incumbent_diagnostics,
         immigration_gate,
         input_mass_reference_gate,
+        degenerate_input_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4195,6 +4332,17 @@ def _build_manifests(
                     }
                 }
                 if immigration_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "degenerate_input_signal": {
+                        "passed": degenerate_input_gate.passed,
+                        "failures": list(degenerate_input_gate.failures),
+                        "details": dict(degenerate_input_gate.details),
+                    }
+                }
+                if degenerate_input_gate is not None
                 else {}
             ),
         },
@@ -4642,6 +4790,25 @@ def main() -> None:
                 for failure in input_mass_reference_gate.failures
             )
         )
+    degenerate_input_gate = _degenerate_input_signal_gate(
+        base_frame, PolicyEngineUSEngine()
+    )
+    if not degenerate_input_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "degenerate_input_gate",
+                status="failed",
+                message="Degenerate input signal gate failed.",
+                failures=list(degenerate_input_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Degenerate input signal failed: {failure}"
+                for failure in degenerate_input_gate.failures
+            )
+        )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -4831,6 +4998,7 @@ def main() -> None:
         incumbent_diagnostics,
         immigration_gate,
         enforced_input_mass_reference_gate,
+        degenerate_input_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -4853,6 +5021,7 @@ def main() -> None:
         incumbent_diagnostics_path=args.incumbent_diagnostics,
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
+        degenerate_input_gate=degenerate_input_gate,
     )
     if telemetry is not None:
         telemetry.attach_artifact(
@@ -5028,6 +5197,7 @@ def main() -> None:
         incumbent_diagnostics=incumbent_diagnostics,
         immigration_gate=immigration_gate,
         input_mass_reference_gate=enforced_input_mass_reference_gate,
+        degenerate_input_gate=degenerate_input_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         default_dataset=default_dataset,
