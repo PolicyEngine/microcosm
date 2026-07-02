@@ -17,6 +17,7 @@ from populace.build import (
     enum_domain_gate,
     export_surface_gate,
     formula_owned_export_gate,
+    input_mass_parity_gate,
     macro_realism_gate,
     nonconstant_columns_gate,
     nonnegative_columns_gate,
@@ -488,6 +489,111 @@ class TestExportSurfaceGate:
                 ["age", "x"],
                 reviewed_exclusions=["x"],  # type: ignore[arg-type]
             )
+
+
+class TestInputMassParityGate:
+    def test_mass_within_tolerance_passes(self) -> None:
+        result = input_mass_parity_gate(
+            {"student_loan_interest": 18e9, "charitable_cash_donations": 300e9},
+            {"student_loan_interest": 22e9, "charitable_cash_donations": 340e9},
+            candidate_name="sparse",
+            reference_name="dense",
+        )
+        assert result.passed
+        assert result.details["columns_checked"] == 2
+
+    def test_zeroed_input_base_fails(self) -> None:
+        result = input_mass_parity_gate(
+            {"traditional_ira_contributions": 0.0},
+            {"traditional_ira_contributions": 17.4e9},
+            candidate_name="sparse",
+            reference_name="dense",
+        )
+        assert not result.passed
+        assert "traditional_ira_contributions" in result.failures[0]
+        assert "-100.0%" in result.failures[0]
+
+    def test_absent_column_fails(self) -> None:
+        result = input_mass_parity_gate(
+            {},
+            {"tax_unit_childcare_expenses": 81.2e9},
+            candidate_name="sparse",
+            reference_name="dense",
+        )
+        assert not result.passed
+        assert "absent" in result.failures[0]
+        assert result.details["worst_drifts"]["tax_unit_childcare_expenses"] == -1.0
+
+    def test_drift_beyond_tolerance_fails_in_both_directions(self) -> None:
+        result = input_mass_parity_gate(
+            {"a": 40.0, "b": 160.0},
+            {"a": 100.0, "b": 100.0},
+            relative_tolerance=0.5,
+        )
+        assert not result.passed
+        assert len(result.failures) == 2
+
+    def test_reference_below_floor_is_skipped(self) -> None:
+        result = input_mass_parity_gate(
+            {"tiny": 0.0, "material": 2e9, "negative_material": -2e9},
+            {"tiny": 5e8, "material": 2e9, "negative_material": -2e9},
+            relative_tolerance=0.5,
+            minimum_reference_total=1e9,
+        )
+        assert result.passed
+        assert result.details["columns_below_reference_floor"] == 1
+        assert result.details["columns_checked"] == 2
+
+    def test_signed_reference_mass_uses_absolute_denominator(self) -> None:
+        result = input_mass_parity_gate(
+            {"rental_income": -30.0},
+            {"rental_income": -100.0},
+            relative_tolerance=0.5,
+        )
+        assert not result.passed
+        assert "+70.0%" in result.failures[0]
+
+    def test_reviewed_exclusion_passes_and_is_recorded(self) -> None:
+        result = input_mass_parity_gate(
+            {"care_expenses": 0.0},
+            {"care_expenses": 5e9},
+            reviewed_exclusions={
+                "care_expenses": "pre-existing zero-mass input, tracked in #26"
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "care_expenses": "pre-existing zero-mass input, tracked in #26"
+        }
+
+    def test_unused_reviewed_exclusion_is_reported(self) -> None:
+        result = input_mass_parity_gate(
+            {"a": 1e10},
+            {"a": 1e10},
+            reviewed_exclusions={"gone_column": "kept for a retired reference"},
+        )
+        assert result.passed
+        assert result.details["unused_reviewed_exclusions"] == ["gone_column"]
+
+    def test_reviewed_exclusion_needs_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="need reasons"):
+            input_mass_parity_gate({}, {"a": 1.0}, reviewed_exclusions={"a": ""})
+
+    def test_candidate_only_columns_are_recorded_not_failed(self) -> None:
+        result = input_mass_parity_gate(
+            {"a": 1e10, "new_input": 5e9},
+            {"a": 1e10},
+        )
+        assert result.passed
+        assert result.details["candidate_only_columns"] == ["new_input"]
+
+    def test_negative_tolerance_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="relative_tolerance"):
+            input_mass_parity_gate({}, {}, relative_tolerance=-0.1)
+
+    def test_non_finite_totals_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            input_mass_parity_gate({"a": float("nan")}, {"a": 1e10})
 
 
 class TestTargetSurfaceGate:

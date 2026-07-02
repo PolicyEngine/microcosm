@@ -61,6 +61,7 @@ from populace.build.us_runtime.congressional_district_vintage import (
 from populace.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
+    CPS_CARRIED_SPM_UNIT_INPUTS,
     derive_us_cps_carried_inputs,
 )
 from populace.build.us_runtime.demographics import (
@@ -106,6 +107,9 @@ from populace.build.us_runtime.immigration import (
     us_immigration_stage_spec,
     with_us_immigration_inputs,
 )
+from populace.build.us_runtime.input_mass import (
+    us_input_mass_totals,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -150,6 +154,7 @@ __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
+    "CPS_CARRIED_SPM_UNIT_INPUTS",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -227,6 +232,7 @@ __all__ = [
     "pool_asec_sources",
     "reform_validation_payload",
     "source_gap_family_ids",
+    "us_input_mass_totals",
     "us_plan",
     "us_source_operation_handlers",
     "write_reform_validation",

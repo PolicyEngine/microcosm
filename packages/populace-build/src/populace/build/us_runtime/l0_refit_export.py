@@ -5,15 +5,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -306,8 +309,21 @@ def export_us_l0_refit_h5(
     summary_json: str | Path | None = None,
     require_source_columns: bool = True,
     root_attrs_h5: str | Path | None = None,
+    reference_h5: str | Path | None = None,
+    input_mass_relative_tolerance: float = 0.5,
+    input_mass_minimum_reference_total: float = 0.0,
+    input_mass_reviewed_exclusions: Mapping[str, str] | None = None,
+    require_input_mass_parity: bool = True,
 ) -> dict[str, Any]:
-    """Write a selected US H5 from a base H5 and saved L0/refit weights."""
+    """Write a selected US H5 from a base H5 and saved L0/refit weights.
+
+    The selected support must keep the persisted input mass of its parent:
+    per-column weighted totals of the export are gated against the base H5
+    (or against ``reference_h5``, e.g. the certified dense release) via
+    :func:`populace.build.gates.input_mass_parity_gate`, so a selection that
+    zeroes an untargeted input base (populace issue #278) fails instead of
+    shipping.
+    """
 
     root_attrs_source = (
         Path(root_attrs_h5) if root_attrs_h5 is not None else Path(base_h5)
@@ -322,6 +338,23 @@ def export_us_l0_refit_h5(
     export_frame = attach_l0_refit_weights(base_frame, solution)
     if require_source_columns:
         assert_required_us_release_source_columns(export_frame)
+    reference_frame = (
+        load_us_frame(reference_h5) if reference_h5 is not None else base_frame
+    )
+    input_mass_gate = input_mass_parity_gate(
+        us_input_mass_totals(export_frame),
+        us_input_mass_totals(reference_frame),
+        candidate_name="l0_refit_export",
+        reference_name="reference_h5" if reference_h5 is not None else "base_h5",
+        relative_tolerance=input_mass_relative_tolerance,
+        minimum_reference_total=input_mass_minimum_reference_total,
+        reviewed_exclusions=input_mass_reviewed_exclusions,
+    )
+    if require_input_mass_parity and not input_mass_gate.passed:
+        raise ValueError(
+            "US L0/refit release export lost persisted input mass: "
+            + "; ".join(input_mass_gate.failures)
+        )
     destination = Path(output_h5)
     destination.parent.mkdir(parents=True, exist_ok=True)
     PolicyEngineUSEngine().write_dataset(export_frame, destination, period=period)
@@ -340,6 +373,15 @@ def export_us_l0_refit_h5(
             US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
         ),
         "required_source_columns_checked": bool(require_source_columns),
+        "input_mass_reference_h5": (
+            _file_manifest(reference_h5) if reference_h5 is not None else None
+        ),
+        "input_mass_parity_enforced": bool(require_input_mass_parity),
+        "input_mass_parity": {
+            "passed": input_mass_gate.passed,
+            "failures": list(input_mass_gate.failures),
+            "details": dict(input_mass_gate.details),
+        },
         "candidate_households": int(base_frame.n("household")),
         "selected_households": int(export_frame.n("household")),
         "selected_weight_sum": float(export_frame.weights_for("household").total),
@@ -397,6 +439,41 @@ def _parser() -> argparse.ArgumentParser:
             "US release source-stage tax-unit columns used by release gates."
         ),
     )
+    parser.add_argument(
+        "--reference-h5",
+        type=Path,
+        help=(
+            "Optional H5 whose persisted input mass the export must preserve "
+            "(e.g. the certified dense release). Defaults to --base-h5."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-relative-tolerance",
+        type=float,
+        default=0.5,
+        help=(
+            "Maximum allowed relative drift of a persisted input column's "
+            "weighted total versus the reference before the export fails."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-minimum-reference-total",
+        type=float,
+        default=0.0,
+        help=(
+            "Reference-mass floor below which a column's drift is not "
+            "checked (relative drift on near-zero totals is meaningless)."
+        ),
+    )
+    parser.add_argument(
+        "--allow-input-mass-drift",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch. By default, the export fails when a "
+            "persisted input column loses its reference mass (issue #278); "
+            "the gate result is recorded in the summary either way."
+        ),
+    )
     return parser
 
 
@@ -412,6 +489,10 @@ def main(argv: list[str] | None = None) -> None:
         summary_json=args.summary_json,
         require_source_columns=not args.allow_missing_source_columns,
         root_attrs_h5=args.root_attrs_h5,
+        reference_h5=args.reference_h5,
+        input_mass_relative_tolerance=args.input_mass_relative_tolerance,
+        input_mass_minimum_reference_total=args.input_mass_minimum_reference_total,
+        require_input_mass_parity=not args.allow_input_mass_drift,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
 
