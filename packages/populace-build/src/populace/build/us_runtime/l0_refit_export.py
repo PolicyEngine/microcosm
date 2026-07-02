@@ -11,6 +11,9 @@ from typing import Any
 
 import numpy as np
 
+from populace.build.us_runtime.immigration import (
+    US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -18,6 +21,8 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
 )
+
+US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -220,21 +225,29 @@ def assert_required_us_release_source_columns(
     frame: Frame,
     *,
     columns: tuple[str, ...] = US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
+    person_columns: tuple[str, ...] = US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
 ) -> None:
-    """Require source-stage tax-unit columns needed by US release gates."""
+    """Require source-stage columns needed by US release gates.
 
-    tax_unit = frame.table("tax_unit")
+    Tax-unit columns come from the ACA Marketplace source stage; person
+    columns are the SSN/immigration surface (a missing or constant
+    ``ssn_card_type`` reproduces the everyone-is-a-citizen failure of
+    populace issue #225).
+    """
+
     failures: list[str] = []
-    for column in columns:
-        if column not in tax_unit.columns:
-            failures.append(f"{column}: missing")
-            continue
-        unique = tax_unit[column].dropna().unique()
-        if len(unique) < 2:
-            failures.append(f"{column}: not nonconstant")
+    for entity, required in (("tax_unit", columns), ("person", person_columns)):
+        table = frame.table(entity)
+        for column in required:
+            if column not in table.columns:
+                failures.append(f"{entity}.{column}: missing")
+                continue
+            unique = table[column].dropna().unique()
+            if len(unique) < 2:
+                failures.append(f"{entity}.{column}: not nonconstant")
     if failures:
         raise ValueError(
-            "US L0/refit release export requires source-stage tax-unit columns: "
+            "US L0/refit release export requires source-stage columns: "
             + "; ".join(failures)
         )
 
@@ -323,6 +336,9 @@ def export_us_l0_refit_h5(
         "period": int(period),
         "weight_key": weight_key,
         "required_source_columns": list(US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS),
+        "required_person_source_columns": list(
+            US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
+        ),
         "required_source_columns_checked": bool(require_source_columns),
         "candidate_households": int(base_frame.n("household")),
         "selected_households": int(export_frame.n("household")),
@@ -402,6 +418,8 @@ def main(argv: list[str] | None = None) -> None:
 
 __all__ = [
     "L0RefitWeights",
+    "US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS",
+    "US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS",
     "attach_l0_refit_entity_weights",
     "attach_l0_refit_weights",
     "assert_required_us_release_source_columns",

@@ -50,8 +50,10 @@ from populace.build.us_runtime import (
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    with_us_immigration_inputs,
     write_us_source_coverage_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
@@ -3401,6 +3403,7 @@ def _release_gate_failures(
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    immigration_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3417,6 +3420,11 @@ def _release_gate_failures(
         failures.extend(
             f"Health input signal failed: {failure}"
             for failure in health_input_gate.failures
+        )
+    if immigration_gate is not None and not immigration_gate.passed:
+        failures.extend(
+            f"Immigration composition failed: {failure}"
+            for failure in immigration_gate.failures
         )
     gate_congressional_district_targets = _congressional_district_release_gates_enabled(
         compilation
@@ -3647,6 +3655,7 @@ def _assert_release_gates(
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    immigration_gate: GateResult | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
@@ -3655,6 +3664,7 @@ def _assert_release_gates(
         health_input_gate,
         base_population_gate,
         incumbent_diagnostics,
+        immigration_gate,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
@@ -3672,6 +3682,7 @@ def _write_release_calibration_diagnostics(
     base_population_gate: GateResult | None,
     support_value_repairs: Mapping[str, object] | None,
     audit_export_targets: bool,
+    immigration_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -3721,6 +3732,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(base_population_gate.details),
                 }
                 if base_population_gate is not None
+                else None
+            ),
+            "immigration_composition": (
+                {
+                    "passed": immigration_gate.passed,
+                    "failures": list(immigration_gate.failures),
+                    "details": dict(immigration_gate.details),
+                }
+                if immigration_gate is not None
                 else None
             ),
             "support_value_repairs": support_value_repairs,
@@ -3930,6 +3950,7 @@ def _build_manifests(
     health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    immigration_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
@@ -3951,6 +3972,7 @@ def _build_manifests(
         health_input_gate,
         base_population_gate,
         incumbent_diagnostics,
+        immigration_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4033,6 +4055,17 @@ def _build_manifests(
                 if health_input_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "immigration_composition": {
+                        "passed": immigration_gate.passed,
+                        "failures": list(immigration_gate.failures),
+                        "details": dict(immigration_gate.details),
+                    }
+                }
+                if immigration_gate is not None
+                else {}
+            ),
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -4068,6 +4101,16 @@ def _build_manifests(
                     }
                 }
                 if base_population_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "immigration_composition": {
+                        "passed": immigration_gate.passed,
+                        "details": dict(immigration_gate.details),
+                    }
+                }
+                if immigration_gate is not None
                 else {}
             ),
         },
@@ -4383,6 +4426,33 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "immigration_inputs",
+            message="Deriving SSN card type and immigration status inputs.",
+        )
+    base_frame = with_us_immigration_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    immigration_gate = us_immigration_composition_gate(base_frame)
+    if not immigration_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "immigration_gate",
+                status="failed",
+                message="Immigration composition gate failed.",
+                failures=list(immigration_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Immigration composition failed: {failure}"
+                for failure in immigration_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -4593,6 +4663,7 @@ def main() -> None:
         health_input_gate,
         base_population_gate,
         incumbent_diagnostics,
+        immigration_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -4603,6 +4674,7 @@ def main() -> None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
+        immigration_gate=immigration_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -4736,6 +4808,7 @@ def main() -> None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
+        immigration_gate=immigration_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         default_dataset=default_dataset,

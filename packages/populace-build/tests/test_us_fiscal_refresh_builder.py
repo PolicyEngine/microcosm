@@ -1795,6 +1795,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_immigration_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_immigration_composition_gate",
+        lambda frame: builder.GateResult(
+            name="immigration_composition",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_with_aca_marketplace_source_outputs",
         lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
     )

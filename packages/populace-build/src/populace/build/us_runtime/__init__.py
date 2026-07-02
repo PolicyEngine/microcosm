@@ -92,6 +92,20 @@ from populace.build.us_runtime.fiscal_targets import (
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
 )
+from populace.build.us_runtime.immigration import (
+    IMMIGRATION_STATUS_VALUES,
+    SSN_CARD_TYPE_VALUES,
+    US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
+    US_IMMIGRATION_OUTPUT_COLUMNS,
+    US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS,
+    US_IMMIGRATION_STAGE_NAME,
+    UndocumentedControls,
+    derive_us_immigration_status_from_manifest,
+    us_immigration_composition_gate,
+    us_immigration_composition_summary,
+    us_immigration_stage_spec,
+    with_us_immigration_inputs,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -167,6 +181,18 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
     "SOI_VARIABLE_MAP",
+    "IMMIGRATION_STATUS_VALUES",
+    "SSN_CARD_TYPE_VALUES",
+    "US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS",
+    "US_IMMIGRATION_OUTPUT_COLUMNS",
+    "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
+    "US_IMMIGRATION_STAGE_NAME",
+    "UndocumentedControls",
+    "derive_us_immigration_status_from_manifest",
+    "us_immigration_composition_gate",
+    "us_immigration_composition_summary",
+    "us_immigration_stage_spec",
+    "with_us_immigration_inputs",
     "US_NONNEGATIVE_SOURCE_OUTPUTS",
     "US_SOURCE_COVERAGE",
     "US_SOI_FISCAL_TARGET_SPECS",
@@ -313,6 +339,19 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.census.gov/programs-surveys/cps.html",
         notes="PERIDNUM longitudinal join for prior-year earnings.",
     ),
+    US_IMMIGRATION_STAGE_NAME: DonorSpec(
+        survey="CPS ASEC + published unauthorized-population estimates",
+        source=(
+            "https://www.pewresearch.org/short-reads/2024/07/22/"
+            "what-we-know-about-unauthorized-immigrants-living-in-the-us/"
+        ),
+        notes=(
+            "SSN card type and immigration status from ASEC citizenship, "
+            "entry-year, nativity, and program-participation fields via the "
+            "ASEC-UA residual method (SSRN 4662801), targeted to published "
+            "undocumented population/worker/student control totals."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -345,6 +384,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "asec_load",
     "unit_assignment",
     "derive_cps_carried",
+    US_IMMIGRATION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "scf_wealth",

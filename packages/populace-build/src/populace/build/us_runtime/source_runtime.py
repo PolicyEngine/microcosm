@@ -14,6 +14,9 @@ from populace.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from populace.build.us_runtime.immigration import (
+    derive_us_immigration_status_from_manifest,
+)
 from populace.build.us_runtime.puf_aggregate_records import (
     derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
@@ -173,6 +176,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             calibrate_us_binary_assignment_joint_targets_from_manifest
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_immigration_status": derive_us_immigration_status_from_manifest,
         "derive_puf_policyengine_variables": (
             derive_us_puf_policyengine_variables_from_manifest
         ),

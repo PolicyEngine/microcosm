@@ -28,6 +28,8 @@ def _us_frame() -> Frame:
             "person_marital_unit_id": np.asarray(
                 [100000, 200000, 200001], dtype="int64"
             ),
+            "ssn_card_type": ["CITIZEN", "CITIZEN", "NONE"],
+            "immigration_status_str": ["CITIZEN", "CITIZEN", "UNDOCUMENTED"],
         }
     )
     return Frame(
