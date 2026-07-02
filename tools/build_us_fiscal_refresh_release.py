@@ -600,6 +600,21 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--age-targets",
+        action="store_true",
+        help=(
+            "Opt into compile-time period aging of dollar-amount targets whose "
+            "source period differs from the build period (PolicyEngine/"
+            "populace#116, #212). Off by default: without it the compiled "
+            "target surface is byte-identical to today. When set, dollar "
+            "amounts are scaled by CBO revenue-projection growth ratios drawn "
+            "from the Ledger facts feed (matching income-source series where "
+            "available, CBO AGI growth otherwise); counts stay raw. Each target "
+            "records basis/source_period/aged_to/aging_factor/"
+            "aging_factor_source diagnostics."
+        ),
+    )
+    parser.add_argument(
         "--no-staging",
         action="store_true",
         help="Disable staging telemetry (local staging dir and uploads) for this build.",
@@ -4321,6 +4336,7 @@ def main() -> None:
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
+        age_targets=args.age_targets,
     )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:

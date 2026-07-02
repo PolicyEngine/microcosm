@@ -1,0 +1,404 @@
+"""Opt-in period aging for US dollar-amount calibration targets.
+
+Populace calibrates the US 2024 weights against SOI TY2022/TY2023 dollar
+levels applied at the 2024 build period *un-aged*. Because the calibration
+hits those source-year levels almost exactly, simulated current-year (2025+)
+income aggregates run systematically ~6-10% under current-year projections
+(PolicyEngine/populace#212, #116: AGI $16.0T vs CBO TY2025 ~$17T+; income tax
+$2.15T vs FY2025 receipts ~$2.4T). The residual is a period-vintage artifact,
+not a support or weighting error.
+
+This module ages dollar-amount targets from their *source* period to the
+*build* period at compile time, using growth ratios computed from CBO
+revenue-projection facts already present in the Ledger consumer feed. It never
+hardcodes a numeric factor: every factor is a ratio of two source-published
+CBO ``projected_amount`` facts, and each aged (or deliberately un-aged) target
+records the fact lineage it used.
+
+The eventual schema home for the *fact-vs-computed* boundary is
+PolicyEngine/ledger#71 (facts-only store; PolicyEngine-computed aged levels
+live in Populace as a named, versioned aging implementation that consumes
+growth-factor facts from Ledger). This module is that Populace-side
+implementation. It is deliberately consumption-side and opt-in: with aging
+off (the default), the compiled surface is byte-identical to today.
+
+Factor policy (priority order):
+
+1. **Matching CBO series.** A target whose measured concept corresponds to a
+   CBO income-by-source row (AGI, wages, net capital gain, qualified
+   dividends, net business income) is aged by that series' own projection
+   ratio ``projected_amount(series, build) / projected_amount(series,
+   source)``.
+2. **CBO AGI default.** Any other dollar amount is aged by the CBO AGI
+   projection ratio.
+3. **Counts stay raw.** Return/claim counts (``measure_mode ==
+   "indicator_sum"``) and population counts are never aged here; a growing
+   nominal aggregate does not imply a growing return count.
+
+A target is only aged when both the build-year and the source-year projection
+facts of the chosen series are present in the feed. Otherwise it is left at
+its raw value with ``aging_factor_source="unavailable"`` so the un-aged state
+is explicit in diagnostics rather than silent.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from populace.calibrate import TargetRegistry, TargetSpec
+
+__all__ = ["age_us_dollar_targets"]
+
+
+# CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
+# is the priority-(b) default growth index for dollar amounts with no
+# source-aligned CBO series.
+_CBO_AGI_INCOME_SOURCE = "adjusted_gross_income"
+
+# CBO revenue-projection facts are identified structurally in the consumer
+# feed by source name + measure id + income-source groupby dimension.
+_CBO_SOURCE_NAME = "cbo"
+_CBO_PROJECTION_MEASURE_ID = "projected_amount"
+_CBO_INCOME_SOURCE_GROUPBY_DIMENSION = "cbo.income_source"
+
+# Priority-(a) map: SOI/direct target ``source_measure_id`` -> CBO
+# income-by-source ``groupby_value_id``. Only concepts with a genuine
+# same-concept CBO projection row belong here; everything else falls back to
+# the AGI series. Qualified dividends map to the CBO qualified-dividend series;
+# ordinary/taxable interest and non-qualified dividends have no clean
+# single-series CBO analogue, so they take the AGI default.
+_SOI_MEASURE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
+    "adjusted_gross_income": "adjusted_gross_income",
+    "wages_salaries_amount": "wages_and_salaries",
+    "net_capital_gains_amount": "net_capital_gain",
+    "qualified_dividends_amount": "qualified_dividend_income",
+    "schedule_c_income_amount": "net_business_income",
+    "partnership_scorp_income_amount": "net_business_income",
+}
+
+# Direct-target roles (CBO-sourced calibration targets) map to their own CBO
+# income source so a build-year CBO target is aged by its own series when the
+# source period differs from the build period.
+_TARGET_ROLE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
+    "cbo_adjusted_gross_income": "adjusted_gross_income",
+    "cbo_wages_and_salaries": "wages_and_salaries",
+    "cbo_qualified_dividend_income": "qualified_dividend_income",
+    "cbo_net_capital_gain": "net_capital_gain",
+    "cbo_net_business_income": "net_business_income",
+}
+
+
+def age_us_dollar_targets(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Age dollar-amount targets from source period to the build period.
+
+    Args:
+        registry: The compiled target registry (already period-aligned
+            within-surface by the SOI/EITC uprating passes).
+        facts: The materialized Ledger consumer facts. CBO revenue-projection
+            facts in this feed supply every growth ratio.
+        target_period: The build period the targets are compiled for.
+
+    Returns:
+        A new registry. Ageable dollar targets whose source period differs
+        from the build period are scaled by a CBO projection ratio and carry
+        ``basis``/``source_period``/``aged_to``/``aging_factor``/
+        ``aging_factor_source`` diagnostics. Every other spec is returned
+        unchanged except for the same diagnostics recording that it was not
+        aged (counts, same-period dollars) or could not be (missing facts).
+    """
+
+    projections = _cbo_projection_series(facts)
+    build_period_key = _period_year(target_period)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        specs.append(
+            _age_spec(
+                spec,
+                projections=projections,
+                target_period=target_period,
+                build_period_key=build_period_key,
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _age_spec(
+    spec: TargetSpec,
+    *,
+    projections: dict[str, dict[int, tuple[float, str]]],
+    target_period: int | str,
+    build_period_key: int | None,
+) -> TargetSpec:
+    aged_to = str(target_period)
+    not_ageable_reason = _not_ageable_reason(spec)
+    if not_ageable_reason is not None:
+        # Counts, non-USD rows, and rows already period-aligned upstream are
+        # never aged here; record the decision so the surface is auditable,
+        # but do not touch the value.
+        return _with_aging_metadata(
+            spec,
+            basis="fact",
+            source_period=spec.metadata.get("source_period", ""),
+            aged_to=aged_to,
+            aging_factor=1.0,
+            aging_factor_source=not_ageable_reason,
+        )
+
+    source_period = spec.metadata.get("source_period", "")
+    source_period_key = _period_year(source_period)
+    if (
+        source_period_key is None
+        or build_period_key is None
+        or source_period_key == build_period_key
+    ):
+        # Nothing to age: source already equals build (or periods are not
+        # comparable). Leave raw; basis stays "fact".
+        return _with_aging_metadata(
+            spec,
+            basis="fact",
+            source_period=source_period,
+            aged_to=aged_to,
+            aging_factor=1.0,
+            aging_factor_source="source_equals_build"
+            if source_period_key == build_period_key
+            else "unavailable",
+        )
+
+    income_source = _cbo_income_source_for_spec(spec)
+    factor_result = _projection_factor(
+        projections,
+        income_source=income_source,
+        build_period_key=build_period_key,
+        source_period_key=source_period_key,
+    )
+    if factor_result is None and income_source != _CBO_AGI_INCOME_SOURCE:
+        # Priority (b): fall back to the CBO AGI growth ratio when the
+        # source-aligned series is unavailable for one of the two periods.
+        factor_result = _projection_factor(
+            projections,
+            income_source=_CBO_AGI_INCOME_SOURCE,
+            build_period_key=build_period_key,
+            source_period_key=source_period_key,
+        )
+    if factor_result is None:
+        # No usable CBO projection pair: keep the raw source-year level but
+        # make the un-aged state explicit (the ledger#71 lesson).
+        return _with_aging_metadata(
+            spec,
+            basis="fact",
+            source_period=source_period,
+            aged_to=aged_to,
+            aging_factor=1.0,
+            aging_factor_source="unavailable",
+        )
+
+    factor, factor_source = factor_result
+    return _with_aging_metadata(
+        replace(spec, value=spec.value * factor),
+        basis="projection",
+        source_period=source_period,
+        aged_to=aged_to,
+        aging_factor=factor,
+        aging_factor_source=factor_source,
+    )
+
+
+def _not_ageable_reason(spec: TargetSpec) -> str | None:
+    """Why a spec is not an ageable nominal dollar amount, or ``None``.
+
+    Ageable rows are USD ``sum`` measures. Counts (``indicator_sum``) stay
+    raw. Rows already period-aligned within-surface by an uprating pass carry
+    ``uprating_factor`` and must not be re-aged (double counting). The returned
+    string is the ``aging_factor_source`` diagnostic recorded for the skip.
+    """
+
+    metadata = spec.metadata
+    if metadata.get("measure_mode") != "sum":
+        return "not_dollar_amount"
+    unit = metadata.get("ledger_measure_unit", "")
+    if unit and unit != "usd":
+        return "not_usd_unit"
+    if "uprating_factor" in metadata:
+        return "already_period_aligned"
+    return None
+
+
+def _cbo_income_source_for_spec(spec: TargetSpec) -> str:
+    """The CBO income-by-source series used to age ``spec``.
+
+    Priority (a): a source-aligned CBO series when the target's measured
+    concept has one. Priority (b): the CBO AGI series otherwise.
+    """
+
+    target_role = spec.metadata.get("target_role", "")
+    direct = _TARGET_ROLE_TO_CBO_INCOME_SOURCE.get(target_role)
+    if direct is not None:
+        return direct
+    source_measure_id = spec.metadata.get("source_measure_id", "")
+    return _SOI_MEASURE_TO_CBO_INCOME_SOURCE.get(
+        source_measure_id, _CBO_AGI_INCOME_SOURCE
+    )
+
+
+def _projection_factor(
+    projections: dict[str, dict[int, tuple[float, str]]],
+    *,
+    income_source: str,
+    build_period_key: int,
+    source_period_key: int,
+) -> tuple[float, str] | None:
+    """``projected(build) / projected(source)`` for one CBO series, if usable.
+
+    Returns the ratio and the build-year fact's source_record_id (the factor's
+    lineage), or ``None`` when either period's projection is missing or the
+    source-year projection is non-positive.
+    """
+
+    series = projections.get(income_source)
+    if not series:
+        return None
+    build = series.get(build_period_key)
+    source = series.get(source_period_key)
+    if build is None or source is None:
+        return None
+    build_value, build_record_id = build
+    source_value, _ = source
+    if source_value <= 0 or build_value <= 0:
+        return None
+    return build_value / source_value, build_record_id
+
+
+def _cbo_projection_series(
+    facts: tuple[object, ...],
+) -> dict[str, dict[int, tuple[float, str]]]:
+    """Index CBO income-by-source projection facts by series and tax year.
+
+    Result maps ``income_source -> {tax_year -> (value, source_record_id)}``.
+    The source_record_id is retained so aged targets can cite the exact CBO
+    fact whose value formed the numerator of their aging factor.
+    """
+
+    series: dict[str, dict[int, tuple[float, str]]] = {}
+    for fact in facts:
+        if not _is_cbo_income_source_projection_fact(fact):
+            continue
+        income_source = _str_at(fact, "layout", "groupby_value_id")
+        if not income_source:
+            continue
+        year = _period_year(_at(fact, "period", "value"))
+        if year is None:
+            continue
+        value = _numeric_value(fact)
+        record_id = _str_at(fact, "lineage", "source_record_id")
+        by_year = series.setdefault(income_source, {})
+        # The feed activates one CBO projection release, so at most one fact
+        # per (series, year) is expected; last-write is sufficient.
+        by_year[year] = (value, record_id)
+    return series
+
+
+def _is_cbo_income_source_projection_fact(fact: object) -> bool:
+    if _source_name(fact) != _CBO_SOURCE_NAME:
+        return False
+    if _measure_id(fact) != _CBO_PROJECTION_MEASURE_ID:
+        return False
+    groupby_dimension = _str_at(fact, "layout", "groupby_dimension")
+    if groupby_dimension != _CBO_INCOME_SOURCE_GROUPBY_DIMENSION:
+        return False
+    return "revenue_projection" in _str_at(fact, "layout", "record_set_id")
+
+
+def _with_aging_metadata(
+    spec: TargetSpec,
+    *,
+    basis: str,
+    source_period: str,
+    aged_to: str,
+    aging_factor: float,
+    aging_factor_source: str,
+) -> TargetSpec:
+    metadata = {
+        **dict(spec.metadata),
+        "basis": basis,
+        "aged_to": aged_to,
+        "aging_factor": _format_float(aging_factor),
+        "aging_factor_source": aging_factor_source,
+    }
+    if source_period:
+        metadata["source_period"] = source_period
+    return replace(spec, metadata=metadata)
+
+
+def _period_year(value: object) -> int | None:
+    """Extract a four-digit year from a period value/label, or ``None``.
+
+    Handles bare ints and ``ty``/``cy``/``fy`` and ``tax_year_``-style labels.
+    Monthly labels (``YYYY-MM``) reduce to their year for series matching.
+    """
+
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if 1900 <= value <= 2100 else None
+    label = str(value).strip().lower().replace("-", "_")
+    for prefix in ("month", "tax_year_", "calendar_year_", "fiscal_year_"):
+        if label.startswith(prefix):
+            label = label[len(prefix) :]
+            break
+    if label[:2] in {"ty", "cy", "fy"}:
+        label = label[2:]
+    head = label.split("_", maxsplit=1)[0]
+    if head.isdigit() and len(head) == 4:
+        return int(head)
+    return None
+
+
+def _format_float(value: float) -> str:
+    return f"{value:.15g}"
+
+
+# --- duck-typed Ledger fact accessors (mirrors fiscal_targets.py) ---------
+
+
+def _at(obj: object, *path: str) -> object:
+    current: object = obj
+    for key in path:
+        if current is None:
+            return None
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            current = getattr(current, key, None)
+    return current
+
+
+def _str_at(obj: object, *path: str) -> str:
+    value = _at(obj, *path)
+    return "" if value is None else str(value)
+
+
+def _numeric_value(fact: object) -> float:
+    value = _at(fact, "value")
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _source_name(fact: object) -> str:
+    return _str_at(fact, "observed_measure", "source_name") or _str_at(
+        fact, "source", "source_name"
+    )
+
+
+def _measure_id(fact: object) -> str:
+    return _str_at(fact, "observed_measure", "source_measure_id") or _str_at(
+        fact, "layout", "measure_id"
+    )
