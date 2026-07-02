@@ -102,3 +102,29 @@ def test_runs_index_keeps_existing_runs(tmp_path) -> None:
     run_ids = [run["run_id"] for run in index["runs"]]
     # Both the pre-existing run and this run survive (no overwrite).
     assert run_ids == ["newer", "older"]
+
+
+def test_upload_failures_never_raise_and_disable_after_three(tmp_path, capsys):
+    class FailingApi:
+        def upload_file(self, **kwargs):
+            raise RuntimeError("401 Unauthorized")
+
+        def hf_hub_download(self, **kwargs):
+            raise RuntimeError("401 Unauthorized")
+
+    telemetry = StagingTelemetry(
+        run_id="run-1",
+        candidate_release_id="run-1",
+        run_dir=tmp_path / "run",
+        repo_id="org/staging",
+        api=FailingApi(),
+        upload_interval_seconds=0.0,
+    )
+    # Staging telemetry is best-effort: failing uploads must never raise, and
+    # after three consecutive failures uploads are disabled for the run.
+    telemetry.stage("one", force_upload=True)
+    telemetry.stage("two", force_upload=True)
+    assert telemetry.repo_id is None
+    err = capsys.readouterr().err
+    assert "staging upload" in err
+    assert "disabling staging uploads" in err

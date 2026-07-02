@@ -4396,16 +4396,34 @@ def test_us_release_id_guard() -> None:
         raise AssertionError("Expected non-US release id to fail.")
 
 
-def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path):
+def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeypatch):
     module = _load_builder_module()
 
+    # The parser defaults staging uploads ON (overridable by env).
+    monkeypatch.delenv("POPULACE_STAGING_REPO_ID", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = module._parse_args()
+    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert not args.no_staging
+
     def namespace(no_staging: bool) -> SimpleNamespace:
+        # repo_id None keeps the constructed telemetry offline in tests.
         return SimpleNamespace(
             no_staging=no_staging,
-            staging_dir=None,
-            staging_repo_id="policyengine/populace-us-staging",
+            staging_dir=tmp_path / "stage",
+            staging_repo_id=None,
             staging_run_id=None,
-            staging_prefix="runs",
+            staging_prefix=args.staging_prefix,
             staging_upload_interval_seconds=60.0,
         )
 
@@ -4415,6 +4433,7 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path):
     assert telemetry is not None
     assert telemetry.run_id == "rel-1"
 
+    # --no-staging wins even when a staging destination is configured.
     assert (
         module._staging_telemetry(
             namespace(no_staging=True), release_root=tmp_path, release_id="rel-1"
