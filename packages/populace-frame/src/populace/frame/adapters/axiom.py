@@ -361,7 +361,7 @@ class AxiomEngine:
             column
             for column in present_columns - structural - weight_columns
             if column in self._derived_metadata()
-        }
+        } | set(contract.formula_owned_excluded).intersection(present_columns)
         unexpected: set[str] = set()
         if contract.closed:
             allowed = (

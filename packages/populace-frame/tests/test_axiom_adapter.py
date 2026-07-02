@@ -349,6 +349,64 @@ class TestWriteDataset:
             adapter.write_dataset(_toy_bundle(), path, period=2025)
         assert not path.exists()
 
+    def test_contract_formula_owned_exclusion_blocks_non_engine_column(
+        self, tmp_path
+    ) -> None:
+        # legacy_output is not a derived rule of the module, so only the
+        # contract's formula_owned_excluded list can catch it — the exact
+        # case the shared contract tests never exercise.
+        bundle = _toy_bundle()
+        person = bundle.person.copy()
+        person["legacy_output"] = [1.0, 0.0, 1.0]
+        rebuilt = Frame(
+            {"person": person, "household": bundle.table("household")},
+            BE_SCHEMA,
+            {"household": bundle.weights_for("household")},
+        )
+        contract = ExportContract(
+            required=(),
+            forbidden=(),
+            optional=(),
+            formula_owned_excluded=("legacy_output",),
+        )
+        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        path = tmp_path / "contract_formula_blocked.h5"
+        with pytest.raises(ValueError, match="legacy_output"):
+            adapter.write_dataset(rebuilt, path, period=2025)
+        assert not path.exists()
+
+    def test_formula_owned_exclusion_applies_under_a_closed_contract(
+        self, tmp_path
+    ) -> None:
+        # Listing the column as optional in a closed contract must not
+        # readmit it: formula_owned_excluded wins.
+        bundle = _toy_bundle()
+        person = bundle.person.copy()
+        person["legacy_output"] = [1.0, 0.0, 1.0]
+        rebuilt = Frame(
+            {"person": person, "household": bundle.table("household")},
+            BE_SCHEMA,
+            {"household": bundle.weights_for("household")},
+        )
+        contract = ExportContract(
+            required=(),
+            forbidden=(),
+            optional=(
+                "toy_taxable_income",
+                "toy_is_exempt",
+                "toy_child_count",
+                "toy_household_rent",
+                "legacy_output",
+            ),
+            formula_owned_excluded=("legacy_output",),
+            closed=True,
+        )
+        adapter = AxiomEngine(FIXTURE_MODULE, contract=contract)
+        path = tmp_path / "closed_formula_blocked.h5"
+        with pytest.raises(ValueError, match="legacy_output"):
+            adapter.write_dataset(rebuilt, path, period=2025)
+        assert not path.exists()
+
 
 class TestAxiomEntityTableDataset:
     def test_requires_exactly_one_construction_mode(self, tmp_path) -> None:
