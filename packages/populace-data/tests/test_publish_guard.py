@@ -32,3 +32,34 @@ def test_publish_refused_when_out_of_sample_skipped(tmp_path, capsys):
     rc = main([str(tmp_path), "--repo-id", "policyengine/populace-us"])
     assert rc == 1
     assert "refusing to publish" in capsys.readouterr().err
+
+
+def _stub_publish(monkeypatch):
+    import populace.data.publish_cli as cli
+
+    monkeypatch.setattr(
+        cli, "publish_release", lambda *a, **k: {"release_id": "r", "updated_at": None}
+    )
+    return cli
+
+
+def test_publish_warns_when_build_manifest_has_no_staging(tmp_path, capsys, monkeypatch):
+    (tmp_path / "build_manifest.json").write_text(
+        json.dumps({"build_id": "x", "staging": None})
+    )
+    cli = _stub_publish(monkeypatch)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    rc = cli.main([str(tmp_path)])
+    assert rc == 0  # warning, not a refusal
+    assert "no staging telemetry" in capsys.readouterr().err
+
+
+def test_publish_silent_when_staging_recorded(tmp_path, capsys, monkeypatch):
+    (tmp_path / "build_manifest.json").write_text(
+        json.dumps({"build_id": "x", "staging": {"run_id": "rel-1", "repo_id": "r/s"}})
+    )
+    cli = _stub_publish(monkeypatch)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    rc = cli.main([str(tmp_path)])
+    assert rc == 0
+    assert "no staging telemetry" not in capsys.readouterr().err

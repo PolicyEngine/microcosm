@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import sys
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -79,6 +80,7 @@ class StagingTelemetry:
         self.run_dir = Path(self.run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._last_upload_at = 0.0
+        self._upload_failures = 0
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
         self._progress: dict[str, Any] = {
@@ -112,12 +114,31 @@ class StagingTelemetry:
         api = self._api()
         if api is None or not self.repo_id:
             return
-        api.upload_file(
-            path_or_fileobj=str(local),
-            path_in_repo=path_in_repo,
-            repo_id=self.repo_id,
-            repo_type="dataset",
-        )
+        # Best-effort: staging telemetry must never fail (or stall) a build.
+        # After three consecutive failures — e.g. no write token — stop trying
+        # for the rest of the run; local staging artifacts are still written.
+        try:
+            api.upload_file(
+                path_or_fileobj=str(local),
+                path_in_repo=path_in_repo,
+                repo_id=self.repo_id,
+                repo_type="dataset",
+            )
+            self._upload_failures = 0
+        except Exception as exc:
+            self._upload_failures += 1
+            print(
+                f"warning: staging upload of {path_in_repo} failed: {exc}",
+                file=sys.stderr,
+            )
+            if self._upload_failures >= 3:
+                print(
+                    "warning: disabling staging uploads for this run after "
+                    "three consecutive failures; local staging artifacts are "
+                    "still written.",
+                    file=sys.stderr,
+                )
+                self.repo_id = None
 
     def _maybe_upload(self, *, force: bool = False) -> None:
         if not self.repo_id:

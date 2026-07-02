@@ -587,12 +587,20 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
-        default=os.environ.get("POPULACE_STAGING_REPO_ID"),
-        help=(
-            "Optional Hugging Face dataset repo to upload staging telemetry "
-            "to while the build runs, e.g. policyengine/populace-us-staging. "
-            "Defaults to POPULACE_STAGING_REPO_ID."
+        default=os.environ.get(
+            "POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging"
         ),
+        help=(
+            "Hugging Face dataset repo to upload staging telemetry to while "
+            "the build runs. On by default (uploads are best-effort and never "
+            "fail the build); override with POPULACE_STAGING_REPO_ID or "
+            "disable with --no-staging."
+        ),
+    )
+    parser.add_argument(
+        "--no-staging",
+        action="store_true",
+        help="Disable staging telemetry (local staging dir and uploads) for this build.",
     )
     parser.add_argument(
         "--staging-prefix",
@@ -3925,6 +3933,7 @@ def _build_manifests(
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
+    staging: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -3960,6 +3969,9 @@ def _build_manifests(
         "build_id": release_id,
         "build_sha": commit[:7],
         "created_at": built_at,
+        # Staging telemetry provenance: which staging run (if any) this build
+        # published while running, so a release without one is auditable.
+        "staging": dict(staging) if staging else None,
         "code": {
             "repository": "PolicyEngine/populace",
             "git_commit": commit,
@@ -4205,6 +4217,8 @@ def _staging_telemetry(
     release_root: Path,
     release_id: str,
 ) -> StagingTelemetry | None:
+    if args.no_staging:
+        return None
     if not args.staging_dir and not args.staging_repo_id:
         return None
     run_id = args.staging_run_id or release_id
@@ -4336,16 +4350,16 @@ def main() -> None:
         telemetry.stage(
             "base_population_repair",
             message="Repaired base population mass for conserved calibration.",
-            applied=base_population_repair["applied"],
-            factor=base_population_repair["factor"],
-            initial_population=base_population_repair["initial_population"],
-            repaired_population=base_population_repair["repaired_population"],
+            applied=base_population_repair.get("applied"),
+            factor=base_population_repair.get("factor"),
+            initial_population=base_population_repair.get("initial_population"),
+            repaired_population=base_population_repair.get("repaired_population"),
         )
         telemetry.stage(
             "social_security_component_repair",
             message="Repaired Social Security component value support.",
-            applied=social_security_component_repair["applied"],
-            components=social_security_component_repair["components"],
+            applied=social_security_component_repair.get("applied"),
+            components=social_security_component_repair.get("components"),
         )
     base_population_gate = _base_population_scale_gate(
         base_frame,
@@ -4725,6 +4739,11 @@ def main() -> None:
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         default_dataset=default_dataset,
+        staging=(
+            {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}
+            if telemetry is not None
+            else None
+        ),
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
