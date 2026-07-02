@@ -363,6 +363,19 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "realized ranges."
         ),
     ),
+    "capital_gain_distributions": DonorSpec(
+        survey="IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
+        source=(
+            "https://www.irs.gov/statistics/"
+            "soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns"
+        ),
+        notes=(
+            "Schedule D line 13 capital gain distributions split out of "
+            "long-term gains as a memo component at the national SOCA-derived "
+            "share; the direct-1040 route is already a PUF-stage output and "
+            "the two routes are mutually exclusive on a real return."
+        ),
+    ),
     "acs_rent": DonorSpec(
         survey="Census ACS 2022",
         source="https://www.census.gov/programs-surveys/acs",
@@ -387,6 +400,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_IMMIGRATION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
+    "capital_gain_distributions",
     "scf_wealth",
     "sipp_tips",
     "org_wages",

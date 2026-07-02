@@ -14,6 +14,9 @@ from populace.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from populace.build.us_runtime.capital_gain_distributions import (
+    split_us_component_by_share_from_manifest,
+)
 from populace.build.us_runtime.immigration import (
     derive_us_immigration_status_from_manifest,
 )
@@ -183,6 +186,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "disaggregate_aggregate_records": (
             disaggregate_us_puf_aggregate_records_from_manifest
         ),
+        "split_component_by_share": split_us_component_by_share_from_manifest,
         "support_clip": support_clip_us_source_output_from_manifest,
     }
 

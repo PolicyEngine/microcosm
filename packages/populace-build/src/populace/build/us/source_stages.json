@@ -33,7 +33,12 @@
           "kind": "disaggregate_aggregate_records",
           "method": "donor_template_calibration",
           "spec": "puf_aggregate_record_disaggregation",
-          "replace_records": [999996, 999997, 999998, 999999],
+          "replace_records": [
+            999996,
+            999997,
+            999998,
+            999999
+          ],
           "weight": "s006",
           "amount_columns": "irs_puf_amount_columns",
           "seed_from_build_config": true
@@ -122,6 +127,50 @@
         "second_home_mortgage_origination_year"
       ],
       "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled."
+    },
+    {
+      "stage": "capital_gain_distributions",
+      "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
+      "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "locator": "SOI Sales of Capital Assets Table 1 (1A/1C), capital gain distributions line",
+          "vintage": "2015"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "locator": "SOI Pub 1304 Table 1.4, capital gain distributions reported on Form 1040",
+          "vintage": "2015-2023"
+        }
+      ],
+      "notes": "Splits the Schedule D line 13 route of capital gain distributions out of long-term gains as a memo component. No by-AGI CGD series exists in published SOI data (SOCA Table 2 merges CGD into 'Other asset types'), so the v1 split applies the national Schedule-D share of LT net gains proportionally within eligible records; the two reporting routes are mutually exclusive on a real return, so records with direct-route distributions are excluded. Anchor arithmetic, the by-AGI tables that do exist, and follow-ups live in soca_capital_gain_distribution_shares.json.",
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "tax_unit",
+          "weight": "tax_unit_weight"
+        },
+        {
+          "kind": "split_component_by_share",
+          "resource": "soca_capital_gain_distribution_shares",
+          "share_field": "schedule_d_cgd_share_of_lt_net_gains",
+          "source_column": "long_term_capital_gains_before_response",
+          "output": "schedule_d_capital_gain_distributions",
+          "exclusive_with": [
+            "non_sch_d_capital_gains"
+          ]
+        }
+      ],
+      "outputs": [
+        "schedule_d_capital_gain_distributions"
+      ],
+      "nonnegative_outputs": [
+        "schedule_d_capital_gain_distributions"
+      ]
     },
     {
       "stage": "scf_wealth",
@@ -429,7 +478,7 @@
         "ssn_card_type",
         "immigration_status_str"
       ],
-      "notes": "Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. The CPS carries no work-authorization variable, so among residual non-citizens, workers and students spill to NON_CITIZEN_VALID_EAD in deterministic seeded order until the remaining undocumented worker count matches Pew's 8.3M and the undocumented student count matches the Higher Ed Immigration Portal's ~408k — the only forced margins. The total undocumented population is emergent (≈13M on the 2024 ASEC, within the range of published 2023-24 estimates) and is gated against Pew's 11.0M 2022 anchor with a coarse plausibility band rather than forced; reconciling the level is the calibration lane's job. Immigration-status tags carry only statutory tests the data supports: DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival); other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status — blanket REFUGEE/TPS labels are deliberately not fabricated because they would mislabel millions and over-grant refugee-class benefit exemptions."
+      "notes": "Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. The CPS carries no work-authorization variable, so among residual non-citizens, workers and students spill to NON_CITIZEN_VALID_EAD in deterministic seeded order until the remaining undocumented worker count matches Pew's 8.3M and the undocumented student count matches the Higher Ed Immigration Portal's ~408k \u2014 the only forced margins. The total undocumented population is emergent (\u224813M on the 2024 ASEC, within the range of published 2023-24 estimates) and is gated against Pew's 11.0M 2022 anchor with a coarse plausibility band rather than forced; reconciling the level is the calibration lane's job. Immigration-status tags carry only statutory tests the data supports: DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity plus post-1980 arrival); other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true status \u2014 blanket REFUGEE/TPS labels are deliberately not fabricated because they would mislabel millions and over-grant refugee-class benefit exemptions."
     },
     {
       "stage": "mortgage_conversion",

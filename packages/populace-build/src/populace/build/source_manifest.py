@@ -64,6 +64,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "read_table",
         "read_tables",
         "replace_sentinels",
+        "split_component_by_share",
         "support_clip",
         "uprate",
         "zero_when_false",
