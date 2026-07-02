@@ -147,6 +147,11 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from populace.build.us_runtime.snap_local_proxy import (
+    SNAP_LOCAL_PROXY_SCHEMA_VERSION,
+    snap_local_proxy_diagnostics,
+    write_snap_local_proxy_diagnostics,
+)
 from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     US_SOURCE_COVERAGE,
@@ -177,6 +182,7 @@ __all__ = [
     "AgeBand",
     "AGE_BANDS",
     "DEMOGRAPHICS_SCHEMA_VERSION",
+    "SNAP_LOCAL_PROXY_SCHEMA_VERSION",
     "compute_age_distribution",
     "CONGRESSIONAL_DISTRICT_GEOID_COLUMN",
     "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR",
@@ -260,9 +266,11 @@ __all__ = [
     "pool_asec_sources",
     "reform_validation_payload",
     "source_gap_family_ids",
+    "snap_local_proxy_diagnostics",
     "us_input_mass_totals",
     "us_plan",
     "us_source_operation_handlers",
+    "write_snap_local_proxy_diagnostics",
     "write_reform_validation",
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",
