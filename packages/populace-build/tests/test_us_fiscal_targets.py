@@ -129,7 +129,7 @@ def test_us_fiscal_references_compile_against_external_ledger_facts() -> None:
         for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     assert len(registry) == len(US_FISCAL_TARGET_REFERENCES)
     for index, spec in enumerate(registry.specs):
@@ -147,7 +147,7 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
         for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
     ]
 
-    compile_us_fiscal_target_registry(facts)
+    compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
 
 def test_soi_congressional_district_targets_are_opt_in() -> None:
@@ -249,10 +249,11 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts)
+    default_registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
     cd_registry = compile_us_fiscal_target_registry(
         facts,
         include_congressional_district_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     default_source_ids = {
@@ -379,6 +380,7 @@ def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
     registry = compile_us_fiscal_target_registry(
         facts,
         include_congressional_district_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     cd_specs = {
@@ -455,6 +457,7 @@ def test_soi_congressional_district_reconciliation_requires_complete_children() 
         compile_us_fiscal_target_registry(
             facts,
             include_congressional_district_targets=True,
+        allow_unaged_dollar_targets=True,
         )
     except ValueError as exc:
         assert "expected 2 child target" in str(exc)
@@ -483,10 +486,11 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
         _census_acs_congressional_district_age_fact(),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts)
+    default_registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
     cd_registry = compile_us_fiscal_target_registry(
         facts,
         include_congressional_district_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     default_source_ids = {
@@ -566,7 +570,7 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     by_source_record_id = {
         spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
@@ -598,7 +602,7 @@ def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     by_source_record_id = {
         spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
@@ -672,7 +676,8 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                     "source_measure_id": "total_medicaid_chip_enrollment",
                 },
             },
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -814,6 +819,7 @@ def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
             _soi_income_tax_fact(2023, value=2_100_000_000_000),
         ],
         target_period=2025,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
@@ -828,6 +834,7 @@ def test_static_jct_targets_use_builder_target_period() -> None:
     registry = compile_us_fiscal_target_registry(
         packaged_reference_facts(),
         target_period=2025,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
@@ -844,7 +851,8 @@ def test_cbo_individual_income_tax_receipts_do_not_enter_calibration() -> None:
         [
             *packaged_reference_facts(),
             _cbo_income_tax_fact(2024, value=2_426_067_000_000),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
@@ -867,6 +875,7 @@ def test_cbo_actual_and_projected_income_tax_receipts_emit_no_hard_target() -> N
             ),
         ],
         target_period=2025,
+        allow_unaged_dollar_targets=True,
     )
 
     income_tax_specs = [
@@ -882,7 +891,8 @@ def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
         [
             *packaged_reference_facts(),
             _soi_income_tax_fact(2023, value=2_100_000_000_000),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
@@ -902,7 +912,8 @@ def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> No
             *packaged_reference_facts(),
             _soi_income_tax_fact(2022, value=2_000_000_000_000),
             _soi_income_tax_fact(2023, value=2_100_000_000_000),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     by_source_record_id = {
@@ -927,6 +938,7 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_observed_years() -> None
             _soi_income_tax_fact(2025, value=2_600_000_000_000),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     by_source_record_id = {
@@ -949,6 +961,7 @@ def test_dynamic_us_fiscal_targets_skip_future_only_source_periods() -> None:
             _soi_income_tax_fact(2025, value=2_600_000_000_000),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     by_source_record_id = {
@@ -973,6 +986,7 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_month_periods() -> None:
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     by_source_record_id = {
@@ -1012,6 +1026,7 @@ def test_dynamic_us_fiscal_targets_skip_zero_cms_month_when_prior_positive_exist
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     by_source_record_id = {
@@ -1051,6 +1066,7 @@ def test_dynamic_us_fiscal_targets_drop_zero_cms_month_when_only_future_positive
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     source_record_ids = {
@@ -1102,7 +1118,8 @@ def test_cms_aca_references_use_current_annual_aca_variables() -> None:
                 geography_id="0400000US06",
                 groupby_value_id="ca",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1189,7 +1206,8 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
                 geography_id="0400000US06",
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1242,7 +1260,8 @@ def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
                 period_value=2022,
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1297,7 +1316,8 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
                     "no_qualifying_children"
                 ),
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1350,6 +1370,7 @@ def test_cross_period_soi_eitc_decomposition_uprates_to_active_total() -> None:
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1436,6 +1457,7 @@ def test_cross_period_soi_taxable_interest_agi_slice_uprates_to_active_total() -
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1496,6 +1518,7 @@ def test_cross_period_soi_taxable_interest_agi_slice_ignores_itemized_total() ->
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1533,6 +1556,7 @@ def test_cross_period_soi_taxable_interest_agi_slice_uses_latest_available_total
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1578,6 +1602,7 @@ def test_cross_period_soi_taxable_interest_open_ended_agi_slice_without_dimensio
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -1661,7 +1686,7 @@ def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
     assert (
@@ -1727,7 +1752,7 @@ def test_stale_soi_capital_gains_rebases_when_source_national_row_is_not_kept() 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
     assert (
@@ -1765,7 +1790,7 @@ def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     source_record_ids = {
         spec.metadata["ledger_source_record_id"] for spec in registry.specs
@@ -1790,6 +1815,7 @@ def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() 
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     assert source_record_id not in {spec.name for spec in registry.specs}
@@ -1825,6 +1851,7 @@ def test_cross_period_soi_eitc_decomposition_uses_latest_source_backed_total() -
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[source_record_id]
@@ -1895,6 +1922,7 @@ def test_cross_period_soi_eitc_decomposition_prefers_agi_specific_factor() -> No
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
@@ -1992,6 +2020,7 @@ def test_cross_period_soi_eitc_open_ended_decomposition_combines_agi_bins() -> N
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
@@ -2044,6 +2073,7 @@ def test_cross_period_soi_eitc_uprating_ignores_state_agi_control() -> None:
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
@@ -2087,6 +2117,7 @@ def test_cross_period_soi_eitc_uprating_requires_complete_agi_interval() -> None
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[amount_source_record_id]
@@ -2125,6 +2156,7 @@ def test_cross_period_soi_eitc_returns_uprate_to_filing_season_total() -> None:
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = {spec.name: spec for spec in registry.specs}[source_record_id]
@@ -2159,7 +2191,8 @@ def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
                 groupby_dimension=("us.tax.earned_income_credit_qualifying_children"),
                 groupby_value_id="three_or_more_qualifying_children",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2193,7 +2226,8 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income() -> N
                 groupby_dimension="irs_soi.form_w2_item",
                 groupby_value_id="box_7_social_security_tips",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2251,7 +2285,8 @@ def test_soi_itemized_deduction_targets_require_itemizing() -> None:
                 groupby_dimension="us:statutes/26/62#adjusted_gross_income",
                 groupby_value_id="all",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2346,7 +2381,7 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     specs = {spec.name: spec for spec in registry.specs}
     expected = {
@@ -2453,7 +2488,7 @@ def test_soi_itemized_return_universe_sets_itemized_filter_for_income_targets() 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts)
+    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
     specs = {spec.name: spec for spec in registry.specs}
     for fact in facts:
@@ -2484,7 +2519,8 @@ def test_soi_qbi_historic_table_2_measures_are_not_direct_targets() -> None:
                 dimensions={"income_range": "all", "filing_status": "all"},
                 layout_record_set_id="irs_soi.ty2022.historic_table_2.us",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     assert "irs_soi.ty2022.historic_table_2.us.all.qbi_amount" not in {
@@ -2523,6 +2559,7 @@ def test__given_stale_soi_eitc_agi_bucket__then_it_is_not_a_hard_target() -> Non
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2544,7 +2581,8 @@ def test_soi_alias_targets_expose_policyengine_base_variable() -> None:
                 period_value=2022,
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2574,7 +2612,8 @@ def test_cbo_net_business_income_uses_source_aligned_policyengine_variable() -> 
                 groupby_value_id="net_business_income",
                 value=1_700_000_000_000,
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
@@ -2598,7 +2637,8 @@ def test_soi_return_count_targets_expose_count_mode_without_base_variable() -> N
                 period_value=2022,
                 dimensions={"income_range": "all", "filing_status": "all"},
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2626,7 +2666,8 @@ def test_medicare_part_b_premium_reference_uses_gross_premium_income() -> None:
                 groupby_value_id="premiums_from_enrollees",
                 value=139_837_000_000,
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2671,7 +2712,8 @@ def test_census_pep_population_age_facts_compile_to_count_targets() -> None:
                     {"variable": "age", "operator": "<", "value": 10},
                 ],
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2730,6 +2772,7 @@ def test_census_pep_population_age_targets_use_latest_source_period() -> None:
             ),
         ],
         target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -2751,7 +2794,8 @@ def test_census_pep_all_age_population_fact_is_not_age_distribution_target() -> 
                 value=335_000_000,
                 groupby_value_id="all",
             ),
-        ]
+        ],
+        allow_unaged_dollar_targets=True,
     )
 
     specs = {spec.name: spec for spec in registry.specs}
@@ -3911,9 +3955,10 @@ def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts, target_period=2025)
+    default_registry = compile_us_fiscal_target_registry(facts, target_period=2025, allow_unaged_dollar_targets=True)
     explicit_off_registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=False
+        facts, target_period=2025, age_targets=False,
+        allow_unaged_dollar_targets=True,
     )
 
     # Byte-identical content: the opt-in flag is inert by default.
@@ -3956,7 +4001,8 @@ def test_age_targets_uses_matching_cbo_series_ratio() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True
+        facts, target_period=2025, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -3987,7 +4033,8 @@ def test_age_targets_falls_back_to_cbo_agi_growth_ratio() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True
+        facts, target_period=2025, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -4028,7 +4075,8 @@ def test_age_targets_falls_back_to_agi_when_series_year_missing() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True
+        facts, target_period=2025, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -4059,7 +4107,8 @@ def test_age_targets_leaves_counts_raw() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True
+        facts, target_period=2025, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -4081,7 +4130,8 @@ def test_age_targets_records_unavailable_when_no_cbo_projection() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True
+        facts, target_period=2025, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -4109,7 +4159,8 @@ def test_age_targets_no_op_when_source_equals_build_period() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2024, age_targets=True
+        facts, target_period=2024, age_targets=True,
+        allow_unaged_dollar_targets=True,
     )
 
     spec = _aged_spec_by_source_record_id(registry, source_record_id)
@@ -4166,3 +4217,277 @@ def test_age_targets_does_not_double_age_uprated_decompositions() -> None:
     assert spec.metadata["basis"] == "fact"
     assert spec.metadata["aging_factor"] == "1"
     assert spec.metadata["aging_factor_source"] == "already_period_aligned"
+
+
+def test_aged_targets_carry_the_alignment_model_declaration() -> None:
+    # PolicyEngine/ledger#71: aged levels are PolicyEngine-computed under a
+    # named, versioned model; every aged target records that declaration.
+    from populace.build.us_runtime.target_aging import (
+        AGING_MODEL_ID,
+        AGING_MODEL_VERSION,
+        age_us_dollar_targets,
+    )
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="soi_agi_total",
+                entity="household",
+                measure="agi",
+                value=15_000_000_000_000,
+                period=2025,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "source_measure_id": "adjusted_gross_income",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+    facts = (
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2025)
+    spec = aged.specs[0]
+    assert spec.metadata["basis"] == "projection"
+    assert spec.metadata["alignment_model_id"] == AGING_MODEL_ID
+    assert spec.metadata["alignment_model_version"] == AGING_MODEL_VERSION
+
+
+def test_period_contract_raises_on_unaged_cross_period_dollars() -> None:
+    # The populace#212 guard: an observation dollar level from TY2022 cannot
+    # silently calibrate a 2025 build.
+    import pytest
+
+    from populace.build.us_runtime.target_aging import (
+        PeriodContractError,
+        enforce_period_contract,
+    )
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="soi_agi_total",
+                entity="household",
+                measure="agi",
+                value=15_000_000_000_000,
+                period=2025,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+
+    with pytest.raises(PeriodContractError) as excinfo:
+        enforce_period_contract(registry, target_period=2025)
+    assert "ledger#71" in str(excinfo.value)
+    (violation,) = excinfo.value.violations
+    assert violation.target_name == "soi_agi_total"
+    assert violation.fact_period == "2022"
+    assert violation.reason == "un_aged_dollar_target"
+
+
+def test_period_contract_waiver_annotates_instead_of_raising() -> None:
+    from populace.build.us_runtime.target_aging import enforce_period_contract
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="soi_agi_total",
+                entity="household",
+                measure="agi",
+                value=15_000_000_000_000,
+                period=2025,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+
+    waived = enforce_period_contract(
+        registry,
+        target_period=2025,
+        allow_unaged_dollar_targets=True,
+    )
+    spec = waived.specs[0]
+    assert spec.value == 15_000_000_000_000
+    assert spec.metadata["period_contract_waiver"] == "allow_unaged_dollar_targets"
+
+
+def test_period_contract_passes_an_aged_registry_and_flags_unavailable() -> None:
+    import pytest
+
+    from populace.build.us_runtime.target_aging import (
+        PeriodContractError,
+        age_us_dollar_targets,
+        enforce_period_contract,
+    )
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    def _registry() -> TargetRegistry:
+        return TargetRegistry(
+            [
+                TargetSpec(
+                    name="soi_agi_total",
+                    entity="household",
+                    measure="agi",
+                    value=15_000_000_000_000,
+                    period=2025,
+                    source="irs_soi",
+                    family="irs_soi",
+                    metadata={
+                        "measure_mode": "sum",
+                        "source_period": "2022",
+                        "source_measure_id": "adjusted_gross_income",
+                        "ledger_assertion": "observation",
+                    },
+                )
+            ],
+            country="us",
+        )
+
+    facts = (
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    )
+    aged = age_us_dollar_targets(_registry(), facts, target_period=2025)
+    assert enforce_period_contract(aged, target_period=2025) is aged
+
+    # Aging enabled but the projection pair is missing: the un-aged state is
+    # explicit metadata, and the contract still refuses it.
+    unavailable = age_us_dollar_targets(_registry(), (), target_period=2025)
+    assert unavailable.specs[0].metadata["aging_factor_source"] == "unavailable"
+    with pytest.raises(PeriodContractError) as excinfo:
+        enforce_period_contract(unavailable, target_period=2025)
+    assert excinfo.value.violations[0].reason == "aging_factor_unavailable"
+
+
+def test_period_contract_skips_source_projection_backed_targets() -> None:
+    # A publisher projection consumed at its published level is not an un-aged
+    # observation, whatever period it describes (PolicyEngine/ledger#71).
+    from populace.build.us_runtime.target_aging import (
+        find_period_contract_violations,
+    )
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="jct_eitc_expenditure",
+                entity="household",
+                measure="eitc_expenditure",
+                value=70_000_000_000,
+                period=2024,
+                source="jct",
+                family="jct",
+                metadata={
+                    "measure_mode": "sum",
+                    "ledger_fact_period": "2026",
+                    "ledger_assertion": "source_projection",
+                },
+            )
+        ],
+        country="us",
+    )
+    assert find_period_contract_violations(registry, target_period=2024) == ()
+
+
+def test_cbo_projection_rows_typed_observation_are_refused_as_factors() -> None:
+    # Post-ledger#73 feeds type publisher projections; a structurally
+    # CBO-projection-shaped row typed as an observation is inconsistent data
+    # and must not supply growth ratios.
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="soi_agi_total",
+                entity="household",
+                measure="agi",
+                value=15_000_000_000_000,
+                period=2025,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "source_measure_id": "adjusted_gross_income",
+                    "ledger_assertion": "observation",
+                },
+            )
+        ],
+        country="us",
+    )
+    facts = tuple(
+        {
+            **_cbo_income_source_projection_fact(
+                year, "adjusted_gross_income", value=value
+            ),
+            "assertion": "observation",
+        }
+        for year, value in ((2022, 14_000_000_000_000), (2025, 17_500_000_000_000))
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2025)
+    spec = aged.specs[0]
+    assert spec.value == 15_000_000_000_000
+    assert spec.metadata["aging_factor_source"] == "unavailable"
+
+
+def test_compile_enforces_the_period_contract_without_a_waiver() -> None:
+    # Compile-level wiring for the populace#212 guard: the same surface the
+    # waived tests compile above must refuse to build silently un-aged.
+    import pytest
+
+    from populace.build.us_runtime.target_aging import PeriodContractError
+
+    facts = [
+        *packaged_reference_facts(),
+        _soi_income_tax_fact(2023, value=2_100_000_000_000),
+    ]
+
+    with pytest.raises(PeriodContractError, match="ledger#71"):
+        compile_us_fiscal_target_registry(facts, target_period=2025)
+
+    aged = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2025,
+        age_targets=True,
+        allow_unaged_dollar_targets=True,
+    )
+    waived = [
+        spec
+        for spec in aged.specs
+        if spec.metadata.get("period_contract_waiver")
+    ]
+    assert waived, "expected un-ageable rows to carry an explicit waiver"
