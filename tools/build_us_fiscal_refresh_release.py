@@ -33,6 +33,7 @@ import pandas as pd
 
 from populace.build.gates import (
     GateResult,
+    input_mass_parity_gate,
     nonconstant_columns_gate,
     target_profile_coverage_gate,
 )
@@ -62,7 +63,11 @@ from populace.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
-from populace.build.us_runtime.l0_refit_export import attach_l0_refit_entity_weights
+from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.l0_refit_export import (
+    attach_l0_refit_entity_weights,
+    load_us_frame,
+)
 from populace.build.us_runtime.reform_validation import (
     default_simulate_factory,
     load_default_reform_specs,
@@ -412,6 +417,42 @@ def _parse_args() -> argparse.Namespace:
             "Optional calibration_diagnostics.json for the current published "
             "release. Critical targets outside their absolute tolerance can "
             "still pass if they improve on this incumbent row by row."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-reference-h5",
+        type=Path,
+        help=(
+            "Optional certified release H5 whose persisted PolicyEngine input "
+            "mass the base frame must carry. Catches a rebuilt base pipeline "
+            "that silently drops input bases the incumbent populates (issue "
+            "#278: IRA/HSA/pension-contribution/childcare inputs)."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-relative-tolerance",
+        type=float,
+        default=0.5,
+        help=(
+            "Maximum allowed relative drift of a persisted input column's "
+            "weighted total in the input-mass parity gates."
+        ),
+    )
+    parser.add_argument(
+        "--input-mass-minimum-reference-total",
+        type=float,
+        default=1e9,
+        help=(
+            "Reference-mass floor below which input-mass parity is not "
+            "checked; relative drift on near-zero totals is meaningless."
+        ),
+    )
+    parser.add_argument(
+        "--allow-input-mass-drift",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch: record input-mass parity gate results "
+            "without failing the build."
         ),
     )
     parser.add_argument(
@@ -3000,6 +3041,63 @@ def _health_input_signal_gate(frame: Frame) -> GateResult:
     )
 
 
+def _engine_input_variables() -> tuple[str, ...]:
+    """Persistable PolicyEngine input variables (formula-owned excluded)."""
+    return tuple(PolicyEngineUSEngine().variables())
+
+
+def _input_mass_reference_gate(
+    base_frame: Frame,
+    *,
+    reference_h5: Path | None,
+    relative_tolerance: float,
+    minimum_reference_total: float,
+) -> GateResult | None:
+    """Gate the base frame's persisted input mass against a certified release.
+
+    A rebuilt base pipeline can drop input bases the incumbent release
+    carries (issue #278: IRA/HSA/pension-contribution/childcare inputs) while
+    every calibration target still fits. Comparing weighted totals of the
+    engine's input variables against the reference release catches that
+    before calibration burns hours on a base that cannot score those reforms.
+    """
+    if reference_h5 is None:
+        return None
+    input_variables = _engine_input_variables()
+    return input_mass_parity_gate(
+        us_input_mass_totals(base_frame, columns=input_variables),
+        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
+        candidate_name="base_frame",
+        reference_name=reference_h5.name,
+        relative_tolerance=relative_tolerance,
+        minimum_reference_total=minimum_reference_total,
+    )
+
+
+def _export_input_mass_gate(
+    export_frame: Frame,
+    base_frame: Frame,
+    *,
+    relative_tolerance: float,
+    minimum_reference_total: float,
+) -> GateResult:
+    """Gate the export support's persisted input mass against the base frame.
+
+    L0 selection and reweighting optimize the target surface; an untargeted
+    input column can lose its mass without moving any residual. The export
+    must keep every material input base the candidate frame carries.
+    """
+    input_variables = _engine_input_variables()
+    return input_mass_parity_gate(
+        us_input_mass_totals(export_frame, columns=input_variables),
+        us_input_mass_totals(base_frame, columns=input_variables),
+        candidate_name="export_frame",
+        reference_name="base_frame",
+        relative_tolerance=relative_tolerance,
+        minimum_reference_total=minimum_reference_total,
+    )
+
+
 def _person_population(frame: Frame) -> float:
     return float(frame.resolve_weights("person").values.sum())
 
@@ -3404,6 +3502,7 @@ def _release_gate_failures(
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
+    input_mass_reference_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3425,6 +3524,11 @@ def _release_gate_failures(
         failures.extend(
             f"Immigration composition failed: {failure}"
             for failure in immigration_gate.failures
+        )
+    if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
+        failures.extend(
+            f"Input mass parity failed: {failure}"
+            for failure in input_mass_reference_gate.failures
         )
     gate_congressional_district_targets = _congressional_district_release_gates_enabled(
         compilation
@@ -3683,6 +3787,7 @@ def _write_release_calibration_diagnostics(
     support_value_repairs: Mapping[str, object] | None,
     audit_export_targets: bool,
     immigration_gate: GateResult | None = None,
+    input_mass_reference_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -3741,6 +3846,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(immigration_gate.details),
                 }
                 if immigration_gate is not None
+                else None
+            ),
+            "input_mass_reference": (
+                {
+                    "passed": input_mass_reference_gate.passed,
+                    "failures": list(input_mass_reference_gate.failures),
+                    "details": dict(input_mass_reference_gate.details),
+                }
+                if input_mass_reference_gate is not None
                 else None
             ),
             "support_value_repairs": support_value_repairs,
@@ -3951,6 +4065,7 @@ def _build_manifests(
     base_population_gate: GateResult | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
+    input_mass_reference_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
@@ -3973,6 +4088,7 @@ def _build_manifests(
         base_population_gate,
         incumbent_diagnostics,
         immigration_gate,
+        input_mass_reference_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4479,6 +4595,37 @@ def main() -> None:
                 for failure in health_input_gate.failures
             )
         )
+    if telemetry is not None and args.input_mass_reference_h5 is not None:
+        telemetry.stage(
+            "input_mass_reference_gate",
+            message="Gating base-frame input mass against the reference release.",
+        )
+    input_mass_reference_gate = _input_mass_reference_gate(
+        base_frame,
+        reference_h5=args.input_mass_reference_h5,
+        relative_tolerance=args.input_mass_relative_tolerance,
+        minimum_reference_total=args.input_mass_minimum_reference_total,
+    )
+    if (
+        input_mass_reference_gate is not None
+        and not input_mass_reference_gate.passed
+        and not args.allow_input_mass_drift
+    ):
+        if telemetry is not None:
+            telemetry.stage(
+                "input_mass_reference_gate",
+                status="failed",
+                message="Base-frame input mass parity gate failed.",
+                failures=list(input_mass_reference_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Input mass parity failed: {failure}"
+                for failure in input_mass_reference_gate.failures
+            )
+        )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -4656,6 +4803,9 @@ def main() -> None:
         if args.incumbent_diagnostics is not None
         else {}
     )
+    enforced_input_mass_reference_gate = (
+        None if args.allow_input_mass_drift else input_mass_reference_gate
+    )
     gate_failures = _release_gate_failures(
         result,
         compilation,
@@ -4664,6 +4814,7 @@ def main() -> None:
         base_population_gate,
         incumbent_diagnostics,
         immigration_gate,
+        enforced_input_mass_reference_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -4675,6 +4826,7 @@ def main() -> None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         immigration_gate=immigration_gate,
+        input_mass_reference_gate=input_mass_reference_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -4709,6 +4861,56 @@ def main() -> None:
         if args.dense_default_dataset
         else _with_l0_refit_weights(base_frame, result)
     )
+    export_input_mass_gate = _export_input_mass_gate(
+        export_frame,
+        base_frame,
+        relative_tolerance=args.input_mass_relative_tolerance,
+        minimum_reference_total=args.input_mass_minimum_reference_total,
+    )
+    input_mass_parity_path = release_dir / "input_mass_parity.json"
+    input_mass_parity_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not args.allow_input_mass_drift,
+                "base_frame_vs_reference": (
+                    {
+                        "passed": input_mass_reference_gate.passed,
+                        "failures": list(input_mass_reference_gate.failures),
+                        "details": dict(input_mass_reference_gate.details),
+                    }
+                    if input_mass_reference_gate is not None
+                    else None
+                ),
+                "export_vs_base_frame": {
+                    "passed": export_input_mass_gate.passed,
+                    "failures": list(export_input_mass_gate.failures),
+                    "details": dict(export_input_mass_gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact("input_mass_parity", input_mass_parity_path)
+    if not export_input_mass_gate.passed and not args.allow_input_mass_drift:
+        if telemetry is not None:
+            telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Export input mass parity gate failed.",
+                failures=list(export_input_mass_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Input mass parity failed: {failure}"
+                for failure in export_input_mass_gate.failures
+            )
+        )
     dataset_path = artifact_root / DATASET_FILENAME
     PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
     if args.audit_export_targets:
@@ -4809,6 +5011,7 @@ def main() -> None:
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
         immigration_gate=immigration_gate,
+        input_mass_reference_gate=enforced_input_mass_reference_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         default_dataset=default_dataset,
