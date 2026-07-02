@@ -24,12 +24,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from populace.build.us_runtime import fiscal_targets as us_fiscal_targets
+from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from tools.build_us_fiscal_refresh_release import (
     _as_bound,
     _calculate_array,
     _dataset_from_frame,
     _load_frame,
-    _load_ledger_facts,
 )
 
 
@@ -77,7 +77,7 @@ def _tax_unit_household_positions(frame) -> np.ndarray:
 
 
 def _target_rows(ledger_facts_path: Path) -> list[dict[str, object]]:
-    facts = _load_ledger_facts(ledger_facts_path)
+    facts = load_ledger_consumer_artifact(ledger_facts_path).facts
     rows: list[dict[str, object]] = []
     for fact in facts:
         if us_fiscal_targets._source_name(fact) != "irs_soi":

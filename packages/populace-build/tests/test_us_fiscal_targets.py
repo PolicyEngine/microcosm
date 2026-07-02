@@ -4705,3 +4705,52 @@ def test_conflicting_series_facts_fail_loudly() -> None:
 
     with pytest.raises(ValueError, match="Conflicting CBO projection facts"):
         age_us_dollar_targets(registry, facts, target_period=2024)
+
+
+def test_conflicting_soi_chain_facts_fail_loudly() -> None:
+    # The SOI chain bridge has the same ambiguity guard as the CBO series:
+    # two national facts claiming the same (series, year) with different
+    # values must fail rather than silently pick one.
+    import pytest
+
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="state_agi_al",
+                entity="household",
+                measure="adjusted_gross_income",
+                value=500_000_000_000,
+                period=2024,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2022",
+                    "source_measure_id": "adjusted_gross_income",
+                },
+            )
+        ],
+        country="us",
+    )
+    duplicate = dict(_soi_national_actual_fact(2023, value=14_700_000_000_000))
+    duplicate["value"] = 15_000_000_000_000
+    duplicate["lineage"] = {
+        "source_record_id": "irs_soi.ty2023.table_1_1_revised.all.agi"
+    }
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+        _soi_national_actual_fact(2022, value=14_000_000_000_000),
+        _soi_national_actual_fact(2023, value=14_700_000_000_000),
+        duplicate,
+    )
+
+    with pytest.raises(ValueError, match="Conflicting national SOI chain facts"):
+        age_us_dollar_targets(registry, facts, target_period=2024)

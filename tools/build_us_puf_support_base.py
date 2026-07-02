@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -204,7 +205,7 @@ def main() -> None:
     )
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
-        ledger_facts = _load_ledger_facts(args.ledger_facts)
+        ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
         if args.congressional_district_vintage_crosswalk is not None:
             ledger_facts = translate_congressional_district_facts_to_current_vintage(
                 ledger_facts,
@@ -515,11 +516,6 @@ def _read_h5_arrays(path: Path) -> dict[str, np.ndarray]:
 
     with h5py.File(path, "r") as h5:
         return {name: np.asarray(dataset) for name, dataset in h5.items()}
-
-
-def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
-    with path.open() as file:
-        return tuple(json.loads(line) for line in file if line.strip())
 
 
 def _row_counts(frame: Frame) -> dict[str, int]:
