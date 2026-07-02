@@ -18,6 +18,7 @@ from populace.calibrate import (
     TargetSet,
     TargetSpec,
     calibrate,
+    calibrate_l0_refit,
     diagnostics_payload,
     write_calibration_diagnostics,
 )
@@ -150,3 +151,48 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     assert income["period"] == 2024
     assert income["source"] == "IRS SOI 2024"
     assert income["registry"]["family"] == "irs_soi"
+
+
+def test_payload_reports_weight_concentration(feasible_frame) -> None:
+    """The accuracy-vs-spread coordinates ship with every calibration."""
+    result = _result(feasible_frame)
+    payload = diagnostics_payload(result)
+
+    assert payload["effective_sample_size"] == result.effective_sample_size
+    assert payload["realized_max_weight_ratio"] == result.realized_max_weight_ratio
+    assert payload["top_1pct_weight_share"] == result.top_1pct_weight_share
+    assert payload["effective_sample_size"] > 0.0
+
+
+def test_payload_accepts_l0_refit_result(feasible_frame) -> None:
+    """Regression: the default sparse build hands an L0RefitResult to the writer.
+
+    ``fraction_within_10pct`` was never delegated to the refit stage, so the
+    payload raised AttributeError on the production default (L0+refit) path.
+    """
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=truths["income"] * 1.2,
+                measure="income",
+            ),
+            Target(
+                name="population",
+                entity="household",
+                value=truths["population"],
+                measure="household_count",
+            ),
+        )
+    )
+    result = calibrate_l0_refit(
+        frame, targets, epochs=120, seed=0, l0_lambda=0.003, mass="conserve"
+    )
+    payload = diagnostics_payload(result)
+
+    assert payload["options"]["post_l0_refit"] is True
+    assert payload["fraction_within_10pct"] == result.refit.fraction_within_10pct
+    assert payload["effective_sample_size"] == result.refit.effective_sample_size
+    json.dumps(payload, allow_nan=False)

@@ -20,6 +20,7 @@ from populace.calibrate import (
     calibrate,
     calibrate_l0_refit,
     default_target_loss_scales,
+    effective_sample_size,
     refit_l0_selection,
     relative_error_loss,
 )
@@ -818,6 +819,149 @@ def test_l2_lambda_is_fixed_during_target_record_budget_search(feasible_frame) -
     assert result.l0_lambda > 0.0
     assert result.options["l2_lambda"] == 0.001
     assert result.options["l2_penalty"] == "mean_initial_pre_gate_weight_ratio_squared"
+
+
+def test_effective_sample_size_contract() -> None:
+    """Kish ESS: n for uniform weights, 1 for a single carrier, 0 for all-zero."""
+    assert effective_sample_size(np.full(10, 3.0)) == pytest.approx(10.0)
+    assert effective_sample_size(np.array([5.0, 0.0, 0.0])) == pytest.approx(1.0)
+    assert effective_sample_size(np.zeros(4)) == 0.0
+    with pytest.raises(ValueError, match="effective_sample_size"):
+        effective_sample_size(np.array([1.0, -0.5]))
+    with pytest.raises(ValueError, match="effective_sample_size"):
+        effective_sample_size(np.array([1.0, float("nan")]))
+
+
+def test_calibration_result_reports_weight_concentration(feasible_frame) -> None:
+    """The result's concentration scalars match their definitions on the weights."""
+    frame, truths = feasible_frame(n=150)
+    targets = TargetSet(
+        (
+            _income_target(truths["income"], 1.3),
+            _population_target(truths["population"], 1.0),
+        )
+    )
+    result = calibrate(frame, targets, epochs=120, seed=0, mass="conserve")
+
+    weights = np.asarray(result.weights, dtype=np.float64)
+    assert result.effective_sample_size == pytest.approx(
+        _effective_sample_size(weights)
+    )
+    assert result.realized_max_weight_ratio == pytest.approx(
+        float((weights / result.initial_weights).max())
+    )
+    k = max(1, int(np.ceil(0.01 * weights.size)))
+    expected_share = float(np.sort(weights)[-k:].sum() / weights.sum())
+    assert result.top_1pct_weight_share == pytest.approx(expected_share)
+
+
+def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
+    """The refit stage — the weights that ship — honors its own L2 penalty.
+
+    The refit previously hardcoded ``l2_lambda=0.0``, so a concentration
+    penalty could shape support selection but never the published weights.
+    Same selected support, one penalized refit: the penalized weights must be
+    materially less concentrated at a comparable fit.
+    """
+    frame, targets, _ = _l2_concentration_fixture()
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=400,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+    )
+
+    baseline = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        epochs=400,
+        learning_rate=0.05,
+        mass="conserve",
+        seed=0,
+    )
+    penalized = refit_l0_selection(
+        frame,
+        targets,
+        selection,
+        epochs=400,
+        learning_rate=0.05,
+        mass="conserve",
+        seed=0,
+        l2_lambda=0.001,
+    )
+
+    assert baseline.refit.options["l2_lambda"] == 0.0
+    assert penalized.refit.options["l2_lambda"] == 0.001
+    assert penalized.effective_sample_size > baseline.effective_sample_size
+    assert penalized.realized_max_weight_ratio < baseline.realized_max_weight_ratio
+    assert penalized.final_loss <= baseline.final_loss + 0.1
+
+
+def test_calibrate_l0_refit_refit_l2_lambda_inherits_and_overrides() -> None:
+    """``refit_l2_lambda`` defaults to ``l2_lambda``; an explicit value overrides.
+
+    Both stages' penalties are recorded in the result options, so all three
+    sweep regimes — both-stage, selection-only, refit-only — are auditable.
+    """
+    frame, targets, _ = _l2_concentration_fixture()
+    common = dict(
+        epochs=200, seed=0, mass="conserve", learning_rate=0.05, l0_lambda=0.003
+    )
+
+    inherited = calibrate_l0_refit(frame, targets, **common, l2_lambda=0.001)
+    assert inherited.options["selection_options"]["l2_lambda"] == 0.001
+    assert inherited.options["l2_lambda"] == 0.001
+
+    selection_only = calibrate_l0_refit(
+        frame, targets, **common, l2_lambda=0.001, refit_l2_lambda=0.0
+    )
+    assert selection_only.options["selection_options"]["l2_lambda"] == 0.001
+    assert selection_only.options["l2_lambda"] == 0.0
+
+    refit_only = calibrate_l0_refit(
+        frame, targets, **common, l2_lambda=0.0, refit_l2_lambda=0.002
+    )
+    assert refit_only.options["selection_options"]["l2_lambda"] == 0.0
+    assert refit_only.options["l2_lambda"] == 0.002
+
+
+@pytest.mark.parametrize("refit_l2_lambda", [-1.0, float("inf"), float("nan")])
+def test_refit_l2_lambda_must_be_finite_and_non_negative(
+    refit_l2_lambda: float,
+) -> None:
+    """An invalid refit override fails before the expensive selection stage."""
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="refit_l2_lambda"):
+        calibrate_l0_refit(
+            frame,
+            targets,
+            epochs=50,
+            seed=0,
+            l0_lambda=0.003,
+            refit_l2_lambda=refit_l2_lambda,
+        )
+
+
+def test_l0_refit_result_delegates_summary_metrics_to_refit() -> None:
+    """The two-stage result reports the refit's (shipped) summary metrics."""
+    frame, targets, _ = _l2_concentration_fixture()
+    result = calibrate_l0_refit(
+        frame,
+        targets,
+        epochs=200,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+    )
+    assert result.fraction_within_10pct == result.refit.fraction_within_10pct
+    assert result.effective_sample_size == result.refit.effective_sample_size
+    assert result.realized_max_weight_ratio == result.refit.realized_max_weight_ratio
+    assert result.top_1pct_weight_share == result.refit.top_1pct_weight_share
 
 
 def test_budget_iters_must_be_positive(feasible_frame) -> None:

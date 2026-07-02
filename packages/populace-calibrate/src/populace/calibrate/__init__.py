@@ -104,6 +104,7 @@ from populace.calibrate.solve import (  # noqa: E402 - after the compat gate
     calibrate,
     calibrate_l0_refit,
     default_target_loss_scales,
+    effective_sample_size,
     refit_l0_selection,
     relative_error_loss,
 )
@@ -131,6 +132,7 @@ __all__ = [
     "calibrate",
     "calibrate_l0_refit",
     "default_target_loss_scales",
+    "effective_sample_size",
     "refit_l0_selection",
     "diagnostics_payload",
     "relative_error_loss",
