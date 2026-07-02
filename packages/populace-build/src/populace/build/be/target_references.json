@@ -43,14 +43,14 @@
         "geography_level": "country"
       },
       "entity": "person",
-      "measure": "belgium_pit_final_income_tax_payable",
+      "measure": "belgium_pit_federal_and_local_tax_before_withholding",
       "family": "income_tax",
       "metadata": {
         "criticality": "release_blocking",
         "publisher": "SPF Finances / Statbel",
         "series": "Personal income tax: assessed total"
       },
-      "notes": "National PIT aggregate against the Axiom-computed final liability (rulespec-be settlement output). Assessment-year vs income-year basis is declared by the profile; a stale-level rerun of the populace#212 lesson is what the projection basis (PolicyEngine/ledger#71) exists to prevent."
+      "notes": "National PIT aggregate against the Axiom-computed assessed liability (rulespec-be federal tax after Article 134 plus Articles 465-468 local additions). Assessment-year vs income-year basis is declared by the profile; a stale-level rerun of the populace#212 lesson is what the projection basis (PolicyEngine/ledger#71) exists to prevent."
     },
     {
       "name": "onss_employee_contribution_total",

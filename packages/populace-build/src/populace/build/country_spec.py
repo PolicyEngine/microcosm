@@ -101,7 +101,25 @@ ALLOWED_GEOGRAPHY_SPINE_METHODS = frozenset({"clone_assign_uniform"})
 #: populace#205 lesson).
 ALLOWED_VINTAGE_POLICIES = frozenset({"error"})
 
-_ORDINAL_VERSION_PATTERN = re.compile(r"[-_]v\d+\b")
+#: Lookahead rather than \b so embedded tokens ("populace_be_v2_staging")
+#: are caught, not just trailing ones; "sha-v2x" and "nuts1" stay benign.
+_ORDINAL_VERSION_PATTERN = re.compile(r"[-_]v\d+(?=[-_.]|$)")
+
+#: Observed-value keys are refused at every nesting depth: a value smuggled
+#: under ledger_selector or metadata is as much a Ledger bypass as one at
+#: the top level.
+_FORBIDDEN_VALUE_KEYS = frozenset({"value", "values", "observed", "observed_value"})
+
+def _carried_value_keys(node: Any) -> set[str]:
+    carried: set[str] = set()
+    if isinstance(node, Mapping):
+        carried.update(_FORBIDDEN_VALUE_KEYS.intersection(node))
+        for child in node.values():
+            carried.update(_carried_value_keys(child))
+    elif isinstance(node, (list, tuple)):
+        for child in node:
+            carried.update(_carried_value_keys(child))
+    return carried
 
 def _require_non_empty_string(value: Any, *, field_name: str, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -544,8 +562,7 @@ def _validate_target_references(
     references = []
     for row in rows:
         row = _require_mapping(row, context=f"{context} reference")
-        forbidden_value_keys = {"value", "values", "observed", "observed_value"}
-        carried = sorted(forbidden_value_keys.intersection(row))
+        carried = sorted(_carried_value_keys(row))
         if carried:
             raise ValueError(
                 f"{context}: reference {row.get('name')!r} carries observed "

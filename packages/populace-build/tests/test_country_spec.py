@@ -294,6 +294,24 @@ class TestRefusals:
         with pytest.raises(ValueError, match="values live in Ledger"):
             load_country_spec(package_dir)
 
+    def test_target_reference_carrying_a_nested_value_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].append("target_references.json")
+        files["target_references.json"] = {
+            "country": "xx",
+            "target_references": [
+                {
+                    "name": "smuggled_nested",
+                    "ledger_selector": {"source_name": "somewhere", "value": 123.0},
+                    "entity": "person",
+                    "measure": "people",
+                }
+            ],
+        }
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="values live in Ledger"):
+            load_country_spec(package_dir)
+
     def test_restricted_licence_requires_a_private_repo(self, tmp_path) -> None:
         files = _minimal_package()
         files["country_package.json"]["resources"].append("release_contract.json")
@@ -337,6 +355,51 @@ class TestRefusals:
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="ordinal version token"):
             load_country_spec(package_dir)
+
+    def test_embedded_ordinal_version_tokens_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"].append("release_contract.json")
+        files["release_contract.json"] = {
+            "version": 1,
+            "country": "xx",
+            "policy": "test",
+            "builder": "populace_xx_v2_staging",
+            "hf": {
+                "artifact_repo": "policyengine/populace-xx-private",
+                "private": True,
+                "staging_repo": "policyengine/populace-xx-staging",
+            },
+            "dataset_filename_template": "populace_xx_{year}.h5",
+            "required_release_files": ["release_manifest.json"],
+            "boundary": {"private": ["populace_xx_{year}.h5"], "public": []},
+            "licence": {"name": "restricted survey", "restricted": True},
+        }
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="ordinal version token"):
+            load_country_spec(package_dir)
+
+    def test_version_like_substrings_without_ordinal_tokens_load(self, tmp_path) -> None:
+        # "sha-v2x" is not an ordinal token: the digits run into a letter.
+        files = _minimal_package()
+        files["country_package.json"]["resources"].append("release_contract.json")
+        files["release_contract.json"] = {
+            "version": 1,
+            "country": "xx",
+            "policy": "test",
+            "builder": "populace-xx-sha-v2x",
+            "hf": {
+                "artifact_repo": "policyengine/populace-xx-private",
+                "private": True,
+                "staging_repo": "policyengine/populace-xx-staging",
+            },
+            "dataset_filename_template": "populace_xx_{year}.h5",
+            "required_release_files": ["release_manifest.json"],
+            "boundary": {"private": ["populace_xx_{year}.h5"], "public": []},
+            "licence": {"name": "restricted survey", "restricted": True},
+        }
+        package_dir = _write_package(tmp_path, files)
+        spec = load_country_spec(package_dir)
+        assert spec.release_contract is not None
 
     def test_geography_vintage_policy_must_be_error(self, tmp_path) -> None:
         files = _minimal_package()
