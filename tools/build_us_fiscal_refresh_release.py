@@ -1184,8 +1184,9 @@ def _parse_args() -> argparse.Namespace:
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Defaults to the packaged Census-built crosswalk "
-            "(populace.build.us; see CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) "
-            "when congressional-district targets are requested; pass a path to "
+            "(populace.build.us_runtime.data; see "
+            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) when "
+            "congressional-district targets are requested; pass a path to "
             "override it."
         ),
     )
