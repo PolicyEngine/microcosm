@@ -66,8 +66,11 @@ def test_loads_bare_consumer_facts_file(tmp_path):
     assert artifact.fact_row_count == 1
     assert artifact.facts_sha256 == facts_sha
     assert artifact.manifest is None
-    # Rows without an assertion default to observation (the Ledger contract).
-    assert artifact.facts[0]["assertion"] == "observation"
+    # Legacy rows that omit the assertion field pass through untouched:
+    # readers treat a missing assertion as observation-by-default, but the
+    # loader must not fabricate the key (structural projection checks would
+    # then see unlabeled projections as mistyped observations).
+    assert "assertion" not in artifact.facts[0]
     provenance = artifact.provenance()
     assert provenance["facts_sha256"] == facts_sha
     assert provenance["schema_version"] is None

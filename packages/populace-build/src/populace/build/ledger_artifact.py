@@ -41,7 +41,9 @@ class LedgerConsumerArtifact:
     ``manifest`` and ``manifest_sha256`` are ``None`` when the feed was a
     bare ``consumer_facts.jsonl`` file rather than an artifact directory;
     bare feeds are still content-addressed by ``facts_sha256`` so builds can
-    pin them, but they carry no Ledger-side provenance.
+    pin them, but they carry no Ledger-side provenance. Rows are exactly as
+    published: an ``assertion`` field is validated when present and never
+    fabricated when absent (missing means observation-by-default to readers).
     """
 
     path: Path
@@ -191,7 +193,11 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
                     f"assertion {assertion!r}; expected one of "
                     f"{sorted(ALLOWED_LEDGER_ASSERTIONS)}."
                 )
-            rows.append({**row, "assertion": assertion})
+            # Do not stamp the default onto rows that omit the field: legacy
+            # feeds predate the assertion schema, and fabricating the key
+            # would make downstream assertion checks treat unlabeled
+            # publisher projections as mistyped observations.
+            rows.append(row)
     if not rows:
         raise ValueError(f"Ledger facts feed is empty: {path}")
     return tuple(rows)
