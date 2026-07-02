@@ -1638,7 +1638,8 @@ def _snap_local_proxy_frame(builder, *, include_cd: bool = True) -> Frame:
         }
     )
     if include_cd:
-        household["congressional_district_geoid"] = ["CA-01", "NY-01"]
+        # Bare 4-digit SSDD geoids, as the #277 geography spine persists them.
+        household["congressional_district_geoid"] = ["0601", "3601"]
     return Frame(
         {
             "person": person,
@@ -1668,13 +1669,13 @@ def _snap_local_proxy_frame(builder, *, include_cd: bool = True) -> Frame:
 
 def _snap_local_proxy_facts() -> tuple[dict[str, object], ...]:
     base = {
-        "geography": {"level": "congressional_district", "id": "CA-01"},
+        # Census summary-level prefixed geography id; the builder must
+        # normalize this to the spine's bare "0601" before joining.
+        "geography": {"level": "congressional_district", "id": "5001700US0601"},
         "source": {
             "source_name": "census_acs",
             "source_table": "ACS S2201 congressional district SNAP",
-            "source_file": (
-                "census-acs-s2201-congressional-district-snap-2024"
-            ),
+            "source_file": ("census-acs-s2201-congressional-district-snap-2024"),
         },
         "observed_measure": {
             "source_name": "census_acs",
@@ -1707,19 +1708,26 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
     tmp_path,
 ) -> None:
     builder = _load_builder_module()
+    california_target_name = "usda_snap.fy2024.state_benefits.wro.ca.total_benefits"
+    new_york_target_name = "usda_snap.fy2024.state_benefits.nero.ny.total_benefits"
+    # Diagnostics deliberately arrive out of spec order (and with an extra
+    # unrelated row): state errors must be joined by name, not position.
     result = SimpleNamespace(
         diagnostics=(
-            SimpleNamespace(relative_error=0.12),
-            SimpleNamespace(relative_error=0.01),
+            SimpleNamespace(name="irs_soi.unrelated@2024", relative_error=0.99),
+            SimpleNamespace(name=f"{new_york_target_name}@2024", relative_error=0.01),
+            SimpleNamespace(name=f"{california_target_name}@2024", relative_error=0.12),
         )
     )
     registry = SimpleNamespace(
         specs=(
             SimpleNamespace(
-                metadata={"target_role": "snap_total", "state_fips": "06"}
+                name=california_target_name,
+                metadata={"target_role": "snap_total", "state_fips": "06"},
             ),
             SimpleNamespace(
-                metadata={"target_role": "snap_total", "state_fips": "36"}
+                name=new_york_target_name,
+                metadata={"target_role": "snap_total", "state_fips": "36"},
             ),
         )
     )
@@ -1751,10 +1759,8 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
     assert payload["summary"]["snap_dollars"] == 1000.0
     assert payload["summary"]["outside_acs_moe_districts"] == 1
 
-    districts = {
-        row["congressional_district"]: row for row in payload["districts"]
-    }
-    ca = districts["CA-01"]
+    districts = {row["congressional_district"]: row for row in payload["districts"]}
+    ca = districts["0601"]
     assert ca["state"] == "06"
     assert ca["weighted_snap_households"] == 10.0
     assert ca["raw_positive_snap_households"] == 1
@@ -1770,7 +1776,7 @@ def test__given_raw_spm_snap_and_acs_reference__then_builder_writes_snap_proxy(
         "outside_acs_moe",
         "state_snap_outlier",
     ]
-    assert districts["NY-01"]["flags"] == [
+    assert districts["3601"]["flags"] == [
         "low_positive_sample",
         "missing_acs_reference",
     ]

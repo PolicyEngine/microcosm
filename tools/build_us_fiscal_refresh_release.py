@@ -59,6 +59,10 @@ from populace.build.us_runtime import (
     write_snap_local_proxy_diagnostics,
     write_us_source_coverage_diagnostics,
 )
+from populace.build.us_runtime.congressional_district_geography import (
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+    _parse_congressional_district_geoid,
+)
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
@@ -93,7 +97,6 @@ CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 SNAP_LOCAL_PROXY_FILENAME = "snap_local_proxy.json"
 SNAP_LOCAL_PROXY_PACKAGE_ALIAS = "census-acs-s2201-congressional-district-snap-2024"
 RAW_SPM_SNAP_COLUMN = "SPM_SNAPSUB"
-CONGRESSIONAL_DISTRICT_GEOID_COLUMN = "congressional_district_geoid"
 POST_EXPORT_ABSOLUTE_TOLERANCE = 1_000_000.0
 POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
@@ -292,6 +295,7 @@ class _SnapLocalProxyWriteResult:
         self.path = path
         self.skipped_reason = skipped_reason
         self.missing_inputs = missing_inputs
+
 
 DIRECT_ACTIVE_ALIASES = (
     "census-pep-2024-national-age-sex",
@@ -4177,9 +4181,15 @@ def _raw_spm_snap_by_household(frame: Frame) -> np.ndarray | None:
 
 
 def _state_snap_relative_errors(result, registry: TargetRegistry) -> dict[str, float]:
-    diagnostics = tuple(getattr(result, "diagnostics", ()))
+    # Diagnostics are keyed by name (``{spec.name}@{PERIOD}``), never by
+    # position: calibration can skip targets, so a positional zip would
+    # silently misattribute every state error after the first skip.
+    diagnostics_by_name = {
+        getattr(diagnostic, "name", None): diagnostic
+        for diagnostic in getattr(result, "diagnostics", ())
+    }
     errors: dict[str, float] = {}
-    for spec, diagnostic in zip(registry.specs, diagnostics, strict=False):
+    for spec in registry.specs:
         metadata = getattr(spec, "metadata", {})
         if not isinstance(metadata, Mapping):
             continue
@@ -4187,6 +4197,9 @@ def _state_snap_relative_errors(result, registry: TargetRegistry) -> dict[str, f
             continue
         state_fips = metadata.get("state_fips")
         if not state_fips:
+            continue
+        diagnostic = diagnostics_by_name.get(f"{getattr(spec, 'name', None)}@{PERIOD}")
+        if diagnostic is None:
             continue
         relative_error = getattr(diagnostic, "relative_error", None)
         if relative_error is None:
@@ -4231,7 +4244,7 @@ def _snap_local_proxy_household_frame(
     state_fips = _state_fips_text(household["state_fips"])
     state_errors = _state_snap_relative_errors(result, registry)
     district = [
-        value or None
+        (_normalize_congressional_district_geoid(value) or value or None)
         for value in (
             _text_value(value)
             for value in household[CONGRESSIONAL_DISTRICT_GEOID_COLUMN].to_numpy()
@@ -4281,7 +4294,10 @@ def _is_snap_local_proxy_fact(fact: object) -> bool:
         )
     ).lower()
     return (
-        ("s2201" in source_haystack or SNAP_LOCAL_PROXY_PACKAGE_ALIAS in source_haystack)
+        (
+            "s2201" in source_haystack
+            or SNAP_LOCAL_PROXY_PACKAGE_ALIAS in source_haystack
+        )
         and ("congressional" in source_haystack or "district" in source_haystack)
         and ("snap" in measure_haystack or "food_stamp" in measure_haystack)
         and "household" in measure_haystack
@@ -4300,12 +4316,30 @@ def _is_acs_margin_of_error_fact(fact: object) -> bool:
     return "margin_of_error" in haystack or "moe" in haystack
 
 
+def _normalize_congressional_district_geoid(value: str) -> str | None:
+    """Normalize a CD identifier to the spine's bare 4-digit SSDD geoid.
+
+    Household spine columns carry bare geoids (``"0601"``); Census fact
+    geography ids carry summary-level prefixes (``"5001700US0601"`` /
+    ``"5001900US0601"``). Both must land in the same vocabulary or every
+    district flags ``missing_acs_reference``.
+    """
+    geoid = _parse_congressional_district_geoid(value)
+    if geoid is not None:
+        return geoid
+    if len(value) == 4 and value.isdigit():
+        return value
+    return None
+
+
 def _acs_s2201_snap_reference(ledger_facts: Iterable[object]) -> pd.DataFrame | None:
     rows: dict[str, dict[str, float | str | None]] = {}
     for fact in ledger_facts:
         if not _is_snap_local_proxy_fact(fact):
             continue
-        district = _fact_text(fact, "geography", "id")
+        district = _normalize_congressional_district_geoid(
+            _fact_text(fact, "geography", "id")
+        )
         value = _fact_numeric_value(fact)
         if not district or value is None:
             continue
