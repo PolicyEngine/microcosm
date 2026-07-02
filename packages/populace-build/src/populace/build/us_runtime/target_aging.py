@@ -410,6 +410,11 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
         return "not_usd_unit"
     if "uprating_factor" in metadata:
         return "already_period_aligned"
+    if metadata.get("ledger_assertion") == "source_projection":
+        # A publisher projection is consumed at its published level whatever
+        # period it describes; re-projecting it here would silently compound
+        # models. Mirrors the period-contract exemption.
+        return "source_projection_level"
     return None
 
 
@@ -530,7 +535,14 @@ def _soi_national_chain_series(
             continue
         value = _numeric_value(fact)
         record_id = _str_at(fact, "lineage", "source_record_id")
-        series.setdefault(income_source, {})[year] = (value, record_id)
+        existing = series.setdefault(income_source, {}).get(year)
+        if existing is not None and existing != (value, record_id):
+            raise ValueError(
+                f"Conflicting national SOI chain facts for {income_source!r} "
+                f"year {year}: {existing[1]!r} vs {record_id!r}. The chain "
+                "bridge must be unambiguous; fix the feed."
+            )
+        series[income_source][year] = (value, record_id)
     return series
 
 
@@ -557,8 +569,13 @@ def _cbo_projection_series(
         value = _numeric_value(fact)
         record_id = _str_at(fact, "lineage", "source_record_id")
         by_year = series.setdefault(income_source, {})
-        # The feed activates one CBO projection release, so at most one fact
-        # per (series, year) is expected; last-write is sufficient.
+        existing = by_year.get(year)
+        if existing is not None and existing != (value, record_id):
+            raise ValueError(
+                f"Conflicting CBO projection facts for {income_source!r} "
+                f"year {year}: {existing[1]!r} vs {record_id!r}. Growth "
+                "factors must come from one projection release; fix the feed."
+            )
         by_year[year] = (value, record_id)
     return series
 

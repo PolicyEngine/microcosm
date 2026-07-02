@@ -457,7 +457,7 @@ def test_soi_congressional_district_reconciliation_requires_complete_children() 
         compile_us_fiscal_target_registry(
             facts,
             include_congressional_district_targets=True,
-        allow_unaged_dollar_targets=True,
+            allow_unaged_dollar_targets=True,
         )
     except ValueError as exc:
         assert "expected 2 child target" in str(exc)
@@ -4615,3 +4615,93 @@ def test_chained_aging_requires_the_observed_bridge() -> None:
     spec = aged.specs[0]
     assert spec.value == 500_000_000_000
     assert spec.metadata["aging_factor_source"] == "unavailable"
+
+
+def test_source_projection_targets_are_never_re_aged() -> None:
+    # A publisher projection is consumed at its published level; aging it
+    # would silently compound our model onto theirs. Mirrors the
+    # period-contract exemption for projection-backed targets.
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="jct_projection_level",
+                entity="household",
+                measure="eitc_expenditure",
+                value=70_000_000_000,
+                period=2024,
+                source="jct",
+                family="jct",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2026",
+                    "ledger_assertion": "source_projection",
+                },
+            )
+        ],
+        country="us",
+    )
+    facts = (
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2026, "adjusted_gross_income", value=18_000_000_000_000
+        ),
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2024)
+    spec = aged.specs[0]
+    assert spec.value == 70_000_000_000
+    assert spec.metadata["basis"] == "fact"
+    assert spec.metadata["aging_factor_source"] == "source_projection_level"
+
+
+def test_conflicting_series_facts_fail_loudly() -> None:
+    # Two facts claiming the same (series, year) with different values would
+    # silently pick a growth-factor bridge; the feed must be unambiguous.
+    import pytest
+
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="soi_agi_total",
+                entity="household",
+                measure="agi",
+                value=1_000_000_000,
+                period=2024,
+                source="irs_soi",
+                family="irs_soi",
+                metadata={
+                    "measure_mode": "sum",
+                    "source_period": "2023",
+                    "source_measure_id": "adjusted_gross_income",
+                },
+            )
+        ],
+        country="us",
+    )
+    duplicate = dict(
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        )
+    )
+    duplicate["value"] = 17_000_000_000_000
+    duplicate["lineage"] = {"source_record_id": "cbo.other_release.ty2024.agi"}
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+        duplicate,
+    )
+
+    with pytest.raises(ValueError, match="Conflicting CBO projection facts"):
+        age_us_dollar_targets(registry, facts, target_period=2024)

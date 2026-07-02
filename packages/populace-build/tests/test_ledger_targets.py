@@ -1300,9 +1300,17 @@ def test_ledger_metadata_records_assertion_and_fact_period():
         },
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_filer"},
     )
-    observation = target_spec_from_ledger_fact(_consumer_fact_row(), mapping)
+    # Legacy rows that omit the assertion field are not stamped in metadata
+    # (absence means observation-by-default to readers, matching the loader).
+    legacy = target_spec_from_ledger_fact(_consumer_fact_row(), mapping)
+    assert "ledger_assertion" not in legacy.metadata
+    assert legacy.metadata["ledger_fact_period"] == "2023"
+
+    observation = target_spec_from_ledger_fact(
+        _consumer_fact_row(assertion="observation"),
+        mapping,
+    )
     assert observation.metadata["ledger_assertion"] == "observation"
-    assert observation.metadata["ledger_fact_period"] == "2023"
 
     projection = target_spec_from_ledger_fact(
         _consumer_fact_row(assertion="source_projection"),

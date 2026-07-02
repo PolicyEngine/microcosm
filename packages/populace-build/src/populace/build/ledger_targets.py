@@ -1233,7 +1233,10 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         or _str_at(fact, "concept_alignment", "legal_vintage"),
         "ledger_period_type": _str_at(fact, "period", "type"),
         "ledger_fact_period": _str_at(fact, "period", "value"),
-        "ledger_assertion": _str_at(fact, "assertion") or "observation",
+        # Recorded only when the fact asserts it; legacy rows that omit the
+        # field are not stamped (readers treat absence as
+        # observation-by-default, same as the artifact loader).
+        "ledger_assertion": _str_at(fact, "assertion"),
         "ledger_geography_level": _str_at(fact, "geography", "level"),
         "ledger_geography_id": _str_at(fact, "geography", "id"),
         "ledger_geography_name": _str_at(fact, "geography", "name"),
