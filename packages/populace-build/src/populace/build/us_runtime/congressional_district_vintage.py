@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,13 @@ import pandas as pd
 SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
+#: The packaged default crosswalk, built from Census sources by
+#: ``tools/build_us_congressional_district_vintage_crosswalk.py``. See the
+#: sibling ``.provenance.json`` and ``CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md``
+#: for exact source files and per-state population conservation.
+DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE = (
+    "congressional_district_vintage_crosswalk.csv"
+)
 CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR = (
     "populace_congressional_district_vintage_crosswalk_sha256"
 )
@@ -67,6 +75,32 @@ def load_congressional_district_vintage_crosswalk(path: str | Path) -> pd.DataFr
         pd.read_csv(source),
         source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
         target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    )
+
+
+def default_congressional_district_vintage_crosswalk_path() -> Path:
+    """Return the path to the packaged default CD-vintage crosswalk CSV."""
+
+    return Path(
+        str(
+            files("populace.build.us").joinpath(
+                DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE
+            )
+        )
+    )
+
+
+def load_default_congressional_district_vintage_crosswalk() -> pd.DataFrame:
+    """Load the packaged Census-built default 117th->119th CD crosswalk.
+
+    This is the canonical, versioned crosswalk built by
+    ``tools/build_us_congressional_district_vintage_crosswalk.py`` from Census
+    Block Assignment Files, the 119th BEF, and 2020 P.L. 94-171 block
+    populations. Builds may still pass an explicit crosswalk path to override it.
+    """
+
+    return load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
     )
 
 

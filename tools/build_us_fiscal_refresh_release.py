@@ -72,6 +72,7 @@ from populace.build.us_runtime import (
     assert_target_parity_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
+    default_congressional_district_vintage_crosswalk_path,
     fetch_asec_2023_weeks_unemployed_source,
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
@@ -1182,8 +1183,10 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
-            "weight columns. Required when congressional-district targets "
-            "are requested."
+            "weight columns. Defaults to the packaged Census-built crosswalk "
+            "(populace.build.us; see CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) "
+            "when congressional-district targets are requested; pass a path to "
+            "override it."
         ),
     )
     parser.add_argument(
@@ -1268,9 +1271,10 @@ def _parse_args() -> argparse.Namespace:
         args.include_congressional_district_targets
         and args.congressional_district_vintage_crosswalk is None
     ):
-        parser.error(
-            "--congressional-district-vintage-crosswalk is required when "
-            "--include-congressional-district-targets is set."
+        # Fall back to the packaged Census-built crosswalk so CD-target builds
+        # work out of the box; an explicit path still overrides it.
+        args.congressional_district_vintage_crosswalk = (
+            default_congressional_district_vintage_crosswalk_path()
         )
     if not args.dense_default_dataset and not (
         math.isfinite(args.l0_refit_lambda_share) and args.l0_refit_lambda_share > 0.0
