@@ -103,16 +103,6 @@ ALLOWED_VINTAGE_POLICIES = frozenset({"error"})
 
 _ORDINAL_VERSION_PATTERN = re.compile(r"[-_]v\d+\b")
 
-_TYPED_RESOURCE_NAMES = (
-    "source_stages.json",
-    "support_spine.json",
-    "geography_spine.json",
-    "target_references.json",
-    "gates.json",
-    "release_contract.json",
-)
-
-
 def _require_non_empty_string(value: Any, *, field_name: str, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context}: {field_name} must be a non-empty string.")
