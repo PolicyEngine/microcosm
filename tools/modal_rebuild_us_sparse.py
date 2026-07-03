@@ -550,6 +550,12 @@ def run_full_build(
         str(release_out),
         "--epochs",
         str(epochs),
+        # The dense f0af251 base predates the #266 immigration channel (raw
+        # PRCITSHP absent; persisted constant-CITIZEN outputs), so the
+        # composition gate cannot pass on it. Approved escape hatch
+        # (Max, 2026-07-03): record the verdict, keep building — parity with
+        # every certified release to date; real fix tracked in populace#225.
+        "--allow-immigration-composition-drift",
     ]
     # Staging telemetry is ON by default so the candidate appears on the
     # populace-us-staging dashboard and `populace-publish-release` does not warn
