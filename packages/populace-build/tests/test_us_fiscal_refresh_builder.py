@@ -1828,6 +1828,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(
         builder,
+        "_degenerate_input_signal_gate",
+        lambda frame, engine: builder.GateResult(
+            name="degenerate_input_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_materialize_target_frame",
         fake_materialize_target_frame,
     )

@@ -49,6 +49,7 @@ from populace.calibrate.solve import relative_error_loss
 __all__ = [
     "GateResult",
     "GateReport",
+    "default_valued_columns_gate",
     "enum_domain_gate",
     "export_surface_gate",
     "formula_owned_export_gate",
@@ -561,6 +562,107 @@ def nonconstant_columns_gate(
             "unused_exclusions": unused,
         },
     )
+
+
+def default_valued_columns_gate(
+    column_values: Mapping[str, Iterable[object]],
+    default_values: Mapping[str, object],
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Refuse persisted input columns that carry only the engine default.
+
+    A column whose every observed value equals the engine's default for that
+    variable adds zero information — the dataset would behave identically
+    without it — while looking populated to anyone inspecting the artifact.
+    That is how a failed or missing imputation ships silently: a weekly-hours
+    column constant at the 40-hour default, or a take-up flag constant at
+    ``True``. Unlike :func:`nonconstant_columns_gate`, which checks a named
+    allowlist, this gate sweeps every column it is handed. It also
+    complements :func:`input_mass_parity_gate`: a parity check against a
+    parent artifact passes when the parent is equally degenerate (the
+    constant-40 hours column had full mass in every ancestor), while this
+    gate needs no reference artifact and catches inherited degeneracy
+    directly.
+
+    Columns with no entry in ``default_values`` are skipped (the caller
+    decides which columns have a meaningful engine default). Constant columns
+    whose value differs from the default pass this gate — an intentional
+    broadcast is a modeling choice, not a masked imputation — and are
+    reported in the details for visibility. Reviewed exclusions accept known
+    degenerate columns by name with a recorded reason. An exclusion for a
+    column that is present but no longer degenerate is stale and fails the
+    gate so the list cannot rot; an exclusion for a column absent from this
+    surface is dormant and only reported (different release lines persist
+    different column sets).
+    """
+
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    failures: list[str] = []
+    checked_names: set[str] = set()
+    degenerate: dict[str, object] = {}
+    excluded: dict[str, str] = {}
+    constant_nondefault: dict[str, object] = {}
+
+    for name in sorted(column_values):
+        if name not in default_values:
+            continue
+        checked_names.add(name)
+        observed = _observed_column_values(column_values[name])
+        if observed.size == 0:
+            continue
+        unique = _unique_observed_values(observed)
+        if unique.size != 1:
+            continue
+        constant = _json_scalar(unique[0])
+        default = _json_scalar(default_values[name])
+        if not _scalar_values_equal(constant, default):
+            constant_nondefault[name] = constant
+            continue
+        if name in exclusions:
+            excluded[name] = exclusions[name]
+            continue
+        degenerate[name] = constant
+        failures.append(
+            f"{name}: every observed value equals the engine default "
+            f"({default!r}); the column masks a missing or failed imputation "
+            "— impute it, drop it, or record a reviewed exclusion."
+        )
+
+    stale = sorted(
+        name for name in exclusions if name in checked_names and name not in excluded
+    )
+    dormant = sorted(name for name in exclusions if name not in checked_names)
+    if stale:
+        failures.append(
+            f"Stale reviewed exclusions — the column carries signal now, "
+            f"remove the exclusion: {stale}."
+        )
+    return GateResult(
+        name="default_valued_columns",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": len(checked_names),
+            "default_valued_columns": degenerate,
+            "constant_nondefault_columns": constant_nondefault,
+            "reviewed_exclusions": excluded,
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
+        },
+    )
+
+
+def _scalar_values_equal(left: object, right: object) -> bool:
+    if isinstance(left, bool) != isinstance(right, bool):
+        # A bool column never equals a numeric default by coincidence:
+        # True == 1 in Python, but a flag defaulting to 1.0 is a type bug.
+        return False
+    if left == right:
+        return True
+    if isinstance(left, int | float) and isinstance(right, int | float):
+        return float(left) == float(right)
+    return False
 
 
 def _numeric_chunks(values: Iterable[float], chunk_size: int) -> Iterable[np.ndarray]:

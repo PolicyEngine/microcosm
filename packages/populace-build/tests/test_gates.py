@@ -14,6 +14,7 @@ from populace.build import (
     GateResult,
     TargetCoverageRequirement,
     aggregate_admin_gate,
+    default_valued_columns_gate,
     enum_domain_gate,
     export_surface_gate,
     formula_owned_export_gate,
@@ -352,6 +353,119 @@ class TestNonconstantColumnsGate:
                 {},
                 ["takes_up_aca_if_eligible"],
                 reviewed_exclusions=["takes_up_aca_if_eligible"],  # type: ignore[arg-type]
+            )
+
+
+class TestDefaultValuedColumnsGate:
+    def test_column_stuck_at_engine_default_fails(self) -> None:
+        # The constant-40 hours incident: populated, plausible-looking, and
+        # identical to the engine default for every record.
+        result = default_valued_columns_gate(
+            {"weekly_hours_worked_before_lsr": np.asarray([40.0, 40.0, 40.0])},
+            {"weekly_hours_worked_before_lsr": 40.0},
+        )
+        assert not result.passed
+        assert "weekly_hours_worked_before_lsr" in result.failures[0]
+        assert "engine default" in result.failures[0]
+        assert result.details["default_valued_columns"] == {
+            "weekly_hours_worked_before_lsr": 40.0
+        }
+
+    def test_constant_bool_at_default_fails(self) -> None:
+        result = default_valued_columns_gate(
+            {"takes_up_snap_if_eligible": np.asarray([True, True])},
+            {"takes_up_snap_if_eligible": True},
+        )
+        assert not result.passed
+
+    def test_constant_enum_name_at_default_fails(self) -> None:
+        result = default_valued_columns_gate(
+            {"ssn_card_type": np.asarray(["CITIZEN", "CITIZEN"])},
+            {"ssn_card_type": "CITIZEN"},
+        )
+        assert not result.passed
+
+    def test_column_with_signal_passes(self) -> None:
+        result = default_valued_columns_gate(
+            {"weekly_hours_worked_before_lsr": np.asarray([0.0, 25.0, 40.0])},
+            {"weekly_hours_worked_before_lsr": 40.0},
+        )
+        assert result.passed
+        assert result.details["columns_checked"] == 1
+
+    def test_constant_but_not_default_passes_and_is_reported(self) -> None:
+        result = default_valued_columns_gate(
+            {"pension_contribution_rate": np.asarray([0.05, 0.05])},
+            {"pension_contribution_rate": 0.0},
+        )
+        assert result.passed
+        assert result.details["constant_nondefault_columns"] == {
+            "pension_contribution_rate": 0.05
+        }
+
+    def test_bool_column_never_matches_numeric_default(self) -> None:
+        # True == 1 in Python; a flag stuck at True must not be excused by a
+        # numeric default of 1.0.
+        result = default_valued_columns_gate(
+            {"some_flag": np.asarray([True, True])},
+            {"some_flag": 1.0},
+        )
+        assert result.passed
+        assert result.details["constant_nondefault_columns"] == {"some_flag": True}
+
+    def test_column_without_declared_default_is_skipped(self) -> None:
+        result = default_valued_columns_gate(
+            {"HRSWK": np.asarray([0, 0, 0])},
+            {},
+        )
+        assert result.passed
+        assert result.details["columns_checked"] == 0
+
+    def test_reviewed_exclusion_accepts_known_degenerate_column(self) -> None:
+        result = default_valued_columns_gate(
+            {"weekly_hours_worked_before_lsr": np.asarray([40.0, 40.0])},
+            {"weekly_hours_worked_before_lsr": 40.0},
+            reviewed_exclusions={
+                "weekly_hours_worked_before_lsr": "tracked in populace#242"
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "weekly_hours_worked_before_lsr": "tracked in populace#242"
+        }
+
+    def test_stale_exclusion_for_column_with_signal_fails(self) -> None:
+        result = default_valued_columns_gate(
+            {"weekly_hours_worked_before_lsr": np.asarray([0.0, 40.0])},
+            {"weekly_hours_worked_before_lsr": 40.0},
+            reviewed_exclusions={
+                "weekly_hours_worked_before_lsr": "tracked in populace#242"
+            },
+        )
+        assert not result.passed
+        assert "Stale reviewed exclusions" in result.failures[0]
+
+    def test_dormant_exclusion_for_absent_column_passes(self) -> None:
+        # Different release lines persist different column sets; an exclusion
+        # for a column not on this surface must not fail the gate.
+        result = default_valued_columns_gate(
+            {"employment_income": np.asarray([0.0, 52_000.0])},
+            {"employment_income": 0.0},
+            reviewed_exclusions={
+                "weekly_hours_worked_before_lsr": "tracked in populace#242"
+            },
+        )
+        assert result.passed
+        assert result.details["dormant_exclusions"] == [
+            "weekly_hours_worked_before_lsr"
+        ]
+
+    def test_reviewed_exclusion_needs_mapping_reason(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            default_valued_columns_gate(
+                {},
+                {},
+                reviewed_exclusions=["weekly_hours_worked_before_lsr"],  # type: ignore[arg-type]
             )
 
 
