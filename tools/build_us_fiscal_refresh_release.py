@@ -3277,6 +3277,7 @@ def _input_mass_reference_gate(
     reference_h5: Path | None,
     relative_tolerance: float,
     minimum_reference_total: float,
+    reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult | None:
     """Gate the base frame's persisted input mass against a certified release.
 
@@ -3296,6 +3297,7 @@ def _input_mass_reference_gate(
         reference_name=reference_h5.name,
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        reviewed_exclusions=reviewed_exclusions,
     )
 
 
@@ -4877,11 +4879,26 @@ def main() -> None:
             "input_mass_reference_gate",
             message="Gating base-frame input mass against the reference release.",
         )
+    # Columns the builder itself rescaled toward ledger targets after load
+    # are expected to drift from the raw reference; exclude them with the
+    # repair recorded as the reason so the gate checks pipeline loss, not
+    # the builder's own intended corrections.
+    repaired_column_exclusions = {
+        column: (
+            "ledger-targeted value repair rescaled this column at load "
+            f"(factor {payload.get('factor', float('nan')):.4f}); the "
+            "base-vs-reference delta is the intended repair"
+        )
+        for column, payload in (
+            social_security_component_repair.get("components") or {}
+        ).items()
+    }
     input_mass_reference_gate = _input_mass_reference_gate(
         base_frame,
         reference_h5=args.input_mass_reference_h5,
         relative_tolerance=args.input_mass_relative_tolerance,
         minimum_reference_total=args.input_mass_minimum_reference_total,
+        reviewed_exclusions=repaired_column_exclusions or None,
     )
     if (
         input_mass_reference_gate is not None
