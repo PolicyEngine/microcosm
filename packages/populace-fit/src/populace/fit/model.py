@@ -1,14 +1,21 @@
 """The conditional-model protocol and the weight-resolution it enforces.
 
-A conditional model fits ``P(y | x)`` over a :class:`~populace.frame.Frame` and
-draws from it. The defining property of this operator is that fitting is
-**weight-aware by construction**: the weights come from the Frame's typed weight
-vectors, never from a raw array a caller might forget to pass, and an unweighted
-fit is impossible to request without writing ``weights="none"`` and meaning it.
+A conditional model fits ``P(y | x)`` over a :class:`~populace.frame.Frame` —
+or a plain :class:`pandas.DataFrame` — and draws from it. The defining property
+of this operator is that fitting is **weight-aware by construction**. On a
+Frame, the weights come from its typed weight vectors, never from a raw array a
+caller might forget to pass, and an unweighted fit is impossible to request
+without writing ``weights="none"`` and meaning it. A bare DataFrame carries no
+typed weights, so there the rule inverts from "safe default" to "no default":
+the caller must state weights explicitly — a weight column name, a weight
+vector, or ``weights="none"`` — and omitting them is an error, not a silent
+unweighted fit.
 
-:func:`resolve_fit_weights` is the single authority for that rule. Every model
-in :mod:`populace.fit` routes its weight handling through it, so "no silent
-unweighted default" is enforced in one place rather than re-litigated per model.
+:func:`resolve_fit_weights` (Frame) and :func:`resolve_dataframe_fit_weights`
+(DataFrame) are the single authorities for that rule. Every model in
+:mod:`populace.fit` routes its weight handling through them, so "no silent
+unweighted default" is enforced in one place rather than re-litigated per
+model.
 """
 
 from __future__ import annotations
@@ -27,7 +34,9 @@ __all__ = [
     "DESIGN_WEIGHTS",
     "NO_WEIGHTS",
     "resolve_fit_weights",
+    "resolve_dataframe_fit_weights",
     "predictors_targets_entity",
+    "dataframe_fit_columns",
 ]
 
 #: ``weights="design"`` — fit on the owning entity's design weights. The
@@ -38,10 +47,13 @@ DESIGN_WEIGHTS = "design"
 #: an unweighted fit is a deliberate statistical choice, not a silent fallback.
 NO_WEIGHTS = "none"
 
-#: The weight specification accepted by a fit. A :class:`WeightKind` (or its
-#: string value ``"design" | "importance" | "calibrated"``) selects which typed
-#: weight vector of the owning entity to use; ``"none"`` fits unweighted.
-WeightSpec = "WeightKind | str"
+#: The weight specification accepted by a fit. On a Frame: a
+#: :class:`WeightKind` (or its string value
+#: ``"design" | "importance" | "calibrated"``) selects which typed weight
+#: vector of the owning entity to use. On a DataFrame: the name of a weight
+#: column, or a 1-D weight vector (array / Series, read positionally) aligned
+#: to the rows. ``"none"`` fits unweighted on either input — the only way to.
+WeightSpec = "WeightKind | str | np.ndarray | pd.Series | Sequence[float]"
 
 # Map the accepted string spellings to the kernel's WeightKind. ``"none"`` is
 # handled separately (it is the absence of a kind, not a kind).
@@ -78,19 +90,21 @@ class FittedModel(Protocol):
 
 @runtime_checkable
 class ConditionalModel(Protocol):
-    """A model that fits a conditional distribution over a Frame.
+    """A model that fits a conditional distribution over a Frame or DataFrame.
 
     The protocol is intentionally minimal so trajectory and sequence models can
     slot in behind it later (DESIGN.md, "populace-fit: conditional models").
-    The single non-negotiable is the weight contract: ``weights`` selects a
-    typed weight vector of the entity that owns the predictors and targets, and
-    defaults to that entity's design weights. ``weights="none"`` is the only
-    way to fit unweighted.
+    The single non-negotiable is the weight contract: on a Frame, ``weights``
+    selects a typed weight vector of the entity that owns the predictors and
+    targets, and defaults to that entity's design weights; on a DataFrame —
+    which has no typed weights — ``weights`` must be stated explicitly (a
+    weight column name or a weight vector). ``weights="none"`` is the only way
+    to fit unweighted on either input.
     """
 
     def fit(
         self,
-        frame: Frame,
+        frame_or_df: Frame | pd.DataFrame,
         predictors: list[str],
         targets: list[str],
         *,
@@ -99,15 +113,21 @@ class ConditionalModel(Protocol):
         """Fit the conditional distribution ``P(targets | predictors)``.
 
         Args:
-            frame: The frame to fit on. Predictors and targets must all live on
-                the same entity (resolved from the frame's column ownership).
+            frame_or_df: The rows to fit on. For a
+                :class:`~populace.frame.Frame`, predictors and targets must all
+                live on the same entity (resolved from the frame's column
+                ownership). For a :class:`pandas.DataFrame`, they must all be
+                columns of it.
             predictors: Conditioning variable names.
             targets: Variable names to learn the conditional of.
-            weights: Which typed weight vector of the owning entity to weight
-                the fit by. A :class:`~populace.frame.WeightKind` or its string
-                value selects the kind; the default ``"design"`` uses that
-                entity's design weights. ``"none"`` fits unweighted — the only
-                way to do so, and a deliberate choice.
+            weights: On a Frame: which typed weight vector of the owning entity
+                to weight the fit by — a :class:`~populace.frame.WeightKind` or
+                its string value; the default ``"design"`` uses that entity's
+                design weights. On a DataFrame: required — the name of a weight
+                column or a 1-D weight vector aligned to the rows (the
+                ``"design"`` default is a Frame concept and raises). ``"none"``
+                fits unweighted — the only way to do so, and a deliberate
+                choice.
 
         Returns:
             A :class:`FittedModel`.
@@ -122,6 +142,34 @@ def _duplicates(names: list[str]) -> list[str]:
     for name in names:
         (dups if name in seen else seen).add(name)
     return sorted(dups)
+
+
+def _validate_fit_names(predictors: list[str], targets: list[str]) -> None:
+    """Refuse empty, duplicated, or overlapping predictor/target names.
+
+    The name discipline is the same on both front doors (Frame and DataFrame),
+    so it lives here and the per-input validators layer ownership/membership
+    checks on top.
+
+    Raises:
+        ValueError: Naming the duplicates or the overlap.
+    """
+    if not predictors:
+        raise ValueError("fit requires at least one predictor.")
+    if not targets:
+        raise ValueError("fit requires at least one target.")
+    predictor_dups = _duplicates(predictors)
+    if predictor_dups:
+        raise ValueError(f"Duplicate predictors: {predictor_dups}.")
+    target_dups = _duplicates(targets)
+    if target_dups:
+        raise ValueError(f"Duplicate targets: {target_dups}.")
+    overlap = sorted(set(predictors) & set(targets))
+    if overlap:
+        raise ValueError(
+            f"Columns are both predictor and target: {overlap}; a target "
+            "cannot condition on itself."
+        )
 
 
 def predictors_targets_entity(
@@ -149,22 +197,7 @@ def predictors_targets_entity(
             column on any entity table, or the names span more than one entity.
             The message names the offending columns and their entities.
     """
-    if not predictors:
-        raise ValueError("fit requires at least one predictor.")
-    if not targets:
-        raise ValueError("fit requires at least one target.")
-    predictor_dups = _duplicates(predictors)
-    if predictor_dups:
-        raise ValueError(f"Duplicate predictors: {predictor_dups}.")
-    target_dups = _duplicates(targets)
-    if target_dups:
-        raise ValueError(f"Duplicate targets: {target_dups}.")
-    overlap = sorted(set(predictors) & set(targets))
-    if overlap:
-        raise ValueError(
-            f"Columns are both predictor and target: {overlap}; a target "
-            "cannot condition on itself."
-        )
+    _validate_fit_names(predictors, targets)
     owners: dict[str, str] = {}
     for column in (*predictors, *targets):
         owners[column] = frame.column_entity(column)  # raises naming the column
@@ -276,3 +309,144 @@ def resolve_fit_weights(
             f"to {requested.value!r} first."
         )
     return np.asarray(resolved.values, dtype=np.float64)
+
+
+def dataframe_fit_columns(
+    df: pd.DataFrame, predictors: list[str], targets: list[str]
+) -> None:
+    """Validate that a DataFrame fit's predictors and targets are its columns.
+
+    The DataFrame analogue of :func:`predictors_targets_entity`: the same name
+    discipline (non-empty, no duplicates, no predictor/target overlap), with
+    column membership in ``df`` standing in for entity ownership — a single
+    table is a single grain, so there is no entity to resolve.
+
+    Args:
+        df: The DataFrame to fit on.
+        predictors: Predictor variable names (at least one).
+        targets: Target variable names (at least one).
+
+    Raises:
+        ValueError: If a name rule is violated or a name is missing from
+            ``df``'s columns. The message names the missing columns.
+    """
+    _validate_fit_names(predictors, targets)
+    missing = [c for c in (*predictors, *targets) if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"DataFrame fit is missing column(s) {missing}; the fit "
+            f"conditions on {predictors} and imputes {targets}."
+        )
+
+
+def resolve_dataframe_fit_weights(
+    df: pd.DataFrame,
+    weights: WeightSpec,
+    *,
+    predictors: list[str],
+    targets: list[str],
+) -> np.ndarray | None:
+    """Resolve an explicit ``weights`` spec for a DataFrame fit.
+
+    This is the enforcement point for the DataFrame front door's defining rule:
+    a bare DataFrame has no typed weights, so there is no safe default to fall
+    back on — the caller must state the weights. Accepted forms:
+
+    - the name of a numeric weight column of ``df``,
+    - a 1-D weight vector (array / Series / sequence) aligned positionally to
+      ``df``'s rows (a Series' index is ignored), or
+    - ``NO_WEIGHTS`` (``"none"``) to deliberately fit unweighted.
+
+    The typed-kind spellings (``"design"`` / ``"importance"`` / ``"calibrated"``
+    / a :class:`~populace.frame.WeightKind`) are Frame concepts and are refused
+    — including the protocol's ``"design"`` default, which is what makes
+    *omitting* ``weights`` on a DataFrame an error rather than a silent
+    unweighted fit. A column literally named ``"none"`` (or a kind spelling)
+    cannot be selected by name; pass its values as a vector instead.
+
+    Args:
+        df: The DataFrame to fit on.
+        weights: The explicit weight spec (see above).
+        predictors: The fit's predictor names — a weight column may not also
+            be a predictor (the weight would leak into the features).
+        targets: The fit's target names — a weight column may not also be a
+            target.
+
+    Returns:
+        ``None`` for ``weights="none"``, otherwise a float64 vector of length
+        ``len(df)``.
+
+    Raises:
+        TypeError: If ``weights`` is neither a string, a 1-D numeric
+            vector, nor ``"none"``.
+        ValueError: If a typed-kind spelling is passed, the named column is
+            absent / non-numeric / also a predictor or target, or the vector
+            has the wrong length or dimension, is non-finite, is negative, or
+            sums to zero. Messages name the culprit and the fix.
+    """
+    if isinstance(weights, WeightKind) or (
+        isinstance(weights, str) and weights in _KIND_BY_NAME
+    ):
+        spelled = weights.value if isinstance(weights, WeightKind) else weights
+        raise ValueError(
+            f"A DataFrame has no typed weights, so weights={spelled!r} cannot "
+            "be resolved (typed weight kinds are a Frame concept, and the "
+            f"{DESIGN_WEIGHTS!r} default only applies to Frames). Pass the "
+            "name of a weight column in the DataFrame, a weight vector "
+            f"aligned to its rows, or weights={NO_WEIGHTS!r} to deliberately "
+            "fit unweighted."
+        )
+
+    if isinstance(weights, str):
+        if weights == NO_WEIGHTS:
+            return None
+        if weights not in df.columns:
+            raise ValueError(
+                f"weights={weights!r} is not a column of the DataFrame. Pass "
+                "the name of a weight column, a weight vector, or "
+                f"weights={NO_WEIGHTS!r} to fit unweighted."
+            )
+        if weights in predictors:
+            raise ValueError(
+                f"Weight column {weights!r} is also a predictor; the weight "
+                "would leak into the features. Drop it from predictors or "
+                "pass the weights as a vector."
+            )
+        if weights in targets:
+            raise ValueError(
+                f"Weight column {weights!r} is also a target; a fit cannot "
+                "impute its own weights. Drop it from targets or pass the "
+                "weights as a vector."
+            )
+        column = df[weights]
+        if not pd.api.types.is_numeric_dtype(column):
+            raise ValueError(
+                f"Weight column {weights!r} is not numeric (dtype {column.dtype})."
+            )
+        vector = column.to_numpy(dtype=np.float64)
+    else:
+        try:
+            vector = np.asarray(weights, dtype=np.float64)
+        except (TypeError, ValueError):
+            raise TypeError(
+                "weights must be a weight column name, a 1-D numeric weight "
+                f"vector, or {NO_WEIGHTS!r}; got {type(weights).__name__}."
+            ) from None
+        if vector.ndim != 1:
+            raise ValueError(f"Weight vector must be 1-D, got shape {vector.shape}.")
+        if len(vector) != len(df):
+            raise ValueError(
+                f"Weight vector length {len(vector)} does not match the "
+                f"DataFrame's {len(df)} rows."
+            )
+
+    if not np.isfinite(vector).all():
+        raise ValueError("Weights must be finite; found NaN or infinite values.")
+    if (vector < 0).any():
+        raise ValueError("Weights must be non-negative; found negative values.")
+    if float(vector.sum()) <= 0.0:
+        raise ValueError(
+            "Weights sum to zero; a weighted fit needs positive mass. To fit "
+            f"unweighted, pass weights={NO_WEIGHTS!r} explicitly."
+        )
+    return vector
