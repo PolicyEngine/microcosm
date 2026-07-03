@@ -562,6 +562,15 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--allow-immigration-composition-drift",
+        action="store_true",
+        help=(
+            "Escape hatch for bases predating the #266 immigration channel: "
+            "record immigration-composition gate results without failing the "
+            "build. The gate verdict still lands in the build manifest."
+        ),
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
@@ -4771,13 +4780,22 @@ def main() -> None:
                 failures=list(immigration_gate.failures),
                 force_upload=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Immigration composition failed: {failure}"
-                for failure in immigration_gate.failures
+        if args.allow_immigration_composition_drift:
+            print(
+                "warning: immigration composition gate failed but "
+                "--allow-immigration-composition-drift is set; continuing. "
+                "Failures: "
+                + "; ".join(immigration_gate.failures),
+                file=sys.stderr,
             )
-        )
+        else:
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Immigration composition failed: {failure}"
+                    for failure in immigration_gate.failures
+                )
+            )
     if telemetry is not None:
         telemetry.stage(
             "source_inputs",
