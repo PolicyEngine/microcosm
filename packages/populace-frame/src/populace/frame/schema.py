@@ -9,8 +9,8 @@ id column ``{group}_id`` — so every operator reads structure the same way.
 :class:`LinkSpec` declares an *association* between two entities (e.g. a
 ``jobs`` link between persons and firms): a many-to-many relation carried as
 its own table, distinct from the partition semantics of group membership.
-Links are a documented placeholder today — the schema declares them and the
-frame validates their tables, but link-aware operators come later.
+Links are an experimental placeholder today — the schema declares them and
+the frame validates their tables, but link-aware operators come later.
 
 :class:`VariableMetadata` records what a variable is (owning entity, dtype
 kind, period semantics) so tools resolve it through metadata instead of
@@ -36,10 +36,12 @@ class LinkSpec:
     entities' id columns (``{left}_id`` / ``{right}_id`` per the schema's
     id-column convention), each validated against the linked table's ids.
 
-    This is a documented placeholder: the schema declares links and the
+    This is an experimental placeholder: the schema declares links and the
     frame validates their tables on construction, but link-aware operators
     (broadcast through links, link-preserving ``select``/``concat``,
-    link targets outside the partition entities) come later.
+    link targets outside the partition entities) come later. Person-firm
+    links are valid experimental frames, not production firm microsimulation
+    support.
 
     Attributes:
         name: Name of the link (and of its table in a frame's ``tables``).

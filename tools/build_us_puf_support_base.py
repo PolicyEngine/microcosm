@@ -22,6 +22,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR,
+    GEOGRAPHY_LADDER_VINTAGES_ATTR,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -34,11 +36,15 @@ from populace.build.us_runtime import (
     derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
     load_congressional_district_vintage_crosswalk,
+    load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_geography_ladder_assignment_summary,
+    us_geography_ladder_gate,
     us_immigration_composition_summary,
     with_household_congressional_districts,
+    with_household_us_geography_ladder,
     with_us_immigration_inputs,
 )
 from populace.frame import Frame, WeightKind, Weights
@@ -105,6 +111,38 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--congressional-district-seed", default=0, type=int)
+    parser.add_argument(
+        "--block-ladder-artifact",
+        type=Path,
+        help=(
+            "US block-ladder NPZ artifact "
+            "(tools/build_us_block_ladder_artifact.py). Assigns each "
+            "household a census block within its congressional district and "
+            "derives the county/tract/place/SLD/CBSA spine columns. US bases "
+            "carry the ladder by default; omit only with "
+            "--without-block-ladder."
+        ),
+    )
+    parser.add_argument(
+        "--without-block-ladder",
+        action="store_true",
+        help=(
+            "Explicitly build a base without the geography ladder "
+            "(diagnostic builds only; a ladder-less base cannot become a "
+            "release — the L0/refit export requires the spine columns)."
+        ),
+    )
+    parser.add_argument("--geography-ladder-seed", default=0, type=int)
+    parser.add_argument(
+        "--allow-geography-ladder-gate-failures",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch for partial-spine smoke builds. By "
+            "default a failing geography-ladder gate (e.g. the NYC "
+            "never-collapses-to-zero regression of populace #34) aborts the "
+            "build."
+        ),
+    )
     args = parser.parse_args(argv)
     if (
         args.congressional_district_vintage_crosswalk is not None
@@ -116,6 +154,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.assign_congressional_districts and args.ledger_facts is None:
         parser.error("--assign-congressional-districts requires --ledger-facts")
+    if args.block_ladder_artifact is not None and (
+        args.congressional_district_vintage_crosswalk is None
+    ):
+        parser.error(
+            "--block-ladder-artifact requires "
+            "--congressional-district-vintage-crosswalk: block sampling is "
+            "conditioned on households carrying current-vintage districts"
+        )
+    if args.block_ladder_artifact is not None and args.without_block_ladder:
+        parser.error(
+            "--block-ladder-artifact and --without-block-ladder are contradictory"
+        )
+    if args.block_ladder_artifact is None and not args.without_block_ladder:
+        parser.error(
+            "US bases carry the block-anchored geography ladder by default "
+            "(populace #275): pass --block-ladder-artifact <npz> "
+            "(tools/build_us_block_ladder_artifact.py) or opt out "
+            "explicitly with --without-block-ladder"
+        )
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
     return args
@@ -184,17 +241,67 @@ def main() -> None:
                 "seed": args.congressional_district_seed,
             }
         )
+    geography_ladder_assignment = {
+        "applied": False,
+        "opted_out": bool(args.without_block_ladder),
+    }
+    if args.block_ladder_artifact is not None:
+        ladder = load_us_block_ladder(args.block_ladder_artifact)
+        imputed = with_household_us_geography_ladder(
+            imputed,
+            ladder,
+            seed=args.geography_ladder_seed,
+            expected_congressional_district_vintage=(
+                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+        )
+        household = imputed.table("household")
+        household_weights = imputed.weights_for("household").values
+        gate = us_geography_ladder_gate(household, household_weights)
+        if not gate.passed and not args.allow_geography_ladder_gate_failures:
+            raise SystemExit(
+                "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
+            )
+        geography_ladder_assignment = us_geography_ladder_assignment_summary(
+            household,
+            ladder,
+            weight_values=household_weights,
+        )
+        geography_ladder_assignment.update(
+            {
+                "artifact": str(args.block_ladder_artifact.resolve()),
+                "artifact_sha256": _sha256(args.block_ladder_artifact),
+                "seed": args.geography_ladder_seed,
+                "gate": {
+                    "passed": gate.passed,
+                    "failures": list(gate.failures),
+                    "details": dict(gate.details),
+                },
+            }
+        )
     PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=args.target_year)
-    if args.congressional_district_vintage_crosswalk is not None:
+    if (
+        args.congressional_district_vintage_crosswalk is not None
+        or args.block_ladder_artifact is not None
+    ):
         import h5py
 
         with h5py.File(output_h5, "a") as h5:
-            h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = _sha256(
-                args.congressional_district_vintage_crosswalk
-            )
-            h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
-                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
-            )
+            if args.congressional_district_vintage_crosswalk is not None:
+                h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = (
+                    _sha256(args.congressional_district_vintage_crosswalk)
+                )
+                h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+                )
+            if args.block_ladder_artifact is not None:
+                h5.attrs[GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR] = _sha256(
+                    args.block_ladder_artifact
+                )
+                h5.attrs[GEOGRAPHY_LADDER_VINTAGES_ATTR] = json.dumps(
+                    geography_ladder_assignment["layer_vintages"],
+                    sort_keys=True,
+                )
 
     summary = {
         "base_source": base_source,
@@ -216,6 +323,7 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "congressional_district_assignment": congressional_district_assignment,
+        "geography_ladder_assignment": geography_ladder_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
         "immigration_composition": us_immigration_composition_summary(imputed),
     }

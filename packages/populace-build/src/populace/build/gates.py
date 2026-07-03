@@ -25,6 +25,11 @@ The gates encode the build lessons of 2026:
 - :func:`export_surface_gate` and :func:`target_surface_gate` — replacement
   builds can prove they cover a reference artifact's export variables and
   calibration targets, e.g. UK Populace against eFRS.
+- :func:`input_mass_parity_gate` — persisted input columns must carry their
+  weighted mass through a derived artifact. A sparse selection or a rebuilt
+  base pipeline that silently drops an input base (IRA contributions,
+  childcare expenses) scores every reform on that base at ~$0 while hitting
+  its own target surface perfectly (populace issue #278).
 
 Scoring uses :func:`relative_error_loss` — the calibrator's own objective —
 so there is no calibrator-vs-scorer objective mismatch: what the solver
@@ -48,6 +53,7 @@ __all__ = [
     "export_surface_gate",
     "formula_owned_export_gate",
     "exported_nonzero_gate",
+    "input_mass_parity_gate",
     "macro_realism_gate",
     "nonconstant_columns_gate",
     "nonnegative_columns_gate",
@@ -794,6 +800,137 @@ def export_surface_gate(
             "unused_reviewed_exclusions": sorted(set(exclusions) - reference),
             "missing_reference_columns": missing,
             "unexpected_candidate_columns": unexpected,
+        },
+    )
+
+
+def input_mass_parity_gate(
+    candidate_totals: Mapping[str, float],
+    reference_totals: Mapping[str, float],
+    *,
+    candidate_name: str = "candidate",
+    reference_name: str = "reference",
+    relative_tolerance: float = 0.5,
+    minimum_reference_total: float = 0.0,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Require persisted input mass to survive into a derived artifact.
+
+    A sparse selection, a saved-weight reconstruction, or a rebuilt base
+    pipeline can zero an untargeted input column while every calibrated
+    target still fits: the on-surface residuals look perfect and every
+    reform touching that base silently scores ~$0 (populace issue #278,
+    where the sparse release dropped IRA/HSA/pension-contribution and
+    childcare inputs the dense parent carried). This gate compares
+    weighted per-column totals between the artifact and its parent or a
+    certified reference release; columns that lose more than
+    ``relative_tolerance`` of their reference mass — or disappear
+    entirely — fail unless a reviewed exclusion documents why.
+
+    Columns whose reference mass is at most ``minimum_reference_total``
+    in absolute value are skipped: a near-zero reference total makes
+    relative drift meaningless. Columns only the candidate carries are
+    reported in details but never fail — added signal is the export
+    surface gate's concern, not lost mass.
+
+    Args:
+        candidate_totals: Column -> weighted total in the derived artifact.
+        reference_totals: Column -> weighted total in the parent build or
+            certified reference release.
+        candidate_name: Label for the derived artifact in messages.
+        reference_name: Label for the reference artifact in messages.
+        relative_tolerance: Maximum allowed ``|candidate - reference| /
+            |reference|`` before a column fails.
+        minimum_reference_total: Reference-mass floor below which a column
+            is not checked.
+        reviewed_exclusions: Column -> reason for columns allowed to drift
+            or disappear (each needs a non-empty reason; unused entries are
+            reported so the register cannot rot).
+
+    Returns:
+        Pass iff every material reference column keeps its mass within
+        tolerance or carries a reviewed exclusion.
+    """
+    if relative_tolerance < 0:
+        raise ValueError(
+            f"relative_tolerance must be non-negative, got {relative_tolerance!r}."
+        )
+    if minimum_reference_total < 0:
+        raise ValueError(
+            "minimum_reference_total must be non-negative, got "
+            f"{minimum_reference_total!r}."
+        )
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    reference = {str(name): float(total) for name, total in reference_totals.items()}
+    candidate = {str(name): float(total) for name, total in candidate_totals.items()}
+
+    failures: list[str] = []
+    drifts: dict[str, float] = {}
+    checked: list[str] = []
+    skipped_below_floor: list[str] = []
+    for name in sorted(reference):
+        reference_total = reference[name]
+        if not np.isfinite(reference_total):
+            raise ValueError(f"Reference total for {name!r} must be finite.")
+        if abs(reference_total) <= minimum_reference_total:
+            skipped_below_floor.append(name)
+            continue
+        if name in exclusions:
+            continue
+        checked.append(name)
+        if name not in candidate:
+            drifts[name] = -1.0
+            failures.append(
+                f"{name}: {reference_name} carries {reference_total:.6g} but the "
+                f"column is absent from {candidate_name}; carry the input "
+                "through the build or add a reviewed exclusion."
+            )
+            continue
+        candidate_total = candidate[name]
+        if not np.isfinite(candidate_total):
+            raise ValueError(f"Candidate total for {name!r} must be finite.")
+        drift = (candidate_total - reference_total) / abs(reference_total)
+        drifts[name] = float(drift)
+        if candidate_total == 0.0:
+            # Total loss is the issue #278 signature: a zeroed input base is
+            # the same failure as an absent one, at any drift tolerance.
+            failures.append(
+                f"{name}: {reference_name} carries {reference_total:.6g} but "
+                f"{candidate_name} mass is zero ({drift:+.1%}); carry the "
+                "input through the build or add a reviewed exclusion."
+            )
+        elif abs(drift) > relative_tolerance:
+            failures.append(
+                f"{name}: {candidate_name} mass {candidate_total:.6g} vs "
+                f"{reference_name} {reference_total:.6g} ({drift:+.1%}, beyond "
+                f"±{relative_tolerance:.0%}); carry the input through the build "
+                "or add a reviewed exclusion."
+            )
+
+    worst = sorted(
+        ((name, drift) for name, drift in drifts.items()),
+        key=lambda item: abs(item[1]),
+        reverse=True,
+    )
+    return GateResult(
+        name="input_mass_parity",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "candidate_name": candidate_name,
+            "reference_name": reference_name,
+            "relative_tolerance": float(relative_tolerance),
+            "minimum_reference_total": float(minimum_reference_total),
+            "columns_checked": len(checked),
+            "columns_below_reference_floor": len(skipped_below_floor),
+            "candidate_only_columns": sorted(set(candidate) - set(reference)),
+            "worst_drifts": {name: drift for name, drift in worst[:20]},
+            "reviewed_exclusions": {
+                name: reason
+                for name, reason in sorted(exclusions.items())
+                if name in reference
+            },
+            "unused_reviewed_exclusions": sorted(set(exclusions) - set(reference)),
         },
     )
 

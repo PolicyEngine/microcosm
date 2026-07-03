@@ -18,6 +18,7 @@ from populace.frame import US_SCHEMA, Frame
 __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
+    "CPS_CARRIED_SPM_UNIT_INPUTS",
     "derive_us_cps_carried_inputs",
 ]
 
@@ -76,6 +77,12 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "is_female",
         "unemployment_compensation",
         "miscellaneous_income",
+    }
+)
+
+CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
+    {
+        "spm_unit_pre_subsidy_childcare_expenses",
     }
 )
 
@@ -161,6 +168,7 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
         _fill_missing(person, output, _source(person, source))
 
     _fill_health_coverage_inputs(person)
+    _fill_spm_unit_childcare_inputs(person, tables["spm_unit"])
 
     formula_owned = sorted(CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person))
     if formula_owned:
@@ -267,6 +275,35 @@ def _fill_health_coverage_inputs(person: pd.DataFrame) -> None:
     }
     for output, source in source_columns.items():
         _fill_bool_missing(person, output, _yes_code(person, source))
+
+
+def _fill_spm_unit_childcare_inputs(
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+) -> None:
+    """Carry ASEC SPM childcare expenses onto the SPM-unit input leaf.
+
+    ``SPM_CHILDCAREXPNS`` is an SPM-unit value replicated on every member's
+    person record, so the unit's value is its members' maximum. The engine
+    derives person, tax-unit, and CDCC childcare expenses from this leaf;
+    a base without it zeroes every CDCC baseline (populace issue #278).
+    """
+
+    column = "spm_unit_pre_subsidy_childcare_expenses"
+    if column in spm_unit.columns:
+        return
+    member_values = pd.DataFrame(
+        {
+            "person_spm_unit_id": person["person_spm_unit_id"],
+            column: _source(person, "SPM_CHILDCAREXPNS"),
+        }
+    )
+    unit_values = member_values.groupby("person_spm_unit_id", sort=False)[column].max()
+    spm_unit[column] = (
+        unit_values.reindex(spm_unit["spm_unit_id"])
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
 
 
 def _ira_distributions(person: pd.DataFrame) -> np.ndarray:

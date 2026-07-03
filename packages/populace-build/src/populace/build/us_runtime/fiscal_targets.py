@@ -10,6 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from populace.build.ledger_targets import (
 from populace.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
+from populace.build.us_runtime.target_aging import age_us_dollar_targets
 from populace.calibrate import TargetRegistry, TargetSpec
 
 __all__ = [
@@ -407,6 +409,16 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
         "cms_medicaid",
         {"target_role": "medicaid_enrollment"},
     ),
+    ("cms_medicaid", "chip_enrollment"): (
+        "chip_enrolled",
+        "cms_medicaid",
+        {"target_role": "chip_enrollment"},
+    ),
+    ("cms_medicaid", "total_chip_enrollment"): (
+        "chip_enrolled",
+        "cms_medicaid",
+        {"target_role": "chip_enrollment"},
+    ),
     ("cms_medicaid", "total_medicaid_chip_enrollment"): (
         ("medicaid_enrolled", "chip_enrolled"),
         "cms_medicaid",
@@ -711,8 +723,23 @@ def compile_us_fiscal_target_registry(
     target_period: int | str = 2024,
     include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: object | None = None,
+    age_targets: bool = False,
 ) -> TargetRegistry:
-    """Resolve US fiscal targets from an external Ledger fact feed."""
+    """Resolve US fiscal targets from an external Ledger fact feed.
+
+    Args:
+        facts: The Ledger consumer facts feed.
+        target_period: The build period targets are compiled for.
+        include_congressional_district_targets: Opt into CD-level targets.
+        congressional_district_vintage_crosswalk: Optional CD vintage crosswalk.
+        age_targets: Opt into compile-time period aging of dollar-amount
+            targets whose source period differs from ``target_period``
+            (PolicyEngine/populace#116, #212). Defaults to ``False`` so the
+            compiled surface is unchanged unless a build explicitly enables it.
+            When enabled, dollar amounts are scaled by CBO revenue-projection
+            growth ratios drawn from the facts feed; counts stay raw. See
+            :mod:`populace.build.us_runtime.target_aging`.
+    """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
@@ -738,6 +765,7 @@ def compile_us_fiscal_target_registry(
         country="us",
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
+    registry = _with_derived_chip_enrollment_targets(registry)
     registry = _uprate_cross_period_soi_decompositions(
         registry,
         materialized_facts,
@@ -748,7 +776,7 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
-    return apply_ledger_target_profile(
+    registry = apply_ledger_target_profile(
         registry,
         _load_us_fiscal_target_profile(),
         context={
@@ -759,6 +787,117 @@ def compile_us_fiscal_target_registry(
             ),
         },
     )
+    if age_targets:
+        # Final nominal transform: age dollar amounts from their source period
+        # to the build period on the fully within-surface-aligned registry.
+        # Opt-in and inert by default (PolicyEngine/populace#116, #212; eventual
+        # fact/computed boundary in PolicyEngine/ledger#71).
+        registry = age_us_dollar_targets(
+            registry,
+            materialized_facts,
+            target_period=target_period,
+        )
+    return registry
+
+
+def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetRegistry:
+    """Add direct CHIP rows from CMS Medicaid+CHIP and Medicaid controls.
+
+    CMS monthly enrollment facts currently expose Medicaid enrollment and
+    Medicaid+CHIP enrollment. The release still needs a first-class
+    ``chip_enrolled`` target so calibration diagnostics can report the split
+    directly instead of asking reviewers to subtract two fitted rows.
+    """
+
+    specs = list(registry.specs)
+    medicaid = _cms_medicaid_specs_by_key(specs, "medicaid_enrollment")
+    combined = _cms_medicaid_specs_by_key(specs, "medicaid_chip_enrollment")
+    existing_chip = _cms_medicaid_specs_by_key(specs, "chip_enrollment")
+    for key, combined_spec in sorted(combined.items()):
+        if key in existing_chip or key not in medicaid:
+            continue
+        medicaid_spec = medicaid[key]
+        chip_value = combined_spec.value - medicaid_spec.value
+        if chip_value < 0:
+            raise ValueError(
+                "Cannot derive CHIP enrollment target from CMS controls: "
+                f"{combined_spec.name!r} is less than {medicaid_spec.name!r}."
+            )
+        specs.append(
+            TargetSpec(
+                name=_derived_chip_enrollment_name(combined_spec),
+                entity=combined_spec.entity,
+                measure=_derived_chip_enrollment_name(combined_spec),
+                value=chip_value,
+                period=combined_spec.period,
+                source=(
+                    "Derived from CMS Medicaid+CHIP enrollment minus CMS "
+                    "Medicaid enrollment"
+                ),
+                family="cms_medicaid",
+                metadata=_derived_chip_enrollment_metadata(
+                    combined_spec,
+                    medicaid_spec,
+                ),
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _cms_medicaid_specs_by_key(
+    specs: Iterable[TargetSpec],
+    target_role: str,
+) -> dict[tuple[str | int, str], TargetSpec]:
+    return {
+        (spec.period, spec.metadata.get("state_fips", "")): spec
+        for spec in specs
+        if spec.family == "cms_medicaid"
+        and spec.metadata.get("target_role") == target_role
+    }
+
+
+def _derived_chip_enrollment_name(combined_spec: TargetSpec) -> str:
+    source_record_id = combined_spec.metadata.get(
+        "ledger_source_record_id", combined_spec.name
+    )
+    if "total_medicaid_chip_enrollment" in source_record_id:
+        return source_record_id.replace(
+            "total_medicaid_chip_enrollment",
+            "total_chip_enrollment",
+        )
+    return f"{source_record_id}.derived_chip_enrollment"
+
+
+def _derived_chip_enrollment_metadata(
+    combined_spec: TargetSpec,
+    medicaid_spec: TargetSpec,
+) -> dict[str, str]:
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": "indicator_sum",
+        "source_measure_id": "derived_total_chip_enrollment",
+        "source_period": combined_spec.metadata.get("source_period", ""),
+        "target_period": combined_spec.metadata.get(
+            "target_period", str(combined_spec.period)
+        ),
+        "target_role": "chip_enrollment",
+        "base_variable": "chip_enrolled",
+        "derived_operation": ("medicaid_chip_enrollment_minus_medicaid_enrollment"),
+        "derived_source_record_ids": ",".join(
+            (
+                combined_spec.metadata.get(
+                    "ledger_source_record_id", combined_spec.name
+                ),
+                medicaid_spec.metadata.get(
+                    "ledger_source_record_id", medicaid_spec.name
+                ),
+            )
+        ),
+    }
+    state_fips = combined_spec.metadata.get("state_fips")
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return metadata
 
 
 def _uprate_cross_period_eitc_decompositions(
@@ -2541,6 +2680,12 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         label="Medicaid enrollment",
         accepted_families=("cms_medicaid",),
         required_metadata=(("target_role", "medicaid_enrollment"),),
+    ),
+    TargetCoverageRequirement(
+        requirement_id="chip_enrollment",
+        label="CHIP enrollment",
+        accepted_families=("cms_medicaid",),
+        required_metadata=(("target_role", "chip_enrollment"),),
     ),
     TargetCoverageRequirement(
         requirement_id="medicaid_chip_enrollment",

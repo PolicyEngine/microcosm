@@ -52,6 +52,7 @@ REFERENCE_PROGRAM_TARGET_ROLES = {
     "aca_enrollment",
     "medicaid_enrollment",
     "medicaid_chip_enrollment",
+    "chip_enrollment",
     "medicare_part_b_premium_total",
 }
 
@@ -680,6 +681,128 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
     assert spec.metadata["target_role"] == "medicaid_chip_enrollment"
     assert spec.metadata["base_variables"] == "medicaid_enrolled,chip_enrolled"
     assert "base_variable" not in spec.metadata
+
+
+def test_chip_enrollment_target_is_derived_from_medicaid_split_controls() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=80_000_000,
+                measure_id="total_medicaid_enrollment",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=90_000_000,
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.us.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 10_000_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["source_measure_id"] == "derived_total_chip_enrollment"
+    assert spec.metadata["derived_operation"] == (
+        "medicaid_chip_enrollment_minus_medicaid_enrollment"
+    )
+    assert spec.metadata["derived_source_record_ids"] == (
+        "cms_medicaid.month2024_12.us.total_medicaid_chip_enrollment,"
+        "cms_medicaid.month2024_12.us.total_medicaid_enrollment"
+    )
+
+
+def test_state_chip_enrollment_target_is_derived_from_state_controls() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_000_000,
+                measure_id="total_medicaid_enrollment",
+                geography_level="state",
+                geography_id="0400000US06",
+                geography_slug="ca",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_150_000,
+                geography_level="state",
+                geography_id="0400000US06",
+                geography_slug="ca",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.ca.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 150_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["state_fips"] == "06"
+    assert spec.metadata["derived_source_record_ids"] == (
+        "cms_medicaid.month2024_12.ca.total_medicaid_chip_enrollment,"
+        "cms_medicaid.month2024_12.ca.total_medicaid_enrollment"
+    )
+
+
+def test_direct_chip_enrollment_fact_maps_to_chip_enrolled() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=7_000_000,
+                measure_id="total_chip_enrollment",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.us.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 7_000_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "base_variables" not in spec.metadata
+
+
+def test_direct_chip_enrollment_fact_prevents_duplicate_derived_chip_target() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=80_000_000,
+                measure_id="total_medicaid_enrollment",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=90_000_000,
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=7_000_000,
+                measure_id="total_chip_enrollment",
+            ),
+        ]
+    )
+
+    chip_specs = [
+        spec
+        for spec in registry.specs
+        if spec.name == "cms_medicaid.month2024_12.us.total_chip_enrollment"
+    ]
+    assert len(chip_specs) == 1
+    assert chip_specs[0].value == 7_000_000
+    assert chip_specs[0].metadata["target_role"] == "chip_enrollment"
+    assert "derived_operation" not in chip_specs[0].metadata
 
 
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
@@ -2650,6 +2773,7 @@ def test_us_fiscal_requirements_include_reference_program_and_tax_controls() -> 
     assert "medicaid_spending" not in ids
     assert "medicaid_enrollment" in ids
     assert "medicaid_chip_enrollment" in ids
+    assert "chip_enrollment" in ids
     assert "irs_agi_distribution" in ids
     assert "state_income_tax" in ids
     assert "population_age_national" in ids
@@ -2849,6 +2973,31 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
     assert any(
         "medicaid_enrollment" in failure for failure in enrollment_result.failures
     )
+
+
+def test_chip_requirement_needs_direct_chip_role() -> None:
+    targets = [
+        federal_income_tax_total_row(),
+        *complete_agi_distribution_rows(),
+        *complete_income_source_rows(),
+        *complete_deduction_amount_rows(),
+        *[
+            row
+            for row in complete_program_rows()
+            if row["metadata"]["target_role"] != "chip_enrollment"
+        ],
+        *complete_state_income_tax_rows(45),
+        *complete_population_age_rows(),
+        *complete_jct_rows(),
+    ]
+
+    result = target_profile_coverage_gate(
+        targets,
+        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+
+    assert not result.passed
+    assert any("chip_enrollment" in failure for failure in result.failures)
 
 
 def test_population_age_requirement_needs_complete_national_age_surface() -> None:
@@ -3387,14 +3536,14 @@ def _cms_medicaid_enrollment_fact(
     source_period: str,
     *,
     value: float,
+    measure_id: str = "total_medicaid_chip_enrollment",
     geography_level: str = "country",
     geography_id: str = "0100000US",
     geography_slug: str = "us",
 ) -> dict[str, object]:
     normalized_period = source_period.replace("-", "_")
     source_record_id = (
-        "cms_medicaid."
-        f"month{normalized_period}.{geography_slug}.total_medicaid_chip_enrollment"
+        f"cms_medicaid.month{normalized_period}.{geography_slug}.{measure_id}"
     )
     return {
         "aggregate_fact_key": (
@@ -3415,14 +3564,14 @@ def _cms_medicaid_enrollment_fact(
         "layout": {
             "record_set_id": f"cms_medicaid.month{normalized_period}",
             "groupby_dimension": "program",
-            "groupby_value_id": "total_medicaid_chip_enrollment",
-            "measure_id": "total_medicaid_chip_enrollment",
+            "groupby_value_id": measure_id,
+            "measure_id": measure_id,
         },
         "observed_measure": {
             "source_name": "cms_medicaid",
             "source_table": "Medicaid and CHIP enrollment",
-            "source_measure_id": "total_medicaid_chip_enrollment",
-            "source_concept": "cms.total_medicaid_chip_enrollment",
+            "source_measure_id": measure_id,
+            "source_concept": f"cms.{measure_id}",
             "unit": "people",
         },
         "source": {
@@ -3591,7 +3740,11 @@ def complete_program_rows() -> list[dict[str, object]]:
             family = "irs_soi"
         elif role in {"aca_spending", "aca_enrollment"}:
             family = "cms_aca"
-        elif role in {"medicaid_enrollment", "medicaid_chip_enrollment"}:
+        elif role in {
+            "chip_enrollment",
+            "medicaid_enrollment",
+            "medicaid_chip_enrollment",
+        }:
             family = "cms_medicaid"
         elif role == "medicare_part_b_premium_total":
             family = "cms_medicare"
@@ -3674,3 +3827,342 @@ def complete_jct_rows() -> list[dict[str, object]]:
         }
         for spec in US_JCT_TAX_EXPENDITURE_REFORMS
     ]
+
+
+# ---------------------------------------------------------------------------
+# Opt-in period aging for US dollar targets (PolicyEngine/populace#116, #212).
+# ---------------------------------------------------------------------------
+
+
+def _cbo_income_source_projection_fact(
+    source_period: int,
+    income_source: str,
+    *,
+    value: float,
+) -> dict[str, object]:
+    """A CBO revenue-projection income-by-source fact for one year/series.
+
+    Mirrors the real Ledger consumer-fact shape for
+    ``cbo.revenue_projection.tyYYYY.income_by_source.<series>.projected_amount``
+    (CBO February 2026 Revenue Projections, sheet 3.Individual Income Tax
+    Details), which supplies the aging growth ratios.
+    """
+    source_record_id = (
+        f"cbo.revenue_projection.ty{source_period}.income_by_source."
+        f"{income_source}.projected_amount"
+    )
+    return {
+        "aggregate_fact_key": (
+            f"ledger.aggregate_fact.v2:cbo-proj-{income_source}-{source_period}"
+        ),
+        "semantic_fact_key": (
+            f"ledger.semantic_fact.v2:cbo-proj-{income_source}-{source_period}"
+        ),
+        "legacy_fact_key": f"ledger.fact.v1:cbo-proj-{income_source}-{source_period}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "tax_year", "value": source_period},
+        "entity": {"name": "tax_unit", "role": "filing_unit"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US", "vintage": "current"},
+        "dimensions": {},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": (
+                f"cbo.revenue_projection.ty{source_period}.income_by_source."
+                f"{income_source}"
+            ),
+            "groupby_dimension": "cbo.income_source",
+            "groupby_value_id": income_source,
+            "measure_id": "projected_amount",
+        },
+        "observed_measure": {
+            "source_name": "cbo",
+            "source_table": "Revenue Projections, by Category, February 2026",
+            "source_measure_id": "projected_amount",
+            "source_concept": "cbo.adjusted_gross_income",
+            "unit": "usd",
+        },
+        "source": {
+            "source_name": "cbo",
+            "source_table": "Revenue Projections, by Category, February 2026",
+            "source_file": "cbo_revenue_projections_income_by_source_2026_02.csv",
+            "vintage": "cbo_2026_02_baseline",
+            "url": "https://www.cbo.gov/data/budget-economic-data",
+        },
+    }
+
+
+def _aged_spec_by_source_record_id(registry, source_record_id):
+    return {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }[source_record_id]
+
+
+def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:
+    facts = [
+        *packaged_reference_facts(),
+        _soi_income_tax_fact(2023, value=2_100_000_000_000),
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_350_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    ]
+
+    default_registry = compile_us_fiscal_target_registry(facts, target_period=2025)
+    explicit_off_registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=False
+    )
+
+    # Byte-identical content: the opt-in flag is inert by default.
+    assert default_registry.version == explicit_off_registry.version
+    income_tax = _aged_spec_by_source_record_id(
+        default_registry,
+        "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount",
+    )
+    assert income_tax.value == 2_100_000_000_000
+    assert "basis" not in income_tax.metadata
+    assert "aging_factor" not in income_tax.metadata
+
+
+def test_age_targets_uses_matching_cbo_series_ratio() -> None:
+    source_record_id = "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=source_record_id,
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=9_000_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+        ),
+        # Wages series grows 1.20x; AGI series grows 1.25x. The wages target
+        # must use its own series, not the AGI default.
+        _cbo_income_source_projection_fact(
+            2022, "wages_and_salaries", value=9_500_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "wages_and_salaries", value=11_400_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    assert spec.metadata["basis"] == "projection"
+    assert spec.metadata["source_period"] == "2022"
+    assert spec.metadata["aged_to"] == "2025"
+    assert float(spec.metadata["aging_factor"]) == 1.2
+    assert spec.metadata["aging_factor_source"] == (
+        "cbo.revenue_projection.ty2025.income_by_source."
+        "wages_and_salaries.projected_amount"
+    )
+    assert abs(spec.value - 9_000_000_000_000 * 1.2) < 1.0
+
+
+def test_age_targets_falls_back_to_cbo_agi_growth_ratio() -> None:
+    # The income-tax-liability total has no source-aligned CBO income series,
+    # so it takes the CBO AGI default growth ratio (priority b).
+    source_record_id = "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _soi_income_tax_fact(2023, value=2_100_000_000_000),
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_350_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    expected_factor = 17_500_000_000_000 / 15_350_000_000_000
+    assert spec.metadata["basis"] == "projection"
+    assert abs(float(spec.metadata["aging_factor"]) - expected_factor) < 1e-9
+    assert spec.metadata["aging_factor_source"] == (
+        "cbo.revenue_projection.ty2025.income_by_source."
+        "adjusted_gross_income.projected_amount"
+    )
+    assert abs(spec.value - 2_100_000_000_000 * expected_factor) < 1.0
+
+
+def test_age_targets_falls_back_to_agi_when_series_year_missing() -> None:
+    # Wages series present for the source year only; the build-year wages
+    # projection is absent, so aging must fall back to the AGI series.
+    source_record_id = "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=source_record_id,
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=9_000_000_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+        ),
+        _cbo_income_source_projection_fact(
+            2022, "wages_and_salaries", value=9_500_000_000_000
+        ),
+        # No ty2025 wages projection -> incomplete pair for the wages series.
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    expected_factor = 17_500_000_000_000 / 14_000_000_000_000
+    assert spec.metadata["basis"] == "projection"
+    assert abs(float(spec.metadata["aging_factor"]) - expected_factor) < 1e-9
+    assert "adjusted_gross_income" in spec.metadata["aging_factor_source"]
+
+
+def test_age_targets_leaves_counts_raw() -> None:
+    source_record_id = "irs_soi.ty2022.historic_table_2.us.all.return_count"
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=source_record_id,
+            source_name="irs_soi",
+            measure_id="return_count",
+            value=160_000_000,
+            period_value=2022,
+            dimensions={"income_range": "all", "filing_status": "all"},
+        ),
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["basis"] == "fact"
+    assert spec.metadata["aging_factor"] == "1"
+    assert spec.metadata["aging_factor_source"] == "not_dollar_amount"
+    assert spec.value == 160_000_000
+
+
+def test_age_targets_records_unavailable_when_no_cbo_projection() -> None:
+    # A cross-period dollar target with no CBO projection facts at all must be
+    # left raw, but the un-aged state must be explicit in diagnostics
+    # (the ledger#71 lesson: no silent un-aged consumption).
+    source_record_id = "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _soi_income_tax_fact(2023, value=2_100_000_000_000),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    assert spec.metadata["basis"] == "fact"
+    assert spec.metadata["source_period"] == "2023"
+    assert spec.metadata["aged_to"] == "2025"
+    assert spec.metadata["aging_factor"] == "1"
+    assert spec.metadata["aging_factor_source"] == "unavailable"
+    assert spec.value == 2_100_000_000_000
+
+
+def test_age_targets_no_op_when_source_equals_build_period() -> None:
+    # An SOI dollar target already at the build period is not aged even when a
+    # projection pair exists; there is nothing to bridge.
+    source_record_id = "irs_soi.ty2024.table_3_3.us.all.income_tax_liability_amount"
+    facts = [
+        *packaged_reference_facts(),
+        _soi_income_tax_fact(2024, value=2_300_000_000_000),
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_350_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_685_900_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2024, age_targets=True
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    assert spec.metadata["basis"] == "fact"
+    assert spec.metadata["aging_factor"] == "1"
+    assert spec.metadata["aging_factor_source"] == "source_equals_build"
+    assert spec.value == 2_300_000_000_000
+
+
+def test_age_targets_does_not_double_age_uprated_decompositions() -> None:
+    # Rows already period-aligned within-surface by the SOI/EITC uprating
+    # passes carry an ``uprating_factor`` and must not be re-aged (double
+    # counting). Exercise the guard directly on the aging pass with a
+    # hand-built registry.
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    already_uprated = TargetSpec(
+        name="stale_slice",
+        entity="household",
+        measure="stale_slice",
+        value=40_000_000_000,
+        period=2025,
+        source="irs_soi",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_period": "2022",
+            "source_measure_id": "taxable_interest_amount",
+            "ledger_source_record_id": "stale_slice",
+            # A within-surface uprating pass already rebased this row.
+            "uprating_factor": "1.07",
+            "uprating_from_period": "2022",
+            "uprating_to_period": "2025",
+        },
+    )
+    registry = TargetRegistry([already_uprated], country="us")
+
+    facts = (
+        _cbo_income_source_projection_fact(
+            2022, "adjusted_gross_income", value=14_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2025, "adjusted_gross_income", value=17_500_000_000_000
+        ),
+    )
+
+    aged = age_us_dollar_targets(registry, facts, target_period=2025)
+    spec = aged.specs[0]
+    # Not re-aged: value preserved, basis stays "fact", factor is identity.
+    # An already-uprated row is excluded from aging (not a fresh dollar amount).
+    assert spec.value == 40_000_000_000
+    assert spec.metadata["uprating_factor"] == "1.07"
+    assert spec.metadata["basis"] == "fact"
+    assert spec.metadata["aging_factor"] == "1"
+    assert spec.metadata["aging_factor_source"] == "already_period_aligned"

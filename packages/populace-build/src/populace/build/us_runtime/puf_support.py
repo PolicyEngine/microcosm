@@ -73,6 +73,12 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "real_estate_taxes",
     "home_mortgage_interest",
     "student_loan_interest",
+    # The engine owns the realized contribution amounts through the
+    # IRA-limit scale and self-employment caps; the persistable leaves are
+    # the desired contributions, equal to the PUF's observed deductions at
+    # baseline (issue #278).
+    "traditional_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
     "rental_income",
     "estate_income",
     "farm_income",
@@ -96,6 +102,7 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "second_home_mortgage_interest",
     "first_home_mortgage_origination_year",
     "second_home_mortgage_origination_year",
+    "health_savings_account_ald",
 )
 
 _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
@@ -114,6 +121,13 @@ PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS = frozenset(
     {
         "interest_deduction",
         "state_withheld_income_tax",
+        # The self-employed ALDs are engine aggregates of formula-owned
+        # per-person caps; the persistable leaves are the contribution and
+        # premium inputs those formulas cap.
+        "self_employed_pension_contribution_ald",
+        "self_employed_pension_contribution_ald_person",
+        "self_employed_health_insurance_ald",
+        "self_employed_health_insurance_ald_person",
     }
 )
 
@@ -139,6 +153,9 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+        "health_savings_account_ald",
         "first_home_mortgage_balance",
         "second_home_mortgage_balance",
         "first_home_mortgage_interest",
@@ -147,6 +164,29 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "second_home_mortgage_origination_year",
     }
 )
+# Person-grain PE input leaves the processed PUF artifact only observes as
+# tax-unit-grain deduction arrays. The donor carries the tax-unit total under
+# the leaf's name; imputed totals are distributed over the cloned people by
+# the leaf's distribution basis below.
+_PERSON_OUTPUT_TAX_UNIT_GRAIN_SOURCES: Mapping[str, str] = {
+    "self_employed_pension_contributions_desired": (
+        "self_employed_pension_contribution_ald"
+    ),
+}
+# Distribution basis for person outputs the ASEC channel carries no values
+# for: the imputed tax-unit total is split by these person columns' shares
+# (falling back to the unit's first person when the basis is empty).
+# Contributions require compensation, so an earnings basis keeps per-person
+# contribution limits binding the way they do on the donor records.
+_PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
+    "traditional_ira_contributions_desired": (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ),
+    "self_employed_pension_contributions_desired": (
+        "self_employment_income_before_lsr",
+    ),
+}
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
     "employment_income": ("employment_income_before_lsr",),
     "self_employment_income": ("self_employment_income_before_lsr",),
@@ -305,6 +345,15 @@ def puf_tax_unit_donor_from_arrays(
     tax_unit["tax_unit_person_count"] = (
         person.groupby("tax_unit_id", sort=False).size().reindex(tax_unit_id).to_numpy()
     )
+    for output in person_outputs:
+        if output in tax_unit.columns:
+            continue
+        source = _PERSON_OUTPUT_TAX_UNIT_GRAIN_SOURCES.get(output)
+        if source is None or source not in arrays:
+            continue
+        values = _numeric_array(arrays[source])
+        if len(values) == len(tax_unit_id):
+            tax_unit[output] = values
 
     for output in tax_unit_outputs:
         values = _tax_unit_source_values(arrays, tax_unit_id, output, grouped)
@@ -430,6 +479,7 @@ def impute_us_puf_tax_detail_support(
             column=column,
             totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
             nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+            fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(column, ()),
         )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
@@ -775,6 +825,7 @@ def _write_person_tax_unit_totals(
     column: str,
     totals: pd.Series,
     nonnegative: bool,
+    fallback_basis_columns: tuple[str, ...] = (),
 ) -> None:
     row_ids = person.loc[mask, "person_tax_unit_id"]
     current = pd.to_numeric(person.loc[mask, column], errors="coerce").fillna(0.0)
@@ -790,7 +841,30 @@ def _write_person_tax_unit_totals(
         * basis.to_numpy(dtype=np.float64)[has_basis]
         / basis_sum.to_numpy(dtype=np.float64)[has_basis]
     )
-    allocation[~has_basis & first.to_numpy()] = target[~has_basis & first.to_numpy()]
+    unallocated = ~has_basis
+    if fallback_basis_columns:
+        fallback = np.zeros(len(row_ids), dtype=np.float64)
+        for basis_column in fallback_basis_columns:
+            if basis_column not in person.columns:
+                continue
+            fallback += (
+                pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
+                .fillna(0.0)
+                .clip(lower=0.0)
+                .to_numpy(dtype=np.float64)
+            )
+        fallback_sum = (
+            pd.Series(fallback, index=row_ids.index)
+            .groupby(row_ids, sort=False)
+            .transform("sum")
+            .to_numpy(dtype=np.float64)
+        )
+        use_fallback = unallocated & (fallback_sum > 0.0)
+        allocation[use_fallback] = (
+            target[use_fallback] * fallback[use_fallback] / fallback_sum[use_fallback]
+        )
+        unallocated &= ~use_fallback
+    allocation[unallocated & first.to_numpy()] = target[unallocated & first.to_numpy()]
     person.loc[mask, column] = allocation
 
 
@@ -967,6 +1041,9 @@ def _person_source_values(
         "self_employment_income_before_lsr": ("self_employment_income",),
         "long_term_capital_gains_before_response": ("long_term_capital_gains",),
         "taxable_private_pension_income": ("taxable_pension_income",),
+        # The PUF observes realized IRA deductions; at baseline the engine's
+        # desired-contribution leaf equals the realized amount.
+        "traditional_ira_contributions_desired": ("traditional_ira_contributions",),
     }
     for source in source_aliases.get(output, ()):
         if source in arrays:

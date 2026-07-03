@@ -94,6 +94,7 @@ def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
             "puf.h5",
             "--out",
             "out",
+            "--without-block-ladder",
         ]
     )
 
@@ -202,6 +203,7 @@ def test_support_spine_spec_resolves_relative_years_and_shares(
             "puf.h5",
             "--out",
             "out",
+            "--without-block-ladder",
         ]
     )
 
@@ -235,6 +237,7 @@ def test_support_spine_spec_requires_mapped_asec_year(tmp_path: Path) -> None:
             "puf.h5",
             "--out",
             "out",
+            "--without-block-ladder",
         ]
     )
 
@@ -261,6 +264,7 @@ def test_support_spine_spec_rejects_extra_asec_year_mapping(tmp_path: Path) -> N
             "puf.h5",
             "--out",
             "out",
+            "--without-block-ladder",
         ]
     )
 
@@ -277,3 +281,35 @@ def test_period_specific_output_filenames_keep_default_compatibility() -> None:
         == "base_populace_us_2024_puf_support.summary.json"
     )
     assert builder._dataset_filename(2025) == "base_populace_us_2025_puf_support.h5"
+
+
+def test_block_ladder_is_required_unless_explicitly_opted_out() -> None:
+    builder = _load_support_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._parse_args(
+            ["--base-h5", "base.h5", "--puf-h5", "puf.h5", "--out", "out"]
+        )
+
+    assert exc.value.code == 2
+
+
+def test_block_ladder_and_opt_out_are_contradictory() -> None:
+    builder = _load_support_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._parse_args(
+            [
+                "--base-h5",
+                "base.h5",
+                "--puf-h5",
+                "puf.h5",
+                "--out",
+                "out",
+                "--block-ladder-artifact",
+                "ladder.npz",
+                "--without-block-ladder",
+            ]
+        )
+
+    assert exc.value.code == 2

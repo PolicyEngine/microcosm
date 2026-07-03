@@ -304,6 +304,76 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
         "second_home_mortgage_origination_year"
         in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     )
+    # Issue #278: the deduction bases the sparse release zeroed must ride the
+    # donor as engine input leaves (the desired-contribution inputs), never
+    # as the formula-owned realized amounts or ALD aggregates.
+    assert (
+        "traditional_ira_contributions_desired" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert "traditional_ira_contributions" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "self_employed_pension_contributions_desired"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contributions"
+        not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contribution_ald"
+        not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contribution_ald"
+        not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    assert "health_savings_account_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+
+
+def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "traditional_ira_contributions": [1_000.0, 2_000.0, 3_000.0],
+            "self_employed_pension_contribution_ald": [4_000.0, 5_000.0],
+            "health_savings_account_ald": [600.0, 700.0],
+        },
+        person_outputs=(
+            "traditional_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ),
+        tax_unit_outputs=("health_savings_account_ald",),
+    )
+
+    assert donor["traditional_ira_contributions_desired"].tolist() == [
+        3_000.0,
+        3_000.0,
+    ]
+    assert donor["self_employed_pension_contributions_desired"].tolist() == [
+        4_000.0,
+        5_000.0,
+    ]
+    assert donor["health_savings_account_ald"].tolist() == [600.0, 700.0]
+
+
+def test_puf_tax_detail_refuses_self_employed_ald_aggregates_as_outputs() -> None:
+    arrays = {
+        "tax_unit_id": [10],
+        "household_weight": [100.0],
+        "filing_status": [b"SINGLE"],
+        "person_tax_unit_id": [10],
+        "self_employed_pension_contribution_ald": [4_000.0],
+    }
+
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            person_outputs=("self_employed_pension_contribution_ald",),
+            tax_unit_outputs=(),
+        )
 
 
 def test_puf_tax_detail_refuses_formula_owned_outputs() -> None:
@@ -447,6 +517,32 @@ def test_cps_carried_derivations_reject_formula_owned_input_columns() -> None:
 
     with pytest.raises(ValueError, match="formula-owned aggregate columns"):
         derive_us_cps_carried_inputs(bad)
+
+
+def test_cps_carried_derives_spm_unit_childcare_from_replicated_asec_column() -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person")["SPM_CHILDCAREXPNS"] = [800.0, 800.0, 0.0]
+
+    derived = derive_us_cps_carried_inputs(frame)
+
+    assert derived.table("spm_unit")[
+        "spm_unit_pre_subsidy_childcare_expenses"
+    ].tolist() == [800.0, 0.0]
+
+
+def test_cps_carried_preserves_existing_spm_unit_childcare_values() -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person")["SPM_CHILDCAREXPNS"] = [800.0, 800.0, 0.0]
+    frame.table("spm_unit")["spm_unit_pre_subsidy_childcare_expenses"] = [
+        111.0,
+        222.0,
+    ]
+
+    derived = derive_us_cps_carried_inputs(frame)
+
+    assert derived.table("spm_unit")[
+        "spm_unit_pre_subsidy_childcare_expenses"
+    ].tolist() == [111.0, 222.0]
 
 
 def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
@@ -609,11 +705,13 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "second_home_mortgage_interest": [0.0, 5_000.0],
             "first_home_mortgage_origination_year": [2018, 2016],
             "second_home_mortgage_origination_year": [0, 2020],
+            "health_savings_account_ald": [1_500.0, 0.0],
         },
         person_outputs=(),
         tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
 
+    assert donor["health_savings_account_ald"].tolist() == [1_500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
     assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]
@@ -694,6 +792,72 @@ def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
         [1_000.0, 1_000.0],
     )
     assert "tax_unit_partnership_s_corp_income" not in imputed.table("tax_unit")
+
+
+def test_puf_tax_detail_imputation_distributes_contributions_by_earnings() -> None:
+    frame = _minimal_us_frame()
+    frame.table("person")["self_employment_income_before_lsr"] = [
+        0.0,
+        40_000.0,
+        10_000.0,
+    ]
+    expanded = clone_us_frame_for_puf_support(frame)
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "traditional_ira_contributions_desired": [900.0, 900.0, 900.0, 900.0],
+            "self_employed_pension_contributions_desired": [
+                500.0,
+                500.0,
+                500.0,
+                500.0,
+            ],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "traditional_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    person = imputed.table("person")
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ].sort_values("person_id")
+    joint_unit = puf_people.iloc[:2]
+    # The cloned ASEC channel carries no contribution values, so the unit
+    # total must follow the earnings basis: pension contributions follow
+    # self-employment earnings (all on the second person), IRA contributions
+    # follow total earnings (50k vs 20k + 40k).
+    np.testing.assert_allclose(
+        joint_unit["self_employed_pension_contributions_desired"].to_numpy(),
+        [0.0, 500.0],
+    )
+    np.testing.assert_allclose(
+        joint_unit["traditional_ira_contributions_desired"].to_numpy(),
+        [900.0 * 50_000.0 / 110_000.0, 900.0 * 60_000.0 / 110_000.0],
+    )
+    asec_people = person[
+        person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    assert asec_people["traditional_ira_contributions_desired"].tolist() == [
+        0.0,
+        0.0,
+        0.0,
+    ]
 
 
 def test_puf_tax_detail_imputation_reconciles_social_security_components(

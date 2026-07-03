@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "country": "be",
+  "policy": "One national dataset carrying commune NIS codes as spine columns; local-area use filters the national dataset by geography, never per-area files. NIS code sets change across merger waves, so every commune-grain assignment and target declares its vintage and a mismatch is a compile error.",
+  "geography_spine": {
+    "stage": "clone_assign_communes",
+    "method": "clone_assign_uniform",
+    "geography_level": "commune",
+    "code_system": "be_nis",
+    "code_column": "commune_nis",
+    "vintage": "2025",
+    "vintage_policy": "error",
+    "clones_per_record": 20,
+    "collision_avoidance": true,
+    "constrain_to_column": "region_nuts1",
+    "assignment_source": {
+      "survey": "Statbel population structure by municipality",
+      "source": "https://statbel.fgov.be/en/themes/population/structure-population",
+      "notes": "Assignment distribution over communes within the record's observed NUTS1 region (SILC carries region; the spine assigns the commune)."
+    },
+    "notes": "Generalizes the UK output-area rowwise clone-and-assign operators (uk_runtime/rowwise_dataset.py, rowwise_geography.py) with collision avoidance; the shared operator lands with the calibration-surface issue (populace#263). The 2025 NIS vintage postdates the 2019 merger wave; the old-to-merged crosswalk is ledger-be work (PolicyEngine/ledger#69)."
+  }
+}
