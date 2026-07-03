@@ -38,6 +38,7 @@ from populace.build.gates import (
     nonconstant_columns_gate,
     target_profile_coverage_gate,
 )
+from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.staging import StagingTelemetry
 from populace.build.us_runtime import (
@@ -479,9 +480,38 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help=(
-            "PolicyEngine Ledger consumer_facts.jsonl artifact used to "
-            "resolve every fiscal target value. Populace package resources "
-            "declare target references only."
+            "PolicyEngine Ledger consumer artifact directory (manifest.json "
+            "+ consumer_facts.jsonl, hash-verified) or a bare "
+            "consumer_facts.jsonl file, used to resolve every fiscal target "
+            "value. Populace package resources declare target references "
+            "only. The artifact identity is recorded in the build and "
+            "release manifests."
+        ),
+    )
+    parser.add_argument(
+        "--ledger-facts-sha256",
+        help=(
+            "Pin: expected SHA-256 of consumer_facts.jsonl. The build "
+            "refuses to start if the feed does not match."
+        ),
+    )
+    parser.add_argument(
+        "--ledger-manifest-sha256",
+        help=(
+            "Pin: expected SHA-256 of the Ledger consumer artifact "
+            "manifest.json. Requires an artifact directory feed."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unaged-dollar-targets",
+        action="store_true",
+        help=(
+            "Waive the period contract: compile observation dollar levels at "
+            "a build period other than their fact period without aging "
+            "(PolicyEngine/ledger#71; populace#212). Every waived target "
+            "carries period_contract_waiver metadata in diagnostics. Without "
+            "this flag such targets fail the build unless --age-targets "
+            "transforms them."
         ),
     )
     parser.add_argument("--out", type=Path, required=True)
@@ -743,17 +773,21 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--age-targets",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
-            "Opt into compile-time period aging of dollar-amount targets whose "
-            "source period differs from the build period (PolicyEngine/"
-            "populace#116, #212). Off by default: without it the compiled "
-            "target surface is byte-identical to today. When set, dollar "
-            "amounts are scaled by CBO revenue-projection growth ratios drawn "
-            "from the Ledger facts feed (matching income-source series where "
-            "available, CBO AGI growth otherwise); counts stay raw. Each target "
-            "records basis/source_period/aged_to/aging_factor/"
-            "aging_factor_source diagnostics."
+            "Compile-time period aging of dollar-amount targets whose source "
+            "period differs from the build period (PolicyEngine/populace#116, "
+            "#212), on by default under the named cbo_growth_factor_aging "
+            "model: dollar amounts are scaled by CBO revenue-projection "
+            "growth ratios drawn from the Ledger facts feed (matching "
+            "income-source series where available, CBO AGI growth "
+            "otherwise); counts stay raw. Each target records basis/"
+            "source_period/aged_to/aging_factor/aging_factor_source/"
+            "alignment_model_id/alignment_model_version diagnostics. "
+            "--no-age-targets disables the transform, in which case "
+            "cross-period observation dollars fail the period contract "
+            "unless --allow-unaged-dollar-targets waives it."
         ),
     )
     parser.add_argument(
@@ -1850,32 +1884,6 @@ def _with_aca_marketplace_source_outputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
     )
-
-
-def _load_ledger_facts(path: Path) -> tuple[dict[str, object], ...]:
-    if not path.exists():
-        raise FileNotFoundError(f"Ledger facts artifact not found: {path}")
-    facts: list[dict[str, object]] = []
-    with path.open() as file:
-        for line_number, line in enumerate(file, start=1):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                row = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"
-                ) from exc
-            if not isinstance(row, dict):
-                raise ValueError(
-                    f"Invalid Ledger facts JSONL row {line_number}: "
-                    f"expected object, got {type(row).__name__}."
-                )
-            facts.append(row)
-    if not facts:
-        raise ValueError(f"Ledger facts artifact is empty: {path}")
-    return tuple(facts)
 
 
 def _assert_no_formula_owned_columns(frame: Frame) -> None:
@@ -4251,6 +4259,7 @@ def _build_manifests(
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     staging: Mapping[str, object] | None = None,
+    ledger_artifact: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -4299,6 +4308,7 @@ def _build_manifests(
         },
         "runtime": runtime,
         "timing": timing_payload,
+        "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
         "dataset": {
             "filename": DATASET_FILENAME,
             "sha256": dataset_sha,
@@ -4400,6 +4410,7 @@ def _build_manifests(
                 "version": runtime["policyengine-us"],
             },
             "timing": timing_payload,
+            "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
             "warm_start_calibration": warm_start_payload,
             "default_dataset": default_dataset_payload,
             **(
@@ -4621,8 +4632,13 @@ def main() -> None:
     _assert_cd_vintage_support_matches(
         base_h5, congressional_district_vintage_crosswalk_metadata
     )
+    ledger_artifact = load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
     target_registry = compile_us_fiscal_target_registry(
-        _load_ledger_facts(args.ledger_facts),
+        ledger_artifact.facts,
         target_period=PERIOD,
         include_congressional_district_targets=(
             args.include_congressional_district_targets
@@ -4631,6 +4647,7 @@ def main() -> None:
             congressional_district_vintage_crosswalk
         ),
         age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
     )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:
@@ -5248,6 +5265,7 @@ def main() -> None:
         degenerate_input_gate=degenerate_input_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
+        ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         staging=(
             {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}

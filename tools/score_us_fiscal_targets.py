@@ -33,6 +33,27 @@ def _parse_args() -> argparse.Namespace:
         help="Populace US H5 to score. Defaults to HF latest.",
     )
     parser.add_argument(
+        "--age-targets",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Compile the target surface with cbo_growth_factor_aging, "
+            "matching a release built with aging on. Defaults off so "
+            "incumbent releases score against the un-aged surface they "
+            "were calibrated to."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unaged-dollar-targets",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Waive the period contract for cross-period observation dollar "
+            "levels (PolicyEngine/ledger#71). Defaults on for scoring, since "
+            "incumbent releases were compiled before the contract existed."
+        ),
+    )
+    parser.add_argument(
         "--ledger-facts",
         type=Path,
         required=True,
@@ -375,6 +396,8 @@ def score_frame(
     *,
     h5: Path,
     ledger_facts: Path,
+    age_targets: bool = False,
+    allow_unaged_dollar_targets: bool = True,
     maximum_microsim_batch_size: int
     | None = release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     diagnostic_skip_tax_expenditure_targets: bool = False,
@@ -404,8 +427,10 @@ def score_frame(
             h5, congressional_district_vintage_crosswalk_metadata
         )
     target_registry = release.compile_us_fiscal_target_registry(
-        release._load_ledger_facts(ledger_facts),
+        release.load_ledger_consumer_artifact(ledger_facts).facts,
         target_period=release.PERIOD,
+        age_targets=age_targets,
+        allow_unaged_dollar_targets=allow_unaged_dollar_targets,
         include_congressional_district_targets=include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             release.load_congressional_district_vintage_crosswalk(
@@ -579,6 +604,8 @@ def main() -> None:
     result, registry, compilation, gates = score_frame(
         h5=h5,
         ledger_facts=args.ledger_facts,
+        age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,

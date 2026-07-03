@@ -189,6 +189,7 @@ def test_compile_us_fiscal_targets_can_use_translated_current_cd_surface() -> No
         facts,
         include_congressional_district_targets=True,
         congressional_district_vintage_crosswalk=crosswalk,
+        allow_unaged_dollar_targets=True,
     )
 
     cd_specs = {
@@ -526,6 +527,7 @@ def test__given_state_proxy_cd_targets__then_compiler_uses_current_cd_surface() 
         facts,
         include_congressional_district_targets=True,
         congressional_district_vintage_crosswalk=crosswalk,
+        allow_unaged_dollar_targets=True,
     )
 
     # Then

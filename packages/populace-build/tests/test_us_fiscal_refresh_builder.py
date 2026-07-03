@@ -1749,7 +1749,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
-    monkeypatch.setattr(builder, "_load_ledger_facts", lambda path: ({"fact": 1},))
+    monkeypatch.setattr(
+        builder,
+        "load_ledger_consumer_artifact",
+        lambda path, **kwargs: SimpleNamespace(
+            facts=({"fact": 1},),
+            provenance=lambda: {
+                "path_name": "facts.jsonl",
+                "fact_row_count": 1,
+                "facts_sha256": "facts-sha",
+                "schema_version": None,
+                "manifest_sha256": None,
+            },
+        ),
+    )
     monkeypatch.setattr(
         builder,
         "compile_us_fiscal_target_registry",

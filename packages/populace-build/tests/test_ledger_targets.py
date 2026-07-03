@@ -1286,3 +1286,71 @@ def test__given_current_soi_like_row__then_ledger_adapter_matches_current_target
     assert spec.period == 2023
     assert spec.family == "irs_soi"
     assert spec.signed is False
+
+
+def test_ledger_metadata_records_assertion_and_fact_period():
+    from populace.build.ledger_targets import (
+        LedgerTargetMapping,
+        target_spec_from_ledger_fact,
+    )
+
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_filer"},
+    )
+    # Legacy rows that omit the assertion field are not stamped in metadata
+    # (absence means observation-by-default to readers, matching the loader).
+    legacy = target_spec_from_ledger_fact(_consumer_fact_row(), mapping)
+    assert "ledger_assertion" not in legacy.metadata
+    assert legacy.metadata["ledger_fact_period"] == "2023"
+
+    observation = target_spec_from_ledger_fact(
+        _consumer_fact_row(assertion="observation"),
+        mapping,
+    )
+    assert observation.metadata["ledger_assertion"] == "observation"
+
+    projection = target_spec_from_ledger_fact(
+        _consumer_fact_row(assertion="source_projection"),
+        mapping,
+    )
+    assert projection.metadata["ledger_assertion"] == "source_projection"
+
+
+def test_ledger_reference_selector_matches_on_assertion():
+    from populace.build.ledger_targets import (
+        LedgerTargetReference,
+        compile_ledger_target_references,
+    )
+
+    rows = [
+        _consumer_fact_row(),
+        _consumer_fact_row(
+            aggregate_fact_key="ledger.aggregate_fact.v2:proj123",
+            legacy_fact_key="ledger.fact.v1:proj123",
+            assertion="source_projection",
+            value=16_000_000_000_000,
+            lineage={
+                "source_record_id": "cbo.ty2023.projection.agi",
+                "source_cell_keys": ["ledger.source_cell.v1:proj"],
+                "source_row_keys": [],
+            },
+        ),
+    ]
+    reference = LedgerTargetReference(
+        name="cbo_projected_agi",
+        ledger_selector={
+            "source_measure_id": "adjusted_gross_income",
+            "assertion": "source_projection",
+        },
+        entity="household",
+        measure="adjusted_gross_income",
+        family="cbo",
+    )
+
+    registry = compile_ledger_target_references(rows, [reference], country="us")
+    (spec,) = registry.specs
+    assert spec.value == 16_000_000_000_000
+    assert spec.metadata["ledger_assertion"] == "source_projection"
