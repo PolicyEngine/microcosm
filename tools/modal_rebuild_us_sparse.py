@@ -556,6 +556,12 @@ def run_full_build(
         # (Max, 2026-07-03): record the verdict, keep building — parity with
         # every certified release to date; real fix tracked in populace#225.
         "--allow-immigration-composition-drift",
+        # f0af251 is a RELEASE artifact: it persists engine-computed
+        # aggregates (employment_income, social_security, ...) alongside
+        # their leaves. The pipeline requires leaf inputs only; dropping the
+        # aggregates is lossless (verified: every aggregate's leaves are
+        # present; pension aggregates equal their private leaves exactly).
+        "--drop-formula-owned-base-columns",
     ]
     # Staging telemetry is ON by default so the candidate appears on the
     # populace-us-staging dashboard and `populace-publish-release` does not warn

@@ -465,6 +465,16 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--drop-formula-owned-base-columns",
+        action="store_true",
+        help=(
+            "Normalize a release-artifact base at load: drop engine-computed "
+            "columns (the engine recomputes them from persisted leaves) so "
+            "the leaf-inputs-only contract holds. Each dropped column is "
+            "logged with its persisted total."
+        ),
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
@@ -1790,6 +1800,42 @@ def _assert_no_formula_owned_columns(frame: Frame) -> None:
             "Formula-owned PolicyEngine columns are present before export: "
             f"{sorted(formula_owned)}. Source stages must emit leaf inputs."
         )
+
+
+def _drop_formula_owned_base_columns(frame: Frame) -> Frame:
+    """Drop engine-computed columns a release-artifact base carries.
+
+    Release exports persist formula-owned aggregates (employment_income,
+    social_security, ...) for consumer convenience; the build pipeline
+    requires leaf inputs only, and the engine recomputes the aggregates
+    from the persisted leaves. Logs every dropped column with its
+    persisted total so the audit trail shows what was discarded.
+    """
+    adapter = PolicyEngineUSEngine()
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
+    if not formula_owned:
+        return frame
+    new_tables = {}
+    for entity in frame.entities:
+        table = frame.table(entity).copy()
+        dropped = [column for column in table.columns if column in formula_owned]
+        for column in dropped:
+            total = pd.to_numeric(table[column], errors="coerce").sum()
+            print(
+                f"info: dropping formula-owned base column {entity}.{column} "
+                f"(persisted total {total:,.0f}); the engine recomputes it "
+                "from leaf inputs.",
+                file=sys.stderr,
+            )
+        new_tables[entity] = table.drop(columns=dropped)
+    return Frame(
+        new_tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
 
 
 def _dataset_from_frame(
@@ -4526,6 +4572,8 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    if args.drop_formula_owned_base_columns:
+        base_frame = _drop_formula_owned_base_columns(base_frame)
     base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
     base_frame, social_security_component_repair = (
         _with_social_security_component_value_repair(base_frame, target_specs)
