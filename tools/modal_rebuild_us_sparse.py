@@ -457,9 +457,13 @@ def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
     image=image,
     secrets=[hf_secret],
     volumes={OUTPUT_MOUNT: output_volume, FACTS_MOUNT: facts_volume},
-    cpu=16.0,
-    memory=64 * 1024,
-    timeout=60 * 60 * 8,
+    cpu=32.0,
+    # 64 GB OOM-killed the run silently at target compilation (telemetry
+    # froze at "Materializing target frame", no failure event): the dense
+    # 75k-household base compiles a larger target frame than the 57k sparse
+    # lineage this sizing came from.
+    memory=192 * 1024,
+    timeout=60 * 60 * 12,
 )
 def run_full_build(
     *,
