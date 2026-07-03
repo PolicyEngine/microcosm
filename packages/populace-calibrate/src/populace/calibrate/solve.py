@@ -48,7 +48,9 @@ Six declared options, each a real feature (and each its own test):
   latent pre-gate weight so a nearly closed gate cannot hide an exploding
   ``log_w``. It is cleanest as an ESS/design-effect knob under
   ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
-  This penalty is only implemented by ``method="adam"``.
+  This penalty is only implemented by ``method="adam"``. In the two-stage
+  :func:`calibrate_l0_refit` path it applies to both stages unless
+  ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
 """
 
 from __future__ import annotations
@@ -75,6 +77,7 @@ __all__ = [
     "calibrate_l0_refit",
     "refit_l0_selection",
     "default_target_loss_scales",
+    "effective_sample_size",
     "relative_error_loss",
     "CalibrationResult",
     "L0RefitResult",
@@ -228,6 +231,46 @@ class CalibrationResult:
         hits = sum(abs(d.relative_error) <= 0.10 for d in self.diagnostics)
         return hits / len(self.diagnostics)
 
+    @property
+    def effective_sample_size(self) -> float:
+        """Kish effective sample size of the calibrated weights.
+
+        ``(sum w)^2 / sum(w^2)`` — the number of equal-weight records carrying
+        the same information as the calibrated vector. Uniform weights maximize
+        it at the record count; concentrating mass on few records lowers it.
+        Pruned (zero) weights contribute nothing, so a sparse L0 result's ESS
+        describes its surviving support.
+        """
+        return effective_sample_size(self.weights)
+
+    @property
+    def realized_max_weight_ratio(self) -> float:
+        """The largest calibrated-to-initial weight ratio actually realized.
+
+        The realized counterpart of the ``max_weight_ratio`` *bound* in
+        :attr:`options`: how far calibration actually inflated its most
+        inflated record, whether or not a bound was set.
+        """
+        weights = np.asarray(self.weights, dtype=np.float64)
+        initial = np.asarray(self.initial_weights, dtype=np.float64)
+        return float((weights / initial).max())
+
+    @property
+    def top_1pct_weight_share(self) -> float:
+        """Share of total calibrated weight carried by the heaviest 1% of records.
+
+        A tail-concentration summary to read alongside
+        :attr:`effective_sample_size`: with uniform weights the heaviest 1% of
+        records carry 1% of the weight; values far above that mean few records
+        represent much of the population.
+        """
+        weights = np.asarray(self.weights, dtype=np.float64)
+        total = float(weights.sum())
+        if total <= 0.0:
+            return 0.0
+        k = max(1, math.ceil(0.01 * weights.size))
+        return float(np.sort(weights)[-k:].sum() / total)
+
 
 @dataclass(frozen=True)
 class L0RefitResult:
@@ -304,6 +347,26 @@ class L0RefitResult:
     def final_loss(self) -> float:
         """The post-L0 refit's final penalty-free target loss."""
         return self.refit.final_loss
+
+    @property
+    def fraction_within_10pct(self) -> float:
+        """Share of targets the post-L0 refit reproduces within 10%."""
+        return self.refit.fraction_within_10pct
+
+    @property
+    def effective_sample_size(self) -> float:
+        """Kish ESS of the post-L0 refit weights (the shipped vector)."""
+        return self.refit.effective_sample_size
+
+    @property
+    def realized_max_weight_ratio(self) -> float:
+        """The post-L0 refit's largest realized calibrated-to-initial ratio."""
+        return self.refit.realized_max_weight_ratio
+
+    @property
+    def top_1pct_weight_share(self) -> float:
+        """Weight share of the post-L0 refit's heaviest 1% of records."""
+        return self.refit.top_1pct_weight_share
 
     @property
     def options(self) -> Mapping[str, object]:
@@ -402,6 +465,34 @@ def relative_error_loss(
     if weights is None:
         return float(loss.mean())
     return float(np.average(loss, weights=weights))
+
+
+def effective_sample_size(weights: np.ndarray) -> float:
+    """Kish effective sample size: ``(sum w)^2 / sum(w^2)``.
+
+    The number of equal-weight records carrying the same information as the
+    weighted vector — the canonical weight-concentration diagnostic (the
+    design-effect denominator). Uniform weights maximize it at the record
+    count; piling mass onto few records drives it down. Usable on any
+    non-negative weight vector, e.g. to score a published artifact's weights
+    without re-running calibration.
+
+    Args:
+        weights: Non-negative, finite weight values.
+
+    Returns:
+        The ESS; ``0.0`` for an all-zero vector.
+
+    Raises:
+        ValueError: If any weight is negative or non-finite.
+    """
+    weights = np.asarray(weights, dtype=np.float64)
+    if not np.isfinite(weights).all() or (weights < 0.0).any():
+        raise ValueError("effective_sample_size requires finite, non-negative weights.")
+    denominator = float(np.square(weights).sum())
+    if denominator == 0.0:
+        return 0.0
+    return float(weights.sum() ** 2 / denominator)
 
 
 def _relative_error_loss(
@@ -1600,6 +1691,7 @@ def refit_l0_selection(
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
     max_weight_ratio: float | None = None,
+    l2_lambda: float = 0.0,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1615,6 +1707,9 @@ def refit_l0_selection(
     and wants to reuse that exact selection. The refit subsets to records whose
     L0 weights survived, removes the L0 gates and penalty, and calls
     :func:`calibrate` again with ``l0_lambda=0`` on that selected support.
+    ``l2_lambda`` applies the soft concentration penalty to the refit itself —
+    the stage that produces the shipped weights; the default ``0.0`` keeps the
+    refit unpenalized.
     """
     refit_entity = selection.weight_entity if weight_entity is None else weight_entity
     if selection.weight_entity != refit_entity:
@@ -1649,7 +1744,7 @@ def refit_l0_selection(
         max_weight_ratio=max_weight_ratio,
         target_records=None,
         l0_lambda=0.0,
-        l2_lambda=0.0,
+        l2_lambda=l2_lambda,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
@@ -1681,6 +1776,7 @@ def calibrate_l0_refit(
     target_records: int | None = None,
     l0_lambda: float = 0.0,
     l2_lambda: float = 0.0,
+    refit_l2_lambda: float | None = None,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1699,6 +1795,12 @@ def calibrate_l0_refit(
     weights. The first stage is exactly :func:`calibrate` with L0 pruning
     enabled by ``target_records`` or a positive fixed ``l0_lambda``. The second
     stage delegates to :func:`refit_l0_selection`.
+
+    ``l2_lambda`` applies the soft concentration penalty to both stages.
+    ``refit_l2_lambda`` overrides the refit stage only (the ``refit_epochs`` /
+    ``refit_learning_rate`` pattern), so selection-only
+    (``refit_l2_lambda=0.0``) and refit-only (``l2_lambda=0.0`` with a positive
+    override) penalties are both expressible.
     """
     if target_records is None and not (math.isfinite(l0_lambda) and l0_lambda > 0.0):
         raise ValueError(
@@ -1708,6 +1810,13 @@ def calibrate_l0_refit(
     if not math.isfinite(l0_lambda) or l0_lambda < 0.0:
         raise ValueError(
             f"l0_lambda must be finite and non-negative, got {l0_lambda!r}."
+        )
+    if refit_l2_lambda is not None and (
+        not math.isfinite(refit_l2_lambda) or refit_l2_lambda < 0.0
+    ):
+        # Fail before the expensive selection stage, not at the refit call.
+        raise ValueError(
+            f"refit_l2_lambda must be finite and non-negative, got {refit_l2_lambda!r}."
         )
     selection = calibrate(
         frame,
@@ -1742,6 +1851,7 @@ def calibrate_l0_refit(
         ),
         mass=mass,
         max_weight_ratio=max_weight_ratio,
+        l2_lambda=l2_lambda if refit_l2_lambda is None else refit_l2_lambda,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,

@@ -85,6 +85,27 @@ class TestVariableMetadata:
         assert "spm_unit_capped_work_childcare_expenses" not in names
         assert "income_tax" not in names  # formula-owned output
 
+    def test_default_values_cover_scalar_bool_and_enum_inputs(self, adapter) -> None:
+        defaults = adapter.default_values(
+            [
+                "weekly_hours_worked_before_lsr",
+                "takes_up_snap_if_eligible",
+                "ssn_card_type",
+                "employment_income_before_lsr",
+            ]
+        )
+        assert defaults["weekly_hours_worked_before_lsr"] == 40
+        assert defaults["takes_up_snap_if_eligible"] is True
+        # Enum defaults come back as the stored member name.
+        assert defaults["ssn_card_type"] == "CITIZEN"
+        assert defaults["employment_income_before_lsr"] == 0
+
+    def test_default_values_skip_unknown_and_formula_owned_names(self, adapter) -> None:
+        defaults = adapter.default_values(
+            ["HRSWK", "not_a_variable", "income_tax", "snap"]
+        )
+        assert defaults == {}
+
 
 class TestMaterialize:
     def test_materializes_row_aligned_arrays(self, adapter, us_bundle) -> None:

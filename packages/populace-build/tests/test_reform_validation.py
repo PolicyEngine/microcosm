@@ -637,6 +637,211 @@ def test_shipped_soi_levels_cap_nonrefundable_credits():
     ):
         assert levels[capped].cap_variable == "income_tax_before_credits"
     # Taxes and refundable credits are clean concepts — no cap.
-    for uncapped in ("soi_income_tax_net", "soi_amt", "soi_niit", "soi_se_tax",
-                     "soi_ctc_refundable"):
+    for uncapped in (
+        "soi_income_tax_net",
+        "soi_amt",
+        "soi_niit",
+        "soi_se_tax",
+        "soi_ctc_refundable",
+    ):
         assert levels[uncapped].cap_variable is None
+
+
+def _write_json(path, payload):
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def test_state_program_level_specs_carry_category_and_score_type(tmp_path):
+    from populace.build.us_runtime.reform_validation import (
+        state_program_level_specs,
+    )
+
+    config = _write_json(
+        tmp_path / "state_program_levels.json",
+        {
+            "levels": [
+                {
+                    "id": "mn_ctc_wfc_total",
+                    "name": "Minnesota CTC + Working Family Credit",
+                    "variable": "mn_child_and_working_families_credits",
+                    "period": 2024,
+                    "benchmark": {
+                        "value": 5.64e8,
+                        "year": "TY2024",
+                        "source": "MN DOR",
+                        "source_url": "https://www.revenue.state.mn.us/",
+                    },
+                },
+                {
+                    "id": "il_eitc_total",
+                    "name": "Illinois EITC (approximation)",
+                    "variable": "il_eitc",
+                    "period": 2024,
+                    "benchmark": {
+                        "value": 4.2e8,
+                        "year": "TY2022",
+                        "source": "20% x IRS SOI federal EITC in IL",
+                        "source_url": "https://www.irs.gov/",
+                        "score_type": "approximation",
+                    },
+                },
+            ]
+        },
+    )
+    specs = state_program_level_specs(config)
+    assert [s.id for s in specs] == ["mn_ctc_wfc_total", "il_eitc_total"]
+    # Default category + score_type for official rows; approximation carries
+    # through from the benchmark block.
+    assert specs[0].category == "State program actual"
+    assert specs[0].benchmark_score_type == "actual"
+    assert specs[1].benchmark_score_type == "approximation"
+
+
+def test_level_rows_emit_per_spec_category_and_score_type():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    level = BaselineLevelSpec(
+        id="mn_ctc_wfc_total",
+        name="Minnesota CTC + WFC",
+        variable="mn_child_and_working_families_credits",
+        period=2024,
+        benchmark_value=5.64e8,
+        benchmark_year="TY2024",
+        source="MN DOR",
+        source_url="",
+        category="State program actual",
+        benchmark_score_type="approximation",
+    )
+    sim = _FakeSim({"mn_child_and_working_families_credits": 5.5e8})
+    payload = reform_validation_payload(
+        (),
+        period=2024,
+        simulate=lambda reform: sim,
+        baseline_levels=(level,),
+    )
+    row = payload["reforms"][0]
+    assert row["category"] == "State program actual"
+    assert row["jct"]["score_type"] == "approximation"
+    assert row["populace"]["budget_effect"] == pytest.approx(5.5e8)
+
+
+def test_soi_level_rows_keep_historical_category():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    level = BaselineLevelSpec(
+        id="soi_amt",
+        name="AMT",
+        variable="alternative_minimum_tax",
+        period=2024,
+        benchmark_value=2.7e9,
+        benchmark_year="TY2023",
+        source="IRS SOI",
+        source_url="",
+    )
+    sim = _FakeSim({"alternative_minimum_tax": 2.8e9})
+    payload = reform_validation_payload(
+        (), period=2024, simulate=lambda reform: sim, baseline_levels=(level,)
+    )
+    row = payload["reforms"][0]
+    assert row["category"] == "IRS SOI actual"
+    assert row["jct"]["score_type"] == "actual"
+
+
+def test_state_program_reform_specs_load(tmp_path):
+    from populace.build.us_runtime.reform_validation import (
+        state_program_reform_specs,
+    )
+
+    config = _write_json(
+        tmp_path / "state_program_reforms.json",
+        {
+            "reforms": [
+                {
+                    "id": "state_mn_cwfc_repeal",
+                    "name": "Repeal Minnesota CTC + Working Family Credit",
+                    "neutralized_variable": "mn_child_and_working_families_credits",
+                    "period": 2024,
+                    "benchmark": {
+                        "score": 8.3e8,
+                        "window": "TY2024",
+                        "source": "MN DOR (CTC $564M + WFC)",
+                        "source_url": "https://www.revenue.state.mn.us/",
+                    },
+                }
+            ]
+        },
+    )
+    specs = state_program_reform_specs(config, period=2024)
+    (spec,) = specs
+    assert spec.category == "State program"
+    assert spec.in_sample is False
+    assert spec.budget_measure == "state_income_tax"
+    assert spec.jct_score_type == "actual"
+    assert spec.neutralized_variable == "mn_child_and_working_families_credits"
+    assert spec.effect_direction == "reform_minus_baseline"
+
+
+def test_default_baseline_level_specs_concatenates(monkeypatch, tmp_path):
+    from populace.build.us_runtime import reform_validation as rv
+
+    soi = _write_json(
+        tmp_path / "soi.json",
+        {
+            "levels": [
+                {
+                    "id": "soi_x",
+                    "name": "x",
+                    "variable": "income_tax",
+                    "period": 2024,
+                    "benchmark": {"value": 1.0},
+                }
+            ]
+        },
+    )
+    state = _write_json(
+        tmp_path / "state.json",
+        {
+            "levels": [
+                {
+                    "id": "state_y",
+                    "name": "y",
+                    "variable": "mn_wfc",
+                    "period": 2024,
+                    "benchmark": {"value": 2.0},
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(rv, "_soi_baseline_levels_config_path", lambda: soi)
+    monkeypatch.setattr(rv, "_state_program_levels_config_path", lambda: state)
+    specs = rv.default_baseline_level_specs()
+    assert [s.id for s in specs] == ["soi_x", "state_y"]
+    assert specs[0].category == "IRS SOI actual"
+    assert specs[1].category == "State program actual"
+
+
+def test_shipped_state_program_configs_are_well_formed():
+    from populace.build.us_runtime.reform_validation import (
+        state_program_level_specs,
+        state_program_reform_specs,
+    )
+
+    levels = state_program_level_specs()
+    reforms = state_program_reform_specs(period=2024)
+    assert len(levels) >= 30
+    assert len(reforms) >= 10
+    ids = [s.id for s in levels] + [s.id for s in reforms]
+    assert len(ids) == len(set(ids))
+    for spec in levels:
+        assert spec.benchmark_value > 0
+        assert spec.variable
+        assert spec.source and spec.source_url
+        assert spec.category == "State program actual"
+        assert spec.benchmark_score_type in {"actual", "approximation"}
+        assert spec.period == 2024
+    for spec in reforms:
+        assert spec.jct_score and spec.jct_score > 0
+        assert spec.neutralized_variable
+        assert spec.budget_measure == "state_income_tax"
+        assert spec.in_sample is False

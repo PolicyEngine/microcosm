@@ -175,6 +175,36 @@ class PolicyEngineUSEngine:
             and not _is_engine_computed(variable)
         )
 
+    def default_values(self, names: Sequence[str]) -> dict[str, object]:
+        """Return engine default values for the given input variable names.
+
+        Only names the tax-benefit system knows as non-formula input
+        variables with a declared default are returned; unknown names and
+        formula-owned variables are silently omitted, so callers can pass a
+        whole export surface. Enum defaults are normalized to their stored
+        member name (the representation datasets persist).
+
+        Raises:
+            ImportError: If ``policyengine_us`` is not installed.
+        """
+        variables = self._tax_benefit_system().variables
+        defaults: dict[str, object] = {}
+        for name in names:
+            variable = variables.get(name)
+            if variable is None or _is_engine_computed(variable):
+                continue
+            default = getattr(variable, "default_value", None)
+            if default is None:
+                continue
+            if variable.value_type not in _DTYPE_KIND_BY_VALUE_TYPE:
+                stored = _stored_enum_name(default)
+                if stored is None:
+                    continue
+                defaults[name] = stored
+            else:
+                defaults[name] = default
+        return defaults
+
     def _entity_of(self, name: str) -> str:
         """Return the entity key a variable lives on (internal use)."""
         return self._variable(name).entity.key

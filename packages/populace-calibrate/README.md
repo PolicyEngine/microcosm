@@ -62,7 +62,19 @@ reproduces them.
   underlying weight. It is useful for ESS/design-effect sweeps when
   `max_weight_ratio` is too blunt, especially with `mass="conserve"`; under
   `mass="free"` it also penalizes total weight scale. It is not a safety
-  guarantee and does not replace the hard ratio cap.
+  guarantee and does not replace the hard ratio cap. In the two-stage
+  `calibrate_l0_refit` path, `l2_lambda` applies to both the L0 selection and
+  the refit; `refit_l2_lambda` overrides the refit stage alone — the stage
+  whose weights ship — so selection-only and refit-only penalties are both
+  expressible.
+
+Every result reports its weight-concentration coordinates alongside fit:
+`result.effective_sample_size` (Kish ESS, `(Σw)² / Σw²`),
+`result.realized_max_weight_ratio`, and `result.top_1pct_weight_share`, all
+serialized into `calibration_diagnostics.json` — so an accuracy-vs-spread
+frontier can be read off any run's artifact. The standalone
+`effective_sample_size(weights)` scores any weight vector, e.g. a published
+artifact's.
 
 ## Example
 

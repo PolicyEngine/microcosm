@@ -33,7 +33,9 @@ __all__ = [
 
 #: Version of the diagnostics payload. Consumers (dashboards, scorers) key
 #: their readers on it; bump it with any shape change.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 3
+#: v4 added the weight-concentration scalars (``effective_sample_size``,
+#: ``realized_max_weight_ratio``, ``top_1pct_weight_share``).
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 4
 
 
 def _finite(value: float) -> float | None:
@@ -216,6 +218,9 @@ def diagnostics_payload(
         "initial_loss": _finite(result.initial_loss),
         "final_loss": _finite(result.final_loss),
         "fraction_within_10pct": _finite(result.fraction_within_10pct),
+        "effective_sample_size": _finite(result.effective_sample_size),
+        "realized_max_weight_ratio": _finite(result.realized_max_weight_ratio),
+        "top_1pct_weight_share": _finite(result.top_1pct_weight_share),
         "loss_trajectory": [_finite(loss) for loss in result.loss_trajectory],
         "skipped": [
             {"name": skip.target.name, "reason": skip.reason} for skip in result.skipped

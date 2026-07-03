@@ -1,0 +1,174 @@
+{
+ "_comment": "Out-of-sample state-program repeal reforms: neutralize a state credit variable and compare the simulated change in national state_income_tax (state credit variables are defined_for their state, so the national change IS the state change) to the state's official program cost. For a refundable credit the repeal effect equals total payments; for the nonrefundable portion it equals the amount used against liability, matching how revenue departments report claims. Restricted to programs with strong tax-year official actuals; the state_program_levels.json backtests cover the wider set. Washington's WFTC is levels-only: WA levies no income tax, so the state_income_tax measure would not capture its repeal.",
+ "schema_version": 1,
+ "reforms": [
+  {
+   "id": "state_repeal_mn_cwfc",
+   "name": "Repeal Minnesota CTC + Working Family Credit",
+   "category": "State program",
+   "neutralized_variable": "mn_child_and_working_families_credits",
+   "period": 2024,
+   "benchmark": {
+    "score": 755500000,
+    "window": "TY2024",
+    "source": "MN House Research, May 2026, p.1",
+    "source_url": "https://www.house.mn.gov/hrd/pubs/ss/sschldwfc.pdf"
+   },
+   "description": "Combined credits (shared phase-out); benchmark is the House Research combined cost."
+  },
+  {
+   "id": "state_repeal_ca_eitc",
+   "name": "Repeal California CalEITC",
+   "category": "State program",
+   "neutralized_variable": "ca_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 941000000,
+    "window": "TY2023",
+    "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
+    "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
+   },
+   "description": "One-year vintage gap: TY2023 actual vs the 2024 dataset period."
+  },
+  {
+   "id": "state_repeal_ca_yctc",
+   "name": "Repeal California Young Child Tax Credit",
+   "category": "State program",
+   "neutralized_variable": "ca_yctc",
+   "period": 2024,
+   "benchmark": {
+    "score": 413000000,
+    "window": "TY2023",
+    "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
+    "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
+   },
+   "description": ""
+  },
+  {
+   "id": "state_repeal_ny_eitc",
+   "name": "Repeal New York EITC",
+   "category": "State program",
+   "neutralized_variable": "ny_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 1116252683,
+    "window": "TY2024",
+    "source": "NYS DTF open data, EITC Claims Table 3",
+    "source_url": "https://data.ny.gov/d/caik-8a9b"
+   },
+   "description": "NYS EITC only; the NYC and noncustodial credits are separate variables."
+  },
+  {
+   "id": "state_repeal_ny_escc",
+   "name": "Repeal New York Empire State Child Credit",
+   "category": "State program",
+   "neutralized_variable": "ny_ctc",
+   "period": 2024,
+   "benchmark": {
+    "score": 693091767,
+    "window": "TY2023",
+    "source": "NYS DTF open data, ESCC Study",
+    "source_url": "https://data.ny.gov/d/m4q6-x2yw"
+   },
+   "description": "TY2023 and the 2024 dataset period share the regular 33%-of-federal structure."
+  },
+  {
+   "id": "state_repeal_co_eitc",
+   "name": "Repeal Colorado EITC",
+   "category": "State program",
+   "neutralized_variable": "co_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 356491619,
+    "window": "TY2023",
+    "source": "CO DOR ORA, Individual Income Tax Credits TY2023",
+    "source_url": "https://cdor.colorado.gov/data-and-reports/income-tax-data/income-tax-credits"
+   },
+   "description": "TY2023 and the 2024 model year both use a 50% match; the separately reported $23.1M Expanded COEITC is excluded from the benchmark."
+  },
+  {
+   "id": "state_repeal_co_ctc",
+   "name": "Repeal Colorado Child Tax Credit",
+   "category": "State program",
+   "neutralized_variable": "co_ctc",
+   "period": 2024,
+   "benchmark": {
+    "score": 89158930,
+    "window": "TY2023",
+    "source": "CO DOR ORA, Individual Income Tax Credits TY2023",
+    "source_url": "https://cdor.colorado.gov/data-and-reports/income-tax-data/income-tax-credits"
+   },
+   "description": ""
+  },
+  {
+   "id": "state_repeal_ct_eitc",
+   "name": "Repeal Connecticut EITC",
+   "category": "State program",
+   "neutralized_variable": "ct_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 195066537,
+    "window": "TY2024",
+    "source": "CT DRS Annual Report FY2024-25, p.35",
+    "source_url": "https://portal.ct.gov/-/media/drs/research/annualreport/drs-fy25-annual-report.pdf"
+   },
+   "description": ""
+  },
+  {
+   "id": "state_repeal_nm_eitc",
+   "name": "Repeal New Mexico Working Families Tax Credit",
+   "category": "State program",
+   "neutralized_variable": "nm_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 130807000,
+    "window": "TY2024",
+    "source": "2025 NM Tax Expenditure Report, p.259",
+    "source_url": "https://www.nmlegis.gov/handouts/RSTP%20121525%20Item%202%20B%20Tax%20Expenditure%20Report.pdf"
+   },
+   "description": ""
+  },
+  {
+   "id": "state_repeal_nm_ctc",
+   "name": "Repeal New Mexico Child Income Tax Credit",
+   "category": "State program",
+   "neutralized_variable": "nm_ctc",
+   "period": 2024,
+   "benchmark": {
+    "score": 133590000,
+    "window": "TY2024",
+    "source": "2025 NM Tax Expenditure Report, p.81",
+    "source_url": "https://www.nmlegis.gov/handouts/RSTP%20121525%20Item%202%20B%20Tax%20Expenditure%20Report.pdf"
+   },
+   "description": ""
+  },
+  {
+   "id": "state_repeal_md_eitc",
+   "name": "Repeal Maryland EITC",
+   "category": "State program",
+   "neutralized_variable": "md_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 550881492,
+    "window": "TY2024",
+    "source": "Comptroller of Maryland, Income Tax Summary Report TY2024, pp.18-23",
+    "source_url": "https://www.marylandcomptroller.gov/content/dam/mdcomp/md/reports/annual/summary24.pdf"
+   },
+   "description": "Benchmark sums the refundable ($410.1M) and nonrefundable ($140.8M) lines; repealing the take-better-of credit removes both."
+  },
+  {
+   "id": "state_repeal_il_eitc",
+   "name": "Repeal Illinois EITC",
+   "category": "State program",
+   "neutralized_variable": "il_eitc",
+   "period": 2024,
+   "benchmark": {
+    "score": 437387169,
+    "window": "TY2023",
+    "source": "IDOR TY2023 final stratification, p.1",
+    "source_url": "https://tax.illinois.gov/content/dam/soi/en/web/tax/research/taxstats/indincomestratifications/2023-iit-1040il-return-final.pdf"
+   },
+   "description": "Illinois-resident returns; 20% match in both years."
+  }
+ ]
+}
