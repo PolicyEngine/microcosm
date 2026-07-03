@@ -1,0 +1,56 @@
+{
+  "country": "be",
+  "fingerprint": "acc6e4b7bcbef62120dbcf7e78f83d04e787ba1278fe8697e358295bf86e7481",
+  "gate_ids": [
+    "calibration_per_family_fit",
+    "national_and_nuts1_admin_aggregates",
+    "commune_fiscal_income_fit",
+    "target_profile_coverage",
+    "demographics_vs_statbel",
+    "exported_nonzero",
+    "formula_owned_export",
+    "nonnegative_columns",
+    "macro_realism_nbb"
+  ],
+  "geography_spine_stage": "clone_assign_communes",
+  "release": {
+    "artifact_repo": "policyengine/populace-be-private",
+    "builder": "populace-be",
+    "dataset_filename_template": "populace_be_{year}.h5",
+    "required_release_files": [
+      "build_manifest.json",
+      "release_manifest.json",
+      "calibration_diagnostics.json",
+      "source_coverage.json",
+      "demographics.json",
+      "reform_validation.json"
+    ],
+    "staging_repo": "policyengine/populace-be-staging"
+  },
+  "resource_hashes": {
+    "country_package.json": "73c7f613e9d78e32d8f32a1e77d138071aea6d2417608ad41c13489f8cdf3ea4",
+    "gates.json": "2ca88a5cab1d5b3864dfc73523cf126d6ce2e41b81ba87d70ee630d1ca548b37",
+    "geography_spine.json": "0b39217386dbc9b053a036766004f10a3a34434a293c1e956e0f4f053a08e1bf",
+    "release_contract.json": "af956e05782cd2aa5df108b216f0ff2a835f2a4e87d68419239b537550082c25",
+    "source_stages.json": "64e45f48b5c3bb00a710e56f805c7c8c441ddc1050cfb61d846d45e9cbbb16b2",
+    "target_references.json": "0f49fe2cdb024607e00558dfb87655dbaad06219ba05dd5b72905efc1e2916af"
+  },
+  "resources": [
+    "source_stages.json",
+    "geography_spine.json",
+    "target_references.json",
+    "gates.json",
+    "release_contract.json"
+  ],
+  "stage_names": [
+    "silc_load"
+  ],
+  "target_reference_names": [
+    "statbel_population_by_age_sex_region",
+    "statbel_fiscal_income_by_commune",
+    "spf_finances_pit_total",
+    "onss_employee_contribution_total",
+    "onem_unemployment_caseload",
+    "nbb_household_disposable_income"
+  ]
+}

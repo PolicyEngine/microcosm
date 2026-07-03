@@ -1,0 +1,86 @@
+# Self-contained RuleSpec module for the Axiom adapter's behavioral tests:
+# a two-bracket personal income tax with a boolean exemption predicate and a
+# monthly benefit on the person, plus a household-entity housing allowance —
+# small enough to hand-verify, shaped like the Belgian pilot (person +
+# household scopes, no relations).
+format: rulespec/v1
+module:
+  summary: |-
+    populace-frame test fixture: person-scope two-bracket income tax with an
+    exemption predicate and a monthly benefit, and a household-scope housing
+    allowance. Values are round numbers chosen for hand verification.
+units:
+  - name: EUR
+    kind: currency
+    minor_units: 2
+rules:
+  - name: toy_bracket_threshold
+    kind: parameter
+    dtype: Money
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          10000
+  - name: toy_low_rate
+    kind: parameter
+    dtype: Rate
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          0.10
+  - name: toy_high_rate
+    kind: parameter
+    dtype: Rate
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          0.25
+  - name: toy_income_tax
+    kind: derived
+    entity: Person
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_is_exempt:
+              0
+          else:
+              if toy_taxable_income <= toy_bracket_threshold:
+                  toy_taxable_income * toy_low_rate
+              else:
+                  toy_bracket_threshold * toy_low_rate + (toy_taxable_income - toy_bracket_threshold) * toy_high_rate
+  - name: toy_monthly_benefit
+    kind: derived
+    entity: Person
+    dtype: Money
+    period: Month
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_child_count >= 1:
+              100 * toy_child_count
+          else:
+              0
+  - name: toy_housing_allowance
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: |-
+          if toy_household_rent > 6000:
+              1200
+          else:
+              0

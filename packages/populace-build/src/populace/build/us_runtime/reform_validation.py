@@ -44,6 +44,9 @@ __all__ = [
     "out_of_sample_reform_specs",
     "tax_expenditure_reform_specs",
     "soi_baseline_level_specs",
+    "state_program_level_specs",
+    "state_program_reform_specs",
+    "default_baseline_level_specs",
     "load_default_reform_specs",
     "reform_validation_payload",
     "write_reform_validation",
@@ -303,6 +306,58 @@ def tax_expenditure_reform_specs(
     return tuple(specs)
 
 
+def _state_program_reforms_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("state_program_reforms.json")))
+
+
+def state_program_reform_specs(
+    path: Path | None = None,
+    *,
+    period: int,
+) -> tuple[ReformValidationSpec, ...]:
+    """State tax-credit repeal reforms scored against official state outlays.
+
+    Each is a ``neutralize_variable`` repeal of a state credit, with the
+    simulated change in ``state_income_tax`` compared to the state's published
+    program cost. State credit variables are ``defined_for`` their state, so no
+    geography filtering is needed — the national change IS the state change.
+    For a refundable credit the repeal effect equals total payments; for a
+    nonrefundable one it equals the amount actually used against liability,
+    matching how revenue departments report claims. State program totals are
+    not calibration targets, so these rows are out-of-sample.
+    """
+    config_path = path or _state_program_reforms_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    specs: list[ReformValidationSpec] = []
+    for raw in payload.get("reforms", ()):
+        bench = raw.get("benchmark", {})
+        specs.append(
+            ReformValidationSpec(
+                id=raw["id"],
+                name=raw["name"],
+                category=raw.get("category", "State program"),
+                in_sample=bool(raw.get("in_sample", False)),
+                period=int(raw.get("period", period)),
+                jct_score=(
+                    float(bench["score"]) if bench.get("score") is not None else None
+                ),
+                jct_window=str(bench.get("window", "")),
+                jct_source=str(bench.get("source", "")),
+                jct_source_url=str(bench.get("source_url", "")),
+                jct_score_type=str(bench.get("score_type", "actual")),
+                budget_measure=str(raw.get("budget_measure", "state_income_tax")),
+                description=str(raw.get("description", "")),
+                neutralized_variable=raw["neutralized_variable"],
+                # Repealing a credit raises state tax by the program's cost
+                # (positive), matching the positive published figure.
+                effect_direction="reform_minus_baseline",
+            )
+        )
+    return tuple(specs)
+
+
 @dataclass(frozen=True)
 class BaselineLevelSpec:
     """A baseline total compared to a published actual (no counterfactual).
@@ -330,6 +385,13 @@ class BaselineLevelSpec:
     # ignores IRS credit-ordering, so the populace side remains a slight upper
     # bound.
     cap_variable: str | None = None
+    # Row grouping shown on the dashboard. SOI lines keep the historical
+    # default; state-program lines override it per config file.
+    category: str = "IRS SOI actual"
+    # 'actual' for published administrative totals; 'approximation' for derived
+    # benchmarks (e.g. state match-rate × IRS federal EITC in the state, or
+    # eligible children × credit amount).
+    benchmark_score_type: str = "actual"
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
@@ -340,11 +402,9 @@ def _soi_baseline_levels_config_path() -> Path:
     return Path(str(files("populace.build.us").joinpath("soi_baseline_levels.json")))
 
 
-def soi_baseline_level_specs(
-    path: Path | None = None,
+def _baseline_level_specs_from_config(
+    config_path: Path, *, default_category: str
 ) -> tuple[BaselineLevelSpec, ...]:
-    """Curated SOI-actual baseline levels from JSON config."""
-    config_path = path or _soi_baseline_levels_config_path()
     if not config_path.exists():
         return ()
     payload = json.loads(config_path.read_text())
@@ -363,9 +423,49 @@ def soi_baseline_level_specs(
                 source_url=str(bench.get("source_url", "")),
                 description=str(raw.get("description", "")),
                 cap_variable=raw.get("cap_variable") or None,
+                category=str(raw.get("category", default_category)),
+                benchmark_score_type=str(bench.get("score_type", "actual")),
             )
         )
     return tuple(specs)
+
+
+def soi_baseline_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Curated SOI-actual baseline levels from JSON config."""
+    return _baseline_level_specs_from_config(
+        path or _soi_baseline_levels_config_path(),
+        default_category="IRS SOI actual",
+    )
+
+
+def _state_program_levels_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("state_program_levels.json")))
+
+
+def state_program_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """State tax-credit baseline levels vs official state statistics.
+
+    Each line compares the populace baseline total of a state credit variable
+    (defined_for its state, so the national weighted sum IS the state total) to
+    a published state figure — a Department of Revenue statistical report where
+    one exists (score_type 'actual'), or a documented approximation such as the
+    state match-rate × IRS federal EITC claimed in the state (score_type
+    'approximation'). None of these totals are calibration targets, so every
+    row is genuinely out-of-sample.
+    """
+    return _baseline_level_specs_from_config(
+        path or _state_program_levels_config_path(),
+        default_category="State program actual",
+    )
+
+
+def default_baseline_level_specs() -> tuple[BaselineLevelSpec, ...]:
+    """All shipped baseline-level backtests: IRS SOI + state programs."""
+    return (*soi_baseline_level_specs(), *state_program_level_specs())
 
 
 def load_default_reform_specs(
@@ -373,13 +473,16 @@ def load_default_reform_specs(
     period: int,
     obbba_path: Path | None = None,
     tax_expenditure_path: Path | None = None,
+    state_program_path: Path | None = None,
 ) -> tuple[ReformValidationSpec, ...]:
     """In-sample JCT tax expenditures + out-of-sample OBBBA provisions + the
-    big-provision tax-expenditure reforms (CTC/EITC/CDCC/standard/itemized)."""
+    big-provision tax-expenditure reforms (CTC/EITC/CDCC/standard/itemized) +
+    state-program repeal reforms scored against official state outlays."""
     return (
         *in_sample_reform_specs(period=period),
         *out_of_sample_reform_specs(obbba_path, period=period),
         *tax_expenditure_reform_specs(tax_expenditure_path, period=period),
+        *state_program_reform_specs(state_program_path, period=period),
     )
 
 
@@ -623,14 +726,14 @@ def reform_validation_payload(
             {
                 "id": level.id,
                 "name": level.name,
-                "category": "IRS SOI actual",
+                "category": level.category,
                 "in_sample": False,
                 "period": level.period,
                 "description": level.description or None,
                 "jct": {
                     "score": _finite(level.benchmark_value),
                     "score_fy2027": None,
-                    "score_type": "actual",
+                    "score_type": level.benchmark_score_type,
                     "window": level.benchmark_year or None,
                     "source": level.source or None,
                     "source_url": level.source_url or None,

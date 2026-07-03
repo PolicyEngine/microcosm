@@ -59,13 +59,15 @@ and the thing weights refer back to, made executable. Holds:
   `synthetic_conditional`, `tail_verbatim`, ...). Pool design is explicit
   survey design: oversample where support is scarce, carry the weights that
   make mass honest. Calibration owns representation; generation owns support.
-- **Links** (documented placeholder today): `LinkSpec` declares many-to-many
+- **Links** (experimental placeholder today): `LinkSpec` declares many-to-many
   associations between entities — a `jobs` link between persons and firms, a
   policy link between persons and plans — carried as their own tables, keyed
   by link name and validated against the linked tables' ids. Partition
   membership stays the group-entity system; links are for relations that
-  don't partition. The full link operator (link-aware broadcast / select /
-  concat, link targets outside the partition entities) comes later.
+  don't partition. Firm tables and person-firm links are valid experimental
+  frames, not production firm microsimulation support. The full link operator
+  (link-aware broadcast / select / concat, link targets outside the partition
+  entities) comes later.
 - **Variable metadata**: name → entity, dtype, period semantics — resolved
   through the RulesEngine protocol, never guessed per-tool.
 - **Weighted accounting** as methods (`sum`, `mean`, `quantile`, `gini`,

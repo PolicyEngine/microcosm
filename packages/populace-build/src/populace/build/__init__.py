@@ -49,6 +49,16 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
+from populace.build.country_spec import (  # noqa: E402 - after the compat gate
+    CountrySpec,
+    GateSelectionSpec,
+    GatesManifest,
+    GeographySpineManifest,
+    GeographySpineSpec,
+    ReleaseContractManifest,
+    country_stage_plan,
+    load_country_spec,
+)
 from populace.build.gates import (  # noqa: E402 - after the compat gate
     GateReport,
     GateResult,
@@ -107,9 +117,15 @@ from populace.build.staging import (  # noqa: E402 - after the compat gate
 __version__ = "0.1.0"
 
 __all__ = [
+    "CountrySpec",
     "DonorSpec",
     "GateReport",
     "GateResult",
+    "GateSelectionSpec",
+    "GatesManifest",
+    "GeographySpineManifest",
+    "GeographySpineSpec",
+    "ReleaseContractManifest",
     "Stage",
     "StagePlan",
     "StageRecord",
@@ -148,6 +164,8 @@ __all__ = [
     "target_surface_gate",
     "UnsupportedLedgerTarget",
     "UnsupportedSourceOperationError",
+    "country_stage_plan",
+    "load_country_spec",
     "run_source_stage",
     "__version__",
 ]

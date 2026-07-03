@@ -70,10 +70,10 @@ from populace.build.us_runtime.l0_refit_export import (
     load_us_frame,
 )
 from populace.build.us_runtime.reform_validation import (
+    default_baseline_level_specs,
     default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
-    soi_baseline_level_specs,
     write_reform_validation,
 )
 from populace.calibrate import TargetRegistry, calibrate, calibrate_l0_refit
@@ -556,6 +556,31 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--l2-lambda",
+        type=float,
+        default=0.0,
+        help=(
+            "Soft L2 concentration penalty on the mean squared "
+            "calibrated-to-initial weight ratio. The default 0.0 preserves "
+            "the unpenalized objective; positive values trade target fit for "
+            "a higher effective sample size (max-weight-ratio stays the hard "
+            "cap). Under the default L0+refit path the same penalty applies "
+            "to both stages unless --refit-l2-lambda overrides the refit."
+        ),
+    )
+    parser.add_argument(
+        "--refit-l2-lambda",
+        type=float,
+        default=None,
+        help=(
+            "Override the L2 concentration penalty for the post-L0 refit "
+            "stage only — the stage that produces the shipped weights. "
+            "Defaults to --l2-lambda. Requires the sparse L0+refit default "
+            "dataset (incompatible with --dense-default-dataset, which has "
+            "no refit stage)."
+        ),
+    )
+    parser.add_argument(
         "--dense-default-dataset",
         action="store_true",
         help=(
@@ -769,6 +794,11 @@ def _parse_args() -> argparse.Namespace:
         parser.error(
             "--l0-refit-lambda-share must be positive unless "
             "--dense-default-dataset is set."
+        )
+    if args.refit_l2_lambda is not None and args.dense_default_dataset:
+        parser.error(
+            "--refit-l2-lambda requires the sparse L0+refit default dataset; "
+            "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
     return args
 
@@ -4176,7 +4206,7 @@ def _write_reform_validation(
         simulate=simulate,
         in_sample_estimates=_in_sample_estimates(result),
         in_sample_targets=_in_sample_targets(result),
-        baseline_levels=soi_baseline_level_specs(),
+        baseline_levels=default_baseline_level_specs(),
         release_id=release_id,
     )
     write_reform_validation(payload, release_dir / "reform_validation.json")
@@ -4889,6 +4919,16 @@ def main() -> None:
                 else float(args.l0_refit_lambda_share)
             ),
             l0_lambda=l0_refit_lambda,
+            l2_lambda=float(args.l2_lambda),
+            refit_l2_lambda=(
+                None
+                if args.dense_default_dataset
+                else float(
+                    args.l2_lambda
+                    if args.refit_l2_lambda is None
+                    else args.refit_l2_lambda
+                )
+            ),
             warm_start_calibration=(
                 dict(warm_start_calibration)
                 if warm_start_calibration is not None
@@ -4906,6 +4946,7 @@ def main() -> None:
             max_weight_ratio=args.max_weight_ratio,
             seed=args.seed,
             mass="conserve",
+            l2_lambda=args.l2_lambda,
             target_loss_weights=target_loss_weights,
             target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
             warm_start_weights=warm_start_weights,
@@ -4919,6 +4960,7 @@ def main() -> None:
             "n_candidate_households": candidate_households,
             "n_exported_households": int(target_frame.n("household")),
             "epochs": int(args.epochs),
+            "l2_lambda": float(args.l2_lambda),
             "final_loss": float(result.final_loss),
         }
     else:
@@ -4932,6 +4974,8 @@ def main() -> None:
             seed=args.seed,
             mass="conserve",
             l0_lambda=float(l0_refit_lambda),
+            l2_lambda=args.l2_lambda,
+            refit_l2_lambda=args.refit_l2_lambda,
             target_loss_weights=target_loss_weights,
             target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
             warm_start_weights=warm_start_weights,
@@ -4949,6 +4993,10 @@ def main() -> None:
             "l0_lambda": float(result.l0_lambda),
             "selection_epochs": int(args.epochs),
             "refit_epochs": int(args.epochs),
+            "selection_l2_lambda": float(args.l2_lambda),
+            "refit_l2_lambda": float(
+                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
+            ),
             "selection_final_loss": float(result.selection.final_loss),
             "refit_initial_loss": float(result.initial_loss),
             "refit_final_loss": float(result.final_loss),

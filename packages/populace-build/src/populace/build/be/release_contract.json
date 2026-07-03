@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "country": "be",
+  "policy": "BE-SILC microdata is licence-restricted (Statbel/Eurostat scientific-use terms, the UK FRS posture): microdata and per-record outputs live only in the private artifact repo, public artifacts are aggregates only, and releases are identified by data_build_id plus HF revision — never ordinals.",
+  "builder": "populace-be",
+  "hf": {
+    "artifact_repo": "policyengine/populace-be-private",
+    "private": true,
+    "staging_repo": "policyengine/populace-be-staging"
+  },
+  "dataset_filename_template": "populace_be_{year}.h5",
+  "required_release_files": [
+    "build_manifest.json",
+    "release_manifest.json",
+    "calibration_diagnostics.json",
+    "source_coverage.json",
+    "demographics.json",
+    "reform_validation.json"
+  ],
+  "boundary": {
+    "private": [
+      "populace_be_{year}.h5",
+      "populace_be_{year}_calibration.npz"
+    ],
+    "public": [
+      "build_manifest.json",
+      "release_manifest.json",
+      "calibration_diagnostics.json",
+      "source_coverage.json",
+      "demographics.json",
+      "reform_validation.json",
+      "latest.json"
+    ]
+  },
+  "licence": {
+    "name": "BE-SILC (Statbel/Eurostat scientific use)",
+    "restricted": true,
+    "notes": "Destination guards (an hf_destinations allowlist module + AST-scan test, the pattern proven on the UK licensed-data repo) land before any upload code exists — populace#262's first PR. No individual-level records in logs or CI output."
+  },
+  "notes": "source_coverage.json uses the country-neutral name (generalizing us_source_coverage.json per populace#265). reform_validation.json carries the EUROMOD-BE / Federal Planning Bureau comparators with in/out-of-sample labeling (populace#264). latest.json uploads last as the atomic pointer; the staging repo feeds the dashboard monitor ahead of release."
+  }

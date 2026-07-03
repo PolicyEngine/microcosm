@@ -118,7 +118,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "US block-ladder NPZ artifact "
             "(tools/build_us_block_ladder_artifact.py). Assigns each "
             "household a census block within its congressional district and "
-            "derives the county/tract/place/SLD/CBSA spine columns."
+            "derives the county/tract/place/SLD/CBSA spine columns. US bases "
+            "carry the ladder by default; omit only with "
+            "--without-block-ladder."
+        ),
+    )
+    parser.add_argument(
+        "--without-block-ladder",
+        action="store_true",
+        help=(
+            "Explicitly build a base without the geography ladder "
+            "(diagnostic builds only; a ladder-less base cannot become a "
+            "release — the L0/refit export requires the spine columns)."
         ),
     )
     parser.add_argument("--geography-ladder-seed", default=0, type=int)
@@ -150,6 +161,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--block-ladder-artifact requires "
             "--congressional-district-vintage-crosswalk: block sampling is "
             "conditioned on households carrying current-vintage districts"
+        )
+    if args.block_ladder_artifact is not None and args.without_block_ladder:
+        parser.error(
+            "--block-ladder-artifact and --without-block-ladder are contradictory"
+        )
+    if args.block_ladder_artifact is None and not args.without_block_ladder:
+        parser.error(
+            "US bases carry the block-anchored geography ladder by default "
+            "(populace #275): pass --block-ladder-artifact <npz> "
+            "(tools/build_us_block_ladder_artifact.py) or opt out "
+            "explicitly with --without-block-ladder"
         )
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
@@ -219,7 +241,10 @@ def main() -> None:
                 "seed": args.congressional_district_seed,
             }
         )
-    geography_ladder_assignment = {"applied": False}
+    geography_ladder_assignment = {
+        "applied": False,
+        "opted_out": bool(args.without_block_ladder),
+    }
     if args.block_ladder_artifact is not None:
         ladder = load_us_block_ladder(args.block_ladder_artifact)
         imputed = with_household_us_geography_ladder(

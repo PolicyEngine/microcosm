@@ -1894,11 +1894,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "l0_lambda": 0.2,
         "selection_epochs": 1500,
         "refit_epochs": 1500,
+        "selection_l2_lambda": 0.0,
+        "refit_l2_lambda": 0.0,
         "selection_final_loss": 1.5,
         "refit_initial_loss": 2.0,
         "refit_final_loss": 1.0,
     }
     assert captured["l0_kwargs"]["l0_lambda"] == 0.2
+    assert captured["l0_kwargs"]["l2_lambda"] == 0.0
+    assert captured["l0_kwargs"]["refit_l2_lambda"] is None
     assert captured["l0_kwargs"]["epochs"] == 1500
     assert captured["l0_kwargs"]["refit_epochs"] == 1500
     assert captured["l0_kwargs"]["warm_start_weights"] is None
