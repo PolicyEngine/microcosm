@@ -62,7 +62,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
@@ -677,7 +677,7 @@ def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
 ) -> None:
     (release_dir / "calibration_diagnostics.json").write_text(
-        '{"schema_version": 3, "targets": [], "loss_trajectory": [NaN], '
+        '{"schema_version": 4, "targets": [], "loss_trajectory": [NaN], '
         '"skipped": [], "options": {}}'
     )
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
