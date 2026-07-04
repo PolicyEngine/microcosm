@@ -402,6 +402,7 @@ def impute_us_puf_tax_detail_support(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     seed: int = 0,
     n_estimators: int = 100,
+    fit_records: list[FitWeightRecord] | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -410,6 +411,17 @@ def impute_us_puf_tax_detail_support(
     totals are distributed over the cloned people using their copied ASEC
     within-tax-unit shares, falling back to the first person in the unit when
     the copied support has no mass for a variable.
+
+    Args:
+        fit_records: An optional sink for the build-level weights audit (populace
+            #300). When a list is passed, this production fit appends one
+            :class:`~populace.build.gates.FitWeightRecord`
+            (``US_PUF_SUPPORT_FIT_NAME`` -> the kind the QRF *resolved* to,
+            ``"design"`` here) so a release can prove the fit did not silently
+            resolve unweighted (:func:`~populace.build.gates.weights_audit_gate`).
+            Opt-in: omitting it leaves the imputation byte-for-byte unchanged, so
+            existing callers are unaffected. This is the seam a build stage wires
+            to run the audit and abort a release on an unweighted fit.
     """
 
     if frame.schema != US_SCHEMA:
@@ -456,6 +468,13 @@ def impute_us_puf_tax_detail_support(
         list(outputs),
         weights="design",
     )
+    if fit_records is not None:
+        # Record the kind the fit *resolved* to (not the "design" spec above):
+        # the build-level weights audit reads this back to prove the production
+        # fit did not silently resolve unweighted (populace #300).
+        fit_records.append(
+            FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind)
+        )
 
     features = _tax_unit_feature_frame(frame, predictors)
     puf_mask = (
