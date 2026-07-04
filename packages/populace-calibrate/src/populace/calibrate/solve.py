@@ -306,6 +306,11 @@ class L0RefitResult:
         return self.refit.final_loss
 
     @property
+    def fraction_within_10pct(self) -> float:
+        """The refit's share of targets fit within 10% (diagnostics field)."""
+        return self.refit.fraction_within_10pct
+
+    @property
     def options(self) -> Mapping[str, object]:
         """Combined production options and selection provenance."""
         return {
