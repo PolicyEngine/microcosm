@@ -14,3 +14,7 @@ out/
 
 # Release alert webhooks (real file is machine-local; .example is tracked)
 tools/release.env
+
+# L2 sweep experiment outputs and input bundles (large, machine-local)
+sweeps/
+l0_*_sparse_matrix_bundle_*

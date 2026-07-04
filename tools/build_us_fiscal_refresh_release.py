@@ -1084,15 +1084,18 @@ def _write_target_frame_checkpoint(
     }
 
 
-def _read_target_frame_checkpoint(
+def _read_target_frame_checkpoint_file(
     path: Path,
-    *,
-    identity: Mapping[str, object],
-    target_specs: tuple,
-    gate_congressional_district_targets: bool = True,
-) -> tuple[Frame, TargetRegistry, dict[str, object]] | None:
-    if not path.exists():
-        return None
+) -> tuple[Frame, dict[str, object], dict[str, object]]:
+    """Read a target-frame checkpoint without an identity expectation.
+
+    Returns the materialized frame plus the checkpoint's *stored* identity and
+    compilation payloads. The stored identity hash is verified against the
+    stored identity (a mismatch means a corrupt or tampered file), but no
+    caller-supplied identity is required — this is the entry point for
+    harnesses (e.g. the L2 sweep) that reuse a build's checkpoint as-is and
+    record its identity as provenance rather than deriving it from inputs.
+    """
     import h5py
 
     with h5py.File(path, "r") as h5:
@@ -1104,10 +1107,8 @@ def _read_target_frame_checkpoint(
                 f"{TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION}."
             )
         stored_identity = json.loads(str(h5.attrs["identity_json"]))
-        if stored_identity != dict(identity):
-            return None
         stored_digest = str(h5.attrs.get("identity_sha256", ""))
-        expected_digest = _target_frame_checkpoint_digest(identity)
+        expected_digest = _target_frame_checkpoint_digest(stored_identity)
         if stored_digest != expected_digest:
             raise RuntimeError(
                 "Target-frame checkpoint identity hash mismatch for "
@@ -1129,6 +1130,35 @@ def _read_target_frame_checkpoint(
         strata = _read_checkpoint_series(h5["strata"])
         stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
     frame = Frame(tables, US_SCHEMA, weights, strata)
+    return frame, stored_identity, stored_compilation
+
+
+def _read_target_frame_checkpoint(
+    path: Path,
+    *,
+    identity: Mapping[str, object],
+    target_specs: tuple,
+    gate_congressional_district_targets: bool = True,
+) -> tuple[Frame, TargetRegistry, dict[str, object]] | None:
+    if not path.exists():
+        return None
+    import h5py
+
+    # Attrs-only precheck: a cache miss must not pay for reading the full
+    # materialized tables, and a schema mismatch stays loud.
+    with h5py.File(path, "r") as h5:
+        schema_version = int(h5.attrs.get("schema_version", -1))
+        if schema_version != TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION:
+            raise RuntimeError(
+                "Target-frame checkpoint schema mismatch for "
+                f"{path}: got {schema_version}, expected "
+                f"{TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION}."
+            )
+        if json.loads(str(h5.attrs.get("identity_json", "null"))) != dict(identity):
+            return None
+    frame, stored_identity, stored_compilation = _read_target_frame_checkpoint_file(
+        path
+    )
     registry, compilation = _compile_materialized_target_registry(
         frame,
         target_specs,
