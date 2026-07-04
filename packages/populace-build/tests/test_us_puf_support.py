@@ -1158,3 +1158,90 @@ def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
         0.0,
         2020.0,
     ]
+
+
+class TestPufSupportWeightsAuditWiring:
+    """The PUF-support production fit emits a weights-audit record.
+
+    This is what makes the build-level weights audit (populace #300) real rather
+    than dead code: the actual production imputation records the weight kind it
+    resolved, so a release manifest carries it and a ``"none"`` fit fails the
+    release. The fit runs on a synthetic frame with no ``policyengine_us``, so
+    this proves the wiring end to end in CI's engine-less environment.
+    """
+
+    def _donor(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+                "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+                "employment_income_before_lsr": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
+                "weight": [1.0, 1.0, 1.0, 1.0],
+            }
+        )
+
+    def _impute(self, fit_records):
+        return impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            self._donor(),
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=("employment_income_before_lsr",),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+            fit_records=fit_records,
+        )
+
+    def test_production_fit_records_design_weight_kind(self) -> None:
+        from populace.build import FitWeightRecord
+        from populace.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        fit_records: list[FitWeightRecord] = []
+        self._impute(fit_records)
+
+        assert fit_records == [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "design")]
+
+    def test_recorded_fit_passes_the_weights_audit_gate(self) -> None:
+        from populace.build import weights_audit_gate
+
+        fit_records = []
+        self._impute(fit_records)
+
+        result = weights_audit_gate(fit_records)
+        assert result.passed
+        from populace.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        assert result.details["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }
+
+    def test_wired_gate_would_fail_a_none_fit(self) -> None:
+        # Prove the wired gate can actually find something: swap the resolved
+        # kind to "none" and the release-blocking gate fails, naming the fit.
+        from populace.build import FitWeightRecord, weights_audit_gate
+        from populace.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        result = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "none")])
+        assert not result.passed
+        assert US_PUF_SUPPORT_FIT_NAME in result.failures[0]
+        assert "unweighted" in result.failures[0]
+
+    def test_records_are_only_emitted_when_a_sink_is_provided(self) -> None:
+        # The out-parameter is opt-in: existing callers that pass nothing get
+        # the same Frame return and are unaffected.
+        imputed = impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            self._donor(),
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=("employment_income_before_lsr",),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+        )
+        assert imputed.table("person") is not None

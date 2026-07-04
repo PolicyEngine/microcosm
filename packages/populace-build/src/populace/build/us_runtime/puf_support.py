@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.gates import FitWeightRecord
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
 
@@ -24,6 +25,7 @@ __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
     "clone_us_frame_for_puf_support",
@@ -38,6 +40,11 @@ __all__ = [
 BASE_ASEC_SUPPORT_CHANNEL = "asec"
 PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
+
+#: The name the PUF tax-detail support fit records in the build weights audit
+#: (populace #300). Stable so a release manifest and its allowlist can refer to
+#: this fit by name.
+US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
 
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
