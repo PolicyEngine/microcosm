@@ -524,12 +524,10 @@ def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
     secrets=[hf_secret],
     volumes={OUTPUT_MOUNT: output_volume, FACTS_MOUNT: facts_volume},
     cpu=16.0,
-    # 64 and 128 GB both died silently in target compilation (telemetry
-    # froze at "Materializing target frame"); 32 CPU / 192 GB was rejected
-    # at scheduling. Keep the proven 16-CPU shape and go to the platform
-    # memory ceiling, with an RSS logger so even a death yields the peak
-    # number instead of another blind bisection step.
-    memory=336 * 1024,
+    # Measured: the full pipeline peaked at 85.5 GiB (r9's rss.log, which
+    # ran calibration + reform targets end to end). 128 GiB gives ~50%
+    # headroom. The earlier "OOM" deaths were client teardown, not memory.
+    memory=128 * 1024,
     timeout=60 * 60 * 12,
 )
 def run_full_build(
