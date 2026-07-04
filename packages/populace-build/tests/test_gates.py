@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from populace.build import (
+    FitWeightRecord,
     GateReport,
     GateResult,
     TargetCoverageRequirement,
@@ -29,6 +30,7 @@ from populace.build import (
     support_gate,
     target_profile_coverage_gate,
     target_surface_gate,
+    weights_audit_gate,
 )
 from populace.calibrate import TargetSpec
 
@@ -1057,3 +1059,141 @@ class TestSourceCoverageGate:
             "missing_package_aliases": 0,
             "reviewed_excluded_package_aliases": 0,
         }
+
+
+class TestFitWeightRecord:
+    def test_accepts_the_resolved_weight_kinds(self) -> None:
+        for kind in ("design", "importance", "calibrated", "none"):
+            record = FitWeightRecord("some_fit", kind)
+            assert record.fit_name == "some_fit"
+            assert record.weight_kind == kind
+
+    def test_unknown_weight_kind_is_refused(self) -> None:
+        # A fit recorded with an uninterpretable weight kind is unauditable —
+        # the same class of failure as an imputation with no declared support.
+        with pytest.raises(ValueError, match="weight kind"):
+            FitWeightRecord("some_fit", "weighted")
+
+    def test_empty_fit_name_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="fit_name"):
+            FitWeightRecord("", "design")
+
+
+class TestWeightsAuditGate:
+    def test_weighted_fits_pass_and_are_recorded(self) -> None:
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("cps_reweight", "calibrated"),
+            ]
+        )
+        assert result.passed
+        # The manifest surface: every production fit's resolved kind is on the
+        # record, which GateReport.to_manifest() then serializes.
+        assert result.details["resolved_weight_kinds"] == {
+            "cps_reweight": "calibrated",
+            "puf_tax_detail_support": "design",
+        }
+        assert result.details["unweighted_fits"] == []
+
+    def test_unlisted_unweighted_fit_fails_with_the_fit_named(self) -> None:
+        # The guarantee: a fit that resolved to no weights (the $201T-scale
+        # landmine of the legacy stack) blocks the release unless explicitly
+        # allowed with a reason.
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("scf_net_worth_donor", "none"),
+            ]
+        )
+        assert not result.passed
+        assert "scf_net_worth_donor" in result.failures[0]
+        assert "unweighted" in result.failures[0]
+        assert result.details["unweighted_fits"] == ["scf_net_worth_donor"]
+
+    def test_allowlisted_unweighted_fit_passes_and_is_recorded(self) -> None:
+        result = weights_audit_gate(
+            [FitWeightRecord("weakly_informative_donor", "none")],
+            allowed_unweighted={
+                "weakly_informative_donor": (
+                    "CPS person weights are weakly informative here; weighting "
+                    "is free but unweighted is a reviewed choice (issue #300)."
+                )
+            },
+        )
+        assert result.passed
+        assert result.details["allowed_unweighted"] == {
+            "weakly_informative_donor": (
+                "CPS person weights are weakly informative here; weighting "
+                "is free but unweighted is a reviewed choice (issue #300)."
+            )
+        }
+        # An allowed-unweighted fit is not reported as a live unweighted risk.
+        assert result.details["unweighted_fits"] == []
+
+    def test_allowlist_entry_needs_a_reason(self) -> None:
+        # An undocumented allow entry is just a silent unweighted fit with
+        # extra steps — the same rule every reviewed-exclusion gate enforces.
+        with pytest.raises(ValueError, match="need reasons"):
+            weights_audit_gate(
+                [FitWeightRecord("donor", "none")],
+                allowed_unweighted={"donor": ""},
+            )
+
+    def test_allowlist_must_be_a_mapping(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            weights_audit_gate(
+                [FitWeightRecord("donor", "none")],
+                allowed_unweighted=["donor"],  # type: ignore[arg-type]
+            )
+
+    def test_unused_allowlist_entry_is_reported(self) -> None:
+        # A weighted fit does not consume its allow entry; the stale entry is
+        # surfaced so the register cannot rot.
+        result = weights_audit_gate(
+            [FitWeightRecord("donor", "design")],
+            allowed_unweighted={"retired_donor": "kept for a fit no longer run"},
+        )
+        assert result.passed
+        assert result.details["unused_allowed_unweighted"] == ["retired_donor"]
+
+    def test_allow_entry_for_a_now_weighted_fit_is_reported_as_unused(self) -> None:
+        # The allow entry names a fit that is present but resolved weighted;
+        # the exemption is no longer live and is reported, not silently kept.
+        result = weights_audit_gate(
+            [FitWeightRecord("donor", "design")],
+            allowed_unweighted={"donor": "used to be unweighted, now design"},
+        )
+        assert result.passed
+        assert result.details["unused_allowed_unweighted"] == ["donor"]
+
+    def test_duplicate_fit_name_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="[Dd]uplicate fit name"):
+            weights_audit_gate(
+                [
+                    FitWeightRecord("donor", "design"),
+                    FitWeightRecord("donor", "none"),
+                ]
+            )
+
+    def test_audit_round_trips_through_the_release_manifest(self) -> None:
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("scf_net_worth_donor", "none"),
+            ]
+        )
+        manifest = GateReport((result,)).to_manifest()
+        gate = manifest["gates"]["weights_audit"]
+        assert gate["passed"] is False
+        assert gate["details"]["resolved_weight_kinds"] == {
+            "puf_tax_detail_support": "design",
+            "scf_net_worth_donor": "none",
+        }
+        assert gate["details"]["unweighted_fits"] == ["scf_net_worth_donor"]
+
+    def test_empty_fit_list_passes_but_records_nothing(self) -> None:
+        result = weights_audit_gate([])
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {}
+        assert result.details["fits_checked"] == 0
