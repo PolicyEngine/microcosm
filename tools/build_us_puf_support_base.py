@@ -11,11 +11,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from populace.build import FitWeightRecord, weights_audit_gate
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.us_runtime import (
@@ -48,6 +50,7 @@ from populace.build.us_runtime import (
     with_household_us_geography_ladder,
     with_us_immigration_inputs,
 )
+from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 from populace.frame.units import US_SCHEMA
@@ -197,7 +200,7 @@ def main() -> None:
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
-    imputed = impute_us_puf_tax_detail_support(
+    imputed, weights_audit = impute_and_audit_us_puf_support(
         expanded,
         donor,
         seed=args.seed,
@@ -323,6 +326,7 @@ def main() -> None:
         "channel_weight_totals": _channel_weight_totals(imputed),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "weights_audit": weights_audit,
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
@@ -330,6 +334,76 @@ def main() -> None:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+
+
+def impute_and_audit_us_puf_support(
+    expanded: Frame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    n_estimators: int,
+    predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> tuple[Frame, dict]:
+    """Impute the PUF support channel and audit the fit's resolved weight kind.
+
+    Runs the production PUF tax-detail support imputation, capturing the kind the
+    QRF *resolved* to via the build-level weights audit (populace #300): the fit
+    emits one :class:`~populace.build.FitWeightRecord`, and
+    :func:`~populace.build.weights_audit_gate` proves it did not silently resolve
+    unweighted. A failing audit **aborts the build** with a non-zero exit, exactly
+    as the geography-ladder gate does — a support channel imputed by an unweighted
+    fit is a broken donor whose on-surface residuals can still look perfect.
+
+    The audit is unconditional: the PUF support fit always runs, so there is no
+    opt-out, and the seed allowlist is empty because the fit is design-weighted.
+
+    Args:
+        expanded: The channel-cloned US frame the fit imputes onto.
+        donor: The PUF tax-unit donor table the fit trains on.
+        seed: The imputation seed.
+        n_estimators: Trees per QRF forest.
+        predictors: Predictor columns for the fit; defaults to the production set.
+        person_outputs: Person-grain outputs; defaults to the production set.
+        tax_unit_outputs: Tax-unit-grain outputs; defaults to the production set.
+            The three ``*_outputs``/``predictors`` arguments exist so the seam can
+            be exercised on a small synthetic frame in an engine-free test; the
+            build calls this with the defaults, so production behavior is
+            unchanged.
+
+    Returns:
+        ``(imputed_frame, weights_audit)`` where ``weights_audit`` is the gate's
+        publishable record — ``{"passed", "failures", "details"}`` — carrying
+        ``details["resolved_weight_kinds"]`` (the fit-name -> resolved-kind map)
+        for the release summary.
+
+    Raises:
+        SystemExit: If the weights audit fails (a fit resolved unweighted with no
+            allowlist entry), naming the offending fit.
+    """
+    fit_records: list[FitWeightRecord] = []
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+        seed=seed,
+        n_estimators=n_estimators,
+        fit_records=fit_records,
+    )
+    report = weights_audit_gate(fit_records)
+    if not report.passed:
+        raise SystemExit(
+            "Weights audit failed:\n  " + "\n  ".join(report.failures)
+        )
+    weights_audit = {
+        "passed": report.passed,
+        "failures": list(report.failures),
+        "details": dict(report.details),
+    }
+    return imputed, weights_audit
 
 
 def _dataset_filename(period: int) -> str:
