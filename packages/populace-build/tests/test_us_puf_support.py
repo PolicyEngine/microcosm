@@ -1245,3 +1245,50 @@ class TestPufSupportWeightsAuditWiring:
             seed=0,
         )
         assert imputed.table("person") is not None
+
+    def test_production_fit_records_design_kind_under_the_real_engine(self) -> None:
+        # The engine-less tests above run the imputation with a trivial output
+        # that never trips the formula-owned guard. This gated test runs the same
+        # audited seam with the LIVE PolicyEngine-US metadata guard active
+        # (assert_formula_owned_blocklist_current + resolve_formula_owned_outputs
+        # both call real engine metadata), over real leaf-input outputs, so the
+        # seam is proven end to end on the production code path an actual build
+        # takes: the guard passes on genuine leaves, the DESIGN-weighted fit
+        # records "design", and the release-blocking gate passes carrying it.
+        pytest.importorskip("policyengine_us")
+        from populace.build import FitWeightRecord, weights_audit_gate
+        from populace.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        donor = pd.DataFrame(
+            {
+                "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+                "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+                "employment_income_before_lsr": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+                "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
+                "weight": [1.0, 1.0, 1.0, 1.0],
+            }
+        )
+        fit_records: list = []
+        impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=(
+                "employment_income_before_lsr",
+                "qualified_dividend_income",
+            ),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+            fit_records=fit_records,
+        )
+
+        assert fit_records == [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "design")]
+        result = weights_audit_gate(fit_records)
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }

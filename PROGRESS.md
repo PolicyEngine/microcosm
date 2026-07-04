@@ -29,11 +29,16 @@ Issue: PolicyEngine/populace#300 | PR: #308 (OPEN, extending in place)
       stage uses to feed weights_audit_gate; the "real build manifest carries
       resolved_weight_kinds and a none fit fails" surface is proven by the
       synthetic wiring tests (engine-less) plus a PE-US-gated real-path test.
-- [ ] STEP 3: synthetic wiring tests ALREADY WRITTEN (incl. the prove-it-can-fail
-      `test_wired_gate_would_fail_a_none_fit`). NEED to ADD a PE-US-gated real-path
-      test behind `importorskip("policyengine_us")` that runs the audited impute
-      on a real-engine US frame and asserts a "design" record + gate pass.
+- [x] STEP 3 DONE: synthetic wiring tests were ALREADY WRITTEN (incl. prove-it-
+      can-fail `test_wired_gate_would_fail_a_none_fit`). ADDED
+      `test_production_fit_records_design_kind_under_the_real_engine`
+      (importorskip policyengine_us): runs the audited impute with the LIVE
+      formula-owned metadata guard active over real leaf outputs; asserts a
+      "design" record + passing gate. VERIFIED it actually PASSES (not just
+      skips) via `uv run --with policyengine-us pytest ...` — green with engine.
+      Skips locally/CI (no [us] extra) but is proven runnable.
 - [ ] Full suite + ruff (pipefail); PR body boundary update; delete PROGRESS.
+      Commits: 86edf4a (seam) + this step (gated test).
 
 ## Extension design (locked — as implemented)
 ### 1. populace-fit resolved-kind surface — DONE (see STEP 1 above).
