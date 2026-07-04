@@ -106,6 +106,56 @@ class TestVariableMetadata:
         )
         assert defaults == {}
 
+    def test_formula_owned_outputs_flags_computed_names(self, adapter) -> None:
+        # A requested output set mixing engine input leaves with formula-owned
+        # aggregates: only the formula-owned names come back, so a caller can
+        # reject them without maintaining a hand-written blocklist.
+        flagged = adapter.formula_owned_outputs(
+            [
+                "employment_income_before_lsr",  # input leaf
+                "qualified_dividend_income",  # input leaf
+                "income_tax",  # formula (direct)
+                "ssi",  # formula (mapping)
+                "employment_income",  # adds-owned aggregate
+                "self_employed_pension_contribution_ald",  # formula-owned ALD
+            ]
+        )
+        assert flagged == {
+            "income_tax",
+            "ssi",
+            "employment_income",
+            "self_employed_pension_contribution_ald",
+        }
+
+    def test_formula_owned_outputs_flags_compat_aggregates(self, adapter) -> None:
+        # The dividend/social-security/partnership aggregates the adapter refuses
+        # to persist even when a published wheel still reports them as inputs.
+        flagged = adapter.formula_owned_outputs(
+            [
+                "dividend_income",
+                "social_security",
+                "partnership_s_corp_income",
+                "employment_income_before_lsr",
+            ]
+        )
+        assert flagged == {
+            "dividend_income",
+            "social_security",
+            "partnership_s_corp_income",
+        }
+
+    def test_formula_owned_outputs_ignores_unknown_names(self, adapter) -> None:
+        # A name the engine does not know cannot be classified as formula-owned
+        # here; the export/enum guards own unknown columns.
+        assert adapter.formula_owned_outputs(["not_a_variable"]) == set()
+
+    def test_formula_owned_outputs_is_disjoint_from_inputs(self, adapter) -> None:
+        # The derived rejection set and the input surface partition the engine's
+        # variables: nothing the engine accepts as an input is ever flagged.
+        inputs = set(adapter.variables())
+        flagged = adapter.formula_owned_outputs(inputs)
+        assert flagged == set()
+
 
 class TestMaterialize:
     def test_materializes_row_aligned_arrays(self, adapter, us_bundle) -> None:

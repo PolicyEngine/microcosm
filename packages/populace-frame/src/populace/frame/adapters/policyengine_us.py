@@ -17,7 +17,7 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -174,6 +174,39 @@ class PolicyEngineUSEngine:
             if name not in _FORMULA_OWNED_COMPAT_COLUMNS
             and not _is_engine_computed(variable)
         )
+
+    def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
+        """Return which of ``names`` are engine formula-owned, not input leaves.
+
+        A name is formula-owned when the tax-benefit system computes it —
+        directly or through an ``adds``/``subtracts`` aggregation or a
+        start-date formula mapping — or when it is one of the
+        compatibility-blocked aggregates the adapter refuses to persist even
+        though some published wheels still report them as inputs
+        (:data:`_FORMULA_OWNED_COMPAT_COLUMNS`). This is the complement of
+        :meth:`variables` restricted to ``names``: persisting a formula-owned
+        variable as a dataset input pins its baseline and masks reforms, so
+        callers deriving an imputation/export surface reject exactly this set
+        instead of maintaining a hand-written blocklist that goes stale as
+        PolicyEngine-US adds variables (populace issue #301).
+
+        Names unknown to the tax-benefit system are not flagged: they cannot be
+        classified as formula-owned here, and the export/enum guards own
+        unknown columns.
+
+        Raises:
+            ImportError: If ``policyengine_us`` is not installed.
+        """
+        variables = self._tax_benefit_system().variables
+        flagged: set[str] = set()
+        for name in names:
+            if name in _FORMULA_OWNED_COMPAT_COLUMNS:
+                flagged.add(name)
+                continue
+            variable = variables.get(name)
+            if variable is not None and _is_engine_computed(variable):
+                flagged.add(name)
+        return flagged
 
     def default_values(self, names: Sequence[str]) -> dict[str, object]:
         """Return engine default values for the given input variable names.
