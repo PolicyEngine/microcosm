@@ -13,13 +13,24 @@ Issue: PolicyEngine/populace#301
   test bodies yet — this is the remaining work.
 
 ## Remaining
-1. [ ] Add #301 tests to test_us_puf_support.py after existing
-       test_puf_tax_detail_refuses_formula_owned_outputs block:
-       - PE-US-gated: real engine catches genuinely formula-owned output NOT on
-         static list (e.g. income_tax); static list is SUBSET of engine-derived set.
+1. [IN PROGRESS] Add #301 tests to test_us_puf_support.py after existing
+   test_puf_tax_detail_refuses_formula_owned_outputs block (ends ~L419):
+   - Workspace-deterministic (fake engine injected): resolve_ union logic,
+     assert_ drift check both directions, engine=None static fallback.
+   - PE-US-gated (importorskip): real engine catches genuinely formula-owned
+     output NOT on static list (income_tax); static list SUBSET of engine set.
 2. [ ] Run full `uv run pytest` (workspace) — green.
-3. [ ] Changelog fragment per repo convention.
+3. [SKIP] Changelog fragment — repo has NO changelog system (see note). N/A.
 4. [ ] Delete this file, push, open PR (--body-file, no @-mentions, no merge).
+
+## Environment facts (verified)
+- Repo has NO changelog.d/, NO towncrier, NO CHANGELOG.md. Merged PRs #295/#290/#289
+  carried no fragment. Parent PolicyEngine towncrier rule does NOT apply. → no fragment.
+- policyengine-us is an OPTIONAL extra ([us]/[policyengine]), not a workspace dep.
+  CI `uv sync --all-packages` does NOT install it → PE-US absent in CI (gated tests
+  skip there). LOCAL .venv HAS it installed → gated tests RUN locally; engine=None
+  path resolves to the LIVE engine locally, so workspace-deterministic tests inject
+  an explicit fake engine to stay environment-independent.
 
 ## Semantic questions deferred
 (none yet)
