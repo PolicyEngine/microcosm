@@ -69,10 +69,12 @@ _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
 from populace.fit.model import (  # noqa: E402 - after the compatibility gate
     DESIGN_WEIGHTS,
+    EXPLICIT_WEIGHTS,
     NO_WEIGHTS,
     ConditionalModel,
     FittedModel,
     WeightSpec,
+    resolved_weight_kind,
 )
 from populace.fit.qrf import (  # noqa: E402 - after the compatibility gate
     DEFAULT_N_ESTIMATORS,
@@ -129,6 +131,8 @@ __all__ = [
     "WeightSpec",
     "DESIGN_WEIGHTS",
     "NO_WEIGHTS",
+    "EXPLICIT_WEIGHTS",
+    "resolved_weight_kind",
     "QRF",
     "RegimeGatedQRF",
     "FittedRegimeGatedQRF",

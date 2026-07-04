@@ -3,6 +3,20 @@
 Branch: `weights-audit` | Worktree: populace-weights-audit
 Issue: PolicyEngine/populace#300 | PR: #308 (OPEN, extending in place)
 
+## STATUS (2026-07-04, sole agent)
+- [x] Rebased onto post-#306 origin/main (clean, no conflicts; #306 formula-owned
+      code present in puf_support.py). Force-pushed.
+- [x] STEP 1 DONE: fit-side resolved-weight-kind surface.
+      - model.py: `resolved_weight_kind(frame_or_df, entity, weight_values)` +
+        `EXPLICIT_WEIGHTS="explicit"`; exported from populace.fit.
+      - qrf.py: fit() computes it; FittedRegimeGatedQRF gains read-only
+        `weight_kind` property. 7 fit tests green, full populace-fit green.
+      - gates.py: RESOLVED_WEIGHT_KINDS now includes "explicit" (lockstep);
+        +2 build tests. build gates green.
+- [ ] STEP 2: wire PUF-support seam to emit FitWeightRecord + run gate.
+- [ ] STEP 3: non-gated synthetic prove-it-can-fail test + PE-US-gated real path.
+- [ ] Full suite + ruff (pipefail); PR body boundary update; delete PROGRESS.
+
 ## Where we are
 - DONE + PUSHED: `FitWeightRecord` + `weights_audit_gate` in build/gates.py,
   exported, 13 tests, full suite + ruff green (commits f238afc, c7b981b).

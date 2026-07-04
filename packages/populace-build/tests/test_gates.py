@@ -1063,7 +1063,10 @@ class TestSourceCoverageGate:
 
 class TestFitWeightRecord:
     def test_accepts_the_resolved_weight_kinds(self) -> None:
-        for kind in ("design", "importance", "calibrated", "none"):
+        # design/importance/calibrated (WeightKind), none (unweighted), and
+        # explicit (a DataFrame vector fit) — the vocabulary populace.fit's
+        # resolved_weight_kind can emit.
+        for kind in ("design", "importance", "calibrated", "none", "explicit"):
             record = FitWeightRecord("some_fit", kind)
             assert record.fit_name == "some_fit"
             assert record.weight_kind == kind
@@ -1094,6 +1097,14 @@ class TestWeightsAuditGate:
             "cps_reweight": "calibrated",
             "puf_tax_detail_support": "design",
         }
+        assert result.details["unweighted_fits"] == []
+
+    def test_explicit_dataframe_weight_kind_is_weighted_and_passes(self) -> None:
+        # A DataFrame fit weighted by a caller-supplied vector resolves to
+        # "explicit": weighted, so it is not flagged as an unweighted risk.
+        result = weights_audit_gate([FitWeightRecord("df_donor", "explicit")])
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {"df_donor": "explicit"}
         assert result.details["unweighted_fits"] == []
 
     def test_unlisted_unweighted_fit_fails_with_the_fit_named(self) -> None:

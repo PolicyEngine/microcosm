@@ -78,11 +78,20 @@ __all__ = [
 #: scikit-learn / quantile-forest dependency footprint) just to name a string.
 UNWEIGHTED_KIND = "none"
 
+#: A DataFrame fit weighted by a caller-supplied column/vector with no kernel
+#: :class:`~populace.frame.WeightKind` provenance (``populace.fit.EXPLICIT_WEIGHTS``).
+#: Weighted — so the audit never flags it — but not one of the typed kinds.
+EXPLICIT_KIND = "explicit"
+
 #: The vocabulary a fit may record as its *resolved* weight kind: the kernel's
 #: typed :class:`~populace.frame.WeightKind` values (``design`` / ``importance``
-#: / ``calibrated``) plus :data:`UNWEIGHTED_KIND`. Derived from ``WeightKind`` so
-#: it cannot drift from the kinds ``populace.fit.resolve_fit_weights`` produces.
-RESOLVED_WEIGHT_KINDS = frozenset({kind.value for kind in WeightKind} | {UNWEIGHTED_KIND})
+#: / ``calibrated``), :data:`UNWEIGHTED_KIND` (``none``), and :data:`EXPLICIT_KIND`
+#: (a DataFrame explicit-vector fit). Kept in lockstep with the strings
+#: ``populace.fit.resolved_weight_kind`` produces. Only ``none`` is treated as
+#: unweighted by :func:`weights_audit_gate`; every other kind is weighted.
+RESOLVED_WEIGHT_KINDS = frozenset(
+    {kind.value for kind in WeightKind} | {UNWEIGHTED_KIND, EXPLICIT_KIND}
+)
 
 
 @dataclass(frozen=True)
