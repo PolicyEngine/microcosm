@@ -501,6 +501,32 @@ def test_resolve_formula_owned_outputs_engine_none_falls_back_to_static() -> Non
         importlib.reload(puf_support_module)
 
 
+class _ImportErrorEngine:
+    """An adapter whose lazy policyengine_us import is missing at call time."""
+
+    def formula_owned_outputs(self, names):
+        raise ImportError("No module named 'policyengine_us'")
+
+
+def test_resolve_formula_owned_outputs_degrades_on_engine_import_error() -> None:
+    # The adapter module ships with populace-frame, so construction succeeds
+    # even without policyengine_us installed; the missing [us] extra surfaces
+    # as an ImportError at call time (the CI environment). That must degrade
+    # to the static seed exactly like having no engine, not abort the build.
+    requested = {"interest_deduction", "employment_income_before_lsr"}
+
+    rejected = resolve_formula_owned_outputs(requested, engine=_ImportErrorEngine())
+
+    assert rejected == {"interest_deduction"}
+
+
+def test_blocklist_current_check_noops_on_engine_import_error() -> None:
+    # Same degradation for the reverse-direction check: a call-time
+    # ImportError means no metadata is available, so the check is a no-op
+    # rather than a build failure.
+    assert_formula_owned_blocklist_current(_ImportErrorEngine())
+
+
 def test_resolve_formula_owned_outputs_catches_engine_output_off_static_list() -> None:
     # #301, against the real engine: a genuinely formula-owned output that is NOT
     # on the static seed set (income_tax) is still rejected, and every legitimate

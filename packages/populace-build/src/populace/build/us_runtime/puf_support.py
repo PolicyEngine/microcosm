@@ -728,13 +728,15 @@ def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
 def _formula_owned_engine() -> Any | None:
     """A PolicyEngine-US adapter for formula metadata, or ``None`` if absent.
 
-    The adapter is the single reader of engine metadata (it wraps the lazy
-    ``policyengine_us`` import). At build time the ``[us]`` extra is installed,
-    so this returns a live adapter; in the workspace test environment
-    ``policyengine_us`` is not installed, so it returns ``None`` and the guard
-    falls back to the static seed set. Any failure to construct the adapter is
-    treated as "no engine available": the guard degrades to the static list
-    rather than letting a metadata-lookup problem abort a build.
+    The adapter is the single reader of engine metadata. Its module ships with
+    populace-frame, so this import (and the trivial construction) succeeds even
+    when ``policyengine_us`` itself is not installed — the adapter imports the
+    engine lazily, so a missing ``[us]`` extra surfaces as an ``ImportError``
+    at *call* time, not here. Callers treat that call-time ``ImportError``
+    exactly like ``None``: the guard degrades to the static seed set (the
+    workspace test environment) rather than letting a missing optional extra
+    abort a build. At build time the extra is installed and the adapter serves
+    live metadata.
     """
     try:
         from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -783,7 +785,13 @@ def resolve_formula_owned_outputs(
     if engine is None:
         engine = _formula_owned_engine()
     if engine is not None:
-        rejected |= set(engine.formula_owned_outputs(requested_set))
+        try:
+            rejected |= set(engine.formula_owned_outputs(requested_set))
+        except ImportError:
+            # The adapter imports policyengine_us lazily, so a missing [us]
+            # extra surfaces here rather than at construction; degrade to the
+            # static seed set exactly as when no adapter is available.
+            pass
     return rejected
 
 
@@ -798,8 +806,10 @@ def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
     catches formula-owned names *missing* from the static set, this catches
     static names the engine no longer *considers* formula-owned.
 
-    A no-op when no engine is available (the workspace test environment), so the
-    check runs only where ``policyengine_us`` is installed — the build.
+    A no-op when no engine is available or the engine's lazy
+    ``policyengine_us`` import is missing at call time (the workspace test
+    environment), so the check runs only where the ``[us]`` extra is
+    installed — the build.
 
     Raises:
         ValueError: If a static-set entry is not reported formula-owned by the
@@ -809,9 +819,13 @@ def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
         engine = _formula_owned_engine()
     if engine is None:
         return
-    still_formula_owned = engine.formula_owned_outputs(
-        PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
-    )
+    try:
+        still_formula_owned = engine.formula_owned_outputs(
+            PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+        )
+    except ImportError:
+        # Missing [us] extra at call time: same no-op as having no engine.
+        return
     drifted = sorted(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS - set(still_formula_owned))
     if drifted:
         raise ValueError(
