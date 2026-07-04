@@ -9,7 +9,7 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -22,11 +22,14 @@ QRF: Any | None = None
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_STAGE_NAME",
+    "assert_formula_owned_blocklist_current",
     "clone_us_frame_for_puf_support",
     "impute_us_puf_tax_detail_support",
     "puf_tax_unit_donor_from_arrays",
+    "resolve_formula_owned_outputs",
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",
@@ -117,6 +120,14 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     }
 )
 
+# Known formula-owned outputs the PUF tax-detail donor must never carry as
+# persistable leaves. This is a documented *seed* set, not the whole story:
+# :func:`resolve_formula_owned_outputs` unions it with the set derived live
+# from PolicyEngine-US variable metadata, so a new formula-owned aggregate
+# added upstream is rejected even before anyone adds it here (populace issue
+# #301). Every name here has a stated reason; a build-time consistency check
+# (:func:`assert_formula_owned_blocklist_current`) fails if the engine stops
+# treating one of these as formula-owned, so a stale entry cannot linger.
 PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS = frozenset(
     {
         "interest_deduction",
@@ -331,7 +342,9 @@ def puf_tax_unit_donor_from_arrays(
     )
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
 
-    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
+    engine = _formula_owned_engine()
+    assert_formula_owned_blocklist_current(engine)
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs, engine=engine)
     person_source_columns = set(person_outputs)
     if "interest_deduction" in tax_unit_outputs:
         person_source_columns.add("home_mortgage_interest")
@@ -401,7 +414,9 @@ def impute_us_puf_tax_detail_support(
     if person_channel not in frame.table("person").columns:
         raise ValueError("PUF support metadata is missing from the person table.")
 
-    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs)
+    engine = _formula_owned_engine()
+    assert_formula_owned_blocklist_current(engine)
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs, engine=engine)
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
@@ -710,12 +725,124 @@ def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
     )
 
 
+def _formula_owned_engine() -> Any | None:
+    """A PolicyEngine-US adapter for formula metadata, or ``None`` if absent.
+
+    The adapter is the single reader of engine metadata. Its module ships with
+    populace-frame, so this import (and the trivial construction) succeeds even
+    when ``policyengine_us`` itself is not installed — the adapter imports the
+    engine lazily, so a missing ``[us]`` extra surfaces as an ``ImportError``
+    at *call* time, not here. Callers treat that call-time ``ImportError``
+    exactly like ``None``: the guard degrades to the static seed set (the
+    workspace test environment) rather than letting a missing optional extra
+    abort a build. At build time the extra is installed and the adapter serves
+    live metadata.
+    """
+    try:
+        from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    except ImportError:
+        return None
+    try:
+        return PolicyEngineUSEngine()
+    except Exception:  # pragma: no cover - defensive; construction is trivial
+        return None
+
+
+def resolve_formula_owned_outputs(
+    requested: Iterable[str],
+    *,
+    engine: Any | None = None,
+) -> set[str]:
+    """Return the formula-owned names among ``requested``.
+
+    The rejection set is the union of two sources:
+
+    - the static :data:`PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS` seed set (always
+      applied, so the guard works even without ``policyengine_us`` installed),
+      and
+    - the set PolicyEngine-US variable metadata reports as formula-owned for
+      exactly the requested names (a variable with a formula, an
+      ``adds``/``subtracts`` aggregation, or a compatibility-blocked aggregate)
+      — the part that keeps the guard current as the engine adds variables
+      (populace issue #301).
+
+    Deriving the second source from metadata means a newly added formula-owned
+    aggregate is rejected the moment it appears in a requested output list, with
+    no edit to the static set required.
+
+    Args:
+        requested: The output variable names a fit intends to impute/persist.
+        engine: A metadata source exposing ``formula_owned_outputs(names) ->
+            set[str]`` (a :class:`~populace.frame.adapters.policyengine_us.PolicyEngineUSEngine`
+            in production). ``None`` resolves one lazily, falling back to the
+            static seed set when ``policyengine_us`` is not installed.
+
+    Returns:
+        The subset of ``requested`` that is formula-owned.
+    """
+    requested_set = set(requested)
+    rejected = requested_set & PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+    if engine is None:
+        engine = _formula_owned_engine()
+    if engine is not None:
+        try:
+            rejected |= set(engine.formula_owned_outputs(requested_set))
+        except ImportError:
+            # The adapter imports policyengine_us lazily, so a missing [us]
+            # extra surfaces here rather than at construction; degrade to the
+            # static seed set exactly as when no adapter is available.
+            pass
+    return rejected
+
+
+def assert_formula_owned_blocklist_current(engine: Any | None = None) -> None:
+    """Fail if the static seed set has drifted from engine metadata.
+
+    Every name in :data:`PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS` must still be
+    formula-owned according to PolicyEngine-US, so a stale entry (a variable the
+    engine has since turned into a plain input, or renamed away) cannot silently
+    linger in the blocklist and wrongly reject a legitimate leaf. This is the
+    reverse-direction check to :func:`resolve_formula_owned_outputs`: the latter
+    catches formula-owned names *missing* from the static set, this catches
+    static names the engine no longer *considers* formula-owned.
+
+    A no-op when no engine is available or the engine's lazy
+    ``policyengine_us`` import is missing at call time (the workspace test
+    environment), so the check runs only where the ``[us]`` extra is
+    installed — the build.
+
+    Raises:
+        ValueError: If a static-set entry is not reported formula-owned by the
+            engine, naming the drifted entries.
+    """
+    if engine is None:
+        engine = _formula_owned_engine()
+    if engine is None:
+        return
+    try:
+        still_formula_owned = engine.formula_owned_outputs(
+            PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+        )
+    except ImportError:
+        # Missing [us] extra at call time: same no-op as having no engine.
+        return
+    drifted = sorted(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS - set(still_formula_owned))
+    if drifted:
+        raise ValueError(
+            "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS has stale entries no longer "
+            f"reported as formula-owned by PolicyEngine-US: {drifted}. Remove "
+            "them (each blocklist entry must still be a formula-owned output)."
+        )
+
+
 def _reject_formula_owned_outputs(
     person_outputs: Sequence[str],
     tax_unit_outputs: Sequence[str],
+    *,
+    engine: Any | None = None,
 ) -> None:
     requested = set(person_outputs) | set(tax_unit_outputs)
-    formula_owned = sorted(requested & PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
+    formula_owned = sorted(resolve_formula_owned_outputs(requested, engine=engine))
     if formula_owned:
         raise ValueError(
             "PUF tax-detail support outputs must be PolicyEngine leaf inputs, "
