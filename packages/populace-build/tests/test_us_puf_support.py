@@ -1,5 +1,7 @@
 """US PUF support-channel expansion tests."""
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -417,6 +419,124 @@ def test_puf_tax_detail_refuses_formula_owned_outputs() -> None:
             n_estimators=4,
             seed=0,
         )
+
+
+class _FakeFormulaOwnedEngine:
+    """Minimal metadata source for the formula-owned guard (issue #301).
+
+    Reports exactly the names in ``formula_owned`` as formula-owned, restricted
+    to the requested set — the contract
+    :func:`resolve_formula_owned_outputs` and
+    :func:`assert_formula_owned_blocklist_current` depend on. Injecting it keeps
+    these tests deterministic whether or not ``policyengine_us`` happens to be
+    installed in the test environment.
+    """
+
+    def __init__(self, formula_owned: set[str]) -> None:
+        self._formula_owned = set(formula_owned)
+
+    def formula_owned_outputs(self, names) -> set[str]:
+        return set(names) & self._formula_owned
+
+
+def test_resolve_formula_owned_outputs_unions_static_seed_with_engine() -> None:
+    # #301: a name the engine reports as formula-owned is rejected even though
+    # it is absent from the static seed set — the derived source keeps the guard
+    # current as PolicyEngine-US adds variables, with no edit to the seed set.
+    assert "income_tax" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+    engine = _FakeFormulaOwnedEngine({"income_tax"})
+    requested = {
+        "income_tax",  # engine-only (not in static seed)
+        "interest_deduction",  # static seed only (engine below does not flag it)
+        "employment_income_before_lsr",  # legitimate leaf input
+    }
+
+    rejected = resolve_formula_owned_outputs(requested, engine=engine)
+
+    assert rejected == {"income_tax", "interest_deduction"}
+
+
+def test_resolve_formula_owned_outputs_always_applies_static_seed() -> None:
+    # Even when the engine flags nothing, the static seed is always enforced, so
+    # the guard still rejects known formula-owned aggregates when metadata is
+    # unavailable.
+    empty_engine = _FakeFormulaOwnedEngine(set())
+    requested = {"interest_deduction", "employment_income_before_lsr"}
+
+    assert resolve_formula_owned_outputs(requested, engine=empty_engine) == {
+        "interest_deduction",
+    }
+
+
+def test_assert_formula_owned_blocklist_current_passes_when_engine_agrees() -> None:
+    # Reverse-direction check: every static-seed entry the engine still reports
+    # as formula-owned is fine — no drift, no error.
+    agreeing_engine = _FakeFormulaOwnedEngine(set(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS))
+    assert_formula_owned_blocklist_current(agreeing_engine)
+
+
+def test_assert_formula_owned_blocklist_current_flags_stale_entries() -> None:
+    # A static-seed entry the engine no longer treats as formula-owned is stale
+    # (e.g. the engine turned it into a plain input or renamed it away) and must
+    # be surfaced by name so it cannot silently linger and wrongly reject a
+    # legitimate leaf.
+    stale = next(iter(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS))
+    still_owned = set(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS) - {stale}
+    drifted_engine = _FakeFormulaOwnedEngine(still_owned)
+
+    with pytest.raises(ValueError, match=stale):
+        assert_formula_owned_blocklist_current(drifted_engine)
+
+
+def test_resolve_formula_owned_outputs_engine_none_falls_back_to_static() -> None:
+    # With no engine passed and metadata unavailable, resolution falls back to
+    # the static seed. The fallback is exercised by monkeypatching the lazy
+    # engine resolver to report no engine, so the test is deterministic even
+    # where policyengine_us is installed.
+    puf_support_module._formula_owned_engine = lambda: None
+    try:
+        requested = {"interest_deduction", "employment_income_before_lsr"}
+        assert resolve_formula_owned_outputs(requested) == {"interest_deduction"}
+    finally:
+        importlib.reload(puf_support_module)
+
+
+def test_resolve_formula_owned_outputs_catches_engine_output_off_static_list() -> None:
+    # #301, against the real engine: a genuinely formula-owned output that is NOT
+    # on the static seed set (income_tax) is still rejected, and every legitimate
+    # leaf input passes through. This is the failure a stale hand-written
+    # blocklist would silently allow.
+    pytest.importorskip("policyengine_us")
+
+    requested = {
+        "income_tax",  # formula-owned, deliberately not in the static seed
+        "employment_income_before_lsr",  # leaf input
+        "qualified_dividend_income",  # leaf input
+    }
+    assert "income_tax" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+
+    rejected = resolve_formula_owned_outputs(requested)
+
+    assert "income_tax" in rejected
+    assert "employment_income_before_lsr" not in rejected
+    assert "qualified_dividend_income" not in rejected
+
+
+def test_static_seed_is_subset_of_engine_derived_formula_owned_set() -> None:
+    # #301, against the real engine: the static seed set is a SUBSET of the set
+    # the engine derives as formula-owned, so it never diverges into rejecting a
+    # name the engine treats as an input. Equivalently, the drift check passes
+    # against live metadata.
+    pytest.importorskip("policyengine_us")
+
+    from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    engine = PolicyEngineUSEngine()
+    engine_derived = engine.formula_owned_outputs(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
+
+    assert PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS <= set(engine_derived)
+    # And the guard's own consistency check agrees.
+    assert_formula_owned_blocklist_current(engine)
 
 
 def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
