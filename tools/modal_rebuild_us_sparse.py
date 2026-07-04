@@ -70,6 +70,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import modal
@@ -198,7 +199,7 @@ def _image() -> modal.Image:
     return (
         modal.Image.debian_slim(python_version="3.13")
         .apt_install("git", "build-essential")
-        .pip_install("uv==0.11.7")
+        .pip_install("uv==0.11.7", "psutil==7.2.0")
         .env(
             {
                 "HF_HUB_ENABLE_HF_TRANSFER": "0",
@@ -347,6 +348,30 @@ print("SMOKE_VERDICT_JSON_END")
 # In-container helpers                                                          #
 # --------------------------------------------------------------------------- #
 
+def _start_rss_logger(interval_seconds: int = 60) -> None:
+    """Print container memory usage periodically (daemon thread).
+
+    The 64/128 GB runs died silently in target compilation; this trail
+    turns the next death into a peak-memory measurement.
+    """
+    import threading
+
+    import psutil
+
+    def _loop() -> None:
+        peak = 0.0
+        while True:
+            used = psutil.virtual_memory().used / 2**30
+            peak = max(peak, used)
+            print(
+                f"[rss-logger] used={used:.1f}GiB peak={peak:.1f}GiB",
+                flush=True,
+            )
+            time.sleep(interval_seconds)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 def _run(cmd: list[str], *, cwd: str = IMAGE_REPO_ROOT, env: dict | None = None) -> dict:
     """Run a subprocess, returning a small result dict.
 
@@ -458,12 +483,12 @@ def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
     secrets=[hf_secret],
     volumes={OUTPUT_MOUNT: output_volume, FACTS_MOUNT: facts_volume},
     cpu=16.0,
-    # 64 GB OOM-killed the run silently at target compilation (telemetry
-    # froze at "Materializing target frame", no failure event): the dense
-    # 75k-household base compiles a larger target frame than the 57k sparse
-    # lineage this sizing came from. 32 CPU / 192 GB was rejected at
-    # scheduling, so keep the proven 16-CPU shape and double memory only.
-    memory=128 * 1024,
+    # 64 and 128 GB both died silently in target compilation (telemetry
+    # froze at "Materializing target frame"); 32 CPU / 192 GB was rejected
+    # at scheduling. Keep the proven 16-CPU shape and go to the platform
+    # memory ceiling, with an RSS logger so even a death yields the peak
+    # number instead of another blind bisection step.
+    memory=336 * 1024,
     timeout=60 * 60 * 12,
 )
 def run_full_build(
@@ -497,6 +522,7 @@ def run_full_build(
     NOTE: this is the expensive path (target compilation + L0+refit + reform
     validation). Do not launch without the main session's go-ahead.
     """
+    _start_rss_logger()
     work = Path(OUTPUT_MOUNT) / "full"
     work.mkdir(parents=True, exist_ok=True)
     result: dict = {}
