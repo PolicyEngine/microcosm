@@ -360,39 +360,80 @@ def _start_rss_logger(interval_seconds: int = 60) -> None:
 
     def _loop() -> None:
         peak = 0.0
+        # Log to the volume, not stdout: `modal app logs` streaming has been
+        # unreliable from the build machine, while volume reads work mid-run
+        # (the staging telemetry proves it).
+        log_path = Path(OUTPUT_MOUNT) / "full" / "rss.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         while True:
             used = psutil.virtual_memory().used / 2**30
             peak = max(peak, used)
-            print(
-                f"[rss-logger] used={used:.1f}GiB peak={peak:.1f}GiB",
-                flush=True,
-            )
+            line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} used={used:.1f}GiB peak={peak:.1f}GiB"
+            print(f"[rss-logger] {line}", flush=True)
+            try:
+                with log_path.open("a") as fh:
+                    fh.write(line + "\n")
+            except OSError:
+                pass
             time.sleep(interval_seconds)
 
     threading.Thread(target=_loop, daemon=True).start()
 
 
-def _run(cmd: list[str], *, cwd: str = IMAGE_REPO_ROOT, env: dict | None = None) -> dict:
+def _run(
+    cmd: list[str],
+    *,
+    cwd: str = IMAGE_REPO_ROOT,
+    env: dict | None = None,
+    tee_path: Path | None = None,
+) -> dict:
     """Run a subprocess, returning a small result dict.
 
     Never prints file *contents* — only the command and its stdout/stderr tail
     (which the build tools keep to column names / totals / gate verdicts).
+    With ``tee_path``, combined output streams line-by-line to that file so
+    crash forensics never depend on `modal app logs` streaming.
     """
     print(f"$ {' '.join(cmd)}", flush=True)
     run_env = {**os.environ, **(env or {})}
-    proc = subprocess.run(cmd, cwd=cwd, env=run_env, text=True, capture_output=True)
-    tail = "\n".join((proc.stdout or "").splitlines()[-60:])
-    err_tail = "\n".join((proc.stderr or "").splitlines()[-40:])
+    if tee_path is None:
+        proc = subprocess.run(
+            cmd, cwd=cwd, env=run_env, text=True, capture_output=True
+        )
+        stdout, stderr = proc.stdout or "", proc.stderr or ""
+        returncode = proc.returncode
+    else:
+        tee_path.parent.mkdir(parents=True, exist_ok=True)
+        lines: list[str] = []
+        with tee_path.open("a") as fh:
+            popen = subprocess.Popen(
+                cmd,
+                cwd=cwd,
+                env=run_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            assert popen.stdout is not None
+            for line in popen.stdout:
+                lines.append(line)
+                fh.write(line)
+                fh.flush()
+            popen.wait()
+        stdout, stderr = "".join(lines), ""
+        returncode = popen.returncode
+    tail = "\n".join(stdout.splitlines()[-60:])
+    err_tail = "\n".join(stderr.splitlines()[-40:])
     if tail:
         print(tail, flush=True)
-    if proc.returncode != 0:
-        print(f"[exit {proc.returncode}] stderr tail:\n{err_tail}", flush=True)
+    if returncode != 0:
+        print(f"[exit {returncode}] stderr tail:\n{err_tail}", flush=True)
     return {
         "cmd": cmd,
-        "returncode": proc.returncode,
-        "stdout": proc.stdout or "",
+        "returncode": returncode,
+        "stdout": stdout,
         "stdout_tail": tail,
-        "stderr_tail": err_tail,
+        "stderr_tail": err_tail or tail[-2000:],
     }
 
 
@@ -605,7 +646,7 @@ def run_full_build(
         cmd += ["--skip-out-of-sample-reforms"]
     if allow_input_mass_drift:
         cmd += ["--allow-input-mass-drift"]
-    build = _run(cmd)
+    build = _run(cmd, tee_path=work / "build_stdout.log")
     result["fiscal_refresh"] = {"returncode": build["returncode"]}
     output_volume.commit()
     if build["returncode"] != 0:
@@ -621,16 +662,17 @@ def run_full_build(
 def main(full: bool = False, rebuild_base: bool = False, no_staging: bool = False):
     """Default: run the smoke path. Pass --full only with the go-ahead."""
     if full:
-        print("Launching FULL corrected build (heavy).")
-        print(
-            json.dumps(
-                run_full_build.remote(
-                    rebuild_base=rebuild_base, no_staging=no_staging
-                ),
-                indent=2,
-                sort_keys=True,
-            )
+        # .spawn() + detach: the client only has to survive the submission
+        # round-trip. Every earlier full attempt died ~5 minutes into target
+        # compilation regardless of memory size (64/128/336 GB) — the common
+        # factor was the local client dying (session restarts, flaky wifi)
+        # before/while streaming, tearing the app down. .remote() kept the
+        # client on the hook for the whole build; .spawn() does not.
+        print("Spawning FULL corrected build (heavy).")
+        call = run_full_build.spawn(
+            rebuild_base=rebuild_base, no_staging=no_staging
         )
+        print(f"spawned function call: {call.object_id}")
         return
     print("Running smoke (wiring proof) ...")
     result = smoke.remote()
