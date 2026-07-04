@@ -61,6 +61,7 @@ from populace.fit.model import (
     predictors_targets_entity,
     resolve_dataframe_fit_weights,
     resolve_fit_weights,
+    resolved_weight_kind,
 )
 from populace.frame import Frame
 
@@ -457,6 +458,10 @@ class RegimeGatedQRF:
                 frame_or_df, weights, predictors=predictors, targets=targets
             )
             table = frame_or_df
+        # Record the kind actually resolved (inherited kind on a Frame, "none"
+        # for any unweighted fit, "explicit" for a DataFrame vector) so a build
+        # can audit what the fit weighted by, not what the caller intended.
+        weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
         _validate_targets_finite(table, targets)
 
         # Split the model seed into two independent streams: one drives the
