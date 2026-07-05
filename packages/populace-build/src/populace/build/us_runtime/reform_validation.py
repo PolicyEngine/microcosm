@@ -406,7 +406,12 @@ def state_reform_specs(
                 parameter_changes=raw["parameter_changes"],
                 # An enacted bill's effect is reform − baseline (a rate cut
                 # yields a negative delta, matching the fiscal note's sign).
-                effect_direction="reform_minus_baseline",
+                # A bill that has since become baseline law (e.g. GA HB1001 via
+                # HB463) is validated as a counterfactual revert instead and
+                # declares baseline_minus_reform, like the OBBBA provisions.
+                effect_direction=str(
+                    raw.get("effect_direction", "reform_minus_baseline")
+                ),
             )
         )
     return tuple(specs)

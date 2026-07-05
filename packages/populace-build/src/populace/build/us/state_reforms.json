@@ -13,97 +13,10 @@
    "state": "GA",
    "period": 2026,
    "budget_measure": "ga_income_tax",
-   "description": "Accelerates Georgia's flat income tax cut to 4.99% in 2026. OPB scores the full 5.19%\u21924.99% cut at ~$778M/yr (GBPI independently: ~$776M).",
+   "description": "Georgia's 5.19%\u21924.99% flat-rate cut for 2026 (HB1001; enacted via HB463, so it is already in the policyengine-us baseline). Validated as a counterfactual revert to 5.19%. OPB scores the full cut at ~$778M/yr (GBPI independently: ~$776M).",
    "parameter_changes": {
-    "gov.states.ga.tax.income.main.joint.brackets[0].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.joint.brackets[1].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.joint.brackets[2].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.joint.brackets[3].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.joint.brackets[4].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.joint.brackets[5].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[0].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[1].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[2].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[3].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[4].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.single.brackets[5].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[0].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[1].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[2].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[3].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[4].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.separate.brackets[5].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[0].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[1].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[2].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[3].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[4].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.surviving_spouse.brackets[5].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[0].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[1].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[2].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[3].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[4].rate": {
-     "2026-01-01.2100-12-31": 0.0499
-    },
-    "gov.states.ga.tax.income.main.head_of_household.brackets[5].rate": {
-     "2026-01-01.2100-12-31": 0.0499
+    "gov.states.ga.tax.income.main.flat_rate": {
+     "2026-01-01.2100-12-31": 0.0519
     }
    },
    "benchmark": {
@@ -113,7 +26,8 @@
     "source": "Georgia OPB fiscal note",
     "source_url": "https://opb.georgia.gov/budget-information/fiscal-notes/2025-2026-regular-session"
    },
-   "tracker_id": "ga-hb1001"
+   "tracker_id": "ga-hb1001",
+   "effect_direction": "baseline_minus_reform"
   },
   {
    "id": "state.md.hb411",
@@ -260,13 +174,13 @@
    "budget_measure": "ia_income_tax",
    "description": "Expands Iowa's CDCC fractions for higher income brackets. LSA: -$17.7M FY2026, -$16.2M FY2027; ~78,000 taxpayers affected, average decrease $228.",
    "parameter_changes": {
-    "gov.states.ia.tax.income.credits.child_care.fraction.brackets[4].amount": {
+    "gov.states.ia.tax.income.credits.child_care.fraction[4].amount": {
      "2025-01-01.2100-12-31": 0.5
     },
-    "gov.states.ia.tax.income.credits.child_care.fraction.brackets[5].amount": {
+    "gov.states.ia.tax.income.credits.child_care.fraction[5].amount": {
      "2025-01-01.2100-12-31": 0.5
     },
-    "gov.states.ia.tax.income.credits.child_care.fraction.brackets[6].amount": {
+    "gov.states.ia.tax.income.credits.child_care.fraction[6].amount": {
      "2025-01-01.2100-12-31": 0.5
     }
    },
@@ -288,49 +202,49 @@
    "budget_measure": "ok_income_tax",
    "description": "Eliminates Oklahoma's personal income tax rates in 2026. OTC: -$7.03B FY2027 (includes withholding timing), -$5.30B FY2028 steady state \u2014 the steady-state figure is the like-for-like against a full-tax-year simulation.",
    "parameter_changes": {
-    "gov.states.ok.tax.income.rates.joint.brackets[1].rate": {
+    "gov.states.ok.tax.income.rates.joint[1].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.joint.brackets[2].rate": {
+    "gov.states.ok.tax.income.rates.joint[2].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.joint.brackets[3].rate": {
+    "gov.states.ok.tax.income.rates.joint[3].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.single.brackets[1].rate": {
+    "gov.states.ok.tax.income.rates.single[1].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.single.brackets[2].rate": {
+    "gov.states.ok.tax.income.rates.single[2].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.single.brackets[3].rate": {
+    "gov.states.ok.tax.income.rates.single[3].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.separate.brackets[1].rate": {
+    "gov.states.ok.tax.income.rates.separate[1].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.separate.brackets[2].rate": {
+    "gov.states.ok.tax.income.rates.separate[2].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.separate.brackets[3].rate": {
+    "gov.states.ok.tax.income.rates.separate[3].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.surviving_spouse.brackets[1].rate": {
+    "gov.states.ok.tax.income.rates.surviving_spouse[1].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.surviving_spouse.brackets[2].rate": {
+    "gov.states.ok.tax.income.rates.surviving_spouse[2].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.surviving_spouse.brackets[3].rate": {
+    "gov.states.ok.tax.income.rates.surviving_spouse[3].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.head_of_household.brackets[1].rate": {
+    "gov.states.ok.tax.income.rates.head_of_household[1].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.head_of_household.brackets[2].rate": {
+    "gov.states.ok.tax.income.rates.head_of_household[2].rate": {
      "2026-01-01.2100-12-31": 0
     },
-    "gov.states.ok.tax.income.rates.head_of_household.brackets[3].rate": {
+    "gov.states.ok.tax.income.rates.head_of_household[3].rate": {
      "2026-01-01.2100-12-31": 0
     }
    },
