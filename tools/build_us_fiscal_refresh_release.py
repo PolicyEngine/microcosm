@@ -48,6 +48,7 @@ from populace.build.us_runtime import (
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
+    US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_SOURCE_MANIFEST,
     compile_us_fiscal_target_registry,
@@ -3211,17 +3212,56 @@ def _structural_frame_columns() -> set[str]:
     return structural
 
 
+def _immigration_composition_drift_degenerate_exclusions() -> dict[str, str]:
+    """Degenerate-input exclusions the immigration hatch adds for pre-#266 bases.
+
+    A base predating the #266 immigration channel persists ``ssn_card_type``
+    and ``immigration_status_str`` constant at their ``CITIZEN`` engine
+    defaults (raw ``PRCITSHP`` absent), so both the composition gate and the
+    default-stuck degenerate-input gate (#286) fire on the same two columns
+    for the same root cause. ``--allow-immigration-composition-drift`` already
+    waives the composition gate; these exclusions extend the same approved
+    waiver to the degenerate-input gate so the hatch is honored at every gate
+    that keys off the everyone-is-a-citizen surface (populace #225).
+
+    Scoped to exactly the immigration columns: every other stuck-at-default
+    column still fails. The gate treats an exclusion as *stale* (and fails) if
+    the named column carries signal, so passing the hatch to a base that has
+    actually been through #266 surfaces as a stale-exclusion failure rather
+    than silently masking a real degeneracy elsewhere.
+    """
+    return {
+        column: (
+            "Pre-#266 base: this column is persisted constant at its CITIZEN "
+            "engine default because the immigration channel has not run "
+            "(raw PRCITSHP absent). Waived under "
+            "--allow-immigration-composition-drift alongside the composition "
+            "gate; the everyone-is-a-citizen surface is tracked in "
+            "PolicyEngine/populace#225."
+        )
+        for column in US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS
+    }
+
+
 def _degenerate_input_signal_gate(
     frame: Frame,
     engine: PolicyEngineUSEngine,
+    *,
+    extra_reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
     """Sweep every persisted input column for values stuck at the engine default.
 
     Unlike the health-input gate's named allowlist, this covers the whole
     export surface: any PolicyEngine input column whose values all equal the
     engine default fails unless it carries a reviewed exclusion naming the
-    tracking issue.
+    tracking issue. ``extra_reviewed_exclusions`` augments the static
+    :data:`US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS` register with
+    build-invocation-scoped waivers (e.g. the immigration hatch for a pre-#266
+    base); the static register always applies.
     """
+    reviewed_exclusions = dict(US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS)
+    if extra_reviewed_exclusions:
+        reviewed_exclusions.update(extra_reviewed_exclusions)
     structural = _structural_frame_columns()
     column_values: dict[str, object] = {}
     for entity in frame.entities:
@@ -3234,7 +3274,7 @@ def _degenerate_input_signal_gate(
     gate = default_valued_columns_gate(
         column_values,
         defaults,
-        reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+        reviewed_exclusions=reviewed_exclusions,
     )
     return GateResult(
         name="degenerate_input_signal",
@@ -4834,8 +4874,7 @@ def main() -> None:
             print(
                 "warning: immigration composition gate failed but "
                 "--allow-immigration-composition-drift is set; continuing. "
-                "Failures: "
-                + "; ".join(immigration_gate.failures),
+                "Failures: " + "; ".join(immigration_gate.failures),
                 file=sys.stderr,
             )
         else:
@@ -4920,8 +4959,20 @@ def main() -> None:
                 for failure in input_mass_reference_gate.failures
             )
         )
+    # A pre-#266 base persists ssn_card_type/immigration_status_str constant at
+    # their CITIZEN defaults, so the default-stuck gate (#286) fires on the same
+    # columns as the composition gate. Honor --allow-immigration-composition-drift
+    # here too: extend the same approved waiver to those two columns so the
+    # hatched build survives the final input-signal sweep (populace#225).
+    degenerate_input_extra_exclusions = (
+        _immigration_composition_drift_degenerate_exclusions()
+        if args.allow_immigration_composition_drift
+        else None
+    )
     degenerate_input_gate = _degenerate_input_signal_gate(
-        base_frame, PolicyEngineUSEngine()
+        base_frame,
+        PolicyEngineUSEngine(),
+        extra_reviewed_exclusions=degenerate_input_extra_exclusions,
     )
     if not degenerate_input_gate.passed:
         if telemetry is not None:

@@ -1842,7 +1842,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_degenerate_input_signal_gate",
-        lambda frame, engine: builder.GateResult(
+        lambda frame, engine, **kwargs: builder.GateResult(
             name="degenerate_input_signal",
             passed=True,
             details={"checked": True},
@@ -2478,6 +2478,109 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         frame.table("tax_unit")["selected_marketplace_plan_benchmark_ratio"].nunique()
         == 1
     )
+
+
+def _constant_citizen_immigration_frame(builder) -> Frame:
+    """A US frame whose immigration columns are constant at the CITIZEN default.
+
+    Reproduces a pre-#266 base: ``ssn_card_type`` and ``immigration_status_str``
+    persisted constant at ``CITIZEN`` (the immigration channel has not run), so
+    the default-stuck degenerate-input gate fires on exactly those two columns.
+    """
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "ssn_card_type": ["CITIZEN", "CITIZEN", "CITIZEN"],
+            "immigration_status_str": ["CITIZEN", "CITIZEN", "CITIZEN"],
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([1, 1]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+class _CitizenDefaultEngine:
+    """Fake engine reporting CITIZEN as the default for the immigration columns.
+
+    ``_degenerate_input_signal_gate`` only calls ``default_values``; nothing
+    else on the real adapter is exercised, so this keeps the test deterministic
+    and free of the heavy policyengine_us import.
+    """
+
+    def default_values(self, names) -> dict[str, object]:
+        wanted = {"ssn_card_type": "CITIZEN", "immigration_status_str": "CITIZEN"}
+        return {name: wanted[name] for name in names if name in wanted}
+
+
+def test_degenerate_input_gate_fails_on_constant_citizen_without_hatch() -> None:
+    # A pre-#266 base's constant-CITIZEN immigration columns are stuck at their
+    # engine default, so the gate fails and names both columns — this is the
+    # #286 blocker for the dense-base run.
+    builder = _load_builder_module()
+    frame = _constant_citizen_immigration_frame(builder)
+
+    gate = builder._degenerate_input_signal_gate(frame, _CitizenDefaultEngine())
+
+    assert not gate.passed
+    joined = "; ".join(gate.failures)
+    assert "ssn_card_type" in joined
+    assert "immigration_status_str" in joined
+
+
+def test_immigration_hatch_waives_degenerate_gate_for_citizen_columns() -> None:
+    # --allow-immigration-composition-drift extends its approved waiver to the
+    # default-stuck gate: the same two constant-CITIZEN columns are excluded by
+    # name (with a recorded reason), so the hatched build survives the sweep.
+    builder = _load_builder_module()
+    frame = _constant_citizen_immigration_frame(builder)
+    exclusions = builder._immigration_composition_drift_degenerate_exclusions()
+
+    gate = builder._degenerate_input_signal_gate(
+        frame,
+        _CitizenDefaultEngine(),
+        extra_reviewed_exclusions=exclusions,
+    )
+
+    assert gate.passed
+    excluded = gate.details["reviewed_exclusions"]
+    assert set(excluded) == {"ssn_card_type", "immigration_status_str"}
+
+
+def test_immigration_hatch_exclusions_cover_exactly_the_immigration_columns() -> None:
+    # The waiver is tightly scoped: it names exactly the immigration columns the
+    # composition gate governs, and every entry carries a non-empty reason (the
+    # gate rejects reasonless exclusions).
+    builder = _load_builder_module()
+    exclusions = builder._immigration_composition_drift_degenerate_exclusions()
+
+    assert set(exclusions) == set(builder.US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS)
+    assert all(reason for reason in exclusions.values())
 
 
 def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
