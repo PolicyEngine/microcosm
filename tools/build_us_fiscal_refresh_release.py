@@ -1320,6 +1320,56 @@ def _read_checkpoint_column(group) -> np.ndarray:
     raise RuntimeError(f"Unknown checkpoint storage kind {storage_kind!r}.")
 
 
+def _resolve_checkpoint_paths(
+    args: argparse.Namespace,
+    *,
+    artifact_root: Path,
+) -> tuple[Path | None, Path | None, Path | None]:
+    """Resolve the durable checkpoint locations from parsed CLI arguments.
+
+    Returns ``(checkpoint_root, target_materialization_cache_dir,
+    target_frame_checkpoint_path)``.
+
+    Both checkpoint locations DEFAULT under ``artifact_root`` (i.e.
+    ``<out>/artifacts``), which is ephemeral: a preempted worker that restarts
+    into a fresh ``--out`` would orphan the completed reform materializations
+    written under the dead out-dir (the root cause of Build B losing its cache).
+    When ``--checkpoint-root`` is set, the defaults instead resolve under that
+    root — point it at a persistent volume that is stable across worker
+    restarts so a fresh ``--out`` still finds already-completed reforms.
+
+    Precedence for each location: an explicit ``--target-materialization-cache-dir``
+    / ``--target-frame-checkpoint`` override always wins; otherwise the default
+    is taken under ``checkpoint_root`` when provided, else under ``artifact_root``.
+    The diagnostic ``--no-*`` flags still force the corresponding location to
+    ``None`` (caching/checkpointing disabled) regardless of the root.
+    """
+    checkpoint_root = getattr(args, "checkpoint_root", None)
+    default_root = checkpoint_root if checkpoint_root is not None else artifact_root
+
+    target_materialization_cache_dir = (
+        None
+        if args.no_target_materialization_cache
+        else (
+            args.target_materialization_cache_dir
+            or default_root / "target_materialization_cache"
+        )
+    )
+    target_frame_checkpoint_path = (
+        None
+        if args.no_target_frame_checkpoint
+        else (
+            args.target_frame_checkpoint
+            or default_root / "target_frame_checkpoint.h5"
+        )
+    )
+    return (
+        checkpoint_root,
+        target_materialization_cache_dir,
+        target_frame_checkpoint_path,
+    )
+
+
 def _local_workspace_package_version(package: str) -> str:
     pyproject = Path("packages") / package / "pyproject.toml"
     if not pyproject.is_file():
