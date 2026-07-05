@@ -87,6 +87,41 @@ def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
     return bool(formulas)
 
 
+def _references_variable(consumer: Any, target: str) -> bool:
+    """Whether ``consumer`` reads ``target`` in a way that makes it load-bearing.
+
+    A take-up flag matters to the model only if some other variable consumes
+    it: through an ``adds``/``subtracts`` aggregation (e.g. ``*_enrolled``
+    variables that add a take-up flag), through a ``defined_for`` gate, or by
+    naming it inside a formula body. A flag no variable reads is dead — the
+    engine's own default never reaches an output, so seeding it in the dataset
+    changes nothing.
+    """
+    import inspect
+
+    for attr in ("adds", "subtracts"):
+        value = getattr(consumer, attr, None)
+        if isinstance(value, (list, tuple)) and target in value:
+            return True
+        if isinstance(value, str) and value == target:
+            return True
+    if getattr(consumer, "defined_for", None) == target:
+        return True
+    for attribute in dir(consumer):
+        if attribute != "formula" and not attribute.startswith("formula_"):
+            continue
+        formula = getattr(consumer, attribute, None)
+        if not callable(formula):
+            continue
+        try:
+            source = inspect.getsource(formula)
+        except (OSError, TypeError):
+            continue
+        if target in source:
+            return True
+    return False
+
+
 def _enum_domain(variable: Any) -> tuple[str, ...]:
     possible_values = getattr(variable, "possible_values", None)
     members = getattr(possible_values, "__members__", None)
@@ -207,6 +242,97 @@ class PolicyEngineUSEngine:
             if variable is not None and _is_engine_computed(variable):
                 flagged.add(name)
         return flagged
+
+    def take_up_variables(self) -> list[str]:
+        """Return the engine's take-up-flag variable names, sorted.
+
+        A take-up flag is a boolean variable whose name begins ``takes_up`` or
+        carries a ``take_up_seed`` marker (the model-side draw seed some
+        programs migrate to). The set is discovered from engine metadata rather
+        than hard-coded, so a take-up variable PolicyEngine-US adds is picked up
+        automatically (populace issue #312).
+
+        Raises:
+            ImportError: If ``policyengine_us`` is not installed.
+        """
+        system_variables = self._tax_benefit_system().variables
+        return sorted(
+            name
+            for name in system_variables
+            if name.startswith("takes_up") or "take_up_seed" in name
+        )
+
+    def take_up_contract(self) -> dict[str, dict[str, object]]:
+        """Classify every take-up variable against the installed engine.
+
+        For each name from :meth:`take_up_variables`, report the engine facts
+        that decide whether the dataset must seed the flag:
+
+        - ``entity`` — the entity the flag lives on.
+        - ``value_type`` — ``"bool"``, ``"int"``, ... (the Python type name).
+        - ``default`` — the engine default (``True`` means "everyone eligible
+          takes up unless the dataset says otherwise").
+        - ``engine_computed`` — whether PolicyEngine-US computes the flag with
+          a formula, ``adds``/``subtracts`` aggregation, or a start-date
+          formula mapping. ``True`` means the model draws take-up itself and
+          the dataset must NOT seed the flag (it would fight the draw).
+        - ``consumers`` — the variables that read the flag (empty means dead:
+          seeding it changes no output).
+        - ``engine_class`` — the derived class:
+            ``"model_simulated"`` if ``engine_computed``;
+            ``"dead"`` if no consumer reads it;
+            ``"data_seeded"`` otherwise (an input leaf defaulting to universal
+            take-up that the dataset must populate or ship known-wrong
+            participation).
+
+        This is the engine-derived half of the take-up contract inventory: a
+        checked-in table records the intended per-program treatment and a test
+        asserts it against this method, so the classification tracks the pinned
+        engine version instead of a remembered snapshot (same
+        metadata-derivation doctrine as :meth:`formula_owned_outputs`, populace
+        issue #312).
+
+        Raises:
+            ImportError: If ``policyengine_us`` is not installed.
+        """
+        system_variables = self._tax_benefit_system().variables
+        names = self.take_up_variables()
+        name_set = set(names)
+        consumers: dict[str, list[str]] = {name: [] for name in names}
+        for consumer_name, consumer in system_variables.items():
+            if consumer_name in name_set:
+                continue
+            for target in names:
+                if _references_variable(consumer, target):
+                    consumers[target].append(consumer_name)
+
+        contract: dict[str, dict[str, object]] = {}
+        for name in names:
+            variable = system_variables[name]
+            engine_computed = _is_engine_computed(variable)
+            reads = sorted(consumers[name])
+            if engine_computed:
+                engine_class = "model_simulated"
+            elif not reads:
+                engine_class = "dead"
+            else:
+                engine_class = "data_seeded"
+            default = getattr(variable, "default_value", None)
+            if variable.value_type in _DTYPE_KIND_BY_VALUE_TYPE:
+                default_value: object = default
+                value_type = variable.value_type.__name__
+            else:
+                default_value = _stored_enum_name(default)
+                value_type = "enum"
+            contract[name] = {
+                "entity": variable.entity.key,
+                "value_type": value_type,
+                "default": default_value,
+                "engine_computed": engine_computed,
+                "consumers": reads,
+                "engine_class": engine_class,
+            }
+        return contract
 
     def default_values(self, names: Sequence[str]) -> dict[str, object]:
         """Return engine default values for the given input variable names.

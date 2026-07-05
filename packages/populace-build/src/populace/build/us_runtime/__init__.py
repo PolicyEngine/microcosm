@@ -162,6 +162,23 @@ from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
+from populace.build.us_runtime.take_up import (
+    US_TAKE_UP_SHARE_BAND,
+    SeededTakeUpResult,
+    us_take_up_participation_diagnostics,
+    us_take_up_signal_gate,
+    us_take_up_summary,
+    with_us_take_up_inputs,
+    write_us_take_up_participation_diagnostics,
+)
+from populace.build.us_runtime.take_up_contract import (
+    TakeUpContract,
+    TakeUpProgram,
+    assert_take_up_contract_current,
+    assert_take_up_treatments_consistent,
+    load_take_up_contract,
+    seeded_take_up_programs,
+)
 from populace.build.us_runtime.validation_input_coverage import (
     US_VALIDATION_PROVISION_INPUT_LEAVES,
     ValidationInputLeaf,
@@ -234,6 +251,19 @@ __all__ = [
     "us_immigration_composition_summary",
     "us_immigration_stage_spec",
     "with_us_immigration_inputs",
+    "US_TAKE_UP_SHARE_BAND",
+    "SeededTakeUpResult",
+    "us_take_up_participation_diagnostics",
+    "us_take_up_signal_gate",
+    "us_take_up_summary",
+    "with_us_take_up_inputs",
+    "write_us_take_up_participation_diagnostics",
+    "TakeUpContract",
+    "TakeUpProgram",
+    "assert_take_up_contract_current",
+    "assert_take_up_treatments_consistent",
+    "load_take_up_contract",
+    "seeded_take_up_programs",
     "US_NONNEGATIVE_SOURCE_OUTPUTS",
     "US_SOURCE_COVERAGE",
     "US_SOI_FISCAL_TARGET_SPECS",

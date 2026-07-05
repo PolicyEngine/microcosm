@@ -57,9 +57,13 @@ from populace.build.us_runtime import (
     us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_take_up_participation_diagnostics,
+    us_take_up_signal_gate,
     us_validation_input_coverage_gate,
     with_us_immigration_inputs,
+    with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
+    write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -4809,6 +4813,33 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "take_up_inputs",
+            message="Seeding TANF and EITC take-up from administrative rates.",
+        )
+    base_frame = with_us_take_up_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    take_up_gate = us_take_up_signal_gate(base_frame)
+    if not take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "take_up_gate",
+                status="failed",
+                message="Take-up signal gate failed.",
+                failures=list(take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Take-up signal failed: {failure}"
+                for failure in take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -5276,6 +5307,19 @@ def main() -> None:
         telemetry.attach_artifact(
             "us_source_coverage",
             release_dir / "us_source_coverage.json",
+        )
+        telemetry.stage(
+            "take_up_participation",
+            message="Writing take-up participation diagnostics.",
+        )
+    write_us_take_up_participation_diagnostics(
+        us_take_up_participation_diagnostics(export_frame),
+        release_dir / "us_take_up_participation.json",
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_take_up_participation",
+            release_dir / "us_take_up_participation.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started
