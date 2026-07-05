@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "forbes_top_tail": false,
+  "source": "2014 IRS PUF General Description Booklet, pages 33-36 (June 2020)",
+  "aggregate_recids": [999996, 999997, 999998, 999999],
+  "synthetic_recid_start": 1000000,
+  "synthetic_tail_support_eligible": true,
+  "screened_fields": [
+    "E00200",
+    "P23250",
+    "P22250",
+    "E00650",
+    "E00300",
+    "E26270",
+    "E00900",
+    "E02100",
+    "E00400",
+    "E00600"
+  ],
+  "buckets": {
+    "999996": {
+      "description": "Negative AGI",
+      "agi_lower": null,
+      "agi_upper": 0
+    },
+    "999997": {
+      "description": "Positive AGI under $10M",
+      "agi_lower": 0,
+      "agi_upper": 10000000
+    },
+    "999998": {
+      "description": "Positive AGI $10M-$100M",
+      "agi_lower": 10000000,
+      "agi_upper": 100000000
+    },
+    "999999": {
+      "description": "Positive AGI $100M+",
+      "agi_lower": 100000000,
+      "agi_upper": null,
+      "synthetic_agi_upper": 1250000000
+    }
+  }
+}

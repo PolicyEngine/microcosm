@@ -27,14 +27,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
 REPO = Path(__file__).resolve().parents[1]
+WORKSPACE = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "src"))
+sys.path.insert(0, str(WORKSPACE / "populace-build" / "src"))
 
 from microplex.data_sources.cps import load_cps_asec  # noqa: E402
-from microplex.data_sources.us_registry import (  # noqa: E402
-    create_us_asec_puf_source_registry,
+from microplex.data_sources.puf import (  # noqa: E402
+    expand_to_persons,
+    map_puf_variables,
+    uprate_puf,
 )
 from microplex.export import (  # noqa: E402
     ExportContract,
@@ -43,6 +46,14 @@ from microplex.export import (  # noqa: E402
 from microplex.run import run_spec  # noqa: E402
 from microplex.spec import load_spec_dict  # noqa: E402
 from microplex.units import assign_us_unit_structure  # noqa: E402
+
+from populace.build.us.puf_aggregate_records import (  # noqa: E402
+    AGGREGATE_RECIDS,
+    SYNTHETIC_RECID_START,
+    PufAggregateDisaggregationSpec,
+    disaggregate_puf_aggregate_records,
+    load_default_puf_aggregate_disaggregation_spec,
+)
 
 US_DATA_STORAGE = Path(
     "~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage"
@@ -172,9 +183,9 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     p["has_esi"] = (num("NOW_GRP") == 1).astype(bool)
     p["has_marketplace_health_coverage"] = (num("NOW_MRK") == 1).astype(bool)
     p["receives_wic"] = (num("WICYN") == 1).astype(bool)
-    p["health_insurance_premiums_without_medicare_part_b"] = num(
-        "PHIP_VAL"
-    ).astype(float)
+    p["health_insurance_premiums_without_medicare_part_b"] = num("PHIP_VAL").astype(
+        float
+    )
     p["over_the_counter_health_expenses"] = num("POTC_VAL").astype(float)
     p["other_medical_expenses"] = num("PMED_VAL").astype(float)
     dis_flags = ["PEDISDRS", "PEDISEAR", "PEDISEYE", "PEDISOUT", "PEDISPHY", "PEDISREM"]
@@ -186,9 +197,7 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     p["is_hispanic"] = (num("hispanic") == 1).astype(bool)
     p["is_household_head"] = num("A_EXPRRP").isin([1, 2]).astype(bool)
     p["is_separated"] = (num("A_MARITL") == 6).astype(bool)
-    p["is_unmarried_partner_of_household_head"] = (
-        num("A_EXPRRP") == 13
-    ).astype(bool)
+    p["is_unmarried_partner_of_household_head"] = (num("A_EXPRRP") == 13).astype(bool)
     # own children: count persons naming me as parent within the household.
     key = p["household_id"].astype(str)
     me = key + ":" + num("A_LINENO").astype(int).astype(str)
@@ -208,10 +217,7 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     disabled = ((r1 == 2) | (r2 == 2)) & ~retired
     survivor = (r1.isin([3, 5]) | r2.isin([3, 5])) & ~retired & ~disabled
     dependent = (
-        (r1.isin([4, 6, 7]) | r2.isin([4, 6, 7]))
-        & ~retired
-        & ~disabled
-        & ~survivor
+        (r1.isin([4, 6, 7]) | r2.isin([4, 6, 7])) & ~retired & ~disabled & ~survivor
     )
     unclassified = (ss > 0) & ~(retired | disabled | survivor | dependent)
     age = num("A_AGE")
@@ -231,9 +237,7 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     strike = oi_off == 12
     alimony_oi = oi_off == 20
     p["strike_benefits"] = (oi_val * strike).astype(float)
-    p["miscellaneous_income"] = (
-        oi_val * ~(strike | alimony_oi)
-    ).astype(float)
+    p["miscellaneous_income"] = (oi_val * ~(strike | alimony_oi)).astype(float)
     p["hours_worked_last_week"] = num("A_HRS1").clip(lower=0).astype(float)
     p["weeks_worked"] = num("WKSWORK").clip(0, 52).astype(float)
     p["detailed_occupation_recode"] = num("POCCU2").astype(float)
@@ -264,6 +268,8 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     # FLSA overtime occupation flags from POCCU2 (codes shipped by the engine).
     from policyengine_us.data.cps import (
         CPS_FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES as _EXEC,
+    )
+    from policyengine_us.data.cps import (
         CPS_FLSA_OVERTIME_OCCUPATION_CODES as _OCC,
     )
 
@@ -288,6 +294,7 @@ def _derive_person_columns(person: pd.DataFrame) -> pd.DataFrame:
     p["traditional_ira_contributions_desired"] = (ira_pool * 0.392).astype(float)
     p["roth_ira_contributions_desired"] = (ira_pool * 0.608).astype(float)
     return p
+
 
 # Person-level ASEC harmonized income columns that sum to tax-unit totals.
 PERSON_INCOME_COLUMNS = (
@@ -399,11 +406,67 @@ def _build_imputation_steps(*, weighted: bool = True) -> list[dict]:
     puf_only = [v for v in puf_vars if v not in CPS_MEASURED]
     w = {"weights": "weight"} if weighted else {}
     return [
-        {"onto": "synthetic_puf", "from": "puf", "vars": puf_vars,
-         "order": "spine_first", **w},
-        {"onto": "cps_keep", "from": "puf", "vars": puf_only,
-         "condition_on": ["demographics", *CPS_MEASURED], **w},
+        {
+            "onto": "synthetic_puf",
+            "from": "puf",
+            "vars": puf_vars,
+            "order": "spine_first",
+            **w,
+        },
+        {
+            "onto": "cps_keep",
+            "from": "puf",
+            "vars": puf_only,
+            "condition_on": ["demographics", *CPS_MEASURED],
+            **w,
+        },
     ]
+
+
+def _load_puf_tax_units_with_aggregate_disagg(
+    *,
+    target_year: int,
+    puf_path: Path,
+    demographics_path: Path | None,
+    seed: int,
+    expand_persons: bool = False,
+    log=lambda *_args: None,
+) -> tuple[pd.DataFrame, PufAggregateDisaggregationSpec]:
+    """Load PUF tax units, replacing aggregate rows before variable mapping."""
+    puf_path = Path(puf_path)
+    if not puf_path.exists():
+        raise FileNotFoundError(f"PUF file not found at {puf_path}")
+    raw = pd.read_csv(puf_path)
+    raw_count = len(raw)
+
+    if demographics_path is not None:
+        demographics_path = Path(demographics_path)
+        if not demographics_path.exists():
+            raise FileNotFoundError(
+                f"PUF demographics file not found at {demographics_path}"
+            )
+        demo = pd.read_csv(demographics_path)
+        if {"RECID"} <= set(raw.columns) and {"RECID"} <= set(demo.columns):
+            raw = raw.merge(demo, on="RECID", how="left", suffixes=("", "_demo"))
+
+    spec = load_default_puf_aggregate_disaggregation_spec()
+    aggregate_rows = int(raw["RECID"].isin(AGGREGATE_RECIDS).sum())
+    raw = disaggregate_puf_aggregate_records(raw, seed=seed, spec=spec)
+    synthetic_rows = int((raw["RECID"] >= SYNTHETIC_RECID_START).sum())
+    log(
+        "  PUF aggregate disagg: "
+        f"raw={raw_count:,}, aggregate_rows={aggregate_rows}, "
+        f"synthetic_rows={synthetic_rows:,}, forbes_top_tail={spec.forbes_top_tail}"
+    )
+
+    mapped = map_puf_variables(raw)
+    mapped["_puf_recid"] = raw["RECID"].to_numpy()
+    mapped = uprate_puf(mapped, from_year=2015, to_year=target_year)
+    if expand_persons:
+        mapped = expand_to_persons(mapped)
+    log(f"  PUF loaded after aggregate disagg: {len(mapped):,} rows")
+    log(f"  PUF weight sum: {mapped['weight'].sum():,.0f}")
+    return mapped, spec
 
 
 def _aggregate_tax_units(person: pd.DataFrame, tax_unit: pd.DataFrame) -> pd.DataFrame:
@@ -415,14 +478,9 @@ def _aggregate_tax_units(person: pd.DataFrame, tax_unit: pd.DataFrame) -> pd.Dat
     base["n_people"] = g.size().astype(float)
     is_head = person["tax_unit_role_input"] == "HEAD"
     head_age = (
-        person.loc[is_head]
-        .groupby("person_tax_unit_id")["A_AGE"]
-        .max()
-        .astype(float)
+        person.loc[is_head].groupby("person_tax_unit_id")["A_AGE"].max().astype(float)
     )
-    base["age"] = head_age.reindex(base.index).fillna(
-        g["A_AGE"].max().astype(float)
-    )
+    base["age"] = head_age.reindex(base.index).fillna(g["A_AGE"].max().astype(float))
     base["n_children"] = (
         person.assign(_child=(person["A_AGE"] < 18).astype(float))
         .groupby("person_tax_unit_id")["_child"]
@@ -551,9 +609,7 @@ def _allocate_to_persons(
     person = person.copy()
     m = unit_map.set_index("orig_tax_unit_id")
     person["_half"] = person["person_tax_unit_id"].map(m["_half"])
-    person["new_tax_unit_id"] = person["person_tax_unit_id"].map(
-        m["new_tax_unit_id"]
-    )
+    person["new_tax_unit_id"] = person["person_tax_unit_id"].map(m["new_tax_unit_id"])
     unmapped = int(person["_half"].isna().sum())
     if unmapped:
         raise ValueError(f"{unmapped} persons failed to map to a spine half")
@@ -569,9 +625,7 @@ def _allocate_to_persons(
         if var in person.columns:
             # CPS-measured: keep person values on cps_keep, head-allocate
             # the synthetic draw on the synthetic half.
-            person[var] = np.where(
-                synthetic, head_alloc, person[var].fillna(0.0)
-            )
+            person[var] = np.where(synthetic, head_alloc, person[var].fillna(0.0))
         else:
             person[var] = head_alloc
     return person
@@ -633,12 +687,12 @@ def main() -> int:
     households = ds.households.to_pandas()
     if "GTCO" in households.columns:
         # NYC boroughs by state*1000+county FIPS (usdata cps.py NYC list).
-        _scf = (
-            pd.to_numeric(households.get("state_fips", 0), errors="coerce").fillna(0)
-            * 1000
-            + pd.to_numeric(households["GTCO"], errors="coerce").fillna(0)
+        _scf = pd.to_numeric(households.get("state_fips", 0), errors="coerce").fillna(
+            0
+        ) * 1000 + pd.to_numeric(households["GTCO"], errors="coerce").fillna(0)
+        households["in_nyc"] = _scf.isin([36005, 36047, 36061, 36081, 36085]).astype(
+            bool
         )
-        households["in_nyc"] = _scf.isin([36005, 36047, 36061, 36081, 36085]).astype(bool)
     if "H_TENURE" in households.columns:
         # Same base map as the eCPS loader (usdata cps.py:418).
         households["tenure_type"] = (
@@ -677,13 +731,6 @@ def main() -> int:
     log("stage D: run_spec (support spine + PUF imputation)")
     steps = _build_imputation_steps()
     imputed_vars = sorted({v for s in steps for v in s.get("vars", [])})
-    registry = create_us_asec_puf_source_registry(
-        asec_year=args.asec_year,
-        calendar_year=args.calendar_year,
-        puf_year=args.puf_year,
-        puf_path=US_DATA_STORAGE / "puf_2015.csv",
-        puf_demographics_path=US_DATA_STORAGE / "demographics_2015.csv",
-    )
     id_keep = [
         "tax_unit_id",
         "household_id",
@@ -718,14 +765,29 @@ def main() -> int:
             "imputation": steps,
         }
     )
-    puf = registry.resolve_source(spec, "puf")
+    puf, puf_aggregate_disagg_spec = _load_puf_tax_units_with_aggregate_disagg(
+        target_year=args.puf_year,
+        puf_path=US_DATA_STORAGE / "puf_2015.csv",
+        demographics_path=US_DATA_STORAGE / "demographics_2015.csv",
+        seed=args.seed,
+        log=log,
+    )
     if max_puf is not None:
-        puf = puf.head(max_puf).copy()
+        capped = puf.head(max_puf).copy()
+        synthetic = puf[
+            puf["_puf_recid"].ge(SYNTHETIC_RECID_START) & ~puf.index.isin(capped.index)
+        ]
+        puf = pd.concat([capped, synthetic], ignore_index=True)
     # Tail-support stratum: the top returns by income proxy, kept verbatim at
     # design weights BEFORE the population resample discards them. Free
     # support for top-bracket targets; calibration owns how much to use.
+    tail_pool = (
+        puf
+        if puf_aggregate_disagg_spec.synthetic_tail_support_eligible
+        else puf[puf["_puf_recid"].lt(SYNTHETIC_RECID_START)].copy()
+    )
     income_proxy = sum(
-        puf[c].clip(lower=0)
+        tail_pool[c].clip(lower=0)
         for c in (
             "employment_income",
             "self_employment_income",
@@ -737,14 +799,25 @@ def main() -> int:
             "short_term_capital_gains",
             "taxable_pension_income",
         )
-        if c in puf.columns
+        if c in tail_pool.columns
     )
     tail = (
-        puf.loc[income_proxy.nlargest(min(args.tail_units, len(puf) // 20)).index].copy()
+        tail_pool.loc[
+            income_proxy.nlargest(min(args.tail_units, len(tail_pool) // 20)).index
+        ].copy()
         if args.tail_units
         else puf.head(0).copy()
     )
-    log(f"  tail stratum: {len(tail):,} units, weight {tail['weight'].sum()/1e6 if len(tail) else 0:.2f}M")
+    tail_synthetic_aggregate_rows = (
+        int(tail["_puf_recid"].ge(SYNTHETIC_RECID_START).sum())
+        if len(tail) and "_puf_recid" in tail.columns
+        else 0
+    )
+    log(
+        f"  tail stratum: {len(tail):,} units, "
+        f"weight {tail['weight'].sum() / 1e6 if len(tail) else 0:.2f}M, "
+        f"synthetic_aggregate={tail_synthetic_aggregate_rows:,}"
+    )
 
     # Population-resample the donor by its design weight: the PUF oversamples
     # high incomes, and microimpute's canonical Imputer silently ignores
@@ -753,9 +826,9 @@ def main() -> int:
     rng = np.random.default_rng(args.seed)
     pw = puf["weight"].to_numpy(dtype=float)
     pw = pw / pw.sum()
-    puf = puf.iloc[
-        rng.choice(len(puf), size=len(puf), replace=True, p=pw)
-    ].reset_index(drop=True)
+    puf = puf.iloc[rng.choice(len(puf), size=len(puf), replace=True, p=pw)].reset_index(
+        drop=True
+    )
     # Harmonize donor names + derive the shared predictor surface.
     puf = puf.rename(columns={"gross_social_security": "social_security"})
     puf["is_joint"] = (puf["filing_status"] == "JOINT").astype(float)
@@ -778,8 +851,7 @@ def main() -> int:
     spine = result.frame
     half_col = [c for c in spine.columns if c.startswith("_spine")][0]
     log(
-        f"  spine rows={len(spine):,} halves="
-        f"{spine[half_col].value_counts().to_dict()}"
+        f"  spine rows={len(spine):,} halves={spine[half_col].value_counts().to_dict()}"
     )
 
     # ---- Stage E: geography -------------------------------------------------
@@ -826,8 +898,13 @@ def main() -> int:
     import yaml as _yaml
 
     _ipar = _yaml.safe_load(
-        (args.usdata_repo / "policyengine_us_data" / "datasets" / "cps"
-         / "imputation_parameters.yaml").read_text()
+        (
+            args.usdata_repo
+            / "policyengine_us_data"
+            / "datasets"
+            / "cps"
+            / "imputation_parameters.yaml"
+        ).read_text()
     )
     _codes = {1: "401k", 2: "403b", 6: "sep"}
     # Codes without a taxable split: keogh (5) is its own PE input; roth IRA
@@ -836,14 +913,18 @@ def main() -> int:
         _tot = 0
         for _i in ("1", "2", "1_YNG", "2_YNG"):
             _sc = pd.to_numeric(person.get(f"DST_SC{_i}", 0), errors="coerce").fillna(0)
-            _val = pd.to_numeric(person.get(f"DST_VAL{_i}", 0), errors="coerce").fillna(0)
+            _val = pd.to_numeric(person.get(f"DST_VAL{_i}", 0), errors="coerce").fillna(
+                0
+            )
             _tot = _tot + (_sc == _code) * _val
         person[_pe] = pd.Series(_tot, index=person.index).astype(float)
     for _code, _name in _codes.items():
         _tot = 0
         for _i in ("1", "2", "1_YNG", "2_YNG"):
             _sc = pd.to_numeric(person.get(f"DST_SC{_i}", 0), errors="coerce").fillna(0)
-            _val = pd.to_numeric(person.get(f"DST_VAL{_i}", 0), errors="coerce").fillna(0)
+            _val = pd.to_numeric(person.get(f"DST_VAL{_i}", 0), errors="coerce").fillna(
+                0
+            )
             _tot = _tot + (_sc == _code) * _val
         _frac = float(_ipar[f"taxable_{_name}_distribution_fraction"])
         person[f"taxable_{_name}_distributions"] = (_tot * _frac).astype(float)
@@ -852,43 +933,29 @@ def main() -> int:
     # Pre-response copies and aliases the contract requires alongside the
     # base variables.
     person["employment_income_before_lsr"] = person["employment_income"]
-    person["self_employment_income_before_lsr"] = person[
-        "self_employment_income"
-    ]
+    person["self_employment_income_before_lsr"] = person["self_employment_income"]
     person["long_term_capital_gains_before_response"] = person[
         "long_term_capital_gains"
     ]
-    person["taxable_unemployment_compensation"] = person[
-        "unemployment_compensation"
-    ]
+    person["taxable_unemployment_compensation"] = person["unemployment_compensation"]
     person["farm_operations_income"] = person["farm_income"]
     person["taxable_private_pension_income"] = person["taxable_pension_income"]
-    person["tax_exempt_private_pension_income"] = person[
-        "tax_exempt_pension_income"
-    ]
+    person["tax_exempt_private_pension_income"] = person["tax_exempt_pension_income"]
     # Re-key every unit system per (original id, half): the synthetic half's
     # units are new synthetic entities, and a multi-unit household whose
     # units land in different halves splits into per-half export households.
     person["person_tax_unit_id"] = person["new_tax_unit_id"].astype(np.int64)
     for unit in ("spm_unit", "family", "marital_unit"):
-        key = (
-            person[f"person_{unit}_id"].astype(str) + "|" + person["_half"]
-        )
-        person[f"person_{unit}_id"] = (pd.factorize(key)[0] + 1).astype(
-            np.int64
-        )
+        key = person[f"person_{unit}_id"].astype(str) + "|" + person["_half"]
+        person[f"person_{unit}_id"] = (pd.factorize(key)[0] + 1).astype(np.int64)
     person["_orig_household_id"] = person["household_id"]
     hh_key = person["household_id"].astype(str) + "|" + person["_half"]
-    person["person_household_id"] = (pd.factorize(hh_key)[0] + 1).astype(
-        np.int64
-    )
+    person["person_household_id"] = (pd.factorize(hh_key)[0] + 1).astype(np.int64)
     person["person_id"] = np.arange(1, len(person) + 1, dtype=np.int64)
     person["age"] = person["A_AGE"].astype(float)
     # eCPS source flags: synthetic_puf half maps to the PUF-clone marker the
     # loss surface's nation/source/* household-count targets read.
-    person["person_is_puf_clone"] = (person["_half"] == "synthetic_puf").astype(
-        bool
-    )
+    person["person_is_puf_clone"] = (person["_half"] == "synthetic_puf").astype(bool)
 
     # ---- Tail-support stratum persons ------------------------------------
     if len(tail):
@@ -904,8 +971,7 @@ def main() -> int:
             "qualified_dividend_income",
         } <= set(t.columns):
             t["non_qualified_dividend_income"] = (
-                t["non_qualified_dividend_income"]
-                - t["qualified_dividend_income"]
+                t["non_qualified_dividend_income"] - t["qualified_dividend_income"]
             ).clip(lower=0.0)
         n = len(t)
         joint = (t["filing_status"] == "JOINT").to_numpy()
@@ -923,9 +989,7 @@ def main() -> int:
         head["person_spm_unit_id"] = base_ids["spm"] + 1 + np.arange(n)
         head["person_family_id"] = base_ids["fam"] + 1 + np.arange(n)
         head["person_marital_unit_id"] = base_ids["mar"] + 1 + np.arange(n)
-        head["age"] = (
-            pd.to_numeric(t["age"], errors="coerce").fillna(50).clip(18, 85)
-        )
+        head["age"] = pd.to_numeric(t["age"], errors="coerce").fillna(50).clip(18, 85)
         head["A_AGE"] = head["age"]
         head["tax_unit_role_input"] = "HEAD"
         head["_half"] = "tail_puf"
@@ -933,8 +997,7 @@ def main() -> int:
             c
             for c in t.columns
             if c in set(person.columns)
-            and c
-            not in ("age", "weight", "tax_unit_id", "filing_status", "_survey")
+            and c not in ("age", "weight", "tax_unit_id", "filing_status", "_survey")
             and pd.api.types.is_numeric_dtype(t[c])
         ]
         for c in value_cols:
@@ -951,9 +1014,7 @@ def main() -> int:
         spouse["tax_unit_role_input"] = "SPOUSE"
         spouse["own_children_in_household"] = 0.0
         tail_person = pd.concat([head, spouse], ignore_index=True)
-        tail_person["person_id"] = (
-            base_ids["pid"] + 1 + np.arange(len(tail_person))
-        )
+        tail_person["person_id"] = base_ids["pid"] + 1 + np.arange(len(tail_person))
         tail_person["person_is_puf_clone"] = True
         for col in (
             "employment_income_before_lsr",
@@ -963,9 +1024,9 @@ def main() -> int:
             if src in tail_person.columns:
                 tail_person[col] = tail_person[src]
         if "long_term_capital_gains" in tail_person.columns:
-            tail_person["long_term_capital_gains_before_response"] = (
-                tail_person["long_term_capital_gains"]
-            )
+            tail_person["long_term_capital_gains_before_response"] = tail_person[
+                "long_term_capital_gains"
+            ]
         if "unemployment_compensation" in tail_person.columns:
             tail_person["taxable_unemployment_compensation"] = tail_person[
                 "unemployment_compensation"
@@ -992,12 +1053,10 @@ def main() -> int:
                     tail_person[c] = ""
         tail_person["_orig_household_id"] = np.nan
         log(
-            f"  tail persons: {len(tail_person):,} "
-            f"({int(joint.sum()):,} spouses added)"
+            f"  tail persons: {len(tail_person):,} ({int(joint.sum()):,} spouses added)"
         )
     else:
         tail_person = person.head(0)
-
 
     # Export households = (original household, half) pieces. Attributes come
     # from the original household; weight is prorated by the piece's person
@@ -1017,9 +1076,7 @@ def main() -> int:
     )
     hh = piece.merge(hh_attrs, on="_orig", how="left")
     hh["household_weight"] = (
-        hh["_orig_weight"]
-        * hh["_n"]
-        / hh["_orig"].map(orig_household_size).to_numpy()
+        hh["_orig_weight"] * hh["_n"] / hh["_orig"].map(orig_household_size).to_numpy()
     ).astype(float)
     hh["tract_geoid"] = hh["block_geoid"].astype(str).str[:11]
     hh["household_is_puf_clone"] = (hh["_half"] == "synthetic_puf").astype(bool)
@@ -1036,9 +1093,7 @@ def main() -> int:
             random_state=int(rng_t.integers(0, 2**31)),
         ).reset_index(drop=True)
         tail_hh = donor_geo.copy()
-        tail_hh["household_id"] = (
-            tail_person["person_household_id"].unique()
-        )
+        tail_hh["household_id"] = tail_person["person_household_id"].unique()
         tail_hh["household_weight"] = tail["weight"].to_numpy(dtype=float)
         tail_hh["household_is_puf_clone"] = True
         hh = pd.concat([hh, tail_hh], ignore_index=True)
@@ -1100,9 +1155,7 @@ def main() -> int:
                 .groupby(person["person_spm_unit_id"])
                 .max()
             )
-            spm[pe_name] = (
-                spm["spm_unit_id"].map(agg).fillna(0.0).astype(float)
-            )
+            spm[pe_name] = spm["spm_unit_id"].map(agg).fillna(0.0).astype(float)
     if "SPM_ENGVAL" in person.columns:
         eng = (
             pd.to_numeric(person["SPM_ENGVAL"], errors="coerce")
@@ -1159,9 +1212,9 @@ def main() -> int:
     }
     _puf_raw = pd.read_csv(_puf_csv, usecols=list(_want))
     _puf_raw.columns = [c for c in _puf_raw.columns]
-    PUF_FIELD_MAP = {c: _want[c] for c in _want}
+    puf_field_map = {c: _want[c] for c in _want}
     _ranges: dict[str, tuple[float, float]] = {}
-    for _raw, _donor in PUF_FIELD_MAP.items():
+    for _raw, _donor in puf_field_map.items():
         if _raw == "S006" or _raw not in _puf_raw.columns:
             continue
         _up = UPRATING_FACTORS.get(_donor, 1.0)
@@ -1214,7 +1267,7 @@ def main() -> int:
         "has_american_opportunity_credit_institution_ein",
     ):
         person[_flag] = _aotc.astype(bool)
-    log(f"  AOTC factual inputs: {_aotc.mean()*100:.1f}% of persons flagged")
+    log(f"  AOTC factual inputs: {_aotc.mean() * 100:.1f}% of persons flagged")
     # QRF-drawn boolean flags can land as mixed-object columns; normalize to
     # clean bools so HDF serialization and PE casting are deterministic.
     for _bcol in (
@@ -1238,7 +1291,8 @@ def main() -> int:
         return var.entity.key if var is not None else None
 
     tu_moves = [
-        c for c in person.columns
+        c
+        for c in person.columns
         if not c.startswith("person_") and _pe_entity(c) == "tax_unit"
     ]
     # Aggregate person-stored tax-unit amounts per unit id; applied onto the
@@ -1258,7 +1312,8 @@ def main() -> int:
     if tu_moves:
         log(f"  moved to tax_unit entity: {tu_moves}")
     person_spm_moves = [
-        c for c in person.columns
+        c
+        for c in person.columns
         if not c.startswith("person_") and _pe_entity(c) == "spm_unit"
     ]
     spm_agg = {
@@ -1270,7 +1325,7 @@ def main() -> int:
         log(f"  moved person->spm_unit entity: {person_spm_moves}")
     spm_moves = [c for c in hh.columns if _pe_entity(c) == "spm_unit"]
     for c in spm_moves:
-        val = dict(zip(hh["household_id"], hh[c]))
+        val = dict(zip(hh["household_id"], hh[c], strict=False))
         per_person = person["person_household_id"].map(val)
         agg = per_person.groupby(person["person_spm_unit_id"]).first()
         spm[c] = spm["spm_unit_id"].map(agg).fillna(0.0).astype(float)
@@ -1279,16 +1334,17 @@ def main() -> int:
         log(f"  moved to spm_unit entity: {spm_moves}")
     for c, agg in spm_agg.items():
         mapped = spm["spm_unit_id"].map(agg)
-        if pd.api.types.is_bool_dtype(person.dtypes.get(c, bool)) or mapped.dtype == object:
+        if (
+            pd.api.types.is_bool_dtype(person.dtypes.get(c, bool))
+            or mapped.dtype == object
+        ):
             spm[c] = mapped.fillna(False).astype(bool)
         else:
             spm[c] = pd.to_numeric(mapped, errors="coerce").fillna(0.0)
 
     tax_unit_tbl = unit_table("tax_unit_id", units_tu_new)
     for c, agg in tu_agg.items():
-        tax_unit_tbl[c] = (
-            tax_unit_tbl["tax_unit_id"].map(agg).fillna(0.0).astype(float)
-        )
+        tax_unit_tbl[c] = tax_unit_tbl["tax_unit_id"].map(agg).fillna(0.0).astype(float)
     entity_frames = {
         _Key("person"): person,
         _Key("household"): hh,
@@ -1353,7 +1409,9 @@ def main() -> int:
                 grp = handle.create_group(column)
                 grp.create_dataset(str(args.calendar_year), data=values)
         missing_tp = sorted(set(contract.required) - seen)
-    log(f"  time-period export: {tp_h5.name} cols={len(seen)} missing={len(missing_tp)}")
+    log(
+        f"  time-period export: {tp_h5.name} cols={len(seen)} missing={len(missing_tp)}"
+    )
     log(
         f"  gate passed={gate.passed} missing={len(gate.missing_required)} "
         f"defaulted={len(gate.defaulted)} dropped={len(gate.dropped)}"
@@ -1387,7 +1445,9 @@ def main() -> int:
         (out / "score_stdout.log").write_text(proc.stdout)
         (out / "score_stderr.log").write_text(proc.stderr)
         log(f"  harness exit: {proc.returncode}")
-        result_json = out / "sound_comparison" / "sound_ecps_replacement_comparison.json"
+        result_json = (
+            out / "sound_comparison" / "sound_ecps_replacement_comparison.json"
+        )
         if result_json.exists():
             payload = json.loads(result_json.read_text())
             log(json.dumps(payload.get("headline", payload), indent=2)[:2000])

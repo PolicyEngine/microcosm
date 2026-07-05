@@ -62,13 +62,10 @@ class BuildConfig:
             raise ValueError(f"year must be a survey year, got {self.year!r}.")
         if not (self.max_weight_ratio > 0):
             raise ValueError(
-                f"max_weight_ratio must be positive, got "
-                f"{self.max_weight_ratio!r}."
+                f"max_weight_ratio must be positive, got {self.max_weight_ratio!r}."
             )
         if self.mass not in ("free", "conserve"):
-            raise ValueError(
-                f"mass must be 'free' or 'conserve', got {self.mass!r}."
-            )
+            raise ValueError(f"mass must be 'free' or 'conserve', got {self.mass!r}.")
 
     def to_manifest(self) -> dict[str, object]:
         """A JSON-ready record for the release manifest."""
@@ -125,8 +122,9 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Itemized-deduction detail, QBI components, partnership SE, "
-            "mortgage-interest split; support clipped to the PUF's own "
-            "realized ranges."
+            "mortgage-interest split; IRS aggregate disclosure rows are "
+            "disaggregated from raw PUF bucket totals before mapping, with "
+            "Forbes top-tail synthesis disabled."
         ),
     ),
     "acs_rent": DonorSpec(
