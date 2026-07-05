@@ -5137,6 +5137,12 @@ def main() -> None:
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
     )
+    # Mirror the input-mass escape hatch: a hatched immigration gate is
+    # recorded in the manifest but must not fail the final aggregation
+    # (r10 died here after the early check had already been waived).
+    enforced_immigration_gate = (
+        None if args.allow_immigration_composition_drift else immigration_gate
+    )
     gate_failures = _release_gate_failures(
         result,
         compilation,
@@ -5343,7 +5349,7 @@ def main() -> None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
-        immigration_gate=immigration_gate,
+        immigration_gate=enforced_immigration_gate,
         input_mass_reference_gate=enforced_input_mass_reference_gate,
         degenerate_input_gate=degenerate_input_gate,
         timing=timing,

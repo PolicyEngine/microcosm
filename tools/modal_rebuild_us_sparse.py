@@ -539,6 +539,8 @@ def run_full_build(
     allow_input_mass_drift: bool = False,
     no_staging: bool = False,
     release_id: str | None = None,
+    lambda_share: float | None = None,
+    out_subdir: str = "full",
 ) -> dict:
     """Calibrate + write the corrected sparse release, gated against the dense
     f0af251 reference.
@@ -562,7 +564,7 @@ def run_full_build(
     validation). Do not launch without the main session's go-ahead.
     """
     _start_rss_logger()
-    work = Path(OUTPUT_MOUNT) / "full"
+    work = Path(OUTPUT_MOUNT) / out_subdir
     work.mkdir(parents=True, exist_ok=True)
     result: dict = {}
 
@@ -644,6 +646,14 @@ def run_full_build(
         cmd += ["--skip-out-of-sample-reforms"]
     if allow_input_mass_drift:
         cmd += ["--allow-input-mass-drift"]
+    if lambda_share is not None:
+        cmd += ["--l0-refit-lambda-share", str(lambda_share)]
+    # Shared across probes and the final run: the ~40-minute target
+    # materialization is identical for every lambda, so cache it once.
+    cmd += [
+        "--target-materialization-cache-dir",
+        str(Path(OUTPUT_MOUNT) / "target_cache"),
+    ]
     build = _run(cmd, tee_path=work / "build_stdout.log")
     result["fiscal_refresh"] = {"returncode": build["returncode"]}
     output_volume.commit()
