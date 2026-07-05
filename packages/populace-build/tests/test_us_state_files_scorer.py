@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from populace.calibrate import Target, TargetSpec
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -19,6 +20,7 @@ def _load_state_scorer_module():
     spec = importlib.util.spec_from_file_location("score_us_state_files", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -66,6 +68,30 @@ def test__given_overlapping_state_ids__then_state_strata_make_concat_unambiguous
     assert combined.weights_for("household").values.tolist() == [10.0, 20.0]
 
 
+def test__given_legacy_state_extra_column__then_streaming_estimate_ignores_it() -> None:
+    scorer = _load_state_scorer_module()
+    ca = scorer._frame_with_state_stratum(
+        _minimal_state_frame(6, 10.0, household_extra={"zip_code": ["90001"]}),
+        "CA",
+    )
+    ny = scorer._frame_with_state_stratum(_minimal_state_frame(36, 20.0), "NY")
+    target = Target(
+        name="household_state_fips_sum",
+        entity="household",
+        measure="state_fips",
+        value=420.0,
+        period=2024,
+    )
+
+    assert "zip_code" in ca.table("household")
+    estimate = scorer._target_estimates(ca, [target]) + scorer._target_estimates(
+        ny,
+        [target],
+    )
+
+    assert estimate.tolist() == [780.0]
+
+
 def test__given_state_file_metadata__then_collection_hash_is_order_stable():
     scorer = _load_state_scorer_module()
     state_files = [
@@ -78,6 +104,80 @@ def test__given_state_file_metadata__then_collection_hash_is_order_stable():
 
     assert forward == reverse
     assert len(forward) == 64
+
+
+def test__given_state_frames__then_streaming_estimates_add_to_national_total():
+    scorer = _load_state_scorer_module()
+    ca = scorer._frame_with_state_stratum(_minimal_state_frame(6, 10.0), "CA")
+    ny = scorer._frame_with_state_stratum(_minimal_state_frame(36, 20.0), "NY")
+    target = Target(
+        name="household_state_fips_sum",
+        entity="household",
+        measure="state_fips",
+        value=420.0,
+        period=2024,
+    )
+
+    estimate = scorer._target_estimates(ca, [target]) + scorer._target_estimates(
+        ny,
+        [target],
+    )
+
+    assert estimate.tolist() == [780.0]
+
+
+def test__given_target_specs__then_state_filter_keeps_only_possible_rows():
+    scorer = _load_state_scorer_module()
+    specs = (
+        TargetSpec(
+            name="national",
+            entity="household",
+            measure="amount",
+            value=1,
+            source="test",
+            metadata={"ledger_geography_level": "national"},
+        ),
+        TargetSpec(
+            name="california_state",
+            entity="household",
+            measure="amount",
+            value=1,
+            source="test",
+            metadata={"state_fips": "6"},
+        ),
+        TargetSpec(
+            name="new_york_state",
+            entity="household",
+            measure="amount",
+            value=1,
+            source="test",
+            metadata={"state_fips": "36"},
+        ),
+        TargetSpec(
+            name="california_cd",
+            entity="household",
+            measure="amount",
+            value=1,
+            source="test",
+            metadata={"congressional_district_geoid": "601"},
+        ),
+        TargetSpec(
+            name="new_york_cd",
+            entity="household",
+            measure="amount",
+            value=1,
+            source="test",
+            metadata={"congressional_district_geoid": "3601"},
+        ),
+    )
+
+    filtered = scorer._target_specs_for_state(specs, "CA")
+
+    assert [spec.name for spec in filtered] == [
+        "national",
+        "california_state",
+        "california_cd",
+    ]
 
 
 def test__given_state_file__then_cd_provenance_is_validated_unless_legacy_allowed(
@@ -124,7 +224,17 @@ def test__given_state_file__then_cd_provenance_is_validated_unless_legacy_allowe
     assert calls == []
 
 
-def _minimal_state_frame(state_fips: int, weight: float) -> Frame:
+def _minimal_state_frame(
+    state_fips: int,
+    weight: float,
+    *,
+    household_extra: dict[str, object] | None = None,
+) -> Frame:
+    household = {
+        "household_id": np.asarray([1], dtype="int64"),
+        "state_fips": np.asarray([state_fips], dtype="int64"),
+    }
+    household.update(household_extra or {})
     tables = {
         "person": pd.DataFrame(
             {
@@ -136,12 +246,7 @@ def _minimal_state_frame(state_fips: int, weight: float) -> Frame:
                 "person_marital_unit_id": np.asarray([1], dtype="int64"),
             }
         ),
-        "household": pd.DataFrame(
-            {
-                "household_id": np.asarray([1], dtype="int64"),
-                "state_fips": np.asarray([state_fips], dtype="int64"),
-            }
-        ),
+        "household": pd.DataFrame(household),
         "tax_unit": pd.DataFrame({"tax_unit_id": np.asarray([1], dtype="int64")}),
         "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([1], dtype="int64")}),
         "family": pd.DataFrame({"family_id": np.asarray([1], dtype="int64")}),

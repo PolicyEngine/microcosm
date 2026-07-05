@@ -22,8 +22,10 @@ def _row(
     target: float,
     final_estimate: float,
     family: str = "irs_soi",
+    geography_level: str = "country",
     measure_mode: str = "sum",
     source_measure_id: str = "payment_amount",
+    metadata: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "name": f"{name}@2024",
@@ -36,6 +38,8 @@ def _row(
         "metadata": {
             "measure_mode": measure_mode,
             "source_measure_id": source_measure_id,
+            "ledger_geography_level": geography_level,
+            **(metadata or {}),
         },
         "target": target,
         "compiled_target": target,
@@ -58,6 +62,7 @@ def test_compare_diagnostics_uses_shared_surface_and_weighted_loss() -> None:
                 "count",
                 target=25.0,
                 final_estimate=20.0,
+                geography_level="congressional_district",
                 measure_mode="indicator_sum",
                 source_measure_id="return_count",
             ),
@@ -72,6 +77,7 @@ def test_compare_diagnostics_uses_shared_surface_and_weighted_loss() -> None:
                 "count",
                 target=25.0,
                 final_estimate=25.0,
+                geography_level="congressional_district",
                 measure_mode="indicator_sum",
                 source_measure_id="return_count",
             ),
@@ -92,7 +98,60 @@ def test_compare_diagnostics_uses_shared_surface_and_weighted_loss() -> None:
     bases = {row["name"]: row for row in payload["bases"]}
     assert bases["amount"]["weight_share"] == pytest.approx(0.5)
     assert bases["count"]["weight_share"] == pytest.approx(0.5)
+    geography_levels = {row["name"]: row for row in payload["geography_levels"]}
+    assert geography_levels["congressional_district"]["target_count"] == 1
+    assert geography_levels["country"]["target_count"] == 2
+    assert (
+        payload["top_candidate_regressions"][0]["geography_level"]
+        == "congressional_district"
+    )
     assert payload["top_candidate_regressions"][0]["target"] == "count"
+
+
+def test_row_weights_hold_cd_concept_budget_when_geography_expands() -> None:
+    compare = _load_compare_module()
+
+    def cd_row(name: str, district: str) -> dict[str, object]:
+        return _row(
+            name,
+            target=100.0,
+            final_estimate=100.0,
+            geography_level="congressional_district",
+            source_measure_id="ctc_amount",
+            metadata={
+                "state_fips": "01",
+                "congressional_district_geoid": district,
+                "ledger_geography_id": f"5001900US{district}",
+                "target_role": "ctc_distribution",
+                "variable": "ctc",
+            },
+        )
+
+    one_cd_rows = compare._row_by_key(
+        {
+            "targets": [
+                _row("income_tax", target=100.0, final_estimate=100.0),
+                cd_row("ctc_cd_1", "0101"),
+            ]
+        }
+    )
+    two_cd_rows = compare._row_by_key(
+        {
+            "targets": [
+                _row("income_tax", target=100.0, final_estimate=100.0),
+                cd_row("ctc_cd_1", "0101"),
+                cd_row("ctc_cd_2", "0102"),
+            ]
+        }
+    )
+
+    one_weights = compare._row_weights(one_cd_rows.values())
+    two_weights = compare._row_weights(two_cd_rows.values())
+
+    assert one_weights["ctc_cd_1"] / sum(one_weights.values()) == pytest.approx(0.5)
+    assert (two_weights["ctc_cd_1"] + two_weights["ctc_cd_2"]) / sum(
+        two_weights.values()
+    ) == pytest.approx(0.5)
 
 
 def test_compare_diagnostics_rejects_changed_shared_target_values() -> None:
@@ -180,6 +239,7 @@ def test_write_comparison_emits_json_csv_and_markdown(tmp_path) -> None:
             }
         ],
         "bases": [],
+        "geography_levels": [],
         "top_candidate_regressions": [
             {
                 "target": "row",

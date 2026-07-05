@@ -14,17 +14,60 @@ from typing import Any
 
 TARGET_VALUE_WEIGHT_POWER = 0.5
 DEFAULT_TARGET_LOSS_CAP = 1.0
+TARGET_LOSS_WEIGHTING = (
+    "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
+)
+CONCEPT_METADATA_EXCLUSIONS = frozenset(
+    {
+        "congressional_district_geoid",
+        "geography_scope",
+        "hierarchy_child_ids",
+        "hierarchy_child_sum_raw",
+        "hierarchy_coverage_ratio",
+        "hierarchy_expected_child_count",
+        "hierarchy_observed_child_count",
+        "hierarchy_parent_geography_id",
+        "hierarchy_parent_geography_level",
+        "hierarchy_parent_key",
+        "hierarchy_parent_target_name",
+        "hierarchy_parent_target_period",
+        "hierarchy_parent_value",
+        "hierarchy_raw_value",
+        "hierarchy_reconciliation_factor",
+        "hierarchy_reconciliation_method",
+        "hierarchy_reconciliation_rule",
+        "ledger_aggregate_fact_key",
+        "ledger_dimension_set_key",
+        "ledger_fact_key",
+        "ledger_geography_id",
+        "ledger_geography_level",
+        "ledger_geography_name",
+        "ledger_geography_vintage",
+        "ledger_legacy_fact_key",
+        "ledger_layout_groupby_dimension",
+        "ledger_layout_groupby_value_id",
+        "ledger_layout_record_set_id",
+        "ledger_observed_measure_key",
+        "ledger_semantic_fact_key",
+        "ledger_source_record_id",
+        "state_fips",
+    }
+)
 
 
 @dataclass(frozen=True)
 class DiagnosticRow:
     key: str
     name: str
+    period: str
+    entity: str
+    filter_key: str
     target: float
     estimate: float
     relative_error: float
     family: str
     basis: str
+    geography_level: str
     source_measure_id: str
     metadata: Mapping[str, Any]
 
@@ -34,6 +77,7 @@ class ComparedRow:
     key: str
     family: str
     basis: str
+    geography_level: str
     weight: float
     target: float
     candidate_estimate: float
@@ -108,6 +152,10 @@ def _basis(metadata: Mapping[str, Any]) -> str:
     return "amount"
 
 
+def _geography_level(metadata: Mapping[str, Any]) -> str:
+    return str(metadata.get("ledger_geography_level") or "unknown")
+
+
 def _row_by_key(payload: Mapping[str, Any]) -> dict[str, DiagnosticRow]:
     rows: dict[str, DiagnosticRow] = {}
     for raw_row in payload["targets"]:
@@ -122,11 +170,15 @@ def _row_by_key(payload: Mapping[str, Any]) -> dict[str, DiagnosticRow]:
         rows[key] = DiagnosticRow(
             key=key,
             name=str(raw_row.get("name") or key),
+            period=str(raw_row.get("period") or ""),
+            entity=str(raw_row.get("entity") or ""),
+            filter_key=_stable_key(raw_row.get("filter") or ""),
             target=float(raw_row["target"]),
             estimate=float(raw_row["final_estimate"]),
             relative_error=float(raw_row["relative_error"]),
             family=_family(raw_row),
             basis=_basis(metadata),
+            geography_level=_geography_level(metadata),
             source_measure_id=str(metadata.get("source_measure_id", "")),
             metadata=metadata,
         )
@@ -169,18 +221,10 @@ def _row_weights(rows: Iterable[DiagnosticRow]) -> dict[str, float]:
     row_list = list(rows)
     if not row_list:
         return {}
-    raw_weights = {
-        row.key: max(abs(row.target), 1.0) ** TARGET_VALUE_WEIGHT_POWER
-        for row in row_list
-    }
+    weights = _concept_budget_weights(row_list)
     bases = sorted({row.basis for row in row_list})
-    weights = {row.key: 1.0 for row in row_list}
-    for basis in bases:
-        keys = [row.key for row in row_list if row.basis == basis]
-        mean_raw = sum(raw_weights[key] for key in keys) / len(keys)
-        if mean_raw > 0:
-            for key in keys:
-                weights[key] = raw_weights[key] / mean_raw
+    if not bases:
+        return weights
     basis_total = len(row_list) / len(bases)
     for basis in bases:
         keys = [row.key for row in row_list if row.basis == basis]
@@ -190,6 +234,69 @@ def _row_weights(rows: Iterable[DiagnosticRow]) -> dict[str, float]:
                 weights[key] *= basis_total / current_total
     mean_weight = sum(weights.values()) / len(weights)
     return {key: weight / mean_weight for key, weight in weights.items()}
+
+
+def _concept_budget_weights(rows: list[DiagnosticRow]) -> dict[str, float]:
+    weights = _value_basis_weights(rows)
+    group_indices: dict[tuple[object, ...], list[str]] = defaultdict(list)
+    for row in rows:
+        group_indices[_concept_budget_key(row)].append(row.key)
+    for keys in group_indices.values():
+        group_weights = [weights[key] for key in keys]
+        group_total = sum(group_weights)
+        group_budget = max(group_weights, default=0.0)
+        if group_total > 0 and group_budget > 0:
+            for key in keys:
+                weights[key] *= group_budget / group_total
+    return weights
+
+
+def _value_basis_weights(rows: list[DiagnosticRow]) -> dict[str, float]:
+    raw_weights = {
+        row.key: max(abs(row.target), 1.0) ** TARGET_VALUE_WEIGHT_POWER for row in rows
+    }
+    bases = sorted({row.basis for row in rows})
+    weights = {row.key: 1.0 for row in rows}
+    for basis in bases:
+        keys = [row.key for row in rows if row.basis == basis]
+        mean_raw = sum(raw_weights[key] for key in keys) / len(keys)
+        if mean_raw > 0:
+            for key in keys:
+                weights[key] = raw_weights[key] / mean_raw
+    return weights
+
+
+def _concept_budget_key(row: DiagnosticRow) -> tuple[object, ...]:
+    if row.geography_level != "congressional_district":
+        return (
+            row.basis,
+            row.entity,
+            row.period,
+            row.family,
+            row.key,
+        )
+    semantic_metadata = tuple(
+        sorted(
+            (key, _stable_key(value))
+            for key, value in row.metadata.items()
+            if key not in CONCEPT_METADATA_EXCLUSIONS
+        )
+    )
+    return (
+        row.basis,
+        row.entity,
+        row.period,
+        row.family,
+        row.filter_key,
+        str(row.metadata.get("state_fips", "")),
+        semantic_metadata,
+    )
+
+
+def _stable_key(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def _target_loss_cap(payload: Mapping[str, Any], override: float | None) -> float:
@@ -230,6 +337,7 @@ def compare_diagnostics(
                 key=key,
                 family=candidate.family,
                 basis=candidate.basis,
+                geography_level=candidate.geography_level,
                 weight=weight,
                 target=candidate.target,
                 candidate_estimate=candidate.estimate,
@@ -249,9 +357,7 @@ def compare_diagnostics(
         "candidate_only_targets": len(set(candidate_rows) - set(incumbent_rows)),
         "incumbent_only_targets": len(set(incumbent_rows) - set(candidate_rows)),
         "target_loss_cap": cap,
-        "target_loss_weighting": (
-            "sqrt_value_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
-        ),
+        "target_loss_weighting": (TARGET_LOSS_WEIGHTING),
         "candidate_weighted_loss": sum(
             row.weight * row.candidate_loss for row in compared
         )
@@ -291,8 +397,20 @@ def compare_diagnostics(
             "incumbent_weighted_loss_sum": 0.0,
         }
     )
+    geography_buckets: dict[str, dict[str, float | int]] = defaultdict(
+        lambda: {
+            "target_count": 0,
+            "weight": 0.0,
+            "candidate_weighted_loss_sum": 0.0,
+            "incumbent_weighted_loss_sum": 0.0,
+        }
+    )
     for row in compared:
-        for bucket in (family_buckets[row.family], basis_buckets[row.basis]):
+        for bucket in (
+            family_buckets[row.family],
+            basis_buckets[row.basis],
+            geography_buckets[row.geography_level],
+        ):
             bucket["target_count"] = int(bucket["target_count"]) + 1
             bucket["weight"] = float(bucket["weight"]) + row.weight
             bucket["candidate_weighted_loss_sum"] = (
@@ -316,6 +434,9 @@ def compare_diagnostics(
         "summary": summary,
         "families": _summarize_buckets(family_buckets, total_weight=total_weight),
         "bases": _summarize_buckets(basis_buckets, total_weight=total_weight),
+        "geography_levels": _summarize_buckets(
+            geography_buckets, total_weight=total_weight
+        ),
         "top_candidate_regressions": [
             _row_payload(row, total_weight=total_weight)
             for row in sorted(
@@ -381,6 +502,7 @@ def _row_payload(row: ComparedRow, *, total_weight: float) -> dict[str, Any]:
         "target": row.key,
         "family": row.family,
         "basis": row.basis,
+        "geography_level": row.geography_level,
         "weight": row.weight,
         "weight_share": row.weight / total_weight,
         "target_value": row.target,
@@ -441,11 +563,27 @@ def _markdown_report(payload: Mapping[str, Any]) -> str:
             f"{_format_pct(summary['incumbent_within_10pct'])}"
         ),
         "",
-        "## Families Worsening",
+        "## Geography Levels",
         "",
-        "| Family | Targets | Weight share | Candidate contrib | Incumbent contrib | Delta |",
+        "| Geography level | Targets | Weight share | Candidate contrib | Incumbent contrib | Delta |",
         "|---|---:|---:|---:|---:|---:|",
     ]
+    for row in payload.get("geography_levels", []):
+        lines.append(
+            "| {name} | {target_count:,} | {weight_share:.2%} | "
+            "{candidate_loss_contribution:.6f} | "
+            "{incumbent_loss_contribution:.6f} | "
+            "{loss_contribution_delta:+.6f} |".format(**row)
+        )
+    lines.extend(
+        [
+            "",
+            "## Families Worsening",
+            "",
+            "| Family | Targets | Weight share | Candidate contrib | Incumbent contrib | Delta |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+    )
     for row in payload["families"][:12]:
         lines.append(
             "| {name} | {target_count:,} | {weight_share:.2%} | "
@@ -494,6 +632,7 @@ def write_comparison(payload: Mapping[str, Any], out: Path) -> None:
     )
     _write_csv(payload["families"], out / "family_comparison.csv")
     _write_csv(payload["bases"], out / "basis_comparison.csv")
+    _write_csv(payload["geography_levels"], out / "geography_level_comparison.csv")
     _write_csv(payload["top_candidate_regressions"], out / "top_regressions.csv")
     _write_csv(payload["top_candidate_improvements"], out / "top_improvements.csv")
     (out / "target_fit_comparison.md").write_text(
