@@ -395,9 +395,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "SNAP take-up inputs not yet carried through (PolicyEngine/populace"
         "#243); constant True forces 100% take-up."
     ),
-    "takes_up_tanf_if_eligible": (
-        "TANF take-up imputation backlog; constant True forces 100% take-up."
-    ),
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
     ),
@@ -407,7 +404,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_medicare_if_eligible": (
         "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
-    "takes_up_eitc": ("EITC take-up imputation backlog; constant True."),
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "takes_up_head_start_if_eligible": (
         "Head Start take-up imputation backlog; constant True."
@@ -418,6 +414,17 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     # ssn_card_type and immigration_status_str are intentionally NOT excluded:
     # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
     # still constant at CITIZEN skipped that stage and should fail this gate.
+    "second_home_mortgage_balance": (
+        "Second-home mortgage inputs are carried by the PUF support stage but "
+        "not yet imputed (PolicyEngine/populace#38); every value at engine "
+        "default pending an imputation or drop decision."
+    ),
+    "second_home_mortgage_interest": (
+        "Second-home mortgage inputs not yet imputed (PolicyEngine/populace#38)."
+    ),
+    "second_home_mortgage_origination_year": (
+        "Second-home mortgage inputs not yet imputed (PolicyEngine/populace#38)."
+    ),
     "spm_unit_tenure_type": (
         "SPM tenure input not yet carried through (PolicyEngine/populace#32); "
         "constant RENTER misstates SNAP shelter deductions and SPM housing."
