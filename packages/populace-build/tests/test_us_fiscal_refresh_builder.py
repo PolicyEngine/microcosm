@@ -4513,3 +4513,446 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         )
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# #299 / #217: per-reform materialization checkpoint resume + cache-key safety.
+#
+# These prove that a run killed mid target_compilation resumes from the durable
+# per-reform cache (only the un-computed reforms recompute), and that the
+# reform-vector cache key invalidates when the reform vector or the frame
+# identity changes (so a stale checkpoint can never poison a build), while a
+# build-commit-only change reuses the cache (the #217 acceptance criterion).
+# ---------------------------------------------------------------------------
+
+
+class _ReformKill(RuntimeError):
+    """Sentinel raised to simulate a process kill mid target_compilation."""
+
+
+def _multi_reform_frame(builder):
+    """A 2-household frame with 3 tax units, matching the JCT-loop test shape."""
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 36], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([100, 200], dtype="int64")}
+            ),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+
+def _install_multi_reform_fakes(
+    builder,
+    monkeypatch,
+    *,
+    reforms,
+    reform_income_tax_by_id,
+    reform_sim_calls,
+    raise_on_call=None,
+):
+    """Wire fake PE-US so ``_materialize_target_frame`` runs over the tiny frame.
+
+    ``reforms`` is a tuple of ``(measure, neutralized_variable)`` pairs.
+    ``reform_income_tax_by_id`` maps ``neutralized_variable -> {tax_unit_id: tax}``.
+    Every real reform simulation appends its ``neutralized_variable`` to
+    ``reform_sim_calls``; if the resulting call count equals ``raise_on_call`` the
+    fake raises ``_ReformKill`` before returning (simulating a kill while that
+    reform is being materialized, so it is never cached).
+    """
+    reform_specs = tuple(
+        SimpleNamespace(measure=measure, neutralized_variable=variable)
+        for measure, variable in reforms
+    )
+    base_income_tax_by_id = {10: 100.0, 20: 30.0, 30: 70.0}
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            "state_income_tax": FakeVariable(),
+            **{variable: FakeVariable() for _, variable in reforms},
+        }
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset, reform=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.cache_invalidations = 0
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            tax_unit_ids = (
+                self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
+            )
+            if self.reform is not None:
+                assert variable == "income_tax"
+                lookup = reform_income_tax_by_id[self.reform]
+                return np.asarray([lookup[id_] for id_ in tax_unit_ids])
+            arrays_by_id = {
+                "income_tax": base_income_tax_by_id,
+                "taxable_income": {10: 1000.0, 20: 2000.0, 30: 3000.0},
+                "adjusted_gross_income": {10: 1100.0, 20: 2100.0, 30: 3100.0},
+                "filing_status": {10: "SINGLE", 20: "SINGLE", 30: "SINGLE"},
+                "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
+            }
+            return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
+
+        def _invalidate_all_caches(self):
+            self.cache_invalidations += 1
+
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
+
+    def fake_make_zero_variable_reform(system, variable_name):
+        # The loop passes the neutralized variable straight through; the fake sim
+        # keys its reform result off this value.
+        return variable_name
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        lambda frame_arg: None,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(
+        builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", reform_specs)
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+
+    real_reform_household_income_tax = builder._reform_household_income_tax
+
+    def counting_reform_household_income_tax(*, reform_spec, **kwargs):
+        reform_sim_calls.append(reform_spec.neutralized_variable)
+        if raise_on_call is not None and len(reform_sim_calls) == raise_on_call:
+            raise _ReformKill(
+                f"killed while materializing {reform_spec.measure!r}"
+            )
+        return real_reform_household_income_tax(reform_spec=reform_spec, **kwargs)
+
+    monkeypatch.setattr(
+        builder,
+        "_reform_household_income_tax",
+        counting_reform_household_income_tax,
+    )
+
+    targets = tuple(
+        TargetSpec(
+            name=f"jct.{measure}@{builder.PERIOD}",
+            entity="household",
+            measure=measure,
+            value=-45.0,
+            source="Mock JCT",
+            family="jct",
+            signed=True,
+        )
+        for measure, _ in reforms
+    )
+    return reform_specs, targets
+
+
+def _base_cache_context(builder):
+    return {
+        "base_dataset_sha256": "base-sha-A",
+        "build_commit": "commit-A",
+        "policyengine_us_version": "pe-us-A",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-A",
+        "congressional_district_vintage_crosswalk_sha256": None,
+    }
+
+
+def test__given_kill_after_two_reforms__then_restart_only_recomputes_the_third(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    reforms = (
+        ("jct_reform_a", "credit_a"),
+        ("jct_reform_b", "credit_b"),
+        ("jct_reform_c", "credit_c"),
+    )
+    reform_income_tax_by_id = {
+        "credit_a": {10: 90.0, 20: 25.0, 30: 40.0},
+        "credit_b": {10: 80.0, 20: 20.0, 30: 35.0},
+        "credit_c": {10: 70.0, 20: 15.0, 30: 30.0},
+    }
+    context = _base_cache_context(builder)
+    frame = _multi_reform_frame(builder)
+
+    # First pass: die while materializing the 3rd reform. Reforms 1 and 2 complete
+    # and are written to the durable cache; reform 3 never is.
+    first_calls: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=first_calls,
+        raise_on_call=3,
+    )
+    with pytest.raises(_ReformKill):
+        builder._materialize_target_frame(
+            frame,
+            targets,
+            maximum_microsim_batch_size=1,
+            target_materialization_cache_dir=tmp_path,
+            target_materialization_cache_context=context,
+        )
+    # Exactly three reform sims were attempted (1, 2 succeeded; 3 raised).
+    assert first_calls == ["credit_a", "credit_b", "credit_c"]
+    # Two durable cache entries exist on disk (reforms 1 and 2 only).
+    assert len(list(tmp_path.glob("*.npy"))) == 2
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+    # Restart: same inputs, no kill. Reforms 1 and 2 must load from cache; only
+    # reform 3 recomputes.
+    second_calls: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=second_calls,
+        raise_on_call=None,
+    )
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+
+    # ONLY the third reform recomputed on restart.
+    assert second_calls == ["credit_c"]
+    stats = compilation["target_materialization_cache"]
+    assert stats["hits"] == 2
+    assert stats["misses"] == 1
+    assert stats["writes"] == 1
+
+    # Results are correct for all three reforms (reform_income_tax - base).
+    household = target_frame.table("household")
+    # base income_tax by household: hh1 = 100+30 = 130, hh2 = 70.
+    np.testing.assert_allclose(household["jct_reform_a"], [90.0 + 25.0 - 130.0, 40.0 - 70.0])
+    np.testing.assert_allclose(household["jct_reform_b"], [80.0 + 20.0 - 130.0, 35.0 - 70.0])
+    np.testing.assert_allclose(household["jct_reform_c"], [70.0 + 15.0 - 130.0, 30.0 - 70.0])
+    assert len(registry) == 3
+
+
+def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    context = _base_cache_context(builder)
+    frame = _multi_reform_frame(builder)
+
+    # Materialize reform "credit_a" and cache it.
+    calls_one: list[str] = []
+    _, targets_one = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=(("jct_reform_a", "credit_a"),),
+        reform_income_tax_by_id={"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}},
+        reform_sim_calls=calls_one,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets_one,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+    assert calls_one == ["credit_a"]
+
+    # Now the SAME measure name but a DIFFERENT neutralized variable (the reform
+    # vector changed). The old entry must NOT be reused: a different vector means a
+    # different per-household estimate. If the key ignored the vector this would
+    # silently reuse the stale credit_a values and poison the build.
+    calls_two: list[str] = []
+    _, targets_two = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=(("jct_reform_a", "credit_a_v2"),),
+        reform_income_tax_by_id={"credit_a_v2": {10: 10.0, 20: 5.0, 30: 1.0}},
+        reform_sim_calls=calls_two,
+        raise_on_call=None,
+    )
+    target_frame, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets_two,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+    # It recomputed rather than reusing the stale entry.
+    assert calls_two == ["credit_a_v2"]
+    assert compilation["target_materialization_cache"]["misses"] == 1
+    assert compilation["target_materialization_cache"]["hits"] == 0
+    household = target_frame.table("household")
+    # Uses the NEW vector: hh1 = 10+5-130 = -115, hh2 = 1-70 = -69.
+    np.testing.assert_allclose(household["jct_reform_a"], [-115.0, -69.0])
+
+
+def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    frame = _multi_reform_frame(builder)
+    reforms = (("jct_reform_a", "credit_a"),)
+    reform_income_tax_by_id = {"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}}
+
+    # Cache under a base H5 identity "base-sha-A".
+    context_a = _base_cache_context(builder)
+    calls_a: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_a,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_a,
+    )
+    assert calls_a == ["credit_a"]
+
+    # A DIFFERENT base H5 (incumbent vs candidate) must not share per-household
+    # vectors even at the same record count (#217 acceptance criterion 3).
+    context_b = _base_cache_context(builder)
+    context_b["base_dataset_sha256"] = "base-sha-B"
+    calls_b: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_b,
+        raise_on_call=None,
+    )
+    _, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_b,
+    )
+    assert calls_b == ["credit_a"]
+    assert compilation["target_materialization_cache"]["misses"] == 1
+    assert compilation["target_materialization_cache"]["hits"] == 0
+
+
+def test__given_only_build_commit_changed__then_reform_cache_is_reused(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    # #217 acceptance criterion 1: a rerun that changes only build state that does
+    # not affect per-household reform estimates (build commit, seed, registry
+    # version) must reuse the cached reform vectors rather than recompute them.
+    builder = _load_builder_module()
+    frame = _multi_reform_frame(builder)
+    reforms = (("jct_reform_a", "credit_a"),)
+    reform_income_tax_by_id = {"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}}
+
+    context_a = _base_cache_context(builder)
+    calls_a: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_a,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_a,
+    )
+    assert calls_a == ["credit_a"]
+
+    # Only build_commit / seed / target_registry_version change (a code-only or
+    # calibration-only rerun). Everything that determines the reform estimate is
+    # identical, so the reform must load from cache.
+    context_b = _base_cache_context(builder)
+    context_b["build_commit"] = "commit-B"
+    context_b["seed"] = 12345
+    context_b["target_registry_version"] = "registry-B"
+    calls_b: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_b,
+        raise_on_call=None,
+    )
+    _, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_b,
+    )
+    # No reform sim ran on the second pass — it was a pure cache hit.
+    assert calls_b == []
+    assert compilation["target_materialization_cache"]["hits"] == 1
+    assert compilation["target_materialization_cache"]["misses"] == 0
+    assert compilation["target_materialization_cache"]["writes"] == 0

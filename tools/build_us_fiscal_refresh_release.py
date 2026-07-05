@@ -111,7 +111,24 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
-TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 1
+# Bumped 1 -> 2 for #217: the per-reform income-tax cache key now depends only on
+# the inputs that actually determine per-household reform estimates and no longer
+# includes build_commit / seed / target_registry_version. Old (v1) coarse-key
+# entries live under different filenames, so a mixed cache dir never collides.
+TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 2
+# The subset of the materialization cache context that determines per-household JCT
+# reform income-tax vectors (#217). Anything outside this set — build commit, RNG
+# seed, target registry version, calibration settings — cannot change a reform's
+# per-household estimate, so it is deliberately excluded from the reform-vector
+# cache key. That lets a restart at a newer build commit (or after a registry-only
+# change) reuse already-materialized reforms instead of recomputing all of them,
+# while a change to any of these keys still invalidates the entry (no stale reuse).
+REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
+    "base_dataset_sha256",
+    "policyengine_us_version",
+    "target_period",
+    "congressional_district_vintage_crosswalk_sha256",
+)
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
@@ -667,16 +684,34 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--checkpoint-root",
+        type=Path,
+        help=(
+            "Root directory for durable, restart-surviving checkpoints "
+            "(the per-reform target-materialization cache and the full "
+            "target-frame checkpoint). When set, these default to "
+            "<checkpoint-root>/target_materialization_cache and "
+            "<checkpoint-root>/target_frame_checkpoint.h5 instead of under "
+            "<out>/artifacts, so a run that restarts into a fresh --out (for "
+            "example a preempted Modal worker) still finds already-completed "
+            "reform materializations. Point this at a persistent volume path "
+            "that is stable across worker restarts. The explicit "
+            "--target-materialization-cache-dir / --target-frame-checkpoint "
+            "overrides still take precedence."
+        ),
+    )
+    parser.add_argument(
         "--target-materialization-cache-dir",
         type=Path,
         help=(
             "Override the standard target-materialization checkpoint "
-            "directory. Defaults to <out>/artifacts/"
-            "target_materialization_cache. The cache stores expensive "
-            "per-household target materialization artifacts such as JCT "
-            "reform income-tax vectors and is content-addressed by base H5, "
-            "target registry, policyengine-us version, build commit, "
-            "period, and reform."
+            "directory. Defaults to <checkpoint-root>/"
+            "target_materialization_cache when --checkpoint-root is set, "
+            "otherwise <out>/artifacts/target_materialization_cache. The cache "
+            "stores expensive per-household target materialization artifacts "
+            "such as JCT reform income-tax vectors and is content-addressed by "
+            "base H5, policyengine-us version, period, geography crosswalk, and "
+            "reform (see #217)."
         ),
     )
     parser.add_argument(
@@ -692,11 +727,12 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Override the standard materialized target-frame checkpoint path. "
-            "Defaults to <out>/artifacts/target_frame_checkpoint.h5. This "
-            "checkpoint stores the full post-source, post-target-materialized "
-            "Frame used by calibration, so warm-start-only reruns can skip "
-            "PolicyEngine materialization entirely when the input identity "
-            "matches."
+            "Defaults to <checkpoint-root>/target_frame_checkpoint.h5 when "
+            "--checkpoint-root is set, otherwise "
+            "<out>/artifacts/target_frame_checkpoint.h5. This checkpoint stores "
+            "the full post-source, post-target-materialized Frame used by "
+            "calibration, so warm-start-only reruns can skip PolicyEngine "
+            "materialization entirely when the input identity matches."
         ),
     )
     parser.add_argument(
@@ -912,6 +948,22 @@ def _strict_json_text(value: object, *, indent: int | None = None) -> str:
     )
 
 
+def _reform_vector_cache_context(context: Mapping[str, object]) -> dict[str, object]:
+    """Project the full build context onto the #217 reform-vector key subset.
+
+    Only keys that change a reform's per-household income-tax estimate are kept
+    (see ``REFORM_VECTOR_CACHE_CONTEXT_KEYS``). Keys present in ``context`` are
+    carried through (including ``None`` values, so a geography-independent build
+    that omits the crosswalk sha is distinct from one that sets it); absent keys
+    are simply not part of the identity.
+    """
+    return {
+        key: context[key]
+        for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS
+        if key in context
+    }
+
+
 def _target_materialization_cache_identity(
     *,
     context: Mapping[str, object],
@@ -926,7 +978,11 @@ def _target_materialization_cache_identity(
         "n_households": int(n_households),
         "reform_measure": str(reform_spec.measure),
         "neutralized_variable": str(reform_spec.neutralized_variable),
-        "context": dict(sorted(context.items())),
+        # #217: reform-vector identity uses only the inputs that determine the
+        # per-household estimate. Build commit / seed / registry version are
+        # intentionally excluded so calibration-only or commit-only reruns reuse
+        # the cache; base H5 / PE-US version / period / geography still invalidate.
+        "context": dict(sorted(_reform_vector_cache_context(context).items())),
     }
 
 
@@ -4825,21 +4881,11 @@ def main() -> None:
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
-    target_materialization_cache_dir = (
-        None
-        if args.no_target_materialization_cache
-        else (
-            args.target_materialization_cache_dir
-            or artifact_root / "target_materialization_cache"
-        )
+    checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
+        _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
-    target_frame_checkpoint_path = (
-        None
-        if args.no_target_frame_checkpoint
-        else (
-            args.target_frame_checkpoint or artifact_root / "target_frame_checkpoint.h5"
-        )
-    )
+    if checkpoint_root is not None:
+        checkpoint_root.mkdir(parents=True, exist_ok=True)
     artifact_root.mkdir(parents=True, exist_ok=True)
     release_dir.mkdir(parents=True, exist_ok=True)
     telemetry = _staging_telemetry(
