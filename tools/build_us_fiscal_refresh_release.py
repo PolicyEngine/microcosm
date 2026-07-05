@@ -4016,6 +4016,7 @@ def _assert_release_gates(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     immigration_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
@@ -4026,6 +4027,7 @@ def _assert_release_gates(
         incumbent_diagnostics,
         immigration_gate,
         degenerate_input_gate=degenerate_input_gate,
+        ecps_parity_gate=ecps_parity_gate,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
