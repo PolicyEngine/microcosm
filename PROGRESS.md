@@ -11,15 +11,20 @@ Sibling: #313 `ecps-parity-gate` (gate/release wiring) — avoid gate-assembly r
 - Ambiguous classification → flag, do not decide (take-up semantics guardian-owned).
 
 ## Steps
-- [ ] 0. Setup + read #294 pattern, source-stage machinery, #301 metadata guard
-- [ ] 1. Determine pinned PE-US version (us extra constraint), install it
-- [ ] 2. Contract inventory: enumerate takes_up_* / *_take_up_seed, classify by formula/default
-- [ ] 3. Checked-in JSON table + test asserting it vs installed engine
-- [ ] 4. Seeding stages for class (b) programs (non-SNAP, non-ACA)
-- [ ] 5. Rate provenance in stage metadata; unsourced → unseeded+flagged
-- [ ] 6. Diagnostics: per-program participation vs admin count (extend #170)
-- [ ] 7. Tests: inventory-vs-engine, per-stage seeding, prove-it-can-find-something
+- [x] 0. Setup + read #294 pattern, source-stage machinery, #301 metadata guard
+- [x] 1. Determine pinned PE-US version (1.752.2), install it
+- [x] 2. Contract inventory: enumerate takes_up_* / *_take_up_seed, classify by formula/default (13, all data_seeded)
+- [x] 3. Checked-in JSON table + test asserting it vs installed engine (COMMITTED+PUSHED)
+- [ ] 4. Seeding stages for TANF + EITC (calibrated Bernoulli, source-id-keyed, #294-style module)
+- [x] 5. Rate provenance: verified; only TANF (ASPE) + EITC (IRS NTA) clear the admin bar; rest rate_unsourced
+- [ ] 6. Diagnostics: per-program participation vs admin count (extend #170) in release diagnostics
+- [ ] 7. Tests: [x]inventory-vs-engine; [ ]per-stage seeding (deterministic/rate-reproduced/reported-anchor); [ ]prove-it-can-find-something on gate/diagnostic
 - [ ] 8. Rebase onto origin/main, PR via --body-file (no merge)
+
+## Architecture decisions
+- Seeding = dedicated `take_up.py` runtime module (like #294 snap_take_up.py), NOT the generic ACA `assign_binary_from_rate` handler — because that handler keys draws on tax_unit_id, breaking the required source-identity clone-consistency. My module keys on source_year/source_household_id/source_person_id like #294.
+- TANF + EITC both = calibrated Bernoulli (no reported-receipt column threaded through populace base spine; ASEC PAW_VAL not carried, threading it = base-pool scope = out). EITC rate varies by num_children.
+- Stay OUT of the gate-assembly region of build_us_fiscal_refresh_release.py (sibling #313). Add take-up gate/diagnostic wiring minimally, mirroring how SNAP #294 threads (but #294 not merged, so I wire independently and note rebase risk).
 
 ## Log
 - Setup: worktree created, read spec/DESIGN.md/PR#294 summary. #313 branch not yet pushed to origin.

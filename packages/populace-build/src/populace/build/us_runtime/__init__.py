@@ -122,6 +122,21 @@ from populace.build.us_runtime.immigration import (
     us_immigration_stage_spec,
     with_us_immigration_inputs,
 )
+from populace.build.us_runtime.take_up import (
+    US_TAKE_UP_SHARE_BAND,
+    SeededTakeUpResult,
+    us_take_up_signal_gate,
+    us_take_up_summary,
+    with_us_take_up_inputs,
+)
+from populace.build.us_runtime.take_up_contract import (
+    TakeUpContract,
+    TakeUpProgram,
+    assert_take_up_contract_current,
+    assert_take_up_treatments_consistent,
+    load_take_up_contract,
+    seeded_take_up_programs,
+)
 from populace.build.us_runtime.input_mass import (
     us_input_mass_totals,
 )
@@ -226,6 +241,17 @@ __all__ = [
     "us_immigration_composition_summary",
     "us_immigration_stage_spec",
     "with_us_immigration_inputs",
+    "US_TAKE_UP_SHARE_BAND",
+    "SeededTakeUpResult",
+    "us_take_up_signal_gate",
+    "us_take_up_summary",
+    "with_us_take_up_inputs",
+    "TakeUpContract",
+    "TakeUpProgram",
+    "assert_take_up_contract_current",
+    "assert_take_up_treatments_consistent",
+    "load_take_up_contract",
+    "seeded_take_up_programs",
     "US_NONNEGATIVE_SOURCE_OUTPUTS",
     "US_SOURCE_COVERAGE",
     "US_SOI_FISCAL_TARGET_SPECS",
