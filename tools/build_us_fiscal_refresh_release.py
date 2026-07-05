@@ -36,6 +36,7 @@ from populace.build.gates import (
     default_valued_columns_gate,
     input_mass_parity_gate,
     nonconstant_columns_gate,
+    parity_gate,
     target_profile_coverage_gate,
 )
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
@@ -69,6 +70,13 @@ from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
+)
+from populace.build.us_runtime.nonzero_shares import us_nonzero_shares
+from populace.build.us_runtime.parity_reference import (
+    EcpsParityReference,
+    ParityKnownGap,
+    load_ecps_parity_known_gaps,
+    load_ecps_parity_reference,
 )
 from populace.build.us_runtime.reform_validation import (
     default_baseline_level_specs,
@@ -559,6 +567,15 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Diagnostic escape hatch: record input-mass parity gate results "
             "without failing the build."
+        ),
+    )
+    parser.add_argument(
+        "--allow-ecps-parity-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch: record the eCPS parity gate result "
+            "(incumbent-populated layers the candidate leaves empty and "
+            "unexempted) without failing the build."
         ),
     )
     parser.add_argument(
@@ -3244,6 +3261,63 @@ def _input_mass_reference_gate(
     )
 
 
+def _ecps_parity_gate(
+    base_frame: Frame,
+    *,
+    reference: EcpsParityReference | None = None,
+    known_gaps: tuple[ParityKnownGap, ...] | None = None,
+) -> GateResult:
+    """Gate the candidate frame's populated layers against the incumbent eCPS.
+
+    The launch contract for replacing the enhanced-CPS: every layer the
+    incumbent populates, the candidate must populate or exempt by documented
+    name (populace #313). Unlike :func:`_input_mass_reference_gate`, whose
+    reference mass is recomputed live from a reference H5, the parity reference
+    is a *pinned* per-variable nonzero-share file computed once from the
+    sha-verified incumbent artifact — a candidate cannot move the bar by
+    changing which reference it is compared against. The candidate's own shares
+    are measured live over the engine's input-variable surface (formula-owned
+    excluded, so a formula-owned output the engine computes is never a parity
+    layer). Exemptions come from the checked-in register, each carrying a reason
+    and a tracking issue; those reasons are recorded in the gate details so the
+    release manifest states the remaining distance from full eCPS parity.
+    """
+    reference = reference if reference is not None else load_ecps_parity_reference()
+    known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
+    input_variables = _engine_input_variables()
+    candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
+    gate = parity_gate(
+        candidate_shares,
+        reference.nonzero_shares,
+        known_gaps=tuple(gap.variable for gap in known_gaps),
+    )
+    details = dict(gate.details)
+    details["reference"] = {
+        "repo_id": reference.source.repo_id,
+        "repo_type": reference.source.repo_type,
+        "filename": reference.source.filename,
+        "revision": reference.source.revision,
+        "sha256": reference.source.sha256,
+        "vintage": reference.source.vintage,
+        "period": reference.source.period,
+    }
+    details["candidate_populated_layers"] = sum(
+        1 for share in candidate_shares.values() if share > 0.0
+    )
+    # The reasoned register: names alone say a layer is exempt; the manifest
+    # must also carry WHY and which issue owns closing it (the debt ledger).
+    details["known_gaps"] = {
+        gap.variable: {"reason": gap.reason, "issue": gap.issue}
+        for gap in known_gaps
+    }
+    return GateResult(
+        name=gate.name,
+        passed=gate.passed,
+        failures=gate.failures,
+        details=details,
+    )
+
+
 def _export_input_mass_gate(
     export_frame: Frame,
     base_frame: Frame,
@@ -3674,6 +3748,7 @@ def _release_gate_failures(
     immigration_gate: GateResult | None = None,
     input_mass_reference_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3705,6 +3780,10 @@ def _release_gate_failures(
         failures.extend(
             f"Degenerate input signal failed: {failure}"
             for failure in degenerate_input_gate.failures
+        )
+    if ecps_parity_gate is not None and not ecps_parity_gate.passed:
+        failures.extend(
+            f"eCPS parity failed: {failure}" for failure in ecps_parity_gate.failures
         )
     gate_congressional_district_targets = _congressional_district_release_gates_enabled(
         compilation
@@ -4854,6 +4933,28 @@ def main() -> None:
             + "; ".join(
                 f"Degenerate input signal failed: {failure}"
                 for failure in degenerate_input_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "ecps_parity_gate",
+            message="Gating candidate layers against the incumbent eCPS reference.",
+        )
+    ecps_parity_gate = _ecps_parity_gate(base_frame)
+    if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "ecps_parity_gate",
+                status="failed",
+                message="eCPS parity gate failed.",
+                failures=list(ecps_parity_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"eCPS parity failed: {failure}"
+                for failure in ecps_parity_gate.failures
             )
         )
     if telemetry is not None:
