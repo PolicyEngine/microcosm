@@ -122,23 +122,6 @@ from populace.build.us_runtime.immigration import (
     us_immigration_stage_spec,
     with_us_immigration_inputs,
 )
-from populace.build.us_runtime.take_up import (
-    US_TAKE_UP_SHARE_BAND,
-    SeededTakeUpResult,
-    us_take_up_participation_diagnostics,
-    us_take_up_signal_gate,
-    us_take_up_summary,
-    with_us_take_up_inputs,
-    write_us_take_up_participation_diagnostics,
-)
-from populace.build.us_runtime.take_up_contract import (
-    TakeUpContract,
-    TakeUpProgram,
-    assert_take_up_contract_current,
-    assert_take_up_treatments_consistent,
-    load_take_up_contract,
-    seeded_take_up_programs,
-)
 from populace.build.us_runtime.input_mass import (
     us_input_mass_totals,
 )
@@ -177,6 +160,23 @@ from populace.build.us_runtime.source_coverage import (
 from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
+)
+from populace.build.us_runtime.take_up import (
+    US_TAKE_UP_SHARE_BAND,
+    SeededTakeUpResult,
+    us_take_up_participation_diagnostics,
+    us_take_up_signal_gate,
+    us_take_up_summary,
+    with_us_take_up_inputs,
+    write_us_take_up_participation_diagnostics,
+)
+from populace.build.us_runtime.take_up_contract import (
+    TakeUpContract,
+    TakeUpProgram,
+    assert_take_up_contract_current,
+    assert_take_up_treatments_consistent,
+    load_take_up_contract,
+    seeded_take_up_programs,
 )
 from populace.frame import Frame
 
