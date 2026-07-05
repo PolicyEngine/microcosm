@@ -1846,6 +1846,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "_ecps_parity_gate",
+        lambda frame: builder.GateResult(
+            name="ecps_parity",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_with_aca_marketplace_source_outputs",
         lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
     )
@@ -1896,7 +1905,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
-        lambda *args: ["ctc failed"],
+        lambda *args, **kwargs: ["ctc failed"],
     )
     monkeypatch.setattr(
         builder,

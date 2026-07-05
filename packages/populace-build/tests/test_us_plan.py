@@ -389,6 +389,18 @@ class TestUsSources:
             "policyengine_" + "uk_data",
             "policyengine-" + "uk-data",
         )
+        # The eCPS parity reference (populace #313) is the launch contract's
+        # pinned record of the incumbent it replaces, so those files must NAME
+        # the retired package: a sha-locked historical reference, never a live
+        # dependency (the loader imports nothing from it). Nothing else in the
+        # live tree may reference the retired data packages.
+        allowed_incumbent_references = {
+            "packages/populace-build/src/populace/build/us/"
+            "ecps_parity_reference.json",
+            "packages/populace-build/src/populace/build/us_runtime/"
+            "parity_reference.py",
+            "packages/populace-build/tests/test_us_parity_reference.py",
+        }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []
         for path in ROOT.rglob("*"):
@@ -396,8 +408,11 @@ class TestUsSources:
                 continue
             if ".git" in path.parts or ".venv" in path.parts or "out" in path.parts:
                 continue
+            rel = str(path.relative_to(ROOT))
+            if rel in allowed_incumbent_references:
+                continue
             text = path.read_text(encoding="utf-8")
             for needle in forbidden:
                 if needle in text:
-                    offenders.append((str(path.relative_to(ROOT)), needle))
+                    offenders.append((rel, needle))
         assert offenders == []
