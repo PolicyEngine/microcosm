@@ -45,10 +45,12 @@ import numpy as np
 
 from populace.calibrate.registry import TargetSpec
 from populace.calibrate.solve import relative_error_loss
+from populace.frame import WeightKind
 
 __all__ = [
     "GateResult",
     "GateReport",
+    "FitWeightRecord",
     "default_valued_columns_gate",
     "enum_domain_gate",
     "export_surface_gate",
@@ -63,11 +65,34 @@ __all__ = [
     "aggregate_admin_gate",
     "per_family_fit_gate",
     "source_coverage_gate",
+    "source_stage_input_coverage_gate",
     "target_profile_coverage_gate",
     "TargetCoverageRequirement",
     "relative_error_loss",
     "target_surface_gate",
+    "weights_audit_gate",
 ]
+
+#: The string the fit operator uses to record a deliberately unweighted fit
+#: (``populace.fit.NO_WEIGHTS``). Kept as a literal here rather than imported so
+#: the build shard's gate does not pull in ``populace.fit`` (and its
+#: scikit-learn / quantile-forest dependency footprint) just to name a string.
+UNWEIGHTED_KIND = "none"
+
+#: A DataFrame fit weighted by a caller-supplied column/vector with no kernel
+#: :class:`~populace.frame.WeightKind` provenance (``populace.fit.EXPLICIT_WEIGHTS``).
+#: Weighted — so the audit never flags it — but not one of the typed kinds.
+EXPLICIT_KIND = "explicit"
+
+#: The vocabulary a fit may record as its *resolved* weight kind: the kernel's
+#: typed :class:`~populace.frame.WeightKind` values (``design`` / ``importance``
+#: / ``calibrated``), :data:`UNWEIGHTED_KIND` (``none``), and :data:`EXPLICIT_KIND`
+#: (a DataFrame explicit-vector fit). Kept in lockstep with the strings
+#: ``populace.fit.resolved_weight_kind`` produces. Only ``none`` is treated as
+#: unweighted by :func:`weights_audit_gate`; every other kind is weighted.
+RESOLVED_WEIGHT_KINDS = frozenset(
+    {kind.value for kind in WeightKind} | {UNWEIGHTED_KIND, EXPLICIT_KIND}
+)
 
 
 @dataclass(frozen=True)
@@ -136,6 +161,50 @@ class GateReport:
                 for result in self.results
             },
         }
+
+
+@dataclass(frozen=True)
+class FitWeightRecord:
+    """One production fit's resolved weight kind, for the weights audit.
+
+    The populace-fit operator is weighted by construction: a Frame fit defaults
+    to typed design weights and ``weights="none"`` is the only unweighted path
+    (``populace.fit.model``). :func:`weights_audit_gate` lifts that API guarantee
+    to the *build* level — every production fit emits one of these records so a
+    release can prove no fit silently resolved unweighted. This is the auditable
+    form of the guarantee the issue #300 motivation measures (an unweighted
+    donor fit was 6x worse on net-worth Wasserstein-1 and inflated the imputed
+    q99 by ~2x).
+
+    Attributes:
+        fit_name: A stable name for the fit (e.g. ``"puf_tax_detail_support"``),
+            unique within an audit. Non-empty.
+        weight_kind: The kind the fit *resolved* to, from
+            :data:`RESOLVED_WEIGHT_KINDS` — a typed
+            :class:`~populace.frame.WeightKind` value (``"design"`` /
+            ``"importance"`` / ``"calibrated"``) or ``"none"`` for a
+            deliberately unweighted fit. A :class:`~populace.frame.WeightKind`
+            is accepted and normalized to its string value.
+    """
+
+    fit_name: str
+    weight_kind: str
+
+    def __init__(self, fit_name: str, weight_kind: str | WeightKind) -> None:
+        if not isinstance(fit_name, str) or not fit_name.strip():
+            raise ValueError("FitWeightRecord.fit_name must be a non-empty string.")
+        if isinstance(weight_kind, WeightKind):
+            weight_kind = weight_kind.value
+        if weight_kind not in RESOLVED_WEIGHT_KINDS:
+            raise ValueError(
+                f"FitWeightRecord {fit_name!r}: unknown resolved weight kind "
+                f"{weight_kind!r}; expected one of {sorted(RESOLVED_WEIGHT_KINDS)}. "
+                "A fit recorded with an uninterpretable weight kind is "
+                "unauditable — record the kind populace.fit resolved."
+            )
+        # frozen dataclass: set through object.__setattr__.
+        object.__setattr__(self, "fit_name", fit_name)
+        object.__setattr__(self, "weight_kind", weight_kind)
 
 
 @dataclass(frozen=True)
@@ -1344,6 +1413,113 @@ def source_coverage_gate(
     )
 
 
+def source_stage_input_coverage_gate(
+    required_leaves: Mapping[str, Iterable[str]],
+    *,
+    declared_outputs: Iterable[str],
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    name: str = "source_stage_input_coverage",
+) -> GateResult:
+    """Every provision-critical validation input leaf is produced by a stage.
+
+    A validation config scores a policy provision (an OBBBA reform, a
+    tax-expenditure repeal, an SOI baseline level) whose simulated effect is
+    driven by one or more *pure-input leaves* — engine variables with no
+    formula, whose values must come from a source stage. If a row's critical
+    leaf is produced by no stage, the provision is structurally zero on the
+    dataset and the row validates as a silent zero until an external benchmark
+    exposes it (the ``qualified_tuition_expenses`` / education-credit and
+    ``qualified_passenger_vehicle_loan_interest`` / OBBBA auto-loan cases,
+    populace issues #253 and #252). This gate makes that a build failure.
+
+    It is deliberately keyed on a curated map of the leaves each validation
+    concern *critically* depends on, not the full transitive input-leaf closure
+    of the row's measure: the closure of a broad measure such as ``income_tax``
+    is the whole tax base (hundreds of leaves, most legitimately defaulted), so
+    a closure gate would drown the real signal. The curated leaves are the ones
+    whose absence zeroes the specific provision. The caller derives
+    ``required_leaves`` from the validation configs and the PE-US variable graph
+    and is expected to also prove — against the live engine — that each mapped
+    leaf really is an input leaf the provision depends on, so the registry
+    cannot silently rot (the reverse-direction check the other engine-derived
+    guards carry).
+
+    Args:
+        required_leaves: Input-leaf name -> the validation row/concern ids that
+            structurally require it. A leaf required by several rows lists all
+            of them, so a single missing leaf names every affected row.
+        declared_outputs: The variable names some source stage produces
+            (``source_stages.json`` stage outputs, plus any other packaged
+            input-producing surface the caller counts as declared).
+        reviewed_exclusions: Leaf -> REASON for leaves allowed to be missing
+            (a known, tracked imputation gap). Each needs a non-empty reason.
+            An exclusion for a leaf that is now produced is stale and fails the
+            gate; an exclusion for a leaf no row requires is dormant and only
+            reported (different release lines validate different rows).
+        name: Gate name for the manifest (defaults to
+            ``"source_stage_input_coverage"``).
+
+    Returns:
+        Pass iff every required leaf is either a declared stage output or
+        carries a reviewed exclusion, and no exclusion is stale.
+
+    Raises:
+        ValueError: If a reviewed exclusion has an empty reason.
+        TypeError: If ``reviewed_exclusions`` is not a mapping.
+    """
+    if not name:
+        raise ValueError("source stage input coverage gate name must be non-empty.")
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    declared = {str(output) for output in declared_outputs}
+    required = {
+        str(leaf): sorted({str(consumer) for consumer in consumers})
+        for leaf, consumers in required_leaves.items()
+    }
+
+    failures: list[str] = []
+    missing: list[str] = []
+    missing_consumers: dict[str, list[str]] = {}
+    excluded: dict[str, str] = {}
+    for leaf in sorted(required):
+        if leaf in declared:
+            continue
+        if leaf in exclusions:
+            excluded[leaf] = exclusions[leaf]
+            continue
+        missing.append(leaf)
+        missing_consumers[leaf] = required[leaf]
+        consumers = ", ".join(required[leaf])
+        failures.append(
+            f"{leaf}: required by validation row(s) [{consumers}] but produced "
+            "by no source stage; the provision validates as a structural zero. "
+            "Impute it (declare it as a source-stage output) or record a "
+            "reviewed exclusion with the tracking issue."
+        )
+
+    stale = sorted(leaf for leaf in exclusions if leaf in required and leaf in declared)
+    if stale:
+        failures.append(
+            f"Stale reviewed exclusions — the leaf is produced now, remove the "
+            f"exclusion: {stale}."
+        )
+    dormant = sorted(leaf for leaf in exclusions if leaf not in required)
+
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "required_leaves": len(required),
+            "declared_outputs": len(declared),
+            "missing": missing,
+            "missing_consumers": missing_consumers,
+            "reviewed_exclusions": excluded,
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
+        },
+    )
+
+
 def parity_gate(
     candidate_nonzero: Mapping[str, float],
     reference_nonzero: Mapping[str, float],
@@ -1580,5 +1756,98 @@ def per_family_fit_gate(
             "family_within_shares": shares,
             "family_hard_within_shares": hard_shares,
             "family_sizes": {f: len(e) for f, e in sorted(by_family.items())},
+        },
+    )
+
+
+def weights_audit_gate(
+    fit_records: Iterable[FitWeightRecord],
+    *,
+    allowed_unweighted: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Audit every production fit's resolved weight kind; block silent unweighting.
+
+    populace-fit already makes an unweighted fit impossible to request without
+    writing ``weights="none"`` and meaning it (``populace.fit.model``). This gate
+    is the *build-level* enforcement of that guarantee: each production fit
+    records its resolved weight kind (:class:`FitWeightRecord`), the audit writes
+    those kinds into the release manifest, and the release **fails** if any fit
+    resolved unweighted (``"none"``) without an explicit ``allowed_unweighted``
+    entry stating why. It is the guard the old microplex spec engine lacked (the
+    microplex-us#263 regression class, and the $201T-scale landmine of the legacy
+    stack): a fit that silently drops its weights ships a broken donor while its
+    own on-surface residuals look perfect.
+
+    The motivation is measured (issue #300): on an informative donor design the
+    identical estimator fit unweighted is 6x worse on net-worth Wasserstein-1 and
+    inflates the imputed q99 by ~2x; on a weakly-informative design weighting is
+    free. A build cannot know a donor's regime in advance, so weighted fitting is
+    structural — and the rare, deliberate unweighted fit is a reviewed exception,
+    named with a reason, never a default.
+
+    Args:
+        fit_records: One :class:`FitWeightRecord` per production fit. Fit names
+            must be unique; a repeated name is refused (two fits recorded under
+            one name would let one mask the other's kind).
+        allowed_unweighted: Fit name -> REASON for fits allowed to resolve
+            unweighted. Every entry needs a non-empty reason (an undocumented
+            allow entry is just a silent unweighted fit with extra steps).
+            Entries not consumed by an actually-unweighted fit — because the fit
+            is absent or now resolves weighted — are reported in the details as
+            unused so the register cannot rot.
+
+    Returns:
+        Pass iff no fit resolved ``"none"`` without a matching
+        ``allowed_unweighted`` entry. The details carry every fit's resolved
+        kind (the manifest surface), the live unweighted fits, the honored
+        allow entries, and any unused ones.
+
+    Raises:
+        TypeError: If ``allowed_unweighted`` is not a mapping.
+        ValueError: If a fit name is empty or duplicated, a record carries an
+            unknown weight kind (raised at :class:`FitWeightRecord` construction),
+            or an allow entry has an empty reason.
+    """
+    allowed = _reviewed_exclusion_reasons(allowed_unweighted)
+
+    records = list(fit_records)
+    resolved_kinds: dict[str, str] = {}
+    for record in records:
+        if record.fit_name in resolved_kinds:
+            raise ValueError(
+                f"Duplicate fit name {record.fit_name!r} in the weights audit; "
+                "each production fit must record its resolved weight kind under "
+                "a unique name."
+            )
+        resolved_kinds[record.fit_name] = record.weight_kind
+
+    unweighted_fits: list[str] = []
+    allowed_used: dict[str, str] = {}
+    failures: list[str] = []
+    for fit_name in sorted(resolved_kinds):
+        if resolved_kinds[fit_name] != UNWEIGHTED_KIND:
+            continue
+        if fit_name in allowed:
+            allowed_used[fit_name] = allowed[fit_name]
+            continue
+        unweighted_fits.append(fit_name)
+        failures.append(
+            f"{fit_name}: fit resolved unweighted ({UNWEIGHTED_KIND!r}) with no "
+            "allowed-unweighted entry. A populace fit is weighted by "
+            "construction; fit it weighted, or record why unweighted is correct "
+            "in the allowlist."
+        )
+
+    unused_allowed = sorted(set(allowed) - set(allowed_used))
+    return GateResult(
+        name="weights_audit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "fits_checked": len(resolved_kinds),
+            "resolved_weight_kinds": dict(sorted(resolved_kinds.items())),
+            "unweighted_fits": unweighted_fits,
+            "allowed_unweighted": dict(sorted(allowed_used.items())),
+            "unused_allowed_unweighted": unused_allowed,
         },
     )

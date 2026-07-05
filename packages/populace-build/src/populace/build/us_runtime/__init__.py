@@ -130,6 +130,7 @@ from populace.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_PUF_SUPPORT_FIT_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
@@ -177,6 +178,13 @@ from populace.build.us_runtime.take_up_contract import (
     assert_take_up_treatments_consistent,
     load_take_up_contract,
     seeded_take_up_programs,
+)
+from populace.build.us_runtime.validation_input_coverage import (
+    US_VALIDATION_PROVISION_INPUT_LEAVES,
+    ValidationInputLeaf,
+    assert_validation_leaf_registry_current,
+    us_source_stage_outputs,
+    us_validation_input_coverage_gate,
 )
 from populace.frame import Frame
 
@@ -268,6 +276,7 @@ __all__ = [
     "PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS",
     "PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
@@ -296,6 +305,11 @@ __all__ = [
     "write_reform_validation",
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",
+    "us_source_stage_outputs",
+    "us_validation_input_coverage_gate",
+    "US_VALIDATION_PROVISION_INPUT_LEAVES",
+    "ValidationInputLeaf",
+    "assert_validation_leaf_registry_current",
     "write_us_source_coverage_diagnostics",
     "support_channel_column",
     "support_clone_index_column",

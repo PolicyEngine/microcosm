@@ -60,6 +60,7 @@ from populace.build.country_spec import (  # noqa: E402 - after the compat gate
     load_country_spec,
 )
 from populace.build.gates import (  # noqa: E402 - after the compat gate
+    FitWeightRecord,
     GateReport,
     GateResult,
     TargetCoverageRequirement,
@@ -77,9 +78,11 @@ from populace.build.gates import (  # noqa: E402 - after the compat gate
     per_family_fit_gate,
     relative_error_loss,
     source_coverage_gate,
+    source_stage_input_coverage_gate,
     support_gate,
     target_profile_coverage_gate,
     target_surface_gate,
+    weights_audit_gate,
 )
 from populace.build.holdout import (  # noqa: E402 - after the compat gate
     rotated_folds,
@@ -123,6 +126,7 @@ __version__ = "0.1.0"
 __all__ = [
     "CountrySpec",
     "DonorSpec",
+    "FitWeightRecord",
     "GateReport",
     "GateResult",
     "GateSelectionSpec",
@@ -161,6 +165,7 @@ __all__ = [
     "relative_error_loss",
     "rotated_folds",
     "source_coverage_gate",
+    "source_stage_input_coverage_gate",
     "select_ledger_targets",
     "select_ledger_targets_from_jsonl",
     "summarize_rotations",
@@ -168,6 +173,7 @@ __all__ = [
     "target_profile_coverage_gate",
     "target_spec_from_ledger_fact",
     "target_surface_gate",
+    "weights_audit_gate",
     "UnsupportedLedgerTarget",
     "UnsupportedSourceOperationError",
     "country_stage_plan",
