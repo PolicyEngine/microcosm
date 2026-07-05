@@ -29,6 +29,8 @@ import hashlib
 import io
 import json
 import sys
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -140,17 +142,52 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_DOWNLOAD_MAX_ATTEMPTS = 5
+_DOWNLOAD_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _fetch(url: str) -> bytes:
+    """Fetch ``url`` with a bounded timeout, retrying transient failures.
+
+    The Census/OMB hosts intermittently return 5xx (e.g. a momentary 502 Bad
+    Gateway) or drop the connection; without a retry a single blip aborts the
+    whole 51-state build after minutes of work. Retries use exponential backoff
+    and only cover transient conditions — a 404 or other permanent HTTPError
+    still raises immediately.
+    """
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "populace-build (block ladder artifact)"}
+    )
+    last_exc: Exception | None = None
+    for attempt in range(1, _DOWNLOAD_MAX_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _DOWNLOAD_RETRY_STATUS:
+                raise
+            last_exc = exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            last_exc = exc
+        if attempt < _DOWNLOAD_MAX_ATTEMPTS:
+            backoff = 2.0 * (2 ** (attempt - 1))
+            _log(
+                f"  transient download failure ({last_exc}); "
+                f"retry {attempt}/{_DOWNLOAD_MAX_ATTEMPTS - 1} in {backoff:.0f}s"
+            )
+            time.sleep(backoff)
+    raise RuntimeError(
+        f"Download failed after {_DOWNLOAD_MAX_ATTEMPTS} attempts: {url}"
+    ) from last_exc
+
+
 def _download(url: str, cache_dir: Path) -> Path:
     cache_dir.mkdir(parents=True, exist_ok=True)
     destination = cache_dir / url.rsplit("/", 1)[-1]
     if destination.exists() and destination.stat().st_size > 0:
         return destination
     _log(f"  downloading {url}")
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "populace-build (block ladder artifact)"}
-    )
-    with urllib.request.urlopen(request) as response:
-        payload = response.read()
+    payload = _fetch(url)
     if not payload:
         raise RuntimeError(f"Empty download from {url}")
     # Write-then-rename: a crash mid-write must not leave a truncated file
