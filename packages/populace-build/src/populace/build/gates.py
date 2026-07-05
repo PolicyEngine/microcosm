@@ -45,10 +45,12 @@ import numpy as np
 
 from populace.calibrate.registry import TargetSpec
 from populace.calibrate.solve import relative_error_loss
+from populace.frame import WeightKind
 
 __all__ = [
     "GateResult",
     "GateReport",
+    "FitWeightRecord",
     "default_valued_columns_gate",
     "enum_domain_gate",
     "export_surface_gate",
@@ -68,7 +70,29 @@ __all__ = [
     "TargetCoverageRequirement",
     "relative_error_loss",
     "target_surface_gate",
+    "weights_audit_gate",
 ]
+
+#: The string the fit operator uses to record a deliberately unweighted fit
+#: (``populace.fit.NO_WEIGHTS``). Kept as a literal here rather than imported so
+#: the build shard's gate does not pull in ``populace.fit`` (and its
+#: scikit-learn / quantile-forest dependency footprint) just to name a string.
+UNWEIGHTED_KIND = "none"
+
+#: A DataFrame fit weighted by a caller-supplied column/vector with no kernel
+#: :class:`~populace.frame.WeightKind` provenance (``populace.fit.EXPLICIT_WEIGHTS``).
+#: Weighted — so the audit never flags it — but not one of the typed kinds.
+EXPLICIT_KIND = "explicit"
+
+#: The vocabulary a fit may record as its *resolved* weight kind: the kernel's
+#: typed :class:`~populace.frame.WeightKind` values (``design`` / ``importance``
+#: / ``calibrated``), :data:`UNWEIGHTED_KIND` (``none``), and :data:`EXPLICIT_KIND`
+#: (a DataFrame explicit-vector fit). Kept in lockstep with the strings
+#: ``populace.fit.resolved_weight_kind`` produces. Only ``none`` is treated as
+#: unweighted by :func:`weights_audit_gate`; every other kind is weighted.
+RESOLVED_WEIGHT_KINDS = frozenset(
+    {kind.value for kind in WeightKind} | {UNWEIGHTED_KIND, EXPLICIT_KIND}
+)
 
 
 @dataclass(frozen=True)
@@ -137,6 +161,50 @@ class GateReport:
                 for result in self.results
             },
         }
+
+
+@dataclass(frozen=True)
+class FitWeightRecord:
+    """One production fit's resolved weight kind, for the weights audit.
+
+    The populace-fit operator is weighted by construction: a Frame fit defaults
+    to typed design weights and ``weights="none"`` is the only unweighted path
+    (``populace.fit.model``). :func:`weights_audit_gate` lifts that API guarantee
+    to the *build* level — every production fit emits one of these records so a
+    release can prove no fit silently resolved unweighted. This is the auditable
+    form of the guarantee the issue #300 motivation measures (an unweighted
+    donor fit was 6x worse on net-worth Wasserstein-1 and inflated the imputed
+    q99 by ~2x).
+
+    Attributes:
+        fit_name: A stable name for the fit (e.g. ``"puf_tax_detail_support"``),
+            unique within an audit. Non-empty.
+        weight_kind: The kind the fit *resolved* to, from
+            :data:`RESOLVED_WEIGHT_KINDS` — a typed
+            :class:`~populace.frame.WeightKind` value (``"design"`` /
+            ``"importance"`` / ``"calibrated"``) or ``"none"`` for a
+            deliberately unweighted fit. A :class:`~populace.frame.WeightKind`
+            is accepted and normalized to its string value.
+    """
+
+    fit_name: str
+    weight_kind: str
+
+    def __init__(self, fit_name: str, weight_kind: str | WeightKind) -> None:
+        if not isinstance(fit_name, str) or not fit_name.strip():
+            raise ValueError("FitWeightRecord.fit_name must be a non-empty string.")
+        if isinstance(weight_kind, WeightKind):
+            weight_kind = weight_kind.value
+        if weight_kind not in RESOLVED_WEIGHT_KINDS:
+            raise ValueError(
+                f"FitWeightRecord {fit_name!r}: unknown resolved weight kind "
+                f"{weight_kind!r}; expected one of {sorted(RESOLVED_WEIGHT_KINDS)}. "
+                "A fit recorded with an uninterpretable weight kind is "
+                "unauditable — record the kind populace.fit resolved."
+            )
+        # frozen dataclass: set through object.__setattr__.
+        object.__setattr__(self, "fit_name", fit_name)
+        object.__setattr__(self, "weight_kind", weight_kind)
 
 
 @dataclass(frozen=True)
@@ -1688,5 +1756,98 @@ def per_family_fit_gate(
             "family_within_shares": shares,
             "family_hard_within_shares": hard_shares,
             "family_sizes": {f: len(e) for f, e in sorted(by_family.items())},
+        },
+    )
+
+
+def weights_audit_gate(
+    fit_records: Iterable[FitWeightRecord],
+    *,
+    allowed_unweighted: Mapping[str, str] | None = None,
+) -> GateResult:
+    """Audit every production fit's resolved weight kind; block silent unweighting.
+
+    populace-fit already makes an unweighted fit impossible to request without
+    writing ``weights="none"`` and meaning it (``populace.fit.model``). This gate
+    is the *build-level* enforcement of that guarantee: each production fit
+    records its resolved weight kind (:class:`FitWeightRecord`), the audit writes
+    those kinds into the release manifest, and the release **fails** if any fit
+    resolved unweighted (``"none"``) without an explicit ``allowed_unweighted``
+    entry stating why. It is the guard the old microplex spec engine lacked (the
+    microplex-us#263 regression class, and the $201T-scale landmine of the legacy
+    stack): a fit that silently drops its weights ships a broken donor while its
+    own on-surface residuals look perfect.
+
+    The motivation is measured (issue #300): on an informative donor design the
+    identical estimator fit unweighted is 6x worse on net-worth Wasserstein-1 and
+    inflates the imputed q99 by ~2x; on a weakly-informative design weighting is
+    free. A build cannot know a donor's regime in advance, so weighted fitting is
+    structural — and the rare, deliberate unweighted fit is a reviewed exception,
+    named with a reason, never a default.
+
+    Args:
+        fit_records: One :class:`FitWeightRecord` per production fit. Fit names
+            must be unique; a repeated name is refused (two fits recorded under
+            one name would let one mask the other's kind).
+        allowed_unweighted: Fit name -> REASON for fits allowed to resolve
+            unweighted. Every entry needs a non-empty reason (an undocumented
+            allow entry is just a silent unweighted fit with extra steps).
+            Entries not consumed by an actually-unweighted fit — because the fit
+            is absent or now resolves weighted — are reported in the details as
+            unused so the register cannot rot.
+
+    Returns:
+        Pass iff no fit resolved ``"none"`` without a matching
+        ``allowed_unweighted`` entry. The details carry every fit's resolved
+        kind (the manifest surface), the live unweighted fits, the honored
+        allow entries, and any unused ones.
+
+    Raises:
+        TypeError: If ``allowed_unweighted`` is not a mapping.
+        ValueError: If a fit name is empty or duplicated, a record carries an
+            unknown weight kind (raised at :class:`FitWeightRecord` construction),
+            or an allow entry has an empty reason.
+    """
+    allowed = _reviewed_exclusion_reasons(allowed_unweighted)
+
+    records = list(fit_records)
+    resolved_kinds: dict[str, str] = {}
+    for record in records:
+        if record.fit_name in resolved_kinds:
+            raise ValueError(
+                f"Duplicate fit name {record.fit_name!r} in the weights audit; "
+                "each production fit must record its resolved weight kind under "
+                "a unique name."
+            )
+        resolved_kinds[record.fit_name] = record.weight_kind
+
+    unweighted_fits: list[str] = []
+    allowed_used: dict[str, str] = {}
+    failures: list[str] = []
+    for fit_name in sorted(resolved_kinds):
+        if resolved_kinds[fit_name] != UNWEIGHTED_KIND:
+            continue
+        if fit_name in allowed:
+            allowed_used[fit_name] = allowed[fit_name]
+            continue
+        unweighted_fits.append(fit_name)
+        failures.append(
+            f"{fit_name}: fit resolved unweighted ({UNWEIGHTED_KIND!r}) with no "
+            "allowed-unweighted entry. A populace fit is weighted by "
+            "construction; fit it weighted, or record why unweighted is correct "
+            "in the allowlist."
+        )
+
+    unused_allowed = sorted(set(allowed) - set(allowed_used))
+    return GateResult(
+        name="weights_audit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "fits_checked": len(resolved_kinds),
+            "resolved_weight_kinds": dict(sorted(resolved_kinds.items())),
+            "unweighted_fits": unweighted_fits,
+            "allowed_unweighted": dict(sorted(allowed_used.items())),
+            "unused_allowed_unweighted": unused_allowed,
         },
     )

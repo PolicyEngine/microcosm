@@ -710,6 +710,8 @@ def _optimize(
     max_weight_ratio: float | None,
     l0_lambda: float,
     l2_lambda: float,
+    l2_anchor: str = "initial",
+    l2_anchor_weights: np.ndarray | None = None,
     target_records: int | None,
     init_mean: float,
     temperature: float,
@@ -749,7 +751,25 @@ def _optimize(
         if max_weight_ratio is not None
         else None
     )
-    w0_t = torch.tensor(w0, dtype=torch.float32) if l2_lambda > 0.0 else None
+    if l2_lambda > 0.0:
+        # The L2 penalty's reference vector. "initial" divides by each record's
+        # own starting weight; "uniform" divides by the shared mean weight; an
+        # explicit vector (e.g. the pre-selection design weights during a
+        # refit) overrides both. Under mass conservation the penalty's
+        # constrained optimum is w_i ∝ anchor_i², so anchoring on
+        # heterogeneous starting weights (e.g. a refit whose start is a
+        # concentrated selection vector) pulls toward MORE concentration; the
+        # uniform anchor makes the penalty a direct 1/ESS control regardless
+        # of the starting distribution.
+        if l2_anchor_weights is not None:
+            anchor = np.asarray(l2_anchor_weights, dtype=np.float64)
+        elif l2_anchor == "initial":
+            anchor = w0
+        else:
+            anchor = np.full_like(w0, w0.mean())
+        w0_t = torch.tensor(anchor, dtype=torch.float32)
+    else:
+        w0_t = None
 
     trajectory = np.empty(epochs, dtype=np.float64)
     for epoch in range(epochs):
@@ -971,6 +991,8 @@ def _search_l0_lambda_for_budget(
     conserve_mass: bool,
     max_weight_ratio: float | None,
     l2_lambda: float,
+    l2_anchor: str = "initial",
+    l2_anchor_weights: np.ndarray | None = None,
     init_mean: float,
     temperature: float,
     seed: int,
@@ -1038,6 +1060,8 @@ def _search_l0_lambda_for_budget(
             max_weight_ratio=max_weight_ratio,
             l0_lambda=lam,
             l2_lambda=l2_lambda,
+            l2_anchor=l2_anchor,
+            l2_anchor_weights=l2_anchor_weights,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -1209,6 +1233,8 @@ def calibrate(
     l0_lambda: float = 0.0,
     l1_lambda: float = 0.0,
     l2_lambda: float = 0.0,
+    l2_anchor: str = "initial",
+    l2_anchor_weights: np.ndarray | None = None,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1275,6 +1301,21 @@ def calibrate(
             weight explosion behind partially closed gates. Its ESS/design-effect
             interpretation is cleanest with ``mass="conserve"``; with
             ``mass="free"`` it also penalizes total weight scale.
+        l2_anchor: The L2 penalty's reference weights. ``"initial"`` (default)
+            divides by each record's own starting weight — a "stay near the
+            start" prior. ``"uniform"`` divides by the shared mean starting
+            weight, making the penalty (under ``mass="conserve"``) a direct
+            1/ESS control. The distinction matters when starting weights are
+            heterogeneous: the mass-constrained optimum of the penalty is
+            ``w_i ∝ anchor_i²``, so an ``"initial"`` anchor on concentrated
+            starting weights (e.g. a post-L0 refit) pulls toward *more*
+            concentration, not less. Only consulted when ``l2_lambda > 0``.
+        l2_anchor_weights: Optional explicit anchor vector (one positive
+            finite value per ``weight_entity`` record), overriding the
+            ``l2_anchor`` presets — the harness seam for anchors the frame
+            cannot express, e.g. the pre-selection *design* weights during a
+            post-L0 refit. When supplied, ``l2_anchor`` becomes a free-form
+            provenance label recorded in options (e.g. ``"design"``).
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -1364,6 +1405,20 @@ def calibrate(
         raise ValueError(
             f"l2_lambda must be finite and non-negative, got {l2_lambda!r}."
         )
+    if l2_anchor_weights is None:
+        if l2_anchor not in ("initial", "uniform"):
+            raise ValueError(
+                f"l2_anchor must be 'initial' or 'uniform', got {l2_anchor!r}."
+            )
+    else:
+        if not isinstance(l2_anchor, str) or not l2_anchor:
+            raise ValueError(
+                "l2_anchor must be a non-empty label when l2_anchor_weights "
+                f"is supplied, got {l2_anchor!r}."
+            )
+        l2_anchor_weights = np.asarray(l2_anchor_weights, dtype=np.float64)
+        if not np.isfinite(l2_anchor_weights).all() or (l2_anchor_weights <= 0).any():
+            raise ValueError("l2_anchor_weights must be finite and strictly positive.")
     if not math.isfinite(l1_lambda) or l1_lambda < 0.0:
         raise ValueError(
             f"l1_lambda must be finite and non-negative, got {l1_lambda!r}."
@@ -1412,6 +1467,11 @@ def calibrate(
     initial = problem.initial_weights
     w0 = initial.values
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
+    if l2_anchor_weights is not None and l2_anchor_weights.shape != w0.shape:
+        raise ValueError(
+            f"l2_anchor_weights shape {l2_anchor_weights.shape} must match "
+            f"the calibrated weight vector shape {w0.shape}."
+        )
 
     torch.manual_seed(seed)
     matrix_t = _torch_constraint_matrix(problem.matrix)
@@ -1508,6 +1568,8 @@ def calibrate(
                 conserve_mass=(mass == CONSERVE_MASS),
                 max_weight_ratio=max_weight_ratio,
                 l2_lambda=l2_lambda,
+                l2_anchor=l2_anchor,
+                l2_anchor_weights=l2_anchor_weights,
                 init_mean=init_mean,
                 temperature=temperature,
                 seed=seed,
@@ -1533,6 +1595,8 @@ def calibrate(
             warm_start_weights=warm_start_weights,
             l0_lambda=effective_l0,
             l2_lambda=l2_lambda,
+            l2_anchor=l2_anchor,
+            l2_anchor_weights=l2_anchor_weights,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -1590,7 +1654,15 @@ def calibrate(
             "l1_lambda": l1_lambda,
             "l1_penalty": "mean_initial_weight_ratio_abs",
             "l2_lambda": l2_lambda,
-            "l2_penalty": "mean_initial_pre_gate_weight_ratio_squared",
+            "l2_anchor": l2_anchor,
+            "l2_anchor_weights_supplied": l2_anchor_weights is not None,
+            "l2_penalty": (
+                "mean_explicit_anchor_pre_gate_weight_ratio_squared"
+                if l2_anchor_weights is not None
+                else "mean_initial_pre_gate_weight_ratio_squared"
+                if l2_anchor == "initial"
+                else "mean_uniform_pre_gate_weight_ratio_squared"
+            ),
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "target_loss_scales": _target_loss_scale_options(
@@ -1692,6 +1764,7 @@ def refit_l0_selection(
     mass: str = FREE_MASS,
     max_weight_ratio: float | None = None,
     l2_lambda: float = 0.0,
+    l2_anchor: str = "initial",
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1710,7 +1783,21 @@ def refit_l0_selection(
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
     the stage that produces the shipped weights; the default ``0.0`` keeps the
     refit unpenalized.
+
+    The refit's starting weights are the *selection stage's calibrated
+    weights*, which are already concentrated — so with ``l2_anchor="initial"``
+    a strong penalty pulls toward their square (more concentration, lower
+    ESS). Pass ``l2_anchor="uniform"`` when the penalty's job is to spread
+    the shipped weights, or ``l2_anchor="design"`` to anchor at the
+    *pre-selection* initial weights of the surviving records — "stay near the
+    survey design", the natural choice when the candidate frame carries real
+    design weights rather than a uniform reset.
     """
+    if l2_anchor not in ("initial", "uniform", "design"):
+        raise ValueError(
+            "refit l2_anchor must be 'initial', 'uniform', or 'design', got "
+            f"{l2_anchor!r}."
+        )
     refit_entity = selection.weight_entity if weight_entity is None else weight_entity
     if selection.weight_entity != refit_entity:
         raise ValueError(
@@ -1733,6 +1820,15 @@ def refit_l0_selection(
     )
     subset = selection.frame.select(person_mask)
 
+    refit_l2_anchor_weights = None
+    if l2_anchor == "design":
+        # The selection stage's INITIAL weights are the design prior the
+        # candidate frame entered calibration with; subset to survivors so
+        # the anchor aligns with the refit's weight vector.
+        refit_l2_anchor_weights = np.asarray(
+            selection.initial_weights, dtype=np.float64
+        )[selected_mask]
+
     refit = calibrate(
         subset,
         targets,
@@ -1745,6 +1841,8 @@ def refit_l0_selection(
         target_records=None,
         l0_lambda=0.0,
         l2_lambda=l2_lambda,
+        l2_anchor=l2_anchor,
+        l2_anchor_weights=refit_l2_anchor_weights,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
@@ -1777,6 +1875,8 @@ def calibrate_l0_refit(
     l0_lambda: float = 0.0,
     l2_lambda: float = 0.0,
     refit_l2_lambda: float | None = None,
+    l2_anchor: str = "initial",
+    refit_l2_anchor: str | None = None,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1800,7 +1900,11 @@ def calibrate_l0_refit(
     ``refit_l2_lambda`` overrides the refit stage only (the ``refit_epochs`` /
     ``refit_learning_rate`` pattern), so selection-only
     (``refit_l2_lambda=0.0``) and refit-only (``l2_lambda=0.0`` with a positive
-    override) penalties are both expressible.
+    override) penalties are both expressible. ``l2_anchor`` /
+    ``refit_l2_anchor`` follow the same inherit-or-override pattern; note the
+    refit starts from the selection stage's concentrated weights, so a
+    penalized refit whose goal is spreading the shipped weights should anchor
+    ``"uniform"`` (see :func:`refit_l0_selection`).
     """
     if target_records is None and not (math.isfinite(l0_lambda) and l0_lambda > 0.0):
         raise ValueError(
@@ -1818,6 +1922,20 @@ def calibrate_l0_refit(
         raise ValueError(
             f"refit_l2_lambda must be finite and non-negative, got {refit_l2_lambda!r}."
         )
+    if l2_anchor not in ("initial", "uniform", "design"):
+        raise ValueError(
+            f"l2_anchor must be 'initial', 'uniform', or 'design', got {l2_anchor!r}."
+        )
+    if refit_l2_anchor is not None and refit_l2_anchor not in (
+        "initial",
+        "uniform",
+        "design",
+    ):
+        # Same early check: an invalid refit anchor must not cost a selection run.
+        raise ValueError(
+            "refit_l2_anchor must be 'initial', 'uniform', 'design', or None, "
+            f"got {refit_l2_anchor!r}."
+        )
     selection = calibrate(
         frame,
         targets,
@@ -1830,6 +1948,9 @@ def calibrate_l0_refit(
         target_records=target_records,
         l0_lambda=l0_lambda,
         l2_lambda=l2_lambda,
+        # At a fresh selection the frame's initial weights ARE the design
+        # prior, so the "design" anchor is exactly the "initial" anchor.
+        l2_anchor="initial" if l2_anchor == "design" else l2_anchor,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
@@ -1852,6 +1973,7 @@ def calibrate_l0_refit(
         mass=mass,
         max_weight_ratio=max_weight_ratio,
         l2_lambda=l2_lambda if refit_l2_lambda is None else refit_l2_lambda,
+        l2_anchor=l2_anchor if refit_l2_anchor is None else refit_l2_anchor,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
