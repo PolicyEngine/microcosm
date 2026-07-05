@@ -5189,6 +5189,9 @@ def main() -> None:
     enforced_input_mass_reference_gate = (
         None if args.allow_input_mass_drift else input_mass_reference_gate
     )
+    enforced_ecps_parity_gate = (
+        None if args.allow_ecps_parity_gaps else ecps_parity_gate
+    )
     gate_failures = _release_gate_failures(
         result,
         compilation,
@@ -5199,6 +5202,7 @@ def main() -> None:
         immigration_gate,
         enforced_input_mass_reference_gate,
         degenerate_input_gate,
+        ecps_parity_gate=enforced_ecps_parity_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
