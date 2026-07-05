@@ -4,7 +4,50 @@ Worktree: `~/PolicyEngine/_worktrees/populace-build-e-oomfix`
 Branch: `build-e-compile-checkpoint` (from origin/main @ fd58d8b)
 Driver: `tools/build_us_fiscal_refresh_release.py` (5,515 lines, 207 KB — NEVER read whole; grep/sed only)
 
-## State: ROOT CAUSE FOUND; awaiting/assuming lead's call on scope (minute ~25)
+## State: DESIGN LOCKED; implementing (minute ~40)
+
+## FINAL DESIGN (hardening existing machinery; surgical)
+### Fix 1 (load-bearing) — durable checkpoint root, decoupled from ephemeral out-dir
+Add `--checkpoint-root PATH`. When set, `target_materialization_cache_dir` defaults to
+`<root>/target_materialization_cache` and `target_frame_checkpoint_path` to
+`<root>/target_frame_checkpoint.h5`, INSTEAD of under `<out>/artifacts/`. Explicit
+`--target-materialization-cache-dir` / `--target-frame-checkpoint` still win. Modal points this at a
+persistent volume path stable across worker restarts → a fresh ephemeral out-dir can no longer
+orphan completed reforms. Directly fixes B's lost cache.
+
+### Fix 2 (#217) — finer reform-vector cache key (drop build_commit + registry_version)
+New `_reform_vector_cache_identity` used by the per-reform cache = ONLY
+(schema, kind, country, period, n_households, reform_measure, neutralized_variable,
+ base_dataset_sha256, policyengine_us_version, cd_crosswalk_sha256).
+Drops build_commit + target_registry_version (which do NOT affect per-household reform estimates).
+=> restart at a newer commit / registry bump REUSES completed reforms; still invalidates on
+base-H5 / reform-vector / PE-US / period / geography change (no stale poisoning). Satisfies #217
+acceptance criteria 1-4. The WHOLE-FRAME checkpoint keeps its own coarse key (unchanged) — safe
+because it already gates on target-surface/registry identity separately.
+
+### Fix 3 — memory bound
+- Reform loop ALREADY household-batched (default 5,000). Peak per reform bounded & tunable via
+  `--maximum-microsim-batch-size`; each reform's dense intermediate is released (`del` + GC) before
+  the next. Never holds >1 reform's dense income_tax vector. Satisfies "chunk within the reform".
+- RESIDUAL un-chunked peak = BASE-sim materialization (line 2705): ONE unbatched
+  Microsimulation over all 224,026 hh computing ~12 top-level vars (income_tax, taxable_income, AGI,
+  filing_status, age, ctc_limiting_tax_liability, farm/rental_income, tax_unit_itemizes,
+  eitc_child_count, state_income_tax) + the full direct_target_specs sweep, held alongside a full
+  entity-table copy until `_invalidate_all_caches` (2976). This is a FIXED one-time cost (not per
+  reform) and is the most plausible D OOM locus. DECISION: do NOT bundle a base-sim batching refactor
+  into this survivability PR — it's a correctness-sensitive rewrite of the hottest path in a
+  release-critical builder (per-batch tax_unit/person/spm collapse correctness); a silent target
+  bug there is worse than the OOM. Quantify it in the PR memory analysis and recommend box-sizing
+  (≥300 GiB fits the one-time base pass) + a scoped follow-up. FLAGGED to lead.
+
+### Peak-memory bound to state in PR (for Modal sizing)
+- Per-reform batch peak ≈ base_frame resident + (PE income_tax graph over `batch_size` hh) +
+  n_households float64 output. At batch=1,000 the PE graph term is ~5× smaller than at 5,000.
+- Base-sim one-time peak ≈ PE full-graph caches for ~12 vars over 224,026 hh + entity-table copy —
+  the ~120 GB figure in the orchestrator is the CALIBRATION matrix (later stage), not this; the
+  base-sim peak is separate and is why D exceeded 220 GiB in target_compilation.
+- Recommendation: `--checkpoint-root <persistent volume>`, `--maximum-microsim-batch-size 1000`,
+  ≥300 GiB nonpreemptible, commit the volume after each reform.
 
 ## Task (from lead / Fable)
 Make `target_compilation` survivable. Builds B & D died mid-compile on 224,026-hh pool,
