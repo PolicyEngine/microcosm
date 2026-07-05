@@ -21,8 +21,11 @@ score ~$0 while the release still hits its own calibration target surface
 
 This app stands the corrected rebuild up on Modal. Everything runs inside one
 container image built from the repo at the pinned ``uv.lock`` (policyengine-us
-1.752.2, policyengine-core 3.26.11 — exactly the July-1 sparse build engine, so
-the only change from that release is the #278 data fix). The heavy build tools
+1.755.4, policyengine-core 3.26.11 — the engine version consumers pin for this
+release, one bump past the July-1 sparse build's 1.752.2). Two changes separate
+this build from the broken July-1 release: the #278 data fix, and the engine
+bump (NJ filing-threshold floor, CA non-MAGI asset limit, Head Start age-window
+fixes). The heavy build tools
 and the in-container inspection both run under the workspace venv
 (``/root/populace/.venv/bin/python``) as subprocesses; the Modal function body
 is pure stdlib orchestration, so there is no interpreter mismatch.
@@ -161,9 +164,11 @@ then certify by loading the published latest.json dataset in policyengine.py.
 # --------------------------------------------------------------------------- #
 # Image                                                                        #
 # --------------------------------------------------------------------------- #
-# Build from the repo at its pinned uv.lock so the engine is exactly the
-# July-1 sparse build's (policyengine-us 1.752.2, policyengine-core 3.26.11).
-# Only the #278 data fix differs. `uv sync --all-packages --extra us --frozen`
+# Build from the repo at its pinned uv.lock so the engine is exactly the one
+# consumers pin for this release (policyengine-us 1.755.4, policyengine-core
+# 3.26.11 — one bump past the July-1 sparse build's 1.752.2). The #278 data fix
+# and that engine bump are the two changes from the broken July-1 release.
+# `uv sync --all-packages --extra us --frozen`
 # creates /root/populace/.venv; every populace/HF operation runs under that
 # venv as a subprocess, so the Modal function interpreter never needs the deps.
 
@@ -235,7 +240,7 @@ facts_volume = modal.Volume.from_name(FACTS_VOLUME_NAME, create_if_missing=True)
 # Kept as a string so it executes under VENV_PYTHON (where huggingface_hub and
 # populace.* resolve) rather than the Modal function interpreter.
 
-_SMOKE_WORKER = r'''
+_SMOKE_WORKER = r"""
 import json, os, sys
 from pathlib import Path
 
@@ -341,12 +346,13 @@ verdict["steps"]["ledger_facts"] = {
 print("SMOKE_VERDICT_JSON_BEGIN")
 print(json.dumps(verdict, sort_keys=True))
 print("SMOKE_VERDICT_JSON_END")
-'''
+"""
 
 
 # --------------------------------------------------------------------------- #
 # In-container helpers                                                          #
 # --------------------------------------------------------------------------- #
+
 
 def _start_rss_logger(interval_seconds: int = 60) -> None:
     """Print container memory usage periodically (daemon thread).
@@ -397,9 +403,7 @@ def _run(
     print(f"$ {' '.join(cmd)}", flush=True)
     run_env = {**os.environ, **(env or {})}
     if tee_path is None:
-        proc = subprocess.run(
-            cmd, cwd=cwd, env=run_env, text=True, capture_output=True
-        )
+        proc = subprocess.run(cmd, cwd=cwd, env=run_env, text=True, capture_output=True)
         stdout, stderr = proc.stdout or "", proc.stderr or ""
         returncode = proc.returncode
     else:
@@ -440,6 +444,7 @@ def _run(
 # --------------------------------------------------------------------------- #
 # Smoke: prove the plumbing                                                     #
 # --------------------------------------------------------------------------- #
+
 
 @app.function(
     image=image,
@@ -504,12 +509,12 @@ def smoke() -> dict:
 # Full build (heavy — gated on go-ahead)                                        #
 # --------------------------------------------------------------------------- #
 
-_HF_FETCH = r'''
+_HF_FETCH = r"""
 import os, sys
 from huggingface_hub import hf_hub_download
 kind, repo, filename, revision = sys.argv[1:5]
 print(hf_hub_download(repo_id=repo, filename=filename, revision=revision, repo_type=kind))
-'''
+"""
 
 
 def _fetch(kind: str, repo: str, filename: str, revision: str) -> str:
@@ -666,6 +671,7 @@ def run_full_build(
 # Local entrypoint                                                              #
 # --------------------------------------------------------------------------- #
 
+
 @app.local_entrypoint()
 def main(full: bool = False, rebuild_base: bool = False, no_staging: bool = False):
     """Default: run the smoke path. Pass --full only with the go-ahead."""
@@ -677,9 +683,7 @@ def main(full: bool = False, rebuild_base: bool = False, no_staging: bool = Fals
         # before/while streaming, tearing the app down. .remote() kept the
         # client on the hook for the whole build; .spawn() does not.
         print("Spawning FULL corrected build (heavy).")
-        call = run_full_build.spawn(
-            rebuild_base=rebuild_base, no_staging=no_staging
-        )
+        call = run_full_build.spawn(rebuild_base=rebuild_base, no_staging=no_staging)
         print(f"spawned function call: {call.object_id}")
         return
     print("Running smoke (wiring proof) ...")
