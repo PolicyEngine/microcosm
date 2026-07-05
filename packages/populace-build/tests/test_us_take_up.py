@@ -290,3 +290,46 @@ class TestGate:
             assert summary[variable]["share_band"] == list(
                 US_TAKE_UP_SHARE_BAND[variable]
             )
+
+
+class TestParticipationDiagnostics:
+    def test_every_contract_flag_appears_with_honest_status(self) -> None:
+        # The artifact must cover the WHOLE contract, not just the seeded
+        # programs — the unseeded rows are the record that those flags still
+        # ship at the engine's universal-take-up default.
+        frame = with_us_take_up_inputs(
+            _us_frame(n_units=400), seed=0, time_period=TIME_PERIOD
+        )
+        payload = us_take_up_participation_diagnostics(frame)
+        contract = load_take_up_contract()
+        by_variable = {row["variable"]: row for row in payload["programs"]}
+        assert set(by_variable) == {p.variable for p in contract.programs}
+        for variable in ("takes_up_tanf_if_eligible", "takes_up_eitc"):
+            row = by_variable[variable]
+            assert row["seeded"] is True
+            rate = row["administrative_rate"]
+            # TANF carries a scalar rate; EITC a by-child-count mapping.
+            if isinstance(rate, dict):
+                assert rate and all(0.0 < float(v) <= 1.0 for v in rate.values())
+            else:
+                assert 0.0 < float(rate) <= 1.0
+            assert row["administrative_source"]
+            assert 0.0 < row["take_up_share"] < 1.0
+        unseeded = [row for row in payload["programs"] if not row["seeded"]]
+        assert unseeded, "diagnostics must not declare the class fully repaired"
+        assert all("ships_at_engine_default" in row for row in unseeded)
+        assert payload["seeded_program_count"] == len(seeded_take_up_programs())
+        assert payload["gate"]["passed"] is True
+
+    def test_writer_round_trips_strict_json(self, tmp_path) -> None:
+        frame = with_us_take_up_inputs(
+            _us_frame(n_units=200), seed=0, time_period=TIME_PERIOD
+        )
+        payload = us_take_up_participation_diagnostics(frame)
+        path = write_us_take_up_participation_diagnostics(
+            payload, tmp_path / "us_take_up_participation.json"
+        )
+        assert path.name == "us_take_up_participation.json"
+        assert json.loads(path.read_text()) == json.loads(
+            json.dumps(payload, allow_nan=False)
+        )
