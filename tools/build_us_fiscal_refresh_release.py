@@ -5222,6 +5222,7 @@ def main() -> None:
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,
+        ecps_parity_gate=ecps_parity_gate,
     )
     if telemetry is not None:
         telemetry.attach_artifact(
