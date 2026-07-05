@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from populace.build import (
+    FitWeightRecord,
     GateReport,
     GateResult,
     TargetCoverageRequirement,
@@ -26,9 +27,11 @@ from populace.build import (
     per_family_fit_gate,
     relative_error_loss,
     source_coverage_gate,
+    source_stage_input_coverage_gate,
     support_gate,
     target_profile_coverage_gate,
     target_surface_gate,
+    weights_audit_gate,
 )
 from populace.calibrate import TargetSpec
 
@@ -1056,4 +1059,280 @@ class TestSourceCoverageGate:
             "covered_package_aliases": 1,
             "missing_package_aliases": 0,
             "reviewed_excluded_package_aliases": 0,
+        }
+
+
+class TestFitWeightRecord:
+    def test_accepts_the_resolved_weight_kinds(self) -> None:
+        # design/importance/calibrated (WeightKind), none (unweighted), and
+        # explicit (a DataFrame vector fit) — the vocabulary populace.fit's
+        # resolved_weight_kind can emit.
+        for kind in ("design", "importance", "calibrated", "none", "explicit"):
+            record = FitWeightRecord("some_fit", kind)
+            assert record.fit_name == "some_fit"
+            assert record.weight_kind == kind
+
+    def test_unknown_weight_kind_is_refused(self) -> None:
+        # A fit recorded with an uninterpretable weight kind is unauditable —
+        # the same class of failure as an imputation with no declared support.
+        with pytest.raises(ValueError, match="weight kind"):
+            FitWeightRecord("some_fit", "weighted")
+
+    def test_empty_fit_name_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="fit_name"):
+            FitWeightRecord("", "design")
+
+
+class TestWeightsAuditGate:
+    def test_weighted_fits_pass_and_are_recorded(self) -> None:
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("cps_reweight", "calibrated"),
+            ]
+        )
+        assert result.passed
+        # The manifest surface: every production fit's resolved kind is on the
+        # record, which GateReport.to_manifest() then serializes.
+        assert result.details["resolved_weight_kinds"] == {
+            "cps_reweight": "calibrated",
+            "puf_tax_detail_support": "design",
+        }
+        assert result.details["unweighted_fits"] == []
+
+    def test_explicit_dataframe_weight_kind_is_weighted_and_passes(self) -> None:
+        # A DataFrame fit weighted by a caller-supplied vector resolves to
+        # "explicit": weighted, so it is not flagged as an unweighted risk.
+        result = weights_audit_gate([FitWeightRecord("df_donor", "explicit")])
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {"df_donor": "explicit"}
+        assert result.details["unweighted_fits"] == []
+
+    def test_unlisted_unweighted_fit_fails_with_the_fit_named(self) -> None:
+        # The guarantee: a fit that resolved to no weights (the $201T-scale
+        # landmine of the legacy stack) blocks the release unless explicitly
+        # allowed with a reason.
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("scf_net_worth_donor", "none"),
+            ]
+        )
+        assert not result.passed
+        assert "scf_net_worth_donor" in result.failures[0]
+        assert "unweighted" in result.failures[0]
+        assert result.details["unweighted_fits"] == ["scf_net_worth_donor"]
+
+    def test_allowlisted_unweighted_fit_passes_and_is_recorded(self) -> None:
+        result = weights_audit_gate(
+            [FitWeightRecord("weakly_informative_donor", "none")],
+            allowed_unweighted={
+                "weakly_informative_donor": (
+                    "CPS person weights are weakly informative here; weighting "
+                    "is free but unweighted is a reviewed choice (issue #300)."
+                )
+            },
+        )
+        assert result.passed
+        assert result.details["allowed_unweighted"] == {
+            "weakly_informative_donor": (
+                "CPS person weights are weakly informative here; weighting "
+                "is free but unweighted is a reviewed choice (issue #300)."
+            )
+        }
+        # An allowed-unweighted fit is not reported as a live unweighted risk.
+        assert result.details["unweighted_fits"] == []
+
+    def test_allowlist_entry_needs_a_reason(self) -> None:
+        # An undocumented allow entry is just a silent unweighted fit with
+        # extra steps — the same rule every reviewed-exclusion gate enforces.
+        with pytest.raises(ValueError, match="need reasons"):
+            weights_audit_gate(
+                [FitWeightRecord("donor", "none")],
+                allowed_unweighted={"donor": ""},
+            )
+
+    def test_allowlist_must_be_a_mapping(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            weights_audit_gate(
+                [FitWeightRecord("donor", "none")],
+                allowed_unweighted=["donor"],  # type: ignore[arg-type]
+            )
+
+    def test_unused_allowlist_entry_is_reported(self) -> None:
+        # A weighted fit does not consume its allow entry; the stale entry is
+        # surfaced so the register cannot rot.
+        result = weights_audit_gate(
+            [FitWeightRecord("donor", "design")],
+            allowed_unweighted={"retired_donor": "kept for a fit no longer run"},
+        )
+        assert result.passed
+        assert result.details["unused_allowed_unweighted"] == ["retired_donor"]
+
+    def test_allow_entry_for_a_now_weighted_fit_is_reported_as_unused(self) -> None:
+        # The allow entry names a fit that is present but resolved weighted;
+        # the exemption is no longer live and is reported, not silently kept.
+        result = weights_audit_gate(
+            [FitWeightRecord("donor", "design")],
+            allowed_unweighted={"donor": "used to be unweighted, now design"},
+        )
+        assert result.passed
+        assert result.details["unused_allowed_unweighted"] == ["donor"]
+
+    def test_duplicate_fit_name_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="[Dd]uplicate fit name"):
+            weights_audit_gate(
+                [
+                    FitWeightRecord("donor", "design"),
+                    FitWeightRecord("donor", "none"),
+                ]
+            )
+
+    def test_audit_round_trips_through_the_release_manifest(self) -> None:
+        result = weights_audit_gate(
+            [
+                FitWeightRecord("puf_tax_detail_support", "design"),
+                FitWeightRecord("scf_net_worth_donor", "none"),
+            ]
+        )
+        manifest = GateReport((result,)).to_manifest()
+        gate = manifest["gates"]["weights_audit"]
+        assert gate["passed"] is False
+        assert gate["details"]["resolved_weight_kinds"] == {
+            "puf_tax_detail_support": "design",
+            "scf_net_worth_donor": "none",
+        }
+        assert gate["details"]["unweighted_fits"] == ["scf_net_worth_donor"]
+
+    def test_empty_fit_list_passes_but_records_nothing(self) -> None:
+        result = weights_audit_gate([])
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {}
+        assert result.details["fits_checked"] == 0
+
+
+class TestSourceStageInputCoverageGate:
+    """A validation row's provision-critical input leaf must be produced.
+
+    Replays the #252/#253 class: a validation config scores a provision whose
+    effect is driven by a pure-input leaf (``qualified_tuition_expenses``,
+    ``qualified_passenger_vehicle_loan_interest``). If no source stage produces
+    that leaf, the row validates as a structural zero and nobody notices until
+    an external benchmark exposes it. This gate makes that fail the build.
+    """
+
+    def test_undeclared_required_leaf_fails_with_variable_named(self) -> None:
+        # The #253 signature: education-credit validation needs
+        # qualified_tuition_expenses, but no stage declares it.
+        result = source_stage_input_coverage_gate(
+            {"qualified_tuition_expenses": ("soi_education_credits",)},
+            declared_outputs=[
+                "employment_income_before_lsr",
+                "short_term_capital_gains",
+            ],
+        )
+        assert not result.passed
+        assert "qualified_tuition_expenses" in result.failures[0]
+        assert "soi_education_credits" in result.failures[0]
+        assert result.details["missing"] == ["qualified_tuition_expenses"]
+
+    def test_produced_required_leaf_passes(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest", "home_mortgage_interest"],
+        )
+        assert result.passed
+        assert result.details["required_leaves"] == 1
+        assert result.details["missing"] == []
+
+    def test_multiple_consumers_of_a_missing_leaf_are_all_named(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_passenger_vehicle_loan_interest": (
+                    "obbba_auto_loan_interest",
+                    "te_auto_loan_interest",
+                )
+            },
+            declared_outputs=["auto_loan_interest"],
+        )
+        assert not result.passed
+        assert "obbba_auto_loan_interest" in result.failures[0]
+        assert "te_auto_loan_interest" in result.failures[0]
+
+    def test_reviewed_exclusion_passes_and_is_recorded(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_passenger_vehicle_loan_interest": (
+                    "obbba_auto_loan_interest",
+                )
+            },
+            declared_outputs=["auto_loan_interest"],
+            reviewed_exclusions={
+                "qualified_passenger_vehicle_loan_interest": (
+                    "OBBBA auto-loan qualifying-interest input not yet imputed "
+                    "(PolicyEngine/populace#252)."
+                )
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "qualified_passenger_vehicle_loan_interest": (
+                "OBBBA auto-loan qualifying-interest input not yet imputed "
+                "(PolicyEngine/populace#252)."
+            )
+        }
+        assert result.details["missing"] == []
+
+    def test_reviewed_exclusion_needs_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="need reasons"):
+            source_stage_input_coverage_gate(
+                {"x": ("row",)},
+                declared_outputs=[],
+                reviewed_exclusions={"x": ""},
+            )
+
+    def test_reviewed_exclusion_list_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            source_stage_input_coverage_gate(
+                {"x": ("row",)},
+                declared_outputs=[],
+                reviewed_exclusions=["x"],  # type: ignore[arg-type]
+            )
+
+    def test_stale_exclusion_for_produced_leaf_fails(self) -> None:
+        # An exclusion for a leaf a stage now produces is stale: the register
+        # must not rot, exactly like the other gates' stale-exclusion checks.
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest"],
+            reviewed_exclusions={
+                "student_loan_interest": "was missing, tracked in #999"
+            },
+        )
+        assert not result.passed
+        assert "Stale reviewed exclusions" in result.failures[0]
+        assert result.details["stale_exclusions"] == ["student_loan_interest"]
+
+    def test_exclusion_for_unrequired_leaf_is_reported_not_failed(self) -> None:
+        # A dormant exclusion for a leaf no row requires is surfaced but does
+        # not fail the gate (different release lines validate different rows).
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest"],
+            reviewed_exclusions={"some_other_leaf": "documented but not required"},
+        )
+        assert result.passed
+        assert result.details["dormant_exclusions"] == ["some_other_leaf"]
+
+    def test_details_map_each_missing_leaf_to_its_consumers(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_tuition_expenses": ("soi_education_credits",),
+                "student_loan_interest": ("soi_student_loan_interest",),
+            },
+            declared_outputs=["student_loan_interest"],
+        )
+        assert not result.passed
+        assert result.details["missing_consumers"] == {
+            "qualified_tuition_expenses": ["soi_education_credits"]
         }

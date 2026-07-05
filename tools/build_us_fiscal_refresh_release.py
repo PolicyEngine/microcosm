@@ -51,14 +51,20 @@ from populace.build.us_runtime import (
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_SOURCE_MANIFEST,
+    assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
     us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_take_up_participation_diagnostics,
+    us_take_up_signal_gate,
+    us_validation_input_coverage_gate,
     with_us_immigration_inputs,
+    with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
+    write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -4055,6 +4061,7 @@ def _write_release_calibration_diagnostics(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    validation_input_coverage_gate: GateResult | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -4134,6 +4141,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(ecps_parity_gate.details),
                 }
                 if ecps_parity_gate is not None
+                else None
+            ),
+            "validation_input_coverage": (
+                {
+                    "passed": validation_input_coverage_gate.passed,
+                    "failures": list(validation_input_coverage_gate.failures),
+                    "details": dict(validation_input_coverage_gate.details),
+                }
+                if validation_input_coverage_gate is not None
                 else None
             ),
             "support_value_repairs": support_value_repairs,
@@ -4746,6 +4762,23 @@ def main() -> None:
     _assert_cd_vintage_support_matches(
         base_h5, congressional_district_vintage_crosswalk_metadata
     )
+    # Preflight (before the expensive calibration): every provision-critical
+    # input leaf the reform-validation configs depend on must be produced by a
+    # source stage or be an allowlisted known gap. This catches the
+    # structurally-missing-input class (PolicyEngine/populace#252, #253) before a
+    # validation row can ship a silent structural zero. The registry is first
+    # checked against the live PolicyEngine-US graph so a stale entry cannot mask
+    # a real gap.
+    assert_validation_leaf_registry_current()
+    validation_input_coverage_gate = us_validation_input_coverage_gate()
+    if not validation_input_coverage_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Validation input coverage failed: {failure}"
+                for failure in validation_input_coverage_gate.failures
+            )
+        )
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -4890,6 +4923,33 @@ def main() -> None:
             + "; ".join(
                 f"Immigration composition failed: {failure}"
                 for failure in immigration_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "take_up_inputs",
+            message="Seeding TANF and EITC take-up from administrative rates.",
+        )
+    base_frame = with_us_take_up_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    take_up_gate = us_take_up_signal_gate(base_frame)
+    if not take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "take_up_gate",
+                status="failed",
+                message="Take-up signal gate failed.",
+                failures=list(take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Take-up signal failed: {failure}"
+                for failure in take_up_gate.failures
             )
         )
     if telemetry is not None:
@@ -5228,6 +5288,7 @@ def main() -> None:
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
+        validation_input_coverage_gate=validation_input_coverage_gate,
     )
     if telemetry is not None:
         telemetry.attach_artifact(
@@ -5387,6 +5448,19 @@ def main() -> None:
         telemetry.attach_artifact(
             "us_source_coverage",
             release_dir / "us_source_coverage.json",
+        )
+        telemetry.stage(
+            "take_up_participation",
+            message="Writing take-up participation diagnostics.",
+        )
+    write_us_take_up_participation_diagnostics(
+        us_take_up_participation_diagnostics(export_frame),
+        release_dir / "us_take_up_participation.json",
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_take_up_participation",
+            release_dir / "us_take_up_participation.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started

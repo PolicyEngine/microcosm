@@ -33,8 +33,10 @@ __all__ = [
     "WeightSpec",
     "DESIGN_WEIGHTS",
     "NO_WEIGHTS",
+    "EXPLICIT_WEIGHTS",
     "resolve_fit_weights",
     "resolve_dataframe_fit_weights",
+    "resolved_weight_kind",
     "predictors_targets_entity",
     "dataframe_fit_columns",
 ]
@@ -46,6 +48,14 @@ DESIGN_WEIGHTS = "design"
 #: ``weights="none"`` — the *only* way to fit unweighted. Explicit by design:
 #: an unweighted fit is a deliberate statistical choice, not a silent fallback.
 NO_WEIGHTS = "none"
+
+#: The *resolved* weight kind of a DataFrame fit weighted by an explicit column
+#: or vector: weighted, but with no kernel :class:`~populace.frame.WeightKind`
+#: provenance (design/importance/calibrated are Frame concepts). Distinct from
+#: ``"none"`` — an explicit-vector fit is weighted, so the build weights audit
+#: does not flag it — and reported honestly rather than mislabeled as a typed
+#: kind. See :func:`resolved_weight_kind`.
+EXPLICIT_WEIGHTS = "explicit"
 
 #: The weight specification accepted by a fit. On a Frame: a
 #: :class:`WeightKind` (or its string value
@@ -450,3 +460,47 @@ def resolve_dataframe_fit_weights(
             f"unweighted, pass weights={NO_WEIGHTS!r} explicitly."
         )
     return vector
+
+
+def resolved_weight_kind(
+    frame_or_df: Frame | pd.DataFrame,
+    entity: str | None,
+    weight_values: np.ndarray | None,
+) -> str:
+    """Name the weight kind a fit *resolved* to, for the build weights audit.
+
+    Called after :func:`resolve_fit_weights` / :func:`resolve_dataframe_fit_weights`
+    have produced ``weight_values``, so it reports what the fit actually resolved
+    — not the spec the caller passed. On a Frame that means the *resolved*
+    (possibly inherited) :class:`~populace.frame.WeightKind`, so a person-level
+    fit on a household-calibrated frame reads back ``"calibrated"`` even though
+    the caller wrote ``weights="design"`` would have raised; on either input an
+    unweighted fit reads back ``"none"`` however it was spelled. This is the
+    value a fitted model records for the build-level weights audit (populace
+    #300), which blocks a release on an unlisted ``"none"``.
+
+    Args:
+        frame_or_df: The input the fit ran on.
+        entity: The resolved entity for a Frame fit, or ``None`` for a DataFrame
+            fit (which has no entities).
+        weight_values: The resolved per-row weights, or ``None`` for an
+            unweighted fit.
+
+    Returns:
+        ``"none"`` when ``weight_values is None`` (unweighted, either door); the
+        resolved :class:`~populace.frame.WeightKind` value
+        (``"design"`` / ``"importance"`` / ``"calibrated"``) for a Frame fit; or
+        :data:`EXPLICIT_WEIGHTS` (``"explicit"``) for a DataFrame fit weighted by
+        a caller-supplied column or vector (weighted, but with no typed kernel
+        provenance).
+    """
+    if weight_values is None:
+        return NO_WEIGHTS
+    if isinstance(frame_or_df, Frame):
+        if entity is None:  # pragma: no cover - defensive; a Frame fit has one
+            raise ValueError(
+                "A weighted Frame fit must resolve an entity to name its weight "
+                "kind; got entity=None."
+            )
+        return frame_or_df.resolve_weights(entity).kind.value
+    return EXPLICIT_WEIGHTS

@@ -1822,6 +1822,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_take_up_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="us_take_up_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_participation_diagnostics",
+        lambda frame: {
+            "schema_version": 1,
+            "classification": "release_diagnostics",
+            "programs": [],
+            "gate": {"passed": True},
+        },
+    )
+    monkeypatch.setattr(
+        builder,
         "_ecps_parity_gate",
         lambda frame: builder.GateResult(
             name="ecps_parity",

@@ -856,18 +856,28 @@ def test_calibration_result_reports_weight_concentration(feasible_frame) -> None
 
 
 def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
-    """The refit stage — the weights that ship — honors its own L2 penalty.
+    """The refit stage — the weights that ship — receives its own L2 penalty.
 
     The refit previously hardcoded ``l2_lambda=0.0``, so a concentration
     penalty could shape support selection but never the published weights.
-    Same selected support, one penalized refit: the penalized weights must be
-    materially less concentrated at a comparable fit.
+    The regression contract is *threading*, pinned via the recorded solver
+    options: exactly what the hardcoded zero would have violated.
+
+    Deliberately NOT asserted here: an ESS direction between the penalized
+    and free refits. On this near-converged fixture the mass projection
+    cancels the penalty's near-proportional push, so that difference sits at
+    the run-to-run nondeterminism noise floor and flips sign intermittently
+    (issue #307) — and the direction itself is anchor- and regime-dependent
+    (an initial-anchored refit penalty *lowers* ESS at production scale).
+    The behavioral direction contract lives in
+    :func:`test_l2_anchor_direction_on_heterogeneous_starting_weights`, in a
+    regime where the effect clears the noise floor by orders of magnitude.
     """
     frame, targets, _ = _l2_concentration_fixture()
     selection = calibrate(
         frame,
         targets,
-        epochs=400,
+        epochs=150,
         seed=0,
         mass="conserve",
         learning_rate=0.05,
@@ -878,7 +888,7 @@ def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
         frame,
         targets,
         selection,
-        epochs=400,
+        epochs=150,
         learning_rate=0.05,
         mass="conserve",
         seed=0,
@@ -887,7 +897,7 @@ def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
         frame,
         targets,
         selection,
-        epochs=400,
+        epochs=150,
         learning_rate=0.05,
         mass="conserve",
         seed=0,
@@ -896,8 +906,12 @@ def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
 
     assert baseline.refit.options["l2_lambda"] == 0.0
     assert penalized.refit.options["l2_lambda"] == 0.001
-    assert penalized.effective_sample_size > baseline.effective_sample_size
-    assert penalized.realized_max_weight_ratio < baseline.realized_max_weight_ratio
+    assert (
+        penalized.refit.options["l2_penalty"]
+        == "mean_initial_pre_gate_weight_ratio_squared"
+    )
+    # Both refits ran on the same selected support and are valid calibrations.
+    assert penalized.n_nonzero == baseline.n_nonzero
     assert penalized.final_loss <= baseline.final_loss + 0.1
 
 
@@ -944,6 +958,200 @@ def test_refit_l2_lambda_must_be_finite_and_non_negative(
             l0_lambda=0.003,
             refit_l2_lambda=refit_l2_lambda,
         )
+
+
+def test_l2_anchor_must_be_known() -> None:
+    frame, targets, _ = _l2_concentration_fixture()
+    with pytest.raises(ValueError, match="l2_anchor"):
+        calibrate(frame, targets, epochs=50, seed=0, l2_anchor="bogus")
+    with pytest.raises(ValueError, match="refit_l2_anchor"):
+        calibrate_l0_refit(
+            frame,
+            targets,
+            epochs=50,
+            seed=0,
+            l0_lambda=0.003,
+            refit_l2_anchor="bogus",
+        )
+
+
+def test_l2_anchor_records_provenance_and_inherits(feasible_frame) -> None:
+    """``l2_anchor`` flows to options; ``refit_l2_anchor`` overrides per stage."""
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_population_target(truths["population"], 1.1),))
+    result = calibrate(
+        frame, targets, epochs=50, seed=0, l2_lambda=0.001, l2_anchor="uniform"
+    )
+    assert result.options["l2_anchor"] == "uniform"
+    assert result.options["l2_penalty"] == "mean_uniform_pre_gate_weight_ratio_squared"
+
+    frame2, targets2, _ = _l2_concentration_fixture()
+    two_stage = calibrate_l0_refit(
+        frame2,
+        targets2,
+        epochs=100,
+        seed=0,
+        l0_lambda=0.003,
+        l2_lambda=0.001,
+        l2_anchor="uniform",
+        refit_l2_anchor="initial",
+    )
+    assert two_stage.options["selection_options"]["l2_anchor"] == "uniform"
+    assert two_stage.options["l2_anchor"] == "initial"
+
+
+def test_l2_anchor_direction_on_heterogeneous_starting_weights() -> None:
+    """On heterogeneous starts the anchor decides which way the penalty pulls.
+
+    Under mass conservation the penalty's constrained optimum is
+    ``w ∝ anchor²``. Anchored at heterogeneous starting weights
+    (``l2_anchor="initial"``) it therefore pulls toward the *square* of the
+    start — more concentration, ESS below the start — while the uniform
+    anchor is a direct 1/ESS control that spreads weights above the start.
+    This pins the production pathology observed in the full-scale L2 sweep:
+    the post-L0 refit starts from the selection stage's concentrated weights,
+    so an initial-anchored refit penalty collapsed ESS instead of raising it.
+    The contract needs active fit gradients — on an already-converged problem
+    the mass projection cancels the penalty's near-proportional push.
+    """
+    rng = np.random.default_rng(0)
+    n = 160
+    income = rng.lognormal(10.5, 1.0, n)
+    initial_weights = rng.lognormal(6.5, 1.2, n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame({"household_id": range(n), "income": income}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=initial_weights, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * initial_weights).sum()) * 1.3,
+                measure="income",
+            ),
+        )
+    )
+    start_ess = effective_sample_size(initial_weights)
+
+    common = dict(
+        epochs=300, learning_rate=0.05, mass="conserve", seed=0, l2_lambda=0.05
+    )
+    initial_anchor = calibrate(frame, targets, **common)
+    uniform_anchor = calibrate(frame, targets, **common, l2_anchor="uniform")
+
+    assert initial_anchor.options["l2_anchor"] == "initial"
+    assert uniform_anchor.options["l2_anchor"] == "uniform"
+    # Initial anchor concentrates below the start; uniform spreads above it.
+    assert initial_anchor.effective_sample_size < start_ess * 0.6
+    assert uniform_anchor.effective_sample_size > start_ess * 1.4
+    assert uniform_anchor.final_loss < 0.05  # spreading did not break the fit
+
+
+def test_l2_anchor_weights_override_reproduces_presets_exactly(
+    feasible_frame,
+) -> None:
+    """An explicit anchor equal to the starting weights IS the initial anchor.
+
+    The explicit-vector seam (how a refit expresses the "design" anchor) must
+    change nothing when it encodes a preset — same anchor, bit-identical run —
+    while recording its own provenance label.
+    """
+    frame, truths = feasible_frame(n=60)
+    targets = TargetSet((_income_target(truths["income"], 1.3),))
+    w0 = frame.resolve_weights("household").values
+
+    preset = calibrate(
+        frame, targets, epochs=80, seed=0, l2_lambda=0.05, l2_anchor="initial"
+    )
+    explicit = calibrate(
+        frame,
+        targets,
+        epochs=80,
+        seed=0,
+        l2_lambda=0.05,
+        l2_anchor="design",
+        l2_anchor_weights=w0.copy(),
+    )
+
+    np.testing.assert_array_equal(explicit.weights, preset.weights)
+    assert explicit.options["l2_anchor"] == "design"
+    assert explicit.options["l2_anchor_weights_supplied"] is True
+    assert (
+        explicit.options["l2_penalty"]
+        == "mean_explicit_anchor_pre_gate_weight_ratio_squared"
+    )
+    assert preset.options["l2_anchor_weights_supplied"] is False
+
+
+def test_l2_anchor_weights_are_validated(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_income_target(truths["income"], 1.2),))
+    with pytest.raises(ValueError, match="finite and strictly positive"):
+        calibrate(
+            frame,
+            targets,
+            epochs=20,
+            seed=0,
+            l2_lambda=0.01,
+            l2_anchor="design",
+            l2_anchor_weights=np.full(40, -1.0),
+        )
+    with pytest.raises(ValueError, match="shape"):
+        calibrate(
+            frame,
+            targets,
+            epochs=20,
+            seed=0,
+            l2_lambda=0.01,
+            l2_anchor="design",
+            l2_anchor_weights=np.ones(7),
+        )
+    with pytest.raises(ValueError, match="non-empty label"):
+        calibrate(
+            frame,
+            targets,
+            epochs=20,
+            seed=0,
+            l2_lambda=0.01,
+            l2_anchor="",
+            l2_anchor_weights=np.ones(40),
+        )
+
+
+def test_refit_design_anchor_uses_pre_selection_weights() -> None:
+    """The refit 'design' anchor resolves to the survivors' pre-selection start.
+
+    Provenance must show the refit ran with an explicit anchor labelled
+    'design' while the selection stage recorded the equivalent 'initial'
+    anchor, so a design-weighted production run can regularize the shipped
+    weights toward the survey design rather than toward the selection
+    stage's concentrated output.
+    """
+    frame, targets, _ = _l2_concentration_fixture()
+    result = calibrate_l0_refit(
+        frame,
+        targets,
+        epochs=150,
+        seed=0,
+        mass="conserve",
+        learning_rate=0.05,
+        l0_lambda=0.003,
+        l2_lambda=0.001,
+        l2_anchor="design",
+    )
+
+    assert result.options["l2_anchor"] == "design"
+    assert result.options["l2_anchor_weights_supplied"] is True
+    # At a fresh selection the design anchor IS the initial anchor.
+    assert result.options["selection_options"]["l2_anchor"] == "initial"
+    assert result.options["selection_options"]["l2_anchor_weights_supplied"] is False
 
 
 def test_l0_refit_result_delegates_summary_metrics_to_refit() -> None:

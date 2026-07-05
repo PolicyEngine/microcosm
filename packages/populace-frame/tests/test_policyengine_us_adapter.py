@@ -606,3 +606,46 @@ class TestEndToEnd:
         )
         # 1500*(70k + 30k) + 900*48k = 193,200,000
         assert wsum(rebuilt, "employment_income_2024") == 193_200_000.0
+
+
+class TestTakeUpContract:
+    """Take-up variable discovery and classification (populace #312)."""
+
+    def test_take_up_variables_are_discovered(self, adapter) -> None:
+        names = adapter.take_up_variables()
+        # Known take-up flags in the pinned engine.
+        assert "takes_up_snap_if_eligible" in names
+        assert "takes_up_eitc" in names
+        assert "takes_up_tanf_if_eligible" in names
+        # All discovered names carry the take-up marker.
+        assert all(
+            name.startswith("takes_up") or "take_up_seed" in name for name in names
+        )
+        assert names == sorted(names)
+
+    def test_contract_covers_every_take_up_variable(self, adapter) -> None:
+        contract = adapter.take_up_contract()
+        assert set(contract) == set(adapter.take_up_variables())
+
+    def test_data_seeded_flag_is_classified(self, adapter) -> None:
+        # SNAP take-up has no formula and a True default -> data_seeded, and is
+        # consumed by the snap formula.
+        info = adapter.take_up_contract()["takes_up_snap_if_eligible"]
+        assert info["engine_class"] == "data_seeded"
+        assert info["default"] is True
+        assert info["entity"] == "spm_unit"
+        assert info["value_type"] == "bool"
+        assert not info["engine_computed"]
+        assert "snap" in info["consumers"]
+
+    def test_enrolled_adds_consumer_is_detected(self, adapter) -> None:
+        # Medicaid take-up is read through medicaid_enrolled's `adds`, not a
+        # formula body -- the classifier must still see it as consumed.
+        info = adapter.take_up_contract()["takes_up_medicaid_if_eligible"]
+        assert "medicaid_enrolled" in info["consumers"]
+        assert info["engine_class"] == "data_seeded"
+
+    def test_no_take_up_flag_is_dead_in_pinned_engine(self, adapter) -> None:
+        contract = adapter.take_up_contract()
+        dead = [n for n, info in contract.items() if info["engine_class"] == "dead"]
+        assert dead == [], f"unexpected dead take-up flags: {dead}"

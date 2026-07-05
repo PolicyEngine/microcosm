@@ -61,6 +61,7 @@ from populace.fit.model import (
     predictors_targets_entity,
     resolve_dataframe_fit_weights,
     resolve_fit_weights,
+    resolved_weight_kind,
 )
 from populace.frame import Frame
 
@@ -457,6 +458,10 @@ class RegimeGatedQRF:
                 frame_or_df, weights, predictors=predictors, targets=targets
             )
             table = frame_or_df
+        # Record the kind actually resolved (inherited kind on a Frame, "none"
+        # for any unweighted fit, "explicit" for a DataFrame vector) so a build
+        # can audit what the fit weighted by, not what the caller intended.
+        weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
         _validate_targets_finite(table, targets)
 
         # Split the model seed into two independent streams: one drives the
@@ -489,6 +494,7 @@ class RegimeGatedQRF:
             target_models=target_models,
             zero_atol=self.zero_atol,
             draw_seed=draw_seed,
+            weight_kind=weight_kind,
         )
 
     def _fit_target(
@@ -620,6 +626,13 @@ class FittedRegimeGatedQRF:
             a model fit on a plain DataFrame (which has no entities).
         predictors: The conditioning columns.
         targets: The drawn columns, in chain order.
+        weight_kind: The weight kind this fit *resolved* to
+            (:func:`~populace.fit.model.resolved_weight_kind`) — ``"design"`` /
+            ``"importance"`` / ``"calibrated"`` for a Frame fit (the resolved,
+            possibly inherited kind), ``"explicit"`` for a DataFrame fit weighted
+            by a caller-supplied column or vector, or ``"none"`` for an
+            unweighted fit. Read-only; the value a build records for the
+            weights audit (populace #300).
     """
 
     def __init__(
@@ -631,6 +644,7 @@ class FittedRegimeGatedQRF:
         target_models: dict[str, _TargetModel],
         zero_atol: float,
         draw_seed: np.random.SeedSequence,
+        weight_kind: str,
     ) -> None:
         self.entity = entity
         self.predictors = list(predictors)
@@ -638,6 +652,12 @@ class FittedRegimeGatedQRF:
         self._target_models = target_models
         self._zero_atol = zero_atol
         self._rng = np.random.default_rng(draw_seed)
+        self._weight_kind = weight_kind
+
+    @property
+    def weight_kind(self) -> str:
+        """The weight kind this fit resolved to. See the class docstring."""
+        return self._weight_kind
 
     def regimes(self) -> dict[str, str]:
         """The detected :class:`Regime` label per target."""
