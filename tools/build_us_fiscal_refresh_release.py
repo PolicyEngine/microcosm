@@ -5399,6 +5399,7 @@ def main() -> None:
         immigration_gate=immigration_gate,
         input_mass_reference_gate=enforced_input_mass_reference_gate,
         degenerate_input_gate=degenerate_input_gate,
+        ecps_parity_gate=ecps_parity_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         ledger_artifact=ledger_artifact.provenance(),
