@@ -142,8 +142,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-_DOWNLOAD_MAX_ATTEMPTS = 5
+_DOWNLOAD_MAX_ATTEMPTS = 8
 _DOWNLOAD_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+_DOWNLOAD_MAX_BACKOFF_SECONDS = 60.0
 
 
 def _fetch(url: str) -> bytes:
@@ -170,7 +171,7 @@ def _fetch(url: str) -> bytes:
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             last_exc = exc
         if attempt < _DOWNLOAD_MAX_ATTEMPTS:
-            backoff = 2.0 * (2 ** (attempt - 1))
+            backoff = min(2.0 * (2 ** (attempt - 1)), _DOWNLOAD_MAX_BACKOFF_SECONDS)
             _log(
                 f"  transient download failure ({last_exc}); "
                 f"retry {attempt}/{_DOWNLOAD_MAX_ATTEMPTS - 1} in {backoff:.0f}s"
