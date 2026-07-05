@@ -125,6 +125,19 @@ from populace.build.us_runtime.immigration import (
 from populace.build.us_runtime.input_mass import (
     us_input_mass_totals,
 )
+from populace.build.us_runtime.nonzero_shares import (
+    nonzero_share,
+    us_nonzero_shares,
+)
+from populace.build.us_runtime.parity_reference import (
+    ECPS_PARITY_KNOWN_GAPS_RESOURCE,
+    ECPS_PARITY_REFERENCE_RESOURCE,
+    EcpsParityReference,
+    EcpsParitySource,
+    ParityKnownGap,
+    load_ecps_parity_known_gaps,
+    load_ecps_parity_reference,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -260,7 +273,16 @@ __all__ = [
     "pool_asec_sources",
     "reform_validation_payload",
     "source_gap_family_ids",
+    "ECPS_PARITY_KNOWN_GAPS_RESOURCE",
+    "ECPS_PARITY_REFERENCE_RESOURCE",
+    "EcpsParityReference",
+    "EcpsParitySource",
+    "ParityKnownGap",
+    "load_ecps_parity_known_gaps",
+    "load_ecps_parity_reference",
+    "nonzero_share",
     "us_input_mass_totals",
+    "us_nonzero_shares",
     "us_plan",
     "us_source_operation_handlers",
     "write_reform_validation",
