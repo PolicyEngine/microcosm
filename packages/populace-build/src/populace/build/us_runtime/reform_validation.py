@@ -46,6 +46,7 @@ __all__ = [
     "soi_baseline_level_specs",
     "state_program_level_specs",
     "state_program_reform_specs",
+    "state_reform_specs",
     "default_baseline_level_specs",
     "load_default_reform_specs",
     "reform_validation_payload",
@@ -358,6 +359,59 @@ def state_program_reform_specs(
     return tuple(specs)
 
 
+def _state_reforms_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("state_reforms.json")))
+
+
+def state_reform_specs(
+    path: Path | None = None,
+    *,
+    period: int,
+) -> tuple[ReformValidationSpec, ...]:
+    """State legislative reforms scored against official state fiscal notes.
+
+    Each is a parametric bill from the PolicyEngine state-legislative-tracker:
+    the reform's parameter changes are applied on top of current law and the
+    change in the state's own income-tax variable (reform − baseline) is
+    compared to the state's published fiscal note. State income-tax variables
+    are ``defined_for`` their state, so the national delta IS the state delta.
+    Unlike OBBBA provisions these bills are NOT in the policyengine-us
+    baseline, so no revert/stacking applies — each is a plain enactment.
+    State income taxes are not calibration targets, so every row is
+    out-of-sample.
+    """
+    config_path = path or _state_reforms_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    specs: list[ReformValidationSpec] = []
+    for raw in payload.get("reforms", ()):
+        bench = raw.get("benchmark", {})
+        specs.append(
+            ReformValidationSpec(
+                id=raw["id"],
+                name=raw["name"],
+                category=raw.get("category", "State reform"),
+                in_sample=False,
+                period=int(raw.get("period", period)),
+                jct_score=(
+                    float(bench["score"]) if bench.get("score") is not None else None
+                ),
+                jct_window=str(bench.get("window", "")),
+                jct_source=str(bench.get("source", "")),
+                jct_source_url=str(bench.get("source_url", "")),
+                jct_score_type=str(bench.get("score_type", "fiscal_note")),
+                budget_measure=str(raw.get("budget_measure", "state_income_tax")),
+                description=str(raw.get("description", "")),
+                parameter_changes=raw["parameter_changes"],
+                # An enacted bill's effect is reform − baseline (a rate cut
+                # yields a negative delta, matching the fiscal note's sign).
+                effect_direction="reform_minus_baseline",
+            )
+        )
+    return tuple(specs)
+
+
 @dataclass(frozen=True)
 class BaselineLevelSpec:
     """A baseline total compared to a published actual (no counterfactual).
@@ -474,15 +528,18 @@ def load_default_reform_specs(
     obbba_path: Path | None = None,
     tax_expenditure_path: Path | None = None,
     state_program_path: Path | None = None,
+    state_reforms_path: Path | None = None,
 ) -> tuple[ReformValidationSpec, ...]:
     """In-sample JCT tax expenditures + out-of-sample OBBBA provisions + the
     big-provision tax-expenditure reforms (CTC/EITC/CDCC/standard/itemized) +
-    state-program repeal reforms scored against official state outlays."""
+    state-program repeal reforms scored against official state outlays +
+    state legislative reforms scored against official state fiscal notes."""
     return (
         *in_sample_reform_specs(period=period),
         *out_of_sample_reform_specs(obbba_path, period=period),
         *tax_expenditure_reform_specs(tax_expenditure_path, period=period),
         *state_program_reform_specs(state_program_path, period=period),
+        *state_reform_specs(state_reforms_path, period=period),
     )
 
 

@@ -782,6 +782,59 @@ def test_state_program_reform_specs_load(tmp_path):
     assert spec.effect_direction == "reform_minus_baseline"
 
 
+def test_state_reform_specs_load(tmp_path):
+    from populace.build.us_runtime.reform_validation import state_reform_specs
+
+    config = _write_json(
+        tmp_path / "state_reforms.json",
+        {
+            "reforms": [
+                {
+                    "id": "state.mi.hb4170",
+                    "name": "MI HB4170 flat rate cut",
+                    "state": "MI",
+                    "period": 2025,
+                    "budget_measure": "mi_income_tax",
+                    "parameter_changes": {
+                        "gov.states.mi.tax.income.rate": {
+                            "2025-01-01.2100-12-31": 0.0405
+                        }
+                    },
+                    "benchmark": {
+                        "score": -7.0e8,
+                        "window": "annual",
+                        "source": "Michigan HFA fiscal note",
+                        "source_url": "https://www.legislature.mi.gov/",
+                    },
+                }
+            ]
+        },
+    )
+    specs = state_reform_specs(config, period=2026)
+    (spec,) = specs
+    assert spec.category == "State reform"
+    assert spec.in_sample is False
+    assert spec.period == 2025
+    assert spec.budget_measure == "mi_income_tax"
+    assert spec.jct_score == -7.0e8
+    assert spec.jct_score_type == "fiscal_note"
+    assert spec.parameter_changes
+    assert spec.effect_direction == "reform_minus_baseline"
+
+
+def test_state_reform_specs_shipped_config_loads():
+    from populace.build.us_runtime.reform_validation import state_reform_specs
+
+    specs = state_reform_specs(period=2026)
+    assert len(specs) >= 9
+    assert all(spec.category == "State reform" for spec in specs)
+    assert all(not spec.in_sample for spec in specs)
+    assert all(spec.parameter_changes for spec in specs)
+    # Each row scores its own state's income tax, and carries a real benchmark.
+    assert all(spec.budget_measure.endswith("_income_tax") for spec in specs)
+    assert all(spec.jct_score is not None for spec in specs)
+
+
 def test_default_baseline_level_specs_concatenates(monkeypatch, tmp_path):
     from populace.build.us_runtime import reform_validation as rv
 
