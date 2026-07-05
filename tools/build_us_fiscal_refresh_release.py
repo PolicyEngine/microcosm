@@ -4127,6 +4127,15 @@ def _write_release_calibration_diagnostics(
                 if input_mass_reference_gate is not None
                 else None
             ),
+            "ecps_parity": (
+                {
+                    "passed": ecps_parity_gate.passed,
+                    "failures": list(ecps_parity_gate.failures),
+                    "details": dict(ecps_parity_gate.details),
+                }
+                if ecps_parity_gate is not None
+                else None
+            ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
                 dict(warm_start_calibration)
