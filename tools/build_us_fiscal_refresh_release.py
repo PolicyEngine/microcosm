@@ -4054,6 +4054,7 @@ def _write_release_calibration_diagnostics(
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -4336,6 +4337,7 @@ def _build_manifests(
     immigration_gate: GateResult | None = None,
     input_mass_reference_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
