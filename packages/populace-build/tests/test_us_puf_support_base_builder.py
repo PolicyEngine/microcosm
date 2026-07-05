@@ -2,7 +2,16 @@ import importlib.util
 import json
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
+
+from populace.build import FitWeightRecord
+from populace.build.us_runtime import (
+    US_PUF_SUPPORT_FIT_NAME,
+    clone_us_frame_for_puf_support,
+)
+from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
 def _load_support_builder_module():
@@ -13,6 +22,138 @@ def _load_support_builder_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def _minimal_us_frame() -> Frame:
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "employment_income_before_lsr": np.asarray(
+                [50_000, 20_000, 125_000], dtype="int64"
+            ),
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame(
+            {
+                "household_id": np.asarray([1, 2], dtype="int64"),
+                "state_fips": np.asarray([6, 36], dtype="int64"),
+            }
+        ),
+        "tax_unit": pd.DataFrame(
+            {
+                "tax_unit_id": np.asarray([10, 20], dtype="int64"),
+                "filing_status_input": ["JOINT", "SINGLE"],
+            }
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+        "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": np.asarray([10000, 20000])}),
+    }
+    strata = pd.Series(["asec_2024", "asec_2024", "asec_2023"], name="stratum")
+    weights = {
+        "household": Weights(
+            values=np.asarray([100.0, 300.0]),
+            kind=WeightKind.DESIGN,
+        )
+    }
+    return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def _support_donor() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "employment_income_before_lsr": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+
+_SUPPORT_FIT_KWARGS = dict(
+    predictors=(
+        "puf_predictor_filing_status_code",
+        "puf_predictor_tax_unit_person_count",
+    ),
+    person_outputs=("employment_income_before_lsr",),
+    tax_unit_outputs=(),
+    n_estimators=4,
+    seed=0,
+)
+
+
+class TestBaseBuildWeightsAudit:
+    """The base build records and enforces the PUF-support fit's weight kind.
+
+    This is what makes the build-level weights audit (populace #300) real for the
+    actual production tool: ``impute_and_audit_us_puf_support`` runs the fit,
+    records its resolved weight kind, writes the audit into the build summary, and
+    aborts the build on a failing audit. Engine-free — the imputation's
+    formula-owned guard degrades to its static seed without ``policyengine_us``.
+    """
+
+    def test_base_build_records_design_weight_kind_in_the_summary(self) -> None:
+        builder = _load_support_builder_module()
+
+        _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            _support_donor(),
+            **_SUPPORT_FIT_KWARGS,
+        )
+
+        assert weights_audit["passed"] is True
+        assert weights_audit["failures"] == []
+        assert weights_audit["details"]["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }
+
+    def test_base_build_summary_json_carries_the_audit(self) -> None:
+        # The audit record must survive JSON serialization the summary uses.
+        builder = _load_support_builder_module()
+
+        _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            _support_donor(),
+            **_SUPPORT_FIT_KWARGS,
+        )
+        round_tripped = json.loads(json.dumps({"weights_audit": weights_audit}))
+
+        assert round_tripped["weights_audit"]["details"]["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }
+
+    def test_base_build_aborts_when_the_audit_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Prove the wiring can actually fail the build: a fit that resolves
+        # unweighted (simulated by recording a "none" record) makes the helper
+        # raise SystemExit naming the fit, so a release cannot ship a silently
+        # unweighted support fit.
+        builder = _load_support_builder_module()
+
+        def fake_impute(expanded, donor, *, fit_records=None, **_kwargs):
+            if fit_records is not None:
+                fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "none"))
+            return expanded
+
+        monkeypatch.setattr(builder, "impute_us_puf_tax_detail_support", fake_impute)
+
+        with pytest.raises(SystemExit) as exc:
+            builder.impute_and_audit_us_puf_support(
+                clone_us_frame_for_puf_support(_minimal_us_frame()),
+                _support_donor(),
+                **_SUPPORT_FIT_KWARGS,
+            )
+
+        assert US_PUF_SUPPORT_FIT_NAME in str(exc.value)
+        assert "unweighted" in str(exc.value)
 
 
 def test_cd_vintage_crosswalk_requires_cd_assignment() -> None:

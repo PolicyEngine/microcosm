@@ -17,7 +17,7 @@ import pytest
 from populace.fit import fit as fit_convenience
 from populace.fit.model import FittedModel
 from populace.fit.qrf import RegimeGatedQRF
-from populace.frame import WeightKind
+from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def _toy_df(n: int = 60, seed: int = 0) -> pd.DataFrame:
@@ -204,3 +204,77 @@ def test_top_level_fit_accepts_dataframes() -> None:
     fitted = fit_convenience(df, ["x"], ["y"], weights="weight", n_estimators=5, seed=1)
     assert isinstance(fitted, FittedModel)
     assert len(fitted.predict(df.loc[:, ["x"]])) == len(df)
+
+
+class TestFittedModelRecordsResolvedWeightKind:
+    """A fitted model exposes the weight kind it *resolved* at fit time.
+
+    The build-level weights audit (populace #300) records this per production
+    fit and blocks a release on an unlisted ``"none"``. Recording the *resolved*
+    kind — not the spec the caller passed — is what makes the audit trustworthy:
+    on a Frame the resolved kind reflects inherited weights, and an unweighted
+    fit reads back ``"none"`` no matter how it was spelled.
+    """
+
+    def test_frame_design_weights_read_back_as_design(self, make_person_frame) -> None:
+        frame = make_person_frame(
+            {"x": np.zeros(16), "y": np.arange(1.0, 17.0)},
+            weights=np.full(16, 3.0),
+        )
+        fitted = _small_model().fit(frame, ["x"], ["y"], weights="design")
+        assert fitted.weight_kind == "design"
+
+    def test_frame_calibrated_weights_read_back_as_calibrated(self) -> None:
+        # A frame whose person weights are calibrated: the resolved kind must be
+        # what the frame carries, not the spec's spelling.
+        n = 16
+        person = pd.DataFrame(
+            {
+                "person_id": np.arange(n, dtype="int64"),
+                "person_household_id": np.arange(n, dtype="int64"),
+                "x": np.zeros(n),
+                "y": np.arange(1.0, n + 1.0),
+            }
+        )
+        household = pd.DataFrame({"household_id": np.arange(n, dtype="int64")})
+        frame = Frame(
+            {"person": person, "household": household},
+            EntitySchema(group_entities=("household",)),
+            {"person": Weights(np.full(n, 4.0), WeightKind.CALIBRATED)},
+        )
+        fitted = _small_model().fit(frame, ["x"], ["y"], weights="calibrated")
+        assert fitted.weight_kind == "calibrated"
+
+    def test_frame_unweighted_reads_back_as_none(self, make_person_frame) -> None:
+        frame = make_person_frame(
+            {"x": np.zeros(16), "y": np.arange(1.0, 17.0)},
+            weights=np.full(16, 3.0),
+        )
+        fitted = _small_model().fit(frame, ["x"], ["y"], weights="none")
+        assert fitted.weight_kind == "none"
+
+    def test_dataframe_vector_reads_back_as_explicit(self) -> None:
+        # A bare DataFrame has no typed kind; an explicit weight vector is
+        # weighted-but-untyped, recorded as "explicit" (never "none").
+        df = _toy_df()
+        fitted = _small_model().fit(df, ["x"], ["y"], weights=df["weight"].to_numpy())
+        assert fitted.weight_kind == "explicit"
+
+    def test_dataframe_column_reads_back_as_explicit(self) -> None:
+        df = _toy_df()
+        fitted = _small_model().fit(df, ["x"], ["y"], weights="weight")
+        assert fitted.weight_kind == "explicit"
+
+    def test_dataframe_unweighted_reads_back_as_none(self) -> None:
+        df = _toy_df()
+        fitted = _small_model().fit(df, ["x"], ["y"], weights="none")
+        assert fitted.weight_kind == "none"
+
+    def test_weight_kind_is_read_only(self, make_person_frame) -> None:
+        frame = make_person_frame(
+            {"x": np.zeros(16), "y": np.arange(1.0, 17.0)},
+            weights=np.full(16, 3.0),
+        )
+        fitted = _small_model().fit(frame, ["x"], ["y"], weights="design")
+        with pytest.raises(AttributeError):
+            fitted.weight_kind = "none"  # type: ignore[misc]
