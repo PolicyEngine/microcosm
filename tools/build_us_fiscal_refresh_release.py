@@ -4536,6 +4536,16 @@ def _build_manifests(
                 if immigration_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "ecps_parity": {
+                        "passed": ecps_parity_gate.passed,
+                        "details": dict(ecps_parity_gate.details),
+                    }
+                }
+                if ecps_parity_gate is not None
+                else {}
+            ),
         },
         "compatible_core_packages": [
             {
