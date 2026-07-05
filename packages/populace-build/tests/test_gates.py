@@ -27,6 +27,7 @@ from populace.build import (
     per_family_fit_gate,
     relative_error_loss,
     source_coverage_gate,
+    source_stage_input_coverage_gate,
     support_gate,
     target_profile_coverage_gate,
     target_surface_gate,
@@ -1208,3 +1209,130 @@ class TestWeightsAuditGate:
         assert result.passed
         assert result.details["resolved_weight_kinds"] == {}
         assert result.details["fits_checked"] == 0
+
+
+class TestSourceStageInputCoverageGate:
+    """A validation row's provision-critical input leaf must be produced.
+
+    Replays the #252/#253 class: a validation config scores a provision whose
+    effect is driven by a pure-input leaf (``qualified_tuition_expenses``,
+    ``qualified_passenger_vehicle_loan_interest``). If no source stage produces
+    that leaf, the row validates as a structural zero and nobody notices until
+    an external benchmark exposes it. This gate makes that fail the build.
+    """
+
+    def test_undeclared_required_leaf_fails_with_variable_named(self) -> None:
+        # The #253 signature: education-credit validation needs
+        # qualified_tuition_expenses, but no stage declares it.
+        result = source_stage_input_coverage_gate(
+            {"qualified_tuition_expenses": ("soi_education_credits",)},
+            declared_outputs=[
+                "employment_income_before_lsr",
+                "short_term_capital_gains",
+            ],
+        )
+        assert not result.passed
+        assert "qualified_tuition_expenses" in result.failures[0]
+        assert "soi_education_credits" in result.failures[0]
+        assert result.details["missing"] == ["qualified_tuition_expenses"]
+
+    def test_produced_required_leaf_passes(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest", "home_mortgage_interest"],
+        )
+        assert result.passed
+        assert result.details["required_leaves"] == 1
+        assert result.details["missing"] == []
+
+    def test_multiple_consumers_of_a_missing_leaf_are_all_named(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_passenger_vehicle_loan_interest": (
+                    "obbba_auto_loan_interest",
+                    "te_auto_loan_interest",
+                )
+            },
+            declared_outputs=["auto_loan_interest"],
+        )
+        assert not result.passed
+        assert "obbba_auto_loan_interest" in result.failures[0]
+        assert "te_auto_loan_interest" in result.failures[0]
+
+    def test_reviewed_exclusion_passes_and_is_recorded(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_passenger_vehicle_loan_interest": (
+                    "obbba_auto_loan_interest",
+                )
+            },
+            declared_outputs=["auto_loan_interest"],
+            reviewed_exclusions={
+                "qualified_passenger_vehicle_loan_interest": (
+                    "OBBBA auto-loan qualifying-interest input not yet imputed "
+                    "(PolicyEngine/populace#252)."
+                )
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "qualified_passenger_vehicle_loan_interest": (
+                "OBBBA auto-loan qualifying-interest input not yet imputed "
+                "(PolicyEngine/populace#252)."
+            )
+        }
+        assert result.details["missing"] == []
+
+    def test_reviewed_exclusion_needs_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="need reasons"):
+            source_stage_input_coverage_gate(
+                {"x": ("row",)},
+                declared_outputs=[],
+                reviewed_exclusions={"x": ""},
+            )
+
+    def test_reviewed_exclusion_list_is_refused(self) -> None:
+        with pytest.raises(TypeError, match="mapping from name to reason"):
+            source_stage_input_coverage_gate(
+                {"x": ("row",)},
+                declared_outputs=[],
+                reviewed_exclusions=["x"],  # type: ignore[arg-type]
+            )
+
+    def test_stale_exclusion_for_produced_leaf_fails(self) -> None:
+        # An exclusion for a leaf a stage now produces is stale: the register
+        # must not rot, exactly like the other gates' stale-exclusion checks.
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest"],
+            reviewed_exclusions={
+                "student_loan_interest": "was missing, tracked in #999"
+            },
+        )
+        assert not result.passed
+        assert "Stale reviewed exclusions" in result.failures[0]
+        assert result.details["stale_exclusions"] == ["student_loan_interest"]
+
+    def test_exclusion_for_unrequired_leaf_is_reported_not_failed(self) -> None:
+        # A dormant exclusion for a leaf no row requires is surfaced but does
+        # not fail the gate (different release lines validate different rows).
+        result = source_stage_input_coverage_gate(
+            {"student_loan_interest": ("soi_student_loan_interest",)},
+            declared_outputs=["student_loan_interest"],
+            reviewed_exclusions={"some_other_leaf": "documented but not required"},
+        )
+        assert result.passed
+        assert result.details["dormant_exclusions"] == ["some_other_leaf"]
+
+    def test_details_map_each_missing_leaf_to_its_consumers(self) -> None:
+        result = source_stage_input_coverage_gate(
+            {
+                "qualified_tuition_expenses": ("soi_education_credits",),
+                "student_loan_interest": ("soi_student_loan_interest",),
+            },
+            declared_outputs=["student_loan_interest"],
+        )
+        assert not result.passed
+        assert result.details["missing_consumers"] == {
+            "qualified_tuition_expenses": ["soi_education_credits"]
+        }

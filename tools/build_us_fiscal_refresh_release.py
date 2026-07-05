@@ -50,12 +50,14 @@ from populace.build.us_runtime import (
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_SOURCE_MANIFEST,
+    assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
     us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_validation_input_coverage_gate,
     with_us_immigration_inputs,
     write_us_source_coverage_diagnostics,
 )
@@ -3973,6 +3975,7 @@ def _write_release_calibration_diagnostics(
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
     degenerate_input_gate: GateResult | None = None,
+    validation_input_coverage_gate: GateResult | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -4043,6 +4046,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(input_mass_reference_gate.details),
                 }
                 if input_mass_reference_gate is not None
+                else None
+            ),
+            "validation_input_coverage": (
+                {
+                    "passed": validation_input_coverage_gate.passed,
+                    "failures": list(validation_input_coverage_gate.failures),
+                    "details": dict(validation_input_coverage_gate.details),
+                }
+                if validation_input_coverage_gate is not None
                 else None
             ),
             "support_value_repairs": support_value_repairs,
@@ -4632,6 +4644,23 @@ def main() -> None:
     _assert_cd_vintage_support_matches(
         base_h5, congressional_district_vintage_crosswalk_metadata
     )
+    # Preflight (before the expensive calibration): every provision-critical
+    # input leaf the reform-validation configs depend on must be produced by a
+    # source stage or be an allowlisted known gap. This catches the
+    # structurally-missing-input class (PolicyEngine/populace#252, #253) before a
+    # validation row can ship a silent structural zero. The registry is first
+    # checked against the live PolicyEngine-US graph so a stale entry cannot mask
+    # a real gap.
+    assert_validation_leaf_registry_current()
+    validation_input_coverage_gate = us_validation_input_coverage_gate()
+    if not validation_input_coverage_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Validation input coverage failed: {failure}"
+                for failure in validation_input_coverage_gate.failures
+            )
+        )
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -5087,6 +5116,7 @@ def main() -> None:
         incumbent_diagnostics=incumbent_diagnostics,
         default_dataset=default_dataset,
         degenerate_input_gate=degenerate_input_gate,
+        validation_input_coverage_gate=validation_input_coverage_gate,
     )
     if telemetry is not None:
         telemetry.attach_artifact(

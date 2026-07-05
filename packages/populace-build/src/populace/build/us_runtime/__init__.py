@@ -162,6 +162,13 @@ from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
+from populace.build.us_runtime.validation_input_coverage import (
+    US_VALIDATION_PROVISION_INPUT_LEAVES,
+    ValidationInputLeaf,
+    assert_validation_leaf_registry_current,
+    us_source_stage_outputs,
+    us_validation_input_coverage_gate,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -268,6 +275,11 @@ __all__ = [
     "write_reform_validation",
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",
+    "us_source_stage_outputs",
+    "us_validation_input_coverage_gate",
+    "US_VALIDATION_PROVISION_INPUT_LEAVES",
+    "ValidationInputLeaf",
+    "assert_validation_leaf_registry_current",
     "write_us_source_coverage_diagnostics",
     "support_channel_column",
     "support_clone_index_column",

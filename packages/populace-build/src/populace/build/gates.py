@@ -65,6 +65,7 @@ __all__ = [
     "aggregate_admin_gate",
     "per_family_fit_gate",
     "source_coverage_gate",
+    "source_stage_input_coverage_gate",
     "target_profile_coverage_gate",
     "TargetCoverageRequirement",
     "relative_error_loss",
@@ -1408,6 +1409,113 @@ def source_coverage_gate(
                     "missing_source_packages": source_gap_package_count,
                 },
             },
+        },
+    )
+
+
+def source_stage_input_coverage_gate(
+    required_leaves: Mapping[str, Iterable[str]],
+    *,
+    declared_outputs: Iterable[str],
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    name: str = "source_stage_input_coverage",
+) -> GateResult:
+    """Every provision-critical validation input leaf is produced by a stage.
+
+    A validation config scores a policy provision (an OBBBA reform, a
+    tax-expenditure repeal, an SOI baseline level) whose simulated effect is
+    driven by one or more *pure-input leaves* — engine variables with no
+    formula, whose values must come from a source stage. If a row's critical
+    leaf is produced by no stage, the provision is structurally zero on the
+    dataset and the row validates as a silent zero until an external benchmark
+    exposes it (the ``qualified_tuition_expenses`` / education-credit and
+    ``qualified_passenger_vehicle_loan_interest`` / OBBBA auto-loan cases,
+    populace issues #253 and #252). This gate makes that a build failure.
+
+    It is deliberately keyed on a curated map of the leaves each validation
+    concern *critically* depends on, not the full transitive input-leaf closure
+    of the row's measure: the closure of a broad measure such as ``income_tax``
+    is the whole tax base (hundreds of leaves, most legitimately defaulted), so
+    a closure gate would drown the real signal. The curated leaves are the ones
+    whose absence zeroes the specific provision. The caller derives
+    ``required_leaves`` from the validation configs and the PE-US variable graph
+    and is expected to also prove — against the live engine — that each mapped
+    leaf really is an input leaf the provision depends on, so the registry
+    cannot silently rot (the reverse-direction check the other engine-derived
+    guards carry).
+
+    Args:
+        required_leaves: Input-leaf name -> the validation row/concern ids that
+            structurally require it. A leaf required by several rows lists all
+            of them, so a single missing leaf names every affected row.
+        declared_outputs: The variable names some source stage produces
+            (``source_stages.json`` stage outputs, plus any other packaged
+            input-producing surface the caller counts as declared).
+        reviewed_exclusions: Leaf -> REASON for leaves allowed to be missing
+            (a known, tracked imputation gap). Each needs a non-empty reason.
+            An exclusion for a leaf that is now produced is stale and fails the
+            gate; an exclusion for a leaf no row requires is dormant and only
+            reported (different release lines validate different rows).
+        name: Gate name for the manifest (defaults to
+            ``"source_stage_input_coverage"``).
+
+    Returns:
+        Pass iff every required leaf is either a declared stage output or
+        carries a reviewed exclusion, and no exclusion is stale.
+
+    Raises:
+        ValueError: If a reviewed exclusion has an empty reason.
+        TypeError: If ``reviewed_exclusions`` is not a mapping.
+    """
+    if not name:
+        raise ValueError("source stage input coverage gate name must be non-empty.")
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    declared = {str(output) for output in declared_outputs}
+    required = {
+        str(leaf): sorted({str(consumer) for consumer in consumers})
+        for leaf, consumers in required_leaves.items()
+    }
+
+    failures: list[str] = []
+    missing: list[str] = []
+    missing_consumers: dict[str, list[str]] = {}
+    excluded: dict[str, str] = {}
+    for leaf in sorted(required):
+        if leaf in declared:
+            continue
+        if leaf in exclusions:
+            excluded[leaf] = exclusions[leaf]
+            continue
+        missing.append(leaf)
+        missing_consumers[leaf] = required[leaf]
+        consumers = ", ".join(required[leaf])
+        failures.append(
+            f"{leaf}: required by validation row(s) [{consumers}] but produced "
+            "by no source stage; the provision validates as a structural zero. "
+            "Impute it (declare it as a source-stage output) or record a "
+            "reviewed exclusion with the tracking issue."
+        )
+
+    stale = sorted(leaf for leaf in exclusions if leaf in required and leaf in declared)
+    if stale:
+        failures.append(
+            f"Stale reviewed exclusions — the leaf is produced now, remove the "
+            f"exclusion: {stale}."
+        )
+    dormant = sorted(leaf for leaf in exclusions if leaf not in required)
+
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "required_leaves": len(required),
+            "declared_outputs": len(declared),
+            "missing": missing,
+            "missing_consumers": missing_consumers,
+            "reviewed_exclusions": excluded,
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
         },
     )
 
