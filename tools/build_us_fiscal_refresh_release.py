@@ -56,8 +56,12 @@ from populace.build.us_runtime import (
     us_immigration_composition_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_take_up_participation_diagnostics,
+    us_take_up_signal_gate,
     with_us_immigration_inputs,
+    with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
+    write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -5273,6 +5277,19 @@ def main() -> None:
         telemetry.attach_artifact(
             "us_source_coverage",
             release_dir / "us_source_coverage.json",
+        )
+        telemetry.stage(
+            "take_up_participation",
+            message="Writing take-up participation diagnostics.",
+        )
+    write_us_take_up_participation_diagnostics(
+        us_take_up_participation_diagnostics(export_frame),
+        release_dir / "us_take_up_participation.json",
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_take_up_participation",
+            release_dir / "us_take_up_participation.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started

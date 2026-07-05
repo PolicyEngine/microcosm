@@ -41,7 +41,9 @@ unseeded until a rate is sourced.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -49,6 +51,7 @@ import pandas as pd
 from populace.build.gates import GateResult
 from populace.build.us_runtime.take_up_contract import (
     TakeUpProgram,
+    load_take_up_contract,
     seeded_take_up_programs,
 )
 from populace.frame import Frame
@@ -57,9 +60,11 @@ from populace.frame.units import US_SCHEMA
 __all__ = [
     "US_TAKE_UP_SHARE_BAND",
     "SeededTakeUpResult",
+    "us_take_up_participation_diagnostics",
     "us_take_up_signal_gate",
     "us_take_up_summary",
     "with_us_take_up_inputs",
+    "write_us_take_up_participation_diagnostics",
 ]
 
 #: The EITC qualifying-child age test (26 USC § 32(c)(3)(A) / § 152(c)(3)):
@@ -368,8 +373,9 @@ def us_take_up_summary(
         weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
         takes_up = table[program.variable].to_numpy(dtype=bool)
         total_weight = float(weights.sum())
+        participation_count = float(weights[takes_up].sum())
         take_up_share = (
-            float(weights[takes_up].sum()) / total_weight if total_weight > 0 else 0.0
+            participation_count / total_weight if total_weight > 0 else 0.0
         )
         rate = program.rate
         if program.variable == "takes_up_eitc":
@@ -380,6 +386,8 @@ def us_take_up_summary(
         summary[program.variable] = {
             "entity": entity,
             "take_up_share": take_up_share,
+            "weighted_participation_count": participation_count,
+            "weighted_flag_universe": total_weight,
             "administrative_rate": target,
             "administrative_source": rate.get("source"),
             "administrative_agency": rate.get("agency"),
@@ -429,3 +437,91 @@ def us_take_up_signal_gate(
         failures=tuple(failures),
         details=summary,
     )
+
+
+def us_take_up_participation_diagnostics(
+    frame: Frame,
+) -> dict[str, object]:
+    """Return the standalone US take-up participation diagnostics payload.
+
+    Records, per take-up flag, populace's weighted participation against the
+    administrative rate the seed reproduces — the participation-vs-administrative
+    surface #170 and #312 exist to expose. Every flag in the contract appears,
+    not only the two seeded ones: for a seeded program the row carries the live
+    weighted participation count, the weighted flag universe, the reproduced
+    take-up share, and the administrative rate/source; for an unseeded, out-of-
+    scope, or near-universal program the row records the curated treatment and
+    the reason it carries no seeded participation surface (the honest record that
+    the remaining flags still ship at the engine's universal-take-up default, so
+    a reader is not misled into thinking the class is fully repaired).
+
+    Standalone by design: it is written next to ``us_source_coverage.json`` and
+    is not threaded through the release manifests, whose gate-assembly is a
+    sibling workstream's zone (populace #313).
+    """
+    contract = load_take_up_contract()
+    gate = us_take_up_signal_gate(frame)
+    live = us_take_up_summary(frame)
+    programs: list[dict[str, object]] = []
+    for program in contract.programs:
+        variable = program.variable
+        rate = program.rate
+        row: dict[str, object] = {
+            "variable": variable,
+            "entity": program.entity,
+            "engine_class": program.engine_class,
+            "populace_treatment": program.populace_treatment,
+            "engine_default": program.default,
+            "administrative_rate_status": rate.get("status"),
+            "administrative_source": rate.get("source"),
+            "administrative_agency": rate.get("agency"),
+        }
+        if program.is_seeded and variable in live:
+            info = live[variable]
+            row["seeded"] = True
+            row["weighted_participation_count"] = info["weighted_participation_count"]
+            row["weighted_flag_universe"] = info["weighted_flag_universe"]
+            row["take_up_share"] = info["take_up_share"]
+            row["administrative_rate"] = info["administrative_rate"]
+            row["share_band"] = info["share_band"]
+        else:
+            row["seeded"] = False
+            # Left at the engine's universal-take-up default: no seeded
+            # participation surface exists for this flag yet. Record why.
+            row["ships_at_engine_default"] = program.populace_treatment not in {
+                "out_of_scope",
+                "near_universal",
+            }
+            followup = program.raw.get("followup")
+            if followup is not None:
+                row["followup"] = followup
+            scope_owner = program.raw.get("scope_owner")
+            if scope_owner is not None:
+                row["scope_owner"] = scope_owner
+        programs.append(row)
+    return {
+        "schema_version": 1,
+        "classification": "release_diagnostics",
+        "issue": "populace#312",
+        "take_up_contract": {
+            "version": contract.version,
+            "inventory_built_against": contract.inventory_built_against,
+            "asserted_constraint": contract.asserted_constraint,
+        },
+        "gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+        },
+        "seeded_program_count": sum(1 for row in programs if row["seeded"]),
+        "programs": programs,
+    }
+
+
+def write_us_take_up_participation_diagnostics(
+    payload: dict[str, object], path: Path | str
+) -> Path:
+    """Write the US take-up participation diagnostics artifact as strict JSON."""
+    path = Path(path)
+    path.write_text(json.dumps(payload, indent=1, allow_nan=False))
+    return path

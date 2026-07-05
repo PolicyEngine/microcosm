@@ -9,6 +9,8 @@ prove-it-can-find-something check that the gate actually fails on a bad frame).
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,9 +19,11 @@ pytest.importorskip("policyengine_us")
 
 from populace.build.us_runtime.take_up import (  # noqa: E402
     US_TAKE_UP_SHARE_BAND,
+    us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_take_up_summary,
     with_us_take_up_inputs,
+    write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.take_up_contract import (  # noqa: E402
     TakeUpProgram,

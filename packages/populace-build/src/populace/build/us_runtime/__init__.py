@@ -125,9 +125,11 @@ from populace.build.us_runtime.immigration import (
 from populace.build.us_runtime.take_up import (
     US_TAKE_UP_SHARE_BAND,
     SeededTakeUpResult,
+    us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_take_up_summary,
     with_us_take_up_inputs,
+    write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.take_up_contract import (
     TakeUpContract,
@@ -243,9 +245,11 @@ __all__ = [
     "with_us_immigration_inputs",
     "US_TAKE_UP_SHARE_BAND",
     "SeededTakeUpResult",
+    "us_take_up_participation_diagnostics",
     "us_take_up_signal_gate",
     "us_take_up_summary",
     "with_us_take_up_inputs",
+    "write_us_take_up_participation_diagnostics",
     "TakeUpContract",
     "TakeUpProgram",
     "assert_take_up_contract_current",
