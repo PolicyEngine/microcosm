@@ -1,0 +1,446 @@
+{
+  "schema_version": 1,
+  "description": "Reason'd, issue-linked parity exemption register (the debt ledger). Each entry names a layer the incumbent eCPS populates that the current Populace candidate does not, with the reason it is absent and the tracking issue that owns closing it. parity_gate is run with known_gaps = the keys of this file; the launch condition is that this register shrinks to deliberate scope decisions, not TODOs. Seeded from the first parity run of populace_us_2024.h5 against the pinned reference (see ecps_parity_reference.json). Every issue ref is an existing open PolicyEngine/populace issue.",
+  "known_gaps": {
+    "alimony_expense": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "alimony_income": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "attends_eligible_educational_institution_for_american_opportunity_credit": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "auto_loan_balance": {
+      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "auto_loan_interest": {
+      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "bank_account_assets": {
+      "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "block_geoid": {
+      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "bond_assets": {
+      "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "business_is_sstb": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "casualty_loss": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "child_support_expense": {
+      "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "child_support_received": {
+      "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "county_fips": {
+      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "cps_race": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "detailed_occupation_recode": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "disability_benefits": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "domestic_production_ald": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "educational_assistance": {
+      "reason": "Educational-assistance income input tied to the education-credit surface; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "educator_expense": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "employer_sponsored_insurance_premiums": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "estate_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "farm_operations_income": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "farm_operations_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "farm_rent_income": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "farm_rent_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "financial_assistance": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "has_american_opportunity_credit_1098_t_or_exception": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "has_american_opportunity_credit_institution_ein": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "has_never_worked": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "health_savings_account_ald": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "hourly_wage": {
+      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
+      "issue": "PolicyEngine/populace#242"
+    },
+    "hours_worked_last_week": {
+      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
+      "issue": "PolicyEngine/populace#242"
+    },
+    "household_vehicles_owned": {
+      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "household_vehicles_value": {
+      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "household_weight": {
+      "reason": "Incumbent stored a household_weight input column; Populace carries weights as a typed Frame weight vector, not a stored input variable. Classify as reported-observation vs reviewed-exclusion under #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "immigration_status_str": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "investment_income_elected_form_4952": {
+      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
+      "issue": "PolicyEngine/populace#274"
+    },
+    "investment_interest_expense": {
+      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
+      "issue": "PolicyEngine/populace#274"
+    },
+    "is_blind": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_computer_scientist": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_disabled": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "is_executive_administrative_professional": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_farmer_fisher": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_full_time_college_student": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_hispanic": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_household_head": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_military": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_paid_hourly": {
+      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
+      "issue": "PolicyEngine/populace#242"
+    },
+    "is_pregnant": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_pursuing_credential_for_american_opportunity_credit": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "is_separated": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_surviving_spouse": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_union_member_or_covered": {
+      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
+      "issue": "PolicyEngine/populace#242"
+    },
+    "is_unmarried_partner_of_household_head": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "is_wic_at_nutritional_risk": {
+      "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "keogh_distributions": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "long_term_capital_gains_on_collectibles": {
+      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
+      "issue": "PolicyEngine/populace#274"
+    },
+    "net_worth": {
+      "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "other_health_insurance_premiums": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "own_children_in_household": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "partnership_s_corp_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "pre_subsidy_rent": {
+      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "previous_year_income_available": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "qualified_bdc_income": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "qualified_reit_and_ptp_income": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "qualified_tuition_expenses": {
+      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (#253).",
+      "issue": "PolicyEngine/populace#253"
+    },
+    "receives_housing_assistance": {
+      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "rental_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "salt_refund_income": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "self_employment_income_last_year": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "self_employment_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "spm_unit_energy_subsidy": {
+      "reason": "SPM energy-subsidy (LIHEAP) resource input; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "spm_unit_pre_subsidy_childcare_expenses": {
+      "reason": "SPM childcare-expense input; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "spm_unit_tenure_type": {
+      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "ssn_card_type": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "sstb_self_employment_income_before_lsr": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "sstb_self_employment_income_would_be_qualified": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "sstb_unadjusted_basis_qualified_property": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "sstb_w2_wages_from_qualified_business": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "stock_assets": {
+      "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
+      "issue": "PolicyEngine/populace#49"
+    },
+    "survivor_benefits": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "takes_up_dc_ptc": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_early_head_start_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_eitc": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_head_start_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_housing_assistance_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_medicaid_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_medicare_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_snap_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_ssi_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "takes_up_tanf_if_eligible": {
+      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "tax_exempt_ira_distributions": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "taxable_401k_distributions": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "taxable_403b_distributions": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "taxable_sep_distributions": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "tenure_type": {
+      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "tip_income": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "tract_geoid": {
+      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "treasury_tipped_occupation_code": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "unadjusted_basis_qualified_property": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "unrecaptured_section_1250_gain": {
+      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
+      "issue": "PolicyEngine/populace#274"
+    },
+    "unreimbursed_business_employee_expenses": {
+      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "veterans_benefits": {
+      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "w2_wages_from_qualified_business": {
+      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
+      "issue": "PolicyEngine/populace#298"
+    },
+    "weekly_hours_worked_before_lsr": {
+      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
+      "issue": "PolicyEngine/populace#242"
+    },
+    "weeks_unemployed": {
+      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+      "issue": "PolicyEngine/populace#38"
+    },
+    "workers_compensation": {
+      "reason": "Workers' compensation benefit SPM input; not yet on the candidate frame.",
+      "issue": "PolicyEngine/populace#32"
+    },
+    "would_claim_wic": {
+      "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
+      "issue": "PolicyEngine/populace#312"
+    },
+    "would_file_taxes_voluntarily": {
+      "reason": "Voluntary-filing take-up flag the incumbent seeds; not yet produced by Populace (take-up family).",
+      "issue": "PolicyEngine/populace#312"
+    }
+  }
+}
