@@ -4526,7 +4526,7 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
 # ---------------------------------------------------------------------------
 
 
-class _ReformKill(RuntimeError):
+class _ReformKillError(RuntimeError):
     """Sentinel raised to simulate a process kill mid target_compilation."""
 
 
@@ -4587,7 +4587,7 @@ def _install_multi_reform_fakes(
     ``reform_income_tax_by_id`` maps ``neutralized_variable -> {tax_unit_id: tax}``.
     Every real reform simulation appends its ``neutralized_variable`` to
     ``reform_sim_calls``; if the resulting call count equals ``raise_on_call`` the
-    fake raises ``_ReformKill`` before returning (simulating a kill while that
+    fake raises ``_ReformKillError`` before returning (simulating a kill while that
     reform is being materialized, so it is never cached).
     """
     reform_specs = tuple(
@@ -4671,7 +4671,7 @@ def _install_multi_reform_fakes(
     def counting_reform_household_income_tax(*, reform_spec, **kwargs):
         reform_sim_calls.append(reform_spec.neutralized_variable)
         if raise_on_call is not None and len(reform_sim_calls) == raise_on_call:
-            raise _ReformKill(
+            raise _ReformKillError(
                 f"killed while materializing {reform_spec.measure!r}"
             )
         return real_reform_household_income_tax(reform_spec=reform_spec, **kwargs)
@@ -4738,7 +4738,7 @@ def test__given_kill_after_two_reforms__then_restart_only_recomputes_the_third(
         reform_sim_calls=first_calls,
         raise_on_call=3,
     )
-    with pytest.raises(_ReformKill):
+    with pytest.raises(_ReformKillError):
         builder._materialize_target_frame(
             frame,
             targets,
@@ -4781,9 +4781,15 @@ def test__given_kill_after_two_reforms__then_restart_only_recomputes_the_third(
     # Results are correct for all three reforms (reform_income_tax - base).
     household = target_frame.table("household")
     # base income_tax by household: hh1 = 100+30 = 130, hh2 = 70.
-    np.testing.assert_allclose(household["jct_reform_a"], [90.0 + 25.0 - 130.0, 40.0 - 70.0])
-    np.testing.assert_allclose(household["jct_reform_b"], [80.0 + 20.0 - 130.0, 35.0 - 70.0])
-    np.testing.assert_allclose(household["jct_reform_c"], [70.0 + 15.0 - 130.0, 30.0 - 70.0])
+    np.testing.assert_allclose(
+        household["jct_reform_a"], [90.0 + 25.0 - 130.0, 40.0 - 70.0]
+    )
+    np.testing.assert_allclose(
+        household["jct_reform_b"], [80.0 + 20.0 - 130.0, 35.0 - 70.0]
+    )
+    np.testing.assert_allclose(
+        household["jct_reform_c"], [70.0 + 15.0 - 130.0, 30.0 - 70.0]
+    )
     assert len(registry) == 3
 
 

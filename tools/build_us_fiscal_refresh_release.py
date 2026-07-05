@@ -958,9 +958,7 @@ def _reform_vector_cache_context(context: Mapping[str, object]) -> dict[str, obj
     are simply not part of the identity.
     """
     return {
-        key: context[key]
-        for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS
-        if key in context
+        key: context[key] for key in REFORM_VECTOR_CACHE_CONTEXT_KEYS if key in context
     }
 
 
@@ -1359,8 +1357,7 @@ def _resolve_checkpoint_paths(
         None
         if args.no_target_frame_checkpoint
         else (
-            args.target_frame_checkpoint
-            or default_root / "target_frame_checkpoint.h5"
+            args.target_frame_checkpoint or default_root / "target_frame_checkpoint.h5"
         )
     )
     return (
@@ -3419,8 +3416,7 @@ def _ecps_parity_gate(
     # The reasoned register: names alone say a layer is exempt; the manifest
     # must also carry WHY and which issue owns closing it (the debt ledger).
     details["known_gaps"] = {
-        gap.variable: {"reason": gap.reason, "issue": gap.issue}
-        for gap in known_gaps
+        gap.variable: {"reason": gap.reason, "issue": gap.issue} for gap in known_gaps
     }
     return GateResult(
         name=gate.name,
@@ -5044,8 +5040,7 @@ def main() -> None:
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
-                f"Take-up signal failed: {failure}"
-                for failure in take_up_gate.failures
+                f"Take-up signal failed: {failure}" for failure in take_up_gate.failures
             )
         )
     if telemetry is not None:
