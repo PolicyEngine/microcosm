@@ -4477,6 +4477,17 @@ def _build_manifests(
                 if degenerate_input_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "ecps_parity": {
+                        "passed": ecps_parity_gate.passed,
+                        "failures": list(ecps_parity_gate.failures),
+                        "details": dict(ecps_parity_gate.details),
+                    }
+                }
+                if ecps_parity_gate is not None
+                else {}
+            ),
         },
     }
     (release_dir / "build_manifest.json").write_text(
