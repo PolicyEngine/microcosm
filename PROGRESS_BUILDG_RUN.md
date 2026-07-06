@@ -282,3 +282,26 @@ no wasted compute.
 `US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS` — removed the two stale take-up flags, added the second_home
 trio (→ #38). 8 degenerate/take-up/export tests pass. This is the register refresh #330 applied only on a
 throwaway branch; now on build-g-run. Relaunching.
+
+### 2026-07-06 ~23:19 ET — RUN 3 launched (ALL prerequisites fixed); genuine calibration attempt
+Verified via `git log origin/main..build-f` that ALL build-f base-gate prerequisites are now ported to
+build-g-run: #321 M-CHIP derivation skip (cherry-picked), register refresh b5980d2 (committed). No other
+un-ported base-gate config exists. So run 3 is the FIRST genuine calibration attempt — base gates
+(base-vs-ref [not armed], degenerate [register fixed], eCPS, take-up) all pass; the 3 earlier rc=1s were
+sequential PREREQUISITE/harness fixes (each caught in ~2-3 min before any calibration), not strikes against
+a genuine certification issue.
+
+commit 129165b, pe-us 1.764.6, all shas verified. Dense first (full 337k → base gates → target
+compilation → 1500-epoch calibration → export gate vs live-default 57k reference). Then sparse
+(frozen-57k manifest + dense polish + 19-cell exclusions). Monitor armed (b3mo82gz0). Dense healthy
+(100% CPU, ~3 min in ACA materialization as of launch+3min).
+
+PREDICTED outcomes (to verify against the run):
+- DENSE: all structural gates PASS; 0 zero-support (full v7 registry, M-CHIP skipped); export-mass gate
+  vs live-default 57k → 11/14 in-band, ~3 residuals (mortgage×2 +~65%, misc −63%) = the #328 cold-calib
+  overshoot. Loss ~0.042, within-10% ~86% (matching Build F dense 0.0416/86.1%, shifting slightly at 1.764.6).
+  → NOT certifiable as-is (3 genuine export-mass residuals) unless the residuals resolve at the new pin.
+- SPARSE (headline): 0 zero-support (M-CHIP skip + 19-cell exclusion); frozen-support construction fits
+  mortgage tighter (#330: +43.1% vs cold +59.7%) so export residuals should be SMALLER — possibly clearing
+  mortgage. Loss ~0.031 (#330 prior 0.0315), within-10% ~88%; income tax ~−4%, SS ~0%. → likely the
+  certifiable candidate if export-mass clears.
