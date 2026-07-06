@@ -826,7 +826,8 @@ def test_state_reform_specs_shipped_config_loads():
     from populace.build.us_runtime.reform_validation import state_reform_specs
 
     specs = state_reform_specs(period=2026)
-    assert len(specs) >= 9
+    # 8 bills: MA H5007 was dropped (its DOR estimate has no primary source).
+    assert len(specs) >= 8
     assert all(spec.category == "State reform" for spec in specs)
     assert all(not spec.in_sample for spec in specs)
     assert all(spec.parameter_changes for spec in specs)

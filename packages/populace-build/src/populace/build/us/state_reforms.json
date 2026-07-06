@@ -13,18 +13,18 @@
    "state": "GA",
    "period": 2026,
    "budget_measure": "ga_income_tax",
-   "description": "Georgia's 5.19%\u21924.99% flat-rate cut for 2026 (HB1001; enacted via HB463, so it is already in the policyengine-us baseline). Validated as a counterfactual revert to 5.19%. OPB scores the full cut at ~$778M/yr (GBPI independently: ~$776M).",
+   "description": "Georgia's 5.19%\u21924.99% flat-rate cut for 2026 (HB1001; enacted via HB463, so it is already in the policyengine-us baseline). Validated as a counterfactual revert to 5.19%. Benchmark is the DOAA fiscal note's individual-income-tax line, FY2028 -$680M (first year without withholding-refund timing; FY2029-31 grow -$712M\u2192-$780M). The often-quoted ~$778M OPB budget figure includes ~$108-117M of corporate income tax, which the simulation's ga_income_tax measure excludes. Baseline nuance: current law reaches 4.99% by TY2030 via conditional cuts, so out-year figures depend on baseline choice.",
    "parameter_changes": {
     "gov.states.ga.tax.income.main.flat_rate": {
      "2026-01-01.2100-12-31": 0.0519
     }
    },
    "benchmark": {
-    "score": -778000000.0,
+    "score": -680000000.0,
     "score_type": "fiscal_note",
-    "window": "annual (full cut)",
-    "source": "Georgia OPB fiscal note",
-    "source_url": "https://opb.georgia.gov/budget-information/fiscal-notes/2025-2026-regular-session"
+    "window": "FY2028 (first clean full-cut year, individual income tax only)",
+    "source": "Georgia DOAA/OPB revised fiscal note, HB1001 (LC 59 0226-EC), Feb 24 2026",
+    "source_url": "https://opb.georgia.gov/document/fiscal-notes-2026/lc-59-0226-ec-revised/download"
    },
    "tracker_id": "ga-hb1001",
    "effect_direction": "baseline_minus_reform"
@@ -36,7 +36,7 @@
    "state": "MD",
    "period": 2027,
    "budget_measure": "md_income_tax",
-   "description": "Raises Maryland's standard deduction, phasing 2026-2031. DLS: -$149.6M state general fund in FY2027, ~$115-120M/yr annualized thereafter; the separate -$88.2M local income tax impact is excluded (md_income_tax is state-only).",
+   "description": "Raises Maryland's standard deduction to $4,100/$8,200 in TY2026 with COLA thereafter (one-shot increase, no phase-in). DLS: -$149.6M GF in FY2027, but that fiscal year reflects TY2026 plus a portion of TY2027 (catch-up); the annualized FY2028 figure -$115.2M is the like-for-like for a single-tax-year simulation. The separate -$88.2M FY2027 local income tax impact is excluded (md_income_tax is state-only, verified).",
    "parameter_changes": {
     "gov.states.md.tax.income.deductions.standard.flat_deduction.amount.JOINT": {
      "2026-01-01.2026-12-31": 8200,
@@ -80,10 +80,10 @@
     }
    },
    "benchmark": {
-    "score": -149600000.0,
+    "score": -115200000.0,
     "score_type": "fiscal_note",
-    "window": "FY2027 (state GF)",
-    "source": "Maryland DLS fiscal note",
+    "window": "FY2028 (annualized single tax year, state GF)",
+    "source": "Maryland DLS fiscal note (First Reader, Feb 11 2026)",
     "source_url": "https://mgaleg.maryland.gov/2026RS/fnotes/bil_0001/hb0411.pdf"
    },
    "tracker_id": "md-hb411"
@@ -200,7 +200,7 @@
    "state": "OK",
    "period": 2026,
    "budget_measure": "ok_income_tax",
-   "description": "Eliminates Oklahoma's personal income tax rates in 2026. OTC: -$7.03B FY2027 (includes withholding timing), -$5.30B FY2028 steady state \u2014 the steady-state figure is the like-for-like against a full-tax-year simulation.",
+   "description": "Eliminates Oklahoma's personal income tax rates in 2026. OTC tax-year table: TY2026 -$4.947B, TY2027 -$5.202B, TY2028 -$5.445B (fiscal-year rows -$7.03B FY2027 with withholding timing, -$5.30B FY2028). Benchmark is the TY2026 line, matching the simulation period. Scope: total individual income tax including off-the-top apportionments \u2014 correct all-funds comparison for ok_income_tax. Static.",
    "parameter_changes": {
     "gov.states.ok.tax.income.rates.joint[1].rate": {
      "2026-01-01.2100-12-31": 0
@@ -249,11 +249,11 @@
     }
    },
    "benchmark": {
-    "score": -5300000000.0,
+    "score": -4947128000.0,
     "score_type": "fiscal_note",
-    "window": "FY2028 (steady state)",
-    "source": "Oklahoma Tax Commission fiscal note",
-    "source_url": "https://www.oklegislature.gov/cf_pdf/2025-26%20SUPPORT%20DOCUMENTS/impact%20statements/fiscal/Senate/SB2156.pdf"
+    "window": "TY2026 (note's tax-year table)",
+    "source": "Oklahoma Tax Commission revenue impact statement, Feb 10 2026",
+    "source_url": "https://www.oklegislature.gov/cf_pdf/2025-26%20SUPPORT%20DOCUMENTS/impact%20statements/fiscal/Senate/SB2156%20INT%20FI.PDF"
    },
    "tracker_id": "ok-sb2156"
   },
@@ -275,38 +275,9 @@
     "score_type": "fiscal_note",
     "window": "annual (approximate)",
     "source": "Michigan HFA fiscal note",
-    "source_url": "https://www.legislature.mi.gov/Bills/Bill?ObjectName=2025-HB-4170"
+    "source_url": "https://www.legislature.mi.gov/documents/2025-2026/billanalysis/House/pdf/2025-HLA-4170-LBQTY28X.pdf"
    },
    "tracker_id": "mi-hb4170"
-  },
-  {
-   "id": "state.ma.h5007",
-   "name": "MA H5007 \u2014 income tax rate cut (5% \u2192 4%)",
-   "category": "State reform",
-   "state": "MA",
-   "period": 2029,
-   "budget_measure": "ma_income_tax",
-   "description": "Phases the Part B rate from 5% to 4% over 2027-2029. MA DOR estimates -$4.2B to -$4.8B annually when fully implemented (benchmark is the midpoint); Mass Budget and Policy Center: ~$5B.",
-   "parameter_changes": {
-    "gov.states.ma.tax.income.rates.part_b": {
-     "2027-01-01.2027-12-31": 0.0467,
-     "2028-01-01.2028-12-31": 0.0433,
-     "2029-01-01.2100-12-31": 0.04
-    },
-    "gov.states.ma.tax.income.rates.part_a.dividends": {
-     "2027-01-01.2027-12-31": 0.0467,
-     "2028-01-01.2028-12-31": 0.0433,
-     "2029-01-01.2100-12-31": 0.04
-    }
-   },
-   "benchmark": {
-    "score": -4500000000.0,
-    "score_type": "fiscal_note",
-    "window": "fully implemented (DOR range midpoint)",
-    "source": "Massachusetts DOR estimate (-$4.2B to -$4.8B)",
-    "source_url": ""
-   },
-   "tracker_id": "ma-h5007"
   },
   {
    "id": "state.ca.ab2591",
@@ -325,8 +296,8 @@
     "score": -7000000000.0,
     "score_type": "fiscal_note",
     "window": "first full year (FY2027-28)",
-    "source": "CA FTB via Assembly Revenue & Taxation analysis",
-    "source_url": "https://trackbill.com/s3/bills/CA/2025/AB2591"
+    "source": "CA FTB bill analysis (Feb 20 2026), explicitly static",
+    "source_url": "https://www.ftb.ca.gov/tax-pros/law/legislation/2025-2026/AB2591-022026.pdf"
    },
    "tracker_id": "ca-ab2591"
   }

@@ -97,7 +97,7 @@
       "id": "obbba_personal_exemption_termination",
       "name": "OBBBA - Termination of personal exemptions",
       "category": "OBBBA",
-      "description": "Termination of the deduction for personal exemptions, excluding the temporary senior deduction. Validated by unsuspending personal exemptions in 2026.",
+      "description": "Termination of the deduction for personal exemptions, excluding the temporary senior deduction. Validated by unsuspending personal exemptions in 2026. Scope note: JCX-35-25 Ch.1 line 3 reads 'termination of deduction for personal exemptions other than temporary senior deduction' \u2014 the benchmark nets the senior deduction's cost against exemption-termination revenue, while this reform models exemptions only, so the benchmark understates a pure exemption-termination score by the senior deduction's cost.",
       "period": 2026,
       "budget_measure": "income_tax",
       "effect_direction": "baseline_minus_reform",
@@ -222,7 +222,7 @@
       "id": "obbba_mortgage_interest_limit",
       "name": "OBBBA - Qualified residence interest limit",
       "category": "OBBBA",
-      "description": "Extension of limitation on deduction for qualified residence interest. Validated by reverting mortgage-interest acquisition-debt caps to pre-TCJA levels.",
+      "description": "Extension of limitation on deduction for qualified residence interest. Validated by reverting mortgage-interest acquisition-debt caps to pre-TCJA levels. Scope note: the JCT line also includes the bill's permanent treatment of mortgage-insurance premiums as qualified residence interest, which this reform does not model (revenue-losing, so the benchmark sits slightly below a caps-only score).",
       "period": 2026,
       "budget_measure": "income_tax",
       "effect_direction": "baseline_minus_reform",
@@ -237,9 +237,9 @@
         "score": 1639000000,
         "score_type": "conventional",
         "window": "FY2026",
-        "source": "JCX-35-25, Ch.1 line 8 (FY2026)",
+        "source": "JCX-35-25, Ch.1 line 8 (FY2026 1,639M / FY2027 3,110M)",
         "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/",
-        "score_fy2027": 3398000000
+        "score_fy2027": 3110000000
       }
     },
     {
@@ -332,7 +332,7 @@
       "id": "obbba_no_tax_on_tips",
       "name": "OBBBA - No tax on tips",
       "category": "OBBBA",
-      "description": "Deduction for qualified tip income. Validated by reverting the tip-income deduction cap to 0 in 2026.",
+      "description": "Deduction for qualified tip income. Validated by reverting the tip-income deduction cap to 0 in 2026. Scope note: per JCX-35-25 footnote [5], the line also bundles the section 45B employer tip-credit expansion (small nonzero effect persists after the individual deduction sunsets), which this reform does not model.",
       "period": 2026,
       "budget_measure": "income_tax",
       "effect_direction": "baseline_minus_reform",
@@ -396,7 +396,7 @@
       "id": "obbba_senior_deduction",
       "name": "OBBBA - Temporary senior deduction",
       "category": "OBBBA",
-      "description": "Temporary senior deduction. JCX-35-25 does not report a standalone FY2026 line; this row publishes the modeled Populace score without a JCT-comparison benchmark.",
+      "description": "Temporary senior deduction. JCX-35-25 has no standalone line for it: its score is netted inside Ch.1 line 3 ('termination of deduction for personal exemptions other than temporary senior deduction'). This row publishes the modeled Populace score without a JCT-comparison benchmark.",
       "period": 2026,
       "budget_measure": "income_tax",
       "effect_direction": "baseline_minus_reform",
@@ -407,7 +407,7 @@
         "score": null,
         "score_type": "conventional",
         "window": "FY2026",
-        "source": "No standalone FY2026 line in JCX-35-25",
+        "source": "No standalone line in JCX-35-25 \u2014 netted inside Ch.1 line 3",
         "source_url": "https://www.jct.gov/publications/2025/jcx-35-25/"
       }
     },

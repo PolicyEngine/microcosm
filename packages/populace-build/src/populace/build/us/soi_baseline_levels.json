@@ -100,7 +100,7 @@
         "source": "IRS SOI Pub 1304 TY2023, Table 3.3 (refundable child tax credit or additional child tax credit)",
         "source_url": "https://www.irs.gov/pub/irs-soi/23in33ar.xls"
       },
-      "description": ""
+      "description": "SOI Table 3.3 refundable CTC/ACTC column \u2014 TOTAL claims ($34.53B = $32.06B refunded + $0.33B offsetting income tax + $2.13B offsetting other taxes), not the outlay-only line. Total claims is the consistent comparator for populace's refundable_ctc (the Form 8812 amount regardless of how IRS applies it)."
     },
     {
       "id": "soi_niit",
