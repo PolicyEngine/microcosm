@@ -99,7 +99,7 @@ class ReformValidationSpec:
     jct_score_fy2027: float | None = None
     budget_measure: str = DEFAULT_BUDGET_MEASURE
     description: str = ""
-    neutralized_variable: str | None = None
+    neutralized_variable: str | list[str] | None = None
     parameter_changes: dict[str, Any] | None = None
     # How the budget effect is signed relative to the simulations. JCT scores a
     # *tax expenditure* as the revenue raised by repeal (reform − baseline, the
@@ -137,11 +137,21 @@ class ReformValidationSpec:
         if self.neutralized_variable:
             from policyengine_core.reforms import Reform
 
-            variable = self.neutralized_variable
+            # A str neutralizes one variable; a list neutralizes each. The
+            # list form exists for credits whose umbrella total is a derived
+            # reporting variable the tax formula never reads (e.g. md_eitc =
+            # md_refundable_eitc + md_non_refundable_eitc): repeal must
+            # neutralize the components on the tax path, not the umbrella.
+            variables = (
+                [self.neutralized_variable]
+                if isinstance(self.neutralized_variable, str)
+                else list(self.neutralized_variable)
+            )
 
             class _Neutralize(Reform):
                 def apply(self) -> None:
-                    self.neutralize_variable(variable)
+                    for variable in variables:
+                        self.neutralize_variable(variable)
 
             return _Neutralize
 

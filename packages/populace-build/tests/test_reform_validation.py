@@ -899,3 +899,57 @@ def test_shipped_state_program_configs_are_well_formed():
         assert spec.neutralized_variable
         assert spec.budget_measure == "state_income_tax"
         assert spec.in_sample is False
+
+
+def test_md_eitc_repeal_neutralizes_tax_path_components():
+    # md_eitc is a derived reporting total (md_refundable_eitc +
+    # md_non_refundable_eitc) that Maryland's tax formula never reads;
+    # neutralizing the umbrella is a proven no-op on md_income_tax. The
+    # repeal must target both components on the tax path.
+    from populace.build.us_runtime.reform_validation import (
+        state_program_reform_specs,
+    )
+
+    spec = next(
+        s
+        for s in state_program_reform_specs(period=2024)
+        if s.id == "state_repeal_md_eitc"
+    )
+    assert sorted(spec.neutralized_variable) == [
+        "md_non_refundable_eitc",
+        "md_refundable_eitc",
+    ]
+
+
+def test_neutralize_list_reform_targets_each_variable():
+    # The list form of neutralized_variable must neutralize every listed
+    # variable in one Reform (used where an umbrella total is off the tax
+    # path and repeal needs its components).
+    from populace.build.us_runtime.reform_validation import (
+        ReformValidationSpec,
+    )
+
+    spec = ReformValidationSpec(
+        id="x",
+        name="x",
+        category="State program",
+        in_sample=False,
+        period=2024,
+        jct_score=1.0,
+        jct_window="",
+        jct_source="",
+        jct_source_url="",
+        neutralized_variable=["a_var", "b_var"],
+    )
+
+    class _Recorder:
+        def __init__(self):
+            self.neutralized = []
+
+        def neutralize_variable(self, name):
+            self.neutralized.append(name)
+
+    reform_cls = spec.build_reform()
+    recorder = _Recorder()
+    reform_cls.apply(recorder)
+    assert recorder.neutralized == ["a_var", "b_var"]
