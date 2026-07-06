@@ -91,6 +91,13 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from populace.build.us_runtime.warm_start_selection import (
+    DEFAULT_SELECTION_JOIN_KEY,
+    SELECTION_MODES,
+    load_selection_source_from_h5,
+    load_selection_source_from_manifest,
+    select_frozen_support,
+)
 from populace.calibrate import TargetRegistry, calibrate, calibrate_l0_refit
 from populace.calibrate.diagnostics import (
     diagnostics_payload,
@@ -668,6 +675,52 @@ def _parse_args() -> argparse.Namespace:
             "run on the same base frame. The builder validates that the stored "
             "initial_household_weight vector matches the current calibration "
             "frame before using household_weight as the optimizer start."
+        ),
+    )
+    parser.add_argument(
+        "--selection-source-h5",
+        type=Path,
+        help=(
+            "Optional populace US H5 whose record set defines a frozen support "
+            "to recover onto the base pool (populace#328). The base frame is "
+            "reduced to exactly the source's records — matched by stable source "
+            "identity (see --selection-join-key), not row order — before target "
+            "materialization and calibration. This reconstructs the certified "
+            "default's informed-L0/warm-start step as committed machinery. "
+            "Mutually exclusive with --selection-source-manifest."
+        ),
+    )
+    parser.add_argument(
+        "--selection-source-manifest",
+        type=Path,
+        help=(
+            "Optional committed selection-source manifest JSON (produced by "
+            "tools/build_us_selection_source_manifest.py) naming the frozen "
+            "support's record identities directly, so the sparse default is "
+            "reproducible on a laptop without downloading the source H5. "
+            "Mutually exclusive with --selection-source-h5."
+        ),
+    )
+    parser.add_argument(
+        "--selection-join-key",
+        default=",".join(DEFAULT_SELECTION_JOIN_KEY),
+        help=(
+            "Comma-separated stable-identity columns used to match the selection "
+            "source's records onto the base pool. Defaults to "
+            f"{','.join(DEFAULT_SELECTION_JOIN_KEY)!r}. Only stable identity "
+            "columns are allowed; assigned row ids are rejected because they are "
+            "order-dependent across a base rebuild."
+        ),
+    )
+    parser.add_argument(
+        "--selection-mode",
+        choices=SELECTION_MODES,
+        default="frozen_support",
+        help=(
+            "How the selection source is applied. 'frozen_support' (default) "
+            "reduces the base to exactly the named records and refuses any "
+            "unmapped identity. 'informed_init' is reserved for a future "
+            "drifting rebuild and is not yet wired into calibration."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)
@@ -1417,6 +1470,51 @@ def _load_frame(path: Path) -> Frame:
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+
+
+def _resolve_selection_source(args):
+    """Build the frozen-support selection source from CLI args, or None.
+
+    Reconstructs the certified informed-L0/warm-start selection (populace#328) as
+    a committed input: either a source H5 whose record set defines the support, or
+    a committed selection-source manifest naming the identities directly. Returns
+    ``(source, join_key)`` or ``(None, join_key)`` when no selection is requested.
+    """
+    join_key = tuple(
+        part.strip() for part in str(args.selection_join_key).split(",") if part.strip()
+    )
+    if not join_key:
+        join_key = DEFAULT_SELECTION_JOIN_KEY
+    if (
+        args.selection_source_h5 is not None
+        and args.selection_source_manifest is not None
+    ):
+        raise ValueError(
+            "Pass at most one of --selection-source-h5 / --selection-source-manifest."
+        )
+    if args.selection_source_manifest is not None:
+        source = load_selection_source_from_manifest(args.selection_source_manifest)
+        if tuple(source.join_key) != join_key and (
+            args.selection_join_key != ",".join(DEFAULT_SELECTION_JOIN_KEY)
+        ):
+            raise ValueError(
+                "--selection-join-key "
+                f"{join_key} conflicts with the manifest's own join key "
+                f"{tuple(source.join_key)}; omit the flag to use the manifest's."
+            )
+        return source, tuple(source.join_key)
+    if args.selection_source_h5 is not None:
+        source_frame = _load_frame(args.selection_source_h5)
+        provenance = {
+            "kind": "h5",
+            "path": str(args.selection_source_h5),
+            "sha256": _sha256(args.selection_source_h5),
+        }
+        source = load_selection_source_from_h5(
+            source_frame, join_key=join_key, provenance=provenance
+        )
+        return source, join_key
+    return None, join_key
 
 
 def _assert_cd_vintage_support_matches(
@@ -4158,6 +4256,7 @@ def _write_release_calibration_diagnostics(
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
+    selection_source: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     incumbent_diagnostics_path: Path | None = None,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
@@ -4258,6 +4357,11 @@ def _write_release_calibration_diagnostics(
             "warm_start_calibration": (
                 dict(warm_start_calibration)
                 if warm_start_calibration is not None
+                else {"enabled": False}
+            ),
+            "selection_source": (
+                dict(selection_source)
+                if selection_source is not None
                 else {"enabled": False}
             ),
             "default_dataset": (
@@ -4467,6 +4571,7 @@ def _build_manifests(
     ecps_parity_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
+    selection_source: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
@@ -4502,6 +4607,9 @@ def _build_manifests(
         if warm_start_calibration is not None
         else {"enabled": False}
     )
+    selection_source_payload = (
+        dict(selection_source) if selection_source is not None else {"enabled": False}
+    )
     default_dataset_payload = (
         dict(default_dataset) if default_dataset is not None else None
     )
@@ -4529,6 +4637,7 @@ def _build_manifests(
             "filename": CALIBRATION_FILENAME,
             "sha256": calibration_sha,
             "warm_start": warm_start_payload,
+            "selection_source": selection_source_payload,
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -4634,6 +4743,7 @@ def _build_manifests(
             "timing": timing_payload,
             "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
             "warm_start_calibration": warm_start_payload,
+            "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
             **(
                 {
@@ -4951,6 +5061,41 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+
+    # Frozen-support recovery (populace#328): if a selection source is supplied,
+    # reduce the base pool to exactly that support by stable source identity,
+    # BEFORE the population mass repair — matching the certified sequence, where
+    # the 340.1M-person frozen support is rescaled to the 334.2M Census benchmark
+    # (not the full pool). Reducing here also materializes PolicyEngine over the
+    # ~57k support instead of the ~338k pool.
+    selection_source, _selection_join_key = _resolve_selection_source(args)
+    selection_source_payload: dict | None = None
+    if selection_source is not None:
+        if args.selection_mode != "frozen_support":
+            raise ValueError(
+                f"--selection-mode {args.selection_mode!r} is not yet wired into "
+                "calibration; only 'frozen_support' is implemented (populace#328)."
+            )
+        if telemetry is not None:
+            telemetry.stage(
+                "frozen_support_selection",
+                message="Recovering frozen support by stable source identity.",
+                n_source=selection_source.n_identities,
+                join_key=list(selection_source.join_key),
+            )
+        base_frame, selection_report = select_frozen_support(
+            base_frame, selection_source
+        )
+        selection_source_payload = selection_report.as_manifest()
+        if telemetry is not None:
+            telemetry.stage(
+                "frozen_support_selection_done",
+                message="Reduced base pool to the frozen support.",
+                n_selected=selection_report.n_selected,
+                n_base_candidates=selection_report.n_base_candidates,
+                n_unmapped=selection_report.n_unmapped,
+            )
+
     base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
     base_frame, social_security_component_repair = (
         _with_social_security_component_value_repair(base_frame, target_specs)
@@ -5371,6 +5516,7 @@ def main() -> None:
             "social_security_components": social_security_component_repair
         },
         warm_start_calibration=warm_start_calibration,
+        selection_source=selection_source_payload,
         audit_export_targets=bool(args.audit_export_targets),
         gate_failures=gate_failures,
         timing=timing,
@@ -5572,6 +5718,7 @@ def main() -> None:
         ecps_parity_gate=enforced_ecps_parity_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
+        selection_source=selection_source_payload,
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         staging=(

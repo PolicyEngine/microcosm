@@ -4096,6 +4096,167 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         assert artifact["sha256"]
 
 
+def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                target=1.0,
+                initial_estimate=1.0,
+                final_estimate=1.0,
+            ),
+        ),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+
+        def __len__(self):
+            return 1
+
+    return dict(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=FakeRegistry(),
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        default_dataset={"method": "dense_no_l0", "sparse": False},
+    )
+
+
+def test_build_manifests_records_selection_source_provenance(
+    monkeypatch, tmp_path
+) -> None:
+    # A frozen-support build records its selection provenance in both manifests
+    # so the informed-L0 step is reproducible from main (populace#328).
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-sel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    selection_source = {
+        "mode": "frozen_support",
+        "join_key": [
+            "source_year",
+            "source_household_id",
+            "household_support_channel",
+            "household_support_clone_index",
+        ],
+        "source": {
+            "kind": "h5",
+            "path": "certified.h5",
+            "sha256": "c" * 64,
+        },
+        "n_source": 57_240,
+        "n_base_candidates": 337_704,
+        "n_selected": 57_240,
+        "n_unmapped": 0,
+        "n_ambiguous": 0,
+    }
+
+    builder._build_manifests(
+        selection_source=selection_source,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == selection_source
+    assert release_manifest["build"]["selection_source"] == selection_source
+    assert build_manifest["calibration"]["selection_source"]["n_selected"] == 57_240
+    assert build_manifest["calibration"]["selection_source"]["n_unmapped"] == 0
+
+
+def test_build_manifests_selection_source_absent_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    # A build with no selection source records the disabled sentinel, not None.
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-nosel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == {"enabled": False}
+    assert release_manifest["build"]["selection_source"] == {"enabled": False}
+
+
 def test_build_manifests_uses_incumbent_aware_calibration_gate(
     monkeypatch, tmp_path
 ) -> None:
