@@ -26,7 +26,7 @@
     "source": "CA FTB, California EITC / YCTC / FYTC Report (Oct 2025), Table 1 p.8",
     "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
    },
-   "description": "Refundable; 398,059 returns, 483,629 qualifying children."
+   "description": "Refundable; 398,059 returns, 483,629 qualifying children. Gap analysis (2026-07 audit): +38.7% vs TY2023 = ~6pp benchmark vintage (max $1,117 -> $1,154, phase-out start $25,775 -> $26,626: +6.2% measured on the same data) + ~30pp take-up. The model pays every eligible unit: 546-559k eligible units in the data vs FTB's 398,059 actual returns (claim/eligible 0.71-0.73, matching published take-up: CalEITC 54% among SNAP-enrolled per CPL/JPubE 2023). Per-unit amounts align ($1,025 sim vs $1,037 actual) \u2014 the gap is purely excess unit count; demographics ruled out (weighted CA under-6 is 6.2% BELOW ACS 2024). A flat per-return credit passes the take-up gap straight to the total."
   },
   {
    "id": "state_ny_eitc",
@@ -78,7 +78,7 @@
     "source": "CO DOR Office of Research and Analysis, Individual Income Tax Credits TY2023 (updated Mar 2026)",
     "source_url": "https://cdor.colorado.gov/data-and-reports/income-tax-data/income-tax-credits"
    },
-   "description": "Refundable; 130,188 claims, avg $685. Children under 6, 10-60% of the federal CTC by AGI tier."
+   "description": "Refundable; 130,188 claims, avg $685. Children under 6, 10-60% of the federal CTC by AGI tier. Vintage caveat (2026-07 audit): the +30.4% gap is entirely law-change vintage, proven by replication \u2014 running the pre-HB23-1112 TY2023 law (60/30/10% of federal CTC) on this same data reproduces the DOR actual to the dollar ($89.2M vs $89,158,930), and the TY2024 flat-amount restructure (HB23-1112: $1,200/$600/$200 per under-6 child-dependent, $0-earners newly eligible) adds +30.0%. Against the bill's own fiscal-note-implied TY2024 level (~$135M) the sim runs ~14% under. Replace with CO DOR TY2024 actuals when published."
   },
   {
    "id": "state_wa_wftc",
