@@ -582,9 +582,29 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional certified release H5 whose persisted PolicyEngine input "
-            "mass the base frame must carry. Catches a rebuilt base pipeline "
-            "that silently drops input bases the incumbent populates (issue "
-            "#278: IRA/HSA/pension-contribution/childcare inputs)."
+            "mass the RAW BASE frame must carry. Catches a rebuilt base "
+            "pipeline that silently drops input bases the incumbent populates "
+            "(issue #278: IRA/HSA/pension-contribution/childcare inputs). NOTE: "
+            "this compares the PRE-calibration base to the reference, so a "
+            "certified (calibrated) reference will over-fire on PUF-imputed "
+            "income columns the raw base structurally under-reports; use it "
+            "only when the reference is itself an uncalibrated base of the same "
+            "lineage. For the calibrated-export comparison, use "
+            "--export-input-mass-reference-h5 (populace#327)."
+        ),
+    )
+    parser.add_argument(
+        "--export-input-mass-reference-h5",
+        type=Path,
+        help=(
+            "Optional certified release H5 whose persisted PolicyEngine input "
+            "mass the CALIBRATED EXPORT frame is compared against, instead of "
+            "the raw pre-calibration base (populace#327). Calibration correctly "
+            "scales PUF-imputed income up toward SOI/CBO targets, so comparing "
+            "the export to the raw base flags those correct gains; a certified "
+            "reference puts them in-band while a genuine #278 zeroing still "
+            "fails. Distinct from --input-mass-reference-h5, which gates the "
+            "raw base and must not use a calibrated reference."
         ),
     )
     parser.add_argument(
@@ -5617,13 +5637,15 @@ def main() -> None:
     # By default that reference is the raw pre-calibration base — but for a dense
     # parent built from a raw pooled-ASEC base, calibration correctly scales
     # PUF-imputed income up toward SOI/CBO targets, and the raw-base yardstick
-    # flags those correct gains. When a certified-release reference H5 is given
+    # flags those correct gains. When --export-input-mass-reference-h5 is given
     # (the live default, per #327's reference decision), compare against it so
     # calibration-driven upward alignment is in-band while a genuine #278 zeroing
-    # still fails. Reuse the reference H5 the base-vs-reference gate already read.
+    # still fails. This is a DISTINCT flag from --input-mass-reference-h5: the
+    # base-vs-reference gate compares the *pre-calibration* base and would
+    # over-fire against a calibrated reference on the same PUF columns.
     export_reference_frame = (
-        load_us_frame(args.input_mass_reference_h5)
-        if args.input_mass_reference_h5 is not None
+        load_us_frame(args.export_input_mass_reference_h5)
+        if args.export_input_mass_reference_h5 is not None
         else None
     )
     export_input_mass_gate = _export_input_mass_gate(
@@ -5633,8 +5655,8 @@ def main() -> None:
         minimum_reference_total=args.input_mass_minimum_reference_total,
         reference_frame=export_reference_frame,
         reference_name=(
-            args.input_mass_reference_h5.name
-            if args.input_mass_reference_h5 is not None
+            args.export_input_mass_reference_h5.name
+            if args.export_input_mass_reference_h5 is not None
             else "base_frame"
         ),
     )

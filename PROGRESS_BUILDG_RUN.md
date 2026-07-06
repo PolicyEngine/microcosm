@@ -223,3 +223,27 @@ sparse drops the 20 M-CHIP too → remaining sparse zero-support = 18 SOI + 1 TA
 file. Dense = 0 remaining.
 
 **Full populace-build suite launched detached** (build_suite.pid) to confirm no regressions before compute.
+
+### 2026-07-06 ~23:10 ET — RUN 1 (dense) failed early on the BASE-vs-reference gate — DIAGNOSED + FIXED (scope error in my own step-1 wiring)
+**Symptom:** dense run rc=1 right after ACA materialization (before calibration), on
+`_input_mass_reference_gate`: `base_frame mass 2.12e11 vs populace_us_2024.h5 8.64e11 (-75.5%)` for
+LT cap gains + 7 more PUF columns (estate_income -68%, non_sch_d -55%, partnership -80%, qual div -55%,
+rental -51%, ST cap gains -75%, misc -117%).
+
+**Diagnosis (precise):** `--input-mass-reference-h5` arms BOTH gates —
+(1) `_input_mass_reference_gate(base_frame, reference)` = the #278 base-LOSS guard, comparing the RAW
+    PRE-calibration base to the reference; and (2) my #327 export gate. The live-default 57k reference is
+    CALIBRATED (its PUF income is scaled to SOI/CBO). The raw 337k base structurally UNDER-reports those
+    columns (CPS under-report + PUF seeds low), so base << calibrated-reference by -50% to -117% on exactly
+    the columns calibration is meant to fix → the base-vs-reference gate over-fires. This is precisely the
+    Build F attempt-6 pre-flight finding #1-2 ("the flag adds a new base-vs-reference gate that itself trips").
+**Root cause:** MY step-1 wiring reused `--input-mass-reference-h5` for the export gate, which also feeds
+    the base-vs-reference gate. #327's verdict was EXPORT-gate-only; it never intended to arm the
+    base-vs-reference gate with a calibrated reference.
+**Fix (scope-correct, minimal):** added a DEDICATED `--export-input-mass-reference-h5` flag for the export
+    gate; `--input-mass-reference-h5` stays for the base-vs-reference gate (left OFF/None for these runs,
+    since a raw base legitimately undershoots a calibrated reference). Chain updated to use the new flag.
+    export-gate unit tests still pass; --help shows both flags. NOT a semantics change to any gate — a
+    scope correction of my own wiring. Caught in the first ~3 min (before any calibration burned).
+**NOT a three-strike build failure:** this was a harness misconfiguration, corrected before calibration.
+    Relaunching with the corrected flag. Base-vs-reference gate is intentionally not armed (documented).
