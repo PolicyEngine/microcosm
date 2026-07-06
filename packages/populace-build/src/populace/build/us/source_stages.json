@@ -811,6 +811,57 @@
         "selected_marketplace_plan_benchmark_ratio"
       ],
       "notes": "When PolicyEngine-US separates observed Marketplace coverage from simulated take-up, this stage should write the simulated take-up input while reported coverage remains a CPS-carried person-level input."
+    },
+    {
+      "stage": "medicaid_take_up",
+      "survey": "CPS ASEC reported coverage + CMS Medicaid monthly enrollment snapshot",
+      "source": "https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "CPS ASEC current Medicaid coverage at interview (has_medicaid_health_coverage_at_interview)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "cms_enrollment_snapshot",
+          "vintage": "month2024_12",
+          "locator": "CMS Medicaid and CHIP monthly enrollment, December 2024 state snapshot (cms_medicaid.month2024_12.state_enrollment.*.total_medicaid_enrollment)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_medicaid_if_eligible",
+          "draw": "stable_person_draw",
+          "rate_key": "medicaid",
+          "rate_column": "medicaid_take_up_rate",
+          "reported_true_anchor": "has_medicaid_health_coverage_at_interview"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "takes_up_medicaid_if_eligible",
+          "targets": [
+            "cms_medicaid_enrollment_by_state"
+          ],
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "has_medicaid_health_coverage_at_interview",
+          "domain": "is_medicaid_eligible",
+          "weight": "person_weight",
+          "draw": "stable_person_draw"
+        }
+      ],
+      "outputs": [
+        "takes_up_medicaid_if_eligible"
+      ],
+      "notes": "Anchored count-calibration (take-up contract treatment: count_calibrated; populace #331). Eligible reporters always take up; the fill draws at an in-build state rate (CMS count over weighted modeled eligibles, an assignment prior, never cited as provenance) and is greedily calibrated to the CMS December 2024 state snapshot among eligible non-anchored persons. Point-in-time (average-month) enrollment semantics per #332 - never ever-enrolled-in-year counts. The assign operation deliberately carries no eligibility mask: off-domain persons keep a draw-based propensity so eligibility-expanding reforms do not inherit a hard-coded zero response; the engine's is_medicaid_eligible gate hides the flag at baseline. States whose CMS count meets or exceeds modeled eligible weight saturate (all eligibles enroll) and are recorded as saturated in diagnostics, not failed (#170's eligibility-undercount shortfall is out of scope). CHIP deliberately excluded pending the #321 M-CHIP/separate-CHIP ledger concept split."
     }
   ]
 }

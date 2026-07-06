@@ -482,6 +482,31 @@ def us_take_up_participation_diagnostics(
             row["take_up_share"] = info["take_up_share"]
             row["administrative_rate"] = info["administrative_rate"]
             row["share_band"] = info["share_band"]
+        elif program.populace_treatment == "count_calibrated":
+            # Assigned by its own anchored count-calibration stage (e.g. the
+            # medicaid_take_up stage, populace #331); a non-constant column on
+            # the frame is the live surface, a missing or constant one means
+            # the stage did not run and the flag ships at the engine default.
+            row["seeded"] = False
+            table = frame.table(program.entity)
+            materialized = variable in table.columns and _column_carries_signal(
+                table, variable
+            )
+            row["count_calibrated"] = materialized
+            row["ships_at_engine_default"] = not materialized
+            if materialized:
+                weights = np.asarray(
+                    frame.resolve_weights(program.entity).values, dtype=np.float64
+                )
+                takes_up = table[variable].to_numpy(dtype=bool)
+                total_weight = float(weights.sum())
+                row["weighted_participation_count"] = float(weights[takes_up].sum())
+                row["weighted_flag_universe"] = total_weight
+                row["take_up_share"] = (
+                    float(weights[takes_up].sum()) / total_weight
+                    if total_weight > 0
+                    else 0.0
+                )
         else:
             row["seeded"] = False
             # Left at the engine's universal-take-up default: no seeded

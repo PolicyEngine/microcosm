@@ -50,6 +50,7 @@ from populace.build.us_runtime import (
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
@@ -57,6 +58,7 @@ from populace.build.us_runtime import (
     load_congressional_district_vintage_crosswalk,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
+    us_medicaid_take_up_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
@@ -65,8 +67,10 @@ from populace.build.us_runtime import (
     us_validation_input_coverage_gate,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
+    with_us_medicaid_take_up,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
+    write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
     write_us_take_up_participation_diagnostics,
 )
@@ -404,9 +408,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
     ),
-    "takes_up_medicaid_if_eligible": (
-        "Medicaid take-up imputation backlog (PolicyEngine/populace#98)."
-    ),
     "takes_up_medicare_if_eligible": (
         "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
@@ -481,6 +482,7 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
         "cms_aca_bronze_aptc_consumers_by_state",
     }
 )
+US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
 
 FILING_STATUS_MAP = {
     "All": None,
@@ -2103,6 +2105,149 @@ def _with_aca_marketplace_source_outputs(
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
+    )
+
+
+def _medicaid_source_target_table(target_specs: tuple) -> pd.DataFrame:
+    """CMS state Medicaid enrollment counts as the take-up calibration table.
+
+    Mirrors :func:`_aca_source_target_tables` for the ``medicaid_enrollment``
+    target role: month-tagged December 2024 state snapshot facts
+    (``cms_medicaid.month2024_12.state_enrollment.*``), point-in-time
+    semantics per populace #332.
+    """
+    rows: list[dict[str, object]] = []
+    for spec in target_specs:
+        if spec.metadata.get("ledger_geography_level") != "state":
+            continue
+        groupby_dimension = spec.metadata.get("ledger_layout_groupby_dimension")
+        if (
+            isinstance(groupby_dimension, str)
+            and "congressional_district" in groupby_dimension
+        ):
+            continue
+        state_fips = spec.metadata.get("state_fips")
+        if not state_fips:
+            continue
+        if spec.metadata.get("target_role") != US_MEDICAID_ENROLLMENT_TARGET_ROLE:
+            continue
+        rows.append(
+            {
+                "state_fips": str(state_fips).zfill(2),
+                "target": float(spec.value),
+                "source_record_id": spec.name,
+            }
+        )
+    return pd.DataFrame(rows, columns=["state_fips", "target", "source_record_id"])
+
+
+def _person_state_fips(frame: Frame) -> np.ndarray:
+    """Person-aligned state FIPS text codes via household membership."""
+    household = frame.table("household")
+    state_by_household = pd.Series(
+        _state_fips_text(household["state_fips"].to_numpy()),
+        index=household["household_id"].to_numpy(),
+    )
+    person_states = state_by_household.reindex(
+        frame.table("person")["person_household_id"].to_numpy()
+    )
+    if person_states.isna().any():
+        raise RuntimeError(
+            "Medicaid take-up requires every person to resolve a household state_fips."
+        )
+    return person_states.to_numpy()
+
+
+def _medicaid_person_eligibility(
+    frame: Frame,
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> np.ndarray:
+    """Engine-computed person-level ``is_medicaid_eligible``, batched like ACA."""
+    if simulation is not None:
+        return _calculate_array(simulation, "is_medicaid_eligible", map_to="person") > 0
+    from policyengine_us import Microsimulation
+
+    person_ids = frame.table("person")["person_id"].to_numpy()
+    eligibility = np.zeros(len(person_ids), dtype=bool)
+    person_positions = pd.Series(
+        np.arange(len(person_ids), dtype=np.int64), index=person_ids
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing Medicaid eligibility in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = Microsimulation(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_eligible = (
+                _calculate_array(
+                    batch_simulation, "is_medicaid_eligible", map_to="person"
+                )
+                > 0
+            )
+            positions = person_positions.reindex(
+                batch_frame.table("person")["person_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(positions).any():
+                raise RuntimeError(
+                    "Medicaid eligibility batch produced person_id values not "
+                    "present in the full person table."
+                )
+            eligibility[positions.astype(np.int64)] = batch_eligible
+            batch_simulation._invalidate_all_caches()
+            del batch_frame, batch_simulation
+        _collect_batch_garbage()
+    return eligibility
+
+
+def _with_medicaid_take_up_outputs(
+    frame: Frame,
+    target_specs: tuple,
+    *,
+    seed: int,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> tuple[Frame, dict[str, object]]:
+    """Assign Medicaid take-up (populace #331) and return frame + diagnostics."""
+    target_table = _medicaid_source_target_table(target_specs)
+    if target_table.empty:
+        raise RuntimeError(
+            "Medicaid take-up requires CMS state enrollment targets "
+            f"({US_MEDICAID_ENROLLMENT_TARGET_TABLE}); none were compiled from "
+            "the ledger facts."
+        )
+    eligibility = _medicaid_person_eligibility(
+        frame,
+        simulation=simulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+    return with_us_medicaid_take_up(
+        frame,
+        is_medicaid_eligible=eligibility,
+        state_fips=_person_state_fips(frame),
+        state_targets=target_table,
+        seed=seed,
+        target_year=PERIOD,
     )
 
 
@@ -5344,6 +5489,37 @@ def main() -> None:
                 for failure in health_input_gate.failures
             )
         )
+    if telemetry is not None:
+        telemetry.stage(
+            "medicaid_take_up",
+            message=(
+                "Assigning Medicaid take-up from reported coverage and CMS "
+                "state enrollment snapshots."
+            ),
+        )
+    base_frame, medicaid_take_up_diagnostics = _with_medicaid_take_up_outputs(
+        base_frame,
+        target_specs,
+        seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)
+    if not medicaid_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "medicaid_take_up_gate",
+                status="failed",
+                message="Medicaid take-up gate failed.",
+                failures=list(medicaid_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Medicaid take-up failed: {failure}"
+                for failure in medicaid_take_up_gate.failures
+            )
+        )
     if telemetry is not None and args.input_mass_reference_h5 is not None:
         telemetry.stage(
             "input_mass_reference_gate",
@@ -5826,10 +6002,18 @@ def main() -> None:
         us_take_up_participation_diagnostics(export_frame),
         release_dir / "us_take_up_participation.json",
     )
+    write_us_medicaid_take_up_diagnostics(
+        medicaid_take_up_diagnostics,
+        release_dir / "us_medicaid_take_up.json",
+    )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_take_up_participation",
             release_dir / "us_take_up_participation.json",
+        )
+        telemetry.attach_artifact(
+            "us_medicaid_take_up",
+            release_dir / "us_medicaid_take_up.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started
