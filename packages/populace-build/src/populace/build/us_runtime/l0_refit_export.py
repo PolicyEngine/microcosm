@@ -20,6 +20,9 @@ from populace.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
 )
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -32,7 +35,10 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "selected_marketplace_plan_benchmark_ratio",
 )
 
-US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS
+US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
+    *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
+    *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+)
 
 #: The geography spine a US release carries by default: state and district,
 #: plus the block-anchored ladder (populace #275). A release missing or

@@ -17,6 +17,9 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
+from populace.build.us_runtime.hours_worked import (
+    derive_us_hours_worked_from_manifest,
+)
 from populace.build.us_runtime.immigration import (
     derive_us_immigration_status_from_manifest,
 )
@@ -179,6 +182,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             calibrate_us_binary_assignment_joint_targets_from_manifest
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_immigration_status": derive_us_immigration_status_from_manifest,
         "derive_puf_policyengine_variables": (
             derive_us_puf_policyengine_variables_from_manifest
