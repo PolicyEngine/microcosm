@@ -21,9 +21,9 @@
       "value_type": "bool",
       "default": true,
       "populace_treatment": "out_of_scope",
-      "scope_owner": "populace#243 / PR #294 (snap-take-up-stage)",
+      "scope_owner": "snap_take_up source stage (populace#243, landed in PR #294)",
       "rate": {"value": 0.82, "source": "https://www.fns.usda.gov/snap/participation-rates", "agency": "USDA FNS", "status": "sourced_administrative"},
-      "notes": "SNAP take-up is seeded by the in-flight SNAP stage (PR #294), reported-receipt-anchored on raw ASEC SPM_SNAPSUB. Not seeded here to avoid duplicating that work."
+      "notes": "SNAP take-up is seeded by the snap_take_up source stage, reported-receipt-anchored on raw ASEC SPM_SNAPSUB and gated by snap_take_up_signal. Not seeded here to avoid duplicating that work; out_of_scope means out of scope for this module's Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_tanf_if_eligible",

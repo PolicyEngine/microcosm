@@ -28,6 +28,9 @@ from populace.build.us_runtime.puf_aggregate_records import (
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
+from populace.build.us_runtime.snap_take_up import (
+    derive_us_snap_take_up_from_manifest,
+)
 
 __all__ = [
     "aggregate_us_person_to_tax_unit_from_manifest",
@@ -184,6 +187,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "compute_ratio": compute_us_ratio_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_immigration_status": derive_us_immigration_status_from_manifest,
+        "derive_snap_take_up": derive_us_snap_take_up_from_manifest,
         "derive_puf_policyengine_variables": (
             derive_us_puf_policyengine_variables_from_manifest
         ),

@@ -32,10 +32,10 @@ Draws are seeded blake2b hashes keyed by the assigned unit's stable source
 identity, so support-channel clones of one source unit always receive the same
 flag and reruns are bit-reproducible — the same keying the SNAP stage uses.
 
-SNAP is seeded by its own in-flight stage (PR #294) and is not touched here; ACA
-take-up is owned by the ACA workstream and its own source stage. The remaining
-take-up flags are ``rate_unsourced`` in the inventory and deliberately left
-unseeded until a rate is sourced.
+SNAP is seeded by its own source stage (``snap_take_up``, PR #294) and is not
+touched here; ACA take-up is owned by the ACA workstream and its own source
+stage. The remaining take-up flags are ``rate_unsourced`` in the inventory and
+deliberately left unseeded until a rate is sourced.
 """
 
 from __future__ import annotations
@@ -374,9 +374,7 @@ def us_take_up_summary(
         takes_up = table[program.variable].to_numpy(dtype=bool)
         total_weight = float(weights.sum())
         participation_count = float(weights[takes_up].sum())
-        take_up_share = (
-            participation_count / total_weight if total_weight > 0 else 0.0
-        )
+        take_up_share = participation_count / total_weight if total_weight > 0 else 0.0
         rate = program.rate
         if program.variable == "takes_up_eitc":
             target = rate.get("values_by_num_children")
