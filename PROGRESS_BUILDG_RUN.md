@@ -267,3 +267,18 @@ mortgage columns. The run will tell. Sparse zero-support after the M-CHIP skip +
 
 RUN 2 monitored (task armed). Both diagnostics write before the export gate raises, so gate tables are
 extractable even if the export gate fails on residuals.
+
+### 2026-07-06 ~23:18 ET — RUN 2 both artifacts died on the STALE DEGENERATE REGISTER (known prereq, not novel)
+Both dense AND sparse rc=1 on `_degenerate_input_signal_gate` (#286), BEFORE calibration (base-frame gate).
+Two documented items, exactly the #330/#324-flagged register refresh never merged from build-f:
+1. `second_home_mortgage_{balance,interest,origination_year}` = constant engine default → need reviewed
+   exclusion (un-imputed trio → populace#38).
+2. Stale reviewed exclusions `['takes_up_eitc','takes_up_tanf_if_eligible']` — carry #315-seeded signal
+   now → must be RETIRED.
+**Positive signal:** the dense run PASSED the base-vs-reference gate (advanced to the degenerate gate,
+which runs after it) — confirming the RUN-2 two-flag scope fix WORKED. Both runs failed fast (~2 min),
+no wasted compute.
+**Fix (pre-approved, exact build-f b5980d2 edit):** ported the register edit to
+`US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS` — removed the two stale take-up flags, added the second_home
+trio (→ #38). 8 degenerate/take-up/export tests pass. This is the register refresh #330 applied only on a
+throwaway branch; now on build-g-run. Relaunching.

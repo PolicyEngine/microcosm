@@ -402,9 +402,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "SNAP take-up inputs not yet carried through (PolicyEngine/populace"
         "#243); constant True forces 100% take-up."
     ),
-    "takes_up_tanf_if_eligible": (
-        "TANF take-up imputation backlog; constant True forces 100% take-up."
-    ),
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
     ),
@@ -414,8 +411,19 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_medicare_if_eligible": (
         "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
-    "takes_up_eitc": ("EITC take-up imputation backlog; constant True."),
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
+    "second_home_mortgage_balance": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
+    "second_home_mortgage_interest": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
+    "second_home_mortgage_origination_year": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
     "takes_up_head_start_if_eligible": (
         "Head Start take-up imputation backlog; constant True."
     ),
