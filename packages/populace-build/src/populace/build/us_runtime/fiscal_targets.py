@@ -815,6 +815,18 @@ def compile_us_fiscal_target_registry(
     )
 
 
+# Medicaid-expansion-CHIP (M-CHIP) states: CMS total_chip_enrollment counts
+# M-CHIP enrollment the model cannot materialize as separate CHIP, so neither
+# direct rows nor the combined-minus-medicaid derivation can produce a
+# supportable target there (PolicyEngine/populace#321).
+_M_CHIP_STATE_FIPS = frozenset(
+    {
+        "02", "06", "11", "15", "17", "21", "23", "24", "26", "27",
+        "31", "33", "35", "37", "38", "39", "40", "45", "50", "56",
+    }
+)
+
+
 def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetRegistry:
     """Add direct CHIP rows from CMS Medicaid+CHIP and Medicaid controls.
 
@@ -830,6 +842,8 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
     existing_chip = _cms_medicaid_specs_by_key(specs, "chip_enrollment")
     for key, combined_spec in sorted(combined.items()):
         if key in existing_chip or key not in medicaid:
+            continue
+        if key[1] in _M_CHIP_STATE_FIPS:
             continue
         medicaid_spec = medicaid[key]
         chip_value = combined_spec.value - medicaid_spec.value
