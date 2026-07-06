@@ -9,11 +9,14 @@ dependencies = [
     # __init__.py asserts the same floor): the constellation must resolve, not
     # fail only at import.
     "populace-frame>=0.1,<0.2",
-    # scikit-learn 1.9 removed sklearn.tree._tree.DTYPE, which quantile-forest
-    # imports; cap below it until quantile-forest tracks the 1.9 tree ABI
-    # (upstream fix: zillow/quantile-forest#152).
-    "scikit-learn>=1.5,<1.9",
-    "quantile-forest>=1.3",
+    # scikit-learn 1.9 removed sklearn.tree._tree.DTYPE and changed the
+    # sample-weight signature of the forest bootstrap helpers; quantile-forest
+    # 1.4.2 (2026-06-21) tracks both (zillow/quantile-forest#152, #153), so the
+    # floor below is the first release compatible with sklearn 1.9. No upper
+    # bound: this package's own sklearn usage (HistGradientBoostingClassifier,
+    # forest .fit() without sample_weight) is stable across 1.5-1.9.
+    "scikit-learn>=1.5",
+    "quantile-forest>=1.4.2",
     "numpy>=2",
     "pandas>=2.3",
 ]
