@@ -165,7 +165,7 @@ def us_medicaid_source_person_table(
         .fillna(False)
         .to_numpy(dtype=bool),
         US_MEDICAID_ELIGIBILITY_COLUMN: np.asarray(is_medicaid_eligible, dtype=bool),
-        "state_fips": _state_fips_text(state_fips),
+        "state_fips": _normalize_state_fips(state_fips),
         "person_weight": np.asarray(
             frame.resolve_weights("person").values, dtype=np.float64
         ),
@@ -178,8 +178,19 @@ def us_medicaid_source_person_table(
     return table
 
 
-def _state_fips_text(values: np.ndarray) -> np.ndarray:
-    text = pd.Series(values).astype(str).str.replace(r"\.0$", "", regex=True)
+def _normalize_state_fips(values: np.ndarray) -> np.ndarray:
+    """Zero-padded two-char state codes from numeric or string input.
+
+    Deliberately NOT named like the builder's ``_state_fips_text`` (which has
+    different semantics — int coercion, bytes handling) so the two cannot be
+    confused; missing values are refused rather than silently becoming the
+    string ``'nan'`` and surfacing later as a states-without-targets gate
+    failure.
+    """
+    series = pd.Series(values)
+    if series.isna().any():
+        raise ValueError("US Medicaid take-up state_fips contains missing values.")
+    text = series.astype(str).str.replace(r"\.0$", "", regex=True)
     return text.str.zfill(2).to_numpy()
 
 
