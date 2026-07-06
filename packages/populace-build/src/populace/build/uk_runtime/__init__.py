@@ -7,6 +7,16 @@ from populace.build.uk_runtime.ai_exposure import (
     load_ai_exposure_table,
     load_major_group_ai_exposure_table,
 )
+from populace.build.uk_runtime.ai_shock_scenarios import (
+    PRESETS as AI_SHOCK_PRESETS,
+)
+from populace.build.uk_runtime.ai_shock_scenarios import (
+    ShockScenario,
+    apply_capital_shock,
+    apply_employment_shock,
+    apply_wage_shock,
+    run_scenario,
+)
 from populace.build.uk_runtime.exposure_imputation import (
     DEFAULT_EXPOSURE_COLUMN,
     DEFAULT_PREDICTORS,
@@ -192,6 +202,7 @@ from populace.build.uk_runtime.spi_support import (
 
 __all__ = [
     "AGE_BANDS",
+    "AI_SHOCK_PRESETS",
     "APS_NOMIS_SOURCE",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",
@@ -245,6 +256,7 @@ __all__ = [
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SOC_MAJOR_GROUP_COLUMN",
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
+    "ShockScenario",
     "SkippedTargetRow",
     "StackedLocalMatrix",
     "StackedLocalSolveResult",
@@ -266,6 +278,9 @@ __all__ = [
     "VAT_LIABILITY_BANDS",
     "VINTAGES",
     "align_area_targets",
+    "apply_capital_shock",
+    "apply_employment_shock",
+    "apply_wage_shock",
     "aps_age_band_employment_targets",
     "aps_occupation_employment_targets",
     "area_groups_from_codes",
@@ -334,6 +349,7 @@ __all__ = [
     "prepare_household_frame",
     "read_local_table",
     "read_uk_firm_source_data",
+    "run_scenario",
     "set_simulation_area_group",
     "solve_firm_weights",
     "solve_stacked_local_weights",
