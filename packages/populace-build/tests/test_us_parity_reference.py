@@ -13,11 +13,13 @@ from pathlib import Path
 
 import pytest
 
+from populace.build.us_runtime.immigration import US_IMMIGRATION_OUTPUT_COLUMNS
 from populace.build.us_runtime.parity_reference import (
     ECPS_PARITY_REFERENCE_RESOURCE,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.take_up_contract import seeded_take_up_programs
 
 _US_PACKAGE = "populace.build.us"
 
@@ -132,6 +134,23 @@ class TestKnownGapsRegister:
         )
         assert stray == [], f"register exempts non-reference layers: {stray}"
 
+    def test_register_exempts_no_release_produced_layer(self) -> None:
+        # The release pipeline deterministically materializes these inputs on
+        # the base frame before the parity gate runs (immigration derivation,
+        # contract-seeded take-up flags), so an exemption for any of them is
+        # stale on arrival. parity_gate enforces this at build time from live
+        # candidate shares; this pins the statically-knowable subset so a
+        # stale entry never reaches a release build.
+        produced = set(US_IMMIGRATION_OUTPUT_COLUMNS) | {
+            program.variable for program in seeded_take_up_programs()
+        }
+        stale = sorted(
+            gap.variable
+            for gap in load_ecps_parity_known_gaps()
+            if gap.variable in produced
+        )
+        assert stale == [], f"register exempts release-produced layers: {stale}"
+
     def test_register_entries_are_unique(self) -> None:
         register = load_ecps_parity_known_gaps()
         names = [gap.variable for gap in register]
@@ -149,8 +168,6 @@ class TestKnownGapsRegister:
 
     def test_missing_issue_is_refused(self, tmp_path) -> None:
         bad = tmp_path / "bad_gaps.json"
-        bad.write_text(
-            json.dumps({"known_gaps": {"some_var": {"reason": "because"}}})
-        )
+        bad.write_text(json.dumps({"known_gaps": {"some_var": {"reason": "because"}}}))
         with pytest.raises(ValueError, match="issue"):
             load_ecps_parity_known_gaps(str(bad))
