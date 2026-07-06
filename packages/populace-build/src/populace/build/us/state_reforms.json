@@ -280,35 +280,6 @@
    "tracker_id": "mi-hb4170"
   },
   {
-   "id": "state.ma.h5007",
-   "name": "MA H5007 \u2014 income tax rate cut (5% \u2192 4%)",
-   "category": "State reform",
-   "state": "MA",
-   "period": 2029,
-   "budget_measure": "ma_income_tax",
-   "description": "Phases the Part B rate from 5% to 4% over 2027-2029. MA DOR estimates -$4.2B to -$4.8B annually when fully implemented (benchmark is the midpoint). Caveat: the DOR figure is known only from press paraphrase (WBUR/NBC Boston) with unstated assumptions; the Mass. Taxpayers Foundation's explicitly static estimate is -$5.4B FY2030, which would imply a ~15% gap instead of ~1%. The SJC struck the underlying ballot question in June 2026, so the benchmark is a hypothetical policy's estimate.",
-   "parameter_changes": {
-    "gov.states.ma.tax.income.rates.part_b": {
-     "2027-01-01.2027-12-31": 0.0467,
-     "2028-01-01.2028-12-31": 0.0433,
-     "2029-01-01.2100-12-31": 0.04
-    },
-    "gov.states.ma.tax.income.rates.part_a.dividends": {
-     "2027-01-01.2027-12-31": 0.0467,
-     "2028-01-01.2028-12-31": 0.0433,
-     "2029-01-01.2100-12-31": 0.04
-    }
-   },
-   "benchmark": {
-    "score": -4500000000.0,
-    "score_type": "fiscal_note",
-    "window": "fully implemented (DOR range midpoint)",
-    "source": "Massachusetts DOR estimate (-$4.2B to -$4.8B), reported via press; no primary document located. Published static estimates run higher: MTF -$5.4B FY2030, cSPA/Tufts -$5.1B, MassBudget ~-$5B.",
-    "source_url": ""
-   },
-   "tracker_id": "ma-h5007"
-  },
-  {
    "id": "state.ca.ab2591",
    "name": "CA AB2591 \u2014 standard deduction increase",
    "category": "State reform",
