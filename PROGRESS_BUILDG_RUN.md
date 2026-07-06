@@ -247,3 +247,23 @@ rental -51%, ST cap gains -75%, misc -117%).
     scope correction of my own wiring. Caught in the first ~3 min (before any calibration burned).
 **NOT a three-strike build failure:** this was a harness misconfiguration, corrected before calibration.
     Relaunching with the corrected flag. Base-vs-reference gate is intentionally not armed (documented).
+
+### 2026-07-06 ~23:14 ET — RUN 2 launched (corrected flags); dense-export outcome PRE-VALIDATED
+Relaunched (commit 38457f8): dense first, then sparse; --export-input-mass-reference-h5=live-default 57k;
+base-vs-reference gate NOT armed. Dense healthy (99% CPU), past the run-1 failure point.
+
+**Pre-validation of the dense export gate (using Build F attempt-5 dense export masses vs the measured
+live-default 57k reference, tol +-50%):** 11/14 columns in-band, exactly matching #327's reference-decision
+table; 3 residuals FAIL = first_home_mortgage_interest (+62.5%), home_mortgage_interest (+70.7%),
+miscellaneous_income (-62.9%). These are the documented #328 cold-calibration residuals (mortgage
+tax-expenditure overshoot + sign-unstable misc), NOT gate mis-references. Per #327: "leave the
+mortgage/misc residuals to #328 rather than granting blanket exclusions." So the DENSE parent is
+predicted NOT certifiable as-is (3 genuine cold-calibration export-mass residuals) — but every structural
+gate + zero-support (0 with the full v7 registry) passes. Exact numbers will shift at 1.764.6; pattern holds.
+
+**Sparse prediction:** the frozen-support construction fits the mortgage tax-expenditure tighter (#330:
++43.1% vs cold dense +59.7%), so the sparse export-mass residual should be smaller — possibly clearing the
+mortgage columns. The run will tell. Sparse zero-support after the M-CHIP skip + 19-cell exclusion = 0.
+
+RUN 2 monitored (task armed). Both diagnostics write before the export gate raises, so gate tables are
+extractable even if the export gate fails on residuals.
