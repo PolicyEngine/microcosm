@@ -924,7 +924,9 @@ def test_md_eitc_repeal_neutralizes_tax_path_components():
 def test_neutralize_list_reform_targets_each_variable():
     # The list form of neutralized_variable must neutralize every listed
     # variable in one Reform (used where an umbrella total is off the tax
-    # path and repeal needs its components).
+    # path and repeal needs its components). build_reform() lazily imports
+    # policyengine_core, which the CI unit-test env intentionally lacks.
+    pytest.importorskip("policyengine_core")
     from populace.build.us_runtime.reform_validation import (
         ReformValidationSpec,
     )
