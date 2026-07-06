@@ -10,7 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from typing import Any, Literal
@@ -728,6 +728,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -750,6 +751,14 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        extra_support_exclusions: Optional per-run, per-artifact augmentation of
+            the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` registry
+            (source_record_id -> reason). A sparse artifact's frozen support
+            cannot populate narrow state/tail cells the dense parent can, so a
+            single build may declare additional support-expressibility
+            exclusions without mutating the shared module constant
+            (PolicyEngine/populace#299 Build G). The caller records these in the
+            release manifest for provenance.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -764,6 +773,7 @@ def compile_us_fiscal_target_registry(
             include_congressional_district_targets=(
                 include_congressional_district_targets
             ),
+            extra_support_exclusions=extra_support_exclusions,
         ),
         *_references_for_target_period(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
@@ -1686,6 +1696,7 @@ def _dynamic_us_fiscal_target_references(
     *,
     target_period: int | str,
     include_congressional_district_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
         tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
@@ -1697,6 +1708,7 @@ def _dynamic_us_fiscal_target_references(
             include_congressional_district_targets=(
                 include_congressional_district_targets
             ),
+            extra_support_exclusions=extra_support_exclusions,
         )
         if reference is not None:
             candidates.append(
@@ -1908,9 +1920,17 @@ def _reference_from_ledger_fact(
     *,
     target_period: int | str,
     include_congressional_district_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        return None
+    if extra_support_exclusions and source_record_id in extra_support_exclusions:
+        # Per-run, per-artifact support-expressibility exclusions
+        # (PolicyEngine/populace#299 Build G): a sparse artifact's frozen
+        # support cannot populate narrow state/tail cells the dense parent can.
+        # These augment the standing global registry for a single build only and
+        # are recorded in the manifest, never mutating the module constant.
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":

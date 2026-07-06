@@ -184,3 +184,42 @@ per artifact. Post to #299 (Build G run entry) + update #324. Publication is Max
 - DESIGN: step-1 reference-frame fix (default base, wire live-default 57k); step-2 per-artifact applicability
   (global M-CHIP + sparse-only SOI/TANF), verify against dense zero-support empirically.
 - NEXT: implement step 1 (code + test), decide step 2 after dense empirics, pin 1.764.6, run both detached.
+
+### 2026-07-06 — STEP 1 + STEP 2 implemented; step-2 design RESOLVED empirically
+**Env**: `uv lock --upgrade-package policyengine-us==1.764.6` + `uv sync --all-packages --extra us`
+resolved **pe-us 1.764.6 / core 3.26.11** (exact pin recorded per #324 GO; 1.764.6 = latest 1.764.x,
+includes 1.764.1 NY IT-196 §68). Env marker written.
+
+**STEP 1 committed (72d80ca)**: `_export_input_mass_gate` now takes `reference_frame` (defaults to
+raw base — behaviour preserved), `reference_name`, `reviewed_exclusions`; call site wires it from
+`--input-mass-reference-h5`. 3 unit tests pass (default raw-base fail; passes vs certified ref despite
+export>>base; still fails genuine #278 zeroing/drift vs ref).
+
+**STEP 2 M-CHIP (global) — cherry-picked #321 fix (bfb234f, 5265757)**: DIAGNOSIS CONFIRMED — the v7
+feed carries 0 direct M-CHIP CHIP rows (correct), but on main `_with_derived_chip_enrollment_targets`
+re-derives CHIP=(combined−medicaid) for M-CHIP states (v7 has BOTH control rows for all 20). The #321
+derivation-skip (`_M_CHIP_STATE_FIPS`, 20 FIPS = exactly the 20 M-CHIP zero-support states) was never
+merged to main — it lived only on build-f. Ported both #321 commits (skip + tests) cleanly. 10 CHIP/
+zero-support/reviewed tests pass (incl. the 42-entry global-registry invariant, untouched).
+
+**STEP 2 SOI/TANF (per-artifact) — DECISION RESOLVED, empirically grounded.** Mechanism added:
+`--zero-support-exclusions <json>` on the release tool → `extra_support_exclusions` threaded through
+`compile_us_fiscal_target_registry` → `_dynamic_us_fiscal_target_references` → `_reference_from_ledger_fact`;
+recorded in `us_source_coverage.json` as `fiscal_target_support_exclusions_per_run` (never mutates the
+module constant). **DECISIVE EVIDENCE for per-artifact (not single pruned feed):** Build F attempt-5
+DENSE (337k base, SAME v7 feed, WITH the M-CHIP skip) had **0 zero-support targets** (release_gates
+passed=True; 0 SOI, 0 TANF, 0 CHIP). So the 337k dense parent EXPRESSES the 18 SOI under_1.taxable_interest
++ 1 AL TANF cells; only the 57k sparse frozen support cannot. This is exactly the "dense may legitimately
+support targets the sparse can't" case. **Ledgered supersession:**
+  - Dense parent → NO per-run exclusions (only the global M-CHIP derivation skip). Full v7 registry.
+  - Sparse → the 19-cell exclusion file (18 SOI + 1 AL TANF), reason = support-expressibility on the
+    57,240 frozen support. Same class as the ia/nd SOI + 22 TANF states ALREADY in the global registry —
+    but kept per-run because they ARE dense-expressible (unlike the global ones on the national support).
+  - The 20 M-CHIP are GLOBAL (structural #170; un-expressible on ANY support) via the derivation skip.
+
+n_targets note: #330 sparse validation showed 5541 targets (on 328-validate branch = NO M-CHIP skip →
+re-derived 20 M-CHIP); Build F dense attempt-5 = 5521 (M-CHIP skipped). With the skip now on build-g-run,
+sparse drops the 20 M-CHIP too → remaining sparse zero-support = 18 SOI + 1 TANF = the 19 in the exclusion
+file. Dense = 0 remaining.
+
+**Full populace-build suite launched detached** (build_suite.pid) to confirm no regressions before compute.
