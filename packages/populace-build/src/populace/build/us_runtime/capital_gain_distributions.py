@@ -85,9 +85,7 @@ class CapitalGainDistributionShares:
         )
         missing = [key for key in required if key not in anchor]
         if missing:
-            raise ValueError(
-                f"capital gain distribution anchor is missing {missing}."
-            )
+            raise ValueError(f"capital gain distribution anchor is missing {missing}.")
         all_route = float(anchor["soca_all_route_capital_gain_distributions_k"])
         lt_total = float(anchor["soca_long_term_total_net_gain_k"])
         direct = float(anchor["pub1304_direct_1040_route_k"])
@@ -142,8 +140,7 @@ def split_us_component_by_share_from_manifest(
 
     if operation.kind != "split_component_by_share":
         raise SourceRuntimeError(
-            "component split received unexpected operation "
-            f"{operation.kind!r}."
+            f"component split received unexpected operation {operation.kind!r}."
         )
     if frame is None:
         raise SourceRuntimeError(
@@ -196,9 +193,7 @@ def split_us_component_by_share_from_manifest(
             f"component split output {output!r} already exists in the frame; "
             "refusing to overwrite."
         )
-    missing_exclusive = [
-        name for name in exclusive_with if name not in frame.columns
-    ]
+    missing_exclusive = [name for name in exclusive_with if name not in frame.columns]
     if missing_exclusive:
         raise SourceRuntimeError(
             f"component split exclusive_with column(s) {missing_exclusive} "
