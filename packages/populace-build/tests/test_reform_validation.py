@@ -348,14 +348,63 @@ def test_shipped_obbba_config_is_out_of_sample_counterfactual():
     assert {s.id for s in specs} >= {"obbba_no_tax_on_tips", "obbba_no_tax_on_overtime"}
     assert any(s.jct_score and s.jct_score < 0 for s in specs)
     assert any(s.jct_score and s.jct_score > 0 for s in specs)
-    assert any(s.jct_score is None for s in specs)
+    # Every shipped OBBBA row carries a JCX-35-25 benchmark: the senior
+    # deduction (formerly the one unbenchmarked row) is folded into the
+    # personal-exemption row, matching the combined scope of Ch.1 line 3.
+    assert all(s.jct_score is not None for s in specs)
     for spec in specs:
         assert spec.effect_direction == "baseline_minus_reform"
         assert spec.period == 2026
-        if spec.jct_score is None:
-            assert "No standalone" in spec.jct_source
-        else:
-            assert spec.jct_source.startswith("JCX-35-25")
+        assert spec.jct_source.startswith("JCX-35-25")
+
+
+def test_shipped_obbba_line3_scores_combined_sec_70103_scope():
+    # JCX-35-25 Ch.1 line 3 nets the temporary senior deduction against the
+    # exemption termination (OBBBA Sec. 70103). The counterfactual patch must
+    # revert BOTH, or the modeled scope is narrower than the benchmark scope.
+    spec = next(
+        s
+        for s in out_of_sample_reform_specs(period=2026)
+        if s.id == "obbba_personal_exemption_termination"
+    )
+    paths = set(spec.parameter_changes or {})
+    assert paths == {
+        "gov.irs.income.exemption.suspended",
+        "gov.irs.deductions.senior_deduction.amount",
+    }, paths
+
+
+def test_shipped_obbba_parameter_patches_are_pairwise_disjoint():
+    # stacked_obbba_effects tracks enactment by parameter path: a path shared
+    # by two provisions would silently corrupt both the merged pre-OBBBA
+    # baseline and the incremental scoring, so disjointness is load-bearing.
+    specs = out_of_sample_reform_specs(period=2026)
+    seen: dict[str, str] = {}
+    for spec in specs:
+        for path in spec.parameter_changes or {}:
+            assert path not in seen, (
+                f"{path} appears in both {seen[path]} and {spec.id}"
+            )
+            seen[path] = spec.id
+
+
+def test_shipped_obbba_specs_are_in_jcx_line_order():
+    # The stack enacts provisions in file order; JCT scores each line given
+    # the lines above it, so file order must follow the JCX-35-25 document
+    # order for the increments to be comparable.
+    import re
+
+    specs = out_of_sample_reform_specs(period=2026)
+    keys = []
+    for spec in specs:
+        if spec.budget_measure != "income_tax":
+            continue  # other measures stack in their own group
+        m = re.search(
+            r"Ch\.(\d+)(?:\.([A-C]))? line (\d+)", spec.jct_source or ""
+        )
+        assert m, f"{spec.id}: cannot parse JCX position from {spec.jct_source!r}"
+        keys.append((int(m.group(1)), m.group(2) or "", int(m.group(3))))
+    assert keys == sorted(keys), keys
 
 
 def test_itemized_benefit_limit_counterfactual_keeps_pease():
