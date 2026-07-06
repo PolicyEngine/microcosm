@@ -3530,21 +3530,37 @@ def _export_input_mass_gate(
     *,
     relative_tolerance: float,
     minimum_reference_total: float,
+    reference_frame: Frame | None = None,
+    reference_name: str = "base_frame",
+    reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
-    """Gate the export support's persisted input mass against the base frame.
+    """Gate the export support's persisted input mass against a reference frame.
 
     L0 selection and reweighting optimize the target surface; an untargeted
     input column can lose its mass without moving any residual. The export
     must keep every material input base the candidate frame carries.
+
+    The reference defaults to ``base_frame`` (the raw pre-calibration base),
+    which preserves the historical behaviour. But for a dense parent built from
+    a raw pooled-ASEC base, calibration is *supposed* to scale PUF-imputed
+    income columns up toward their SOI/CBO fiscal targets, and comparing the
+    calibrated export against the raw base flags those correct, target-aligned
+    gains as failures (populace #327). Passing a certified-release
+    ``reference_frame`` (the live default) puts calibration-driven upward
+    alignment of under-reported PUF income in-band while a genuine sparse
+    zeroing (candidate == 0 or candidate << reference — the #278 signature)
+    still fails. ``reviewed_exclusions`` documents any column allowed to drift.
     """
     input_variables = _engine_input_variables()
+    reference = reference_frame if reference_frame is not None else base_frame
     return input_mass_parity_gate(
         us_input_mass_totals(export_frame, columns=input_variables),
-        us_input_mass_totals(base_frame, columns=input_variables),
+        us_input_mass_totals(reference, columns=input_variables),
         candidate_name="export_frame",
-        reference_name="base_frame",
+        reference_name=reference_name,
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        reviewed_exclusions=reviewed_exclusions,
     )
 
 
@@ -5550,11 +5566,30 @@ def main() -> None:
         if args.dense_default_dataset
         else _with_l0_refit_weights(base_frame, result)
     )
+    # #327: the export gate compares the calibrated export against a reference.
+    # By default that reference is the raw pre-calibration base — but for a dense
+    # parent built from a raw pooled-ASEC base, calibration correctly scales
+    # PUF-imputed income up toward SOI/CBO targets, and the raw-base yardstick
+    # flags those correct gains. When a certified-release reference H5 is given
+    # (the live default, per #327's reference decision), compare against it so
+    # calibration-driven upward alignment is in-band while a genuine #278 zeroing
+    # still fails. Reuse the reference H5 the base-vs-reference gate already read.
+    export_reference_frame = (
+        load_us_frame(args.input_mass_reference_h5)
+        if args.input_mass_reference_h5 is not None
+        else None
+    )
     export_input_mass_gate = _export_input_mass_gate(
         export_frame,
         base_frame,
         relative_tolerance=args.input_mass_relative_tolerance,
         minimum_reference_total=args.input_mass_minimum_reference_total,
+        reference_frame=export_reference_frame,
+        reference_name=(
+            args.input_mass_reference_h5.name
+            if args.input_mass_reference_h5 is not None
+            else "base_frame"
+        ),
     )
     input_mass_parity_path = release_dir / "input_mass_parity.json"
     input_mass_parity_path.write_text(
