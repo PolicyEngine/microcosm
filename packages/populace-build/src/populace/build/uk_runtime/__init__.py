@@ -1,5 +1,15 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk_runtime.ai_shock_scenarios import (
+    PRESETS as AI_SHOCK_PRESETS,
+)
+from populace.build.uk_runtime.ai_shock_scenarios import (
+    ShockScenario,
+    apply_capital_shock,
+    apply_employment_shock,
+    apply_wage_shock,
+    run_scenario,
+)
 from populace.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -160,6 +170,7 @@ from populace.build.uk_runtime.spi_support import (
 
 __all__ = [
     "AGE_BANDS",
+    "AI_SHOCK_PRESETS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
     "AREA_TYPE_TO_CROSSWALK_COLUMN",
@@ -202,6 +213,7 @@ __all__ = [
     "SPI_INCOME_COMPONENT_COLUMNS",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
+    "ShockScenario",
     "StackedLocalMatrix",
     "StackedLocalSolveResult",
     "UK_POSTCODE_OA_MAY25_ZIP_URL",
@@ -221,6 +233,9 @@ __all__ = [
     "VAT_LIABILITY_BANDS",
     "VINTAGES",
     "align_area_targets",
+    "apply_capital_shock",
+    "apply_employment_shock",
+    "apply_wage_shock",
     "area_support_summary",
     "area_groups_from_codes",
     "assign_employment",
@@ -276,6 +291,7 @@ __all__ = [
     "prepare_household_frame",
     "read_local_table",
     "read_uk_firm_source_data",
+    "run_scenario",
     "set_simulation_area_group",
     "solve_firm_weights",
     "solve_stacked_local_weights",
