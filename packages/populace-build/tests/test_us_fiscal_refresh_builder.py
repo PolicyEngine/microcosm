@@ -1729,6 +1729,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return 4
 
+        def table(self, entity):
+            # The medicaid eligibility collector indexes the person table.
+            assert entity == "person"
+            return pd.DataFrame({"person_id": np.arange(4, dtype=np.int64)})
+
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1898,7 +1903,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None, on_batch_simulation=None: (
+            frame
+        ),
     )
     monkeypatch.setattr(
         builder,
@@ -1912,7 +1919,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_with_medicaid_take_up_outputs",
-        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: (frame, {}),
+        lambda frame, specs, *, seed, is_medicaid_eligible=None, maximum_microsim_batch_size=None: (
+            frame,
+            {},
+        ),
     )
     monkeypatch.setattr(
         builder,
@@ -2711,6 +2721,164 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
     assert tax_unit.loc[30, "aca_take_up_rate"] == 0.0
 
 
+def test_aca_source_batches_collect_person_medicaid_eligibility(monkeypatch) -> None:
+    # The Medicaid take-up stage reads person-level is_medicaid_eligible off
+    # the ACA batch simulations instead of running its own full-population
+    # pass; the collector must reassemble per-batch person values in full
+    # person-table order.
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20, 30], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200, 300], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000, 3000], dtype="int64"),
+            "person_marital_unit_id": np.asarray(
+                [10000, 10000, 20000, 30000], dtype="int64"
+            ),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "state_fips": np.asarray([1, 1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2, 0.3],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200, 300]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000, 3000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000, 30000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 20.0, 30.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    target_tables = {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {
+                "state_fips": ["01"],
+                "target": [3.0],
+            }
+        )
+    }
+    aca_person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
+    medicaid_person_eligible = {1: 0.0, 2: 1.0, 3: 0.0, 4: 1.0}
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.dataset = dataset
+
+        def _invalidate_all_caches(self):
+            pass
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        if map_to == "person":
+            source = (
+                medicaid_person_eligible
+                if variable == "is_medicaid_eligible"
+                else aca_person_eligible
+            )
+            return np.asarray(
+                [
+                    source[int(person_id)]
+                    for person_id in simulation.dataset.table("person")["person_id"]
+                ],
+                dtype=np.float64,
+            )
+        assert map_to == "tax_unit"
+        return np.zeros(simulation.dataset.n("tax_unit"), dtype=np.float64)
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        lambda frame_arg: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_dataset_from_frame",
+        lambda frame_arg, **kwargs: frame_arg,
+    )
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    collector = builder._BatchedPersonEligibilityCollector(
+        frame, "is_medicaid_eligible"
+    )
+    assert collector.values() is None
+    builder._aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=FakeMicrosimulation,
+        maximum_microsim_batch_size=1,
+        on_batch_simulation=collector.collect,
+    )
+    assert collector.values().tolist() == [False, True, False, True]
+
+
+def test_person_eligibility_collector_rejects_partial_coverage() -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    collector = builder._BatchedPersonEligibilityCollector(
+        frame, "is_medicaid_eligible"
+    )
+    batch = builder._select_households_by_position(frame, np.asarray([0]))
+    collector.collect(
+        batch,
+        SimpleNamespace(
+            calculate=lambda variable, period=None, map_to=None: np.ones(
+                batch.n("person"), dtype=np.float64
+            )
+        ),
+    )
+    with pytest.raises(RuntimeError, match="covered only 2 of 3 persons"):
+        collector.values()
+
+
 def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
     builder = _load_builder_module()
     specs = (
@@ -2784,7 +2952,7 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "_aca_source_tax_unit_table",
-        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None: (
+        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None, on_batch_simulation=None: (
             pd.DataFrame({"tax_unit_id": [10, 20], "state_fips": ["06", "06"]})
         ),
     )
