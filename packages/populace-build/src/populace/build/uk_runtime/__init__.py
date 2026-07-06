@@ -1,5 +1,12 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk_runtime.ai_exposure import (
+    MEASURE_TO_COLUMN,
+    exposure_for_major_group,
+    exposure_for_soc,
+    load_ai_exposure_table,
+    load_major_group_ai_exposure_table,
+)
 from populace.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -187,6 +194,7 @@ __all__ = [
     "INCOME_VARIABLES",
     "LA_EXTRA_METRICS",
     "LONG_GEOGRAPHY_COLUMNS",
+    "MEASURE_TO_COLUMN",
     "MAX_UNMATCHED_ACTIVE_NI_POSTCODE_SHARE",
     "NI_DZ2021_COUNT",
     "NI_DZ_GEOJSON_ZIP_URL",
@@ -243,6 +251,8 @@ __all__ = [
     "compute_household_metrics",
     "create_uk_spi_support_tables",
     "employment_band_name",
+    "exposure_for_major_group",
+    "exposure_for_soc",
     "fill_support_channel_from_source",
     "generate_base_firms",
     "generate_input_values",
@@ -256,6 +266,8 @@ __all__ = [
     "load_england_wales_oa_hierarchy",
     "load_england_wales_oa_population",
     "load_ew_oa_lad23_lookup",
+    "load_ai_exposure_table",
+    "load_major_group_ai_exposure_table",
     "load_metric_tables",
     "load_ni_dz_hierarchy",
     "load_ni_dz_population",
