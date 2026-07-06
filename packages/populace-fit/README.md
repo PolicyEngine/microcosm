@@ -50,3 +50,10 @@ fitted_unweighted = fit(frame, predictors, targets, weights="none")
 The heavy dependencies (`scikit-learn`, `quantile-forest`) live here, never in
 `populace-frame`: an analyst doing imputation installs this shard; an analyst
 doing only calibration never pulls them.
+
+`scikit-learn` is unpinned on the upper side (`>=1.5`): the shard's test suite
+passes on both 1.8 and 1.9, so it coexists in one environment with a
+`scikit-learn>=1.9` consumer. This requires `quantile-forest>=1.4.2`, the first
+release that tracks the sklearn-1.9 tree ABI
+(zillow/quantile-forest#152, #153); older `quantile-forest` fails to import
+under sklearn 1.9.
