@@ -69,7 +69,8 @@ APS_NOMIS_SOURCE = (
 #: The all-ages roll-up band published alongside the disjoint APS age bands.
 APS_TOTAL_AGE_BAND = "16+"
 
-#: Filenames of the tidy CSVs committed under ``populace/build/uk/data``.
+#: Filenames of the tidy CSVs committed under
+#: ``populace/build/uk_runtime/occupation_targets_data``.
 PACKAGED_ASHE_TABLE14_CSV = "ashe_table14_2025_soc4.csv"
 PACKAGED_APS_OCCUPATION_CSV = "nomis_aps_occupation_employment.csv"
 PACKAGED_APS_AGE_CSV = "nomis_aps_age_employment.csv"
@@ -82,16 +83,24 @@ def packaged_occupation_csv_path(filename: str) -> Path:
         filename: One of the ``PACKAGED_*_CSV`` constants.
 
     Returns:
-        The path of the packaged tidy CSV under ``populace/build/uk/data``.
+        The path of the packaged tidy CSV under
+        ``populace/build/uk_runtime/occupation_targets_data``.
 
     Raises:
         FileNotFoundError: If ``filename`` is not a packaged tidy CSV.
     """
 
-    path = Path(str(files("populace.build.uk").joinpath("data", filename)))
+    path = Path(
+        str(
+            files("populace.build.uk_runtime").joinpath(
+                "occupation_targets_data", filename
+            )
+        )
+    )
     if not path.is_file():
         raise FileNotFoundError(
-            f"No packaged tidy CSV {filename!r} under populace/build/uk/data."
+            f"No packaged tidy CSV {filename!r} under "
+            "populace/build/uk_runtime/occupation_targets_data."
         )
     return path
 
