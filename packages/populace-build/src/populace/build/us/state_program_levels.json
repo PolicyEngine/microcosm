@@ -488,7 +488,7 @@
    "benchmark": {
     "value": 98372000,
     "year": "FY2024",
-    "source": "DC Tax Expenditure Report (OCFO/ORA, Sept 2024), item 128 p.235",
+    "source": "DC Tax Expenditure Report (OCFO/ORA, Sept 2024), item 129 p.235",
     "source_url": "https://ora-cfo.dc.gov/sites/default/files/dc/sites/ora-cfo/publication/attachments/2024%20Tax%20Expenditure%20Report.pdf",
     "score_type": "approximation"
    },
@@ -534,7 +534,7 @@
     "source_url": "https://data.census.gov/table/ACSDT1Y2024.B01003?g=040XX00US16",
     "score_type": "approximation"
    },
-   "description": "Upper bound: the credit is prorated by months not receiving SNAP and excludes incarcerated months, and the seniors add-on ($20, in force through 2024) is omitted; expect populace below the benchmark."
+   "description": "Upper bound: the credit is prorated by months not receiving SNAP and excludes incarcerated months, and the seniors add-on ($20, in force through 2024) is omitted; expect populace below the benchmark. Note: the 2,001,619 population figure matches the Census Vintage-2024 PEP estimate rather than the cited ACS 1-year table; either way an upper-bound approximation."
   }
  ]
 }
