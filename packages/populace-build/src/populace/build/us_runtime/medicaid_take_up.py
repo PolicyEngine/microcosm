@@ -53,7 +53,6 @@ follows this pattern once the ledger splits the concepts.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -62,6 +61,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
+from populace.build.us_runtime.take_up import (
+    _SOURCE_IDENTITY_COLUMNS,
+    _stable_unit_draws,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -87,48 +90,29 @@ US_MEDICAID_ENROLLMENT_TARGET_TABLE = "cms_medicaid_enrollment_by_state"
 
 #: Relative miss tolerance for an unsaturated state's calibrated enrollment
 #: against its CMS count. Greedy calibration overshoots by at most one unit
-#: weight per state; 2% absorbs that granularity on small states without
-#: letting a real calibration failure through.
+#: weight per state; the gate widens this to the state's largest person
+#: weight where that exceeds 2%, so small-state granularity never reads as a
+#: real calibration failure.
 US_MEDICAID_ENROLLMENT_TOLERANCE = 0.02
 
 _DRAW_COLUMN = "stable_person_draw"
 _RATE_COLUMN = "medicaid_take_up_rate"
-_SOURCE_IDENTITY_COLUMNS = ("source_year", "source_household_id", "source_person_id")
 
 
 def _stable_person_draws(person: pd.DataFrame, *, seed: int) -> np.ndarray:
     """Seeded uniform draws keyed by stable source identity per person.
 
-    The same blake2b keying as the seeded take-up stages: when the person
-    table carries source-identity columns, support-channel clones of one
-    source person draw together and reruns are bit-reproducible; otherwise
-    the draw keys on ``person_id``.
+    Delegates to the seeded take-up stages' shared blake2b keying
+    (:func:`populace.build.us_runtime.take_up._stable_unit_draws` at person
+    grain) so support-channel clones of one source person draw together,
+    reruns are bit-reproducible, and a future keying change lands in one
+    place.
     """
-    if set(_SOURCE_IDENTITY_COLUMNS) <= set(person.columns):
-        keys = (
-            person["source_year"].astype(str)
-            + ":"
-            + person["source_household_id"].astype(str)
-            + ":"
-            + person["source_person_id"].astype(str)
-        )
-    else:
-        keys = person["person_id"].astype(str)
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{US_MEDICAID_TAKE_UP_VARIABLE}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ],
-        dtype=np.float64,
+    return _stable_unit_draws(
+        person,
+        id_column="person_id",
+        seed=seed,
+        variable=US_MEDICAID_TAKE_UP_VARIABLE,
     )
 
 
@@ -245,8 +229,6 @@ def with_us_medicaid_take_up(
     state_fips: np.ndarray,
     state_targets: pd.DataFrame,
     seed: int,
-    target_year: int | None = None,
-    operation_handlers=None,
 ) -> tuple[Frame, dict[str, object]]:
     """Assign ``takes_up_medicaid_if_eligible`` onto the frame's person table.
 
@@ -258,12 +240,23 @@ def with_us_medicaid_take_up(
     Returns:
         The new frame and the release diagnostics payload
         (:func:`us_medicaid_take_up_diagnostics` of the assigned table).
+
+    Raises:
+        ValueError: If ``state_targets`` is empty or malformed — an empty
+            feed would silently revert every state to anchored-only
+            enrollment, so it refuses to run rather than degrade.
     """
     from populace.build.us_runtime import (  # local: package init owns the manifest
         US_SOURCE_MANIFEST,
         us_source_operation_handlers,
     )
 
+    if state_targets.empty:
+        raise ValueError(
+            "US Medicaid take-up requires non-empty CMS state enrollment "
+            "targets; an empty feed would ship anchored-only enrollment."
+        )
+    _require_target_columns(state_targets)
     table = us_medicaid_source_person_table(
         frame,
         is_medicaid_eligible=is_medicaid_eligible,
@@ -271,8 +264,6 @@ def with_us_medicaid_take_up(
         seed=seed,
     )
     table = with_us_medicaid_take_up_rate(table, state_targets)
-    if not state_targets.empty:
-        _require_target_columns(state_targets)
 
     stage = US_SOURCE_MANIFEST.stage_map()[US_MEDICAID_TAKE_UP_STAGE]
     output = run_source_stage(
@@ -281,12 +272,8 @@ def with_us_medicaid_take_up(
             "person": table,
             US_MEDICAID_ENROLLMENT_TARGET_TABLE: state_targets,
         },
-        operation_handlers=(
-            operation_handlers
-            if operation_handlers is not None
-            else us_source_operation_handlers()
-        ),
-        config=SourceRuntimeConfig(seed=seed, target_year=target_year),
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(seed=seed),
     )
 
     person = frame.table("person").copy()
@@ -301,8 +288,10 @@ def with_us_medicaid_take_up(
         )
     person[US_MEDICAID_TAKE_UP_VARIABLE] = assigned.astype(bool)
 
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["person"] = person
+    tables = {
+        entity: person if entity == "person" else frame.table(entity).copy()
+        for entity in frame.entities
+    }
     result = Frame(
         tables,
         frame.schema,
@@ -331,6 +320,10 @@ def us_medicaid_take_up_diagnostics(
     takes_up = assigned[US_MEDICAID_TAKE_UP_VARIABLE].fillna(False).astype(bool)
     weights = pd.to_numeric(assigned["person_weight"], errors="coerce").fillna(0.0)
     enrolled = takes_up & eligible
+    # The anchor is unmasked by design, so EVERY anchored reporter must carry
+    # the flag — a person-level invariant the gate checks even in saturated
+    # states, where aggregate comparisons cannot see a dropped anchor.
+    anchor_violated = anchored & ~takes_up
 
     targets_by_state: dict[str, float] = {}
     if not state_targets.empty:
@@ -360,6 +353,10 @@ def us_medicaid_take_up_diagnostics(
                     enrolled_weight / eligible_weight if eligible_weight > 0 else None
                 ),
                 "saturated": bool(saturated),
+                "anchored_not_taking_up_count": int(anchor_violated[index].sum()),
+                # Greedy calibration lands within one person of the count;
+                # the gate uses this to size the granularity allowance.
+                "max_person_weight": float(weights[index].max()) if len(index) else 0.0,
             }
         )
 
@@ -373,6 +370,11 @@ def us_medicaid_take_up_diagnostics(
         "anchor": US_MEDICAID_TAKE_UP_ANCHOR,
         "enrollment_semantics": "point_in_time_monthly_snapshot",
         "target_table": US_MEDICAID_ENROLLMENT_TARGET_TABLE,
+        # Stage-time surface: weights are the pre-calibration design weights.
+        # Post-calibration weighted enrollment is pulled to the same CMS
+        # counts by the medicaid_enrollment weight-calibration targets, but
+        # eligible/anchored weights here have no post-calibration counterpart.
+        "weights_basis": "pre_calibration_design_weights",
         "national": {
             "eligible_weight": total_eligible,
             "enrolled_weight": total_enrolled,
@@ -382,6 +384,7 @@ def us_medicaid_take_up_diagnostics(
             "target_total": float(sum(targets_by_state.values()))
             if targets_by_state
             else None,
+            "anchored_not_taking_up_count": int(anchor_violated.sum()),
         },
         "states": states,
         "states_without_targets": sorted(
@@ -404,16 +407,22 @@ def us_medicaid_take_up_gate(
 
     - any state has no CMS enrollment target (a feed hole would silently
       revert that state to anchored-only enrollment);
-    - an unsaturated state's enrollment equals its eligibility — the #170
-      landmine this stage exists to heal — or misses its CMS count by more
-      than ``tolerance`` relative;
-    - anchored eligible reporters exceed modeled enrollment anywhere (the
-      anchor was not preserved).
+    - any anchored reporter lost the flag — a person-level invariant checked
+      in EVERY state, saturated or not (aggregate comparisons cannot see a
+      dropped anchor once calibration back-fills to the count);
+    - an unsaturated state fully enrolls its eligibles when the reachable
+      floor (CMS count or anchor mass, whichever is higher) sits meaningfully
+      below eligibility — the #170 landmine. Full enrollment explained by
+      anchor mass or by a floor within granularity of eligibility is a
+      legitimate calibrated outcome, not a landmine;
+    - an unsaturated state misses its floor by more than the granularity
+      allowance (``tolerance`` relative, widened to one person weight where
+      that is larger — greedy calibration lands within one person).
 
-    Saturated states (CMS count at or above modeled eligible weight) are
-    reported in details and do not fail: there, full enrollment IS the
-    calibrated answer and the shortfall is an eligibility-undercount question
-    outside this stage's scope.
+    Saturated states (CMS count at or above modeled eligible weight) skip the
+    count checks: there, full enrollment IS the calibrated answer and the
+    shortfall is an eligibility-undercount question outside this stage's
+    scope.
     """
     failures: list[str] = []
     states = diagnostics.get("states", [])
@@ -426,32 +435,41 @@ def us_medicaid_take_up_gate(
     for row in states:
         state = row["state_fips"]
         target = row["target"]
+        violations = int(row.get("anchored_not_taking_up_count", 0))
+        if violations:
+            failures.append(
+                f"state {state}: {violations} anchored reporter(s) lost the "
+                "flag; the reported-coverage anchor was not preserved."
+            )
         if target is None or row["saturated"]:
             continue
         eligible_weight = float(row["eligible_weight"])
         enrolled_weight = float(row["enrolled_weight"])
         anchored_weight = float(row["anchored_eligible_weight"])
-        if eligible_weight > 0 and enrolled_weight >= eligible_weight:
-            failures.append(
-                f"state {state}: enrollment equals eligibility without "
-                "saturation — the universal-take-up landmine (#170)."
-            )
-            continue
-        if anchored_weight > enrolled_weight + 1e-6:
-            failures.append(
-                f"state {state}: anchored eligible weight {anchored_weight:.0f} "
-                f"exceeds enrolled weight {enrolled_weight:.0f}; the reported-"
-                "coverage anchor was not preserved."
-            )
+        max_person_weight = float(row.get("max_person_weight", 0.0))
         # An unsaturated state's floor is its anchor mass: when reported
         # coverage already exceeds the CMS count, calibration cannot remove
         # anchored persons (by design) and the count is unreachable downward.
         floor = max(float(target), anchored_weight)
-        if floor > 0 and abs(enrolled_weight - floor) / floor > tolerance:
+        granularity = max(tolerance * eligible_weight, max_person_weight)
+        if (
+            eligible_weight > 0
+            and enrolled_weight >= eligible_weight
+            and floor < eligible_weight - granularity
+        ):
+            failures.append(
+                f"state {state}: enrollment equals eligibility while the "
+                f"reachable floor {floor:.0f} sits below eligible weight "
+                f"{eligible_weight:.0f} — the universal-take-up landmine "
+                "(#170)."
+            )
+            continue
+        allowed_miss = max(tolerance * floor, max_person_weight)
+        if floor > 0 and abs(enrolled_weight - floor) > allowed_miss:
             failures.append(
                 f"state {state}: enrolled weight {enrolled_weight:.0f} misses "
                 f"the CMS count {target:.0f} (floor {floor:.0f}) by more than "
-                f"{tolerance:.0%}."
+                f"the granularity allowance {allowed_miss:.0f}."
             )
     return GateResult(
         name="medicaid_take_up",

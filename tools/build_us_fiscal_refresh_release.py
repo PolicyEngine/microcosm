@@ -145,7 +145,12 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "congressional_district_vintage_crosswalk_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
+# 2: the medicaid_take_up stage (populace #331) changed base_frame's
+# takes_up_medicaid_if_eligible before target-frame materialization, so
+# medicaid_enrolled target columns differ from version-1 checkpoints; the
+# checkpoint identity hashes the on-disk base dataset, not the staged frame,
+# and would otherwise silently reuse pre-stage frames.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 2
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2138,24 +2143,25 @@ def _medicaid_source_target_table(target_specs: tuple) -> pd.DataFrame:
                 "source_record_id": spec.name,
             }
         )
-    return pd.DataFrame(rows, columns=["state_fips", "target", "source_record_id"])
+    table = pd.DataFrame(rows, columns=["state_fips", "target", "source_record_id"])
+    duplicated = table["state_fips"][table["state_fips"].duplicated()].unique()
+    if len(duplicated):
+        # The calibrate operation applies duplicate state rows sequentially
+        # (last row wins) while the rate prior, diagnostics, and gate SUM
+        # them — divergent semantics that must never reach the stage.
+        raise RuntimeError(
+            "Medicaid enrollment targets carry duplicate state rows for "
+            f"state_fips {sorted(duplicated)}; the ledger feed must supply "
+            "exactly one medicaid_enrollment count per state."
+        )
+    return table
 
 
 def _person_state_fips(frame: Frame) -> np.ndarray:
-    """Person-aligned state FIPS text codes via household membership."""
-    household = frame.table("household")
-    state_by_household = pd.Series(
-        _state_fips_text(household["state_fips"].to_numpy()),
-        index=household["household_id"].to_numpy(),
-    )
-    person_states = state_by_household.reindex(
-        frame.table("person")["person_household_id"].to_numpy()
-    )
-    if person_states.isna().any():
-        raise RuntimeError(
-            "Medicaid take-up requires every person to resolve a household state_fips."
-        )
-    return person_states.to_numpy()
+    """Person-aligned state FIPS text codes via the frame's linkage."""
+    # Frame.broadcast is the validated membership-mapping path (linkage is
+    # asserted at Frame construction), so no manual reindex/NaN handling.
+    return np.asarray(_state_fips_text(frame.broadcast("state_fips").to_numpy()))
 
 
 def _medicaid_person_eligibility(
@@ -2247,7 +2253,6 @@ def _with_medicaid_take_up_outputs(
         state_fips=_person_state_fips(frame),
         state_targets=target_table,
         seed=seed,
-        target_year=PERIOD,
     )
 
 
@@ -5998,14 +6003,31 @@ def main() -> None:
             "take_up_participation",
             message="Writing take-up participation diagnostics.",
         )
+    take_up_participation = us_take_up_participation_diagnostics(export_frame)
     write_us_take_up_participation_diagnostics(
-        us_take_up_participation_diagnostics(export_frame),
+        take_up_participation,
         release_dir / "us_take_up_participation.json",
     )
     write_us_medicaid_take_up_diagnostics(
         medicaid_take_up_diagnostics,
         release_dir / "us_medicaid_take_up.json",
     )
+    # The stage gate ran on the stage output; this re-checks the EXPORT frame
+    # so a downstream transform that drops or flattens a count-calibrated
+    # column cannot ship the engine-default landmine with only an
+    # observational JSON field recording it.
+    stale_count_calibrated = [
+        str(row["variable"])
+        for row in take_up_participation["programs"]
+        if row.get("populace_treatment") == "count_calibrated"
+        and row.get("ships_at_engine_default")
+    ]
+    if stale_count_calibrated:
+        raise RuntimeError(
+            "Release gates failed: count-calibrated take-up column(s) "
+            f"{stale_count_calibrated} ship at the engine default on the "
+            "export frame despite the stage having run."
+        )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_take_up_participation",

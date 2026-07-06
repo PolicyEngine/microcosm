@@ -494,6 +494,14 @@ def us_take_up_participation_diagnostics(
             )
             row["count_calibrated"] = materialized
             row["ships_at_engine_default"] = not materialized
+            # The owning-issue pointer must survive in BOTH cases — it is the
+            # debt-ledger surface this payload exists for.
+            followup = program.raw.get("followup")
+            if followup is not None:
+                row["followup"] = followup
+            scope_owner = program.raw.get("scope_owner")
+            if scope_owner is not None:
+                row["scope_owner"] = scope_owner
             if materialized:
                 weights = np.asarray(
                     frame.resolve_weights(program.entity).values, dtype=np.float64
@@ -506,6 +514,14 @@ def us_take_up_participation_diagnostics(
                     float(weights[takes_up].sum()) / total_weight
                     if total_weight > 0
                     else 0.0
+                )
+                # Count-calibrated flags may deliberately carry off-domain
+                # (ineligible) True values as reform propensities, so this
+                # share is flag-True over ALL units — not enrollment over
+                # eligibility. The stage's own diagnostics artifact carries
+                # the eligibility-restricted surface.
+                row["share_universe"] = (
+                    f"all_{program.entity}s_including_off_domain_propensity"
                 )
         else:
             row["seeded"] = False

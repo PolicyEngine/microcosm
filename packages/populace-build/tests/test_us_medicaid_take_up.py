@@ -117,6 +117,25 @@ class TestContractTreatment:
         assert calibration["anchor"] == US_MEDICAID_TAKE_UP_ANCHOR
         assert calibration["targets"]
 
+    def test_calibration_block_matches_the_stage_manifest(self) -> None:
+        # The contract must describe what the release actually calibrates to:
+        # reconcile its calibration block against the manifest stage's ops so
+        # the inventory cannot silently drift from the stage (#331 review).
+        from populace.build.us_runtime import US_SOURCE_MANIFEST
+
+        program = load_take_up_contract().program_map()["takes_up_medicaid_if_eligible"]
+        calibration = program.raw["calibration"]
+        stage = US_SOURCE_MANIFEST.stage_map()["medicaid_take_up"]
+        ops = {op.kind: op.parameters for op in stage.operations}
+        assert list(calibration["targets"]) == list(
+            ops["calibrate_binary_assignment"]["targets"]
+        )
+        assert (
+            calibration["anchor"]
+            == ops["assign_binary_from_rate"]["reported_true_anchor"]
+            == ops["calibrate_binary_assignment"]["preserve_true_anchor"]
+        )
+
     def _reload_with(self, monkeypatch, tmp_path: Path, mutated: dict) -> None:
         load_take_up_contract.cache_clear()
         path = tmp_path / "take_up_contract.json"
@@ -273,6 +292,19 @@ class TestAssignment:
                 seed=0,
             )
 
+    def test_empty_targets_raise_early(self) -> None:
+        # An empty feed must refuse to run, not silently ship anchored-only
+        # enrollment or surface as a deep missing-value-column error.
+        frame = _frame(10, anchor=np.zeros(10, dtype=bool))
+        with pytest.raises(ValueError, match="non-empty"):
+            with_us_medicaid_take_up(
+                frame,
+                is_medicaid_eligible=np.ones(10, dtype=bool),
+                state_fips=np.full(10, "01"),
+                state_targets=pd.DataFrame(),
+                seed=0,
+            )
+
 
 class TestGate:
     def test_passes_on_healthy_assignment(self) -> None:
@@ -352,6 +384,65 @@ class TestGate:
         assert not gate.passed
         assert any("anchor" in failure for failure in gate.failures)
 
+    def test_fully_anchored_unsaturated_state_is_not_a_landmine(self) -> None:
+        # Every modeled-eligible person reports Medicaid: anchors cannot be
+        # removed, so enrollment == eligibility is the correct calibrated
+        # answer even though the CMS count sits below eligible weight. The
+        # landmine check must not abort the build for it (#331 review).
+        n = 100
+        anchor = np.ones(n, dtype=bool)
+        table = self._assigned_table(
+            flag=np.ones(n, dtype=bool),
+            eligible=np.ones(n, dtype=bool),
+            anchor=anchor,
+            state=np.full(n, "01"),
+        )
+        targets = pd.DataFrame({"state_fips": ["01"], "target": [60 * UNIT_WEIGHT]})
+        diagnostics = us_medicaid_take_up_diagnostics(table, targets)
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert gate.passed, gate.failures
+
+    def test_full_enrollment_within_one_unit_weight_of_the_count_passes(self) -> None:
+        # Greedy calibration overshoots by up to one person: a target within
+        # one unit weight of eligible weight legitimately fills every
+        # eligible person without being the landmine.
+        n = 100
+        table = self._assigned_table(
+            flag=np.ones(n, dtype=bool),
+            eligible=np.ones(n, dtype=bool),
+            anchor=np.zeros(n, dtype=bool),
+            state=np.full(n, "01"),
+        )
+        targets = pd.DataFrame(
+            {"state_fips": ["01"], "target": [(n - 0.5) * UNIT_WEIGHT]}
+        )
+        diagnostics = us_medicaid_take_up_diagnostics(table, targets)
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert gate.passed, gate.failures
+
+    def test_dropped_anchor_fails_even_in_a_saturated_state(self) -> None:
+        # The anchor invariant is person-level and unconditional: a saturated
+        # state must not hide a regression that flips anchored reporters off.
+        n = 100
+        anchor = np.zeros(n, dtype=bool)
+        anchor[:30] = True
+        flag = np.ones(n, dtype=bool)
+        flag[:5] = False  # five anchored reporters lost the flag
+        table = self._assigned_table(
+            flag=flag,
+            eligible=np.ones(n, dtype=bool),
+            anchor=anchor,
+            state=np.full(n, "01"),
+        )
+        targets = pd.DataFrame(
+            {"state_fips": ["01"], "target": [1.5 * n * UNIT_WEIGHT]}  # saturated
+        )
+        diagnostics = us_medicaid_take_up_diagnostics(table, targets)
+        assert diagnostics["saturated_states"] == ["01"]
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert not gate.passed
+        assert any("anchor" in failure for failure in gate.failures)
+
     def test_anchor_mass_above_the_cms_count_is_the_floor_not_a_miss(self) -> None:
         # CPS reporting above the CMS snapshot in a state must not fail the
         # gate: anchors are preserved by design, so the anchor mass is the
@@ -385,7 +476,7 @@ class TestParticipationDiagnosticsIntegration:
         assert row["ships_at_engine_default"] is False
         assert 0.0 < row["take_up_share"] < 1.0
 
-    def test_missing_column_reports_engine_default(self) -> None:
+    def test_missing_column_reports_engine_default_with_owner(self) -> None:
         frame = _frame(20, anchor=np.zeros(20, dtype=bool))
         payload = us_take_up_participation_diagnostics(frame)
         row = next(
@@ -395,6 +486,21 @@ class TestParticipationDiagnosticsIntegration:
         )
         assert row["count_calibrated"] is False
         assert row["ships_at_engine_default"] is True
+        # The debt-ledger pointer must survive the count_calibrated branch.
+        assert "populace#331" in row["scope_owner"]
+
+    def test_materialized_share_is_labeled_with_its_universe(self) -> None:
+        # The flag deliberately carries off-domain propensity Trues, so the
+        # share over all persons must be labeled as such rather than read as
+        # an enrollment or participation rate.
+        _, result, _, _, _, _, _ = _scenario()
+        payload = us_take_up_participation_diagnostics(result)
+        row = next(
+            row
+            for row in payload["programs"]
+            if row["variable"] == US_MEDICAID_TAKE_UP_VARIABLE
+        )
+        assert "off_domain_propensity" in row["share_universe"]
 
 
 def _load_builder_module():
@@ -443,6 +549,22 @@ class TestBuilderHelpers:
         table = builder._medicaid_source_target_table(specs)
         assert table["state_fips"].tolist() == ["06"]
         assert table["target"].tolist() == [12_000_000.0]
+
+    def test_duplicate_state_target_rows_refuse_to_compile(self) -> None:
+        # Duplicate state rows diverge downstream (calibration is last-row-
+        # wins; rate/diagnostics/gate sum), so the table must refuse them.
+        builder = _load_builder_module()
+        spec = {
+            "ledger_geography_level": "state",
+            "state_fips": "06",
+            "target_role": "medicaid_enrollment",
+        }
+        specs = (
+            SimpleNamespace(name="row-1", value=12_000_000.0, metadata=dict(spec)),
+            SimpleNamespace(name="row-2", value=11_000_000.0, metadata=dict(spec)),
+        )
+        with pytest.raises(RuntimeError, match="duplicate state rows"):
+            builder._medicaid_source_target_table(specs)
 
     def test_person_state_fips_maps_households(self) -> None:
         builder = _load_builder_module()
