@@ -1,0 +1,478 @@
+{
+  "version": 1,
+  "country": "us",
+  "description": "Schedule D capital gain distributions split parameters. The IRS SOI Sales of Capital Assets study (latest: TY2015) reports capital gain distributions only nationally; no by-AGI CGD split exists in published SOI data (SOCA Table 2 merges CGD into 'Other asset types'). The v1 imputation therefore applies the national Schedule-D route share of long-term net gains proportionally within eligible records. The by-AGI tables below (the direct-1040 route and the 'other assets' envelope) are shipped for a future banded refinement.",
+  "units": "source amounts in thousands of USD; shares are ratios",
+  "sources": {
+    "soca_index": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",
+    "soca_table1_ty2015": "https://www.irs.gov/pub/irs-soi/15in01soca.xlsx",
+    "soca_table2_ty2015": "https://www.irs.gov/pub/irs-soi/15in02soca.xlsx",
+    "pub1304_t14_index": "https://www.irs.gov/statistics/soi-tax-stats-individual-income-tax-returns-complete-report-publication-1304-basic-tables-part-1",
+    "pub1304_t14_ty2015": "https://www.irs.gov/pub/irs-soi/15in14ar.xls",
+    "pub1304_t14_ty2022": "https://www.irs.gov/pub/irs-soi/22in14ar.xls",
+    "pub1304_t14_ty2023": "https://www.irs.gov/pub/irs-soi/23in14ar.xls",
+    "soca_data_release_pdf_2013_2015": "https://www.irs.gov/pub/irs-soi/soi-a-soca-id2205.pdf"
+  },
+  "national_anchor_ty2015": {
+    "soca_all_route_capital_gain_distributions_k": 79615698.086,
+    "soca_long_term_total_net_gain_k": 702271858.85,
+    "pub1304_direct_1040_route_k": 11563203.0,
+    "schedule_d_route_residual_k": 68052495.086,
+    "schedule_d_cgd_share_of_lt_net_gains": 0.09852561497474391,
+    "note": "residual = SOCA all-route CGD minus Pub 1304 Table 1.4 direct-1040 CGD; share = residual / (LT net gains minus the direct route, which is not on Schedule D). CGD is entirely long-term (s. 852(b)(3): capital gain dividends)."
+  },
+  "direct_1040_route_by_agi": {
+    "note": "Line = 'Capital gain distributions reported on Form 1040' (E01100, the NON-Schedule-D direct route). Units: amounts in thousands of dollars. AGI bands per Pub 1304 Table 1.4 (All returns panel).",
+    "TY2015": {
+      "file": "https://www.irs.gov/pub/irs-soi/15in14ar.xls",
+      "col_index": 23,
+      "bands": [
+        {
+          "band": "All returns, total",
+          "cgd_returns": 4323250.0,
+          "cgd_amount_k": 11563203.0,
+          "share_of_1040_cgd_total": 1.0
+        },
+        {
+          "band": "No adjusted gross income",
+          "cgd_returns": 29097.0,
+          "cgd_amount_k": 46969.0,
+          "share_of_1040_cgd_total": 0.0041
+        },
+        {
+          "band": "$1 under $5,000",
+          "cgd_returns": 222771.0,
+          "cgd_amount_k": 195181.0,
+          "share_of_1040_cgd_total": 0.0169
+        },
+        {
+          "band": "$5,000 under $10,000",
+          "cgd_returns": 179305.0,
+          "cgd_amount_k": 224309.0,
+          "share_of_1040_cgd_total": 0.0194
+        },
+        {
+          "band": "$10,000 under $15,000",
+          "cgd_returns": 159924.0,
+          "cgd_amount_k": 234373.0,
+          "share_of_1040_cgd_total": 0.0203
+        },
+        {
+          "band": "$15,000 under $20,000",
+          "cgd_returns": 169070.0,
+          "cgd_amount_k": 251117.0,
+          "share_of_1040_cgd_total": 0.0217
+        },
+        {
+          "band": "$20,000 under $25,000",
+          "cgd_returns": 147995.0,
+          "cgd_amount_k": 259026.0,
+          "share_of_1040_cgd_total": 0.0224
+        },
+        {
+          "band": "$25,000 under $30,000",
+          "cgd_returns": 128487.0,
+          "cgd_amount_k": 245274.0,
+          "share_of_1040_cgd_total": 0.0212
+        },
+        {
+          "band": "$30,000 under $40,000",
+          "cgd_returns": 287469.0,
+          "cgd_amount_k": 462119.0,
+          "share_of_1040_cgd_total": 0.04
+        },
+        {
+          "band": "$40,000 under $50,000",
+          "cgd_returns": 274422.0,
+          "cgd_amount_k": 479156.0,
+          "share_of_1040_cgd_total": 0.0414
+        },
+        {
+          "band": "$50,000 under $75,000",
+          "cgd_returns": 662186.0,
+          "cgd_amount_k": 1542572.0,
+          "share_of_1040_cgd_total": 0.1334
+        },
+        {
+          "band": "$75,000 under $100,000",
+          "cgd_returns": 564896.0,
+          "cgd_amount_k": 1370439.0,
+          "share_of_1040_cgd_total": 0.1185
+        },
+        {
+          "band": "$100,000 under $200,000",
+          "cgd_returns": 1078572.0,
+          "cgd_amount_k": 3639073.0,
+          "share_of_1040_cgd_total": 0.3147
+        },
+        {
+          "band": "$200,000 under $500,000",
+          "cgd_returns": 369651.0,
+          "cgd_amount_k": 1989633.0,
+          "share_of_1040_cgd_total": 0.1721
+        },
+        {
+          "band": "$500,000 under $1,000,000",
+          "cgd_returns": 39917.0,
+          "cgd_amount_k": 397268.0,
+          "share_of_1040_cgd_total": 0.0344
+        },
+        {
+          "band": "$1,000,000 under $1,500,000",
+          "cgd_returns": 5619.0,
+          "cgd_amount_k": 82981.0,
+          "share_of_1040_cgd_total": 0.0072
+        },
+        {
+          "band": "$1,500,000 under $2,000,000",
+          "cgd_returns": 1759.0,
+          "cgd_amount_k": 35912.0,
+          "share_of_1040_cgd_total": 0.0031
+        },
+        {
+          "band": "$2,000,000 under $5,000,000",
+          "cgd_returns": 1846.0,
+          "cgd_amount_k": 90952.0,
+          "share_of_1040_cgd_total": 0.0079
+        },
+        {
+          "band": "$5,000,000 under $10,000,000",
+          "cgd_returns": 206.0,
+          "cgd_amount_k": 10409.0,
+          "share_of_1040_cgd_total": 0.0009
+        },
+        {
+          "band": "$10,000,000 or more",
+          "cgd_returns": 58.0,
+          "cgd_amount_k": 6438.0,
+          "share_of_1040_cgd_total": 0.0006
+        }
+      ]
+    },
+    "TY2022": {
+      "file": "https://www.irs.gov/pub/irs-soi/22in14ar.xls",
+      "col_index": 35,
+      "bands": [
+        {
+          "band": "All returns, total",
+          "cgd_returns": 3980047.0,
+          "cgd_amount_k": 12863423.0,
+          "share_of_1040_cgd_total": 1.0
+        },
+        {
+          "band": "No adjusted gross income",
+          "cgd_returns": 27012.0,
+          "cgd_amount_k": 88131.0,
+          "share_of_1040_cgd_total": 0.0069
+        },
+        {
+          "band": "$1 under $5,000",
+          "cgd_returns": 132582.0,
+          "cgd_amount_k": 86558.0,
+          "share_of_1040_cgd_total": 0.0067
+        },
+        {
+          "band": "$5,000 under $10,000",
+          "cgd_returns": 130890.0,
+          "cgd_amount_k": 182403.0,
+          "share_of_1040_cgd_total": 0.0142
+        },
+        {
+          "band": "$10,000 under $15,000",
+          "cgd_returns": 106473.0,
+          "cgd_amount_k": 188178.0,
+          "share_of_1040_cgd_total": 0.0146
+        },
+        {
+          "band": "$15,000 under $20,000",
+          "cgd_returns": 111615.0,
+          "cgd_amount_k": 215886.0,
+          "share_of_1040_cgd_total": 0.0168
+        },
+        {
+          "band": "$20,000 under $25,000",
+          "cgd_returns": 99575.0,
+          "cgd_amount_k": 154072.0,
+          "share_of_1040_cgd_total": 0.012
+        },
+        {
+          "band": "$25,000 under $30,000",
+          "cgd_returns": 94978.0,
+          "cgd_amount_k": 185113.0,
+          "share_of_1040_cgd_total": 0.0144
+        },
+        {
+          "band": "$30,000 under $40,000",
+          "cgd_returns": 222677.0,
+          "cgd_amount_k": 421788.0,
+          "share_of_1040_cgd_total": 0.0328
+        },
+        {
+          "band": "$40,000 under $50,000",
+          "cgd_returns": 191959.0,
+          "cgd_amount_k": 308187.0,
+          "share_of_1040_cgd_total": 0.024
+        },
+        {
+          "band": "$50,000 under $75,000",
+          "cgd_returns": 546979.0,
+          "cgd_amount_k": 1186628.0,
+          "share_of_1040_cgd_total": 0.0922
+        },
+        {
+          "band": "$75,000 under $100,000",
+          "cgd_returns": 523797.0,
+          "cgd_amount_k": 1359330.0,
+          "share_of_1040_cgd_total": 0.1057
+        },
+        {
+          "band": "$100,000 under $200,000",
+          "cgd_returns": 1191091.0,
+          "cgd_amount_k": 4073791.0,
+          "share_of_1040_cgd_total": 0.3167
+        },
+        {
+          "band": "$200,000 under $500,000",
+          "cgd_returns": 522256.0,
+          "cgd_amount_k": 3461697.0,
+          "share_of_1040_cgd_total": 0.2691
+        },
+        {
+          "band": "$500,000 under $1,000,000",
+          "cgd_returns": 78163.0,
+          "cgd_amount_k": 951661.0,
+          "share_of_1040_cgd_total": 0.074
+        },
+        {
+          "band": "$1,000,000 under $1,500,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$1,500,000 under $2,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$2,000,000 under $5,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$5,000,000 under $10,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$10,000,000 or more",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        }
+      ]
+    },
+    "TY2023": {
+      "file": "https://www.irs.gov/pub/irs-soi/23in14ar.xls",
+      "col_index": 35,
+      "bands": [
+        {
+          "band": "All returns, total",
+          "cgd_returns": 3209131.0,
+          "cgd_amount_k": 9340820.0,
+          "share_of_1040_cgd_total": 1.0
+        },
+        {
+          "band": "No adjusted gross income",
+          "cgd_returns": 14040.0,
+          "cgd_amount_k": 28143.0,
+          "share_of_1040_cgd_total": 0.003
+        },
+        {
+          "band": "$1 under $5,000",
+          "cgd_returns": 96972.0,
+          "cgd_amount_k": 88282.0,
+          "share_of_1040_cgd_total": 0.0095
+        },
+        {
+          "band": "$5,000 under $10,000",
+          "cgd_returns": 92567.0,
+          "cgd_amount_k": 119014.0,
+          "share_of_1040_cgd_total": 0.0127
+        },
+        {
+          "band": "$10,000 under $15,000",
+          "cgd_returns": 93705.0,
+          "cgd_amount_k": 116098.0,
+          "share_of_1040_cgd_total": 0.0124
+        },
+        {
+          "band": "$15,000 under $20,000",
+          "cgd_returns": 66376.0,
+          "cgd_amount_k": 88994.0,
+          "share_of_1040_cgd_total": 0.0095
+        },
+        {
+          "band": "$20,000 under $25,000",
+          "cgd_returns": 79275.0,
+          "cgd_amount_k": 171826.0,
+          "share_of_1040_cgd_total": 0.0184
+        },
+        {
+          "band": "$25,000 under $30,000",
+          "cgd_returns": 80695.0,
+          "cgd_amount_k": 85630.0,
+          "share_of_1040_cgd_total": 0.0092
+        },
+        {
+          "band": "$30,000 under $40,000",
+          "cgd_returns": 173756.0,
+          "cgd_amount_k": 227844.0,
+          "share_of_1040_cgd_total": 0.0244
+        },
+        {
+          "band": "$40,000 under $50,000",
+          "cgd_returns": 175969.0,
+          "cgd_amount_k": 257041.0,
+          "share_of_1040_cgd_total": 0.0275
+        },
+        {
+          "band": "$50,000 under $75,000",
+          "cgd_returns": 432289.0,
+          "cgd_amount_k": 892702.0,
+          "share_of_1040_cgd_total": 0.0956
+        },
+        {
+          "band": "$75,000 under $100,000",
+          "cgd_returns": 414537.0,
+          "cgd_amount_k": 895073.0,
+          "share_of_1040_cgd_total": 0.0958
+        },
+        {
+          "band": "$100,000 under $200,000",
+          "cgd_returns": 980903.0,
+          "cgd_amount_k": 3353841.0,
+          "share_of_1040_cgd_total": 0.3591
+        },
+        {
+          "band": "$200,000 under $500,000",
+          "cgd_returns": 441988.0,
+          "cgd_amount_k": 2315496.0,
+          "share_of_1040_cgd_total": 0.2479
+        },
+        {
+          "band": "$500,000 under $1,000,000",
+          "cgd_returns": 66063.0,
+          "cgd_amount_k": 700837.0,
+          "share_of_1040_cgd_total": 0.075
+        },
+        {
+          "band": "$1,000,000 under $1,500,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$1,500,000 under $2,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$2,000,000 under $5,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$5,000,000 under $10,000,000",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        },
+        {
+          "band": "$10,000,000 or more",
+          "cgd_returns": 0.0,
+          "cgd_amount_k": 0.0,
+          "share_of_1040_cgd_total": 0.0
+        }
+      ]
+    }
+  },
+  "lt_gain_other_assets_envelope_by_agi_ty2015": {
+    "note": "By-AGI long-term gain from SOCA Table 2 TY2015. 'Other asset types' is the bucket CONTAINING capital gain distributions (also contains options, futures, all mutual funds' realized gains, partnership/S-corp/trust interests, residences, etc). CGD is ~12.9% of this bucket nationally, so these shares are an UPPER BOUND envelope for CGD, not CGD itself. lt_gain columns are gross gain from LT gain transactions (col E), in $thousands. 7 AGI bands only.",
+    "bands": [
+      {
+        "band": "All returns",
+        "lt_gain_all_assets_k": 882733542.22,
+        "lt_gain_other_assets_k": 619193352.06,
+        "other_over_all_lt_gain_share": 0.7014
+      },
+      {
+        "band": "Adjusted gross deficit",
+        "lt_gain_all_assets_k": 36341641.229,
+        "lt_gain_other_assets_k": 26291407.805,
+        "other_over_all_lt_gain_share": 0.7235
+      },
+      {
+        "band": "Under $20,000",
+        "lt_gain_all_assets_k": 8753282.1697,
+        "lt_gain_other_assets_k": 5802365.9917,
+        "other_over_all_lt_gain_share": 0.6629
+      },
+      {
+        "band": "$20,000 under $50,000",
+        "lt_gain_all_assets_k": 19470227.656,
+        "lt_gain_other_assets_k": 11740551.36,
+        "other_over_all_lt_gain_share": 0.603
+      },
+      {
+        "band": "$50,000 under $100,000",
+        "lt_gain_all_assets_k": 42702648.788,
+        "lt_gain_other_assets_k": 27250438.314,
+        "other_over_all_lt_gain_share": 0.6381
+      },
+      {
+        "band": "$100,000 under $200,000",
+        "lt_gain_all_assets_k": 81533406.973,
+        "lt_gain_other_assets_k": 49121148.672,
+        "other_over_all_lt_gain_share": 0.6025
+      },
+      {
+        "band": "$200,000 under $500,000",
+        "lt_gain_all_assets_k": 116538323.01,
+        "lt_gain_other_assets_k": 69445019.585,
+        "other_over_all_lt_gain_share": 0.5959
+      },
+      {
+        "band": "$500,000 under $1,000,000",
+        "lt_gain_all_assets_k": 82692308.357,
+        "lt_gain_other_assets_k": 54950324.231,
+        "other_over_all_lt_gain_share": 0.6645
+      },
+      {
+        "band": "$1,000,000 or more",
+        "lt_gain_all_assets_k": 494701704.04,
+        "lt_gain_other_assets_k": 374592096.1,
+        "other_over_all_lt_gain_share": 0.7572
+      }
+    ]
+  },
+  "caveats": [
+    "ALL SOI DOLLAR FIGURES ARE IN THOUSANDS OF DOLLARS.",
+    "SOCA latest year is TY2015; the study was discontinued/not-updated for later years (last release Feb 2022 covering TY2013-2015).",
+    "SOCA Table 2 does NOT isolate capital gain distributions by AGI - CGD is merged into 'Other asset types'. The only AGI-resolved CGD-specific IRS figure is Pub 1304 Table 1.4's 'Capital gain distributions reported on Form 1040' line, but that captures ONLY the non-Schedule-D direct route (E01100), which is ~15% of all CGD.",
+    "SOCA Table 1 national CGD = $79.6B (TY2015) captures ALL capital gain distributions regardless of route (line 7 direct OR Schedule D line 13). CGD is entirely long-term.",
+    "Pub 1304 Table 1.4 E01100 line = $11.56B (TY2015), $12.86B (TY2022), $9.34B (TY2023): this is ONLY the direct-1040 route used by filers with no other Schedule D activity. The remaining ~$68B (TY2015) of CGD is reported on Schedule D line 13 by filers who file Schedule D for other reasons.",
+    "Pub 1304 Table 1.4 collapses the $1M+ AGI bands to 0 for the direct-1040 CGD line in TY2022 and TY2023 (disclosure/rounding); TY2015 shows small but nonzero $1M+ values (~$227M total across all $1M+ bands). High-AGI filers overwhelmingly use Schedule D, so the direct route is genuinely tiny at the top - but not exactly zero.",
+    "SOCA AGI bands (7) are coarser and differently cut than Pub 1304 Table 1.4 bands (19). SOCA has an 'Adjusted gross deficit' (negative AGI) band; Table 1.4 has 'No adjusted gross income'.",
+    "SOCA gain amounts in Table 2 are GROSS gains from gain transactions (col E), reconciling to Table 1C col I (gain), not net of losses. Net LT gain nationally (Table 1C col E) = $702.3B.",
+    "Counts are numbers of returns/transactions from SOI samples, NOT population weights.",
+    "The v1 split is deterministic and proportional: every eligible record (positive long-term gains, no direct-route distributions) receives the national share. Participation margins and AGI-band tilt are documented follow-ups; no by-AGI CGD-specific series exists to pin them.",
+    "The share is a TY2015 ratio applied to later-year gains; fund distribution intensity varies across years (ICI industry series is the follow-up anchor for year-specific levels).",
+    "Schedule D line 13 includes REIT capital gain dividends as well as RIC distributions; reforms restricted to RICs (subchapter M part I) need a further split."
+  ]
+}
