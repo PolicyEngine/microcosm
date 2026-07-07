@@ -396,3 +396,20 @@ The mortgage case is PARTIALLY distinct: its bound target (the JCT deduction rev
 same cold-vs-informed-selection gap #328 identified, and the frozen support already tightens it (+44.5% vs
 cold-dense +59.7%). Arm 3 (cold-L0-2026) will show whether the same 4 columns float regardless of selection
 (confirming the unidentified-dimension reading) — include its residuals in the table when it lands.
+
+### 2026-07-06 ~21:39 ET — USAGE-BUDGET HOLD (Max, via coordinator)
+Arm 3 running (~19 min in, ACA materialization). HOLD: when arm 3 completes, note the terminal state in
+ONE line here if trivial, then STOP. Do NOT begin step-6 (three-way table, per-artifact verdicts,
+#299/#324 posts) before 12:30am ET. The detached arm-3 run itself is unaffected — it finishes on its own.
+RESUME step 6 after 12:30am ET.
+
+READY-TO-GO state for the post-12:30 resume (everything staged, no analysis pending except arm 3):
+- Run-3 dense + sparse fully extracted (gate tables + critical fits + identification analysis above; all
+  committed). Extractor `_buildg-runtime/extract_buildg_gates.py` enhanced with the key-fit section.
+- Arm-3 release dir will be `_buildg-runtime/out/buildg-run/releases/populace-us-2024-buildg-coldl0-70bc78d-*`;
+  run: `python _buildg-runtime/extract_buildg_gates.py <that dir> sparse` for its gate table + fits.
+- Step-6 deliverable: three-way table (dense / frozen-57k / cold-L0-2026) vs certified bands; per-artifact
+  CERTIFIABLE-or-not verdict; three gap-closing options (recommend (b) add SOI targets, Build H);
+  mortgage-is-binding distinction. Post as a comment on #299 (Build G run entry) + update #324. Publication
+  is Max's. Interpretation guide: cold≈frozen ⇒ frozen's edge environmental, informed-init priority up;
+  cold misses income tax ⇒ frozen selection's value confirmed (clean 2026 head-to-head).
