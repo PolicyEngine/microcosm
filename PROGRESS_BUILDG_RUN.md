@@ -305,3 +305,47 @@ PREDICTED outcomes (to verify against the run):
   mortgage tighter (#330: +43.1% vs cold +59.7%) so export residuals should be SMALLER — possibly clearing
   mortgage. Loss ~0.031 (#330 prior 0.0315), within-10% ~88%; income tax ~−4%, SS ~0%. → likely the
   certifiable candidate if export-mass clears.
+
+### 2026-07-07 ~01:10 ET — RUN 3 RESULTS (both artifacts calibrated; export-mass residuals vs CORRECTED reference)
+Both dense + sparse reached the export gate (calibration completed, all base+structural gates PASS,
+0 zero-support) and rc=1 ONLY on the export input-mass gate — now correctly vs `populace_us_2024.h5`
+(the live-default 57k), confirming the #327 fix works end-to-end.
+
+**DENSE parent (populace-us-2024-buildg-dense-129165b):**
+- final_loss **0.04139** (BEATS f0af251 0.0423), within-10% 86.16%, ESS 81,206, realized max-ratio 5.0,
+  n_records 337,704. ALL structural gates PASS; 0 zero-support (M-CHIP skip + full v7 registry, 5521 targets).
+- export-mass vs live-default 57k: **4 fails** — first_home_mortgage_interest +61.8%, home_mortgage_interest
+  +69.2%, miscellaneous_income −68.3% (the predicted 3 #328 residuals) + **estate_income −53.6%** (NEW).
+
+**SPARSE headline (frozen-57k, populace-us-2024-buildg-sparse-129165b):**
+- final_loss **0.02964** (BEATS certified 0.044 AND the #330 prior 0.0315), within-10% 89.15%, ESS 13,388,
+  realized max-ratio 5.0, n_records 57,240 (seam recovered exactly). ALL structural gates PASS; 0 zero-support
+  (M-CHIP skip + 19-cell exclusion, 5502 targets). Selection provenance fully recorded (frozen_support mode).
+- export-mass vs live-default 57k: **4 fails** — estate_income −66.8%, home_mortgage_interest **+52.4%**
+  (TIGHTER than dense +69.2%; first_home dropped OUT — confirms #330's frozen-fits-mortgage-tighter
+  prediction), miscellaneous_income −54.3%, non_sch_d_capital_gains +111.4%.
+
+**estate_income + non_sch_d analysis (raw base / reference masses):** estate_income raw base $30.4B →
+reference $98.4B (ref is 3.2x raw base); non_sch_d raw base $33.0B → reference $75.7B. These are UNTARGETED
+PUF-imputed inputs (no direct fiscal target pins them) — their final mass floats with the reweighting and
+differs between the 337k dense, the frozen-57k, and the certified selection. estate_income exports UNDER the
+reference (calibration didn't scale it as high as the certified selection did); non_sch_d sparse OVERSHOOTS.
+Same #328 class as the mortgage residuals (informed-selection-dependent, untargeted-input drift), NOT a gate
+mis-reference and NOT resolved by the frozen support alone. The mortgage tax-EXPENDITURE (the one with a JCT
+target) IS tighter on the frozen support, as #330 predicted; the untargeted PUF inputs remain the #328 gap.
+
+**VERDICT (preliminary, pending arm 3):** BOTH artifacts pass every STRUCTURAL gate + zero-support + achieve
+certified-or-better calibration loss, but BOTH rc=1 on 4 export-mass residuals (untargeted PUF-imputed
+inputs: mortgage/estate/misc/non_sch_d). Per #327/#328, these residuals belong to the informed-selection
+reconstruction (#328), NOT to blanket export-mass exclusions. So NEITHER is certifiable AS-IS tonight — the
+export-mass gate correctly refuses to certify until the untargeted-PUF-input drift is closed (the #328
+informed-init successor). The sparse is materially closer (loss 0.0296, mortgage tighter, 3 of 4 residuals
+smaller than dense) and is the stronger candidate.
+
+### ARM 3 (Max's directive) — cold-L0-2026 head-to-head
+Config = frozen-support sparse arm EXCEPT: no selection manifest (L0 from full 337,704), no
+--dense-default-dataset (default = L0 select+refit), --max-weight-ratio 50 from the START (cold L0 at 5.0
+PROVEN mass-infeasible in Build F attempt 2 — cited, not re-discovered), λ=0, same v7 feed, same 19-cell
+exclusions, same export-mass reference. Primarily DIAGNOSTIC (cold-L0-2026 vs frozen vs certified bands);
+a legitimate candidate if it passes every gate. Serialized AFTER the sparse arm (which is done). Launching
+detached.
