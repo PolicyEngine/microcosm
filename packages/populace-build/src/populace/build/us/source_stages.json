@@ -520,6 +520,44 @@
       "notes": "Direct mappings of measured ASEC hours variables, identical to the retired enhanced-CPS pipeline: weekly_hours_worked_before_lsr <- HRSWK (usual hours per week last year, 0 for non-workers), hours_worked_last_week <- A_HRS1, weeks_worked <- WKSWORK clipped to [0, 52]. Nothing is imputed. Without this stage PolicyEngine-US defaults every person to 40 weekly hours, so the SNAP 30-hour general and 20-hour ABAWD work requirements pass universally (populace #242/#248). HRSWK is an annual usual-hours measure while the ABAWD standard is a monthly 80-hour test; week-by-week volatility is not observable in the CPS and is deliberately out of scope."
     },
     {
+      "stage": "snap_take_up",
+      "survey": "Census CPS ASEC + USDA FNS participation rate estimates",
+      "source": "https://www.fns.usda.gov/snap/participation-rates",
+      "grain": "spm_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC SPM unit reported SNAP subsidy (SPM_SNAPSUB)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "latest_available",
+          "locator": "USDA FNS SNAP participation-rate estimates (Reaching Those in Need)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_snap_take_up",
+          "seed_from_build_config": true,
+          "take_up_rate": {
+            "value": 0.82,
+            "source": "https://www.fns.usda.gov/snap/participation-rates"
+          }
+        }
+      ],
+      "outputs": [
+        "takes_up_snap_if_eligible"
+      ],
+      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
+    },
+    {
       "stage": "mortgage_conversion",
       "survey": "IRS PUF 2015 (uprated) + Fed SCF 2022",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
