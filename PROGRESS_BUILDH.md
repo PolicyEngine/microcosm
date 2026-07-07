@@ -165,3 +165,24 @@ HF/latest.json untouched. Every number cited from its source document.
   - **Tests green (real exit codes):** 269 unit tests PASS across test_us_fiscal_targets / test_gates /
     test_us_input_mass / test_us_capital_gain_distributions / test_ledger_targets; builder+L0 heavy suite
     (test_us_fiscal_refresh_builder + test_us_l0_refit_export) exit 0. No golden-count breakage.
+  Committed 00cce86.
+
+- **Step 4 (dense launch).** Verified preconditions: base 18833fb6, ref c2065b642ab0…, v8 94b7155f,
+  pe-us 1.764.6 / core 3.26.11, 57k manifest identities_sha256 77363a47. Launched detached
+  (`_buildh-runtime/buildh_dense.sh`, mirrors buildg_chain dense arm; ONLY --ledger-facts -> v8; fresh
+  checkpoint-root buildh-dense since registry change busts the frame checkpoint). id=
+  populace-us-2024-buildh-dense-00cce86-<ts>; log release_dense.log; rc marker dense.rc. Full ref sha =
+  c2065b642ab00da74746afdfd9f06890e5f32f9b10bd6610ff236452d40f39c5.
+
+- **Step 3-ZS (sparse zero-support REFRESH vs NEW registry).** Recomputed, not reused blindly. Zero-support
+  = target>0 with initial+final materialized estimate ~0 (build tool line ~4134). The 19 Build-G cells
+  (1 AL TANF + 18 historic_table_2 state_agi under_1 taxable_interest across al/ct/in/me/ms/ne/nm/ri/wy)
+  are OLD v7 targets on the IDENTICAL frozen 57,240 selection → support unchanged → still zero-support.
+  The 12 NEW targets are all national aggregates; empirical join of the 57,240 selection onto the base
+  (all 57,240 households matched exactly, 166,302 persons) shows material frozen-selection support:
+  home_mortgage_interest 13,914 nonzero person-records, estate_income 449 pos + 87 neg,
+  miscellaneous_income 1,346 pos + 799 neg, non_sch_d_capital_gains 2,318 nonzero → NONE zero-support.
+  Refreshed set = same 19 cells, 0 additions. Wrote
+  `_buildh-runtime/inputs/sparse_zero_support_exclusions_buildh.json` (sha df61c770…) with per-cell
+  Build-H revalidation provenance. Sparse launch script `_buildh-runtime/buildh_sparse.sh` pre-staged
+  (runs after dense; mirrors buildg sparse arm; --zero-support-exclusions -> the 19-cell Build-H file).
