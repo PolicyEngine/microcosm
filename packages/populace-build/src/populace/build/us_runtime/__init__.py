@@ -72,6 +72,17 @@ from populace.build.us_runtime.demographics import (
     demographics_payload,
     write_demographics,
 )
+from populace.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS,
+    US_ELIGIBILITY_INPUTS_STAGE_NAME,
+    derive_us_eligibility_inputs_from_manifest,
+    us_eligibility_inputs_signal_gate,
+    us_eligibility_inputs_stage_spec,
+    us_eligibility_inputs_summary,
+    with_us_eligibility_inputs,
+)
 from populace.build.us_runtime.fiscal_targets import (
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
@@ -297,6 +308,15 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_STAGE_NAME",
+    "derive_us_eligibility_inputs_from_manifest",
+    "us_eligibility_inputs_signal_gate",
+    "us_eligibility_inputs_stage_spec",
+    "us_eligibility_inputs_summary",
+    "with_us_eligibility_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -510,6 +530,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "100% take-up."
         ),
     ),
+    US_ELIGIBILITY_INPUTS_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "SNAP eligibility/exemption inputs mapped directly from "
+            "measured ASEC person variables (PEDIS*, A_HSCOL/A_FTPT, "
+            "PEPAR1/PEPAR2, VET_VAL, SSI_VAL) — nothing imputed. Without "
+            "them disability, student, parent/child, and veteran "
+            "exemption channels default to False/0."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -558,6 +589,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_IMMIGRATION_STAGE_NAME,
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
+    US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "capital_gain_distributions",

@@ -55,6 +55,7 @@ from populace.build.us_runtime import (
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_snap_take_up_signal_gate,
@@ -63,6 +64,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
     with_us_snap_take_up_inputs,
@@ -3953,6 +3955,7 @@ def _release_gate_failures(
     ecps_parity_gate: GateResult | None = None,
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
+    eligibility_inputs_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3984,6 +3987,11 @@ def _release_gate_failures(
         failures.extend(
             f"SNAP take-up signal failed: {failure}"
             for failure in snap_take_up_gate.failures
+        )
+    if eligibility_inputs_gate is not None and not eligibility_inputs_gate.passed:
+        failures.extend(
+            f"Eligibility-inputs signal failed: {failure}"
+            for failure in eligibility_inputs_gate.failures
         )
     if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
         failures.extend(
@@ -4263,6 +4271,7 @@ def _write_release_calibration_diagnostics(
     input_mass_reference_gate: GateResult | None = None,
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
+    eligibility_inputs_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -4352,6 +4361,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(snap_take_up_gate.details),
                 }
                 if snap_take_up_gate is not None
+                else None
+            ),
+            "eligibility_inputs_signal": (
+                {
+                    "passed": eligibility_inputs_gate.passed,
+                    "failures": list(eligibility_inputs_gate.failures),
+                    "details": dict(eligibility_inputs_gate.details),
+                }
+                if eligibility_inputs_gate is not None
                 else None
             ),
             "input_mass_reference": (
@@ -4599,6 +4617,7 @@ def _build_manifests(
     ecps_parity_gate: GateResult | None = None,
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
+    eligibility_inputs_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
@@ -4628,6 +4647,7 @@ def _build_manifests(
         ecps_parity_gate=ecps_parity_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4770,6 +4790,17 @@ def _build_manifests(
                 if snap_take_up_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "eligibility_inputs_signal": {
+                        "passed": eligibility_inputs_gate.passed,
+                        "failures": list(eligibility_inputs_gate.failures),
+                        "details": dict(eligibility_inputs_gate.details),
+                    }
+                }
+                if eligibility_inputs_gate is not None
+                else {}
+            ),
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -4847,6 +4878,16 @@ def _build_manifests(
                     }
                 }
                 if snap_take_up_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "eligibility_inputs_signal": {
+                        "passed": eligibility_inputs_gate.passed,
+                        "details": dict(eligibility_inputs_gate.details),
+                    }
+                }
+                if eligibility_inputs_gate is not None
                 else {}
             ),
         },
@@ -5318,6 +5359,33 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "eligibility_inputs",
+            message="Deriving SNAP eligibility and exemption inputs from ASEC.",
+        )
+    base_frame = with_us_eligibility_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base_frame)
+    if not eligibility_inputs_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "eligibility_inputs_gate",
+                status="failed",
+                message="Eligibility-inputs signal gate failed.",
+                failures=list(eligibility_inputs_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Eligibility-inputs signal failed: {failure}"
+                for failure in eligibility_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -5630,6 +5698,7 @@ def main() -> None:
         ecps_parity_gate=enforced_ecps_parity_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -5644,6 +5713,7 @@ def main() -> None:
         input_mass_reference_gate=input_mass_reference_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -5850,6 +5920,7 @@ def main() -> None:
         ecps_parity_gate=enforced_ecps_parity_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
