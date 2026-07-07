@@ -28,7 +28,12 @@ Enrollment semantics are **point-in-time** (average month): the anchor is
 interview-point coverage and the targets are month-tagged CMS snapshots
 (``cms_medicaid.month2024_12.state_enrollment.*``), never ever-enrolled-in-year
 counts — the Urban HIPSM convention (populace #332). Within-year churn is out
-of scope.
+of scope. The anchor and target are different months of the same year (ASEC
+reports coverage as of the ~February-April interview; the snapshot is
+December): both are point-in-time stocks, and with 2024 enrollment declining
+through the unwinding, spring reporters can exceed a December count in some
+states — the gate's anchor-floor rule absorbs exactly that direction rather
+than reading it as a calibration miss.
 
 Two deliberate asymmetries with the ACA stage:
 

@@ -74,7 +74,8 @@
         "anchor": "has_medicaid_health_coverage_at_interview",
         "targets": ["cms_medicaid_enrollment_by_state"],
         "fact_family": "cms_medicaid.month2024_12.state_enrollment.*.total_medicaid_enrollment",
-        "semantics": "point_in_time_monthly_snapshot (populace #332)"
+        "semantics": "point_in_time_monthly_snapshot (populace #332)",
+        "anchor_month_note": "The ASEC anchor is interview-point (~Feb-Apr) while the target is the December snapshot: both point-in-time stocks, months deliberately unaligned. With 2024 enrollment declining through the unwinding, spring reporters can exceed a December count; the stage gate's anchor-floor rule treats that as the reachable floor, not a miss."
       },
       "rate": {"status": "no_administrative_rate_exists", "us_data_value": "state-specific 0.53-0.99 (rejected: model-relative ratio, MACPAC enrollment over modeled eligibility)"},
       "scope_owner": "populace#331 (medicaid_take_up stage)",
