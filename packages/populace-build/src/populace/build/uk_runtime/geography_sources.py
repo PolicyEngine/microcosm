@@ -73,6 +73,28 @@ UK_POSTCODE_PCON_MAY24_ZIP_URL = (
     "6f2f35a9a0b94e7e949eeba7785911d4/data"
 )
 
+# OA-ladder-only sources (populace #349). The stage-one constituency draw is
+# weighted by OA household counts (Nomis Census 2021 TS041 "Number of
+# households"); ward and ITL are the ONS Open Geography Portal best-fit lookups
+# the ladder carries per its LAD (April 2023) anchor.
+EW_OA_HOUSEHOLDS_URL = (
+    "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip"
+)
+# "Output Area (2021) to Ward to LAD to CTYUA to Region to Country (2022) Best
+# Fit Lookup in EW (V2)" — ONS Open Geography Portal item 7207b517....
+EW_OA_WARD_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "7207b51700f7472e88460f3a2e1eb5f9/csv?layers=0"
+)
+# "Local Authority District (April 2023) to LAU1 to ITL3 to ITL2 to ITL1
+# (January 2021) Lookup in the UK" — ONS Open Geography Portal item
+# 02b49429.... Keyed on LAD April 2023, matching the ladder's LAD anchor, so
+# the join is exact rather than a cross-vintage best-fit (the #205 rule).
+LAD23_ITL_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "02b4942973374f039ec1d2e7d35c16a9/csv?layers=0"
+)
+
 ENGLAND_WALES_OA2021_COUNT = 188_880
 SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
@@ -133,6 +155,45 @@ def load_england_lad_region_lookup(
 
     frame = _read_csv_url(url, dtype=str)
     return _normalise_england_lad_region_lookup(frame)
+
+
+def load_england_wales_oa_households(
+    url: str = EW_OA_HOUSEHOLDS_URL,
+) -> pd.DataFrame:
+    """Load Nomis Census 2021 OA household counts (TS041) for E/W.
+
+    The household count is the stage-one weight for the OA-ladder's
+    within-region constituency draw (populace #349).
+    """
+
+    frame = _read_zip_csv_url(
+        url,
+        filename_contains="census2021-ts041-oa",
+        dtype=str,
+    )
+    return _normalise_ew_households(
+        frame,
+        expected_count=ENGLAND_WALES_OA2021_COUNT,
+    )
+
+
+def load_england_wales_oa_ward_lookup(
+    url: str = EW_OA_WARD_URL,
+) -> pd.DataFrame:
+    """Load ONS OA2021 -> electoral ward best-fit lookup for E/W."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_ew_ward_lookup(
+        frame,
+        expected_count=ENGLAND_WALES_OA2021_COUNT,
+    )
+
+
+def load_lad_itl_lookup(url: str = LAD23_ITL_URL) -> pd.DataFrame:
+    """Load ONS LAD (April 2023) -> ITL3 lookup for the UK."""
+
+    frame = _read_csv_url(url, dtype=str)
+    return _normalise_lad_itl_lookup(frame)
 
 
 def load_scotland_oa_dz_iz_lookup(
@@ -822,6 +883,125 @@ def _normalise_england_lad_region_lookup(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _normalise_ew_households(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    geo_column = _find_column(source, exact=("geography code", "oa_code"))
+    if geo_column is None:
+        raise ValueError("E/W households is missing an OA code column.")
+    if "households" in source.columns and geo_column != "households":
+        households_values = pd.to_numeric(source["households"], errors="raise")
+    else:
+        households_values = _household_count_values(source, geo_column=geo_column)
+    households = pd.DataFrame(
+        {
+            "oa_code": source[geo_column],
+            "households": households_values.to_numpy(),
+        }
+    )
+    households["oa_code"] = households["oa_code"].fillna("").astype(str).str.strip()
+    households = households[households["oa_code"].str.match(r"^[EW]00")].copy()
+    _validate_unique_nonblank(
+        households,
+        "oa_code",
+        label="E/W households",
+        expected_count=expected_count,
+        unit_label="OA2021",
+    )
+    households["households"] = pd.to_numeric(
+        households["households"],
+        errors="raise",
+    )
+    return households.reset_index(drop=True)
+
+
+def _normalise_ew_ward_lookup(
+    frame: pd.DataFrame,
+    *,
+    expected_count: int | None = None,
+) -> pd.DataFrame:
+    source = frame.copy()
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    oa_column = upper_to_column.get("OA21CD")
+    ward_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("WD") and upper.endswith("CD")
+        ),
+        None,
+    )
+    if oa_column is None or ward_column is None:
+        raise ValueError("E/W ward lookup is missing OA or ward columns.")
+    lookup = pd.DataFrame(
+        {
+            "oa_code": source[oa_column],
+            "ward_code": source[ward_column],
+        }
+    )
+    return _normalise_code_rows(
+        lookup,
+        label="E/W ward lookup",
+        unique_column="oa_code",
+        expected_count=expected_count,
+        unit_label="OA2021",
+        prefixes=("E", "W"),
+    )
+
+
+def _normalise_lad_itl_lookup(frame: pd.DataFrame) -> pd.DataFrame:
+    source = frame.copy()
+    upper_to_column = {str(column).strip().upper(): column for column in source}
+    lad_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("LAD") and upper.endswith("CD")
+        ),
+        None,
+    )
+    itl3_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if "ITL3" in upper and upper.endswith("CD")
+        ),
+        None,
+    )
+    if lad_column is None or itl3_column is None:
+        raise ValueError("LAD-ITL lookup is missing LAD or ITL3 columns.")
+    lookup = pd.DataFrame(
+        {
+            "local_authority_code": source[lad_column],
+            "itl3_code": source[itl3_column],
+        }
+    )
+    lookup["local_authority_code"] = (
+        lookup["local_authority_code"].fillna("").astype(str).str.strip()
+    )
+    lookup["itl3_code"] = lookup["itl3_code"].fillna("").astype(str).str.strip()
+    lookup = lookup[lookup["local_authority_code"] != ""].copy()
+    blank_itl = lookup["itl3_code"] == ""
+    if blank_itl.any():
+        missing_codes = lookup.loc[blank_itl, "local_authority_code"].tolist()
+        raise ValueError(
+            f"LAD-ITL lookup must not include blank ITL3 codes: {missing_codes[:5]}."
+        )
+    lookup = lookup.drop_duplicates(subset=["local_authority_code"])
+    if lookup["local_authority_code"].duplicated().any():
+        duplicates = lookup.loc[
+            lookup["local_authority_code"].duplicated(), "local_authority_code"
+        ].unique()
+        raise ValueError(
+            "LAD-ITL lookup maps a LAD to more than one ITL3; duplicate value(s): "
+            f"{list(map(str, duplicates[:5]))}."
+        )
+    return lookup.reset_index(drop=True)
+
+
 def _normalise_scotland_oa_dz_iz(
     frame: pd.DataFrame,
     *,
@@ -1154,6 +1334,41 @@ def _validate_unique_nonblank(
         label=label,
         unit_label=unit_label,
     )
+
+
+def _household_count_values(
+    frame: pd.DataFrame,
+    *,
+    geo_column: str,
+) -> pd.Series:
+    """Return per-row household counts from a Nomis TS041 (households) frame.
+
+    The Nomis bulk export names the count column with the table label (e.g.
+    "Number of households: Value"). A single count column is used directly; if
+    the table is broken into a "Total" plus household-size bands, the "Total"
+    column is used; percentage columns are never counted.
+    """
+
+    candidates: list[str] = []
+    for column in frame.columns:
+        if column == geo_column:
+            continue
+        lowered = str(column).strip().lower()
+        if "household" not in lowered:
+            continue
+        if any(token in lowered for token in ("%", "percent", "proportion")):
+            continue
+        numeric = pd.to_numeric(frame[column], errors="coerce")
+        if numeric.notna().any():
+            candidates.append(column)
+    if not candidates:
+        raise ValueError("E/W households frame has no household count column.")
+    totals = [column for column in candidates if "total" in str(column).lower()]
+    chosen = totals or candidates
+    values = sum(
+        pd.to_numeric(frame[column], errors="raise") for column in chosen
+    )
+    return pd.Series(values, index=frame.index)
 
 
 def _find_column(
