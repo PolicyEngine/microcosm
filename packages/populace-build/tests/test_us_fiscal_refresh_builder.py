@@ -1827,6 +1827,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_hours_worked_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_take_up_signal_gate",
         lambda frame: builder.GateResult(
             name="us_take_up_signal",
@@ -1843,6 +1848,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "programs": [],
             "gate": {"passed": True},
         },
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_hours_worked_signal_gate",
+        lambda frame: builder.GateResult(
+            name="hours_worked_signal",
+            passed=True,
+            details={"checked": True},
+        ),
     )
     monkeypatch.setattr(
         builder,

@@ -50,6 +50,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "compute_ratio",
         "declare_income_reference_offset",
         "derive",
+        "derive_hours_worked",
         "derive_immigration_status",
         "derive_puf_policyengine_variables",
         "derive_mortgage_balance_hints",
