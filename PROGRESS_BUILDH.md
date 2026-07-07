@@ -84,5 +84,43 @@ HF/latest.json untouched. Every number cited from its source document.
   logs (dense/sparse/chain). Verified venv resync clean (94 pkgs). Recorded exact export-mass residuals +
   ref bands (above). Prior agent left no repo commits (both worktrees clean); groundwork = SOI sourcing +
   23in14ar.xls in scratch. Dispatched code-exploration on (1) populace fact→target→export-column mechanics
-  + export-mass gate + #256 coverage pattern, (2) PE-US mortgage/income variable semantics. NEXT: resolve
-  mortgage definitional Q, verify SOI values, author ledger table_1_4 lines + wire populace targets.
+  + export-mass gate + #256 coverage pattern, (2) PE-US mortgage/income variable semantics.
+
+- **Step 1 (SOI values VERIFIED from committed workbooks).** Ledger has the raw .xls committed at
+  `db/data/irs_soi/table_{1_4,2_1}/23in{14ar,21id}.xls`; sha256 of 23in14ar.xls = b6c1f87fbb55… matches
+  manifest + prior-agent scratch. Parsed with xlrd (value_scale 1000, amounts in $1000s):
+
+  **Table 1.4 (TY2023) "All returns, total" (row idx 8):**
+  | concept | returns col/val | amount col/val ($) |
+  |---|---|---|
+  | Capital gain distributions reported on Form 1040 | AJ 3,209,131 | AK **$9,340,820,000** |
+  | Estate and trust — Net income | BX 648,583 | BY **$47,892,046,000** |
+  | Estate and trust — Net loss | BZ 36,592 | CA $4,898,828,000 → NET **$42,993,218,000** |
+  | Other income — Net income | CN 7,468,434 | CO **$60,816,508,000** |
+  | Other income — Net loss | CP 318,839 | CQ $12,213,628,000 → NET **$48,602,880,000** |
+  | Sales of cap assets Sch D taxable net gain (xcheck) | — | AM $966,168,014,000 ✓ |
+
+  **Table 2.1 (TY2023) itemizers "All returns, total" (row idx 9), Home mortgage interest:**
+  | concept | returns | amount ($) |
+  |---|---|---|
+  | **Total** | CW 11,644,348 | CX **$171,364,787,000** |
+  | Paid to financial institutions | CY 11,490,340 | CZ $167,675,863,000 |
+  | Paid to individuals | DA 269,588 | DB $3,688,924,000 |
+  (CZ+DB = CX ✓. table_2_1 pkg already has CZ+DB measures; missing the CW/CX "Total".)
+
+- **Step 1 RECONCILIATION vs export-mass ref bands (PIVOTAL — contradicts the optimistic "all pass"):**
+  | column | SOI target ($B) | ref ($B) | SOI vs ref | in ±50% band? |
+  |---|---:|---:|---:|---|
+  | home_mortgage_interest | 171.365 (Sched A total) | 311.126 | −44.9% | **YES** (just inside) → gate passes IF input==itemizer amt |
+  | miscellaneous_income | 48.603 net / 60.817 gross | 47.401 | +2.5% / +28.3% | **YES** → gate passes, real target |
+  | estate_income | 42.993 net / 47.892 gross | 98.434 | −56.3% / −51.3% | **NO** (just below) → ref is ~2× SOI, incidental |
+  | non_sch_d_capital_gains | 9.341 (cap-gain distrib) | 75.747 | −87.7% | **NO** (far below) → ref ~8× SOI, likely concept mismatch |
+
+  So the live-default reference is itself off-SOI on estate (~2×) and non_sch_d (~8×). Targeting to true SOI
+  makes those two FAIL the parity-vs-incidental-reference check. Two coherent completions per column: (a)
+  SOI ∈ band → clean gate pass (mortgage, misc); (b) SOI ∉ band because ref is incidental → SOI target
+  identifies the column + reviewed exclusion in the parity gate justified BY that target (estate); (c)
+  concept mismatch / magnitude fights constrained aggregate → reviewed exclusion w/ component-split
+  justification (non_sch_d). Final per-column decision GATED on agent findings (PE-US variable semantics +
+  exact gate comparison: does a targeted column re-reference to its target, or stay vs live-default?).
+  NEXT: consume both agents; resolve mortgage definitional Q; author ledger table_1_4 lines + wire targets.
