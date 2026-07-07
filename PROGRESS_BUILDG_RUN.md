@@ -413,3 +413,31 @@ READY-TO-GO state for the post-12:30 resume (everything staged, no analysis pend
   mortgage-is-binding distinction. Post as a comment on #299 (Build G run entry) + update #324. Publication
   is Max's. Interpretation guide: cold≈frozen ⇒ frozen's edge environmental, informed-init priority up;
   cold misses income tax ⇒ frozen selection's value confirmed (clean 2026 head-to-head).
+
+### 2026-07-07 02:48Z — ARM 3 cold-L0-2026 COMPLETE rc=1 (terminal state; step 6 resumed ~06:00 ET after hold)
+Cold-L0-2026 (populace-us-2024-buildg-coldl0-70bc78d): loss 0.10423, within-10% 55.4%, n_selected 53,274,
+ESS 7,026, realized max-ratio 50.0 (PEGGED). rc=1 on the CRITICAL-TARGET gate (income tax +17.83%, SS
++6.20% — both exceed the 5% tolerance), BEFORE the export gate (no input_mass_parity.json written). Fails
+EARLIER and HARDER than frozen/dense (which pass critical targets, fail only export-mass). This is the
+"cold still misses income tax" branch → the frozen selection's value is CONFIRMED under 2026 conditions.
+
+THREE-WAY HEAD-TO-HEAD (all pe-us 1.764.6, base 18833fb6, v7 feed, λ=0, seed 0):
+| metric | DENSE 337k | FROZEN-57k (headline) | COLD-L0-2026 | certified band |
+|---|---:|---:|---:|---:|
+| n_records | 337,704 | 57,240 | 53,274 | 57,240 / 75,112 |
+| final_loss | 0.04139 | **0.02964** | 0.10423 | 0.044 / 0.0423 |
+| within-10% | 86.16% | 89.15% | 55.4% | 94.7% / 86.4% |
+| ESS | 81,206 | 13,388 | 7,026 | ~4,999 |
+| max-weight-ratio | 5.0 | 5.0 | 50.0 (pegged) | 5.0 |
+| fed income tax (SOI liab) | +1.23% | **+0.50%** | +17.83% | ~target |
+| SS benefits | +0.05% | −0.13% | +6.20% | ~target |
+| mortgage tax-exp (JCT bind) | +59.69% | +44.46% | +62.02% | ~target |
+| net_capital_gain (CBO agg) | −38.35% | −26.73% | −20.76% | ~target |
+| CRITICAL-TARGET gate | PASS | PASS | **FAIL** (inc tax+SS) | — |
+| structural gates | PASS | PASS | PASS | — |
+| zero-support | 0 | 0 | 0 | — |
+| export-mass gate | FAIL (4) | FAIL (4) | not reached | — |
+| export residuals | estate−53.6, mtg1+61.8, mtg+69.2, misc−68.3 | estate−66.8, mtg+52.4, misc−54.3, nonSchD+111.4 | — | — |
+INTERPRETATION: cold ≠ frozen (cold is far worse: loss 3.5x, income tax +17.8% vs +0.5%). The environment
+change did NOT make cold competitive → frozen selection's value CONFIRMED; informed-init (#330 successor)
+remains the path, NOT a from-scratch reselection. Frozen-57k is unambiguously the headline candidate.
