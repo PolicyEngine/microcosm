@@ -32,13 +32,22 @@ from pathlib import Path
 from typing import Any
 
 from populace.build.us_runtime.fiscal_targets import (
+    STATE_FIPS_TO_POSTAL,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
 
+# Postal code -> integer FIPS, for slicing person-level rates by state (the
+# numeric household state_fips broadcasts to persons; the string state code
+# does not).
+_STATE_FIPS: dict[str, int] = {
+    postal: int(fips) for fips, postal in STATE_FIPS_TO_POSTAL.items()
+}
+
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
     "BaselineLevelSpec",
+    "state_spm_poverty_level_specs",
     "ReformValidationSpec",
     "in_sample_reform_specs",
     "out_of_sample_reform_specs",
@@ -468,10 +477,25 @@ class BaselineLevelSpec:
     # benchmarks (e.g. state match-rate × IRS federal EITC in the state, or
     # eligible children × credit amount).
     benchmark_score_type: str = "actual"
+    # "total" (default): weighted sum of ``variable``. "rate": weighted share
+    # of persons for whom ``variable`` is truthy among the ``mask_variable``
+    # population (all persons when mask_variable is None), computed at person
+    # level and sliced to ``state`` when set. Used by the Census state-SPM
+    # poverty backtests, whose benchmarks are rates rather than dollar totals.
+    statistic: str = "total"
+    # Person-level boolean restricting a rate's population (e.g. ``is_child``
+    # for child poverty). Only meaningful with statistic="rate".
+    mask_variable: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
             raise ValueError("BaselineLevelSpec requires id and variable.")
+        if self.statistic not in ("total", "rate"):
+            raise ValueError(f"Unknown statistic {self.statistic!r} in {self.id}.")
+        if self.statistic == "rate" and not isinstance(self.variable, str):
+            raise ValueError(f"Rate level {self.id} requires a single variable.")
+        if self.statistic == "rate" and self.cap_variable:
+            raise ValueError(f"Rate level {self.id} cannot use cap_variable.")
 
 
 def _soi_baseline_levels_config_path() -> Path:
@@ -502,6 +526,8 @@ def _baseline_level_specs_from_config(
                 cap_variable=raw.get("cap_variable") or None,
                 category=str(raw.get("category", default_category)),
                 benchmark_score_type=str(bench.get("score_type", "actual")),
+                statistic=str(raw.get("statistic", "total")),
+                mask_variable=raw.get("mask_variable") or None,
             )
         )
     return tuple(specs)
@@ -560,12 +586,38 @@ def federal_eitc_state_level_specs(
     )
 
 
+def _state_spm_poverty_levels_config_path() -> Path:
+    return Path(
+        str(files("populace.build.us").joinpath("state_spm_poverty_levels.json"))
+    )
+
+
+def state_spm_poverty_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Census state SPM poverty rates (overall and child) vs the baseline.
+
+    Each line is a statistic="rate" level: the weighted share of persons in
+    SPM poverty (``in_poverty``), optionally restricted to children
+    (``mask_variable: is_child``), sliced to one state — compared to the
+    Census P60-287 2022–2024 three-year-average state SPM rates. Poverty is
+    nowhere in the calibration target surface, so these are genuinely
+    out-of-sample; the person/child *counts* in each state are calibrated,
+    which pins the denominators but not the rates.
+    """
+    return _baseline_level_specs_from_config(
+        path or _state_spm_poverty_levels_config_path(),
+        default_category="Census state SPM",
+    )
+
+
 def default_baseline_level_specs() -> tuple[BaselineLevelSpec, ...]:
-    """All shipped baseline-level backtests: SOI + state programs + EITC geo."""
+    """All shipped backtests: SOI + state programs + EITC geo + SPM rates."""
     return (
         *soi_baseline_level_specs(),
         *state_program_level_specs(),
         *federal_eitc_state_level_specs(),
+        *state_spm_poverty_level_specs(),
     )
 
 
@@ -833,10 +885,50 @@ def reform_validation_payload(
             (np.asarray(values)[mask] * np.asarray(values.weights)[mask]).sum()
         )
 
+    def _person_rate(level: BaselineLevelSpec) -> float:
+        """Weighted share of persons with ``variable`` truthy among the mask
+        population, sliced to ``state`` when set.
+
+        Everything is computed at person level: spm_unit/household variables
+        broadcast down to persons, and the numeric ``state_fips`` broadcasts
+        where the string ``state_code_str`` cannot.
+        """
+        nonlocal baseline
+        import numpy as np
+
+        if baseline is None:
+            baseline = simulate(None)  # type: ignore[misc]
+        values = baseline.calculate(level.variable, level.period, map_to="person")
+        weights = np.asarray(values.weights)
+        flags = np.asarray(values) > 0
+        mask = np.ones(len(flags), dtype=bool)
+        if level.mask_variable:
+            mask &= (
+                np.asarray(
+                    baseline.calculate(
+                        level.mask_variable, level.period, map_to="person"
+                    )
+                )
+                > 0
+            )
+        if level.state:
+            fips = np.asarray(
+                baseline.calculate("state_fips", level.period, map_to="person")
+            )
+            mask &= fips == _STATE_FIPS[level.state]
+        denominator = float(weights[mask].sum())
+        if denominator == 0:
+            return 0.0
+        return float((flags[mask] * weights[mask]).sum() / denominator)
+
     def _level_total(level: BaselineLevelSpec) -> float:
         nonlocal baseline
+        if level.statistic == "rate":
+            return _person_rate(level)
         variables = (
-            [level.variable] if isinstance(level.variable, str) else list(level.variable)
+            [level.variable]
+            if isinstance(level.variable, str)
+            else list(level.variable)
         )
         if level.state:
             return sum(
@@ -846,9 +938,7 @@ def reform_validation_payload(
             if baseline is None:
                 baseline = simulate(None)  # type: ignore[misc]
             return sum(
-                _capped_weighted_total(
-                    baseline, v, level.cap_variable, level.period
-                )
+                _capped_weighted_total(baseline, v, level.cap_variable, level.period)
                 for v in variables
             )
         return sum(baseline_total(v, level.period) for v in variables)
@@ -862,6 +952,7 @@ def reform_validation_payload(
                 "category": level.category,
                 "in_sample": False,
                 "period": level.period,
+                "unit": "percent" if level.statistic == "rate" else "currency-USD",
                 "description": level.description or None,
                 "jct": {
                     "score": _finite(level.benchmark_value),
