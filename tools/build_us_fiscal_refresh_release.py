@@ -5722,6 +5722,13 @@ def main() -> None:
             if args.export_input_mass_reference_h5 is not None
             else "base_frame"
         ),
+        # Build H (populace#299): the two SOI-identified columns whose true
+        # target level provably cannot sit inside the live-default reference
+        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+        # and both mortgage columns are deliberately NOT excluded so the run
+        # adjudicates their actual gate outcome. See the constant's band-math
+        # rationale above.
+        reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
     )
     input_mass_parity_path = release_dir / "input_mass_parity.json"
     input_mass_parity_path.write_text(

@@ -167,6 +167,22 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
     # when Schedule D is not required); concept-confirmed against pe-us source.
     "capital_gain_distributions_amount": "non_sch_d_capital_gains",
+    # Build H (populace#299): SOI Table 2.1 "Home mortgage interest" itemized-
+    # deduction total (financial-institution + personal-seller legs summed;
+    # TY2023 $171,364,787,000 / 11,644,348 returns; CBO-aged ~$186.3B@2024).
+    # The record set irs_soi.ty2023.table_2_1.itemized_all_returns makes
+    # _soi_return_universe_from_record_set_id -> "itemized_returns", so
+    # _soi_reference_from_fact auto-stamps itemized_only=true and the target
+    # sums the model variable over ITEMIZERS ONLY -- the correct universe for a
+    # Schedule-A line. Maps to home_mortgage_interest, the gross person-level
+    # export input column itself (same "target the export column's own variable"
+    # pattern as the Table 1.4 columns above and the person-level, itemized-only
+    # real_estate_taxes target), so calibration directly pulls the itemizer
+    # share of the export mass down from the Build G +44.5% JCT overshoot toward
+    # the SOI level. Only the CW/CX "Total" measure is mapped; the two leg
+    # measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay
+    # unmapped to avoid double-counting.
+    "home_mortgage_interest_amount": "home_mortgage_interest",
 }
 
 
@@ -214,6 +230,10 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "other_income_net_income_returns": "miscellaneous_income",
     "other_income_net_loss_returns": "miscellaneous_losses",
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
+    # Build H (populace#299): return count paired with the Table 2.1 home
+    # mortgage interest amount above (indicator sum over itemizers claiming a
+    # home mortgage interest deduction).
+    "home_mortgage_interest_returns": "home_mortgage_interest",
 }
 
 
@@ -238,6 +258,11 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "miscellaneous_income": "miscellaneous_income",
     "miscellaneous_losses": "miscellaneous_income",
     "non_sch_d_capital_gains": "non_sch_d_capital_gains",
+    # Build H (populace#299): SOI Table 2.1 home mortgage interest concept ->
+    # gross person-level pe-us home_mortgage_interest (the export input column);
+    # itemized_only masking (auto from the itemized_all_returns record set)
+    # restricts the sum to itemizers, matching the Schedule-A universe.
+    "home_mortgage_interest": "home_mortgage_interest",
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",

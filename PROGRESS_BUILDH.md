@@ -124,3 +124,44 @@ HF/latest.json untouched. Every number cited from its source document.
   justification (non_sch_d). Final per-column decision GATED on agent findings (PE-US variable semantics +
   exact gate comparison: does a targeted column re-reference to its target, or stay vs live-default?).
   NEXT: consume both agents; resolve mortgage definitional Q; author ledger table_1_4 lines + wire targets.
+
+- **Step 2 code (conductor-salvaged, d8800fa).** Registry wiring for Table 1.4 estate/other-income/
+  capgain-distribution measures (signed income/loss legs) + `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS`
+  (estate_income, non_sch_d_capital_gains) with band-math rationale. Salvaged from an agent segment that
+  ended without commit → left TWO wiring gaps (below).
+
+- **Step 3 (agent 4): closed both wiring gaps; registry compiled; tests green.**
+  - **GAP 1 — mortgage target never wired.** The d8800fa comment claimed "the new itemizer-masked Table
+    2.1 target (~$186.3B aged) pins the itemizer share," but no mortgage measure was in
+    `SOI_AMOUNT/RETURN_MEASURE_VARIABLES` or `SOI_VARIABLE_MAP`; the prior agent's own
+    `preflight_registry.py` even asserted `home_mortgage_interest targets (expect 0)`. Baseline compile
+    (v8) confirmed **mortgage INERT: 0 targets** (registry 8e1b83852751 / 5531 specs = v7 5521 + 10 T14).
+    The v8 feed DOES carry the new CW/CX total rows `home_mortgage_interest_amount`
+    ($171,364,787,000) / `_returns` (11,644,348) but they mapped to nothing. FIX: added
+    `home_mortgage_interest_amount`/`_returns` → concept `home_mortgage_interest`, and
+    `SOI_VARIABLE_MAP["home_mortgage_interest"]="home_mortgage_interest"` (gross person-level export
+    column itself). Record set `table_2_1.itemized_all_returns` → `_soi_return_universe`=itemized_returns
+    → **itemized_only=true auto-stamped** (no change to `_SOI_ITEMIZED_ONLY_VARIABLES` needed; same auto
+    path as real_estate_taxes, a person-level itemized_only precedent). Only the CW/CX Total is mapped;
+    the two leg measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay unmapped to
+    avoid double-counting.
+  - **Pivotal definitional Q RESOLVED (independent agent + empirical).** pe-us `home_mortgage_interest`
+    = GROSS person-level input leaf (no cap); `deductible_mortgage_interest` = capped Sched-A deduction
+    built from SEPARATE tax-unit columns, mechanically decoupled from the tracked export column. Itemizer
+    mask makes the gross-column sum SOI-comparable. Empirical (itemizers only): gross $174.45B vs
+    deductible $174.31B → ratio 0.9992 (~0.08% paid-vs-deducted gap, negligible). base_variable =
+    `home_mortgage_interest` chosen because it IS the exact tracked export-mass-gate column (lossless
+    pass-through), guaranteeing the gate responds; deductible would leave the gate free to drift.
+  - **GAP 2 — reviewed exclusions never applied.** `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` was defined
+    (d8800fa) but NOT passed to `_export_input_mass_gate` at the call site (build_us_fiscal_refresh_release
+    .py ~5714) → dead constant → estate_income + non_sch_d would still FAIL the gate. FIX: added
+    `reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` to the call. (Gate skips excluded
+    columns; unused entries are reported, never fail — safe.)
+  - **Registry compiled (v8, mortgage WIRED):** version **d71c59514e3a / 5533 specs** (= 5531 + 2 mortgage
+    amount+returns). Mortgage amount target = **$186,310,104,604** (171,364,787,000 × CBO aging
+    1.08721346938244), itemized_only=true, base=home_mortgage_interest, mode=sum; returns=11,644,348
+    indicator_sum. All 10 T14 targets present (estate net $46.74B, misc net $52.84B, capgain-distrib
+    $10.16B).
+  - **Tests green (real exit codes):** 269 unit tests PASS across test_us_fiscal_targets / test_gates /
+    test_us_input_mass / test_us_capital_gain_distributions / test_ledger_targets; builder+L0 heavy suite
+    (test_us_fiscal_refresh_builder + test_us_l0_refit_export) exit 0. No golden-count breakage.
