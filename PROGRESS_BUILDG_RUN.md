@@ -367,3 +367,32 @@ Confirmed at pe-us 1.764.6. NY income tax +0.2% confirms the 1.764.1 §68 re-sea
 +44.5% sparse vs +59.7% dense = the frozen support fits it tighter (#330's +43.1% prior confirmed).
 The 4 export-mass residuals are UNTARGETED PUF inputs (no fiscal target) whose absolute mass the frozen
 support cannot fully pin without the certified warm-start weights — the #328 informed-init successor's job.
+
+### 2026-07-07 ~01:30 ET — IDENTIFICATION ANALYSIS of the 4 export-mass residuals (for the #299 verdict)
+Per the coordinator addendum: the export gate on these columns is an INCIDENTAL-REPRODUCTION check, not
+genuine drift detection, wherever the column is an unidentified dimension of the solve (the live-default
+reference's own value is then equally an artifact of ITS weight solve). Mechanically classified each:
+
+| residual column | identified? | evidence | is it a real miss or an identification gap? |
+|---|---|---|---|
+| **home_mortgage_interest** (input) | PARTIALLY | 0 direct targets on the input; BUT the JCT `deductible_mortgage_interest.revenue_loss` **IS a binding calibration target** (kind=neutralize_variable, neutralized_variable=interest_deduction) → **+44.5% real fit MISS** (sparse; +59.7% dense). The input mass the gate flags (+52.4%) drives that bound deduction. | The DEDUCTION is a genuine fit miss (cold-vs-informed gap); the INPUT-mass flag is a partially-identified proxy for it. |
+| **non_sch_d_capital_gains** (input) | PARTIALLY | 0 direct targets; BUT `net_capital_gains` (= LT+ST+non_sch_d) IS constrained — per-state SOI hit to ±0.2%, CBO net_capital_gain aggregate −26.7%. The SPLIT among the 3 components is unidentified. | Within-aggregate reallocation: the SUM is (mostly) hit; the +111.4% on non_sch_d is an unidentified-component gap, not an aggregate miss. |
+| **estate_income** (input) | NO | `real_estate_taxes` targets exist but constrain a DIFFERENT quantity (a deduction, not estate/trust income). 0 targets on estate_income. | Purely unidentified — the reference's $98.4B is an incidental artifact; export −53.6%/−66.8% is meaningless as drift. |
+| **miscellaneous_income** (input) | NO | 0 targets of any kind. Base is sign-unstable (−$7.9B raw). | Purely unidentified; degenerate for a % check (as #327 already noted). |
+
+**Framing for #299 — three ways to close the gap (recommend (b)):**
+- **(a) informed-init weight inheritance** (#330's designed successor): inherit the incumbent's incidental
+  masses on unidentified columns. Conservative; reproduces the reference rather than justifying it. Interim
+  option if Max wants a certified artifact sooner.
+- **(b) ADD calibration targets** for these columns (the PRINCIPLED fix, → Build H): SOI publishes
+  mortgage-interest-deduction totals, estate/trust income, and the miscellaneous-income line; adding them
+  makes the dimensions IDENTIFIED and turns the export gate from incidental-reproduction into genuine drift
+  detection. For non_sch_d specifically: add a component-level (or Schedule-D-line) target so the split is
+  pinned, not just the sum. RECOMMENDED as the Build H item.
+- **(c) reviewed exclusions** with the unidentified-dimension justification (WEAKEST — documents the gap but
+  doesn't close it; only defensible for miscellaneous_income given its sign-instability).
+The mortgage case is PARTIALLY distinct: its bound target (the JCT deduction revenue-loss) is a real
++44.5% fit miss, so option (a)/(b) there also has to improve the FIT, not just the input mass — this is the
+same cold-vs-informed-selection gap #328 identified, and the frozen support already tightens it (+44.5% vs
+cold-dense +59.7%). Arm 3 (cold-L0-2026) will show whether the same 4 columns float regardless of selection
+(confirming the unidentified-dimension reading) — include its residuals in the table when it lands.
