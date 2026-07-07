@@ -349,3 +349,21 @@ PROVEN mass-infeasible in Build F attempt 2 — cited, not re-discovered), λ=0,
 exclusions, same export-mass reference. Primarily DIAGNOSTIC (cold-L0-2026 vs frozen vs certified bands);
 a legitimate candidate if it passes every gate. Serialized AFTER the sparse arm (which is done). Launching
 detached.
+
+### 2026-07-07 ~01:22 ET — CRITICAL-TARGET FITS (run 3) — the decisive head-to-head metrics
+| target | DENSE 337k | SPARSE frozen-57k | (#330 cold-L0 Build F) |
+|--------|-----------:|------------------:|-----------------------:|
+| **federal income_tax_liability (SOI)** | — | **+0.5%** ($2.370T/$2.359T) | +19.9% |
+| SS benefits (SSA) | +0.1% | −0.1% | +5.3% |
+| mortgage tax-exp (JCT) | +59.7% | **+44.5%** | +59.7% |
+| QBI tax-exp (JCT) | −55.9% | −48.6% | — |
+| SALT tax-exp (JCT) | +12.3% | +10.1% | — |
+| NY income_tax_liability (SOI) | — | +0.2% ($189.2B) | — |
+
+**The frozen-support sparse hits federal income tax to +0.5% and SS to −0.1%** — the exact critical-target
+value #328/#330 reconstructed the frozen selection FOR (cold-L0 Build F blew income tax to +19.9%, SS +5.3%).
+Confirmed at pe-us 1.764.6. NY income tax +0.2% confirms the 1.764.1 §68 re-seat is CALIBRATED correctly
+(model's post-§68 NY is hit, not fought — the #324 follow-up #1 discharged). Mortgage tax-EXPENDITURE
++44.5% sparse vs +59.7% dense = the frozen support fits it tighter (#330's +43.1% prior confirmed).
+The 4 export-mass residuals are UNTARGETED PUF inputs (no fiscal target) whose absolute mass the frozen
+support cannot fully pin without the certified warm-start weights — the #328 informed-init successor's job.
