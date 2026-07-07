@@ -440,13 +440,20 @@ class BaselineLevelSpec:
 
     id: str
     name: str
-    variable: str
+    # One variable, or a list summed together (for benchmarks that cover
+    # mutually exclusive elections reported as one unsplit official figure,
+    # e.g. Virginia's Sec. 58.1-339.8 low-income credit / EITC elections).
+    variable: str | list[str]
     period: int
     benchmark_value: float
     benchmark_year: str
     source: str
     source_url: str
     description: str = ""
+    # Restrict the weighted total to households in one state (two-letter
+    # code). Used by the federal-EITC-by-state cross-check, where the measured
+    # variable (eitc) is national but the benchmark is an IRS state total.
+    state: str | None = None
     # SOI credit columns report the amount USED to offset tax (liability-
     # limited), while PE per-credit variables are the amount AVAILABLE. For
     # nonrefundable-credit lines, set cap_variable (income_tax_before_credits)
@@ -486,6 +493,7 @@ def _baseline_level_specs_from_config(
                 name=raw["name"],
                 variable=raw["variable"],
                 period=int(raw["period"]),
+                state=raw.get("state") or None,
                 benchmark_value=float(bench["value"]),
                 benchmark_year=str(bench.get("year", "")),
                 source=str(bench.get("source", "")),
@@ -532,9 +540,33 @@ def state_program_level_specs(
     )
 
 
+def _federal_eitc_by_state_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("federal_eitc_by_state.json")))
+
+
+def federal_eitc_state_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Federal EITC totals per state vs IRS EITC Central TY2024 actuals.
+
+    The measured variable is the national federal ``eitc`` sliced to each
+    state's households (``state`` field). Flat-match state EITCs inherit this
+    geography mechanically, so the cross-check isolates federal-geography
+    error from state-rule error in the state-program suite.
+    """
+    return _baseline_level_specs_from_config(
+        path or _federal_eitc_by_state_config_path(),
+        default_category="Federal EITC by state",
+    )
+
+
 def default_baseline_level_specs() -> tuple[BaselineLevelSpec, ...]:
-    """All shipped baseline-level backtests: IRS SOI + state programs."""
-    return (*soi_baseline_level_specs(), *state_program_level_specs())
+    """All shipped baseline-level backtests: SOI + state programs + EITC geo."""
+    return (
+        *soi_baseline_level_specs(),
+        *state_program_level_specs(),
+        *federal_eitc_state_level_specs(),
+    )
 
 
 def load_default_reform_specs(
@@ -782,15 +814,44 @@ def reform_validation_payload(
     # Baseline-level backtest rows (SOI actuals): no counterfactual — every
     # level reads the shared baseline simulation, so together they cost one
     # extra measure per line, not one simulation per line.
+    def _state_sliced_total(variable: str, state: str, period: int) -> float:
+        """Weighted total of ``variable`` over households in ``state``.
+
+        Values are mapped to household level (numeric maps aggregate across
+        entities; string state codes do not, which is why the slice happens
+        on the household side).
+        """
+        nonlocal baseline
+        import numpy as np
+
+        if baseline is None:
+            baseline = simulate(None)  # type: ignore[misc]
+        values = baseline.calculate(variable, period, map_to="household")
+        states = np.asarray(baseline.calculate("state_code_str", period))
+        mask = states == state
+        return float(
+            (np.asarray(values)[mask] * np.asarray(values.weights)[mask]).sum()
+        )
+
     def _level_total(level: BaselineLevelSpec) -> float:
         nonlocal baseline
+        variables = (
+            [level.variable] if isinstance(level.variable, str) else list(level.variable)
+        )
+        if level.state:
+            return sum(
+                _state_sliced_total(v, level.state, level.period) for v in variables
+            )
         if level.cap_variable:
             if baseline is None:
                 baseline = simulate(None)  # type: ignore[misc]
-            return _capped_weighted_total(
-                baseline, level.variable, level.cap_variable, level.period
+            return sum(
+                _capped_weighted_total(
+                    baseline, v, level.cap_variable, level.period
+                )
+                for v in variables
             )
-        return baseline_total(level.variable, level.period)
+        return sum(baseline_total(v, level.period) for v in variables)
 
     for level in baseline_levels:
         total = None if simulate is None else _level_total(level)

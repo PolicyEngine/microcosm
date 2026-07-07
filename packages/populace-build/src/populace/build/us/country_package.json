@@ -1,21 +1,22 @@
 {
-  "schema_version": 1,
-  "country": "us",
-  "policy": "spec-only country package; Python execution lives in shared runtime modules",
-  "resources": [
-    "ecps_parity_known_gaps.json",
-    "ecps_parity_reference.json",
-    "fiscal_target_references.json",
-    "obbba_reforms.json",
-    "puf_aggregate_record_disaggregation.json",
-    "soca_capital_gain_distribution_shares.json",
-    "soi_baseline_levels.json",
-    "source_stages.json",
-    "state_program_levels.json",
-    "state_program_reforms.json",
-    "state_reforms.json",
-    "support_spine.json",
-    "take_up_contract.json",
-    "tax_expenditure_reforms.json"
-  ]
+ "schema_version": 1,
+ "country": "us",
+ "policy": "spec-only country package; Python execution lives in shared runtime modules",
+ "resources": [
+  "ecps_parity_known_gaps.json",
+  "ecps_parity_reference.json",
+  "fiscal_target_references.json",
+  "obbba_reforms.json",
+  "puf_aggregate_record_disaggregation.json",
+  "soca_capital_gain_distribution_shares.json",
+  "soi_baseline_levels.json",
+  "source_stages.json",
+  "state_program_levels.json",
+  "federal_eitc_by_state.json",
+  "state_program_reforms.json",
+  "state_reforms.json",
+  "support_spine.json",
+  "take_up_contract.json",
+  "tax_expenditure_reforms.json"
+ ]
 }
