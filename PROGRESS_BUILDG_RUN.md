@@ -441,3 +441,29 @@ THREE-WAY HEAD-TO-HEAD (all pe-us 1.764.6, base 18833fb6, v7 feed, λ=0, seed 0)
 INTERPRETATION: cold ≠ frozen (cold is far worse: loss 3.5x, income tax +17.8% vs +0.5%). The environment
 change did NOT make cold competitive → frozen selection's value CONFIRMED; informed-init (#330 successor)
 remains the path, NOT a from-scratch reselection. Frozen-57k is unambiguously the headline candidate.
+
+### 2026-07-07 ~06:05 ET — STEP 6 COMPLETE — reports posted, Build G run closed
+- #299 consolidated three-way report: https://github.com/PolicyEngine/populace/issues/299#issuecomment-4902533514
+- #324 pin-validation outcome: https://github.com/PolicyEngine/populace/issues/324#issuecomment-4902539459
+
+**FINAL VERDICT (per artifact):**
+- FROZEN-57k (headline): NOT certifiable tonight; the clear best candidate. Loss 0.02964 (beats certified
+  0.044 + #330 prior 0.0315), income tax +0.5%, SS −0.1%, all structural gates + critical-target gate PASS,
+  0 zero-support. Blocked only by the export-mass gate on 4 unidentified/under-identified PUF-input dims.
+- DENSE parent: NOT certifiable; diagnostic parent. Loss 0.04139 (beats f0af251), income tax +1.23%,
+  same 4-residual export-mass block.
+- COLD-L0-2026: NOT certifiable; fails EARLIER (critical-target gate: income tax +17.8%, SS +6.2%).
+  HEAD-TO-HEAD RESULT: the frozen selection's edge is the SELECTION, not the environment — informed-init
+  (#330 successor) is the path, not from-scratch reselection.
+
+**Gap-closing recommendation: (b) add SOI calibration targets** (mortgage-interest-deduction totals,
+estate/trust income, misc income; component target for non_sch_d) → makes the 4 dims identified, turns the
+export-mass gate from incidental-reproduction into genuine drift detection. = the Build H item.
+(a) informed-init inheritance = interim if a certified artifact is wanted sooner. (c) reviewed exclusions =
+weakest (only defensible for sign-unstable miscellaneous_income).
+
+**#324 GO follow-up #1 DISCHARGED:** NY income-tax liability +0.18% — the 1.764.1 §68 re-seat calibrates
+cleanly (model's post-§68 NY hit, not fought).
+
+Prod HF + latest.json UNTOUCHED throughout. Publication is Max's call. Interim certified 57k remains the
+shippable laptop artifact. 3 artifacts under _buildg-runtime/out/buildg-run/releases/. STOP — run complete.
