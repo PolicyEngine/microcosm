@@ -26,6 +26,9 @@ from populace.build.us_runtime.geography_ladder import (
 from populace.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -42,6 +45,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
     *US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
 )
 
 #: The geography spine a US release carries by default: state and district,

@@ -186,10 +186,6 @@
       "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
       "issue": "PolicyEngine/populace#242"
     },
-    "is_pregnant": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "is_pursuing_credential_for_american_opportunity_credit": {
       "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
       "issue": "PolicyEngine/populace#253"

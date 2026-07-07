@@ -77,6 +77,7 @@ from populace.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
     US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
+    US_PREGNANCY_STAGE_NAME,
     derive_us_eligibility_inputs_from_manifest,
     us_eligibility_inputs_signal_gate,
     us_eligibility_inputs_stage_spec,
@@ -182,6 +183,17 @@ from populace.build.us_runtime.reform_validation import (
     out_of_sample_reform_specs,
     reform_validation_payload,
     write_reform_validation,
+)
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    US_PREGNANCY_OUTPUT_COLUMN,
+    US_PREGNANCY_REQUIRED_SOURCE_COLUMNS,
+    US_PREGNANCY_STAGE_NAME,
+    derive_us_pregnancy_from_manifest,
+    us_pregnancy_signal_gate,
+    us_pregnancy_stage_spec,
+    us_pregnancy_summary,
+    with_us_pregnancy_inputs,
 )
 from populace.build.us_runtime.snap_take_up import (
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
@@ -308,6 +320,15 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS",
+    "US_PREGNANCY_OUTPUT_COLUMN",
+    "US_PREGNANCY_REQUIRED_SOURCE_COLUMNS",
+    "US_PREGNANCY_STAGE_NAME",
+    "derive_us_pregnancy_from_manifest",
+    "us_pregnancy_signal_gate",
+    "us_pregnancy_stage_spec",
+    "us_pregnancy_summary",
+    "with_us_pregnancy_inputs",
     "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
     "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
@@ -539,6 +560,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "PEPAR1/PEPAR2, VET_VAL, SSI_VAL) — nothing imputed. Without "
             "them disability, student, parent/child, and veteran "
             "exemption channels default to False/0."
+        ),
+    ),
+    US_PREGNANCY_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + CDC natality-derived national pregnancy rate",
+        source="https://www.cdc.gov/nchs/nvss/births.htm",
+        notes=(
+            "Pregnancy seeded among women 15-44 at the national "
+            "point-in-time rate (births x 39/52 over female 15-44 "
+            "population), matching the retired pipeline's national "
+            "fallback; state-level rates are follow-up work (#351). "
+            "The ASEC does not measure pregnancy."
         ),
     ),
     "puf_tax_detail": DonorSpec(

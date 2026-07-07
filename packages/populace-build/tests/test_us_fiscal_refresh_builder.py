@@ -1842,6 +1842,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_take_up_signal_gate",
         lambda frame: builder.GateResult(
             name="us_take_up_signal",
@@ -1882,6 +1887,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_eligibility_inputs_signal_gate",
         lambda frame: builder.GateResult(
             name="eligibility_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_pregnancy_signal_gate",
+        lambda frame: builder.GateResult(
+            name="pregnancy_signal",
             passed=True,
             details={"checked": True},
         ),
