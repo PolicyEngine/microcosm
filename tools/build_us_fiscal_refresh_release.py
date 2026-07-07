@@ -3566,6 +3566,61 @@ def _ecps_parity_gate(
     )
 
 
+# Build H (populace#299): export-input-mass reviewed exclusions.
+#
+# The export-mass gate compares each calibrated export column against the
+# live-default 57k reference with a +/-50% band. It never re-references to a
+# calibration target — so for a column that Build H now *identifies* with a
+# real SOI target, the gate still measures drift against the incumbent's
+# incidental value on that column. An exclusion is defensible ONLY where the
+# SOI-true level provably cannot sit inside the reference band (the
+# incumbent's value on the column is off-source, an artifact of its own
+# weight solve); there the exclusion is justified BY the target itself.
+# Band math (reference = live-default 57k c2065b64, +/-50%, CBO-aged
+# TY2023 -> 2024 factor 1.0872):
+#   estate_income          ref $98.434B  band [$49.217B, $147.651B]
+#                          SOI net target ~$46.74B  -> BELOW the lower edge;
+#                          cannot pass truthfully -> excluded.
+#   non_sch_d_capital_gains ref $75.747B band [$37.874B, $113.621B]
+#                          SOI target ~$10.16B -> far below the lower edge;
+#                          cannot pass truthfully -> excluded.
+# Deliberately NOT excluded (parity checks stay live; the run adjudicates):
+#   miscellaneous_income   ref $47.401B  band [$23.700B, $71.101B]; SOI net
+#                          target ~$52.84B is IN-band -> genuine pass expected.
+#   home_mortgage_interest ref $311.126B band [$155.563B, $466.689B]; the new
+#                          itemizer-masked Table 2.1 target (~$186.3B aged)
+#                          pins the itemizer share and pulls the full column
+#                          down toward the band from $474-526B.
+#   first_home_mortgage_interest follows home_mortgage_interest (second-home
+#                          leg un-imputed / 0 per populace#38).
+US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
+    "estate_income": (
+        "Identified by SOI Table 1.4 estate/trust net income (income leg "
+        "$47.892B + loss leg $4.899B, TY2023; CBO-aged net ~$46.74B@2024). "
+        "The live-default reference carries $98.434B on this column — ~2.1x "
+        "the SOI net level — so the +/-50% band's lower edge ($49.217B) sits "
+        "ABOVE the true SOI level: a correctly calibrated column cannot pass "
+        "this parity check. The reference value is an incidental artifact of "
+        "the incumbent weight solve (nothing pinned this column before Build "
+        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
+        "input only), so pinning it identifies the export dimension without "
+        "moving revenue (PolicyEngine/populace#299 Build H)."
+    ),
+    "non_sch_d_capital_gains": (
+        "Identified by SOI Table 1.4 capital gain distributions reported on "
+        "Form 1040 ($9.341B TY2023, CBO-aged ~$10.16B@2024) — concept-"
+        "confirmed against PolicyEngine-US non_sch_d_capital_gains (PUF "
+        "E01100, Form 1040 line 7 when Schedule D is not required). The "
+        "live-default reference carries $75.747B — ~8x the SOI value — an "
+        "incidental within-net-capital-gains split (the aggregate is "
+        "constrained, the component split was not). The band's lower edge "
+        "($37.874B) sits far above the true SOI level, so a correctly "
+        "calibrated column cannot pass this parity check "
+        "(PolicyEngine/populace#299 Build H)."
+    ),
+}
+
+
 def _export_input_mass_gate(
     export_frame: Frame,
     base_frame: Frame,

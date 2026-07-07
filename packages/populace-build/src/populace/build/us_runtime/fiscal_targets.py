@@ -151,6 +151,22 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "unemployment_compensation_amount": "unemployment_compensation",
     "wages_salaries_amount": "employment_income",
     "charitable_amount": "charitable_deduction",
+    # Build H (populace#299): SOI Table 1.4 income/loss lines that identify the
+    # floating export-input columns. Income legs sum the positive part of the
+    # signed model variable, loss legs the negative-part magnitude
+    # (see _signed_component), matching SOI's returns-with-net-income vs
+    # returns-with-net-loss split. estate_income/miscellaneous_income do not
+    # currently add to AGI (loss-cap / catch-all only), but they are the export
+    # columns the export-mass gate tracks, so pinning them identifies those
+    # dimensions.
+    "estate_trust_net_income_amount": "estate_income",
+    "estate_trust_net_loss_amount": "estate_losses",
+    "other_income_net_income_amount": "miscellaneous_income",
+    "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
+    # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
+    # when Schedule D is not required); concept-confirmed against pe-us source.
+    "capital_gain_distributions_amount": "non_sch_d_capital_gains",
 }
 
 
@@ -190,6 +206,14 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
     "charitable_returns": "charitable_deduction",
+    # Build H (populace#299): return counts paired with the Table 1.4 income/
+    # loss amount lines above (indicator sums of the signed model variable's
+    # positive / negative part).
+    "estate_trust_net_income_returns": "estate_income",
+    "estate_trust_net_loss_returns": "estate_losses",
+    "other_income_net_income_returns": "miscellaneous_income",
+    "other_income_net_loss_returns": "miscellaneous_losses",
+    "capital_gain_distributions_returns": "non_sch_d_capital_gains",
 }
 
 
@@ -206,6 +230,14 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "eitc": "eitc",
     "estate_income": "estate_income",
     "estate_losses": "estate_income",
+    # Build H (populace#299): concept -> signed model column for the export
+    # dimensions identified by SOI Table 1.4. income/loss concept pairs share
+    # one signed column (same pattern as business/rent/partnership above);
+    # _signed_component takes the positive part for the income concept and the
+    # negative-part magnitude for the "_losses" concept.
+    "miscellaneous_income": "miscellaneous_income",
+    "miscellaneous_losses": "miscellaneous_income",
+    "non_sch_d_capital_gains": "non_sch_d_capital_gains",
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
