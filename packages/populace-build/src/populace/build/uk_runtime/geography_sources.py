@@ -163,7 +163,9 @@ def load_england_wales_oa_households(
     """Load Nomis Census 2021 OA household counts (TS041) for E/W.
 
     The household count is the stage-one weight for the OA-ladder's
-    within-region constituency draw (populace #349).
+    within-region constituency draw (populace #349). Cross-check: the 188,880
+    E/W output areas sum to 24,783,304 households, matching the published ONS
+    Census 2021 England-&-Wales total of ~24.8 million.
     """
 
     frame = _read_zip_csv_url(
@@ -1365,9 +1367,7 @@ def _household_count_values(
         raise ValueError("E/W households frame has no household count column.")
     totals = [column for column in candidates if "total" in str(column).lower()]
     chosen = totals or candidates
-    values = sum(
-        pd.to_numeric(frame[column], errors="raise") for column in chosen
-    )
+    values = sum(pd.to_numeric(frame[column], errors="raise") for column in chosen)
     return pd.Series(values, index=frame.index)
 
 

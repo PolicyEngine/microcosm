@@ -68,8 +68,15 @@ def join_uk_oa_ladder_layers(
 
     base = base_crosswalk.copy()
     missing = sorted(
-        {"oa_code", "population", "constituency_code", "region_code", "lsoa_code",
-         "msoa_code", "la_code"}
+        {
+            "oa_code",
+            "population",
+            "constituency_code",
+            "region_code",
+            "lsoa_code",
+            "msoa_code",
+            "la_code",
+        }
         - set(base.columns)
     )
     if missing:
@@ -143,9 +150,7 @@ def assemble_uk_oa_ladder(
     if not np.isfinite(population).all():
         raise ValueError("ladder OA frame population contains non-finite values.")
     if not np.isfinite(households).all() or (households < 0).any():
-        raise ValueError(
-            "ladder OA frame households must be finite and non-negative."
-        )
+        raise ValueError("ladder OA frame households must be finite and non-negative.")
     populated = population > 0
     if not populated.any():
         raise ValueError("ladder OA frame has no populated output areas.")

@@ -251,9 +251,7 @@ def test_assignment_writes_the_full_ladder_from_the_oa_anchor(tmp_path) -> None:
 
 def test_assignment_is_deterministic_and_two_stage_weighted(tmp_path) -> None:
     ladder = load_uk_oa_ladder(_write_ladder(tmp_path / "ladder.npz"))
-    household = pd.DataFrame(
-        {"household_id": range(6000), "region": ["LONDON"] * 6000}
-    )
+    household = pd.DataFrame({"household_id": range(6000), "region": ["LONDON"] * 6000})
 
     first = assign_uk_geography_ladder(household, ladder, seed=7)
     second = assign_uk_geography_ladder(household, ladder, seed=7)
@@ -391,9 +389,7 @@ def test_gate_passes_on_a_consistent_ladder() -> None:
 
 def test_gate_fails_when_london_collapses_to_zero() -> None:
     household, weights = _gated_household()
-    household.loc[
-        household["region_code"] == "E12000007", "region_code"
-    ] = "E12000002"
+    household.loc[household["region_code"] == "E12000007", "region_code"] = "E12000002"
 
     result = uk_geography_ladder_gate(household, weights)
 

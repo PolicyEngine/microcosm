@@ -46,6 +46,32 @@ England & Wales is the first milestone. Scotland and Northern Ireland are a
 NotImplemented path, not a silent absence: a household whose region is absent
 from the ladder (a Scottish household against an England-&-Wales ladder) raises
 naming the missing region, never a silent partial assignment.
+
+Wire-up (documented here; the UK build pipeline is not rewired in this change).
+The UK build would drive this behind the country-spec geography-spine schema
+(``populace.build.country_spec.GeographySpineSpec``, declared as
+``build/uk/geography_spine.json`` the way ``build/be/geography_spine.json``
+declares Belgium's commune spine). The stage, after region assignment:
+
+    ladder = load_uk_oa_ladder(ladder_artifact_path)
+    household = assign_uk_geography_ladder(
+        household,
+        ladder,
+        seed=build_seed,
+        expected_constituency_vintage=spine.vintage,  # vintage_policy: error
+        region_column="region",
+    )
+    gate = uk_geography_ladder_gate(household, weights)  # release-blocking
+
+Two schema extensions are the prerequisite follow-up, deliberately out of this
+PR because the UK country package is spec-only today
+(``build/uk/country_package.json`` carries no ``resources``) and the spine
+schema models only the ``clone_assign_uniform`` method: (1) a new
+``anchor_sample_oa_ladder`` method in ``ALLOWED_GEOGRAPHY_SPINE_METHODS`` whose
+spec references the ladder artifact and carries the two sampling bases instead
+of a clone pool and a single donor survey; (2) adding ``geography_spine.json``
+to the UK package resources. Both touch the shared build schema, so they land
+with the calibration-surface wiring (populace #263), not here.
 """
 
 from __future__ import annotations
@@ -324,7 +350,9 @@ def assign_uk_geography_ladder(
                 f"({expected_constituency_vintage!r})."
             )
 
-    region_codes = _household_region_codes(household[region_column], label=region_column)
+    region_codes = _household_region_codes(
+        household[region_column], label=region_column
+    )
     ladder_regions = set(np.unique(ladder.region_code).tolist())
     missing_regions = sorted(set(region_codes.tolist()) - ladder_regions)
     if missing_regions:
@@ -488,7 +516,9 @@ def uk_geography_ladder_gate(
         ("region_code", _GSS_CODE_PATTERN),
     ):
         values = household[label].astype(str).to_numpy()
-        bad = np.array([bool(value) and pattern.match(value) is None for value in values])
+        bad = np.array(
+            [bool(value) and pattern.match(value) is None for value in values]
+        )
         if bad.any():
             failures.append(
                 f"{label}: {int(bad.sum())}/{len(values)} row(s) are not valid "
@@ -605,10 +635,9 @@ def _sample_oa_indices(
     ):
         region_rows = frame[frame["region_code"] == region_code]
         # Stage one: constituency household-count weights within the region.
-        constituency_weight = (
-            region_rows.groupby("constituency_code", sort=True)["households"]
-            .sum()
-        )
+        constituency_weight = region_rows.groupby("constituency_code", sort=True)[
+            "households"
+        ].sum()
         constituencies = constituency_weight.index.to_numpy()
         weights = constituency_weight.to_numpy(dtype=np.float64)
         if weights.sum() <= 0:
@@ -628,9 +657,7 @@ def _sample_oa_indices(
         for constituency_code, local_positions in pd.Series(positions).groupby(
             chosen_series, sort=True
         ):
-            oa_rows = region_rows[
-                region_rows["constituency_code"] == constituency_code
-            ]
+            oa_rows = region_rows[region_rows["constituency_code"] == constituency_code]
             oa_indices = oa_rows["ladder_index"].to_numpy()
             oa_weights = oa_rows["population"].to_numpy(dtype=np.float64)
             drawn = rng.choice(
@@ -693,17 +720,14 @@ def _validate_ladder_metadata(metadata: Mapping[str, Any]) -> None:
             )
         if not str(spec.get("source") or ""):
             raise ValueError(
-                f"UK OA ladder layer {layer!r} must record a non-empty source "
-                "citation."
+                f"UK OA ladder layer {layer!r} must record a non-empty source citation."
             )
 
 
 def _gss_code_array(values: np.ndarray, *, label: str) -> np.ndarray:
     array = np.asarray(values)
     if array.dtype.kind not in ("U", "S", "O"):
-        raise ValueError(
-            f"{label} must be a string array, got dtype {array.dtype}."
-        )
+        raise ValueError(f"{label} must be a string array, got dtype {array.dtype}.")
     array = array.astype("U", copy=False)
     stripped = np.char.strip(array)
     blank = stripped == ""
