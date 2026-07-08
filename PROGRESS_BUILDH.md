@@ -221,3 +221,12 @@ HF/latest.json untouched. Every number cited from its source document.
   `pressure_directsolve_20260708T094458Z.log`. Identical calibrate call to Build G dense (adam, 1500
   epochs, lr 0.02, ratio 5.0, mass=conserve, l2=0, seed 0); final loss expected same order as Build G
   dense 0.04139 (NOT equality — registry differs 5533 vs 5521).
+
+- **Step 7 (direct solve DONE rc=0, ~18.7 min).** `final_loss=0.0425793792` (Build G dense anchor
+  0.041394 — same order, marginally higher as expected from the +12 harder targets), initial_loss
+  0.207361, **ESS 79,991.43** (Build G 81,206), n_nonzero 337,704 / 337,704 households, SANITY PASS
+  (loss in [0.01,0.10]). Solve held RSS steady ~20 GB / free% 93% throughout (vs the monolith's ~88 GB
+  peak) — the low-footprint advantage confirmed. Wrote `out/buildh-run/densewts_direct/`:
+  `dense_household_weight.npy`, `dense_initial_weight.npy`, and the warm-start
+  `populace_us_2024_calibration.npz` (5.4 MB, keys household_weight + initial_household_weight) that
+  Step 2 consumes. **0.04258 is the canonical Build H dense final loss** (1500-epoch adam, seed 0).
