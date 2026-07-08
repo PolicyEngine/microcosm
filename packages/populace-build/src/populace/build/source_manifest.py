@@ -53,6 +53,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_eligibility_inputs",
         "derive_hours_worked",
         "derive_immigration_status",
+        "derive_snap_abawd_discretionary_exemption",
         "derive_snap_take_up",
         "derive_puf_policyengine_variables",
         "derive_mortgage_balance_hints",
