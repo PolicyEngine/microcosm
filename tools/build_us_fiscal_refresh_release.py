@@ -59,6 +59,7 @@ from populace.build.us_runtime import (
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_pregnancy_signal_gate,
+    us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
@@ -69,6 +70,7 @@ from populace.build.us_runtime import (
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
     with_us_pregnancy_inputs,
+    with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
@@ -3990,6 +3992,7 @@ def _release_gate_failures(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    snap_discretionary_exemption_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -4030,6 +4033,14 @@ def _release_gate_failures(
     if pregnancy_gate is not None and not pregnancy_gate.passed:
         failures.extend(
             f"Pregnancy signal failed: {failure}" for failure in pregnancy_gate.failures
+        )
+    if (
+        snap_discretionary_exemption_gate is not None
+        and not snap_discretionary_exemption_gate.passed
+    ):
+        failures.extend(
+            f"SNAP discretionary-exemption signal failed: {failure}"
+            for failure in snap_discretionary_exemption_gate.failures
         )
     if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
         failures.extend(
@@ -4311,6 +4322,7 @@ def _write_release_calibration_diagnostics(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    snap_discretionary_exemption_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -4418,6 +4430,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(pregnancy_gate.details),
                 }
                 if pregnancy_gate is not None
+                else None
+            ),
+            "snap_discretionary_exemption_signal": (
+                {
+                    "passed": snap_discretionary_exemption_gate.passed,
+                    "failures": list(snap_discretionary_exemption_gate.failures),
+                    "details": dict(snap_discretionary_exemption_gate.details),
+                }
+                if snap_discretionary_exemption_gate is not None
                 else None
             ),
             "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
@@ -4671,6 +4692,7 @@ def _build_manifests(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    snap_discretionary_exemption_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
@@ -4702,6 +4724,7 @@ def _build_manifests(
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4866,6 +4889,17 @@ def _build_manifests(
                 if pregnancy_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "snap_discretionary_exemption_signal": {
+                        "passed": snap_discretionary_exemption_gate.passed,
+                        "failures": list(snap_discretionary_exemption_gate.failures),
+                        "details": dict(snap_discretionary_exemption_gate.details),
+                    }
+                }
+                if snap_discretionary_exemption_gate is not None
+                else {}
+            ),
             "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
         },
     }
@@ -4964,6 +4998,16 @@ def _build_manifests(
                     }
                 }
                 if pregnancy_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "snap_discretionary_exemption_signal": {
+                        "passed": snap_discretionary_exemption_gate.passed,
+                        "details": dict(snap_discretionary_exemption_gate.details),
+                    }
+                }
+                if snap_discretionary_exemption_gate is not None
                 else {}
             ),
             "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
@@ -5490,6 +5534,35 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "snap_discretionary_exemption_inputs",
+            message="Seeding ABAWD discretionary exemptions at the statutory cap.",
+        )
+    base_frame = with_us_snap_discretionary_exemption_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    snap_discretionary_exemption_gate = us_snap_discretionary_exemption_signal_gate(
+        base_frame
+    )
+    if not snap_discretionary_exemption_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "snap_discretionary_exemption_gate",
+                status="failed",
+                message="SNAP discretionary-exemption signal gate failed.",
+                failures=list(snap_discretionary_exemption_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SNAP discretionary-exemption signal failed: {failure}"
+                for failure in snap_discretionary_exemption_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -5804,6 +5877,7 @@ def main() -> None:
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -5820,6 +5894,7 @@ def main() -> None:
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -6028,6 +6103,7 @@ def main() -> None:
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,

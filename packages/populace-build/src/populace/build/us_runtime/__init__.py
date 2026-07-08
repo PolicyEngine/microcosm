@@ -194,6 +194,17 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from populace.build.us_runtime.snap_discretionary_exemption import (
+    US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+    US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN,
+    US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS,
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
+    derive_us_snap_discretionary_exemption_from_manifest,
+    us_snap_discretionary_exemption_signal_gate,
+    us_snap_discretionary_exemption_stage_spec,
+    us_snap_discretionary_exemption_summary,
+    with_us_snap_discretionary_exemption_inputs,
+)
 from populace.build.us_runtime.snap_take_up import (
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
     US_SNAP_TAKE_UP_RAW_COLUMN,
@@ -319,6 +330,15 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME",
+    "derive_us_snap_discretionary_exemption_from_manifest",
+    "us_snap_discretionary_exemption_signal_gate",
+    "us_snap_discretionary_exemption_stage_spec",
+    "us_snap_discretionary_exemption_summary",
+    "with_us_snap_discretionary_exemption_inputs",
     "US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS",
     "US_PREGNANCY_OUTPUT_COLUMN",
     "US_PREGNANCY_REQUIRED_SOURCE_COLUMNS",
@@ -572,6 +592,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "The ASEC does not measure pregnancy."
         ),
     ),
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
+        source="https://www.law.cornell.edu/uscode/text/7/2015#o_6",
+        notes=(
+            "ABAWD discretionary exemptions seeded at the statutory cap "
+            "(8% from FY2024) across potentially covered adults 18-64; "
+            "the engine intersects with modeled coverage. Assumes full "
+            "state usage of the cap (#323)."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -622,6 +652,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PREGNANCY_STAGE_NAME,
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "capital_gain_distributions",
