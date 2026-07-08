@@ -101,7 +101,9 @@ def compute_age_distribution(
         population = float(weights[mask].sum())
         share = population / total if total else None
         bench = benchmark.get(band.label) if benchmark else None
-        bench_share = (bench / bench_total) if (bench is not None and bench_total) else None
+        bench_share = (
+            (bench / bench_total) if (bench is not None and bench_total) else None
+        )
         rel_error = (
             (population - bench) / bench if (bench is not None and bench != 0) else None
         )
@@ -113,14 +115,18 @@ def compute_age_distribution(
                 "population": _finite(population),
                 "share": None if share is None else _finite(share),
                 "benchmark": None if bench is None else _finite(bench),
-                "benchmark_share": None if bench_share is None else _finite(bench_share),
+                "benchmark_share": None
+                if bench_share is None
+                else _finite(bench_share),
                 "relative_error": None if rel_error is None else _finite(rel_error),
             }
         )
     return rows
 
 
-def population_by_age_from_sim(simulation: Any, period: int) -> tuple[np.ndarray, np.ndarray]:
+def population_by_age_from_sim(
+    simulation: Any, period: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Per-person age and weight arrays from a policyengine-us Microsimulation."""
     age = simulation.calculate("age", period)
     return np.asarray(age.values), np.asarray(age.weights)
@@ -145,13 +151,74 @@ def demographics_payload(
         "period": int(period),
         "measure": "person_weight",
         "total_population": _finite(total),
-        "benchmark_total_population": None if bench_total is None else _finite(bench_total),
+        "benchmark_total_population": None
+        if bench_total is None
+        else _finite(bench_total),
         "benchmark_source": benchmark_source if benchmark else None,
         "age_bands": rows,
     }
     if release_id is not None:
         payload["release_id"] = release_id
     return payload
+
+
+GEOGRAPHY_COVERAGE_SCHEMA_VERSION = 1
+
+
+def geography_coverage_payload(dataset_path: Path | str) -> dict[str, Any]:
+    """Unweighted household-record counts by state and congressional district.
+
+    The release's resolution floor: a geography with too few *records* cannot
+    support sub-national analysis no matter how well the weights calibrate
+    (the 2026-07 "national-only" release had 48 districts under 50 records,
+    which blocked district features downstream). Publishing the counts per
+    release makes that readiness visible on the calibration dashboard.
+
+    Districts are keyed "AL-01" (at-large "AK-00"), matching the DISTRICT_ID
+    convention of the Census TIGER GeoJSONs PolicyEngine tools use. Reads the
+    household frame directly — no simulation needed.
+    """
+    import pandas as pd
+
+    from populace.build.us_runtime.fiscal_targets import STATE_FIPS_TO_POSTAL
+
+    with pd.HDFStore(str(dataset_path), "r") as store:
+        household = store["household"]
+
+    def summarize(counts: dict[str, int]) -> dict[str, Any]:
+        values = sorted(counts.values())
+        n = len(values)
+        return {
+            "n_geographies": n,
+            "household_records_min": values[0] if n else None,
+            "household_records_median": values[n // 2] if n else None,
+            "household_records_max": values[-1] if n else None,
+            "n_under_50": sum(1 for v in values if v < 50),
+            "n_under_100": sum(1 for v in values if v < 100),
+            "counts": counts,
+        }
+
+    postal = {int(fips): code for fips, code in STATE_FIPS_TO_POSTAL.items()}
+    state_counts = {
+        postal[int(fips)]: int(count)
+        for fips, count in household.groupby("state_fips").size().items()
+    }
+    district_counts = {}
+    if "congressional_district_geoid" in household.columns:
+        for geoid, count in (
+            household.groupby("congressional_district_geoid").size().items()
+        ):
+            geoid = int(geoid)
+            district_counts[f"{postal[geoid // 100]}-{geoid % 100:02d}"] = int(count)
+
+    return {
+        "schema_version": GEOGRAPHY_COVERAGE_SCHEMA_VERSION,
+        "unit": "unweighted household records",
+        "states": summarize(state_counts),
+        "congressional_districts": (
+            summarize(district_counts) if district_counts else None
+        ),
+    }
 
 
 def write_demographics(payload: dict[str, Any], path: Path | str) -> Path:
