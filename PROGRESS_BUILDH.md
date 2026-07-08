@@ -186,3 +186,38 @@ HF/latest.json untouched. Every number cited from its source document.
   `_buildh-runtime/inputs/sparse_zero_support_exclusions_buildh.json` (sha df61c770…) with per-cell
   Build-H revalidation provenance. Sparse launch script `_buildh-runtime/buildh_sparse.sh` pre-staged
   (runs after dense; mirrors buildg sparse arm; --zero-support-exclusions -> the 19-cell Build-H file).
+
+- **Step 5 (monolith death diagnosed; CHUNKED pivot).** The monolithic dense release
+  (`buildh_dense.sh` -> `build_us_fiscal_refresh_release.py`) was jetsam-SIGKILLed **six times**
+  (rc=137, runs 1h16m–2h01m, every hosting, day and night). PRESSURE-TRACE FINDING from the last
+  attempt (`logs/buildh-run/pressure_dense_20260708T015517Z.log`; run 01:55:22Z -> died 03:11:57Z):
+  py_pid 91086 RSS climbs 1GB->61GB in the first ~4 min (checkpoint LOAD of the 337,704-household
+  frame — too fast to be ACA), peaks **~88GB at 02:26–02:33Z**, then plateaus/declines to 55–80GB
+  while system free-memory erodes 79%->57% over the ~38-min tail. **Death (rc=137) hit at RSS ~55GB /
+  free 57% — NOT at the RSS peak (~39 min earlier).** So the kill is a jetsam SIGKILL driven by
+  *sustained* multi-tens-of-GB footprint × long runtime crossing the pressure band, not an
+  instantaneous OOM spike. (Sampler artifact: 01:59:33–02:19:21Z the `pgrep|head -1` latched a 2 MB
+  sibling pid 39177 for ~20 min; the real solver 91086 kept running, free% steady 93–94%.)
+  `release_dense.log` did not grow past 21:55Z on the 01:55Z run — block-buffered stdout lost on
+  SIGKILL — consistent with the run being past materialisation and deep in solve/export when killed.
+  DIAGNOSIS -> the monolith co-resides checkpoint frame + solver state + export buffers for 76+ min.
+  CHUNKED FIX (both sub-processes proven <30 min yesterday): (1) direct CSR solve loads the frame
+  checkpoint directly (skips ALL materialisation), ~18 min; (2) release rerun hits the target-frame
+  checkpoint (skips the 5 JCT reform microsims), ~25 min. Each starts low-footprint, does bounded work,
+  EXITS (releases memory) before the jetsam band. Mechanism confirmed from Build G weightsrecover
+  diagnostics: `target_frame_checkpoint status="hit"`, `warm_start_weights.enabled=false`, epochs=1500,
+  full loss_trajectory (0.2063->0.04139) — the "pre-warm" was the CHECKPOINT, and the solve re-ran
+  fully but deterministically. Build H buildh-dense checkpoint `identity_json` VERIFIED
+  `target_registry_version=d71c59514e3a`, 5533 targets (valid for the final wired registry).
+
+- **Step 6 (direct solve launched).** Adapted the proven Build G recipe to
+  `experiments/learned_selection_prior/src/direct_replay_dense_weights_buildh.py` (feed v7->v8,
+  registry e035007b->d71c59514e3a, root _buildg->_buildh; also emits a warm-start
+  `populace_us_2024_calibration.npz` for Step 2). `--verify-only` PASSED (05:43Z):
+  registry=d71c59514e3a / 5533 specs, **checkpoint HIT** frame n(household)=337,704 n_targets=5533,
+  ~19 s load. Launched detached `_buildh-runtime/buildh_direct_solve.sh` (pidfile + real rc +
+  memory-pressure sampler; sampler self-terminates on python exit). START 09:44:58Z commit a4f35bb
+  python pid 73983; log `direct_replay_buildh.log`; rc marker `direct_solve.rc`; pressure
+  `pressure_directsolve_20260708T094458Z.log`. Identical calibrate call to Build G dense (adam, 1500
+  epochs, lr 0.02, ratio 5.0, mass=conserve, l2=0, seed 0); final loss expected same order as Build G
+  dense 0.04139 (NOT equality — registry differs 5533 vs 5521).
