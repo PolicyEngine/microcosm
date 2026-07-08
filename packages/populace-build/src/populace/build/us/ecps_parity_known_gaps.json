@@ -126,10 +126,6 @@
       "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
       "issue": "PolicyEngine/populace#242"
     },
-    "hours_worked_last_week": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
-    },
     "household_vehicles_owned": {
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
       "issue": "PolicyEngine/populace#49"
@@ -381,10 +377,6 @@
     "w2_wages_from_qualified_business": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
-    },
-    "weekly_hours_worked_before_lsr": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
     },
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",

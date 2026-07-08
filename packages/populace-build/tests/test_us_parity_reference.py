@@ -13,12 +13,17 @@ from pathlib import Path
 
 import pytest
 
+from populace.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+)
+from populace.build.us_runtime.hours_worked import US_HOURS_WORKED_OUTPUT_COLUMNS
 from populace.build.us_runtime.immigration import US_IMMIGRATION_OUTPUT_COLUMNS
 from populace.build.us_runtime.parity_reference import (
     ECPS_PARITY_REFERENCE_RESOURCE,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 
 _US_PACKAGE = "populace.build.us"
@@ -136,21 +141,30 @@ class TestKnownGapsRegister:
 
     def test_register_exempts_no_release_produced_layer(self) -> None:
         # The release pipeline deterministically materializes these inputs on
-        # the base frame before the parity gate runs (immigration derivation,
-        # take-up flags the contract marks as populace-produced), so an
-        # exemption for any of them is stale on arrival. parity_gate enforces
-        # this at build time from live candidate shares; this pins the
-        # statically-knowable subset so the PR that flips a program's contract
-        # treatment must remove its register line here, not first on a release
-        # build. Treatments outside this set (out_of_scope, rate_unsourced)
-        # are produced elsewhere or not at all, and their producing PR owns
-        # the register line (the #294 SNAP pattern).
+        # the base frame before the parity gate runs (immigration, hours,
+        # SNAP take-up, and eligibility derivations, plus take-up flags the
+        # contract marks as populace-produced), so an exemption for any of
+        # them is stale on arrival. parity_gate enforces this at build time
+        # from live candidate shares; this pins the statically-knowable
+        # subset so the PR that wires a producing stage or flips a program's
+        # contract treatment must remove its register line here, not first on
+        # a release build (the #293 hours stage merged with its two register
+        # lines intact; only this test's absence let that through). Contract
+        # treatments outside this set (out_of_scope, rate_unsourced) are
+        # produced elsewhere or not at all, and their producing PR owns the
+        # register line (the #294 SNAP pattern).
         produced_treatments = {"seed", "count_calibrated"}
-        produced = set(US_IMMIGRATION_OUTPUT_COLUMNS) | {
-            program.variable
-            for program in load_take_up_contract().programs
-            if program.populace_treatment in produced_treatments
-        }
+        produced = (
+            set(US_IMMIGRATION_OUTPUT_COLUMNS)
+            | set(US_HOURS_WORKED_OUTPUT_COLUMNS)
+            | set(US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS)
+            | {US_SNAP_TAKE_UP_OUTPUT_COLUMN}
+            | {
+                program.variable
+                for program in load_take_up_contract().programs
+                if program.populace_treatment in produced_treatments
+            }
+        )
         stale = sorted(
             gap.variable
             for gap in load_ecps_parity_known_gaps()
