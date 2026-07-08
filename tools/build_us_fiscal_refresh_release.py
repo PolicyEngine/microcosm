@@ -75,6 +75,7 @@ from populace.build.us_runtime import (
 from populace.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
+    geography_coverage_payload,
     population_by_age_from_sim,
     write_demographics,
 )
@@ -4596,6 +4597,9 @@ def _write_demographics(
     sim = Microsimulation(dataset=USSingleYearDataset(file_path=str(dataset_path)))
     ages, weights = population_by_age_from_sim(sim, PERIOD)
     payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
+    # Household-record counts by state and congressional district: the
+    # release's sub-national resolution floor, surfaced on the dashboard.
+    payload["geography_coverage"] = geography_coverage_payload(dataset_path)
     write_demographics(payload, release_dir / "demographics.json")
 
 
