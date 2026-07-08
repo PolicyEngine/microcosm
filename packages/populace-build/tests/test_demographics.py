@@ -89,6 +89,11 @@ def test_geography_coverage_counts_household_records_by_state_and_district(tmp_p
     assert districts["counts"] == {"AL-01": 2, "AL-02": 1, "AK-00": 4}
     assert districts["household_records_min"] == 1
     assert districts["household_records_max"] == 4
+    # Odd count of districts: the true median of [1, 2, 4].
+    assert districts["household_records_median"] == 2
+    # Even count of states: statistics.median averages the middle pair
+    # ([3, 4] -> 3.5), unlike an upper-middle order statistic.
+    assert payload["states"]["household_records_median"] == 3.5
     assert districts["n_under_50"] == 3
 
 

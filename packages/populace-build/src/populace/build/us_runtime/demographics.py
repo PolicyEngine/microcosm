@@ -186,12 +186,19 @@ def geography_coverage_payload(dataset_path: Path | str) -> dict[str, Any]:
         household = store["household"]
 
     def summarize(counts: dict[str, int]) -> dict[str, Any]:
+        import statistics
+
         values = sorted(counts.values())
         n = len(values)
         return {
             "n_geographies": n,
             "household_records_min": values[0] if n else None,
-            "household_records_median": values[n // 2] if n else None,
+            # statistics.median averages the middle pair for even n, matching
+            # the "median" label downstream (values[n // 2] is the upper-middle
+            # order statistic).
+            "household_records_median": (
+                float(statistics.median(values)) if n else None
+            ),
             "household_records_max": values[-1] if n else None,
             "n_under_50": sum(1 for v in values if v < 50),
             "n_under_100": sum(1 for v in values if v < 100),
