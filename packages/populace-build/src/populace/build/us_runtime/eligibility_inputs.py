@@ -11,20 +11,29 @@ input — is False for everyone, erasing the pre-HR1 veteran ABAWD
 exemption). That is the failure mode of populace issues #244/#248.
 
 The stage writes five PolicyEngine-facing person input columns, each a
-direct mapping of measured CPS ASEC person variables — the same mappings
-the retired enhanced-CPS pipeline used, so parity with the retired
-surface is by construction rather than by imputation:
+direct mapping of measured CPS ASEC person variables, reproducing the
+retired enhanced-CPS pipeline's constructions (cited per mapping below
+against policyengine-us-data @ 42ed5d45c5; nothing is imputed):
 
 - ``is_disabled`` ← any of the six ASEC disability-difficulty items
   (PEDISDRS, PEDISEAR, PEDISEYE, PEDISOUT, PEDISPHY, PEDISREM) == 1,
   then aligned with reported SSI receipt: an under-65 person with
-  positive ``SSI_VAL`` is disabled (SSI requires under-65 recipients to
-  be disabled or blind) — the retired pipeline's
-  ``align_reported_ssi_disability`` rule.
+  positive ``SSI_VAL`` is disabled, since SSI requires under-65
+  recipients to be disabled or blind. Both steps are retired-pipeline
+  constructions: the battery is ``datasets/cps/cps.py`` (the
+  ``CPS_SSI_DISABILITY_DIFFICULTY_COLUMNS`` any-of), and the alignment
+  is ``align_reported_ssi_disability`` in ``datasets/cps/takeup.py``,
+  applied to ``is_disabled`` in ``cps.py``'s take-up block.
 - ``is_blind`` ← PEDISEYE == 1 ("serious difficulty seeing even when
   wearing glasses").
 - ``is_full_time_college_student`` ← A_HSCOL == 2 (enrolled in college
-  or university) & A_FTPT == 1 (enrolled full-time).
+  or university) & A_FTPT == 1 (enrolled full-time in school). This is
+  the retired pipeline's primary branch — ``cps.py`` applies the A_FTPT
+  filter whenever the column is loaded, and ``census_cps.py`` includes
+  A_FTPT in the raw person load, so the strict form is what the
+  published surface ran. The retired A_HSCOL-only fallback (for loads
+  without A_FTPT) is deliberately not reproduced: this stage requires
+  A_FTPT and fails loudly if it is missing.
 - ``own_children_in_household`` ← count of household members whose
   parent pointers (PEPAR1/PEPAR2, parent line numbers within PH_SEQ)
   resolve to the person.
