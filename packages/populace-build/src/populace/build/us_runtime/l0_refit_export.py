@@ -16,6 +16,9 @@ from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from populace.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
@@ -38,6 +41,7 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
 US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+    *US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
 )
 
 #: The geography spine a US release carries by default: state and district,

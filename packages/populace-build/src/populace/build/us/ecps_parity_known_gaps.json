@@ -154,15 +154,7 @@
       "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
       "issue": "PolicyEngine/populace#274"
     },
-    "is_blind": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "is_computer_scientist": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_disabled": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
     },
@@ -175,10 +167,6 @@
       "issue": "PolicyEngine/populace#38"
     },
     "is_farmer_fisher": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_full_time_college_student": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
     },
@@ -241,10 +229,6 @@
     "other_health_insurance_premiums": {
       "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
-    },
-    "own_children_in_household": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
     },
     "partnership_s_corp_income_would_be_qualified": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
@@ -409,10 +393,6 @@
     "unreimbursed_business_employee_expenses": {
       "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
-    },
-    "veterans_benefits": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
     },
     "w2_wages_from_qualified_business": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
