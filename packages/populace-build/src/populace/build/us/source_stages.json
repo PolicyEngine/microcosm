@@ -558,6 +558,41 @@
       "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
     },
     {
+      "stage": "eligibility_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person file disability-difficulty items (PEDISDRS/PEDISEAR/PEDISEYE/PEDISOUT/PEDISPHY/PEDISREM), school enrollment (A_HSCOL, A_FTPT), parent line pointers (PEPAR1, PEPAR2), veterans' payments (VET_VAL), and reported SSI (SSI_VAL)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_eligibility_inputs"
+        }
+      ],
+      "outputs": [
+        "is_disabled",
+        "is_blind",
+        "is_full_time_college_student",
+        "own_children_in_household",
+        "veterans_benefits"
+      ],
+      "nonnegative_outputs": [
+        "own_children_in_household",
+        "veterans_benefits"
+      ],
+      "notes": "Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS pipeline's constructions (each cited to the retired pipeline's source files in the stage module): is_disabled <- any PEDIS* difficulty item == 1, aligned with reported SSI (under-65 SSI_VAL > 0 implies disabled \u2014 the retired align_reported_ssi_disability rule from datasets/cps/takeup.py, applied to is_disabled in cps.py); is_blind <- PEDISEYE == 1; is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran the strict form \u2014 the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ; veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels (populace #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (populace #24)."
+    },
+    {
       "stage": "mortgage_conversion",
       "survey": "IRS PUF 2015 (uprated) + Fed SCF 2022",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",

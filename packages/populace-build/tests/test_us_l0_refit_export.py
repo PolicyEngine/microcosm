@@ -33,6 +33,11 @@ def _us_frame(**person_extra: object) -> Frame:
             "weekly_hours_worked_before_lsr": [40.0, 20.0, 0.0],
             "hours_worked_last_week": [40.0, 18.0, 0.0],
             "weeks_worked": [52.0, 26.0, 0.0],
+            "is_disabled": [False, True, False],
+            "is_blind": [False, False, True],
+            "is_full_time_college_student": [False, False, True],
+            "own_children_in_household": [1.0, 0.0, 2.0],
+            "veterans_benefits": [0.0, 8_000.0, 3_000.0],
             **person_extra,
         }
     )

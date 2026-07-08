@@ -58,3 +58,87 @@ def test_write_round_trips(tmp_path):
     path = write_demographics(payload, tmp_path / "demographics.json")
     loaded = json.loads(path.read_text())
     assert loaded["age_bands"][1]["label"] == "5–17"
+
+
+def test_geography_coverage_counts_household_records_by_state_and_district(tmp_path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    import pandas as pd
+
+    from populace.build.us_runtime.demographics import geography_coverage_payload
+
+    household = pd.DataFrame(
+        {
+            "household_id": range(7),
+            "household_weight": [1.0] * 7,
+            # Two AL households in AL-01, one in AL-02; four AK at-large.
+            "state_fips": [1, 1, 1, 2, 2, 2, 2],
+            "congressional_district_geoid": [101, 101, 102, 200, 200, 200, 200],
+        }
+    )
+    path = tmp_path / "mini.h5"
+    with pd.HDFStore(str(path)) as store:
+        store.put("household", household, format="table")
+
+    payload = geography_coverage_payload(path)
+    assert payload["unit"] == "unweighted household records"
+    states = payload["states"]
+    assert states["counts"] == {"AL": 3, "AK": 4}
+    assert states["n_geographies"] == 2
+    assert states["n_under_50"] == 2
+    districts = payload["congressional_districts"]
+    assert districts["counts"] == {"AL-01": 2, "AL-02": 1, "AK-00": 4}
+    assert districts["household_records_min"] == 1
+    assert districts["household_records_max"] == 4
+    # Odd count of districts: the true median of [1, 2, 4].
+    assert districts["household_records_median"] == 2
+    # Even count of states: statistics.median averages the middle pair
+    # ([3, 4] -> 3.5), unlike an upper-middle order statistic.
+    assert payload["states"]["household_records_median"] == 3.5
+    assert districts["n_under_50"] == 3
+
+
+def test_geography_coverage_without_district_column(tmp_path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    import pandas as pd
+
+    from populace.build.us_runtime.demographics import geography_coverage_payload
+
+    household = pd.DataFrame(
+        {
+            "household_id": [0, 1],
+            "household_weight": [1.0, 1.0],
+            "state_fips": [1, 2],
+        }
+    )
+    path = tmp_path / "mini.h5"
+    with pd.HDFStore(str(path)) as store:
+        store.put("household", household, format="table")
+
+    payload = geography_coverage_payload(path)
+    assert payload["congressional_districts"] is None
+    assert payload["states"]["counts"] == {"AL": 1, "AK": 1}
+
+
+def test_geography_coverage_payload_is_json_stable(tmp_path):
+    pytest.importorskip("tables")  # pandas HDF backend
+    import json
+
+    import pandas as pd
+
+    from populace.build.us_runtime.demographics import geography_coverage_payload
+
+    household = pd.DataFrame(
+        {
+            "household_id": [0],
+            "household_weight": [1.0],
+            "state_fips": [49],
+            "congressional_district_geoid": [4903],
+        }
+    )
+    path = tmp_path / "mini.h5"
+    with pd.HDFStore(str(path)) as store:
+        store.put("household", household, format="table")
+
+    payload = geography_coverage_payload(path)
+    assert payload["congressional_districts"]["counts"] == {"UT-03": 1}
+    json.dumps(payload, allow_nan=False)  # round-trips
