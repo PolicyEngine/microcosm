@@ -280,3 +280,35 @@ HF/latest.json untouched. Every number cited from its source document.
   in-band, 2 reviewed-excluded by SOI band math); mortgage JCT overshoot shrank +59.7%→+46.16%. #340 is
   a pre-existing, out-of-scope persistence-scope limitation (its own issue), NOT a Build H regression;
   this verdict covers the calibration/fiscal-target surface only.
+
+- **Step 10 (SPARSE run — export-mass gate FAILS on misc; NOT CERTIFIABLE).** `buildh_sparse_supervised.sh`
+  10:59:52Z (release pid 19260, id `populace-us-2024-buildh-sparse-aad058a-20260708T105948Z`, --out
+  .../sparse, fresh buildh-sparse checkpoint). Integrity PASSED. The sparse arm pays the FULL 337k ACA
+  before the 57k reduction (ACA at 5342 precedes selection reduction) — ~18.5 min front-half on the
+  degraded machine (RSS ~70 GB), then the buildh-sparse target-frame checkpoint was written (11:18Z,
+  `miss_written`), then the 57k solve (~4 min, RSS ~46–55 GB, free% 90). Disarmed the 40-min watchdog
+  subshell (19264) on progress, same as dense. calibration_diagnostics.json + input_mass_parity.json
+  written; the export-mass gate then RAISED (rc=1) → **NO h5** (correct hard-gate behaviour;
+  buildh_sparse.sh omits --allow-input-mass-drift). No reform-validation tail (aborted before it).
+  Gate captures `gates/sparse_gates.txt`.
+
+  **SPARSE headline (verbatim):** final_loss **0.03091516** (Build G frozen-57k 0.02964 — ABOVE, but
+  within the ≤0.044 band), within-10% **89.01%** (BG 89.15% — marginally below), ESS **13,184.1**,
+  n_records 57,240 / n_nonzero 57,240, realized_max_ratio 4.995, initial_loss 0.35266, no warm-start,
+  registry **5514** (= 5533 − 19 zero-support), checkpoint miss_written, selection frozen_support
+  n_selected 57,240 / n_unmapped 0 (source c2065b64). **All structural gates PASS**; zero-support **0**.
+  **Key target fits:** fed income tax (SOI) **+0.45%** (BG +0.50%), SS **−0.18%** (BG −0.13%),
+  **mortgage tax-exp (JCT, BINDING) +35.48%** (BG sparse +44.5% — SHRANK), net capital gain (CBO)
+  −26.65% (BG −26.7%), SALT +11.01%, QBI −48.13%.
+  **Export-mass gate FAIL(1):** `miscellaneous_income` export mass **$9.550B vs ref $47.401B = −79.9%**
+  (beyond ±50%). The mortgage fix WORKED here too — `home_mortgage_interest` **+26.9%**,
+  `first_home_mortgage_interest` **+27.0%**, both IN-BAND (BG sparse +52.4% / in-band); estate +
+  non_sch_d reviewed-excluded (used). But the thin frozen-57k support for miscellaneous_income (only
+  ~2,145 nonzero person-records) cannot hold its national SOI target in the ±50% parity band, driving
+  the column to −79.9%. **This is NOT a reviewed-exclusion case:** misc's reference ($47.4B) is near its
+  SOI target ($52.84B) and the DENSE frame meets the band (−42.0%), so the band is achievable in
+  principle — the failure is a selection-support limitation of the frozen 57k, not an incidental
+  reference. #340 column check runs on the DENSE artifact (sparse produced no h5; same export path).
+  **SPARSE VERDICT: NOT CERTIFIABLE** — fails the export-mass parity gate on miscellaneous_income.
+  Certifying would require carrying miscellaneous_income support into the frozen selection (a
+  selection-side change beyond Build H's target-side scope), not a reviewed exclusion.
