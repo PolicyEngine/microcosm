@@ -230,3 +230,18 @@ HF/latest.json untouched. Every number cited from its source document.
   `dense_household_weight.npy`, `dense_initial_weight.npy`, and the warm-start
   `populace_us_2024_calibration.npz` (5.4 MB, keys household_weight + initial_household_weight) that
   Step 2 consumes. **0.04258 is the canonical Build H dense final loss** (1500-epoch adam, seed 0).
+
+- **Step 8 (dense-ws release; watchdog disarmed on progress; ACA peak survived).** Launched
+  `buildh_dense_warmstart.sh` 10:04:46Z (release pid 49012, id
+  `populace-us-2024-buildh-dense-warmstart-b449eb7-20260708T100442Z`, warm-start npz `081a132c`,
+  epochs=1500, --out .../dense). Integrity PASSED; checkpoint HIT confirmed (0 "Materializing reform
+  target" lines). The machine was degraded (~7x slow): ACA source materialisation on the full 337k base
+  frame ran ~44 min (vs the idle-morning weightsrecover's whole run = 25 min), peaking **RSS ~86 GB /
+  free% 81** at ~36 min. Design note recorded: epochs=1500 + warm-start does NOT shorten the solve. At
+  40 min my watchdog would have killed a *progressing* run, so per conductor guidance I disarmed ONLY
+  the watchdog subshell (49014, `sleep 60` child), keeping sampler(49011)+release(49012)+launcher(48815).
+  **Key: the ~86 GB was the ACA PEAK — it passed.** ~10:49Z ACA freed intermediates (RSS dropped
+  86->42 GB) and the run entered the checkpoint-load + solve phase at **~50 GB / free% 77** — roughly
+  HALF the monolith's sustained-88 GB solve footprint, and out of the jetsam band. The solve emits no
+  stdout (calibrate reports via telemetry, not the release log), so tracked by RSS pattern + rc file.
+  Progressing healthily at ~48 min; letting it finish the ~18-min solve + export.
