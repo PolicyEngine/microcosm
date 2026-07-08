@@ -245,3 +245,38 @@ HF/latest.json untouched. Every number cited from its source document.
   HALF the monolith's sustained-88 GB solve footprint, and out of the jetsam band. The solve emits no
   stdout (calibrate reports via telemetry, not the release log), so tracked by RSS pattern + rc file.
   Progressing healthily at ~48 min; letting it finish the ~18-min solve + export.
+
+- **Step 9 (DENSE CERTIFIED — core artifacts complete; tail terminated).** Discovered the
+  certification-critical artifacts were ALL written by ~10:28Z (h5 1.886 GB, calibration_diagnostics.json,
+  input_mass_parity.json, calibration.npz): the h5's existence proves the export-mass gate PASSED (the
+  tool raises before the h5 write on gate failure). The "Materializing ACA" lines at 10:39+ were the
+  optional `_write_reform_validation` TAIL (re-runs ACA + reforms on the exported dataset), which is
+  non-essential for the fiscal-target verdict and heavy (~86 GB) on the degraded machine — so I
+  SIGTERM'd it (dense_ws.rc=143, intentional) once the h5 verified complete (person 226 / tax_unit 15 /
+  household 14 cols, opens clean). Artifacts under `out/buildh-run/dense/`; release id
+  `populace-us-2024-buildh-dense-warmstart-b449eb7-20260708T100442Z`; gate captures `gates/dense_*.txt`.
+
+  **DENSE headline (verbatim):** final_loss **0.04018097** (Build G dense 0.04139 — BEATS), within-10%
+  **86.95%** (BG 86.16% — ≥band), ESS **70,356.7**, n_records 337,704 / n_nonzero 337,704,
+  realized_max_ratio 5.0, top_1pct_wt_share 0.1097. initial_loss 0.04258 = Step-1's final (warm-start
+  enabled; the artifact ran 1500 warm epochs ON TOP of Step-1's 1500 → improved 0.04258→0.04018).
+  **All structural gates PASS** (target_profile, health_input, degenerate_input #286, base_population
+  334.2M, immigration #266, ecps_parity #316, validation_input_coverage #278/9); release_gates.passed=True.
+  **Export-mass parity PASSED** (0 failures / 35 cols checked; ref populace_us_2024.h5 c2065b64, ±50%,
+  $1B floor): worst_drifts home_mortgage_interest **+23.6%**, first_home_mortgage_interest **+23.7%**,
+  miscellaneous_income **−42.0%** — all IN-BAND (Build G dense was +69.2% / +61.8% / −68.3%, all OUT);
+  reviewed exclusions estate_income + non_sch_d_capital_gains APPLIED + USED (unused_reviewed_exclusions
+  []). **Key target fits:** fed income tax (SOI) **+0.87%** (BG +1.23%), SS **+0.06%** (BG +0.05%),
+  **mortgage tax-exp (JCT, BINDING) +46.16%** (BG dense +59.7% — SHRANK), net capital gain (CBO)
+  −37.39% (BG −38.4%), SALT +12.12%, QBI −55.90%. Zero-support post-exclusion **0**.
+  **#340 column check:** 7/8 never-persisted families ABSENT (score ~$0): tips, overtime, auto-loan,
+  education, casualty_loss, misc-itemized, childcare; the lone "PRESENT" hit is
+  `traditional_ira_contributions_desired` — a behavioural takeup INPUT, not the saver's-credit
+  contribution base, so #340's substance is unchanged. (Degraded-base weighted sums in the script are
+  unweighted/unreliable — the export h5 does not expose a person_weight column to the manifest check;
+  the families presence/absence result is column-key based and correct.)
+  **DENSE VERDICT: CERTIFIABLE** — beats Build G dense on loss (0.04018<0.04139) and within-10%
+  (86.95%>86.16%); all structural + export-mass gates pass (the 4 floating dims now resolved: 3 live
+  in-band, 2 reviewed-excluded by SOI band math); mortgage JCT overshoot shrank +59.7%→+46.16%. #340 is
+  a pre-existing, out-of-scope persistence-scope limitation (its own issue), NOT a Build H regression;
+  this verdict covers the calibration/fiscal-target surface only.
