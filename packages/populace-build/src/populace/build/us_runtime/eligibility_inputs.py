@@ -13,7 +13,7 @@ exemption). That is the failure mode of populace issues #244/#248.
 The stage writes five PolicyEngine-facing person input columns, each a
 direct mapping of measured CPS ASEC person variables, reproducing the
 retired enhanced-CPS pipeline's constructions (cited per mapping below
-against policyengine-us-data @ 42ed5d45c5; nothing is imputed):
+against the retired enhanced-CPS repo @ 42ed5d45c5; nothing is imputed):
 
 - ``is_disabled`` ← any of the six ASEC disability-difficulty items
   (PEDISDRS, PEDISEAR, PEDISEYE, PEDISOUT, PEDISPHY, PEDISREM) == 1,
