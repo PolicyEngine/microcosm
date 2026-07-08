@@ -417,8 +417,19 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_medicare_if_eligible": (
         "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
-    "takes_up_eitc": ("EITC take-up imputation backlog; constant True."),
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
+    "second_home_mortgage_balance": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
+    "second_home_mortgage_interest": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
+    "second_home_mortgage_origination_year": (
+        "Second-home mortgage decomposition not imputed; constant at the"
+        " engine default (PolicyEngine/populace#38)."
+    ),
     "takes_up_head_start_if_eligible": (
         "Head Start take-up imputation backlog; constant True."
     ),
@@ -585,6 +596,20 @@ def _parse_args() -> argparse.Namespace:
             "transforms them."
         ),
     )
+    parser.add_argument(
+        "--zero-support-exclusions",
+        type=Path,
+        help=(
+            "Optional JSON mapping source_record_id -> reason of per-run, "
+            "per-artifact support-expressibility exclusions that augment the "
+            "standing US_FISCAL_TARGET_SUPPORT_EXCLUSIONS registry for THIS "
+            "build only (PolicyEngine/populace#299 Build G). A sparse "
+            "artifact's frozen support cannot populate narrow state/tail cells "
+            "the dense parent can; declare those cells here so they do not "
+            "fail the zero-support gate, with each reason recorded in the "
+            "release manifest. The module registry is never mutated."
+        ),
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
     parser.add_argument(
@@ -601,9 +626,29 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional certified release H5 whose persisted PolicyEngine input "
-            "mass the base frame must carry. Catches a rebuilt base pipeline "
-            "that silently drops input bases the incumbent populates (issue "
-            "#278: IRA/HSA/pension-contribution/childcare inputs)."
+            "mass the RAW BASE frame must carry. Catches a rebuilt base "
+            "pipeline that silently drops input bases the incumbent populates "
+            "(issue #278: IRA/HSA/pension-contribution/childcare inputs). NOTE: "
+            "this compares the PRE-calibration base to the reference, so a "
+            "certified (calibrated) reference will over-fire on PUF-imputed "
+            "income columns the raw base structurally under-reports; use it "
+            "only when the reference is itself an uncalibrated base of the same "
+            "lineage. For the calibrated-export comparison, use "
+            "--export-input-mass-reference-h5 (populace#327)."
+        ),
+    )
+    parser.add_argument(
+        "--export-input-mass-reference-h5",
+        type=Path,
+        help=(
+            "Optional certified release H5 whose persisted PolicyEngine input "
+            "mass the CALIBRATED EXPORT frame is compared against, instead of "
+            "the raw pre-calibration base (populace#327). Calibration correctly "
+            "scales PUF-imputed income up toward SOI/CBO targets, so comparing "
+            "the export to the raw base flags those correct gains; a certified "
+            "reference puts them in-band while a genuine #278 zeroing still "
+            "fails. Distinct from --input-mass-reference-h5, which gates the "
+            "raw base and must not use a calibrated reference."
         ),
     )
     parser.add_argument(
@@ -3557,27 +3602,98 @@ def _ecps_parity_gate(
     )
 
 
+# Build H (populace#299): export-input-mass reviewed exclusions.
+#
+# The export-mass gate compares each calibrated export column against the
+# live-default 57k reference with a +/-50% band. It never re-references to a
+# calibration target — so for a column that Build H now *identifies* with a
+# real SOI target, the gate still measures drift against the incumbent's
+# incidental value on that column. An exclusion is defensible ONLY where the
+# SOI-true level provably cannot sit inside the reference band (the
+# incumbent's value on the column is off-source, an artifact of its own
+# weight solve); there the exclusion is justified BY the target itself.
+# Band math (reference = live-default 57k c2065b64, +/-50%, CBO-aged
+# TY2023 -> 2024 factor 1.0872):
+#   estate_income          ref $98.434B  band [$49.217B, $147.651B]
+#                          SOI net target ~$46.74B  -> BELOW the lower edge;
+#                          cannot pass truthfully -> excluded.
+#   non_sch_d_capital_gains ref $75.747B band [$37.874B, $113.621B]
+#                          SOI target ~$10.16B -> far below the lower edge;
+#                          cannot pass truthfully -> excluded.
+# Deliberately NOT excluded (parity checks stay live; the run adjudicates):
+#   miscellaneous_income   ref $47.401B  band [$23.700B, $71.101B]; SOI net
+#                          target ~$52.84B is IN-band -> genuine pass expected.
+#   home_mortgage_interest ref $311.126B band [$155.563B, $466.689B]; the new
+#                          itemizer-masked Table 2.1 target (~$186.3B aged)
+#                          pins the itemizer share and pulls the full column
+#                          down toward the band from $474-526B.
+#   first_home_mortgage_interest follows home_mortgage_interest (second-home
+#                          leg un-imputed / 0 per populace#38).
+US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
+    "estate_income": (
+        "Identified by SOI Table 1.4 estate/trust net income (income leg "
+        "$47.892B + loss leg $4.899B, TY2023; CBO-aged net ~$46.74B@2024). "
+        "The live-default reference carries $98.434B on this column — ~2.1x "
+        "the SOI net level — so the +/-50% band's lower edge ($49.217B) sits "
+        "ABOVE the true SOI level: a correctly calibrated column cannot pass "
+        "this parity check. The reference value is an incidental artifact of "
+        "the incumbent weight solve (nothing pinned this column before Build "
+        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
+        "input only), so pinning it identifies the export dimension without "
+        "moving revenue (PolicyEngine/populace#299 Build H)."
+    ),
+    "non_sch_d_capital_gains": (
+        "Identified by SOI Table 1.4 capital gain distributions reported on "
+        "Form 1040 ($9.341B TY2023, CBO-aged ~$10.16B@2024) — concept-"
+        "confirmed against PolicyEngine-US non_sch_d_capital_gains (PUF "
+        "E01100, Form 1040 line 7 when Schedule D is not required). The "
+        "live-default reference carries $75.747B — ~8x the SOI value — an "
+        "incidental within-net-capital-gains split (the aggregate is "
+        "constrained, the component split was not). The band's lower edge "
+        "($37.874B) sits far above the true SOI level, so a correctly "
+        "calibrated column cannot pass this parity check "
+        "(PolicyEngine/populace#299 Build H)."
+    ),
+}
+
+
 def _export_input_mass_gate(
     export_frame: Frame,
     base_frame: Frame,
     *,
     relative_tolerance: float,
     minimum_reference_total: float,
+    reference_frame: Frame | None = None,
+    reference_name: str = "base_frame",
+    reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> GateResult:
-    """Gate the export support's persisted input mass against the base frame.
+    """Gate the export support's persisted input mass against a reference frame.
 
     L0 selection and reweighting optimize the target surface; an untargeted
     input column can lose its mass without moving any residual. The export
     must keep every material input base the candidate frame carries.
+
+    The reference defaults to ``base_frame`` (the raw pre-calibration base),
+    which preserves the historical behaviour. But for a dense parent built from
+    a raw pooled-ASEC base, calibration is *supposed* to scale PUF-imputed
+    income columns up toward their SOI/CBO fiscal targets, and comparing the
+    calibrated export against the raw base flags those correct, target-aligned
+    gains as failures (populace #327). Passing a certified-release
+    ``reference_frame`` (the live default) puts calibration-driven upward
+    alignment of under-reported PUF income in-band while a genuine sparse
+    zeroing (candidate == 0 or candidate << reference — the #278 signature)
+    still fails. ``reviewed_exclusions`` documents any column allowed to drift.
     """
     input_variables = _engine_input_variables()
+    reference = reference_frame if reference_frame is not None else base_frame
     return input_mass_parity_gate(
         us_input_mass_totals(export_frame, columns=input_variables),
-        us_input_mass_totals(base_frame, columns=input_variables),
+        us_input_mass_totals(reference, columns=input_variables),
         candidate_name="export_frame",
-        reference_name="base_frame",
+        reference_name=reference_name,
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        reviewed_exclusions=reviewed_exclusions,
     )
 
 
@@ -5080,6 +5196,35 @@ def _build_manifests(
     )
 
 
+def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
+    """Load a per-run, per-artifact zero-support exclusion mapping.
+
+    The file is a JSON object of ``source_record_id -> reason``. Each reason
+    must be a non-empty string documenting why the sparse artifact's frozen
+    support cannot express that cell (PolicyEngine/populace#299 Build G). These
+    augment the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` for a single
+    build; the module constant is never mutated. Returns an empty mapping when
+    no path is given.
+    """
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Zero-support exclusions file {path} must be a JSON object of "
+            "source_record_id -> reason."
+        )
+    exclusions: dict[str, str] = {}
+    for source_record_id, reason in payload.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                "Every zero-support exclusion needs a non-empty reason; "
+                f"{source_record_id!r} in {path} has {reason!r}."
+            )
+        exclusions[str(source_record_id)] = reason
+    return exclusions
+
+
 def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
     active = set(active_aliases)
     hard = set(hard_target_package_aliases())
@@ -5232,6 +5377,9 @@ def main() -> None:
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
+    extra_support_exclusions = _load_zero_support_exclusions(
+        args.zero_support_exclusions
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -5243,6 +5391,7 @@ def main() -> None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        extra_support_exclusions=extra_support_exclusions,
     )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:
@@ -5933,11 +6082,39 @@ def main() -> None:
         if args.dense_default_dataset
         else _with_l0_refit_weights(base_frame, result)
     )
+    # #327: the export gate compares the calibrated export against a reference.
+    # By default that reference is the raw pre-calibration base — but for a dense
+    # parent built from a raw pooled-ASEC base, calibration correctly scales
+    # PUF-imputed income up toward SOI/CBO targets, and the raw-base yardstick
+    # flags those correct gains. When --export-input-mass-reference-h5 is given
+    # (the live default, per #327's reference decision), compare against it so
+    # calibration-driven upward alignment is in-band while a genuine #278 zeroing
+    # still fails. This is a DISTINCT flag from --input-mass-reference-h5: the
+    # base-vs-reference gate compares the *pre-calibration* base and would
+    # over-fire against a calibrated reference on the same PUF columns.
+    export_reference_frame = (
+        load_us_frame(args.export_input_mass_reference_h5)
+        if args.export_input_mass_reference_h5 is not None
+        else None
+    )
     export_input_mass_gate = _export_input_mass_gate(
         export_frame,
         base_frame,
         relative_tolerance=args.input_mass_relative_tolerance,
         minimum_reference_total=args.input_mass_minimum_reference_total,
+        reference_frame=export_reference_frame,
+        reference_name=(
+            args.export_input_mass_reference_h5.name
+            if args.export_input_mass_reference_h5 is not None
+            else "base_frame"
+        ),
+        # Build H (populace#299): the two SOI-identified columns whose true
+        # target level provably cannot sit inside the live-default reference
+        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+        # and both mortgage columns are deliberately NOT excluded so the run
+        # adjudicates their actual gate outcome. See the constant's band-math
+        # rationale above.
+        reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
     )
     input_mass_parity_path = release_dir / "input_mass_parity.json"
     input_mass_parity_path.write_text(
@@ -6061,6 +6238,25 @@ def main() -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
+    # Per-run, per-artifact support-expressibility exclusions (populace#299
+    # Build G): recorded separately from the standing global registry so the
+    # manifest documents exactly which cells this artifact declared un-
+    # expressible on its support, without mutating the module constant.
+    coverage["fiscal_target_support_exclusions_per_run"] = {
+        "source": (
+            str(args.zero_support_exclusions)
+            if args.zero_support_exclusions is not None
+            else None
+        ),
+        "reason": (
+            "Sparse frozen-support cells the artifact's support cannot express; "
+            "augments US_FISCAL_TARGET_SUPPORT_EXCLUSIONS for this build only."
+        ),
+        "exclusions": [
+            {"source_record_id": source_record_id, "reason": reason}
+            for source_record_id, reason in sorted(extra_support_exclusions.items())
+        ],
+    }
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
