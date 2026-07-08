@@ -108,6 +108,17 @@ from populace.build.us_runtime.geography_ladder import (
     us_geography_ladder_gate,
     with_household_us_geography_ladder,
 )
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+    US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
+    US_HOURS_WORKED_STAGE_NAME,
+    derive_us_hours_worked_from_manifest,
+    us_hours_worked_signal_gate,
+    us_hours_worked_stage_spec,
+    us_hours_worked_summary,
+    with_us_hours_worked_inputs,
+)
 from populace.build.us_runtime.immigration import (
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
@@ -160,6 +171,16 @@ from populace.build.us_runtime.reform_validation import (
     out_of_sample_reform_specs,
     reform_validation_payload,
     write_reform_validation,
+)
+from populace.build.us_runtime.snap_take_up import (
+    US_SNAP_TAKE_UP_OUTPUT_COLUMN,
+    US_SNAP_TAKE_UP_RAW_COLUMN,
+    US_SNAP_TAKE_UP_STAGE_NAME,
+    derive_us_snap_take_up_from_manifest,
+    us_snap_take_up_signal_gate,
+    us_snap_take_up_stage_spec,
+    us_snap_take_up_summary,
+    with_us_snap_take_up_inputs,
 )
 from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
@@ -259,6 +280,23 @@ __all__ = [
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
     "UndocumentedControls",
+    "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
+    "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
+    "US_HOURS_WORKED_STAGE_NAME",
+    "derive_us_hours_worked_from_manifest",
+    "us_hours_worked_signal_gate",
+    "us_hours_worked_stage_spec",
+    "us_hours_worked_summary",
+    "with_us_hours_worked_inputs",
+    "US_SNAP_TAKE_UP_OUTPUT_COLUMN",
+    "US_SNAP_TAKE_UP_RAW_COLUMN",
+    "US_SNAP_TAKE_UP_STAGE_NAME",
+    "derive_us_snap_take_up_from_manifest",
+    "us_snap_take_up_signal_gate",
+    "us_snap_take_up_stage_spec",
+    "us_snap_take_up_summary",
+    "with_us_snap_take_up_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -452,6 +490,26 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "undocumented population/worker/student control totals."
         ),
     ),
+    US_HOURS_WORKED_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Hours-worked inputs mapped directly from measured ASEC person "
+            "variables (HRSWK, A_HRS1, WKSWORK) — nothing imputed. Without "
+            "them the engine defaults every person to 40 weekly hours and "
+            "hours-conditioned rules (SNAP work requirements) become no-ops."
+        ),
+    ),
+    US_SNAP_TAKE_UP_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + USDA FNS participation rate estimates",
+        source="https://www.fns.usda.gov/snap/participation-rates",
+        notes=(
+            "SNAP take-up: reported recipients (SPM_SNAPSUB) always take "
+            "up; non-reporting units drawn to the cited FNS participation "
+            "rate. Without it the engine defaults every eligible unit to "
+            "100% take-up."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -498,6 +556,8 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "unit_assignment",
     "derive_cps_carried",
     US_IMMIGRATION_STAGE_NAME,
+    US_HOURS_WORKED_STAGE_NAME,
+    US_SNAP_TAKE_UP_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "capital_gain_distributions",

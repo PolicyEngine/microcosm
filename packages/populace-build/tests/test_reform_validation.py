@@ -916,12 +916,30 @@ def test_default_baseline_level_specs_concatenates(monkeypatch, tmp_path):
             ]
         },
     )
+    fed = _write_json(
+        tmp_path / "fed.json",
+        {
+            "levels": [
+                {
+                    "id": "fed_eitc_z",
+                    "name": "z",
+                    "variable": "eitc",
+                    "state": "VA",
+                    "period": 2024,
+                    "benchmark": {"value": 3.0},
+                }
+            ]
+        },
+    )
     monkeypatch.setattr(rv, "_soi_baseline_levels_config_path", lambda: soi)
     monkeypatch.setattr(rv, "_state_program_levels_config_path", lambda: state)
+    monkeypatch.setattr(rv, "_federal_eitc_by_state_config_path", lambda: fed)
     specs = rv.default_baseline_level_specs()
-    assert [s.id for s in specs] == ["soi_x", "state_y"]
+    assert [s.id for s in specs] == ["soi_x", "state_y", "fed_eitc_z"]
     assert specs[0].category == "IRS SOI actual"
     assert specs[1].category == "State program actual"
+    assert specs[2].category == "Federal EITC by state"
+    assert specs[2].state == "VA"
 
 
 def test_shipped_state_program_configs_are_well_formed():
@@ -948,6 +966,111 @@ def test_shipped_state_program_configs_are_well_formed():
         assert spec.neutralized_variable
         assert spec.budget_measure == "state_income_tax"
         assert spec.in_sample is False
+
+
+def test_shipped_federal_eitc_by_state_levels_are_well_formed():
+    from populace.build.us_runtime.reform_validation import (
+        federal_eitc_state_level_specs,
+    )
+
+    specs = federal_eitc_state_level_specs()
+    assert len(specs) == 18
+    for spec in specs:
+        assert spec.variable == "eitc"
+        assert spec.state and len(spec.state) == 2
+        assert spec.benchmark_value > 0
+        assert spec.category == "Federal EITC by state"
+        assert spec.benchmark_score_type == "actual"
+        assert spec.period == 2024
+
+
+def test_state_sliced_level_total_filters_households(monkeypatch):
+    # A level with `state` must total the variable over that state's
+    # households only, weighting by household weight.
+    import numpy as np
+
+    from populace.build.us_runtime.reform_validation import (
+        BaselineLevelSpec,
+        reform_validation_payload,
+    )
+
+    class _Series(np.ndarray):
+        weights: np.ndarray
+
+    def series(values, weights):
+        arr = np.asarray(values, dtype=float).view(_Series)
+        arr.weights = np.asarray(weights, dtype=float)
+        return arr
+
+    class _Sim:
+        def calculate(self, variable, period, map_to=None):
+            if variable == "eitc":
+                assert map_to == "household"
+                return series([100.0, 200.0, 300.0], [1.0, 2.0, 3.0])
+            if variable == "state_code_str":
+                return np.asarray(["VA", "OH", "VA"])
+            raise AssertionError(variable)
+
+    level = BaselineLevelSpec(
+        id="fed_eitc_va",
+        name="VA",
+        variable="eitc",
+        period=2024,
+        benchmark_value=1_000.0,
+        benchmark_year="TY2024",
+        source="s",
+        source_url="u",
+        state="VA",
+    )
+    payload = reform_validation_payload(
+        (), period=2024, baseline_levels=(level,), simulate=lambda reform: _Sim()
+    )
+    row = next(r for r in payload["reforms"] if r["id"] == "fed_eitc_va")
+    # VA households: 100*1 + 300*3 = 1000
+    assert row["populace"]["budget_effect"] == 1_000.0
+
+
+def test_variable_list_level_sums_components(monkeypatch, tmp_path):
+    # A list-valued `variable` totals each component and sums them (used for
+    # unsplit official figures covering mutually exclusive elections).
+    from populace.build.us_runtime import reform_validation as rv
+
+    cfg = _write_json(
+        tmp_path / "levels.json",
+        {
+            "levels": [
+                {
+                    "id": "combo",
+                    "name": "combo",
+                    "variable": ["a_var", "b_var"],
+                    "period": 2024,
+                    "benchmark": {"value": 5.0},
+                }
+            ]
+        },
+    )
+    specs = rv.state_program_level_specs(cfg)
+    assert specs[0].variable == ["a_var", "b_var"]
+
+    class _Series(float):
+        pass
+
+    class _Sim:
+        def calculate(self, variable, period, map_to=None):
+            import numpy as np
+
+            class _MS(np.ndarray):
+                pass
+
+            vals = {"a_var": 2.0, "b_var": 3.0}[variable]
+            arr = np.asarray([vals]).view(_MS)
+            return arr
+
+    payload = rv.reform_validation_payload(
+        (), period=2024, baseline_levels=specs, simulate=lambda reform: _Sim()
+    )
+    row = payload["reforms"][0]
+    assert row["populace"]["budget_effect"] == 5.0
 
 
 def test_md_eitc_repeal_neutralizes_tax_path_components():

@@ -55,13 +55,17 @@ from populace.build.us_runtime import (
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    us_hours_worked_signal_gate,
     us_immigration_composition_gate,
+    us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    with_us_hours_worked_inputs,
     with_us_immigration_inputs,
+    with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
     write_us_take_up_participation_diagnostics,
@@ -394,13 +398,8 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 # degenerate column, or one of these becoming non-degenerate, fails the
 # default-valued-columns gate so this list cannot rot.
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
-    "weekly_hours_worked_before_lsr": (
-        "Hours-worked inputs not yet carried through (PolicyEngine/populace"
-        "#242, #248); constant at the 40-hour engine default."
-    ),
-    "takes_up_snap_if_eligible": (
-        "SNAP take-up inputs not yet carried through (PolicyEngine/populace"
-        "#243); constant True forces 100% take-up."
+    "takes_up_tanf_if_eligible": (
+        "TANF take-up imputation backlog; constant True forces 100% take-up."
     ),
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
@@ -4068,6 +4067,8 @@ def _release_gate_failures(
     input_mass_reference_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    hours_worked_gate: GateResult | None = None,
+    snap_take_up_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -4089,6 +4090,16 @@ def _release_gate_failures(
         failures.extend(
             f"Immigration composition failed: {failure}"
             for failure in immigration_gate.failures
+        )
+    if hours_worked_gate is not None and not hours_worked_gate.passed:
+        failures.extend(
+            f"Hours-worked signal failed: {failure}"
+            for failure in hours_worked_gate.failures
+        )
+    if snap_take_up_gate is not None and not snap_take_up_gate.passed:
+        failures.extend(
+            f"SNAP take-up signal failed: {failure}"
+            for failure in snap_take_up_gate.failures
         )
     if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
         failures.extend(
@@ -4366,6 +4377,8 @@ def _write_release_calibration_diagnostics(
     audit_export_targets: bool,
     immigration_gate: GateResult | None = None,
     input_mass_reference_gate: GateResult | None = None,
+    hours_worked_gate: GateResult | None = None,
+    snap_take_up_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -4437,6 +4450,24 @@ def _write_release_calibration_diagnostics(
                     "details": dict(immigration_gate.details),
                 }
                 if immigration_gate is not None
+                else None
+            ),
+            "hours_worked_signal": (
+                {
+                    "passed": hours_worked_gate.passed,
+                    "failures": list(hours_worked_gate.failures),
+                    "details": dict(hours_worked_gate.details),
+                }
+                if hours_worked_gate is not None
+                else None
+            ),
+            "snap_take_up_signal": (
+                {
+                    "passed": snap_take_up_gate.passed,
+                    "failures": list(snap_take_up_gate.failures),
+                    "details": dict(snap_take_up_gate.details),
+                }
+                if snap_take_up_gate is not None
                 else None
             ),
             "input_mass_reference": (
@@ -4682,6 +4713,8 @@ def _build_manifests(
     input_mass_reference_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    hours_worked_gate: GateResult | None = None,
+    snap_take_up_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
@@ -4709,6 +4742,8 @@ def _build_manifests(
         input_mass_reference_gate,
         degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4829,6 +4864,28 @@ def _build_manifests(
                 if ecps_parity_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "hours_worked_signal": {
+                        "passed": hours_worked_gate.passed,
+                        "failures": list(hours_worked_gate.failures),
+                        "details": dict(hours_worked_gate.details),
+                    }
+                }
+                if hours_worked_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "snap_take_up_signal": {
+                        "passed": snap_take_up_gate.passed,
+                        "failures": list(snap_take_up_gate.failures),
+                        "details": dict(snap_take_up_gate.details),
+                    }
+                }
+                if snap_take_up_gate is not None
+                else {}
+            ),
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -4886,6 +4943,26 @@ def _build_manifests(
                     }
                 }
                 if ecps_parity_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "hours_worked_signal": {
+                        "passed": hours_worked_gate.passed,
+                        "details": dict(hours_worked_gate.details),
+                    }
+                }
+                if hours_worked_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "snap_take_up_signal": {
+                        "passed": snap_take_up_gate.passed,
+                        "details": dict(snap_take_up_gate.details),
+                    }
+                }
+                if snap_take_up_gate is not None
                 else {}
             ),
         },
@@ -5336,6 +5413,60 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "hours_worked_inputs",
+            message="Deriving hours-worked inputs from ASEC reported hours.",
+        )
+    base_frame = with_us_hours_worked_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    hours_worked_gate = us_hours_worked_signal_gate(base_frame)
+    if not hours_worked_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "hours_worked_gate",
+                status="failed",
+                message="Hours-worked signal gate failed.",
+                failures=list(hours_worked_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Hours-worked signal failed: {failure}"
+                for failure in hours_worked_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "snap_take_up_inputs",
+            message="Assigning SNAP take-up from reported receipt.",
+        )
+    base_frame = with_us_snap_take_up_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    snap_take_up_gate = us_snap_take_up_signal_gate(base_frame)
+    if not snap_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "snap_take_up_gate",
+                status="failed",
+                message="SNAP take-up signal gate failed.",
+                failures=list(snap_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SNAP take-up signal failed: {failure}"
+                for failure in snap_take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -5646,6 +5777,8 @@ def main() -> None:
         enforced_input_mass_reference_gate,
         degenerate_input_gate,
         ecps_parity_gate=enforced_ecps_parity_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -5658,6 +5791,8 @@ def main() -> None:
         base_population_gate=base_population_gate,
         immigration_gate=immigration_gate,
         input_mass_reference_gate=input_mass_reference_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -5909,6 +6044,8 @@ def main() -> None:
         input_mass_reference_gate=enforced_input_mass_reference_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=enforced_ecps_parity_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,

@@ -30,6 +30,9 @@ def _us_frame(**person_extra: object) -> Frame:
             ),
             "ssn_card_type": ["CITIZEN", "CITIZEN", "NONE"],
             "immigration_status_str": ["CITIZEN", "CITIZEN", "UNDOCUMENTED"],
+            "weekly_hours_worked_before_lsr": [40.0, 20.0, 0.0],
+            "hours_worked_last_week": [40.0, 18.0, 0.0],
+            "weeks_worked": [52.0, 26.0, 0.0],
             **person_extra,
         }
     )
