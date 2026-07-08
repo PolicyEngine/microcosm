@@ -312,3 +312,22 @@ HF/latest.json untouched. Every number cited from its source document.
   **SPARSE VERDICT: NOT CERTIFIABLE** — fails the export-mass parity gate on miscellaneous_income.
   Certifying would require carrying miscellaneous_income support into the frozen selection (a
   selection-side change beyond Build H's target-side scope), not a reviewed exclusion.
+
+- **Step 11 (gates extracted; ONE #299 comment posted; verdicts).** Ran `extract_buildh_gates.py` +
+  `check_340_columns.py` on the DENSE artifact and `extract_buildh_gates.py` on the SPARSE release dir
+  (captures in `gates/`). Filled `issue299_comment_filled.md` from the skeleton with every number
+  verbatim from the artifacts (v8 provenance, registry change 5521→5531→5533, per-column export-mass
+  decision table with actual DENSE outcomes + reviewed-exclusion rationale, #340 column-manifest table +
+  scope caveat, both candidates' head-to-head vs Build G, integrity caveat that loss/within-10% are over
+  different target surfaces while the export-mass parity is directly comparable). Posted ONE comment
+  (`--body-file`, no @-mention) → **https://github.com/PolicyEngine/populace/issues/299#issuecomment-4914302628**.
+  Final state clean: no stray processes/samplers; rc markers direct_solve=0, dense_ws=143 (intentional
+  tail kill), sparse=1 (export-mass abort, expected). DENSE h5 1.886 GB present; SPARSE no h5 (correct).
+
+  **FINAL VERDICTS:** DENSE = **CERTIFIABLE** (final_loss 0.04018, all structural gates + export-mass
+  parity PASS; 4 floating dims resolved; mortgage JCT shrank +59.7%→+46.16%; income tax +1.23%→+0.87%).
+  FROZEN-57k = **NOT CERTIFIABLE** (export-mass parity FAILS on miscellaneous_income −79.9% — thin
+  frozen-57k support; mortgage fix DID carry over, JCT +44.5%→+35.48%, both mortgage columns in-band).
+  Build H's target-side SOI identification works; the deployable frozen-57k needs a selection-side fix
+  for miscellaneous_income support before it can certify. STAGING/LOCAL ONLY — prod HF / latest.json
+  untouched; publication is Max's call. UK adjudication agent HOLDS for the conductor's GO (not sent).
