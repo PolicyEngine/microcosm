@@ -160,6 +160,17 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    US_PREGNANCY_OUTPUT_COLUMN,
+    US_PREGNANCY_REQUIRED_SOURCE_COLUMNS,
+    US_PREGNANCY_STAGE_NAME,
+    derive_us_pregnancy_from_manifest,
+    us_pregnancy_signal_gate,
+    us_pregnancy_stage_spec,
+    us_pregnancy_summary,
+    with_us_pregnancy_inputs,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -308,6 +319,15 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS",
+    "US_PREGNANCY_OUTPUT_COLUMN",
+    "US_PREGNANCY_REQUIRED_SOURCE_COLUMNS",
+    "US_PREGNANCY_STAGE_NAME",
+    "derive_us_pregnancy_from_manifest",
+    "us_pregnancy_signal_gate",
+    "us_pregnancy_stage_spec",
+    "us_pregnancy_summary",
+    "with_us_pregnancy_inputs",
     "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
     "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
@@ -541,6 +561,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "exemption channels default to False/0."
         ),
     ),
+    US_PREGNANCY_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + CDC natality-derived national pregnancy rate",
+        source="https://www.cdc.gov/nchs/nvss/births.htm",
+        notes=(
+            "Pregnancy seeded among women 15-44 at the national "
+            "point-in-time rate (births x 39/52 over female 15-44 "
+            "population), matching the retired pipeline's national "
+            "fallback; state-level rates are follow-up work (#351). "
+            "The ASEC does not measure pregnancy."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -590,6 +621,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
+    US_PREGNANCY_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "capital_gain_distributions",

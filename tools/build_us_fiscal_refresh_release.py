@@ -58,6 +58,7 @@ from populace.build.us_runtime import (
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
+    us_pregnancy_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
@@ -67,6 +68,7 @@ from populace.build.us_runtime import (
     with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
+    with_us_pregnancy_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
@@ -461,6 +463,36 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "self_employment_income_would_be_qualified": (
         "QBI qualification flags default True pending formula-constrained "
         "leaf imputation (PolicyEngine/populace#186)."
+    ),
+}
+
+#: Person inputs SNAP work-requirement rules read that have NO CPS ASEC
+#: source and are not seeded: they default to False in the engine, so the
+#: exemption channels they drive never fire (populace #351). They are not
+#: persisted columns, so the degenerate-input gate cannot see them; this
+#: register makes the assumption visible in every release manifest instead.
+#: is_pregnant is NOT here: the pregnancy stage seeds it.
+#: Scope note (per #340): this register is for the NO-SURVEY-SOURCE class —
+#: structurally unfixable from ASEC. The #340 column families (tips,
+#: overtime, education credits, ...) have a source and were merely never
+#: persisted; those belong to stage/persistence work, not this register.
+#: If a not-persisted register is added later, the two should surface as
+#: labeled sub-blocks of one "inputs not reaching the engine" diagnostic.
+US_DOCUMENTED_ABSENT_INPUTS = {
+    "is_homeless": (
+        "No ASEC source: the CPS samples the housed population, so the "
+        "pre-HR1 SNAP ABAWD homeless exemption cannot fire "
+        "(PolicyEngine/populace#351)."
+    ),
+    "was_in_foster_care": (
+        "No ASEC item for foster-care history, so the pre-HR1 former-"
+        "foster-youth ABAWD exemption (7 CFR 273.24(c)(9)) cannot fire "
+        "(PolicyEngine/populace#351)."
+    ),
+    "is_incapable_of_self_care": (
+        "No direct ASEC item; the incapacity/caregiving work-registration "
+        "exemptions rely on the disability battery only "
+        "(PolicyEngine/populace#351)."
     ),
 }
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
@@ -3957,6 +3989,7 @@ def _release_gate_failures(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    pregnancy_gate: GateResult | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -3993,6 +4026,10 @@ def _release_gate_failures(
         failures.extend(
             f"Eligibility-inputs signal failed: {failure}"
             for failure in eligibility_inputs_gate.failures
+        )
+    if pregnancy_gate is not None and not pregnancy_gate.passed:
+        failures.extend(
+            f"Pregnancy signal failed: {failure}" for failure in pregnancy_gate.failures
         )
     if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
         failures.extend(
@@ -4273,6 +4310,7 @@ def _write_release_calibration_diagnostics(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    pregnancy_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -4373,6 +4411,16 @@ def _write_release_calibration_diagnostics(
                 if eligibility_inputs_gate is not None
                 else None
             ),
+            "pregnancy_signal": (
+                {
+                    "passed": pregnancy_gate.passed,
+                    "failures": list(pregnancy_gate.failures),
+                    "details": dict(pregnancy_gate.details),
+                }
+                if pregnancy_gate is not None
+                else None
+            ),
+            "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
             "input_mass_reference": (
                 {
                     "passed": input_mass_reference_gate.passed,
@@ -4622,6 +4670,7 @@ def _build_manifests(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    pregnancy_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
@@ -4652,6 +4701,7 @@ def _build_manifests(
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -4805,6 +4855,18 @@ def _build_manifests(
                 if eligibility_inputs_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "pregnancy_signal": {
+                        "passed": pregnancy_gate.passed,
+                        "failures": list(pregnancy_gate.failures),
+                        "details": dict(pregnancy_gate.details),
+                    }
+                }
+                if pregnancy_gate is not None
+                else {}
+            ),
+            "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
         },
     }
     (release_dir / "build_manifest.json").write_text(
@@ -4894,6 +4956,17 @@ def _build_manifests(
                 if eligibility_inputs_gate is not None
                 else {}
             ),
+            **(
+                {
+                    "pregnancy_signal": {
+                        "passed": pregnancy_gate.passed,
+                        "details": dict(pregnancy_gate.details),
+                    }
+                }
+                if pregnancy_gate is not None
+                else {}
+            ),
+            "documented_absent_inputs": dict(US_DOCUMENTED_ABSENT_INPUTS),
         },
         "compatible_core_packages": [
             {
@@ -5390,6 +5463,33 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "pregnancy_inputs",
+            message="Seeding pregnancy among women 15-44 at the national rate.",
+        )
+    base_frame = with_us_pregnancy_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    pregnancy_gate = us_pregnancy_signal_gate(base_frame)
+    if not pregnancy_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "pregnancy_gate",
+                status="failed",
+                message="Pregnancy signal gate failed.",
+                failures=list(pregnancy_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Pregnancy signal failed: {failure}"
+                for failure in pregnancy_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
@@ -5703,6 +5803,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
     )
     _write_release_calibration_diagnostics(
         result=result,
@@ -5718,6 +5819,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair
         },
@@ -5925,6 +6027,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
