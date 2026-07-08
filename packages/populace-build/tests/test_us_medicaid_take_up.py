@@ -366,6 +366,25 @@ class TestGate:
         assert not gate.passed
         assert any("03" in failure for failure in gate.failures)
 
+    def test_fails_when_a_state_has_a_count_but_zero_eligible_weight(self) -> None:
+        # An eligibility-feed collapse classifies as saturated (any positive
+        # count exceeds zero eligible weight), which would skip the count
+        # checks and ship anchored-only enrollment silently. The gate must
+        # treat that saturation as a division artifact and fail loudly.
+        n = 40
+        table = self._assigned_table(
+            flag=np.zeros(n, dtype=bool),
+            eligible=np.zeros(n, dtype=bool),
+            anchor=np.zeros(n, dtype=bool),
+            state=np.full(n, "01"),
+        )
+        targets = pd.DataFrame({"state_fips": ["01"], "target": [500.0]})
+        diagnostics = us_medicaid_take_up_diagnostics(table, targets)
+        assert diagnostics["saturated_states"] == ["01"]
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert not gate.passed
+        assert any("eligibility feed collapsed" in failure for failure in gate.failures)
+
     def test_fails_when_the_anchor_is_not_preserved(self) -> None:
         n = 100
         anchor = np.zeros(n, dtype=bool)

@@ -423,6 +423,11 @@ def us_medicaid_take_up_gate(
 
     - any state has no CMS enrollment target (a feed hole would silently
       revert that state to anchored-only enrollment);
+    - any state carries a positive CMS count with zero modeled-eligible
+      weight — an eligibility-feed collapse. Such a state classifies as
+      ``saturated`` (the count trivially exceeds zero eligibility), so
+      without this check it would skip the count checks and ship silently
+      wrong;
     - any anchored reporter lost the flag — a person-level invariant checked
       in EVERY state, saturated or not (aggregate comparisons cannot see a
       dropped anchor once calibration back-fills to the count);
@@ -457,6 +462,14 @@ def us_medicaid_take_up_gate(
                 f"state {state}: {violations} anchored reporter(s) lost the "
                 "flag; the reported-coverage anchor was not preserved."
             )
+        if target is not None and target > 0 and float(row["eligible_weight"]) <= 0:
+            failures.append(
+                f"state {state}: CMS count {target:.0f} with zero "
+                "modeled-eligible weight — the eligibility feed collapsed; "
+                "its saturated classification is a division artifact, not a "
+                "calibrated answer."
+            )
+            continue
         if target is None or row["saturated"]:
             continue
         eligible_weight = float(row["eligible_weight"])
