@@ -27,12 +27,17 @@ order of magnitude (~0.04). We report it and sanity-band it; we do NOT assert
 equality.
 """
 from __future__ import annotations
-import argparse, sys, time
+
+import argparse
+import sys
+import time
 from pathlib import Path
+
 import numpy as np
 
 sys.path.insert(0, "tools")
-import build_us_fiscal_refresh_release as R  # noqa: E402
+import build_us_fiscal_refresh_release as release  # noqa: E402
+
 from populace.calibrate import calibrate  # noqa: E402
 
 RT = Path("/Users/maxghenis/PolicyEngine/_buildh-runtime")
@@ -62,16 +67,18 @@ def main():
     t0 = time.time()
 
     log("loading v8 feed + compiling target registry (no microsim) ...")
-    ledger = R.load_ledger_consumer_artifact(FACTS, expected_facts_sha256=FACTS_SHA)
-    registry0 = R.compile_us_fiscal_target_registry(
-        ledger.facts, target_period=R.PERIOD,
+    ledger = release.load_ledger_consumer_artifact(
+        FACTS, expected_facts_sha256=FACTS_SHA
+    )
+    registry0 = release.compile_us_fiscal_target_registry(
+        ledger.facts, target_period=release.PERIOD,
         include_congressional_district_targets=False,
         congressional_district_vintage_crosswalk=None,
         age_targets=True, allow_unaged_dollar_targets=False,
         extra_support_exclusions=None)
     target_specs = registry0.specs
     # Match the release tool: identity uses TargetRegistry(specs).version.
-    active_registry = R.TargetRegistry(target_specs, country="us")
+    active_registry = release.TargetRegistry(target_specs, country="us")
     log(f"registry version = {active_registry.version}  "
         f"(expected {REG_VERSION_EXPECTED})  n_specs={len(target_specs)}")
     if active_registry.version != REG_VERSION_EXPECTED:
@@ -79,13 +86,13 @@ def main():
             f"expected {REG_VERSION_EXPECTED}. Feed/compile drift; STOP.")
         sys.exit(3)
 
-    identity = R._target_frame_checkpoint_identity(
+    identity = release._target_frame_checkpoint_identity(
         base_dataset_sha256=BASE_SHA, policyengine_us_version=PEUS, seed=0,
-        target_period=R.PERIOD, target_registry_version=active_registry.version,
+        target_period=release.PERIOD, target_registry_version=active_registry.version,
         congressional_district_vintage_crosswalk_sha256=None)
     log(f"checkpoint identity: {identity}")
 
-    loaded = R._read_target_frame_checkpoint(
+    loaded = release._read_target_frame_checkpoint(
         CKPT, identity=identity, target_specs=target_specs,
         gate_congressional_district_targets=False)
     if loaded is None:
@@ -95,7 +102,7 @@ def main():
     log(f"checkpoint HIT: frame n(household)={frame.n('household')} "
         f"n_targets={len(registry)}")
 
-    tlw = R._fiscal_target_loss_weights(registry)
+    tlw = release._fiscal_target_loss_weights(registry)
     if args.verify_only:
         log("verify-only: frame + registry loaded from checkpoint OK. "
             "Ready for the solve; stopping.")
@@ -106,7 +113,7 @@ def main():
     result = calibrate(
         frame, registry.to_target_set(), epochs=1500, learning_rate=0.02,
         max_weight_ratio=5.0, seed=0, mass="conserve", l2_lambda=0.0,
-        target_loss_weights=tlw, target_loss_cap=R.US_FISCAL_TARGET_LOSS_CAP,
+        target_loss_weights=tlw, target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
         warm_start_weights=None)
     w = np.asarray(result.weights, dtype=np.float64)
     w0 = np.asarray(result.initial_weights, dtype=np.float64)
