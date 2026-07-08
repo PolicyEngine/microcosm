@@ -26,13 +26,13 @@ from populace.build.us_runtime.geography_ladder import (
 from populace.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
-from populace.build.us_runtime.pregnancy import (
-    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
-)
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 

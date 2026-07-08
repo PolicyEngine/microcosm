@@ -58,6 +58,7 @@ from populace.build.us_runtime import (
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
+    us_pregnancy_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
@@ -67,9 +68,8 @@ from populace.build.us_runtime import (
     with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
-    with_us_snap_take_up_inputs,
-    us_pregnancy_signal_gate,
     with_us_pregnancy_inputs,
+    with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
     write_us_source_coverage_diagnostics,
     write_us_take_up_participation_diagnostics,
@@ -4029,8 +4029,7 @@ def _release_gate_failures(
         )
     if pregnancy_gate is not None and not pregnancy_gate.passed:
         failures.extend(
-            f"Pregnancy signal failed: {failure}"
-            for failure in pregnancy_gate.failures
+            f"Pregnancy signal failed: {failure}" for failure in pregnancy_gate.failures
         )
     if input_mass_reference_gate is not None and not input_mass_reference_gate.passed:
         failures.extend(
