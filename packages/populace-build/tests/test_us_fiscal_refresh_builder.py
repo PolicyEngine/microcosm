@@ -1842,6 +1842,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_snap_discretionary_exemption_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_take_up_signal_gate",
         lambda frame: builder.GateResult(
             name="us_take_up_signal",
@@ -1882,6 +1892,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_eligibility_inputs_signal_gate",
         lambda frame: builder.GateResult(
             name="eligibility_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_pregnancy_signal_gate",
+        lambda frame: builder.GateResult(
+            name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_discretionary_exemption_signal_gate",
+        lambda frame: builder.GateResult(
+            name="snap_discretionary_exemption_signal",
             passed=True,
             details={"checked": True},
         ),
@@ -5179,3 +5207,138 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     assert compilation["target_materialization_cache"]["hits"] == 1
     assert compilation["target_materialization_cache"]["misses"] == 0
     assert compilation["target_materialization_cache"]["writes"] == 0
+
+
+def _sentinel_frame(label: str):
+    """A stand-in frame whose only role is object identity.
+
+    The export-gate tests patch ``us_input_mass_totals`` to key off ``id(frame)``
+    and never touch the schema, so a bare tagged object suffices — building a
+    real US-schema Frame (which needs the engine + every entity table) is
+    unnecessary to exercise the #327 reference-selection logic.
+    """
+    return SimpleNamespace(label=label)
+
+
+def test_export_input_mass_gate_defaults_to_base_reference(monkeypatch) -> None:
+    """#327: with no reference_frame, the export gate compares vs the raw base.
+
+    This is the historical behaviour, preserved: a PUF-imputed column that
+    calibration scales far above its raw-base mass (capital gains here) fails
+    the ±50% band against the raw base.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+
+    totals = {
+        id(export): {"long_term_capital_gains": 7.02e11, "employment_income": 1.1e13},
+        id(base): {"long_term_capital_gains": 2.12e11, "employment_income": 1.1e13},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+    )
+    assert not gate.passed
+    assert any("long_term_capital_gains" in f for f in gate.failures)
+    # employment_income (unchanged) does not fail.
+    assert not any("employment_income" in f for f in gate.failures)
+
+
+def test_export_input_mass_gate_passes_against_certified_reference(monkeypatch) -> None:
+    """#327: with the live-default reference, calibration gains are in-band.
+
+    The export mass (capital gains scaled up toward SOI/CBO) is far above the
+    raw base but ~equal to the certified live-default reference — so against the
+    reference the gate passes, vindicating the 11/14 mis-referenced columns.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # export >> raw base (the +230% the raw-base gate flagged), but export
+        # is within ±50% of the certified reference (per #327: -18.8%).
+        id(export): {"long_term_capital_gains": 7.02e11},
+        id(base): {"long_term_capital_gains": 2.12e11},
+        id(reference): {"long_term_capital_gains": 8.64e11},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert gate.passed, gate.failures
+
+
+def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
+    monkeypatch,
+) -> None:
+    """#327: the loss/zeroing arm stays strict against the reference.
+
+    A genuine #278 zeroing (a sparse selection dropping an untargeted input the
+    reference carries) still fails even when the reference — not the raw base —
+    is the yardstick.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # traditional_ira_contributions zeroed in the export (the #278 signature);
+        # health_savings_account halved (drift beyond ±50% vs the reference).
+        id(export): {
+            "traditional_ira_contributions": 0.0,
+            "health_savings_account_ald": 5.0e9,
+        },
+        id(base): {
+            "traditional_ira_contributions": 3.0e10,
+            "health_savings_account_ald": 1.4e10,
+        },
+        id(reference): {
+            "traditional_ira_contributions": 3.1e10,
+            "health_savings_account_ald": 1.38e10,
+        },
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert not gate.passed
+    assert any("traditional_ira_contributions" in f for f in gate.failures)
+    assert any("health_savings_account_ald" in f for f in gate.failures)

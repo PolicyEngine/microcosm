@@ -593,6 +593,82 @@
       "notes": "Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS pipeline's constructions (each cited to the retired pipeline's source files in the stage module): is_disabled <- any PEDIS* difficulty item == 1, aligned with reported SSI (under-65 SSI_VAL > 0 implies disabled \u2014 the retired align_reported_ssi_disability rule from datasets/cps/takeup.py, applied to is_disabled in cps.py); is_blind <- PEDISEYE == 1; is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran the strict form \u2014 the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ; veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels (populace #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (populace #24)."
     },
     {
+      "stage": "pregnancy",
+      "survey": "Census CPS ASEC + CDC natality-derived national pregnancy rate",
+      "source": "https://www.cdc.gov/nchs/nvss/births.htm",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person file sex (A_SEX) and age (A_AGE)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "latest_available",
+          "locator": "CDC NCHS natality-derived point-in-time pregnancy rate among women 15-44 (births x 39/52 over female 15-44 population)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_pregnancy",
+          "seed_from_build_config": true,
+          "pregnancy_rate": {
+            "value": 0.041,
+            "source": "https://www.cdc.gov/nchs/nvss/births.htm"
+          }
+        }
+      ],
+      "outputs": [
+        "is_pregnant"
+      ],
+      "notes": "The CPS ASEC does not ask about pregnancy, so is_pregnant is seeded rather than mapped, matching the retired enhanced-CPS pipeline: women aged 15-44 receive stable blake2b draws against the pregnancy rate (point-in-time rate = annual births x 39/52 over the female 15-44 population; 4.1% nationally, the retired pipeline's national rate). The retired pipeline varied the rate by state using live CDC VSRR + Census ACS fetches; populace builds are hermetic, so the national rate applies uniformly and state-level variation is follow-up work under populace #351. Without this stage is_pregnant defaults to False for everyone and the SNAP ABAWD pregnancy exemption (7 U.S.C. 2015(o)(3)(E)) never fires."
+    },
+    {
+      "stage": "snap_abawd_discretionary_exemption",
+      "survey": "Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
+      "source": "https://www.law.cornell.edu/uscode/text/7/2015#o_6",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person file age (A_AGE)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "latest_available",
+          "locator": "Statutory ABAWD discretionary exemption cap: 8% of covered individuals from FY2024 (7 U.S.C. 2015(o)(6); 15% FY1998-2019, 12% FY2020-23)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_snap_abawd_discretionary_exemption",
+          "seed_from_build_config": true,
+          "exemption_rate": {
+            "value": 0.08,
+            "source": "https://www.law.cornell.edu/uscode/text/7/2015#o_6"
+          }
+        }
+      ],
+      "outputs": [
+        "is_snap_abawd_discretionary_exempt"
+      ],
+      "notes": "State agencies may exempt a monthly-average share of ABAWD-covered individuals from the SNAP time limit (7 U.S.C. 2015(o)(6)): 8% from FY2024 (15% FY1998-2019, 12% FY2020-23) \u2014 the cap PolicyEngine-US carries as gov.usda.snap.work_requirements.abawd.discretionary_exemption_rate. Coverage is engine logic the build must not duplicate, so the flag is seeded with stable blake2b draws across the potentially covered population (adults 18-64) and the engine intersects it with modeled coverage; draws being independent of coverage keeps the exempt share among covered individuals at the statutory rate in expectation. Seeding at the cap assumes full state usage, which overstates actual practice: USDA reporting shows states typically use well under the allotment (exemption usage exceeded the cap in only five state-year instances across FY2016-19), so this is an upper bound on the discretionary channel; refining toward USDA exemption-usage reports is follow-up under populace #323. Without this stage the input defaults to False and the discretionary channel never fires (populace #323)."
+    },
+    {
       "stage": "mortgage_conversion",
       "survey": "IRS PUF 2015 (uprated) + Fed SCF 2022",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",

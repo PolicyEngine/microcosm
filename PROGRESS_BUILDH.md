@@ -1,0 +1,333 @@
+# Build H — identify the 4 floating PUF-input dimensions + re-run to certification
+
+Task: PolicyEngine/populace **#299 Build H**. Add real SOI calibration targets so the 4 export-mass
+residual columns become IDENTIFIED, then re-run the two Build G candidates (DENSE + FROZEN-SPARSE) to
+certification. **STAGING/LOCAL ONLY** — never touch prod HF / latest.json. Publication is Max's call.
+Detached compute (nohup+pidfile+logs). Three-strike stop with precise diagnosis. Every number from source.
+
+Runtime home (OUTSIDE repos, durable): `/Users/maxghenis/PolicyEngine/_buildh-runtime/`.
+Worktrees: populace `build-h-run` (off build-g-run lineage), ledger `build-h-soi-income-targets`.
+
+## Frozen invariants from Build G (only the FEED changes: v7 -> v8)
+base **18833fb6**, pe-us **1.764.6** / core 3.26.11, period 2024, λ=0, seed 0, feed v7 `735f326a`,
+CD-crosswalk `383a6666`, reform = default `US_JCT_TAX_EXPENDITURE_REFORMS`.
+Export-mass reference (corrected, #327) = **live-default 57k `c2065b642ab0…`** via
+`--export-input-mass-reference-h5`. Registry: dense `e035007b` (5521) / sparse `a9897709` (5502, 19-cell
+zero-support exclusions). Selection manifest `identities_sha256=77363a47`.
+
+## Build G candidate results (from #299 comment 4902533514) — Build H must MEET/BEAT
+| metric | DENSE parent | FROZEN-57k (headline) | certified band |
+|---|---:|---:|---:|
+| records | 337,704 | 57,240 | 57,240 / 75,112 |
+| final loss | 0.04139 | **0.02964** | 0.044 / 0.0423 |
+| within-10% | 86.16% | 89.15% | 94.7% / 86.4% |
+| fed income tax (SOI) | +1.23% | **+0.50%** | ~target |
+| SS (SSA) | +0.05% | −0.13% | ~target |
+| mortgage tax-exp (JCT) | +59.7% | **+44.5%** (real miss) | must SHRINK |
+| all structural gates | PASS | PASS | — |
+| zero-support | 0 | 0 | — |
+| export-mass gate | FAIL (4) | FAIL (4) | must PASS |
+
+## Export-mass gate: the 4 residuals + PASS criteria (from build-g release logs)
+Reference = populace_us_2024.h5 (live-default 57k, c2065b64); ±50% band; min_reference_total $1B.
+
+| column | ref ($B) | ±50% band ($B) | DENSE now | SPARSE now | Build H direction |
+|---|---:|---|---:|---:|---|
+| estate_income | 98.434 | [49.22, 147.65] | 45.66 (−53.6%) | 32.71 (−66.8%) | pull UP (SOI estate/trust income) |
+| home_mortgage_interest | 311.126 | [155.56, 466.69] | 526.45 (+69.2%) | 474.25 (+52.4%) | pull DOWN (SOI Sched A mtg-int ded) |
+| first_home_mortgage_interest | 310.839 | [155.42, 466.26] | 502.84 (+61.8%) | in-band | pull DOWN (follows home_mtg) |
+| miscellaneous_income | 47.401 | [23.70, 71.10] | 15.05 (−68.3%) | 21.66 (−54.3%) | pull UP (SOI other income) OR reviewed exclusion (this col only) |
+| non_sch_d_capital_gains | 75.747 | [37.87, 113.62] | in-band | 160.10 (+111.4%) | pull DOWN (SOI split line) OR reviewed exclusion+justif |
+
+## 4 columns — identification class (from #299 comment) + Build H plan
+- **home_mortgage_interest** — partially identified: JCT `deductible_mortgage_interest.revenue_loss`
+  binds it (+44.5% frozen real miss). Add DIRECT SOI itemized-deduction target (amount + returns).
+  **PIVOTAL OPEN Q**: is PE-US `home_mortgage_interest` the Schedule-A itemizer-deducted amount (SOI $171B
+  correct → pull down fixes JCT + export gate) or ALL-household mortgage interest (SOI itemizer too low →
+  targeting distorts)? Raw base $345B, ref $311B, export $474–526B, SOI Sched A $171B. MUST verify PE-US
+  variable definition + imputation population + how a populace target maps to the export INPUT column.
+- **non_sch_d_capital_gains** — component split of net_capital_gains (aggregate constrained ±0.2%, split
+  not). Add SOI split line if it exists; else reviewed exclusion w/ component-split justification.
+- **estate_income** — purely unidentified. Add SOI Table 1.4 estate/trust net income line.
+- **miscellaneous_income** — purely unidentified + sign-unstable (raw base −$7.9B). Add SOI Table 1.4
+  "other income (less loss)" line; reviewed exclusion acceptable for THIS column only if untargetable.
+
+## SOI values (prior-agent sourced; VERIFY each from raw workbook before use)
+- Table 2.1 (Pub 1304) https://www.irs.gov/pub/irs-soi/23in21id.xls sha df6cf04ed3b7:
+  mortgage_interest_paid (financial insts) $167,675,863,000 / 11,490,340 returns;
+  personal_seller $3,688,924,000 / 269,588 returns; total Sched A home mtg int **$171,364,787,000**.
+  Already in v7 as irs_soi.ty2023.table_2_1 (per prior agent) — VERIFY.
+- Table 1.4 (Pub 1304) https://www.irs.gov/pub/irs-soi/23in14ar.xls sha b6c1f87fbb55:
+  net_capital_gains (all) $966,168,014,000 = TAXABLE NET agg (not the split). estate/trust, other income,
+  capital-gain-distributions lines NOT yet in ledger table_1_4 → must author. VERIFY all from 23in14ar.xls.
+
+## Feed mechanics (v7 -> v8)
+Feed = arch.consumer_fact.v1 JSONL. v7 = `_buildf-runtime/inputs/consumer_facts_buildf_v7.jsonl`
+sha 735f326a, 37,058 facts. Dedup key = lineage.source_record_id. SOI facts carry native tax_year period;
+populace maps to @2024 at compile time. v8 = v7 + new SOI target rows; sha-pin + ledgered supersession
+(v6/v7 discipline). Ledger export = policyengine_ledger/consumer.py build_consumer_artifact. SOCA package
+may need parking for local ledger runs (Build E notes).
+
+## Run recipe (mirror buildg chain; ONLY --ledger-facts changes to v8)
+tools/build_us_fiscal_refresh_release.py, base-h5 18833fb6, --export-input-mass-reference-h5 live-default
+57k (c2065b64), --seed 0 --no-staging. DENSE = full base + --dense-default-dataset (no per-run exclusions).
+SPARSE = --selection-source-manifest 57k + --dense-default-dataset + --zero-support-exclusions 19-cell.
+DETACHED (nohup+pidfile+logs in _buildh-runtime/logs/buildh-run). Real exit codes, no pipe-masking.
+
+## HARD RULES
+Three-strike stop + precise diagnosis. Detached compute only. Real exit codes. Staging only; prod
+HF/latest.json untouched. Every number cited from its source document.
+
+## TIMELINE
+### 2026-07-07
+- **Step 0 (setup).** Read #299 Build G comment 4902533514, #327, PROGRESS_BUILDG_RUN, build-g release
+  logs (dense/sparse/chain). Verified venv resync clean (94 pkgs). Recorded exact export-mass residuals +
+  ref bands (above). Prior agent left no repo commits (both worktrees clean); groundwork = SOI sourcing +
+  23in14ar.xls in scratch. Dispatched code-exploration on (1) populace fact→target→export-column mechanics
+  + export-mass gate + #256 coverage pattern, (2) PE-US mortgage/income variable semantics.
+
+- **Step 1 (SOI values VERIFIED from committed workbooks).** Ledger has the raw .xls committed at
+  `db/data/irs_soi/table_{1_4,2_1}/23in{14ar,21id}.xls`; sha256 of 23in14ar.xls = b6c1f87fbb55… matches
+  manifest + prior-agent scratch. Parsed with xlrd (value_scale 1000, amounts in $1000s):
+
+  **Table 1.4 (TY2023) "All returns, total" (row idx 8):**
+  | concept | returns col/val | amount col/val ($) |
+  |---|---|---|
+  | Capital gain distributions reported on Form 1040 | AJ 3,209,131 | AK **$9,340,820,000** |
+  | Estate and trust — Net income | BX 648,583 | BY **$47,892,046,000** |
+  | Estate and trust — Net loss | BZ 36,592 | CA $4,898,828,000 → NET **$42,993,218,000** |
+  | Other income — Net income | CN 7,468,434 | CO **$60,816,508,000** |
+  | Other income — Net loss | CP 318,839 | CQ $12,213,628,000 → NET **$48,602,880,000** |
+  | Sales of cap assets Sch D taxable net gain (xcheck) | — | AM $966,168,014,000 ✓ |
+
+  **Table 2.1 (TY2023) itemizers "All returns, total" (row idx 9), Home mortgage interest:**
+  | concept | returns | amount ($) |
+  |---|---|---|
+  | **Total** | CW 11,644,348 | CX **$171,364,787,000** |
+  | Paid to financial institutions | CY 11,490,340 | CZ $167,675,863,000 |
+  | Paid to individuals | DA 269,588 | DB $3,688,924,000 |
+  (CZ+DB = CX ✓. table_2_1 pkg already has CZ+DB measures; missing the CW/CX "Total".)
+
+- **Step 1 RECONCILIATION vs export-mass ref bands (PIVOTAL — contradicts the optimistic "all pass"):**
+  | column | SOI target ($B) | ref ($B) | SOI vs ref | in ±50% band? |
+  |---|---:|---:|---:|---|
+  | home_mortgage_interest | 171.365 (Sched A total) | 311.126 | −44.9% | **YES** (just inside) → gate passes IF input==itemizer amt |
+  | miscellaneous_income | 48.603 net / 60.817 gross | 47.401 | +2.5% / +28.3% | **YES** → gate passes, real target |
+  | estate_income | 42.993 net / 47.892 gross | 98.434 | −56.3% / −51.3% | **NO** (just below) → ref is ~2× SOI, incidental |
+  | non_sch_d_capital_gains | 9.341 (cap-gain distrib) | 75.747 | −87.7% | **NO** (far below) → ref ~8× SOI, likely concept mismatch |
+
+  So the live-default reference is itself off-SOI on estate (~2×) and non_sch_d (~8×). Targeting to true SOI
+  makes those two FAIL the parity-vs-incidental-reference check. Two coherent completions per column: (a)
+  SOI ∈ band → clean gate pass (mortgage, misc); (b) SOI ∉ band because ref is incidental → SOI target
+  identifies the column + reviewed exclusion in the parity gate justified BY that target (estate); (c)
+  concept mismatch / magnitude fights constrained aggregate → reviewed exclusion w/ component-split
+  justification (non_sch_d). Final per-column decision GATED on agent findings (PE-US variable semantics +
+  exact gate comparison: does a targeted column re-reference to its target, or stay vs live-default?).
+  NEXT: consume both agents; resolve mortgage definitional Q; author ledger table_1_4 lines + wire targets.
+
+- **Step 2 code (conductor-salvaged, d8800fa).** Registry wiring for Table 1.4 estate/other-income/
+  capgain-distribution measures (signed income/loss legs) + `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS`
+  (estate_income, non_sch_d_capital_gains) with band-math rationale. Salvaged from an agent segment that
+  ended without commit → left TWO wiring gaps (below).
+
+- **Step 3 (agent 4): closed both wiring gaps; registry compiled; tests green.**
+  - **GAP 1 — mortgage target never wired.** The d8800fa comment claimed "the new itemizer-masked Table
+    2.1 target (~$186.3B aged) pins the itemizer share," but no mortgage measure was in
+    `SOI_AMOUNT/RETURN_MEASURE_VARIABLES` or `SOI_VARIABLE_MAP`; the prior agent's own
+    `preflight_registry.py` even asserted `home_mortgage_interest targets (expect 0)`. Baseline compile
+    (v8) confirmed **mortgage INERT: 0 targets** (registry 8e1b83852751 / 5531 specs = v7 5521 + 10 T14).
+    The v8 feed DOES carry the new CW/CX total rows `home_mortgage_interest_amount`
+    ($171,364,787,000) / `_returns` (11,644,348) but they mapped to nothing. FIX: added
+    `home_mortgage_interest_amount`/`_returns` → concept `home_mortgage_interest`, and
+    `SOI_VARIABLE_MAP["home_mortgage_interest"]="home_mortgage_interest"` (gross person-level export
+    column itself). Record set `table_2_1.itemized_all_returns` → `_soi_return_universe`=itemized_returns
+    → **itemized_only=true auto-stamped** (no change to `_SOI_ITEMIZED_ONLY_VARIABLES` needed; same auto
+    path as real_estate_taxes, a person-level itemized_only precedent). Only the CW/CX Total is mapped;
+    the two leg measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay unmapped to
+    avoid double-counting.
+  - **Pivotal definitional Q RESOLVED (independent agent + empirical).** pe-us `home_mortgage_interest`
+    = GROSS person-level input leaf (no cap); `deductible_mortgage_interest` = capped Sched-A deduction
+    built from SEPARATE tax-unit columns, mechanically decoupled from the tracked export column. Itemizer
+    mask makes the gross-column sum SOI-comparable. Empirical (itemizers only): gross $174.45B vs
+    deductible $174.31B → ratio 0.9992 (~0.08% paid-vs-deducted gap, negligible). base_variable =
+    `home_mortgage_interest` chosen because it IS the exact tracked export-mass-gate column (lossless
+    pass-through), guaranteeing the gate responds; deductible would leave the gate free to drift.
+  - **GAP 2 — reviewed exclusions never applied.** `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` was defined
+    (d8800fa) but NOT passed to `_export_input_mass_gate` at the call site (build_us_fiscal_refresh_release
+    .py ~5714) → dead constant → estate_income + non_sch_d would still FAIL the gate. FIX: added
+    `reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` to the call. (Gate skips excluded
+    columns; unused entries are reported, never fail — safe.)
+  - **Registry compiled (v8, mortgage WIRED):** version **d71c59514e3a / 5533 specs** (= 5531 + 2 mortgage
+    amount+returns). Mortgage amount target = **$186,310,104,604** (171,364,787,000 × CBO aging
+    1.08721346938244), itemized_only=true, base=home_mortgage_interest, mode=sum; returns=11,644,348
+    indicator_sum. All 10 T14 targets present (estate net $46.74B, misc net $52.84B, capgain-distrib
+    $10.16B).
+  - **Tests green (real exit codes):** 269 unit tests PASS across test_us_fiscal_targets / test_gates /
+    test_us_input_mass / test_us_capital_gain_distributions / test_ledger_targets; builder+L0 heavy suite
+    (test_us_fiscal_refresh_builder + test_us_l0_refit_export) exit 0. No golden-count breakage.
+  Committed 00cce86.
+
+- **Step 4 (dense launch).** Verified preconditions: base 18833fb6, ref c2065b642ab0…, v8 94b7155f,
+  pe-us 1.764.6 / core 3.26.11, 57k manifest identities_sha256 77363a47. Launched detached
+  (`_buildh-runtime/buildh_dense.sh`, mirrors buildg_chain dense arm; ONLY --ledger-facts -> v8; fresh
+  checkpoint-root buildh-dense since registry change busts the frame checkpoint). id=
+  populace-us-2024-buildh-dense-00cce86-<ts>; log release_dense.log; rc marker dense.rc. Full ref sha =
+  c2065b642ab00da74746afdfd9f06890e5f32f9b10bd6610ff236452d40f39c5.
+
+- **Step 3-ZS (sparse zero-support REFRESH vs NEW registry).** Recomputed, not reused blindly. Zero-support
+  = target>0 with initial+final materialized estimate ~0 (build tool line ~4134). The 19 Build-G cells
+  (1 AL TANF + 18 historic_table_2 state_agi under_1 taxable_interest across al/ct/in/me/ms/ne/nm/ri/wy)
+  are OLD v7 targets on the IDENTICAL frozen 57,240 selection → support unchanged → still zero-support.
+  The 12 NEW targets are all national aggregates; empirical join of the 57,240 selection onto the base
+  (all 57,240 households matched exactly, 166,302 persons) shows material frozen-selection support:
+  home_mortgage_interest 13,914 nonzero person-records, estate_income 449 pos + 87 neg,
+  miscellaneous_income 1,346 pos + 799 neg, non_sch_d_capital_gains 2,318 nonzero → NONE zero-support.
+  Refreshed set = same 19 cells, 0 additions. Wrote
+  `_buildh-runtime/inputs/sparse_zero_support_exclusions_buildh.json` (sha df61c770…) with per-cell
+  Build-H revalidation provenance. Sparse launch script `_buildh-runtime/buildh_sparse.sh` pre-staged
+  (runs after dense; mirrors buildg sparse arm; --zero-support-exclusions -> the 19-cell Build-H file).
+
+- **Step 5 (monolith death diagnosed; CHUNKED pivot).** The monolithic dense release
+  (`buildh_dense.sh` -> `build_us_fiscal_refresh_release.py`) was jetsam-SIGKILLed **six times**
+  (rc=137, runs 1h16m–2h01m, every hosting, day and night). PRESSURE-TRACE FINDING from the last
+  attempt (`logs/buildh-run/pressure_dense_20260708T015517Z.log`; run 01:55:22Z -> died 03:11:57Z):
+  py_pid 91086 RSS climbs 1GB->61GB in the first ~4 min (checkpoint LOAD of the 337,704-household
+  frame — too fast to be ACA), peaks **~88GB at 02:26–02:33Z**, then plateaus/declines to 55–80GB
+  while system free-memory erodes 79%->57% over the ~38-min tail. **Death (rc=137) hit at RSS ~55GB /
+  free 57% — NOT at the RSS peak (~39 min earlier).** So the kill is a jetsam SIGKILL driven by
+  *sustained* multi-tens-of-GB footprint × long runtime crossing the pressure band, not an
+  instantaneous OOM spike. (Sampler artifact: 01:59:33–02:19:21Z the `pgrep|head -1` latched a 2 MB
+  sibling pid 39177 for ~20 min; the real solver 91086 kept running, free% steady 93–94%.)
+  `release_dense.log` did not grow past 21:55Z on the 01:55Z run — block-buffered stdout lost on
+  SIGKILL — consistent with the run being past materialisation and deep in solve/export when killed.
+  DIAGNOSIS -> the monolith co-resides checkpoint frame + solver state + export buffers for 76+ min.
+  CHUNKED FIX (both sub-processes proven <30 min yesterday): (1) direct CSR solve loads the frame
+  checkpoint directly (skips ALL materialisation), ~18 min; (2) release rerun hits the target-frame
+  checkpoint (skips the 5 JCT reform microsims), ~25 min. Each starts low-footprint, does bounded work,
+  EXITS (releases memory) before the jetsam band. Mechanism confirmed from Build G weightsrecover
+  diagnostics: `target_frame_checkpoint status="hit"`, `warm_start_weights.enabled=false`, epochs=1500,
+  full loss_trajectory (0.2063->0.04139) — the "pre-warm" was the CHECKPOINT, and the solve re-ran
+  fully but deterministically. Build H buildh-dense checkpoint `identity_json` VERIFIED
+  `target_registry_version=d71c59514e3a`, 5533 targets (valid for the final wired registry).
+
+- **Step 6 (direct solve launched).** Adapted the proven Build G recipe to
+  `experiments/learned_selection_prior/src/direct_replay_dense_weights_buildh.py` (feed v7->v8,
+  registry e035007b->d71c59514e3a, root _buildg->_buildh; also emits a warm-start
+  `populace_us_2024_calibration.npz` for Step 2). `--verify-only` PASSED (05:43Z):
+  registry=d71c59514e3a / 5533 specs, **checkpoint HIT** frame n(household)=337,704 n_targets=5533,
+  ~19 s load. Launched detached `_buildh-runtime/buildh_direct_solve.sh` (pidfile + real rc +
+  memory-pressure sampler; sampler self-terminates on python exit). START 09:44:58Z commit a4f35bb
+  python pid 73983; log `direct_replay_buildh.log`; rc marker `direct_solve.rc`; pressure
+  `pressure_directsolve_20260708T094458Z.log`. Identical calibrate call to Build G dense (adam, 1500
+  epochs, lr 0.02, ratio 5.0, mass=conserve, l2=0, seed 0); final loss expected same order as Build G
+  dense 0.04139 (NOT equality — registry differs 5533 vs 5521).
+
+- **Step 7 (direct solve DONE rc=0, ~18.7 min).** `final_loss=0.0425793792` (Build G dense anchor
+  0.041394 — same order, marginally higher as expected from the +12 harder targets), initial_loss
+  0.207361, **ESS 79,991.43** (Build G 81,206), n_nonzero 337,704 / 337,704 households, SANITY PASS
+  (loss in [0.01,0.10]). Solve held RSS steady ~20 GB / free% 93% throughout (vs the monolith's ~88 GB
+  peak) — the low-footprint advantage confirmed. Wrote `out/buildh-run/densewts_direct/`:
+  `dense_household_weight.npy`, `dense_initial_weight.npy`, and the warm-start
+  `populace_us_2024_calibration.npz` (5.4 MB, keys household_weight + initial_household_weight) that
+  Step 2 consumes. **0.04258 is the canonical Build H dense final loss** (1500-epoch adam, seed 0).
+
+- **Step 8 (dense-ws release; watchdog disarmed on progress; ACA peak survived).** Launched
+  `buildh_dense_warmstart.sh` 10:04:46Z (release pid 49012, id
+  `populace-us-2024-buildh-dense-warmstart-b449eb7-20260708T100442Z`, warm-start npz `081a132c`,
+  epochs=1500, --out .../dense). Integrity PASSED; checkpoint HIT confirmed (0 "Materializing reform
+  target" lines). The machine was degraded (~7x slow): ACA source materialisation on the full 337k base
+  frame ran ~44 min (vs the idle-morning weightsrecover's whole run = 25 min), peaking **RSS ~86 GB /
+  free% 81** at ~36 min. Design note recorded: epochs=1500 + warm-start does NOT shorten the solve. At
+  40 min my watchdog would have killed a *progressing* run, so per conductor guidance I disarmed ONLY
+  the watchdog subshell (49014, `sleep 60` child), keeping sampler(49011)+release(49012)+launcher(48815).
+  **Key: the ~86 GB was the ACA PEAK — it passed.** ~10:49Z ACA freed intermediates (RSS dropped
+  86->42 GB) and the run entered the checkpoint-load + solve phase at **~50 GB / free% 77** — roughly
+  HALF the monolith's sustained-88 GB solve footprint, and out of the jetsam band. The solve emits no
+  stdout (calibrate reports via telemetry, not the release log), so tracked by RSS pattern + rc file.
+  Progressing healthily at ~48 min; letting it finish the ~18-min solve + export.
+
+- **Step 9 (DENSE CERTIFIED — core artifacts complete; tail terminated).** Discovered the
+  certification-critical artifacts were ALL written by ~10:28Z (h5 1.886 GB, calibration_diagnostics.json,
+  input_mass_parity.json, calibration.npz): the h5's existence proves the export-mass gate PASSED (the
+  tool raises before the h5 write on gate failure). The "Materializing ACA" lines at 10:39+ were the
+  optional `_write_reform_validation` TAIL (re-runs ACA + reforms on the exported dataset), which is
+  non-essential for the fiscal-target verdict and heavy (~86 GB) on the degraded machine — so I
+  SIGTERM'd it (dense_ws.rc=143, intentional) once the h5 verified complete (person 226 / tax_unit 15 /
+  household 14 cols, opens clean). Artifacts under `out/buildh-run/dense/`; release id
+  `populace-us-2024-buildh-dense-warmstart-b449eb7-20260708T100442Z`; gate captures `gates/dense_*.txt`.
+
+  **DENSE headline (verbatim):** final_loss **0.04018097** (Build G dense 0.04139 — BEATS), within-10%
+  **86.95%** (BG 86.16% — ≥band), ESS **70,356.7**, n_records 337,704 / n_nonzero 337,704,
+  realized_max_ratio 5.0, top_1pct_wt_share 0.1097. initial_loss 0.04258 = Step-1's final (warm-start
+  enabled; the artifact ran 1500 warm epochs ON TOP of Step-1's 1500 → improved 0.04258→0.04018).
+  **All structural gates PASS** (target_profile, health_input, degenerate_input #286, base_population
+  334.2M, immigration #266, ecps_parity #316, validation_input_coverage #278/9); release_gates.passed=True.
+  **Export-mass parity PASSED** (0 failures / 35 cols checked; ref populace_us_2024.h5 c2065b64, ±50%,
+  $1B floor): worst_drifts home_mortgage_interest **+23.6%**, first_home_mortgage_interest **+23.7%**,
+  miscellaneous_income **−42.0%** — all IN-BAND (Build G dense was +69.2% / +61.8% / −68.3%, all OUT);
+  reviewed exclusions estate_income + non_sch_d_capital_gains APPLIED + USED (unused_reviewed_exclusions
+  []). **Key target fits:** fed income tax (SOI) **+0.87%** (BG +1.23%), SS **+0.06%** (BG +0.05%),
+  **mortgage tax-exp (JCT, BINDING) +46.16%** (BG dense +59.7% — SHRANK), net capital gain (CBO)
+  −37.39% (BG −38.4%), SALT +12.12%, QBI −55.90%. Zero-support post-exclusion **0**.
+  **#340 column check:** 7/8 never-persisted families ABSENT (score ~$0): tips, overtime, auto-loan,
+  education, casualty_loss, misc-itemized, childcare; the lone "PRESENT" hit is
+  `traditional_ira_contributions_desired` — a behavioural takeup INPUT, not the saver's-credit
+  contribution base, so #340's substance is unchanged. (Degraded-base weighted sums in the script are
+  unweighted/unreliable — the export h5 does not expose a person_weight column to the manifest check;
+  the families presence/absence result is column-key based and correct.)
+  **DENSE VERDICT: CERTIFIABLE** — beats Build G dense on loss (0.04018<0.04139) and within-10%
+  (86.95%>86.16%); all structural + export-mass gates pass (the 4 floating dims now resolved: 3 live
+  in-band, 2 reviewed-excluded by SOI band math); mortgage JCT overshoot shrank +59.7%→+46.16%. #340 is
+  a pre-existing, out-of-scope persistence-scope limitation (its own issue), NOT a Build H regression;
+  this verdict covers the calibration/fiscal-target surface only.
+
+- **Step 10 (SPARSE run — export-mass gate FAILS on misc; NOT CERTIFIABLE).** `buildh_sparse_supervised.sh`
+  10:59:52Z (release pid 19260, id `populace-us-2024-buildh-sparse-aad058a-20260708T105948Z`, --out
+  .../sparse, fresh buildh-sparse checkpoint). Integrity PASSED. The sparse arm pays the FULL 337k ACA
+  before the 57k reduction (ACA at 5342 precedes selection reduction) — ~18.5 min front-half on the
+  degraded machine (RSS ~70 GB), then the buildh-sparse target-frame checkpoint was written (11:18Z,
+  `miss_written`), then the 57k solve (~4 min, RSS ~46–55 GB, free% 90). Disarmed the 40-min watchdog
+  subshell (19264) on progress, same as dense. calibration_diagnostics.json + input_mass_parity.json
+  written; the export-mass gate then RAISED (rc=1) → **NO h5** (correct hard-gate behaviour;
+  buildh_sparse.sh omits --allow-input-mass-drift). No reform-validation tail (aborted before it).
+  Gate captures `gates/sparse_gates.txt`.
+
+  **SPARSE headline (verbatim):** final_loss **0.03091516** (Build G frozen-57k 0.02964 — ABOVE, but
+  within the ≤0.044 band), within-10% **89.01%** (BG 89.15% — marginally below), ESS **13,184.1**,
+  n_records 57,240 / n_nonzero 57,240, realized_max_ratio 4.995, initial_loss 0.35266, no warm-start,
+  registry **5514** (= 5533 − 19 zero-support), checkpoint miss_written, selection frozen_support
+  n_selected 57,240 / n_unmapped 0 (source c2065b64). **All structural gates PASS**; zero-support **0**.
+  **Key target fits:** fed income tax (SOI) **+0.45%** (BG +0.50%), SS **−0.18%** (BG −0.13%),
+  **mortgage tax-exp (JCT, BINDING) +35.48%** (BG sparse +44.5% — SHRANK), net capital gain (CBO)
+  −26.65% (BG −26.7%), SALT +11.01%, QBI −48.13%.
+  **Export-mass gate FAIL(1):** `miscellaneous_income` export mass **$9.550B vs ref $47.401B = −79.9%**
+  (beyond ±50%). The mortgage fix WORKED here too — `home_mortgage_interest` **+26.9%**,
+  `first_home_mortgage_interest` **+27.0%**, both IN-BAND (BG sparse +52.4% / in-band); estate +
+  non_sch_d reviewed-excluded (used). But the thin frozen-57k support for miscellaneous_income (only
+  ~2,145 nonzero person-records) cannot hold its national SOI target in the ±50% parity band, driving
+  the column to −79.9%. **This is NOT a reviewed-exclusion case:** misc's reference ($47.4B) is near its
+  SOI target ($52.84B) and the DENSE frame meets the band (−42.0%), so the band is achievable in
+  principle — the failure is a selection-support limitation of the frozen 57k, not an incidental
+  reference. #340 column check runs on the DENSE artifact (sparse produced no h5; same export path).
+  **SPARSE VERDICT: NOT CERTIFIABLE** — fails the export-mass parity gate on miscellaneous_income.
+  Certifying would require carrying miscellaneous_income support into the frozen selection (a
+  selection-side change beyond Build H's target-side scope), not a reviewed exclusion.
+
+- **Step 11 (gates extracted; ONE #299 comment posted; verdicts).** Ran `extract_buildh_gates.py` +
+  `check_340_columns.py` on the DENSE artifact and `extract_buildh_gates.py` on the SPARSE release dir
+  (captures in `gates/`). Filled `issue299_comment_filled.md` from the skeleton with every number
+  verbatim from the artifacts (v8 provenance, registry change 5521→5531→5533, per-column export-mass
+  decision table with actual DENSE outcomes + reviewed-exclusion rationale, #340 column-manifest table +
+  scope caveat, both candidates' head-to-head vs Build G, integrity caveat that loss/within-10% are over
+  different target surfaces while the export-mass parity is directly comparable). Posted ONE comment
+  (`--body-file`, no @-mention) → **https://github.com/PolicyEngine/populace/issues/299#issuecomment-4914302628**.
+  Final state clean: no stray processes/samplers; rc markers direct_solve=0, dense_ws=143 (intentional
+  tail kill), sparse=1 (export-mass abort, expected). DENSE h5 1.886 GB present; SPARSE no h5 (correct).
+
+  **FINAL VERDICTS:** DENSE = **CERTIFIABLE** (final_loss 0.04018, all structural gates + export-mass
+  parity PASS; 4 floating dims resolved; mortgage JCT shrank +59.7%→+46.16%; income tax +1.23%→+0.87%).
+  FROZEN-57k = **NOT CERTIFIABLE** (export-mass parity FAILS on miscellaneous_income −79.9% — thin
+  frozen-57k support; mortgage fix DID carry over, JCT +44.5%→+35.48%, both mortgage columns in-band).
+  Build H's target-side SOI identification works; the deployable frozen-57k needs a selection-side fix
+  for miscellaneous_income support before it can certify. STAGING/LOCAL ONLY — prod HF / latest.json
+  untouched; publication is Max's call. UK adjudication agent HOLDS for the conductor's GO (not sent).

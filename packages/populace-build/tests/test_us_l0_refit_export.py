@@ -38,6 +38,8 @@ def _us_frame(**person_extra: object) -> Frame:
             "is_full_time_college_student": [False, False, True],
             "own_children_in_household": [1.0, 0.0, 2.0],
             "veterans_benefits": [0.0, 8_000.0, 3_000.0],
+            "is_pregnant": [True, False, True],
+            "is_snap_abawd_discretionary_exempt": [True, False, True],
             **person_extra,
         }
     )

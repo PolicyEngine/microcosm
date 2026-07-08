@@ -30,6 +30,12 @@ from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.snap_discretionary_exemption import (
+    US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -42,6 +48,8 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
     *US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    *US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
 )
 
 #: The geography spine a US release carries by default: state and district,
