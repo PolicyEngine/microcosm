@@ -43,6 +43,7 @@ class TestContractLoads:
         for program in load_take_up_contract().programs:
             assert program.populace_treatment in {
                 "seed",
+                "count_calibrated",
                 "rate_unsourced",
                 "model_simulated",
                 "out_of_scope",
