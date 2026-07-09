@@ -17,10 +17,16 @@ countable.yaml``: ``bank_account_assets`` / ``stock_assets`` /
 Consumer Finances 2022 public summary extract (``rscfp2022.dta``), using
 the regime-gated weighted QRF (``populace.fit.QRF``) — the same imputer the
 PUF support stage uses. Each output is a summation of SCF summary-extract
-balance-sheet components, reproducing the retired enhanced-CPS pipeline's
+balance-sheet components — the SCF half of the retired enhanced-CPS
 construction (cited against the retired pipeline @ 42ed5d45:
-``utils/asset_imputation.py`` and ``datasets/scf/scf.py``; nothing is
-invented):
+``utils/asset_imputation.py`` ``SCF_FINANCIAL_ASSET_TARGETS`` and
+``datasets/scf/scf.py``; the component tuples below match it exactly; nothing
+is invented). The retired pipeline additionally draws these three leaves from
+a SIPP donor and blends the two sources per household
+(``FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5``), where SIPP supplies the
+realistic low liquid-asset mass at the bottom of the distribution. This stage
+ships the SCF draw only; the consequence is quantified in the baseline note
+below, and the SIPP blend is the populace #356 follow-up:
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call accounts).
@@ -43,18 +49,36 @@ SCF-source rule): the SCF summary extract is household-grain, so the QRF is
 fit on household records (head demographics + household income). It draws
 one liquid-wealth vector per recipient household — conditioned on the
 reference person's own characteristics — which is carried onto that
-reference person; every other household member takes $0. This reproduces the
-retired pipeline's SCF-drawn household behaviour
+reference person; every other household member takes $0. This mirrors the
+retired pipeline's reference-person carry
 (``combine_sipp_and_scf_financial_assets``: the reference person carries the
-household total). Imputing per person instead — drawing a full
-household-grain asset value for every member from a donor that is 98.6%
-nonzero — would put liquid wealth on children and non-earners, inflate the
-per-person incidence far past the incumbent's, and (fatally) push almost
-every SSI applicant over the $2,000 resource limit, collapsing the SSI
-baseline (verified on the Build H dense frame: the $10k/$20k probe scores
-well above the $1B gate floor under head-carry, and the SSI baseline is
-preserved). Head-carry keeps the baseline intact and still restores the
-resource-test bite the reform class needs.
+household total). Imputing per person instead — drawing a full household-grain
+asset value for every member from a donor that is 98.6% nonzero — would put
+liquid wealth on children and non-earners and inflate the per-person incidence
+far past the incumbent's.
+
+Head-carry is the retired grain and a necessary floor, but on its own it does
+not reproduce the dense-native baseline. Measured by the populace #368
+acceptance probe (seed 0, policyengine-us 1.764.6): imputing onto the Build H
+dense frame makes ``ssi_countable_resources`` nonzero for 40.3% of people (the
+dense-native reference is 42.5%) and the $10k/$20k reform scores +$9.7B at 2026
+— comfortably above the $1B reform-coverage floor, so the reform binds and the
+gate turns green. The delta runs above the dense-native +$1.6B / +$16.1B
+reference (restored baseline 4.74M recipients vs 8.05M) for two documented
+reasons, both #356 follow-ups, neither a bug in this stage:
+
+1. The probe overlays assets onto a frame whose weights were already calibrated
+   with *no* assets, so the SSI caseload was absorbed by the weight solve;
+   #356 requires the asset restore to ship with an SSI-target refit. Post-hoc
+   asset overlays on populace are documented to land at baseline 3.0-4.0M and a
+   $10k/$20k delta of +$9-26B (#356) — this probe's +$9.7B sits in that band.
+   The stage itself runs in-build *before* calibration (the correct location),
+   so a full certified rebuild re-solves the weights with assets present.
+2. It ships the SCF draw *without* the retired SIPP blend above, assigning more
+   liquid wealth to the SSI-marginal population than the SIPP+SCF reference.
+
+The nonzero *incidence* already matches the dense-native reference (40.3% vs
+42.5%); the gap is amount and calibration, not the grain.
 
 The household-total SCF wealth components the manifest also declares
 (net_worth, primary-residence value, auto-loan interest, etc.) remain

@@ -1916,6 +1916,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "fetch_scf_2022_summary_extract",
+        lambda *args, **kwargs: Path("rscfp2022.dta"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_financial_asset_donor",
+        lambda path: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_wealth_inputs",
+        lambda frame, *, seed, time_period, scf_donor: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        lambda frame: builder.GateResult(
+            name="scf_wealth_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_ecps_parity_gate",
         lambda frame: builder.GateResult(
             name="ecps_parity",
