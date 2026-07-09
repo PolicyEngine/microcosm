@@ -40,17 +40,20 @@ the source boundary, per the manifest's ``replace_sentinels`` operation.
 
 Grain (the manifest's ``head_carry`` operation, and the canonical
 SCF-source rule): the SCF summary extract is household-grain, so the QRF is
-fit on household records (head demographics + household-total income) and
-predicts one household liquid-wealth vector, which is carried onto the
-household's reference person; every other household member takes $0. This
-reproduces the retired pipeline's SCF-drawn household behaviour
+fit on household records (head demographics + household income). It draws
+one liquid-wealth vector per recipient household — conditioned on the
+reference person's own characteristics — which is carried onto that
+reference person; every other household member takes $0. This reproduces the
+retired pipeline's SCF-drawn household behaviour
 (``combine_sipp_and_scf_financial_assets``: the reference person carries the
 household total). Imputing per person instead — drawing a full
 household-grain asset value for every member from a donor that is 98.6%
 nonzero — would put liquid wealth on children and non-earners, inflate the
 per-person incidence far past the incumbent's, and (fatally) push almost
 every SSI applicant over the $2,000 resource limit, collapsing the SSI
-baseline. Head-carry keeps the baseline intact and still restores the
+baseline (verified on the Build H dense frame: the $10k/$20k probe scores
+well above the $1B gate floor under head-carry, and the SSI baseline is
+preserved). Head-carry keeps the baseline intact and still restores the
 resource-test bite the reform class needs.
 
 The household-total SCF wealth components the manifest also declares
@@ -80,11 +83,14 @@ from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
 __all__ = [
+    "SCF_2022_SUMMARY_EXTRACT_MEMBER",
+    "SCF_2022_SUMMARY_EXTRACT_URL",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
     "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
     "US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS",
     "US_SCF_WEALTH_STAGE_NAME",
+    "fetch_scf_2022_summary_extract",
     "impute_us_scf_financial_assets",
     "load_scf_2022_financial_asset_donor",
     "us_scf_wealth_signal_gate",
@@ -94,6 +100,16 @@ __all__ = [
 ]
 
 US_SCF_WEALTH_STAGE_NAME = "scf_wealth"
+
+#: The Federal Reserve SCF 2022 public summary extract (SAS/Stata ``.dta``
+#: inside a zip). The stage is fit on this fixed-vintage public file; the
+#: source is declared in ``source_stages.json`` and ``US_DONORS`` with the
+#: same citation.
+SCF_2022_SUMMARY_EXTRACT_URL = (
+    "https://www.federalreserve.gov/econres/files/scfp2022s.zip"
+)
+#: The Stata member inside the zip.
+SCF_2022_SUMMARY_EXTRACT_MEMBER = "rscfp2022.dta"
 
 #: The PolicyEngine-facing person input columns this stage produces — the
 #: three SSI countable-resource leaves (a real subset of the ``scf_wealth``
@@ -188,6 +204,44 @@ def _replace_sentinels(values: pd.Series) -> pd.Series:
 
     numeric = pd.to_numeric(values, errors="coerce")
     return numeric.mask(numeric.isin(_SCF_SENTINELS), 0.0).fillna(0.0)
+
+
+def fetch_scf_2022_summary_extract(cache_dir: str | Path | None = None) -> Path:
+    """Download and cache the SCF 2022 public summary extract.
+
+    The extract is a fixed public artifact (a single Stata file in a zip), so
+    a content-addressable cache keeps the build reproducible: the file is
+    fetched once and reused. This is the provisioning helper the release
+    builder calls; unit tests inject a donor table directly and never hit the
+    network.
+
+    Args:
+        cache_dir: Directory to cache the extracted ``.dta`` in. Defaults to
+            ``~/.cache/populace/scf``.
+
+    Returns:
+        The path to the extracted ``rscfp2022.dta``.
+    """
+
+    import io
+    import urllib.request
+    import zipfile
+
+    root = (
+        Path(cache_dir)
+        if cache_dir is not None
+        else Path.home() / ".cache" / "populace" / "scf"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / SCF_2022_SUMMARY_EXTRACT_MEMBER
+    if target.exists() and target.stat().st_size > 0:
+        return target
+    with urllib.request.urlopen(SCF_2022_SUMMARY_EXTRACT_URL) as response:  # noqa: S310
+        payload = response.read()
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        with archive.open(SCF_2022_SUMMARY_EXTRACT_MEMBER) as member:
+            target.write_bytes(member.read())
+    return target
 
 
 def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
