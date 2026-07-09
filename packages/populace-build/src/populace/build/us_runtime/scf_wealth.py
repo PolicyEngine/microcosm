@@ -18,9 +18,9 @@ Consumer Finances 2022 public summary extract (``rscfp2022.dta``), using
 the regime-gated weighted QRF (``populace.fit.QRF``) — the same imputer the
 PUF support stage uses. Each output is a summation of SCF summary-extract
 balance-sheet components, reproducing the retired enhanced-CPS pipeline's
-construction (cited against policyengine-us-data @ 42ed5d45,
-``policyengine_us_data/utils/asset_imputation.py`` and
-``datasets/scf/scf.py``; nothing is invented):
+construction (cited against the retired pipeline @ 42ed5d45:
+``utils/asset_imputation.py`` and ``datasets/scf/scf.py``; nothing is
+invented):
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call accounts).
@@ -126,7 +126,7 @@ US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
 )
 
 #: Each output column and the SCF summary-extract components it sums
-#: (policyengine-us-data @ 42ed5d45, ``utils/asset_imputation.py``).
+#: (retired pipeline @ 42ed5d45, ``utils/asset_imputation.py``).
 SCF_FINANCIAL_ASSET_TARGET_COMPONENTS: dict[str, tuple[str, ...]] = {
     "bank_account_assets": ("liq",),
     "stock_assets": ("stocks", "nmmf"),

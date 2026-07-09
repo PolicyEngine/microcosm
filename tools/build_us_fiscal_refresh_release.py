@@ -55,8 +55,10 @@ from populace.build.us_runtime import (
     assert_release_input_coverage_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
+    fetch_scf_2022_summary_extract,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    load_scf_2022_financial_asset_donor,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
@@ -64,6 +66,7 @@ from populace.build.us_runtime import (
     us_pregnancy_signal_gate,
     us_reform_coverage_smoke_gate,
     us_release_input_coverage_gate,
+    us_scf_wealth_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -76,6 +79,7 @@ from populace.build.us_runtime import (
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
     with_us_pregnancy_inputs,
+    with_us_scf_wealth_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
@@ -860,6 +864,18 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--scf-summary-extract",
+        dest="scf_summary_extract",
+        default=None,
+        help=(
+            "Path to the Federal Reserve SCF 2022 public summary extract "
+            "(rscfp2022.dta) that feeds the SSI countable-resource asset "
+            "imputation (scf_wealth stage, populace#356/#368). When omitted the "
+            "fixed-vintage extract is fetched and cached from the Federal "
+            "Reserve."
+        ),
+    )
     parser.add_argument(
         "--maximum-microsim-batch-size",
         "--maximum-microsimulation-batch-size",
