@@ -40,7 +40,7 @@ must stay hard requirements.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -213,9 +213,7 @@ class ReleaseInputCoverageManifest:
     def required_columns(self) -> frozenset[str]:
         """Columns that must be present and non-degenerate."""
         return frozenset(
-            column.name
-            for column in self.columns
-            if column.status == REQUIRED_STATUS
+            column.name for column in self.columns if column.status == REQUIRED_STATUS
         )
 
     @property
@@ -423,9 +421,7 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    return frozenset(
-        str(name) for name, share in shares.items() if float(share) > 0.0
-    )
+    return frozenset(str(name) for name, share in shares.items() if float(share) > 0.0)
 
 
 def assert_release_input_coverage_manifest_current(
