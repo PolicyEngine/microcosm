@@ -83,20 +83,6 @@ from populace.build.us_runtime.eligibility_inputs import (
     us_eligibility_inputs_summary,
     with_us_eligibility_inputs,
 )
-from populace.build.us_runtime.scf_wealth import (
-    SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
-    SCF_WEALTH_PREDICTORS,
-    US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
-    US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
-    US_SCF_WEALTH_STAGE_NAME,
-    fetch_scf_2022_summary_extract,
-    impute_us_scf_financial_assets,
-    load_scf_2022_financial_asset_donor,
-    us_scf_wealth_signal_gate,
-    us_scf_wealth_stage_spec,
-    us_scf_wealth_summary,
-    with_us_scf_wealth_inputs,
-)
 from populace.build.us_runtime.fiscal_targets import (
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
@@ -234,6 +220,20 @@ from populace.build.us_runtime.release_input_coverage import (
     us_release_input_coverage_required_columns,
     us_release_input_coverage_reviewed_exclusions,
     us_release_reform_coverage_probes,
+)
+from populace.build.us_runtime.scf_wealth import (
+    SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
+    SCF_WEALTH_PREDICTORS,
+    US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+    US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+    US_SCF_WEALTH_STAGE_NAME,
+    fetch_scf_2022_summary_extract,
+    impute_us_scf_financial_assets,
+    load_scf_2022_financial_asset_donor,
+    us_scf_wealth_signal_gate,
+    us_scf_wealth_stage_spec,
+    us_scf_wealth_summary,
+    with_us_scf_wealth_inputs,
 )
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
