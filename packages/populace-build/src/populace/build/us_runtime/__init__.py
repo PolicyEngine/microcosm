@@ -208,6 +208,10 @@ from populace.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from populace.build.us_runtime.register_consistency import (
+    us_register_consistency_gate,
+    us_register_contradictions,
+)
 from populace.build.us_runtime.release_input_coverage import (
     SSI_COUNTABLE_RESOURCE_ASSETS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
@@ -506,6 +510,8 @@ __all__ = [
     "us_release_input_coverage_reviewed_exclusions",
     "us_release_reform_coverage_probes",
     "us_reform_coverage_smoke_gate",
+    "us_register_consistency_gate",
+    "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
     "support_channel_column",
     "support_clone_index_column",
