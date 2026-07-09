@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2018,6 +2018,7 @@ def _aca_source_tax_unit_table_batched(
     *,
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
+    on_batch_simulation: Callable[[Frame, Any], None] | None = None,
 ) -> pd.DataFrame:
     _assert_no_formula_owned_columns(frame)
     tax_unit = frame.table("tax_unit").copy()
@@ -2048,54 +2049,43 @@ def _aca_source_tax_unit_table_batched(
         np.arange(len(tax_unit), dtype=np.int64),
         index=tax_unit["tax_unit_id"].to_numpy(),
     )
-    n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
-    )
-    if len(batches) > 1:
-        print(
-            "Materializing ACA source inputs in "
-            f"{len(batches)} batches of up to "
-            f"{maximum_microsim_batch_size:,} households.",
-            flush=True,
-        )
 
-    for household_positions in batches:
-        with _automatic_gc_suspended():
-            full_batch = len(household_positions) == n_households
-            batch_frame = (
-                frame
-                if full_batch
-                else _select_households_by_position(frame, household_positions)
-            )
-            batch_simulation = microsimulation_cls(
-                dataset=_dataset_from_frame(
-                    batch_frame,
-                    assert_no_formula_owned_columns=False,
-                )
-            )
-            batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
+    def run_batch(batch_frame: Frame, household_positions: np.ndarray) -> None:
+        batch_simulation = microsimulation_cls(
+            dataset=_dataset_from_frame(
                 batch_frame,
-                target_tables,
-                simulation=batch_simulation,
+                assert_no_formula_owned_columns=False,
             )
-            full_positions = tax_unit_positions.reindex(
-                batch_tax_unit["tax_unit_id"].to_numpy()
-            ).to_numpy()
-            if np.isnan(full_positions).any():
-                raise RuntimeError(
-                    "ACA source batch produced tax_unit_id values not present in "
-                    "the full tax_unit table."
-                )
-            full_positions = full_positions.astype(np.int64)
-            for column in fill_columns:
-                tax_unit.iloc[
-                    full_positions,
-                    tax_unit.columns.get_loc(column),
-                ] = batch_tax_unit[column].to_numpy()
-            batch_simulation._invalidate_all_caches()
-            del batch_tax_unit, batch_simulation, batch_frame
-        _collect_batch_garbage()
+        )
+        batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
+            batch_frame,
+            target_tables,
+            simulation=batch_simulation,
+        )
+        full_positions = tax_unit_positions.reindex(
+            batch_tax_unit["tax_unit_id"].to_numpy()
+        ).to_numpy()
+        if np.isnan(full_positions).any():
+            raise RuntimeError(
+                "ACA source batch produced tax_unit_id values not present in "
+                "the full tax_unit table."
+            )
+        full_positions = full_positions.astype(np.int64)
+        for column in fill_columns:
+            tax_unit.iloc[
+                full_positions,
+                tax_unit.columns.get_loc(column),
+            ] = batch_tax_unit[column].to_numpy()
+        if on_batch_simulation is not None:
+            on_batch_simulation(batch_frame, batch_simulation)
+        batch_simulation._invalidate_all_caches()
+
+    _for_each_household_batch(
+        frame,
+        batch_size=maximum_microsim_batch_size,
+        describe="Materializing ACA source inputs",
+        fn=run_batch,
+    )
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
@@ -2105,13 +2095,17 @@ def _aca_source_tax_unit_table(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    on_batch_simulation: Callable[[Frame, Any], None] | None = None,
 ) -> pd.DataFrame:
     if simulation is not None:
-        return _aca_source_tax_unit_table_from_simulation(
+        table = _aca_source_tax_unit_table_from_simulation(
             frame,
             target_tables,
             simulation=simulation,
         )
+        if on_batch_simulation is not None:
+            on_batch_simulation(frame, simulation)
+        return table
     from policyengine_us import Microsimulation
 
     return _aca_source_tax_unit_table_batched(
@@ -2119,6 +2113,7 @@ def _aca_source_tax_unit_table(
         target_tables,
         microsimulation_cls=Microsimulation,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        on_batch_simulation=on_batch_simulation,
     )
 
 
@@ -2129,6 +2124,7 @@ def _with_aca_marketplace_source_outputs(
     seed: int,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    on_batch_simulation: Callable[[Frame, Any], None] | None = None,
 ) -> Frame:
     target_tables = _aca_source_target_tables(target_specs)
     if US_ACA_APTC_TARGET_TABLE not in target_tables:
@@ -2150,6 +2146,7 @@ def _with_aca_marketplace_source_outputs(
             target_tables,
             simulation=simulation,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            on_batch_simulation=on_batch_simulation,
         ),
         **target_tables,
     }
@@ -2246,65 +2243,94 @@ def _person_state_fips(frame: Frame) -> np.ndarray:
     return np.asarray(_state_fips_text(frame.broadcast("state_fips").to_numpy()))
 
 
+class _BatchedPersonEligibilityCollector:
+    """Scatter per-batch person-level eligibility into a full-person array.
+
+    ``collect`` is shaped as an ``on_batch_simulation`` callback so an
+    already-running batched Microsimulation pass (the ACA source loop) can
+    also materialize a person-level indicator instead of paying a second
+    full-population pass for it.
+    """
+
+    def __init__(self, frame: Frame, variable: str):
+        person_ids = frame.table("person")["person_id"].to_numpy()
+        self._variable = variable
+        self._values = np.zeros(len(person_ids), dtype=bool)
+        self._covered = np.zeros(len(person_ids), dtype=bool)
+        self._positions = pd.Series(
+            np.arange(len(person_ids), dtype=np.int64), index=person_ids
+        )
+
+    def collect(self, batch_frame: Frame, batch_simulation) -> None:
+        batch_eligible = (
+            _calculate_array(batch_simulation, self._variable, map_to="person") > 0
+        )
+        positions = self._positions.reindex(
+            batch_frame.table("person")["person_id"].to_numpy()
+        ).to_numpy()
+        if np.isnan(positions).any():
+            raise RuntimeError(
+                f"{self._variable} batch produced person_id values not "
+                "present in the full person table."
+            )
+        positions = positions.astype(np.int64)
+        self._values[positions] = batch_eligible
+        self._covered[positions] = True
+
+    def values(self) -> np.ndarray | None:
+        """The collected array, or None when no batch ever reported.
+
+        Partial coverage is a wiring bug (household batches partition the
+        population), so it raises rather than returning silent False rows.
+        """
+        if not self._covered.any():
+            return None
+        if not self._covered.all():
+            raise RuntimeError(
+                f"Batched {self._variable} collection covered only "
+                f"{int(self._covered.sum())} of {len(self._covered)} persons."
+            )
+        return self._values
+
+
 def _medicaid_person_eligibility(
     frame: Frame,
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> np.ndarray:
-    """Engine-computed person-level ``is_medicaid_eligible``, batched like ACA."""
+    """Engine-computed person-level ``is_medicaid_eligible``, batched like ACA.
+
+    Standalone fallback: the release flow collects this from the ACA source
+    batches (via :class:`_BatchedPersonEligibilityCollector`) instead of
+    running this second full-population pass.
+    """
     if simulation is not None:
         return _calculate_array(simulation, "is_medicaid_eligible", map_to="person") > 0
     from policyengine_us import Microsimulation
 
-    person_ids = frame.table("person")["person_id"].to_numpy()
-    eligibility = np.zeros(len(person_ids), dtype=bool)
-    person_positions = pd.Series(
-        np.arange(len(person_ids), dtype=np.int64), index=person_ids
-    )
-    n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
-    )
-    if len(batches) > 1:
-        print(
-            "Materializing Medicaid eligibility in "
-            f"{len(batches)} batches of up to "
-            f"{maximum_microsim_batch_size:,} households.",
-            flush=True,
+    collector = _BatchedPersonEligibilityCollector(frame, "is_medicaid_eligible")
+
+    def run_batch(batch_frame: Frame, household_positions: np.ndarray) -> None:
+        batch_simulation = Microsimulation(
+            dataset=_dataset_from_frame(
+                batch_frame,
+                assert_no_formula_owned_columns=False,
+            )
         )
-    for household_positions in batches:
-        with _automatic_gc_suspended():
-            full_batch = len(household_positions) == n_households
-            batch_frame = (
-                frame
-                if full_batch
-                else _select_households_by_position(frame, household_positions)
-            )
-            batch_simulation = Microsimulation(
-                dataset=_dataset_from_frame(
-                    batch_frame,
-                    assert_no_formula_owned_columns=False,
-                )
-            )
-            batch_eligible = (
-                _calculate_array(
-                    batch_simulation, "is_medicaid_eligible", map_to="person"
-                )
-                > 0
-            )
-            positions = person_positions.reindex(
-                batch_frame.table("person")["person_id"].to_numpy()
-            ).to_numpy()
-            if np.isnan(positions).any():
-                raise RuntimeError(
-                    "Medicaid eligibility batch produced person_id values not "
-                    "present in the full person table."
-                )
-            eligibility[positions.astype(np.int64)] = batch_eligible
-            batch_simulation._invalidate_all_caches()
-            del batch_frame, batch_simulation
-        _collect_batch_garbage()
+        collector.collect(batch_frame, batch_simulation)
+        batch_simulation._invalidate_all_caches()
+
+    _for_each_household_batch(
+        frame,
+        batch_size=maximum_microsim_batch_size,
+        describe="Materializing Medicaid eligibility",
+        fn=run_batch,
+    )
+    eligibility = collector.values()
+    if eligibility is None:
+        # Zero-household frames run no batches; mirror the empty scatter.
+        return np.zeros(frame.n("person"), dtype=bool)
     return eligibility
 
 
@@ -2314,9 +2340,15 @@ def _with_medicaid_take_up_outputs(
     *,
     seed: int,
     simulation=None,
+    is_medicaid_eligible: np.ndarray | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> tuple[Frame, dict[str, object]]:
-    """Assign Medicaid take-up (populace #331) and return frame + diagnostics."""
+    """Assign Medicaid take-up (populace #331) and return frame + diagnostics.
+
+    ``is_medicaid_eligible`` accepts a person-aligned eligibility array
+    already collected during the ACA source batches; without it this falls
+    back to a dedicated batched eligibility pass.
+    """
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
         raise RuntimeError(
@@ -2324,10 +2356,14 @@ def _with_medicaid_take_up_outputs(
             f"({US_MEDICAID_ENROLLMENT_TARGET_TABLE}); none were compiled from "
             "the ledger facts."
         )
-    eligibility = _medicaid_person_eligibility(
-        frame,
-        simulation=simulation,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    eligibility = (
+        is_medicaid_eligible
+        if is_medicaid_eligible is not None
+        else _medicaid_person_eligibility(
+            frame,
+            simulation=simulation,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
     )
     return with_us_medicaid_take_up(
         frame,
@@ -2473,6 +2509,40 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
+def _for_each_household_batch(
+    frame: Frame,
+    *,
+    batch_size: int | None,
+    describe: str,
+    fn: Callable[[Frame, np.ndarray], None],
+) -> None:
+    """Run ``fn(batch_frame, household_positions)`` over household batches.
+
+    Shared batching skeleton for full-population Microsimulation passes:
+    automatic GC stays suspended while a batch's engine objects are alive,
+    a single full-population batch reuses ``frame`` without copying, and a
+    forced collection between batches releases per-batch simulation memory.
+    """
+    n_households = frame.n("household")
+    batches = tuple(_household_position_batches(n_households, batch_size))
+    if len(batches) > 1:
+        print(
+            f"{describe} in {len(batches)} batches of up to {batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            fn(batch_frame, household_positions)
+            del batch_frame
+        _collect_batch_garbage()
+
+
 class _BatchedScalarTotal:
     def __init__(self, value: float):
         self.value = float(value)
@@ -2505,42 +2575,26 @@ class _BatchedReformValidationSimulation:
         return _BatchedScalarTotal(self._cache[key])
 
     def _calculate_total(self, measure: str, period: int) -> float:
-        n_households = self._frame.n("household")
-        batches = tuple(
-            _household_position_batches(
-                n_households,
-                self._maximum_microsim_batch_size,
-            )
-        )
-        if len(batches) > 1:
-            print(
-                "Scoring reform validation measure "
-                f"{measure} in {len(batches)} batches of up to "
-                f"{self._maximum_microsim_batch_size:,} households.",
-                flush=True,
-            )
         total = 0.0
-        for household_positions in batches:
-            with _automatic_gc_suspended():
-                full_batch = len(household_positions) == n_households
-                batch_frame = (
-                    self._frame
-                    if full_batch
-                    else _select_households_by_position(
-                        self._frame, household_positions
-                    )
-                )
-                dataset = self._dataset_from_frame(batch_frame)
-                simulation = (
-                    self._microsimulation_cls(dataset=dataset)
-                    if self._reform is None
-                    else self._microsimulation_cls(dataset=dataset, reform=self._reform)
-                )
-                total += float(simulation.calculate(measure, period).sum())
-                if hasattr(simulation, "_invalidate_all_caches"):
-                    simulation._invalidate_all_caches()
-                del simulation, dataset, batch_frame
-            _collect_batch_garbage()
+
+        def run_batch(batch_frame: Frame, household_positions: np.ndarray) -> None:
+            nonlocal total
+            dataset = self._dataset_from_frame(batch_frame)
+            simulation = (
+                self._microsimulation_cls(dataset=dataset)
+                if self._reform is None
+                else self._microsimulation_cls(dataset=dataset, reform=self._reform)
+            )
+            total += float(simulation.calculate(measure, period).sum())
+            if hasattr(simulation, "_invalidate_all_caches"):
+                simulation._invalidate_all_caches()
+
+        _for_each_household_batch(
+            self._frame,
+            batch_size=self._maximum_microsim_batch_size,
+            describe=f"Scoring reform validation measure {measure}",
+            fn=run_batch,
+        )
         return total
 
 
@@ -2587,39 +2641,29 @@ def _reform_household_income_tax(
     _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
-    batches = tuple(_household_position_batches(n_households, batch_size))
-    if len(batches) > 1:
-        print(
-            "Materializing reform target "
-            f"{reform_spec.measure} in {len(batches)} batches "
-            f"of up to {batch_size:,} households.",
-            flush=True,
+
+    def run_batch(batch_frame: Frame, household_positions: np.ndarray) -> None:
+        batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
+        reformed_dataset = _dataset_from_frame(
+            batch_frame,
+            zero_variables=(reform_spec.neutralized_variable,),
+            system=system,
+            assert_no_formula_owned_columns=False,
         )
-    for household_positions in batches:
-        with _automatic_gc_suspended():
-            full_batch = len(household_positions) == n_households
-            batch_frame = (
-                base_frame
-                if full_batch
-                else _select_households_by_position(base_frame, household_positions)
-            )
-            batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
-            reformed_dataset = _dataset_from_frame(
-                batch_frame,
-                zero_variables=(reform_spec.neutralized_variable,),
-                system=system,
-                assert_no_formula_owned_columns=False,
-            )
-            reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
-            batch_income_tax = _collapse_tax_unit(
-                _calculate_array(reformed, "income_tax"),
-                batch_tax_unit_positions,
-                batch_frame.n("household"),
-            )
-            reform_income_tax[household_positions] = batch_income_tax
-            reformed._invalidate_all_caches()
-            del batch_income_tax, reformed, reformed_dataset, batch_frame
-        _collect_batch_garbage()
+        reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
+        reform_income_tax[household_positions] = _collapse_tax_unit(
+            _calculate_array(reformed, "income_tax"),
+            batch_tax_unit_positions,
+            batch_frame.n("household"),
+        )
+        reformed._invalidate_all_caches()
+
+    _for_each_household_batch(
+        base_frame,
+        batch_size=batch_size,
+        describe=f"Materializing reform target {reform_spec.measure}",
+        fn=run_batch,
+    )
     return reform_income_tax
 
 
@@ -5865,11 +5909,20 @@ def main() -> None:
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
+    # Medicaid eligibility rides along on the ACA batch simulations: the ACA
+    # writeback only touches takes_up_aca_if_eligible and
+    # selected_marketplace_plan_benchmark_ratio, neither of which is in
+    # is_medicaid_eligible's dependency chain, so collecting it here saves the
+    # Medicaid stage a second full-population Microsimulation pass.
+    medicaid_eligibility_collector = _BatchedPersonEligibilityCollector(
+        base_frame, "is_medicaid_eligible"
+    )
     base_frame = _with_aca_marketplace_source_outputs(
         base_frame,
         target_specs,
         seed=args.seed,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        on_batch_simulation=medicaid_eligibility_collector.collect,
     )
     health_input_gate = _health_input_signal_gate(base_frame)
     if not health_input_gate.passed:
@@ -5900,6 +5953,7 @@ def main() -> None:
         base_frame,
         target_specs,
         seed=args.seed,
+        is_medicaid_eligible=medicaid_eligibility_collector.values(),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
     medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)

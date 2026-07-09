@@ -603,3 +603,51 @@ class TestBuilderHelpers:
             "36",
             "36",
         ]
+
+    def test_take_up_outputs_use_precomputed_eligibility(self, monkeypatch) -> None:
+        # The release flow collects is_medicaid_eligible during the ACA
+        # source batches; handing it in must skip the dedicated batched
+        # eligibility pass entirely.
+        builder = _load_builder_module()
+        n = 4
+        frame = _frame(n, anchor=np.zeros(n, dtype=bool))
+        household = frame.table("household").copy()
+        household["state_fips"] = [6] * n
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["household"] = household
+        frame = Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        )
+        specs = (
+            SimpleNamespace(
+                name=(
+                    "cms_medicaid.month2024_12.state_enrollment.06."
+                    "total_medicaid_enrollment@2024"
+                ),
+                value=2 * UNIT_WEIGHT,
+                metadata={
+                    "ledger_geography_level": "state",
+                    "state_fips": "06",
+                    "target_role": "medicaid_enrollment",
+                },
+            ),
+        )
+
+        def fail_eligibility_pass(*args, **kwargs):
+            raise AssertionError(
+                "precomputed eligibility must not trigger the batched pass"
+            )
+
+        monkeypatch.setattr(
+            builder, "_medicaid_person_eligibility", fail_eligibility_pass
+        )
+        result, diagnostics = builder._with_medicaid_take_up_outputs(
+            frame,
+            specs,
+            seed=7,
+            is_medicaid_eligible=np.asarray([True, True, True, False]),
+        )
+        assert US_MEDICAID_TAKE_UP_VARIABLE in result.table("person")
+        assert diagnostics["national"]["eligible_weight"] == 3 * UNIT_WEIGHT
