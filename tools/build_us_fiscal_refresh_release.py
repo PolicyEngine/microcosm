@@ -487,7 +487,8 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
 
 #: Person inputs SNAP work-requirement rules read that have NO CPS ASEC
 #: source and are not seeded: they default to False in the engine, so the
-#: exemption channels they drive never fire (populace #351). They are not
+#: compliance/exemption channels they drive never fire (populace #351,
+#: #249 for the work-program family). They are not
 #: persisted columns, so the degenerate-input gate cannot see them; this
 #: register makes the assumption visible in every release manifest instead.
 #: is_pregnant is NOT here: the pregnancy stage seeds it.
@@ -512,6 +513,23 @@ US_DOCUMENTED_ABSENT_INPUTS = {
         "No direct ASEC item; the incapacity/caregiving work-registration "
         "exemptions rely on the disability battery only "
         "(PolicyEngine/populace#351)."
+    ),
+    "is_snap_work_program_participant": (
+        "No ASEC item measures SNAP E&T or qualifying work-program "
+        "participation, so compliance via program participation never "
+        "fires; USDA reports E&T reaches a small minority of "
+        "participants, so the always-False default understates "
+        "compliance only modestly (PolicyEngine/populace#249)."
+    ),
+    "weekly_snap_work_program_hours": (
+        "No ASEC item measures qualifying work-program hours, so combined "
+        "work-plus-program hours toward the 20-hour ABAWD test omit "
+        "program hours (PolicyEngine/populace#249)."
+    ),
+    "is_snap_workfare_participant": (
+        "No ASEC item measures workfare participation under 7 CFR "
+        "273.7(m), which satisfies the ABAWD requirement regardless of "
+        "hours; defaults False (PolicyEngine/populace#249)."
     ),
 }
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
