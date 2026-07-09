@@ -845,33 +845,55 @@ def test_snap_household_caseload_fact_maps_to_snap_indicator() -> None:
     assert "state_fips" not in spec.metadata
 
 
-def test_state_snap_person_caseload_fact_maps_to_person_indicator() -> None:
+def test_state_snap_household_caseload_fact_compiles_with_state_fips() -> None:
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _usda_snap_caseload_fact(
-                measure_id="average_monthly_persons",
-                value=2_857_000,
-                record_set_slug="state_average_monthly_persons.nero",
+                measure_id="average_monthly_households",
+                value=1_507_000,
+                record_set_slug="state_average_monthly_households.nero",
                 value_id="ny",
                 geography_level="state",
                 geography_id="0400000US36",
-                entity_name="person",
             ),
         ]
     )
 
     specs = {spec.name: spec for spec in registry.specs}
     spec = specs[
-        "usda_snap.fy2024.state_average_monthly_persons.nero.ny.average_monthly_persons"
+        "usda_snap.fy2024.state_average_monthly_households.nero.ny"
+        ".average_monthly_households"
     ]
     assert spec.family == "usda_snap"
-    assert spec.value == 2_857_000
-    assert spec.metadata["target_role"] == "snap_persons"
+    assert spec.value == 1_507_000
+    assert spec.metadata["target_role"] == "snap_households"
     assert spec.metadata["base_variable"] == "snap"
     assert spec.metadata["measure_mode"] == "indicator_sum"
-    assert spec.metadata["indicator_map_to"] == "person"
+    assert "indicator_map_to" not in spec.metadata
     assert spec.metadata["state_fips"] == "36"
+
+
+def test_snap_person_caseload_fact_is_not_compiled() -> None:
+    # The SNAP assistance unit is often a subset of the SPM unit, so a person
+    # indicator over taker-unit members overcounts FNS participants by ~50%.
+    # The persons measure must stay unmapped until sub-unit participation is
+    # modeled.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_persons",
+                value=41_690_000,
+                record_set_slug="national_average_monthly_persons",
+                entity_name="person",
+            ),
+        ]
+    )
+
+    assert not [
+        spec for spec in registry.specs if "average_monthly_persons" in spec.name
+    ]
 
 
 def _usda_snap_caseload_fact(
