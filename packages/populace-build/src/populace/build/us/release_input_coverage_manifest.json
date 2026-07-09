@@ -687,10 +687,10 @@
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
+  "derived_from": "ecps_parity_reference.json",
   "filename": "enhanced_cps_2024.h5",
+  "note": "Column surface derived from the populated input layers of the pinned, sha-verified reference eCPS recorded in ecps_parity_reference.json (the launch parity contract, PolicyEngine/populace#313) — the single allow-listed record of the incumbent coordinates. This manifest names no data package.",
   "period": "2024",
-  "repo_id": "policyengine/policyengine-us-data",
-  "repo_type": "model",
   "revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
   "sha256": "0a6b961ad363a421bde99f2c8e5d8f20370bcba45fd303050537a25bdd805b14",
   "vintage": "2024"

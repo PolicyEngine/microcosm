@@ -144,6 +144,31 @@ def build_manifest() -> dict:
         n for n, c in columns.items() if c["status"] == "reviewed_exclusion"
     )
 
+    # Provenance without naming the retired data package. Only the eCPS parity
+    # reference, its loader, and its test are allow-listed to name the incumbent
+    # (test_us_plan.test_no_incumbent_data_package_references_in_live_tree); this
+    # manifest is not, so it records the sha-locked coordinates that DON'T name a
+    # package (filename + content sha + revision + vintage) and points at that
+    # allow-listed parity reference for the full record. Nothing reads these
+    # fields — the gate and the anti-rot check derive the surface from
+    # ecps_parity_reference.json directly — so this stays pure documentation.
+    parity_source = dict(parity["source"])
+    reference = {
+        "derived_from": "ecps_parity_reference.json",
+        "filename": str(parity_source.get("filename", "")),
+        "revision": str(parity_source.get("revision", "")),
+        "sha256": str(parity_source.get("sha256", "")),
+        "vintage": str(parity_source.get("vintage", "")),
+        "period": str(parity_source.get("period", "")),
+        "note": (
+            "Column surface derived from the populated input layers of the "
+            "pinned, sha-verified reference eCPS recorded in "
+            "ecps_parity_reference.json (the launch parity contract, "
+            "PolicyEngine/populace#313) — the single allow-listed record of the "
+            "incumbent coordinates. This manifest names no data package."
+        ),
+    }
+
     return {
         "schema_version": 1,
         "issue": "PolicyEngine/populace#368",
@@ -155,7 +180,7 @@ def build_manifest() -> dict:
             "coverage) that generalizes assert_required_us_release_source_"
             "columns from 5 columns to the full eCPS input surface."
         ),
-        "reference": dict(parity["source"]),
+        "reference": reference,
         "derivation": (
             "Required surface = ecps_parity_reference.json populated layers "
             "(input columns the pinned, sha-verified reference eCPS populates). "
