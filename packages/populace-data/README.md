@@ -19,9 +19,16 @@ sim = Microsimulation(dataset=load("us", 2024))
 sim.calculate("household_net_income", 2024).sum()
 ```
 
-`load("us")` (no year) loads the latest published compact year. `available()`
-lists published `(country, year)` pairs; `available_variants()` lists every
-published `(country, year, variant)`.
+`load("us")` (no year) loads the latest published compact year. It resolves
+`latest.json`, reads the selected release manifest at the immutable release
+tag, verifies the artifact SHA-256, and refuses model or Core versions outside
+the release's certified compatibility specifiers. `available()` lists
+published `(country, year)` pairs; `available_variants()` lists every published
+`(country, year, variant)`.
+
+The old mutable-root behavior is available only as an unsafe escape hatch:
+`load("us", 2024, unverified_root=True)`. It emits a runtime warning because it
+bypasses the release pointer, manifest, digest, and engine compatibility checks.
 
 ## Why a shard, not a repo per country
 
