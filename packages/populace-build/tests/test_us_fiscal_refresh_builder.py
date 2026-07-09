@@ -5366,3 +5366,23 @@ def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
     assert not gate.passed
     assert any("traditional_ira_contributions" in f for f in gate.failures)
     assert any("health_savings_account_ald" in f for f in gate.failures)
+
+
+def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
+    """main() must call the cheap consistency preflights before source stages.
+
+    populace#377 (register consistency) and populace#381 (take-up contract
+    engine-drift) both abort a build in seconds when a register is stale. A
+    regression that drops the preflight call would only surface after hours of
+    source staging, so pin the wiring at the code-object level (these globals
+    are looked up by name inside ``main``).
+    """
+    builder = _load_builder_module()
+    called = set(builder.main.__code__.co_names)
+    for preflight in (
+        "assert_release_input_coverage_manifest_current",
+        "us_register_consistency_gate",
+        "assert_take_up_contract_current",
+        "assert_take_up_treatments_consistent",
+    ):
+        assert preflight in called, f"main() no longer calls {preflight}"

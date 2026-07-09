@@ -53,6 +53,8 @@ from populace.build.us_runtime import (
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
     assert_release_input_coverage_manifest_current,
+    assert_take_up_contract_current,
+    assert_take_up_treatments_consistent,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     fetch_scf_2022_summary_extract,
@@ -5613,6 +5615,17 @@ def main() -> None:
                 for failure in register_consistency_gate.failures
             )
         )
+    # Preflight (populace#381): the checked-in take-up contract must still match
+    # the installed policyengine-us (entity/default/engine_class of every
+    # ``takes_up_*`` flag) and its curated treatments must not contradict the
+    # engine class. These are cheap engine-metadata checks; running them here,
+    # before the expensive source stages, means an engine bump that changes a
+    # take-up default or flips a seeded flag to a formula fails in seconds
+    # instead of shipping a mechanical universal-take-up landmine. The seeding
+    # stages below read this same contract, so a stale contract must abort the
+    # build, not merely a test.
+    assert_take_up_contract_current()
+    assert_take_up_treatments_consistent()
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
