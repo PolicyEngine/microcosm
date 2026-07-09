@@ -56,6 +56,7 @@ __all__ = [
     "export_surface_gate",
     "formula_owned_export_gate",
     "exported_nonzero_gate",
+    "input_column_coverage_gate",
     "input_mass_parity_gate",
     "macro_realism_gate",
     "nonconstant_columns_gate",
@@ -1520,6 +1521,133 @@ def source_stage_input_coverage_gate(
     )
 
 
+def input_column_coverage_gate(
+    present_columns: Iterable[str],
+    *,
+    required_columns: Iterable[str],
+    degenerate_columns: Iterable[str] = (),
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    name: str = "input_column_coverage",
+) -> GateResult:
+    """Every declared-required input column is present AND carries signal.
+
+    This is the release-blocking column-coverage contract of populace #368: a
+    release must persist every input column the reference eCPS exports, as a
+    real dataset key whose values are not all the engine default. It is the
+    generalization of ``assert_required_us_release_source_columns`` — which
+    guarded five SNAP/ACA/immigration columns — to the full eCPS input surface,
+    and it closes the gap the export-mass parity gate leaves open: parity only
+    covers the ~35 columns with a weighted-mass anchor, so an input the base
+    never imputed (SSI countable-resource assets, tips, overtime, education
+    credits, IRA/HSA — populace #340/#356/#361/#278) is *absent from the export
+    entirely* and every reform binding through it silently scores ~$0 while
+    every mass and parity gate still passes.
+
+    A required column fails when it is absent from ``present_columns`` (the
+    engine defaults it at simulation time) or listed in ``degenerate_columns``
+    (present as a key but every observed value equals the engine default, so
+    the export writer's default-broadcast makes it indistinguishable from
+    absence). Both are the same silent-zero failure and both are refused unless
+    the column carries a reviewed exclusion.
+
+    Reviewed exclusions accept a known, tracked gap by name with a reason (and,
+    by convention, the tracking issue in the reason). They carry the #286
+    "cannot rot" semantics: a reviewed exclusion whose column is now present
+    *and* non-degenerate is stale — the data caught up, so the column must be
+    promoted to a hard requirement — and fails the gate. An exclusion for a
+    column absent from this surface is dormant and only reported (release lines
+    persist different subsets). ``required_columns`` and
+    ``reviewed_exclusions`` must be disjoint: a column is either a hard
+    requirement or a tracked gap, never both.
+
+    Args:
+        present_columns: Every input column the export persists as a key.
+        required_columns: Columns that must be present and non-degenerate.
+        degenerate_columns: The subset of present columns whose every observed
+            value equals the engine default (computed by the caller against the
+            engine's declared defaults). Columns not present are never here.
+        reviewed_exclusions: Column -> reason for tracked gaps allowed to be
+            absent or degenerate. Each needs a non-empty reason; a stale entry
+            fails the gate, a dormant entry is only reported.
+        name: Gate name for the manifest (defaults to
+            ``"input_column_coverage"``).
+
+    Returns:
+        Pass iff every required column is present and non-degenerate, no
+        required column overlaps the exclusion register, and no exclusion is
+        stale.
+
+    Raises:
+        ValueError: If a reviewed exclusion has an empty reason, or a column is
+            both required and a reviewed exclusion.
+        TypeError: If ``reviewed_exclusions`` is not a mapping.
+    """
+    if not name:
+        raise ValueError("input column coverage gate name must be non-empty.")
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    present = {str(column) for column in present_columns}
+    degenerate = {str(column) for column in degenerate_columns} & present
+    required = {str(column) for column in required_columns}
+
+    both = sorted(required & set(exclusions))
+    if both:
+        raise ValueError(
+            "A column cannot be both a hard requirement and a reviewed "
+            f"exclusion: {both}."
+        )
+
+    failures: list[str] = []
+    missing: list[str] = []
+    degenerate_required: list[str] = []
+    for column in sorted(required):
+        if column not in present:
+            missing.append(column)
+            failures.append(
+                f"{column}: required eCPS input column is absent from the "
+                "export; the engine defaults it and every reform binding "
+                "through it scores ~$0. Impute it (carry it through the base "
+                "and selection) or record a reviewed exclusion with the "
+                "tracking issue."
+            )
+        elif column in degenerate:
+            degenerate_required.append(column)
+            failures.append(
+                f"{column}: required eCPS input column is present but every "
+                "value equals the engine default; the export writer's "
+                "default-broadcast makes it indistinguishable from absence. "
+                "Impute it or record a reviewed exclusion with the tracking "
+                "issue."
+            )
+
+    signal_present = present - degenerate
+    stale = sorted(column for column in exclusions if column in signal_present)
+    if stale:
+        failures.append(
+            "Stale reviewed exclusions — the column carries signal now, "
+            f"promote it to a hard requirement: {stale}."
+        )
+    dormant = sorted(column for column in exclusions if column not in present)
+
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "required_columns": len(required),
+            "present_columns": len(present),
+            "missing": missing,
+            "degenerate_required": degenerate_required,
+            "reviewed_exclusions": {
+                column: reason
+                for column, reason in sorted(exclusions.items())
+                if column not in dormant
+            },
+            "stale_exclusions": stale,
+            "dormant_exclusions": dormant,
+        },
+    )
+
+
 def parity_gate(
     candidate_nonzero: Mapping[str, float],
     reference_nonzero: Mapping[str, float],
@@ -1535,12 +1663,20 @@ def parity_gate(
             Variables only the candidate carries are ignored (extra layers
             are not a parity failure).
         known_gaps: Variables exempted *by name* — each must be a documented
-            decision, and exemptions are recorded in the details.
+            decision, and exemptions are recorded in the details. An exemption
+            for a layer the candidate now populates is stale and fails the
+            gate so the register cannot rot (the ``takes_up_medicaid_if_eligible``
+            case: the candidate started producing the layer and the exemption
+            silently stopped meaning anything); remove it or re-reason it. An
+            exemption for a layer the reference never populates is dormant and
+            only reported (different reference vintages populate different
+            layers).
 
     Returns:
-        Pass iff no reference-populated variable is candidate-empty.
+        Pass iff no reference-populated variable is candidate-empty and no
+        exemption is stale.
     """
-    exempt = set(known_gaps)
+    exempt = set(str(name) for name in known_gaps)
     failures = []
     for name, ref_share in sorted(reference_nonzero.items()):
         if ref_share <= 0.0 or name in exempt:
@@ -1552,6 +1688,18 @@ def parity_gate(
                 "candidate is all-zero (the layer would mask engine "
                 "formulas or drop the variable entirely)."
             )
+    gap_count = len(failures)
+    stale = sorted(name for name in exempt if candidate_nonzero.get(name, 0.0) > 0.0)
+    if stale:
+        failures.append(
+            f"Stale known-gap exemptions — the candidate populates the layer "
+            f"now, remove the exemption or re-reason it: {stale}."
+        )
+    dormant = sorted(
+        name
+        for name in exempt
+        if name not in stale and reference_nonzero.get(name, 0.0) <= 0.0
+    )
     populated = sum(1 for share in reference_nonzero.values() if share > 0.0)
     return GateResult(
         name="parity",
@@ -1559,8 +1707,10 @@ def parity_gate(
         failures=tuple(failures),
         details={
             "reference_populated_layers": populated,
-            "gaps": len(failures),
+            "gaps": gap_count,
             "exempted": sorted(exempt),
+            "stale_exemptions": stale,
+            "dormant_exemptions": dormant,
         },
     )
 

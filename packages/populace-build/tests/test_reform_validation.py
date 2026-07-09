@@ -348,14 +348,61 @@ def test_shipped_obbba_config_is_out_of_sample_counterfactual():
     assert {s.id for s in specs} >= {"obbba_no_tax_on_tips", "obbba_no_tax_on_overtime"}
     assert any(s.jct_score and s.jct_score < 0 for s in specs)
     assert any(s.jct_score and s.jct_score > 0 for s in specs)
-    assert any(s.jct_score is None for s in specs)
+    # Every shipped OBBBA row carries a JCX-35-25 benchmark: the senior
+    # deduction (formerly the one unbenchmarked row) is folded into the
+    # personal-exemption row, matching the combined scope of Ch.1 line 3.
+    assert all(s.jct_score is not None for s in specs)
     for spec in specs:
         assert spec.effect_direction == "baseline_minus_reform"
         assert spec.period == 2026
-        if spec.jct_score is None:
-            assert "No standalone" in spec.jct_source
-        else:
-            assert spec.jct_source.startswith("JCX-35-25")
+        assert spec.jct_source.startswith("JCX-35-25")
+
+
+def test_shipped_obbba_line3_scores_combined_sec_70103_scope():
+    # JCX-35-25 Ch.1 line 3 nets the temporary senior deduction against the
+    # exemption termination (OBBBA Sec. 70103). The counterfactual patch must
+    # revert BOTH, or the modeled scope is narrower than the benchmark scope.
+    spec = next(
+        s
+        for s in out_of_sample_reform_specs(period=2026)
+        if s.id == "obbba_personal_exemption_termination"
+    )
+    paths = set(spec.parameter_changes or {})
+    assert paths == {
+        "gov.irs.income.exemption.suspended",
+        "gov.irs.deductions.senior_deduction.amount",
+    }, paths
+
+
+def test_shipped_obbba_parameter_patches_are_pairwise_disjoint():
+    # stacked_obbba_effects tracks enactment by parameter path: a path shared
+    # by two provisions would silently corrupt both the merged pre-OBBBA
+    # baseline and the incremental scoring, so disjointness is load-bearing.
+    specs = out_of_sample_reform_specs(period=2026)
+    seen: dict[str, str] = {}
+    for spec in specs:
+        for path in spec.parameter_changes or {}:
+            assert path not in seen, (
+                f"{path} appears in both {seen[path]} and {spec.id}"
+            )
+            seen[path] = spec.id
+
+
+def test_shipped_obbba_specs_are_in_jcx_line_order():
+    # The stack enacts provisions in file order; JCT scores each line given
+    # the lines above it, so file order must follow the JCX-35-25 document
+    # order for the increments to be comparable.
+    import re
+
+    specs = out_of_sample_reform_specs(period=2026)
+    keys = []
+    for spec in specs:
+        if spec.budget_measure != "income_tax":
+            continue  # other measures stack in their own group
+        m = re.search(r"Ch\.(\d+)(?:\.([A-C]))? line (\d+)", spec.jct_source or "")
+        assert m, f"{spec.id}: cannot parse JCX position from {spec.jct_source!r}"
+        keys.append((int(m.group(1)), m.group(2) or "", int(m.group(3))))
+    assert keys == sorted(keys), keys
 
 
 def test_itemized_benefit_limit_counterfactual_keeps_pease():
@@ -867,12 +914,51 @@ def test_default_baseline_level_specs_concatenates(monkeypatch, tmp_path):
             ]
         },
     )
+    fed = _write_json(
+        tmp_path / "fed.json",
+        {
+            "levels": [
+                {
+                    "id": "fed_eitc_z",
+                    "name": "z",
+                    "variable": "eitc",
+                    "state": "VA",
+                    "period": 2024,
+                    "benchmark": {"value": 3.0},
+                }
+            ]
+        },
+    )
+    spm = _write_json(
+        tmp_path / "spm.json",
+        {
+            "levels": [
+                {
+                    "id": "spm_w",
+                    "name": "w",
+                    "variable": "in_poverty",
+                    "statistic": "rate",
+                    "mask_variable": "is_child",
+                    "state": "AL",
+                    "period": 2024,
+                    "benchmark": {"value": 0.146},
+                }
+            ]
+        },
+    )
     monkeypatch.setattr(rv, "_soi_baseline_levels_config_path", lambda: soi)
     monkeypatch.setattr(rv, "_state_program_levels_config_path", lambda: state)
+    monkeypatch.setattr(rv, "_federal_eitc_by_state_config_path", lambda: fed)
+    monkeypatch.setattr(rv, "_state_spm_poverty_levels_config_path", lambda: spm)
     specs = rv.default_baseline_level_specs()
-    assert [s.id for s in specs] == ["soi_x", "state_y"]
+    assert [s.id for s in specs] == ["soi_x", "state_y", "fed_eitc_z", "spm_w"]
     assert specs[0].category == "IRS SOI actual"
     assert specs[1].category == "State program actual"
+    assert specs[2].category == "Federal EITC by state"
+    assert specs[2].state == "VA"
+    assert specs[3].category == "Census state SPM"
+    assert specs[3].statistic == "rate"
+    assert specs[3].mask_variable == "is_child"
 
 
 def test_shipped_state_program_configs_are_well_formed():
@@ -899,3 +985,296 @@ def test_shipped_state_program_configs_are_well_formed():
         assert spec.neutralized_variable
         assert spec.budget_measure == "state_income_tax"
         assert spec.in_sample is False
+
+
+def test_shipped_federal_eitc_by_state_levels_are_well_formed():
+    from populace.build.us_runtime.reform_validation import (
+        federal_eitc_state_level_specs,
+    )
+
+    specs = federal_eitc_state_level_specs()
+    assert len(specs) == 18
+    for spec in specs:
+        assert spec.variable == "eitc"
+        assert spec.state and len(spec.state) == 2
+        assert spec.benchmark_value > 0
+        assert spec.category == "Federal EITC by state"
+        assert spec.benchmark_score_type == "actual"
+        assert spec.period == 2024
+
+
+def test_state_sliced_level_total_filters_households(monkeypatch):
+    # A level with `state` must total the variable over that state's
+    # households only, weighting by household weight.
+    import numpy as np
+
+    from populace.build.us_runtime.reform_validation import (
+        BaselineLevelSpec,
+        reform_validation_payload,
+    )
+
+    class _Series(np.ndarray):
+        weights: np.ndarray
+
+    def series(values, weights):
+        arr = np.asarray(values, dtype=float).view(_Series)
+        arr.weights = np.asarray(weights, dtype=float)
+        return arr
+
+    class _Sim:
+        def calculate(self, variable, period, map_to=None):
+            if variable == "eitc":
+                assert map_to == "household"
+                return series([100.0, 200.0, 300.0], [1.0, 2.0, 3.0])
+            if variable == "state_code_str":
+                return np.asarray(["VA", "OH", "VA"])
+            raise AssertionError(variable)
+
+    level = BaselineLevelSpec(
+        id="fed_eitc_va",
+        name="VA",
+        variable="eitc",
+        period=2024,
+        benchmark_value=1_000.0,
+        benchmark_year="TY2024",
+        source="s",
+        source_url="u",
+        state="VA",
+    )
+    payload = reform_validation_payload(
+        (), period=2024, baseline_levels=(level,), simulate=lambda reform: _Sim()
+    )
+    row = next(r for r in payload["reforms"] if r["id"] == "fed_eitc_va")
+    # VA households: 100*1 + 300*3 = 1000
+    assert row["populace"]["budget_effect"] == 1_000.0
+
+
+def test_variable_list_level_sums_components(monkeypatch, tmp_path):
+    # A list-valued `variable` totals each component and sums them (used for
+    # unsplit official figures covering mutually exclusive elections).
+    from populace.build.us_runtime import reform_validation as rv
+
+    cfg = _write_json(
+        tmp_path / "levels.json",
+        {
+            "levels": [
+                {
+                    "id": "combo",
+                    "name": "combo",
+                    "variable": ["a_var", "b_var"],
+                    "period": 2024,
+                    "benchmark": {"value": 5.0},
+                }
+            ]
+        },
+    )
+    specs = rv.state_program_level_specs(cfg)
+    assert specs[0].variable == ["a_var", "b_var"]
+
+    class _Series(float):
+        pass
+
+    class _Sim:
+        def calculate(self, variable, period, map_to=None):
+            import numpy as np
+
+            class _MS(np.ndarray):
+                pass
+
+            vals = {"a_var": 2.0, "b_var": 3.0}[variable]
+            arr = np.asarray([vals]).view(_MS)
+            return arr
+
+    payload = rv.reform_validation_payload(
+        (), period=2024, baseline_levels=specs, simulate=lambda reform: _Sim()
+    )
+    row = payload["reforms"][0]
+    assert row["populace"]["budget_effect"] == 5.0
+
+
+def test_md_eitc_repeal_neutralizes_tax_path_components():
+    # md_eitc is a derived reporting total (md_refundable_eitc +
+    # md_non_refundable_eitc) that Maryland's tax formula never reads;
+    # neutralizing the umbrella is a proven no-op on md_income_tax. The
+    # repeal must target both components on the tax path.
+    from populace.build.us_runtime.reform_validation import (
+        state_program_reform_specs,
+    )
+
+    spec = next(
+        s
+        for s in state_program_reform_specs(period=2024)
+        if s.id == "state_repeal_md_eitc"
+    )
+    assert sorted(spec.neutralized_variable) == [
+        "md_non_refundable_eitc",
+        "md_refundable_eitc",
+    ]
+
+
+def test_neutralize_list_reform_targets_each_variable():
+    # The list form of neutralized_variable must neutralize every listed
+    # variable in one Reform (used where an umbrella total is off the tax
+    # path and repeal needs its components). build_reform() lazily imports
+    # policyengine_core, which the CI unit-test env intentionally lacks.
+    pytest.importorskip("policyengine_core")
+    from populace.build.us_runtime.reform_validation import (
+        ReformValidationSpec,
+    )
+
+    spec = ReformValidationSpec(
+        id="x",
+        name="x",
+        category="State program",
+        in_sample=False,
+        period=2024,
+        jct_score=1.0,
+        jct_window="",
+        jct_source="",
+        jct_source_url="",
+        neutralized_variable=["a_var", "b_var"],
+    )
+
+    class _Recorder:
+        def __init__(self):
+            self.neutralized = []
+
+        def neutralize_variable(self, name):
+            self.neutralized.append(name)
+
+    reform_cls = spec.build_reform()
+    recorder = _Recorder()
+    reform_cls.apply(recorder)
+    assert recorder.neutralized == ["a_var", "b_var"]
+
+
+class _FakeArraySeries:
+    """Array-valued series with weights, mimicking a MicroSeries for np.asarray."""
+
+    def __init__(self, values, weights) -> None:
+        import numpy as np
+
+        self._values = np.asarray(values)
+        self.weights = np.asarray(weights)
+
+    def __array__(self, dtype=None):
+        return self._values if dtype is None else self._values.astype(dtype)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+class _FakePersonSim:
+    """Person-level fake for rate levels: named arrays plus person weights."""
+
+    def __init__(self, arrays: dict, weights) -> None:
+        self._arrays = arrays
+        self._weights = weights
+
+    def calculate(self, measure: str, period, map_to=None):  # noqa: ARG002
+        return _FakeArraySeries(self._arrays[measure], self._weights)
+
+
+def test_rate_level_computes_state_sliced_person_share():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    # Four persons: two in AL (fips 1), two in CA (fips 6).
+    sim = _FakePersonSim(
+        {
+            "in_poverty": [1, 0, 1, 1],
+            "is_child": [1, 1, 0, 1],
+            "state_fips": [1, 1, 6, 6],
+        },
+        weights=[10.0, 30.0, 20.0, 20.0],
+    )
+
+    def spec(id_, *, state=None, mask=None, value=0.5):
+        return BaselineLevelSpec(
+            id=id_,
+            name=id_,
+            variable="in_poverty",
+            period=2024,
+            benchmark_value=value,
+            benchmark_year="2022-2024",
+            source="Census",
+            source_url="https://census.gov/",
+            statistic="rate",
+            state=state,
+            mask_variable=mask,
+        )
+
+    payload = reform_validation_payload(
+        [],
+        period=2024,
+        simulate=lambda reform: sim,
+        baseline_levels=[
+            spec("al_overall", state="AL"),
+            spec("ca_overall", state="CA"),
+            spec("us_child", mask="is_child"),
+            spec("al_child", state="AL", mask="is_child"),
+        ],
+    )
+    rows = {r["id"]: r for r in payload["reforms"]}
+    # AL overall: poor weight 10 of 40 residents.
+    assert rows["al_overall"]["populace"]["budget_effect"] == pytest.approx(0.25)
+    # CA overall: both poor.
+    assert rows["ca_overall"]["populace"]["budget_effect"] == pytest.approx(1.0)
+    # National child: poor children 10 + 20 of child weight 10 + 30 + 20.
+    assert rows["us_child"]["populace"]["budget_effect"] == pytest.approx(0.5)
+    # AL child: poor child 10 of child weight 40.
+    assert rows["al_child"]["populace"]["budget_effect"] == pytest.approx(0.25)
+    for row in rows.values():
+        assert row["unit"] == "percent"
+        assert row["in_sample"] is False
+
+
+def test_rate_spec_validation_errors():
+    from populace.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    common = dict(
+        name="x",
+        period=2024,
+        benchmark_value=0.1,
+        benchmark_year="2024",
+        source="s",
+        source_url="u",
+    )
+    with pytest.raises(ValueError):
+        BaselineLevelSpec(id="bad", variable="in_poverty", statistic="share", **common)
+    with pytest.raises(ValueError):
+        BaselineLevelSpec(id="bad", variable=["a", "b"], statistic="rate", **common)
+    with pytest.raises(ValueError):
+        BaselineLevelSpec(
+            id="bad",
+            variable="in_poverty",
+            statistic="rate",
+            cap_variable="income_tax",
+            **common,
+        )
+
+
+def test_shipped_spm_poverty_config_well_formed():
+    from populace.build.us_runtime.reform_validation import (
+        state_spm_poverty_level_specs,
+    )
+
+    specs = state_spm_poverty_level_specs()
+    assert len(specs) == 104  # 51 jurisdictions x (overall, child) + 2 national
+    ids = [s.id for s in specs]
+    assert len(set(ids)) == len(ids)
+    states = {s.state for s in specs if s.state}
+    assert len(states) == 51
+    for s in specs:
+        assert s.statistic == "rate"
+        assert s.variable == "in_poverty"
+        assert 0.03 < s.benchmark_value < 0.25
+        assert "census.gov" in s.source_url
+        assert s.category == "Census state SPM"
+        assert s.benchmark_score_type == "actual"
+        if "child" in s.id:
+            assert s.mask_variable == "is_child"
+        else:
+            assert s.mask_variable is None
+    # Total-statistic rows keep the currency unit.
+    payload = reform_validation_payload([], period=2024, simulate=None)
+    assert payload["reforms"] == []

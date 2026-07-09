@@ -28,7 +28,7 @@
     "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
     "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
    },
-   "description": "One-year vintage gap: TY2023 actual vs the 2024 dataset period."
+   "description": "One-year vintage gap: TY2023 actual vs the 2024 dataset period. Wiring note: ca_yctc survives this repeal \u2014 its eligibility falls back to the ca_eitc_eligible flag via the loss/limited-earnings path, whose threshold ($34,602 in 2024) exceeds the CalEITC earnings ceiling, so the measured delta is EITC-only (verified: repeal effect equals the ca_eitc baseline level exactly)."
   },
   {
    "id": "state_repeal_ca_yctc",
@@ -42,7 +42,7 @@
     "source": "CA FTB EITC/YCTC/FYTC Report (Oct 2025), Table 1 p.8",
     "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
    },
-   "description": ""
+   "description": "Gap analysis (2026-07 audit): +38.7% vs TY2023 splits into ~+5% benchmark vintage (max credit $1,117 TY2023 -> $1,154 TY2024; claims grew ~2%/yr) and ~+30% take-up \u2014 the sim pays every eligible unit and implies ~513k claiming units at the flat max vs FTB's 398,059 actual TY2023 returns (~78% implied take-up; CalEITC take-up measured at 54% among CalFresh-enrolled, California Policy Lab/JPubE 2023). A flat per-return credit passes the take-up gap straight to the total. Gap analysis (2026-07 audit): +38.7% vs TY2023 = ~6pp benchmark vintage (max $1,117 -> $1,154, phase-out start $25,775 -> $26,626: +6.2% measured on the same data) + ~30pp take-up. The model pays every eligible unit: 546-559k eligible units in the data vs FTB's 398,059 actual returns (claim/eligible 0.71-0.73, matching published take-up: CalEITC 54% among SNAP-enrolled per CPL/JPubE 2023). Per-unit amounts align ($1,025 sim vs $1,037 actual) \u2014 the gap is purely excess unit count; demographics ruled out (weighted CA under-6 is 6.2% BELOW ACS 2024). A flat per-return credit passes the take-up gap straight to the total."
   },
   {
    "id": "state_repeal_ny_eitc",
@@ -56,7 +56,7 @@
     "source": "NYS DTF open data, EITC Claims Table 3",
     "source_url": "https://data.ny.gov/d/caik-8a9b"
    },
-   "description": "NYS EITC only; the NYC and noncustodial credits are separate variables."
+   "description": "NYS EITC only; the NYC and noncustodial credits are separate variables. Concept note: ny_supplemental_eitc is a separate variable and survives this repeal; the DTF claims benchmark is the core NYS EITC only, so concepts match. The ny_eitc formula also nets out the capped household credit."
   },
   {
    "id": "state_repeal_ny_escc",
@@ -98,7 +98,7 @@
     "source": "CO DOR ORA, Individual Income Tax Credits TY2023",
     "source_url": "https://cdor.colorado.gov/data-and-reports/income-tax-data/income-tax-credits"
    },
-   "description": ""
+   "description": "Vintage caveat (2026-07 audit): the TY2023 benchmark predates HB23-1112, which restructured the credit to flat amounts effective TY2024 (fiscal note: ~+$45.6M/yr, implying a TY2024 level near $135M). The 2024 simulation uses current law, so against the implied TY2024 level it runs ~14% UNDER; the +30% gap vs TY2023 is law-change vintage, not model error. Replace with CO DOR TY2024 actuals when published. Vintage caveat (2026-07 audit): the +30.4% gap is entirely law-change vintage, proven by replication \u2014 running the pre-HB23-1112 TY2023 law (60/30/10% of federal CTC) on this same data reproduces the DOR actual to the dollar ($89.2M vs $89,158,930), and the TY2024 flat-amount restructure (HB23-1112: $1,200/$600/$200 per under-6 child-dependent, $0-earners newly eligible) adds +30.0%. Against the bill's own fiscal-note-implied TY2024 level (~$135M) the sim runs ~14% under. Replace with CO DOR TY2024 actuals when published."
   },
   {
    "id": "state_repeal_ct_eitc",
@@ -146,7 +146,10 @@
    "id": "state_repeal_md_eitc",
    "name": "Repeal Maryland EITC",
    "category": "State program",
-   "neutralized_variable": "md_eitc",
+   "neutralized_variable": [
+    "md_refundable_eitc",
+    "md_non_refundable_eitc"
+   ],
    "period": 2024,
    "benchmark": {
     "score": 550881492,
@@ -154,7 +157,7 @@
     "source": "Comptroller of Maryland, Income Tax Summary Report TY2024, pp.18-23",
     "source_url": "https://www.marylandcomptroller.gov/content/dam/mdcomp/md/reports/annual/summary24.pdf"
    },
-   "description": "Benchmark sums the refundable ($410.1M) and nonrefundable ($140.8M) lines; repealing the take-better-of credit removes both."
+   "description": "Benchmark sums the refundable ($410.1M) and nonrefundable ($140.8M) lines; repealing the take-better-of credit removes both. Wiring note: md_eitc itself is a derived reporting total (md_refundable_eitc + md_non_refundable_eitc) that Maryland's tax formula never reads \u2014 neutralizing it is a no-op on md_income_tax (proven: $0.0 repeal effect against a $475.7M baseline level). The repeal neutralizes both components on the tax path. Caveats: md_montgomery_eitc (county match on md_refundable_eitc, aggregated into state refundable credits) also drops, slightly overstating vs the state-only benchmark; the poverty-line credit's eligibility gate reads a separate component and does not expand under repeal, slightly understating."
   },
   {
    "id": "state_repeal_il_eitc",
@@ -163,12 +166,12 @@
    "neutralized_variable": "il_eitc",
    "period": 2024,
    "benchmark": {
-    "score": 437387169,
+    "score": 487387169,
     "window": "TY2023",
-    "source": "IDOR TY2023 final stratification, p.1",
+    "source": "IDOR TY2023 final stratification p.1 (EITC $437,387,169) + IL GOMB FY2027 budget p.28 (IL CTC TY2024 estimate $50M): combined, because il_ctc = 20% x il_eitc is computed from the EITC and repealing il_eitc mechanically removes both",
     "source_url": "https://tax.illinois.gov/content/dam/soi/en/web/tax/research/taxstats/indincomestratifications/2023-iit-1040il-return-final.pdf"
    },
-   "description": "Illinois-resident returns; 20% match in both years."
+   "description": "Illinois-resident returns; 20% match in both years. Entanglement note: il_ctc (from TY2024) is defined as a percentage of il_eitc, so neutralizing il_eitc removes both credits \u2014 the measured repeal effect ($491.4M) equals the il_eitc ($428.9M) plus il_ctc ($62.5M) baseline levels exactly. The benchmark is therefore the sum of both official figures."
   }
  ]
 }

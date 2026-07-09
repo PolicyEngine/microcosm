@@ -17,13 +17,28 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
+from populace.build.us_runtime.eligibility_inputs import (
+    derive_us_eligibility_inputs_from_manifest,
+)
+from populace.build.us_runtime.hours_worked import (
+    derive_us_hours_worked_from_manifest,
+)
 from populace.build.us_runtime.immigration import (
     derive_us_immigration_status_from_manifest,
+)
+from populace.build.us_runtime.pregnancy import (
+    derive_us_pregnancy_from_manifest,
 )
 from populace.build.us_runtime.puf_aggregate_records import (
     derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
+)
+from populace.build.us_runtime.snap_discretionary_exemption import (
+    derive_us_snap_discretionary_exemption_from_manifest,
+)
+from populace.build.us_runtime.snap_take_up import (
+    derive_us_snap_take_up_from_manifest,
 )
 
 __all__ = [
@@ -69,7 +84,7 @@ _ACA_AGGREGATE_PERSON_TO_TAX_UNIT_PARAMETER_KEYS = frozenset(
     }
 )
 
-_ACA_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS = frozenset(
+_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS = frozenset(
     {
         "output",
         "draw",
@@ -80,7 +95,7 @@ _ACA_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS = frozenset(
     }
 )
 
-_ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS = frozenset(
+_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS = frozenset(
     {
         "variable",
         "targets",
@@ -94,7 +109,7 @@ _ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS = frozenset(
     }
 )
 
-_ACA_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS = frozenset(
+_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS = frozenset(
     {
         "variable",
         "count_targets",
@@ -179,7 +194,12 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             calibrate_us_binary_assignment_joint_targets_from_manifest
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        "derive_hours_worked": derive_us_hours_worked_from_manifest,
+        "derive_pregnancy": derive_us_pregnancy_from_manifest,
+        "derive_snap_abawd_discretionary_exemption": derive_us_snap_discretionary_exemption_from_manifest,
         "derive_immigration_status": derive_us_immigration_status_from_manifest,
+        "derive_snap_take_up": derive_us_snap_take_up_from_manifest,
         "derive_puf_policyengine_variables": (
             derive_us_puf_policyengine_variables_from_manifest
         ),
@@ -273,37 +293,41 @@ def assign_us_binary_from_rate_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Assign a seeded ACA take-up indicator from rates and reported anchors."""
+    """Assign a seeded binary take-up flag from rates and reported anchors."""
 
+    label = "US binary assignment"
     if operation.kind != "assign_binary_from_rate":
         raise SourceRuntimeError(
-            f"ACA binary assignment received unexpected operation {operation.kind!r}."
+            f"{label} received unexpected operation {operation.kind!r}."
         )
     if frame is None:
-        raise SourceRuntimeError("ACA binary assignment requires a current frame.")
+        raise SourceRuntimeError(f"{label} requires a current frame.")
     params = operation.parameters
     _reject_unexpected_parameters(
         params,
-        allowed=_ACA_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS,
-        label="ACA binary assignment",
+        allowed=_ASSIGN_BINARY_FROM_RATE_PARAMETER_KEYS,
+        label=label,
     )
-    output = _required_string_param(params, "output", label="ACA binary assignment")
-    draw_column = _required_string_param(params, "draw", label="ACA binary assignment")
-    rate_key = _required_string_param(params, "rate_key", label="ACA binary assignment")
+    output = _required_string_param(params, "output", label=label)
+    draw_column = _required_string_param(params, "draw", label=label)
+    rate_key = _required_string_param(params, "rate_key", label=label)
     rate_column = params.get("rate_column", f"{rate_key}_take_up_rate")
     if not isinstance(rate_column, str) or not rate_column:
-        raise SourceRuntimeError("ACA binary assignment requires a rate column.")
-    _require_columns(frame, [rate_column], label="ACA binary assignment frame")
+        raise SourceRuntimeError(f"{label} requires a rate column.")
+    _require_columns(frame, [rate_column], label=f"{label} frame")
 
     result = frame.copy(deep=True)
     if draw_column in result:
         draws = pd.to_numeric(result[draw_column], errors="coerce")
         if draws.isna().any():
             raise SourceRuntimeError(
-                f"ACA binary assignment draw column {draw_column!r} contains nulls."
+                f"{label} draw column {draw_column!r} contains nulls."
             )
         draws = draws.clip(lower=0.0, upper=1.0)
     else:
+        # The "aca:" salt prefix predates generic reuse of this handler and is
+        # frozen: existing ACA releases are bit-reproducible against it.
+        # Stages at other grains should supply the draw column themselves.
         draws = _stable_draws(
             result,
             seed=int(context.config.seed),
@@ -316,7 +340,7 @@ def assign_us_binary_from_rate_from_manifest(
 
     eligibility = params.get("eligibility")
     if isinstance(eligibility, str) and eligibility:
-        _require_columns(result, [eligibility], label="ACA binary assignment frame")
+        _require_columns(result, [eligibility], label=f"{label} frame")
         eligibility_mask = result[eligibility].fillna(False).astype(bool)
         assigned = assigned & eligibility_mask
     else:
@@ -324,7 +348,7 @@ def assign_us_binary_from_rate_from_manifest(
 
     anchor = params.get("reported_true_anchor")
     if isinstance(anchor, str) and anchor:
-        _require_columns(result, [anchor], label="ACA binary assignment frame")
+        _require_columns(result, [anchor], label=f"{label} frame")
         assigned = assigned | (
             result[anchor].fillna(False).astype(bool) & eligibility_mask
         )
@@ -338,53 +362,50 @@ def calibrate_us_binary_assignment_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Greedily calibrate a boolean ACA assignment to count targets."""
+    """Greedily calibrate a boolean assignment to count targets."""
 
+    label = "US binary calibration"
     if operation.kind != "calibrate_binary_assignment":
         raise SourceRuntimeError(
-            f"ACA binary calibration received unexpected operation {operation.kind!r}."
+            f"{label} received unexpected operation {operation.kind!r}."
         )
     if frame is None:
-        raise SourceRuntimeError("ACA binary calibration requires a current frame.")
+        raise SourceRuntimeError(f"{label} requires a current frame.")
     params = operation.parameters
     _reject_unexpected_parameters(
         params,
-        allowed=_ACA_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS,
-        label="ACA binary calibration",
+        allowed=_CALIBRATE_BINARY_ASSIGNMENT_PARAMETER_KEYS,
+        label=label,
     )
     variable = _required_string_param(
         params,
         "variable",
-        label="ACA binary calibration",
+        label=label,
     )
     targets = _required_string_sequence_param(
         params,
         "targets",
-        label="ACA binary calibration",
+        label=label,
     )
-    value_state = _binary_calibration_value_state(frame, variable)
+    value_state = _binary_calibration_value_state(frame, variable, label=label)
 
     try:
         target_table_name, target_table = _first_available_target_table(
-            targets, context
+            targets, context, label=label
         )
     except SourceRuntimeError:
         if bool(params.get("optional", False)):
             return frame
         raise
     value_column = _target_value_column(target_table, label=target_table_name)
-    group_by = _group_columns(params.get("group_by"), target_table, frame)
+    group_by = _group_columns(params.get("group_by"), target_table, frame, label=label)
     weight_column = params.get("weight")
-    draw_column = params.get("draw", "stable_tax_unit_draw")
+    draw_column = _required_string_param(params, "draw", label=label)
     if not isinstance(weight_column, str) or not weight_column:
-        raise SourceRuntimeError(
-            "ACA binary calibration requires an explicit weight column."
-        )
-    if not isinstance(draw_column, str) or not draw_column:
-        raise SourceRuntimeError("ACA binary calibration requires a draw column.")
+        raise SourceRuntimeError(f"{label} requires an explicit weight column.")
 
     result = frame.copy(deep=True)
-    _require_columns(result, [weight_column], label="ACA binary calibration frame")
+    _require_columns(result, [weight_column], label=f"{label} frame")
     weights = pd.to_numeric(result[weight_column], errors="coerce").fillna(0.0)
     if draw_column not in result:
         result[draw_column] = _stable_draws(
@@ -395,8 +416,8 @@ def calibrate_us_binary_assignment_from_manifest(
     draws = pd.to_numeric(result[draw_column], errors="coerce").fillna(1.0)
 
     values = value_state.values(result)
-    preserved = _preserved_true_mask(result, params)
-    domain = _domain_mask(result, params.get("domain"))
+    preserved = _preserved_true_mask(result, params, label=label)
+    domain = _domain_mask(result, params.get("domain"), label=label)
     candidate_mask = (~preserved) & domain
 
     target_rows = target_table.copy(deep=True)
@@ -406,7 +427,7 @@ def calibrate_us_binary_assignment_from_manifest(
         group_by = ("__all__",)
 
     _require_columns(target_rows, [*group_by, value_column], label=target_table_name)
-    _require_columns(result, group_by, label="ACA binary calibration frame")
+    _require_columns(result, group_by, label=f"{label} frame")
 
     calibrated = values.copy()
     for _, target_row in target_rows.iterrows():
@@ -462,40 +483,40 @@ def calibrate_us_binary_assignment_joint_targets_from_manifest(
     source columns, while the runtime supplies the generic selection rule.
     """
 
+    label = "US joint binary calibration"
     if operation.kind != "calibrate_binary_assignment_joint_targets":
         raise SourceRuntimeError(
-            "ACA joint binary calibration received unexpected operation "
-            f"{operation.kind!r}."
+            f"{label} received unexpected operation {operation.kind!r}."
         )
     if frame is None:
-        raise SourceRuntimeError("ACA joint binary calibration requires a frame.")
+        raise SourceRuntimeError(f"{label} requires a frame.")
     params = operation.parameters
     _reject_unexpected_parameters(
         params,
-        allowed=_ACA_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS,
-        label="ACA joint binary calibration",
+        allowed=_CALIBRATE_BINARY_JOINT_TARGET_PARAMETER_KEYS,
+        label=label,
     )
     variable = _required_string_param(
         params,
         "variable",
-        label="ACA joint binary calibration",
+        label=label,
     )
     count_targets = _required_string_sequence_param(
         params,
         "count_targets",
-        label="ACA joint binary calibration",
+        label=label,
     )
     amount_targets = _required_string_sequence_param(
         params,
         "amount_targets",
-        label="ACA joint binary calibration",
+        label=label,
     )
     try:
         count_target_name, count_target_table = _first_available_target_table(
-            count_targets, context
+            count_targets, context, label=label
         )
         amount_target_name, amount_target_table = _first_available_target_table(
-            amount_targets, context
+            amount_targets, context, label=label
         )
     except SourceRuntimeError:
         if bool(params.get("optional", False)):
@@ -510,20 +531,16 @@ def calibrate_us_binary_assignment_joint_targets_from_manifest(
         amount_target_table,
         label=amount_target_name,
     )
-    group_by = _group_columns(params.get("group_by"), count_target_table, frame)
+    group_by = _group_columns(
+        params.get("group_by"), count_target_table, frame, label=label
+    )
     count_weight_column = params.get("count_weight")
     amount_weight_column = params.get("amount_weight")
-    draw_column = params.get("draw", "stable_tax_unit_draw")
+    draw_column = _required_string_param(params, "draw", label=label)
     if not isinstance(count_weight_column, str) or not count_weight_column:
-        raise SourceRuntimeError(
-            "ACA joint binary calibration requires a count_weight column."
-        )
+        raise SourceRuntimeError(f"{label} requires a count_weight column.")
     if not isinstance(amount_weight_column, str) or not amount_weight_column:
-        raise SourceRuntimeError(
-            "ACA joint binary calibration requires an amount_weight column."
-        )
-    if not isinstance(draw_column, str) or not draw_column:
-        raise SourceRuntimeError("ACA joint binary calibration requires a draw column.")
+        raise SourceRuntimeError(f"{label} requires an amount_weight column.")
 
     result = frame.copy(deep=True)
     if not group_by:
@@ -545,7 +562,7 @@ def calibrate_us_binary_assignment_joint_targets_from_manifest(
     _require_columns(
         result,
         [*group_by, count_weight_column, amount_weight_column],
-        label="ACA joint binary calibration frame",
+        label=f"{label} frame",
     )
     if draw_column not in result:
         result[draw_column] = _stable_draws(
@@ -554,10 +571,10 @@ def calibrate_us_binary_assignment_joint_targets_from_manifest(
             salt=f"joint-calibrate:{variable}",
         )
 
-    value_state = _binary_calibration_value_state(result, variable)
+    value_state = _binary_calibration_value_state(result, variable, label=label)
     values = value_state.values(result)
-    preserved = _preserved_true_mask(result, params)
-    domain = _domain_mask(result, params.get("domain"))
+    preserved = _preserved_true_mask(result, params, label=label)
+    domain = _domain_mask(result, params.get("domain"), label=label)
     count_weights = pd.to_numeric(
         result[count_weight_column],
         errors="coerce",
@@ -921,24 +938,23 @@ def _require_columns(
 def _binary_calibration_value_state(
     frame: pd.DataFrame,
     variable: str,
+    *,
+    label: str,
 ) -> _BinaryCalibrationValueState:
     if variable.isidentifier():
-        _require_columns(frame, [variable], label="ACA binary calibration frame")
+        _require_columns(frame, [variable], label=f"{label} frame")
         return _BinaryCalibrationValueState(column=variable)
 
     if "<" in variable and "<=" not in variable:
         column, raw_threshold = [piece.strip() for piece in variable.split("<", 1)]
         if not column:
-            raise SourceRuntimeError(
-                f"ACA binary calibration has an invalid comparison {variable!r}."
-            )
-        _require_columns(frame, [column], label="ACA binary calibration frame")
+            raise SourceRuntimeError(f"{label} has an invalid comparison {variable!r}.")
+        _require_columns(frame, [column], label=f"{label} frame")
         try:
             threshold = float(raw_threshold)
         except ValueError as exc:
             raise SourceRuntimeError(
-                f"ACA binary calibration comparison has a nonnumeric threshold: "
-                f"{variable!r}."
+                f"{label} comparison has a nonnumeric threshold: {variable!r}."
             ) from exc
         return _BinaryCalibrationValueState(
             column=column,
@@ -946,7 +962,7 @@ def _binary_calibration_value_state(
         )
 
     raise SourceRuntimeError(
-        "ACA binary calibration requires a stored boolean column or simple "
+        f"{label} requires a stored boolean column or simple "
         f"'column < number' expression, got {variable!r}."
     )
 
@@ -954,20 +970,30 @@ def _binary_calibration_value_state(
 def _preserved_true_mask(
     frame: pd.DataFrame,
     params: Mapping[str, object],
+    *,
+    label: str,
 ) -> pd.Series:
     if not bool(params.get("preserve_true_anchors", False)):
         return pd.Series(False, index=frame.index)
     anchor = params.get("preserve_true_anchor")
     if not isinstance(anchor, str) or not anchor:
         raise SourceRuntimeError(
-            "ACA binary calibration preserve_true_anchors requires a "
-            "preserve_true_anchor column."
+            f"{label} preserve_true_anchors requires a preserve_true_anchor column."
         )
-    _require_columns(frame, [anchor], label="ACA binary calibration frame")
+    _require_columns(frame, [anchor], label=f"{label} frame")
     return frame[anchor].fillna(False).astype(bool)
 
 
 def _stable_draws(frame: pd.DataFrame, *, seed: int, salt: str) -> pd.Series:
+    """Seeded uniform draws keyed by ``tax_unit_id`` when present.
+
+    Without a ``tax_unit_id`` column the draws fall back to the positional row
+    index, which is not identity-stable across frame reorderings. Stages at
+    other grains (e.g. person) should mint their own identity-keyed draw
+    column and name it via the operation's ``draw`` parameter rather than
+    relying on this fallback.
+    """
+
     if "tax_unit_id" in frame:
         keys = frame["tax_unit_id"]
     else:
@@ -991,12 +1017,14 @@ def _stable_draws(frame: pd.DataFrame, *, seed: int, salt: str) -> pd.Series:
 def _first_available_target_table(
     target_names: tuple[str, ...],
     context: SourceRuntimeContext,
+    *,
+    label: str,
 ) -> tuple[str, pd.DataFrame]:
     for target_name in target_names:
         if target_name in context.tables:
             return target_name, context.read_table(target_name)
     raise SourceRuntimeError(
-        "ACA binary calibration requires one provided target table from "
+        f"{label} requires one provided target table from "
         f"{list(target_names)}; available tables: {sorted(context.tables)}."
     )
 
@@ -1015,6 +1043,8 @@ def _group_columns(
     declared: object,
     targets: pd.DataFrame,
     frame: pd.DataFrame,
+    *,
+    label: str,
 ) -> tuple[str, ...]:
     if declared is not None:
         if isinstance(declared, str):
@@ -1025,7 +1055,7 @@ def _group_columns(
         ):
             return tuple(str(item) for item in declared)
         raise SourceRuntimeError(
-            "ACA binary calibration group_by must be a string or list of strings."
+            f"{label} group_by must be a string or list of strings."
         )
     return tuple(
         column
@@ -1034,7 +1064,7 @@ def _group_columns(
     )
 
 
-def _domain_mask(frame: pd.DataFrame, domain: object) -> pd.Series:
+def _domain_mask(frame: pd.DataFrame, domain: object, *, label: str) -> pd.Series:
     if domain is None:
         return pd.Series(True, index=frame.index)
     if isinstance(domain, str) and domain in frame.columns:
@@ -1045,6 +1075,6 @@ def _domain_mask(frame: pd.DataFrame, domain: object) -> pd.Series:
             threshold = float(raw_threshold)
             return pd.to_numeric(frame[column], errors="coerce").fillna(0.0) > threshold
     raise SourceRuntimeError(
-        "ACA binary calibration domain must be a boolean column or a simple "
+        f"{label} domain must be a boolean column or a simple "
         f"'column > number' expression, got {domain!r}."
     )

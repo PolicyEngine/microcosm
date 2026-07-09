@@ -16,14 +16,29 @@ from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from populace.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
+)
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.scf_wealth import (
+    US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.snap_discretionary_exemption import (
+    US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -32,7 +47,14 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "selected_marketplace_plan_benchmark_ratio",
 )
 
-US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS
+US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
+    *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
+    *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+    *US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    *US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+    *US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+)
 
 #: The geography spine a US release carries by default: state and district,
 #: plus the block-anchored ladder (populace #275). A release missing or

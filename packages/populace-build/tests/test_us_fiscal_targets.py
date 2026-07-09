@@ -594,6 +594,111 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
     assert control.value == 456_000_000
 
 
+def test_extra_support_exclusions_drop_per_run_without_touching_registry() -> None:
+    # populace#299 Build G: a sparse artifact declares per-run, per-artifact
+    # support-expressibility exclusions that augment — but never mutate — the
+    # standing global registry. A cell NOT in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    # (California TANF here) is dropped only when passed via
+    # extra_support_exclusions; a sibling control cell survives.
+    excluded_source_record_id = (
+        "hhs_acf_tanf.fy2024.cash_assistance.ca."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
+    )
+    control_source_record_id = (
+        "hhs_acf_tanf.fy2024.cash_assistance.wa."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
+    )
+    # Neither is in the standing global registry.
+    assert excluded_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    assert control_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=excluded_source_record_id,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=456_000_000,
+            geography_level="state",
+            geography_id="0400000US06",
+            groupby_value_id="ca",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=control_source_record_id,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=222_000_000,
+            geography_level="state",
+            geography_id="0400000US53",
+            groupby_value_id="wa",
+        ),
+    ]
+
+    baseline = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    baseline_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in baseline.specs
+    }
+    # Without the per-run exclusion, California IS an active target.
+    assert excluded_source_record_id in baseline_ids
+
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        allow_unaged_dollar_targets=True,
+        extra_support_exclusions={
+            excluded_source_record_id: (
+                "Sparse frozen support has zero California TANF support; the "
+                "dense parent expresses it (populace#299 Build G)."
+            )
+        },
+    )
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert excluded_source_record_id not in by_source_record_id
+    assert control_source_record_id in by_source_record_id
+    # The module constant is untouched by the per-run augmentation.
+    assert excluded_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+
+
+def test_extra_support_exclusions_reject_empty_reason() -> None:
+    # The release tool's loader requires a non-empty reason for every per-run
+    # exclusion so the register cannot rot (populace#299 Build G).
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    path = root / "tools" / "build_us_fiscal_refresh_release.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_fiscal_refresh_release", path
+    )
+    builder = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(builder)
+
+    import json as _json
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        good = Path(tmp) / "good.json"
+        good.write_text(_json.dumps({"some.record.id": "a real reason"}))
+        loaded = builder._load_zero_support_exclusions(good)
+        assert loaded == {"some.record.id": "a real reason"}
+
+        assert builder._load_zero_support_exclusions(None) == {}
+
+        bad = Path(tmp) / "bad.json"
+        bad.write_text(_json.dumps({"some.record.id": "   "}))
+        try:
+            builder._load_zero_support_exclusions(bad)
+            raise AssertionError("expected ValueError on empty reason")
+        except ValueError:
+            pass
+
+
 def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
     source_record_id = (
         "cms_nhe.cy2024.medicaid_title_xix_expenditures."
@@ -740,6 +845,44 @@ def test_state_chip_enrollment_target_is_derived_from_state_controls() -> None:
                 value=1_000_000,
                 measure_id="total_medicaid_enrollment",
                 geography_level="state",
+                geography_id="0400000US48",
+                geography_slug="tx",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_150_000,
+                geography_level="state",
+                geography_id="0400000US48",
+                geography_slug="tx",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs["cms_medicaid.month2024_12.tx.total_chip_enrollment"]
+    assert spec.family == "cms_medicaid"
+    assert spec.value == 150_000
+    assert spec.metadata["target_role"] == "chip_enrollment"
+    assert spec.metadata["base_variable"] == "chip_enrolled"
+    assert spec.metadata["state_fips"] == "48"
+    assert spec.metadata["derived_source_record_ids"] == (
+        "cms_medicaid.month2024_12.tx.total_medicaid_chip_enrollment,"
+        "cms_medicaid.month2024_12.tx.total_medicaid_enrollment"
+    )
+
+
+def test_m_chip_state_chip_enrollment_target_is_not_derived() -> None:
+    """M-CHIP states cannot materialize separate-CHIP support, so the
+    combined-minus-medicaid fallback must not emit a target for them
+    (PolicyEngine/populace#321)."""
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_000_000,
+                measure_id="total_medicaid_enrollment",
+                geography_level="state",
                 geography_id="0400000US06",
                 geography_slug="ca",
             ),
@@ -753,17 +896,10 @@ def test_state_chip_enrollment_target_is_derived_from_state_controls() -> None:
         ]
     )
 
-    specs = {spec.name: spec for spec in registry.specs}
-    spec = specs["cms_medicaid.month2024_12.ca.total_chip_enrollment"]
-    assert spec.family == "cms_medicaid"
-    assert spec.value == 150_000
-    assert spec.metadata["target_role"] == "chip_enrollment"
-    assert spec.metadata["base_variable"] == "chip_enrolled"
-    assert spec.metadata["state_fips"] == "06"
-    assert spec.metadata["derived_source_record_ids"] == (
-        "cms_medicaid.month2024_12.ca.total_medicaid_chip_enrollment,"
-        "cms_medicaid.month2024_12.ca.total_medicaid_enrollment"
-    )
+    derived = [
+        spec.name for spec in registry.specs if "ca.total_chip_enrollment" in spec.name
+    ]
+    assert derived == []
 
 
 def test_direct_chip_enrollment_fact_maps_to_chip_enrolled() -> None:

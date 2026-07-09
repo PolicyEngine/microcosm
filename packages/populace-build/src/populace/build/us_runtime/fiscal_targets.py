@@ -10,7 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from typing import Any, Literal
@@ -151,6 +151,38 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "unemployment_compensation_amount": "unemployment_compensation",
     "wages_salaries_amount": "employment_income",
     "charitable_amount": "charitable_deduction",
+    # Build H (populace#299): SOI Table 1.4 income/loss lines that identify the
+    # floating export-input columns. Income legs sum the positive part of the
+    # signed model variable, loss legs the negative-part magnitude
+    # (see _signed_component), matching SOI's returns-with-net-income vs
+    # returns-with-net-loss split. estate_income/miscellaneous_income do not
+    # currently add to AGI (loss-cap / catch-all only), but they are the export
+    # columns the export-mass gate tracks, so pinning them identifies those
+    # dimensions.
+    "estate_trust_net_income_amount": "estate_income",
+    "estate_trust_net_loss_amount": "estate_losses",
+    "other_income_net_income_amount": "miscellaneous_income",
+    "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
+    # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
+    # when Schedule D is not required); concept-confirmed against pe-us source.
+    "capital_gain_distributions_amount": "non_sch_d_capital_gains",
+    # Build H (populace#299): SOI Table 2.1 "Home mortgage interest" itemized-
+    # deduction total (financial-institution + personal-seller legs summed;
+    # TY2023 $171,364,787,000 / 11,644,348 returns; CBO-aged ~$186.3B@2024).
+    # The record set irs_soi.ty2023.table_2_1.itemized_all_returns makes
+    # _soi_return_universe_from_record_set_id -> "itemized_returns", so
+    # _soi_reference_from_fact auto-stamps itemized_only=true and the target
+    # sums the model variable over ITEMIZERS ONLY -- the correct universe for a
+    # Schedule-A line. Maps to home_mortgage_interest, the gross person-level
+    # export input column itself (same "target the export column's own variable"
+    # pattern as the Table 1.4 columns above and the person-level, itemized-only
+    # real_estate_taxes target), so calibration directly pulls the itemizer
+    # share of the export mass down from the Build G +44.5% JCT overshoot toward
+    # the SOI level. Only the CW/CX "Total" measure is mapped; the two leg
+    # measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay
+    # unmapped to avoid double-counting.
+    "home_mortgage_interest_amount": "home_mortgage_interest",
 }
 
 
@@ -190,6 +222,18 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "unemployment_compensation_returns": "unemployment_compensation",
     "wages_salaries_returns": "employment_income",
     "charitable_returns": "charitable_deduction",
+    # Build H (populace#299): return counts paired with the Table 1.4 income/
+    # loss amount lines above (indicator sums of the signed model variable's
+    # positive / negative part).
+    "estate_trust_net_income_returns": "estate_income",
+    "estate_trust_net_loss_returns": "estate_losses",
+    "other_income_net_income_returns": "miscellaneous_income",
+    "other_income_net_loss_returns": "miscellaneous_losses",
+    "capital_gain_distributions_returns": "non_sch_d_capital_gains",
+    # Build H (populace#299): return count paired with the Table 2.1 home
+    # mortgage interest amount above (indicator sum over itemizers claiming a
+    # home mortgage interest deduction).
+    "home_mortgage_interest_returns": "home_mortgage_interest",
 }
 
 
@@ -206,6 +250,19 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "eitc": "eitc",
     "estate_income": "estate_income",
     "estate_losses": "estate_income",
+    # Build H (populace#299): concept -> signed model column for the export
+    # dimensions identified by SOI Table 1.4. income/loss concept pairs share
+    # one signed column (same pattern as business/rent/partnership above);
+    # _signed_component takes the positive part for the income concept and the
+    # negative-part magnitude for the "_losses" concept.
+    "miscellaneous_income": "miscellaneous_income",
+    "miscellaneous_losses": "miscellaneous_income",
+    "non_sch_d_capital_gains": "non_sch_d_capital_gains",
+    # Build H (populace#299): SOI Table 2.1 home mortgage interest concept ->
+    # gross person-level pe-us home_mortgage_interest (the export input column);
+    # itemized_only masking (auto from the itemized_all_returns record set)
+    # restricts the sum to itemizers, matching the Schedule-A universe.
+    "home_mortgage_interest": "home_mortgage_interest",
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
@@ -750,6 +807,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -772,6 +830,14 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        extra_support_exclusions: Optional per-run, per-artifact augmentation of
+            the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` registry
+            (source_record_id -> reason). A sparse artifact's frozen support
+            cannot populate narrow state/tail cells the dense parent can, so a
+            single build may declare additional support-expressibility
+            exclusions without mutating the shared module constant
+            (PolicyEngine/populace#299 Build G). The caller records these in the
+            release manifest for provenance.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -786,6 +852,7 @@ def compile_us_fiscal_target_registry(
             include_congressional_district_targets=(
                 include_congressional_district_targets
             ),
+            extra_support_exclusions=extra_support_exclusions,
         ),
         *_references_for_target_period(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
@@ -837,6 +904,36 @@ def compile_us_fiscal_target_registry(
     )
 
 
+# Medicaid-expansion-CHIP (M-CHIP) states: CMS total_chip_enrollment counts
+# M-CHIP enrollment the model cannot materialize as separate CHIP, so neither
+# direct rows nor the combined-minus-medicaid derivation can produce a
+# supportable target there (PolicyEngine/populace#321).
+_M_CHIP_STATE_FIPS = frozenset(
+    {
+        "02",
+        "06",
+        "11",
+        "15",
+        "17",
+        "21",
+        "23",
+        "24",
+        "26",
+        "27",
+        "31",
+        "33",
+        "35",
+        "37",
+        "38",
+        "39",
+        "40",
+        "45",
+        "50",
+        "56",
+    }
+)
+
+
 def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetRegistry:
     """Add direct CHIP rows from CMS Medicaid+CHIP and Medicaid controls.
 
@@ -852,6 +949,8 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
     existing_chip = _cms_medicaid_specs_by_key(specs, "chip_enrollment")
     for key, combined_spec in sorted(combined.items()):
         if key in existing_chip or key not in medicaid:
+            continue
+        if key[1] in _M_CHIP_STATE_FIPS:
             continue
         medicaid_spec = medicaid[key]
         chip_value = combined_spec.value - medicaid_spec.value
@@ -1676,6 +1775,7 @@ def _dynamic_us_fiscal_target_references(
     *,
     target_period: int | str,
     include_congressional_district_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
         tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
@@ -1687,6 +1787,7 @@ def _dynamic_us_fiscal_target_references(
             include_congressional_district_targets=(
                 include_congressional_district_targets
             ),
+            extra_support_exclusions=extra_support_exclusions,
         )
         if reference is not None:
             candidates.append(
@@ -1898,9 +1999,17 @@ def _reference_from_ledger_fact(
     *,
     target_period: int | str,
     include_congressional_district_targets: bool = False,
+    extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        return None
+    if extra_support_exclusions and source_record_id in extra_support_exclusions:
+        # Per-run, per-artifact support-expressibility exclusions
+        # (PolicyEngine/populace#299 Build G): a sparse artifact's frozen
+        # support cannot populate narrow state/tail cells the dense parent can.
+        # These augment the standing global registry for a single build only and
+        # are recorded in the manifest, never mutating the module constant.
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":

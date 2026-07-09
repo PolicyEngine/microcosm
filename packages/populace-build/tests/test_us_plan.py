@@ -395,10 +395,8 @@ class TestUsSources:
         # dependency (the loader imports nothing from it). Nothing else in the
         # live tree may reference the retired data packages.
         allowed_incumbent_references = {
-            "packages/populace-build/src/populace/build/us/"
-            "ecps_parity_reference.json",
-            "packages/populace-build/src/populace/build/us_runtime/"
-            "parity_reference.py",
+            "packages/populace-build/src/populace/build/us/ecps_parity_reference.json",
+            "packages/populace-build/src/populace/build/us_runtime/parity_reference.py",
             "packages/populace-build/tests/test_us_parity_reference.py",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
@@ -406,7 +404,12 @@ class TestUsSources:
         for path in ROOT.rglob("*"):
             if not path.is_file() or path.suffix not in checked_suffixes:
                 continue
-            if ".git" in path.parts or ".venv" in path.parts or "out" in path.parts:
+            if (
+                ".git" in path.parts
+                or ".venv" in path.parts
+                or ".claude" in path.parts
+                or "out" in path.parts
+            ):
                 continue
             rel = str(path.relative_to(ROOT))
             if rel in allowed_incumbent_references:
