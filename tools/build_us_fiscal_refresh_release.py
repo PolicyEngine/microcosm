@@ -50,7 +50,9 @@ from populace.build.us_runtime import (
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
+    US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
+    assert_release_input_coverage_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
@@ -58,7 +60,10 @@ from populace.build.us_runtime import (
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
+    us_medicaid_take_up_gate,
     us_pregnancy_signal_gate,
+    us_reform_coverage_smoke_gate,
+    us_release_input_coverage_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -69,10 +74,12 @@ from populace.build.us_runtime import (
     with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
+    with_us_medicaid_take_up,
     with_us_pregnancy_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
+    write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
     write_us_take_up_participation_diagnostics,
 )
@@ -148,7 +155,12 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "congressional_district_vintage_crosswalk_sha256",
 )
 TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 1
+# 2: the medicaid_take_up stage (populace #331) changed base_frame's
+# takes_up_medicaid_if_eligible before target-frame materialization, so
+# medicaid_enrolled target columns differ from version-1 checkpoints; the
+# checkpoint identity hashes the on-disk base dataset, not the staged frame,
+# and would otherwise silently reuse pre-stage frames.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 2
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -411,9 +423,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
     ),
-    "takes_up_medicaid_if_eligible": (
-        "Medicaid take-up imputation backlog (PolicyEngine/populace#98)."
-    ),
     "takes_up_medicare_if_eligible": (
         "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
@@ -481,7 +490,8 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
 
 #: Person inputs SNAP work-requirement rules read that have NO CPS ASEC
 #: source and are not seeded: they default to False in the engine, so the
-#: exemption channels they drive never fire (populace #351). They are not
+#: compliance/exemption channels they drive never fire (populace #351,
+#: #249 for the work-program family). They are not
 #: persisted columns, so the degenerate-input gate cannot see them; this
 #: register makes the assumption visible in every release manifest instead.
 #: is_pregnant is NOT here: the pregnancy stage seeds it.
@@ -507,6 +517,23 @@ US_DOCUMENTED_ABSENT_INPUTS = {
         "exemptions rely on the disability battery only "
         "(PolicyEngine/populace#351)."
     ),
+    "is_snap_work_program_participant": (
+        "No ASEC item measures SNAP E&T or qualifying work-program "
+        "participation, so compliance via program participation never "
+        "fires; USDA reports E&T reaches a small minority of "
+        "participants, so the always-False default understates "
+        "compliance only modestly (PolicyEngine/populace#249)."
+    ),
+    "weekly_snap_work_program_hours": (
+        "No ASEC item measures qualifying work-program hours, so combined "
+        "work-plus-program hours toward the 20-hour ABAWD test omit "
+        "program hours (PolicyEngine/populace#249)."
+    ),
+    "is_snap_workfare_participant": (
+        "No ASEC item measures workfare participation under 7 CFR "
+        "273.7(m), which satisfies the ABAWD requirement regardless of "
+        "hours; defaults False (PolicyEngine/populace#249)."
+    ),
 }
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
 US_ACA_SOURCE_OUTPUT_COLUMNS = US_HEALTH_INPUT_NONCONSTANT_COLUMNS
@@ -529,6 +556,7 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
         "cms_aca_bronze_aptc_consumers_by_state",
     }
 )
+US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
 
 FILING_STATUS_MAP = {
     "All": None,
@@ -684,6 +712,36 @@ def _parse_args() -> argparse.Namespace:
             "Diagnostic escape hatch: record the eCPS parity gate result "
             "(incumbent-populated layers the candidate leaves empty and "
             "unexempted) without failing the build."
+        ),
+    )
+    parser.add_argument(
+        "--allow-input-coverage-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (populace#368): record the release "
+            "input-column coverage gate result — required eCPS input columns "
+            "the export drops or leaves degenerate — without failing the "
+            "build. Release builds must leave this unset; the gate is a hard "
+            "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--skip-reform-coverage-smoke",
+        action="store_true",
+        help=(
+            "Do not run the reform-coverage smoke gate (populace#368): the "
+            "pinned bound-reform probes (SSI $10k/$20k asset limits) that must "
+            "score nonzero on the written release. Skipping loses the "
+            "end-to-end $0-reform backstop; release builds should leave it on."
+        ),
+    )
+    parser.add_argument(
+        "--allow-reform-coverage-smoke-failures",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (populace#368): record the reform-coverage "
+            "smoke gate result without failing the build when a bound reform "
+            "probe scores ~$0. Release builds must leave this unset."
         ),
     )
     parser.add_argument(
@@ -2185,6 +2243,149 @@ def _with_aca_marketplace_source_outputs(
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
+    )
+
+
+def _medicaid_source_target_table(target_specs: tuple) -> pd.DataFrame:
+    """CMS state Medicaid enrollment counts as the take-up calibration table.
+
+    Mirrors :func:`_aca_source_target_tables` for the ``medicaid_enrollment``
+    target role: month-tagged December 2024 state snapshot facts
+    (``cms_medicaid.month2024_12.state_enrollment.*``), point-in-time
+    semantics per populace #332.
+    """
+    rows: list[dict[str, object]] = []
+    for spec in target_specs:
+        if spec.metadata.get("ledger_geography_level") != "state":
+            continue
+        groupby_dimension = spec.metadata.get("ledger_layout_groupby_dimension")
+        if (
+            isinstance(groupby_dimension, str)
+            and "congressional_district" in groupby_dimension
+        ):
+            continue
+        state_fips = spec.metadata.get("state_fips")
+        if not state_fips:
+            continue
+        if spec.metadata.get("target_role") != US_MEDICAID_ENROLLMENT_TARGET_ROLE:
+            continue
+        rows.append(
+            {
+                "state_fips": str(state_fips).zfill(2),
+                "target": float(spec.value),
+                "source_record_id": spec.name,
+            }
+        )
+    table = pd.DataFrame(rows, columns=["state_fips", "target", "source_record_id"])
+    duplicated = table["state_fips"][table["state_fips"].duplicated()].unique()
+    if len(duplicated):
+        # The calibrate operation applies duplicate state rows sequentially
+        # (last row wins) while the rate prior, diagnostics, and gate SUM
+        # them — divergent semantics that must never reach the stage.
+        raise RuntimeError(
+            "Medicaid enrollment targets carry duplicate state rows for "
+            f"state_fips {sorted(duplicated)}; the ledger feed must supply "
+            "exactly one medicaid_enrollment count per state."
+        )
+    return table
+
+
+def _person_state_fips(frame: Frame) -> np.ndarray:
+    """Person-aligned state FIPS text codes via the frame's linkage."""
+    # Frame.broadcast is the validated membership-mapping path (linkage is
+    # asserted at Frame construction), so no manual reindex/NaN handling.
+    return np.asarray(_state_fips_text(frame.broadcast("state_fips").to_numpy()))
+
+
+def _medicaid_person_eligibility(
+    frame: Frame,
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> np.ndarray:
+    """Engine-computed person-level ``is_medicaid_eligible``, batched like ACA."""
+    if simulation is not None:
+        return _calculate_array(simulation, "is_medicaid_eligible", map_to="person") > 0
+    from policyengine_us import Microsimulation
+
+    person_ids = frame.table("person")["person_id"].to_numpy()
+    eligibility = np.zeros(len(person_ids), dtype=bool)
+    person_positions = pd.Series(
+        np.arange(len(person_ids), dtype=np.int64), index=person_ids
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing Medicaid eligibility in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = Microsimulation(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_eligible = (
+                _calculate_array(
+                    batch_simulation, "is_medicaid_eligible", map_to="person"
+                )
+                > 0
+            )
+            positions = person_positions.reindex(
+                batch_frame.table("person")["person_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(positions).any():
+                raise RuntimeError(
+                    "Medicaid eligibility batch produced person_id values not "
+                    "present in the full person table."
+                )
+            eligibility[positions.astype(np.int64)] = batch_eligible
+            batch_simulation._invalidate_all_caches()
+            del batch_frame, batch_simulation
+        _collect_batch_garbage()
+    return eligibility
+
+
+def _with_medicaid_take_up_outputs(
+    frame: Frame,
+    target_specs: tuple,
+    *,
+    seed: int,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> tuple[Frame, dict[str, object]]:
+    """Assign Medicaid take-up (populace #331) and return frame + diagnostics."""
+    target_table = _medicaid_source_target_table(target_specs)
+    if target_table.empty:
+        raise RuntimeError(
+            "Medicaid take-up requires CMS state enrollment targets "
+            f"({US_MEDICAID_ENROLLMENT_TARGET_TABLE}); none were compiled from "
+            "the ledger facts."
+        )
+    eligibility = _medicaid_person_eligibility(
+        frame,
+        simulation=simulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+    return with_us_medicaid_take_up(
+        frame,
+        is_medicaid_eligible=eligibility,
+        state_fips=_person_state_fips(frame),
+        state_targets=target_table,
+        seed=seed,
     )
 
 
@@ -5372,6 +5573,12 @@ def main() -> None:
                 for failure in validation_input_coverage_gate.failures
             )
         )
+    # Preflight (populace#368): the release input-column coverage manifest must
+    # still equal the pinned reference eCPS input surface, keep the SSI
+    # countable-resource assets as hard requirements, and declare only live
+    # PolicyEngine-US input leaves. A drifted manifest fails here before the
+    # expensive calibration so a stale contract cannot silently narrow coverage.
+    assert_release_input_coverage_manifest_current()
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -5738,6 +5945,37 @@ def main() -> None:
                 for failure in health_input_gate.failures
             )
         )
+    if telemetry is not None:
+        telemetry.stage(
+            "medicaid_take_up",
+            message=(
+                "Assigning Medicaid take-up from reported coverage and CMS "
+                "state enrollment snapshots."
+            ),
+        )
+    base_frame, medicaid_take_up_diagnostics = _with_medicaid_take_up_outputs(
+        base_frame,
+        target_specs,
+        seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)
+    if not medicaid_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "medicaid_take_up_gate",
+                status="failed",
+                message="Medicaid take-up gate failed.",
+                failures=list(medicaid_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Medicaid take-up failed: {failure}"
+                for failure in medicaid_take_up_gate.failures
+            )
+        )
     if telemetry is not None and args.input_mass_reference_h5 is not None:
         telemetry.stage(
             "input_mass_reference_gate",
@@ -6082,6 +6320,56 @@ def main() -> None:
         if args.dense_default_dataset
         else _with_l0_refit_weights(base_frame, result)
     )
+    release_engine = PolicyEngineUSEngine()
+    # populace#368: full eCPS input-column coverage as a HARD release gate.
+    # Every input column the reference eCPS exports must be persisted by the
+    # export as a key with non-default signal, or carry a reviewed exclusion.
+    # This generalizes assert_required_us_release_source_columns (5 SNAP/ACA/
+    # immigration columns) to the whole eCPS input surface and closes the hole
+    # export-mass parity leaves open: an input the base never imputed (the SSI
+    # countable-resource assets, tips, education credits, ...) is absent from the
+    # export entirely, so every reform binding through it silently scores ~$0
+    # while mass and parity gates still pass. Runs on the calibrated export for
+    # BOTH the dense and sparse default paths (both reach this line). The SSI
+    # asset inputs ship as hard requirements with no exclusion, so this gate is
+    # RED on today's asset-less artifacts by design (Deliverable 2 turns it
+    # green); that is the gate doing its job, not a bug.
+    input_coverage_gate = us_release_input_coverage_gate(export_frame, release_engine)
+    input_coverage_path = release_dir / "input_coverage.json"
+    input_coverage_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not args.allow_input_coverage_gaps,
+                "input_coverage": {
+                    "passed": input_coverage_gate.passed,
+                    "failures": list(input_coverage_gate.failures),
+                    "details": dict(input_coverage_gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact("input_coverage", input_coverage_path)
+    if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Release input-column coverage gate failed.",
+                failures=list(input_coverage_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Input coverage failed: {failure}"
+                for failure in input_coverage_gate.failures
+            )
+        )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
     # parent built from a raw pooled-ASEC base, calibration correctly scales
@@ -6161,7 +6449,66 @@ def main() -> None:
             )
         )
     dataset_path = artifact_root / DATASET_FILENAME
-    PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
+    release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # populace#368: reform-coverage smoke on the WRITTEN release H5. The column
+    # gate above proves the required keys exist and carry signal; this is the
+    # end-to-end backstop: each pinned probe (first: SSI asset limits at
+    # $10k/$20k) mechanically binds through named input leaves and must move
+    # its budget measure. A ~$0 score on a bound reform means those leaves are
+    # absent or degenerate — the release aborts before any manifest or
+    # contract file certifies the artifact. Runs on both dense and sparse
+    # default paths (both reach this line). Until the asset stage is restored
+    # (Deliverable 2) the SSI probe fails by design; that is the gate working.
+    if not args.skip_reform_coverage_smoke:
+        if telemetry is not None:
+            telemetry.stage(
+                "reform_coverage_smoke",
+                message="Scoring pinned bound-reform probes on the written H5.",
+            )
+        reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
+            simulate=default_simulate_factory(dataset_path),
+            period=PERIOD,
+        )
+        reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
+        reform_coverage_smoke_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_reform_coverage_smoke_failures,
+                    "reform_coverage_smoke": {
+                        "passed": reform_coverage_smoke_gate.passed,
+                        "failures": list(reform_coverage_smoke_gate.failures),
+                        "details": dict(reform_coverage_smoke_gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact(
+                "reform_coverage_smoke", reform_coverage_smoke_path
+            )
+        if (
+            not reform_coverage_smoke_gate.passed
+            and not args.allow_reform_coverage_smoke_failures
+        ):
+            if telemetry is not None:
+                telemetry.stage(
+                    "reform_coverage_smoke",
+                    status="failed",
+                    message="Reform-coverage smoke gate failed.",
+                    failures=list(reform_coverage_smoke_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Reform coverage smoke failed: {failure}"
+                    for failure in reform_coverage_smoke_gate.failures
+                )
+            )
     if args.audit_export_targets:
         if telemetry is not None:
             telemetry.stage(
@@ -6269,14 +6616,39 @@ def main() -> None:
             "take_up_participation",
             message="Writing take-up participation diagnostics.",
         )
+    take_up_participation = us_take_up_participation_diagnostics(export_frame)
     write_us_take_up_participation_diagnostics(
-        us_take_up_participation_diagnostics(export_frame),
+        take_up_participation,
         release_dir / "us_take_up_participation.json",
     )
+    write_us_medicaid_take_up_diagnostics(
+        medicaid_take_up_diagnostics,
+        release_dir / "us_medicaid_take_up.json",
+    )
+    # The stage gate ran on the stage output; this re-checks the EXPORT frame
+    # so a downstream transform that drops or flattens a count-calibrated
+    # column cannot ship the engine-default landmine with only an
+    # observational JSON field recording it.
+    stale_count_calibrated = [
+        str(row["variable"])
+        for row in take_up_participation["programs"]
+        if row.get("populace_treatment") == "count_calibrated"
+        and row.get("ships_at_engine_default")
+    ]
+    if stale_count_calibrated:
+        raise RuntimeError(
+            "Release gates failed: count-calibrated take-up column(s) "
+            f"{stale_count_calibrated} ship at the engine default on the "
+            "export frame despite the stage having run."
+        )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_take_up_participation",
             release_dir / "us_take_up_participation.json",
+        )
+        telemetry.attach_artifact(
+            "us_medicaid_take_up",
+            release_dir / "us_medicaid_take_up.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started

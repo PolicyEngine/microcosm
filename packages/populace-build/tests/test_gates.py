@@ -86,6 +86,59 @@ class TestParityGate:
         )
         assert result.passed
         assert result.details["exempted"] == ["rare_var"]
+        assert result.details["stale_exemptions"] == []
+        assert result.details["dormant_exemptions"] == []
+
+    def test_stale_exemption_fails_once_the_candidate_produces_the_layer(self) -> None:
+        # The takes_up_medicaid_if_eligible rot case: the exemption predates
+        # the candidate producing the layer, and must fail the gate the build
+        # after production starts.
+        result = parity_gate(
+            {"snap": 0.1, "takes_up_medicaid_if_eligible": 0.8},
+            {"snap": 0.1, "takes_up_medicaid_if_eligible": 0.85},
+            known_gaps=["takes_up_medicaid_if_eligible"],
+        )
+        assert not result.passed
+        assert result.details["stale_exemptions"] == ["takes_up_medicaid_if_eligible"]
+        assert "takes_up_medicaid_if_eligible" in result.failures[0]
+        assert "remove the exemption" in result.failures[0]
+
+    def test_stale_exemption_fails_even_when_the_reference_lacks_the_layer(
+        self,
+    ) -> None:
+        # Candidate-populated is what makes an exemption a lie; a reference
+        # that never carried the layer does not rescue it.
+        result = parity_gate(
+            {"snap": 0.1, "new_var": 0.3},
+            {"snap": 0.1},
+            known_gaps=["new_var"],
+        )
+        assert not result.passed
+        assert result.details["stale_exemptions"] == ["new_var"]
+
+    def test_dormant_exemption_is_reported_not_failed(self) -> None:
+        # An exemption for a layer this reference never populates is dormant
+        # (different reference vintages populate different layers).
+        result = parity_gate(
+            {"snap": 0.1},
+            {"snap": 0.1, "dropped_var": 0.0},
+            known_gaps=["dropped_var", "absent_var"],
+        )
+        assert result.passed
+        assert result.details["dormant_exemptions"] == ["absent_var", "dropped_var"]
+
+    def test_stale_exemption_does_not_mask_real_gaps(self) -> None:
+        # A stale exemption and an unexempted gap both fail, each named.
+        result = parity_gate(
+            {"produced_var": 0.5},
+            {"produced_var": 0.4, "missing_var": 0.9},
+            known_gaps=["produced_var"],
+        )
+        assert not result.passed
+        assert result.details["gaps"] == 1
+        assert result.details["stale_exemptions"] == ["produced_var"]
+        assert any("missing_var" in failure for failure in result.failures)
+        assert any("produced_var" in failure for failure in result.failures)
 
 
 class TestSupportGate:
