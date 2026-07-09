@@ -10,8 +10,9 @@
   },
   "doctrine": {
     "engine_class": "Derived from engine metadata. model_simulated = policyengine-us computes the flag itself (formula / adds / start-date formula); populace must NOT seed it. data_seeded = a default-True input leaf policyengine-us reads from data; without a dataset value every eligible unit takes up (mechanical 100% participation). dead = no downstream variable reads the flag; seeding it changes no output.",
-    "populace_treatment": "Curated per-program decision. seed = populace assigns the flag from an administrative participation rate with cited provenance. rate_unsourced = the flag is data_seeded but no administrative rate is traceable to a federal agency publication, so it is left unseeded and stays a #313 parity-gate exemption until the rate is sourced (ideally as a Ledger fact); copying us-data's unsourced value would recreate the fabricated-rate class ledger#77 removed. out_of_scope = handled by another workstream. near_universal = the administrative reality is ~100% take-up, so seeding sub-100% would be the error.",
-    "provenance_rule": "A rate may only drive a seed stage when its exact value is traceable to an administrative source (FNS/CMS/IRS/ACF/ASPE publication) at a stated vintage. Research-institute-only estimates (e.g. NIEER, unadjusted Urban microsimulation outputs) and model-relative ratios (admin numerator over a policyengine eligibility estimate) do not clear the bar and are recorded rate_unsourced."
+    "populace_treatment": "Curated per-program decision. seed = populace assigns the flag from an administrative participation rate with cited provenance. count_calibrated = no administrative participation rate exists, but administrative enrollment counts do: populace anchors the flag on survey-reported coverage and calibrates the fill to those count facts (the native ACA stage pattern), so no rate is ever cited and the model-relative-ratio class stays out of the inventory; the entry's calibration block names the anchor column and target fact families. rate_unsourced = the flag is data_seeded but no administrative rate is traceable to a federal agency publication, so it is left unseeded and stays a #313 parity-gate exemption until the rate is sourced (ideally as a Ledger fact); copying us-data's unsourced value would recreate the fabricated-rate class ledger#77 removed. out_of_scope = handled by another workstream. near_universal = the administrative reality is ~100% take-up, so seeding sub-100% would be the error.",
+    "provenance_rule": "A rate may only drive a seed stage when its exact value is traceable to an administrative source (FNS/CMS/IRS/ACF/ASPE publication) at a stated vintage. Research-institute-only estimates (e.g. NIEER, unadjusted Urban microsimulation outputs) and model-relative ratios (admin numerator over a policyengine eligibility estimate) do not clear the bar and are recorded rate_unsourced.",
+    "enrollment_semantics": "Enrollment take-up flags carry point-in-time (average-month) semantics: anchored on interview-point survey coverage and calibrated to month-tagged administrative enrollment snapshots, never to ever-enrolled-in-year counts (which run ~10M+ higher for Medicaid and would overstate spending against per-full-year-equivalent cost denominators). Precedent: Urban HIPSM targets the CMS point-in-time snapshot 'rather than an annual average' (HIPSM 2020 methodology). Within-year churn is out of scope for take-up stages (longitudinal frame direction, DESIGN.md). populace #332."
   },
   "programs": [
     {
@@ -67,11 +68,18 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "count_calibrated",
       "consumed_via": "medicaid_enrolled (adds), gated by is_medicaid_eligible",
-      "rate": {"status": "model_relative", "us_data_value": "state-specific 0.53-0.99"},
-      "followup": "Source a state Medicaid participation rate as a Ledger fact; #170 diagnostics motivate it.",
-      "notes": "This is the #170 symptom (enrollment == eligibility). us-data's state values are 'derived from MACPAC enrollment targets vs modeled eligibility' - an admin count over a model eligibility estimate, i.e. a calibration ratio internal to a microsimulation, not a published participation rate; ceiling values (0.99) are ratio artifacts. KFF's cited brief carries no state participation table. Left unseeded rather than recreate an unsourced rate."
+      "calibration": {
+        "anchor": "has_medicaid_health_coverage_at_interview",
+        "targets": ["cms_medicaid_enrollment_by_state"],
+        "fact_family": "cms_medicaid.month2024_12.state_enrollment.*.total_medicaid_enrollment",
+        "semantics": "point_in_time_monthly_snapshot (populace #332)",
+        "anchor_month_note": "The ASEC anchor is interview-point (~Feb-Apr) while the target is the December snapshot: both point-in-time stocks, months deliberately unaligned. With 2024 enrollment declining through the unwinding, spring reporters can exceed a December count; the stage gate's anchor-floor rule treats that as the reachable floor, not a miss."
+      },
+      "rate": {"status": "no_administrative_rate_exists", "us_data_value": "state-specific 0.53-0.99 (rejected: model-relative ratio, MACPAC enrollment over modeled eligibility)"},
+      "scope_owner": "populace#331 (medicaid_take_up stage)",
+      "notes": "Heals the #170 symptom (enrollment == eligibility). No administrative participation rate clears the provenance bar: us-data's state values are an admin count over a model eligibility estimate (ceiling values 0.99 are ratio artifacts) and KFF's cited brief carries no state participation table. The medicaid_take_up stage therefore cites no rate: eligible reporters of has_medicaid_health_coverage_at_interview always take up, and the fill is calibrated to CMS state monthly-snapshot enrollment counts (Ledger facts), the native ACA stage pattern. States where modeled eligible weight falls below the CMS count saturate (all eligibles enrolled) and are recorded as saturated in diagnostics, not treated as landmines - the shortfall is an eligibility-undercount question, out of scope here."
     },
     {
       "variable": "takes_up_chip_if_eligible",
@@ -82,8 +90,8 @@
       "populace_treatment": "rate_unsourced",
       "consumed_via": "chip_enrolled (adds), gated by is_chip_eligible",
       "rate": {"status": "no_standalone_current_rate"},
-      "followup": "Source a standalone CHIP participation rate (Ledger fact); current MACPAC/CMS publish enrollment counts and combined Medicaid+CHIP child coverage rates, not a standalone CHIP take-up rate.",
-      "notes": "us-data never carried a standalone CHIP rate. The nearest published figures (Medicaid+CHIP combined child participation, MACPAC/InsureKidsNow) are 2017-vintage, combined, and children-only - not a defensible standalone CHIP take-up rate today. Left unseeded."
+      "followup": "Blocked on populace#321: CMS total_chip_enrollment counts M-CHIP + separate CHIP while the model materializes separate CHIP only (20 states zero-support), so count-calibration against the current fact family would calibrate to a concept the model cannot reach. Once the ledger splits M-CHIP from separate-CHIP enrollment, CHIP follows the #331 medicaid_take_up count_calibrated pattern (anchor: has_other_means_tested_health_coverage_at_interview or the CHIP-specific reported column the split settles on).",
+      "notes": "us-data never carried a standalone CHIP rate. The nearest published figures (Medicaid+CHIP combined child participation, MACPAC/InsureKidsNow) are 2017-vintage, combined, and children-only - not a defensible standalone CHIP take-up rate today. Left unseeded pending the #321 concept split; deliberately NOT count_calibrated in the same pass as Medicaid."
     },
     {
       "variable": "takes_up_basic_health_program_if_eligible",

@@ -10,9 +10,9 @@ without this work H5 consumers inherit mechanical universal take-up (populace
 This module owns the *inventory*: a checked-in table
 (``populace/build/us/take_up_contract.json``) recording, per program, the engine
 facts that decide treatment (entity, default, and the derived ``engine_class``)
-and the curated populace treatment (seed / rate_unsourced / model_simulated /
-out_of_scope / near_universal) with the administrative provenance of any rate
-used. The engine facts are asserted against the installed engine by
+and the curated populace treatment (seed / count_calibrated / rate_unsourced /
+model_simulated / out_of_scope / near_universal) with the administrative
+provenance of any rate used. The engine facts are asserted against the installed engine by
 :func:`assert_take_up_contract_current`, so the classification tracks the pinned
 policyengine-us version instead of a remembered snapshot -- the same
 metadata-derivation doctrine as the #301 formula-owned guard.
@@ -38,6 +38,7 @@ __all__ = [
     "TakeUpProgram",
     "assert_take_up_contract_current",
     "assert_take_up_treatments_consistent",
+    "count_calibrated_take_up_programs",
     "load_take_up_contract",
     "seeded_take_up_programs",
 ]
@@ -56,6 +57,7 @@ TAKE_UP_CONTRACT_ENGINE_FACT_KEYS: tuple[str, ...] = (
 _VALID_TREATMENTS = frozenset(
     {
         "seed",
+        "count_calibrated",
         "rate_unsourced",
         "model_simulated",
         "out_of_scope",
@@ -164,6 +166,7 @@ def load_take_up_contract() -> TakeUpContract:
                 f"program {variable!r} is missing engine fact key(s): {missing}."
             )
         _validate_seed_provenance(variable, treatment, entry)
+        _validate_count_calibration(variable, treatment, entry)
         programs.append(
             TakeUpProgram(
                 variable=variable,
@@ -221,9 +224,61 @@ def _validate_seed_provenance(
         )
 
 
+def _validate_count_calibration(
+    variable: str, treatment: str, entry: Mapping[str, Any]
+) -> None:
+    """A count-calibrated program must name its anchor and count targets.
+
+    ``count_calibrated`` is the doctrine-compliant path when no administrative
+    participation *rate* exists but administrative enrollment *counts* do (the
+    native ACA stage precedent): assignment anchors on survey-reported coverage
+    and calibrates the fill to Ledger count facts, so no rate is ever cited.
+    The entry must therefore carry a ``calibration`` block naming the anchor
+    column and the target fact family — and must NOT carry a sourced rate, or
+    the treatment is misclassified (a sourced rate is what ``seed`` is for).
+    """
+    if treatment != "count_calibrated":
+        return
+    calibration = entry.get("calibration")
+    if not isinstance(calibration, Mapping):
+        raise ValueError(
+            f"count_calibrated program {variable!r} requires a 'calibration' "
+            "block naming its anchor and count targets."
+        )
+    targets = calibration.get("targets")
+    if not isinstance(targets, (list, tuple)) or not targets:
+        raise ValueError(
+            f"count_calibrated program {variable!r} calibration requires a "
+            "non-empty 'targets' list of Ledger count-fact families."
+        )
+    if not str(calibration.get("anchor") or ""):
+        raise ValueError(
+            f"count_calibrated program {variable!r} calibration requires an "
+            "'anchor' reported-coverage column."
+        )
+    rate = entry.get("rate")
+    if isinstance(rate, Mapping) and str(rate.get("status") or "").startswith(
+        "sourced"
+    ):
+        raise ValueError(
+            f"count_calibrated program {variable!r} carries a sourced rate; "
+            "a program with an administrative rate should be 'seed', not "
+            "'count_calibrated'."
+        )
+
+
 def seeded_take_up_programs() -> tuple[TakeUpProgram, ...]:
     """The programs populace seeds, in table order."""
     return load_take_up_contract().seeded()
+
+
+def count_calibrated_take_up_programs() -> tuple[TakeUpProgram, ...]:
+    """The programs populace assigns via anchored count-calibration."""
+    return tuple(
+        program
+        for program in load_take_up_contract().programs
+        if program.populace_treatment == "count_calibrated"
+    )
 
 
 def assert_take_up_contract_current(engine: PolicyEngineUSEngine | None = None) -> None:

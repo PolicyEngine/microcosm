@@ -314,10 +314,6 @@
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
     },
-    "takes_up_medicaid_if_eligible": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
-    },
     "takes_up_medicare_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"

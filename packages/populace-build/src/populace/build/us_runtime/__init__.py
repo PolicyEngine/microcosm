@@ -147,6 +147,17 @@ from populace.build.us_runtime.immigration import (
 from populace.build.us_runtime.input_mass import (
     us_input_mass_totals,
 )
+from populace.build.us_runtime.medicaid_take_up import (
+    US_MEDICAID_ENROLLMENT_TARGET_TABLE,
+    US_MEDICAID_ENROLLMENT_TOLERANCE,
+    US_MEDICAID_TAKE_UP_ANCHOR,
+    US_MEDICAID_TAKE_UP_STAGE,
+    US_MEDICAID_TAKE_UP_VARIABLE,
+    us_medicaid_take_up_diagnostics,
+    us_medicaid_take_up_gate,
+    with_us_medicaid_take_up,
+    write_us_medicaid_take_up_diagnostics,
+)
 from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
@@ -243,6 +254,7 @@ from populace.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
+    count_calibrated_take_up_programs,
     load_take_up_contract,
     seeded_take_up_programs,
 )
@@ -364,10 +376,20 @@ __all__ = [
     "with_us_immigration_inputs",
     "US_TAKE_UP_SHARE_BAND",
     "SeededTakeUpResult",
+    "US_MEDICAID_ENROLLMENT_TARGET_TABLE",
+    "US_MEDICAID_ENROLLMENT_TOLERANCE",
+    "US_MEDICAID_TAKE_UP_ANCHOR",
+    "US_MEDICAID_TAKE_UP_STAGE",
+    "US_MEDICAID_TAKE_UP_VARIABLE",
+    "count_calibrated_take_up_programs",
+    "us_medicaid_take_up_diagnostics",
+    "us_medicaid_take_up_gate",
     "us_take_up_participation_diagnostics",
     "us_take_up_signal_gate",
     "us_take_up_summary",
+    "with_us_medicaid_take_up",
     "with_us_take_up_inputs",
+    "write_us_medicaid_take_up_diagnostics",
     "write_us_take_up_participation_diagnostics",
     "TakeUpContract",
     "TakeUpProgram",
@@ -532,6 +554,18 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "calibration targets."
         ),
     ),
+    "medicaid_take_up": DonorSpec(
+        survey="CPS ASEC reported coverage + CMS Medicaid monthly enrollment snapshot",
+        source="https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360",
+        notes=(
+            "Medicaid take-up by anchored count-calibration (contract "
+            "treatment count_calibrated, populace #331): CPS-reported "
+            "Medicaid coverage at interview anchors the flag; the fill is "
+            "calibrated to CMS December 2024 state enrollment snapshots. "
+            "Point-in-time semantics per #332; heals the #170 "
+            "enrollment==eligibility degeneracy."
+        ),
+    ),
     "prior_year_income": DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -666,6 +700,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "vehicle_assets",
     "entity_placement",
     "aca_marketplace_inputs",
+    "medicaid_take_up",
     "export",
 )
 
