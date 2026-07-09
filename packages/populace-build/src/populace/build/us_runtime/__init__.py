@@ -196,6 +196,9 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.reform_coverage_smoke import (
+    us_reform_coverage_smoke_gate,
+)
 from populace.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
@@ -204,6 +207,19 @@ from populace.build.us_runtime.reform_validation import (
     out_of_sample_reform_specs,
     reform_validation_payload,
     write_reform_validation,
+)
+from populace.build.us_runtime.release_input_coverage import (
+    SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_RELEASE_INPUT_COVERAGE_RESOURCE,
+    ReformCoverageProbe,
+    ReleaseInputColumn,
+    ReleaseInputCoverageManifest,
+    assert_release_input_coverage_manifest_current,
+    load_release_input_coverage_manifest,
+    us_release_input_coverage_gate,
+    us_release_input_coverage_required_columns,
+    us_release_input_coverage_reviewed_exclusions,
+    us_release_reform_coverage_probes,
 )
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
@@ -452,6 +468,18 @@ __all__ = [
     "US_VALIDATION_PROVISION_INPUT_LEAVES",
     "ValidationInputLeaf",
     "assert_validation_leaf_registry_current",
+    "SSI_COUNTABLE_RESOURCE_ASSETS",
+    "US_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "ReformCoverageProbe",
+    "ReleaseInputColumn",
+    "ReleaseInputCoverageManifest",
+    "assert_release_input_coverage_manifest_current",
+    "load_release_input_coverage_manifest",
+    "us_release_input_coverage_gate",
+    "us_release_input_coverage_required_columns",
+    "us_release_input_coverage_reviewed_exclusions",
+    "us_release_reform_coverage_probes",
+    "us_reform_coverage_smoke_gate",
     "write_us_source_coverage_diagnostics",
     "support_channel_column",
     "support_clone_index_column",

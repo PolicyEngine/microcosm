@@ -52,6 +52,7 @@ from populace.build.us_runtime import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
+    assert_release_input_coverage_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     hard_target_package_aliases,
@@ -61,6 +62,8 @@ from populace.build.us_runtime import (
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
     us_pregnancy_signal_gate,
+    us_reform_coverage_smoke_gate,
+    us_release_input_coverage_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -709,6 +712,36 @@ def _parse_args() -> argparse.Namespace:
             "Diagnostic escape hatch: record the eCPS parity gate result "
             "(incumbent-populated layers the candidate leaves empty and "
             "unexempted) without failing the build."
+        ),
+    )
+    parser.add_argument(
+        "--allow-input-coverage-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (populace#368): record the release "
+            "input-column coverage gate result — required eCPS input columns "
+            "the export drops or leaves degenerate — without failing the "
+            "build. Release builds must leave this unset; the gate is a hard "
+            "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--skip-reform-coverage-smoke",
+        action="store_true",
+        help=(
+            "Do not run the reform-coverage smoke gate (populace#368): the "
+            "pinned bound-reform probes (SSI $10k/$20k asset limits) that must "
+            "score nonzero on the written release. Skipping loses the "
+            "end-to-end $0-reform backstop; release builds should leave it on."
+        ),
+    )
+    parser.add_argument(
+        "--allow-reform-coverage-smoke-failures",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (populace#368): record the reform-coverage "
+            "smoke gate result without failing the build when a bound reform "
+            "probe scores ~$0. Release builds must leave this unset."
         ),
     )
     parser.add_argument(
@@ -5540,6 +5573,12 @@ def main() -> None:
                 for failure in validation_input_coverage_gate.failures
             )
         )
+    # Preflight (populace#368): the release input-column coverage manifest must
+    # still equal the pinned reference eCPS input surface, keep the SSI
+    # countable-resource assets as hard requirements, and declare only live
+    # PolicyEngine-US input leaves. A drifted manifest fails here before the
+    # expensive calibration so a stale contract cannot silently narrow coverage.
+    assert_release_input_coverage_manifest_current()
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -6281,6 +6320,56 @@ def main() -> None:
         if args.dense_default_dataset
         else _with_l0_refit_weights(base_frame, result)
     )
+    release_engine = PolicyEngineUSEngine()
+    # populace#368: full eCPS input-column coverage as a HARD release gate.
+    # Every input column the reference eCPS exports must be persisted by the
+    # export as a key with non-default signal, or carry a reviewed exclusion.
+    # This generalizes assert_required_us_release_source_columns (5 SNAP/ACA/
+    # immigration columns) to the whole eCPS input surface and closes the hole
+    # export-mass parity leaves open: an input the base never imputed (the SSI
+    # countable-resource assets, tips, education credits, ...) is absent from the
+    # export entirely, so every reform binding through it silently scores ~$0
+    # while mass and parity gates still pass. Runs on the calibrated export for
+    # BOTH the dense and sparse default paths (both reach this line). The SSI
+    # asset inputs ship as hard requirements with no exclusion, so this gate is
+    # RED on today's asset-less artifacts by design (Deliverable 2 turns it
+    # green); that is the gate doing its job, not a bug.
+    input_coverage_gate = us_release_input_coverage_gate(export_frame, release_engine)
+    input_coverage_path = release_dir / "input_coverage.json"
+    input_coverage_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not args.allow_input_coverage_gaps,
+                "input_coverage": {
+                    "passed": input_coverage_gate.passed,
+                    "failures": list(input_coverage_gate.failures),
+                    "details": dict(input_coverage_gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact("input_coverage", input_coverage_path)
+    if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="Release input-column coverage gate failed.",
+                failures=list(input_coverage_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Input coverage failed: {failure}"
+                for failure in input_coverage_gate.failures
+            )
+        )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
     # parent built from a raw pooled-ASEC base, calibration correctly scales
@@ -6360,7 +6449,66 @@ def main() -> None:
             )
         )
     dataset_path = artifact_root / DATASET_FILENAME
-    PolicyEngineUSEngine().write_dataset(export_frame, dataset_path, period=PERIOD)
+    release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # populace#368: reform-coverage smoke on the WRITTEN release H5. The column
+    # gate above proves the required keys exist and carry signal; this is the
+    # end-to-end backstop: each pinned probe (first: SSI asset limits at
+    # $10k/$20k) mechanically binds through named input leaves and must move
+    # its budget measure. A ~$0 score on a bound reform means those leaves are
+    # absent or degenerate — the release aborts before any manifest or
+    # contract file certifies the artifact. Runs on both dense and sparse
+    # default paths (both reach this line). Until the asset stage is restored
+    # (Deliverable 2) the SSI probe fails by design; that is the gate working.
+    if not args.skip_reform_coverage_smoke:
+        if telemetry is not None:
+            telemetry.stage(
+                "reform_coverage_smoke",
+                message="Scoring pinned bound-reform probes on the written H5.",
+            )
+        reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
+            simulate=default_simulate_factory(dataset_path),
+            period=PERIOD,
+        )
+        reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
+        reform_coverage_smoke_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_reform_coverage_smoke_failures,
+                    "reform_coverage_smoke": {
+                        "passed": reform_coverage_smoke_gate.passed,
+                        "failures": list(reform_coverage_smoke_gate.failures),
+                        "details": dict(reform_coverage_smoke_gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact(
+                "reform_coverage_smoke", reform_coverage_smoke_path
+            )
+        if (
+            not reform_coverage_smoke_gate.passed
+            and not args.allow_reform_coverage_smoke_failures
+        ):
+            if telemetry is not None:
+                telemetry.stage(
+                    "reform_coverage_smoke",
+                    status="failed",
+                    message="Reform-coverage smoke gate failed.",
+                    failures=list(reform_coverage_smoke_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    f"Reform coverage smoke failed: {failure}"
+                    for failure in reform_coverage_smoke_gate.failures
+                )
+            )
     if args.audit_export_targets:
         if telemetry is not None:
             telemetry.stage(
