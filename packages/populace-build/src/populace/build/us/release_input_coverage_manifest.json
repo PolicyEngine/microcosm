@@ -220,9 +220,7 @@
    "status": "reviewed_exclusion"
   },
   "hours_worked_last_week": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "household_vehicles_owned": {
    "issue": "PolicyEngine/populace#49",
@@ -240,9 +238,7 @@
    "status": "reviewed_exclusion"
   },
   "immigration_status_str": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "investment_income_elected_form_4952": {
    "issue": "PolicyEngine/populace#274",
@@ -481,9 +477,7 @@
    "status": "reviewed_exclusion"
   },
   "ssn_card_type": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_self_employment_income_before_lsr": {
    "issue": "PolicyEngine/populace#298",
@@ -534,9 +528,7 @@
    "status": "reviewed_exclusion"
   },
   "takes_up_eitc": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_head_start_if_eligible": {
    "issue": "PolicyEngine/populace#312",
@@ -549,9 +541,7 @@
    "status": "reviewed_exclusion"
   },
   "takes_up_medicaid_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_medicare_if_eligible": {
    "issue": "PolicyEngine/populace#312",
@@ -567,9 +557,7 @@
    "status": "reviewed_exclusion"
   },
   "takes_up_tanf_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tax_exempt_interest_income": {
    "status": "required"
@@ -653,9 +641,7 @@
    "status": "reviewed_exclusion"
   },
   "weekly_hours_worked_before_lsr": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "weeks_unemployed": {
    "issue": "PolicyEngine/populace#38",
@@ -679,8 +665,8 @@
   }
  },
  "counts": {
-  "required": 58,
-  "reviewed_exclusion": 100,
+  "required": 65,
+  "reviewed_exclusion": 93,
   "total": 158
  },
  "derivation": "Required surface = ecps_parity_reference.json populated layers (input columns the pinned, sha-verified reference eCPS populates). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
