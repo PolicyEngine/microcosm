@@ -1833,7 +1833,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "with_us_snap_take_up_inputs",
-        lambda frame, *, seed, time_period: frame,
+        lambda frame, **kwargs: (frame, {}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_snap_take_up_outputs",
+        lambda frame, *, seed, maximum_microsim_batch_size=None: (frame, {}),
     )
     monkeypatch.setattr(
         builder,
@@ -1881,7 +1886,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "us_snap_take_up_signal_gate",
-        lambda frame: builder.GateResult(
+        lambda diagnostics: builder.GateResult(
             name="snap_take_up_signal",
             passed=True,
             details={"checked": True},
@@ -2516,6 +2521,74 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
     assert abs(marketplace_takers["mean"] - 1.1) < 1e-12
     assert marketplace_takers["below_benchmark_count"] == 0
     assert marketplace_takers["above_benchmark_count"] == 1
+
+
+def test_snap_take_up_builder_uses_spm_policy_inputs_and_state_fips(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    count = 8
+    household_ids = np.arange(1, count + 1, dtype="int64")
+    spm_unit_ids = household_ids + 100
+    person = pd.DataFrame(
+        {
+            "person_id": household_ids,
+            "person_household_id": household_ids,
+            "person_tax_unit_id": household_ids + 1_000,
+            "person_spm_unit_id": spm_unit_ids,
+            "person_family_id": household_ids + 3_000,
+            "person_marital_unit_id": household_ids + 4_000,
+            "SPM_SNAPSUB": np.zeros(count),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": household_ids,
+                    "state_fips": np.asarray([5] * 4 + [17] * 4),
+                }
+            ),
+            "tax_unit": pd.DataFrame({"tax_unit_id": household_ids + 1_000}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": spm_unit_ids}),
+            "family": pd.DataFrame({"family_id": household_ids + 3_000}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": household_ids + 4_000}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.ones(count),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    fake_simulation = object()
+
+    def fake_calculate_array(
+        simulation, variable, *, map_to=None, period=builder.PERIOD
+    ):
+        assert simulation is fake_simulation
+        assert map_to == "spm_unit"
+        assert period == f"{builder.PERIOD}-01"
+        if variable == "is_snap_eligible":
+            return np.ones(count)
+        assert variable == "snap_unit_size"
+        return np.ones(count)
+
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    result, diagnostics = builder._with_snap_take_up_outputs(
+        frame,
+        seed=42,
+        simulation=fake_simulation,
+    )
+
+    assigned = result.table("spm_unit")["takes_up_snap_if_eligible"]
+    assert assigned.iloc[4:].all()
+    assert assigned.iloc[:4].nunique() == 2
+    assert [row["state_fips"] for row in diagnostics["states"]] == ["05", "17"]
+    assert builder.us_snap_take_up_signal_gate(diagnostics).passed
 
 
 def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:

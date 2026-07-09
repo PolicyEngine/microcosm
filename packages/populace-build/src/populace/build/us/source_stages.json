@@ -521,8 +521,8 @@
     },
     {
       "stage": "snap_take_up",
-      "survey": "Census CPS ASEC + USDA FNS participation rate estimates",
-      "source": "https://www.fns.usda.gov/snap/participation-rates",
+      "survey": "Census CPS ASEC + USDA FNS FY2022 state participation rate estimates",
+      "source": "https://www.fns.usda.gov/research/snap/state-participation-rates/2022",
       "grain": "spm_unit",
       "artifacts": [
         {
@@ -534,8 +534,8 @@
         {
           "kind": "administrative_table",
           "format": "published_estimate",
-          "vintage": "latest_available",
-          "locator": "USDA FNS SNAP participation-rate estimates (Reaching Those in Need)"
+          "vintage": "fiscal_year_2022",
+          "locator": "USDA FNS Reaching Those in Need: Estimates of State SNAP Participation Rates in 2022, Table 1"
         }
       ],
       "operations": [
@@ -546,16 +546,70 @@
         {
           "kind": "derive_snap_take_up",
           "seed_from_build_config": true,
-          "take_up_rate": {
-            "value": 0.82,
-            "source": "https://www.fns.usda.gov/snap/participation-rates"
+          "state_take_up_rates": {
+            "fiscal_year": 2022,
+            "measure": "share_of_eligible_people_participating_in_average_month",
+            "source": "https://www.fns.usda.gov/sites/default/files/resource-files/ear-snap-Reaching-Those-in-Need-2022.pdf",
+            "values": {
+              "01": 0.9,
+              "02": 0.73,
+              "04": 0.77,
+              "05": 0.59,
+              "06": 0.81,
+              "08": 1.0,
+              "09": 0.98,
+              "10": 0.91,
+              "11": 1.0,
+              "12": 0.81,
+              "13": 0.92,
+              "15": 0.81,
+              "16": 0.73,
+              "17": 1.0,
+              "18": 0.89,
+              "19": 0.98,
+              "20": 0.79,
+              "21": 0.75,
+              "22": 0.99,
+              "23": 0.94,
+              "24": 0.85,
+              "25": 1.0,
+              "26": 1.0,
+              "27": 0.93,
+              "28": 0.74,
+              "29": 0.92,
+              "30": 0.75,
+              "31": 0.93,
+              "32": 0.98,
+              "33": 0.82,
+              "34": 0.91,
+              "35": 1.0,
+              "36": 0.91,
+              "37": 0.95,
+              "38": 0.81,
+              "39": 0.99,
+              "40": 0.98,
+              "41": 1.0,
+              "42": 1.0,
+              "44": 1.0,
+              "45": 0.76,
+              "46": 0.84,
+              "47": 0.84,
+              "48": 0.74,
+              "49": 0.76,
+              "50": 0.99,
+              "51": 0.83,
+              "53": 1.0,
+              "54": 0.98,
+              "55": 1.0,
+              "56": 0.63
+            }
           }
         }
       ],
       "outputs": [
         "takes_up_snap_if_eligible"
       ],
-      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
+      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. In each state, eligible non-reporting SPM units are ordered by stable source-identity draw and topped up until weighted eligible people (household design weight times modeled snap_unit_size) are closest to the cited FY2022 FNS eligible-person participation rate; when eligible reporters alone exceed the target, the anchor is the floor. The calibrated state draw cutoff also applies to currently ineligible units, so eligibility-expanding reforms expose a plausible state-specific propensity instead of a hard-coded zero. Stable-draw ties are selected together so support-channel clones agree. FNS publishes rounded estimates and caps reported estimates at 100 percent; a reported 100 does not literally establish universal participation. Without this stage the engine defaults every unit to take-up, and the former national top-up preserved CPS state under-reporting (populace #243/#372)."
     },
     {
       "stage": "eligibility_inputs",

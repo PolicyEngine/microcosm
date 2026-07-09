@@ -247,10 +247,14 @@ from populace.build.us_runtime.snap_discretionary_exemption import (
     with_us_snap_discretionary_exemption_inputs,
 )
 from populace.build.us_runtime.snap_take_up import (
+    US_SNAP_TAKE_UP_ELIGIBILITY_COLUMN,
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
     US_SNAP_TAKE_UP_RAW_COLUMN,
     US_SNAP_TAKE_UP_STAGE_NAME,
+    US_SNAP_TAKE_UP_TOLERANCE,
+    US_SNAP_TAKE_UP_UNIT_SIZE_COLUMN,
     derive_us_snap_take_up_from_manifest,
+    us_snap_take_up_diagnostics,
     us_snap_take_up_signal_gate,
     us_snap_take_up_stage_spec,
     us_snap_take_up_summary,
@@ -364,10 +368,14 @@ __all__ = [
     "us_hours_worked_stage_spec",
     "us_hours_worked_summary",
     "with_us_hours_worked_inputs",
+    "US_SNAP_TAKE_UP_ELIGIBILITY_COLUMN",
     "US_SNAP_TAKE_UP_OUTPUT_COLUMN",
     "US_SNAP_TAKE_UP_RAW_COLUMN",
     "US_SNAP_TAKE_UP_STAGE_NAME",
+    "US_SNAP_TAKE_UP_TOLERANCE",
+    "US_SNAP_TAKE_UP_UNIT_SIZE_COLUMN",
     "derive_us_snap_take_up_from_manifest",
+    "us_snap_take_up_diagnostics",
     "us_snap_take_up_signal_gate",
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
@@ -649,13 +657,15 @@ US_DONORS: Mapping[str, DonorSpec] = {
         ),
     ),
     US_SNAP_TAKE_UP_STAGE_NAME: DonorSpec(
-        survey="Census CPS ASEC + USDA FNS participation rate estimates",
-        source="https://www.fns.usda.gov/snap/participation-rates",
+        survey=("Census CPS ASEC + USDA FNS FY2022 state participation rate estimates"),
+        source=(
+            "https://www.fns.usda.gov/research/snap/state-participation-rates/2022"
+        ),
         notes=(
             "SNAP take-up: reported recipients (SPM_SNAPSUB) always take "
-            "up; non-reporting units drawn to the cited FNS participation "
-            "rate. Without it the engine defaults every eligible unit to "
-            "100% take-up."
+            "up; non-reporting units are calibrated by state to cited FNS "
+            "eligible-person participation rates. Without it the engine "
+            "defaults every eligible unit to 100% take-up."
         ),
     ),
     US_ELIGIBILITY_INPUTS_STAGE_NAME: DonorSpec(

@@ -22,9 +22,9 @@
       "value_type": "bool",
       "default": true,
       "populace_treatment": "out_of_scope",
-      "scope_owner": "snap_take_up source stage (populace#243, landed in PR #294)",
-      "rate": {"value": 0.82, "source": "https://www.fns.usda.gov/snap/participation-rates", "agency": "USDA FNS", "status": "sourced_administrative"},
-      "notes": "SNAP take-up is seeded by the snap_take_up source stage, reported-receipt-anchored on raw ASEC SPM_SNAPSUB and gated by snap_take_up_signal. Not seeded here to avoid duplicating that work; out_of_scope means out of scope for this module's Bernoulli seeding, not unseeded."
+      "scope_owner": "snap_take_up source stage (populace#243/#372)",
+      "rate": {"grain": "state", "period": "FY2022", "manifest_parameter": "state_take_up_rates", "measure": "share_of_eligible_people_participating_in_average_month", "source": "https://www.fns.usda.gov/sites/default/files/resource-files/ear-snap-Reaching-Those-in-Need-2022.pdf", "agency": "USDA FNS", "status": "sourced_administrative"},
+      "notes": "SNAP take-up is seeded by the snap_take_up source stage, reported-receipt-anchored on raw ASEC SPM_SNAPSUB, calibrated at state grain to FNS eligible-person participation rates, and gated by snap_take_up_signal. The state values live once in source_stages.json. Not seeded in the generic Bernoulli module to avoid duplicating that work; out_of_scope means out of scope for that module, not unseeded."
     },
     {
       "variable": "takes_up_tanf_if_eligible",

@@ -2313,6 +2313,133 @@ def _person_state_fips(frame: Frame) -> np.ndarray:
     return np.asarray(_state_fips_text(frame.broadcast("state_fips").to_numpy()))
 
 
+def _spm_unit_state_fips(frame: Frame) -> np.ndarray:
+    """SPM-unit-aligned state FIPS text codes via household nesting."""
+    positions = _group_to_household_positions(frame, "spm_unit")
+    state_fips = frame.table("household")["state_fips"].to_numpy()[positions]
+    return np.asarray(_state_fips_text(state_fips))
+
+
+def _snap_spm_unit_policy_inputs(
+    frame: Frame,
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Engine SNAP eligibility and eligible unit size at SPM-unit grain.
+
+    The FNS rates are average-month eligible-person shares. Populace persists
+    one annual take-up flag, so the source stage uses January as the baseline
+    representative month and applies the resulting state cutoff off-domain as
+    well; units becoming eligible later in the year retain that propensity.
+    """
+    period = f"{PERIOD}-01"
+    if simulation is not None:
+        eligible = (
+            _calculate_array(
+                simulation,
+                "is_snap_eligible",
+                map_to="spm_unit",
+                period=period,
+            )
+            > 0
+        )
+        unit_size = _calculate_array(
+            simulation,
+            "snap_unit_size",
+            map_to="spm_unit",
+            period=period,
+        )
+        return eligible, unit_size
+
+    from policyengine_us import Microsimulation
+
+    spm_unit_ids = frame.table("spm_unit")["spm_unit_id"].to_numpy()
+    eligible = np.zeros(len(spm_unit_ids), dtype=bool)
+    unit_size = np.zeros(len(spm_unit_ids), dtype=np.float64)
+    spm_unit_positions = pd.Series(
+        np.arange(len(spm_unit_ids), dtype=np.int64), index=spm_unit_ids
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing SNAP eligibility in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = Microsimulation(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_eligible = (
+                _calculate_array(
+                    batch_simulation,
+                    "is_snap_eligible",
+                    map_to="spm_unit",
+                    period=period,
+                )
+                > 0
+            )
+            batch_unit_size = _calculate_array(
+                batch_simulation,
+                "snap_unit_size",
+                map_to="spm_unit",
+                period=period,
+            )
+            positions = spm_unit_positions.reindex(
+                batch_frame.table("spm_unit")["spm_unit_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(positions).any():
+                raise RuntimeError(
+                    "SNAP eligibility batch produced spm_unit_id values not "
+                    "present in the full SPM-unit table."
+                )
+            positions = positions.astype(np.int64)
+            eligible[positions] = batch_eligible
+            unit_size[positions] = batch_unit_size
+            batch_simulation._invalidate_all_caches()
+            del batch_frame, batch_simulation
+        _collect_batch_garbage()
+    return eligible, unit_size
+
+
+def _with_snap_take_up_outputs(
+    frame: Frame,
+    *,
+    seed: int,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> tuple[Frame, dict[str, object]]:
+    """Assign state-conditional SNAP take-up and return diagnostics."""
+    eligibility, unit_size = _snap_spm_unit_policy_inputs(
+        frame,
+        simulation=simulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+    return with_us_snap_take_up_inputs(
+        frame,
+        is_snap_eligible=eligibility,
+        snap_unit_size=unit_size,
+        state_fips=_spm_unit_state_fips(frame),
+        seed=seed,
+        time_period=PERIOD,
+    )
+
+
 def _medicaid_person_eligibility(
     frame: Frame,
     *,
@@ -2448,9 +2575,13 @@ def _dataset_from_frame(
 
 
 def _calculate_array(
-    simulation, variable: str, *, map_to: str | None = None
+    simulation,
+    variable: str,
+    *,
+    map_to: str | None = None,
+    period: int | str = PERIOD,
 ) -> np.ndarray:
-    kwargs: dict[str, Any] = {"period": PERIOD}
+    kwargs: dict[str, Any] = {"period": period}
     if map_to is not None:
         kwargs["map_to"] = map_to
     return np.asarray(simulation.calculate(variable, **kwargs))
@@ -5825,33 +5956,6 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
-            "snap_take_up_inputs",
-            message="Assigning SNAP take-up from reported receipt.",
-        )
-    base_frame = with_us_snap_take_up_inputs(
-        base_frame,
-        seed=args.seed,
-        time_period=PERIOD,
-    )
-    snap_take_up_gate = us_snap_take_up_signal_gate(base_frame)
-    if not snap_take_up_gate.passed:
-        if telemetry is not None:
-            telemetry.stage(
-                "snap_take_up_gate",
-                status="failed",
-                message="SNAP take-up signal gate failed.",
-                failures=list(snap_take_up_gate.failures),
-                force_upload=True,
-            )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"SNAP take-up signal failed: {failure}"
-                for failure in snap_take_up_gate.failures
-            )
-        )
-    if telemetry is not None:
-        telemetry.stage(
             "eligibility_inputs",
             message="Deriving SNAP eligibility and exemption inputs from ASEC.",
         )
@@ -5974,6 +6078,36 @@ def main() -> None:
             + "; ".join(
                 f"SCF-wealth signal failed: {failure}"
                 for failure in scf_wealth_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "snap_take_up_inputs",
+            message=(
+                "Assigning SNAP take-up from reported receipt and FNS state "
+                "participation rates."
+            ),
+        )
+    base_frame, snap_take_up_diagnostics = _with_snap_take_up_outputs(
+        base_frame,
+        seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    snap_take_up_gate = us_snap_take_up_signal_gate(snap_take_up_diagnostics)
+    if not snap_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "snap_take_up_gate",
+                status="failed",
+                message="SNAP take-up signal gate failed.",
+                failures=list(snap_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SNAP take-up signal failed: {failure}"
+                for failure in snap_take_up_gate.failures
             )
         )
     if telemetry is not None:
