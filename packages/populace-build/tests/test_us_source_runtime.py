@@ -19,6 +19,8 @@ from populace.build.us_runtime.puf_aggregate_records import (
 )
 from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
+    calibrate_us_binary_assignment_from_manifest,
+    calibrate_us_binary_assignment_joint_targets_from_manifest,
     derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
@@ -649,6 +651,132 @@ def test_us_aca_tax_unit_aggregation_rejects_wrong_operation() -> None:
                 tables={
                     "cps_person": _make_aca_people(),
                     "tax_unit": _make_aca_tax_units(),
+                },
+            ),
+        )
+
+
+def _make_person_grain_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "state_fips": ["01", "01", "02", "02"],
+            "takes_up_medicaid_if_eligible": [True, False, False, False],
+            "person_weight": [1.0, 1.0, 1.0, 1.0],
+            "stable_person_draw": [0.1, 0.4, 0.2, 0.9],
+        }
+    )
+
+
+def _make_person_grain_targets() -> pd.DataFrame:
+    return pd.DataFrame({"state_fips": ["01", "02"], "target": [2.0, 1.0]})
+
+
+def test_us_binary_calibration_requires_declared_draw_column() -> None:
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "calibrate_binary_assignment",
+            "variable": "takes_up_medicaid_if_eligible",
+            "targets": ["cms_medicaid_enrollment_by_state"],
+            "weight": "person_weight",
+        }
+    )
+
+    with pytest.raises(
+        SourceRuntimeError,
+        match="US binary calibration requires a non-empty 'draw' parameter",
+    ):
+        calibrate_us_binary_assignment_from_manifest(
+            _make_person_grain_frame(),
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={
+                    "cms_medicaid_enrollment_by_state": (_make_person_grain_targets()),
+                },
+            ),
+        )
+
+
+def test_us_binary_calibration_errors_are_not_aca_labeled() -> None:
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "calibrate_binary_assignment",
+            "variable": "takes_up_medicaid_if_eligible",
+            "targets": ["cms_medicaid_enrollment_by_state"],
+            "weight": "person_weight",
+            "draw": "stable_person_draw",
+        }
+    )
+
+    with pytest.raises(SourceRuntimeError) as excinfo:
+        calibrate_us_binary_assignment_from_manifest(
+            _make_person_grain_frame().drop(columns=["person_weight"]),
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={
+                    "cms_medicaid_enrollment_by_state": (_make_person_grain_targets()),
+                },
+            ),
+        )
+
+    message = str(excinfo.value)
+    assert "US binary calibration frame" in message
+    assert "person_weight" in message
+    assert "ACA" not in message
+
+
+def test_us_binary_calibration_runs_at_person_grain_with_declared_draw() -> None:
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "calibrate_binary_assignment",
+            "variable": "takes_up_medicaid_if_eligible",
+            "targets": ["cms_medicaid_enrollment_by_state"],
+            "weight": "person_weight",
+            "draw": "stable_person_draw",
+        }
+    )
+
+    result = calibrate_us_binary_assignment_from_manifest(
+        _make_person_grain_frame(),
+        operation,
+        context=SourceRuntimeContext(
+            config=SourceRuntimeConfig(seed=42),
+            tables={
+                "cms_medicaid_enrollment_by_state": _make_person_grain_targets(),
+            },
+        ),
+    )
+
+    assigned = result.set_index("person_id")["takes_up_medicaid_if_eligible"]
+    assert assigned.to_dict() == {1: True, 2: True, 3: True, 4: False}
+
+
+def test_us_joint_binary_calibration_requires_declared_draw_column() -> None:
+    operation = SourceOperationSpec.from_mapping(
+        {
+            "kind": "calibrate_binary_assignment_joint_targets",
+            "variable": "takes_up_medicaid_if_eligible",
+            "count_targets": ["count_targets_by_state"],
+            "amount_targets": ["amount_targets_by_state"],
+            "count_weight": "person_weight",
+            "amount_weight": "person_weight",
+        }
+    )
+
+    with pytest.raises(
+        SourceRuntimeError,
+        match="US joint binary calibration requires a non-empty 'draw' parameter",
+    ):
+        calibrate_us_binary_assignment_joint_targets_from_manifest(
+            _make_person_grain_frame(),
+            operation,
+            context=SourceRuntimeContext(
+                config=SourceRuntimeConfig(seed=42),
+                tables={
+                    "count_targets_by_state": _make_person_grain_targets(),
+                    "amount_targets_by_state": _make_person_grain_targets(),
                 },
             ),
         )

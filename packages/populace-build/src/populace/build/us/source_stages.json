@@ -869,7 +869,8 @@
           "preserve_true_anchors": true,
           "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
           "domain": "is_aca_ptc_eligible",
-          "weight": "tax_unit_weight"
+          "weight": "tax_unit_weight",
+          "draw": "stable_tax_unit_draw"
         },
         {
           "kind": "calibrate_binary_assignment_joint_targets",
@@ -885,7 +886,8 @@
           "preserve_true_anchor": "reported_has_subsidized_marketplace_health_coverage_at_interview",
           "domain": "is_aca_ptc_eligible",
           "count_weight": "household_weight",
-          "amount_weight": "weighted_assigned_aca_ptc"
+          "amount_weight": "weighted_assigned_aca_ptc",
+          "draw": "stable_tax_unit_draw"
         },
         {
           "kind": "compute_ratio",
@@ -911,7 +913,8 @@
             "cms_aca_bronze_aptc_consumers_by_state"
           ],
           "domain": "assigned_aca_ptc > 0",
-          "weight": "tax_unit_weight"
+          "weight": "tax_unit_weight",
+          "draw": "stable_tax_unit_draw"
         }
       ],
       "outputs": [
