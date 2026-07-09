@@ -55,8 +55,10 @@ from populace.build.us_runtime import (
     assert_release_input_coverage_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
+    fetch_scf_2022_summary_extract,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    load_scf_2022_financial_asset_donor,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
@@ -64,6 +66,7 @@ from populace.build.us_runtime import (
     us_pregnancy_signal_gate,
     us_reform_coverage_smoke_gate,
     us_release_input_coverage_gate,
+    us_scf_wealth_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -76,6 +79,7 @@ from populace.build.us_runtime import (
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
     with_us_pregnancy_inputs,
+    with_us_scf_wealth_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
@@ -860,6 +864,18 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--scf-summary-extract",
+        dest="scf_summary_extract",
+        default=None,
+        help=(
+            "Path to the Federal Reserve SCF 2022 public summary extract "
+            "(rscfp2022.dta) that feeds the SSI countable-resource asset "
+            "imputation (scf_wealth stage, populace#356/#368). When omitted the "
+            "fixed-vintage extract is fetched and cached from the Federal "
+            "Reserve."
+        ),
+    )
     parser.add_argument(
         "--maximum-microsim-batch-size",
         "--maximum-microsimulation-batch-size",
@@ -5915,6 +5931,49 @@ def main() -> None:
             + "; ".join(
                 f"SNAP discretionary-exemption signal failed: {failure}"
                 for failure in snap_discretionary_exemption_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "scf_wealth_inputs",
+            message=(
+                "Imputing SSI countable-resource assets (bank/stock/bond) from "
+                "the Federal Reserve SCF 2022 summary extract."
+            ),
+        )
+    # populace#356/#368 Deliverable 2: restore the three SSI countable-resource
+    # asset inputs (bank_account_assets / stock_assets / bond_assets). Without
+    # them ssi_countable_resources is 0 for every record and every SSI
+    # resource-limit reform silently scores $0 — the failure the #368 column and
+    # reform-coverage gates are RED on. A CLI-supplied extract path is used when
+    # given; otherwise the fixed-vintage public extract is fetched and cached.
+    scf_summary_extract_path = (
+        Path(args.scf_summary_extract)
+        if args.scf_summary_extract is not None
+        else fetch_scf_2022_summary_extract()
+    )
+    scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
+    base_frame = with_us_scf_wealth_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        scf_donor=scf_wealth_donor,
+    )
+    scf_wealth_gate = us_scf_wealth_signal_gate(base_frame)
+    if not scf_wealth_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "scf_wealth_gate",
+                status="failed",
+                message="SCF-wealth signal gate failed.",
+                failures=list(scf_wealth_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SCF-wealth signal failed: {failure}"
+                for failure in scf_wealth_gate.failures
             )
         )
     if telemetry is not None:

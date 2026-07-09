@@ -40,6 +40,9 @@ def _us_frame(**person_extra: object) -> Frame:
             "veterans_benefits": [0.0, 8_000.0, 3_000.0],
             "is_pregnant": [True, False, True],
             "is_snap_abawd_discretionary_exempt": [True, False, True],
+            "bank_account_assets": [5_000.0, 0.0, 1_200.0],
+            "stock_assets": [0.0, 30_000.0, 0.0],
+            "bond_assets": [0.0, 0.0, 800.0],
             **person_extra,
         }
     )
