@@ -1535,12 +1535,20 @@ def parity_gate(
             Variables only the candidate carries are ignored (extra layers
             are not a parity failure).
         known_gaps: Variables exempted *by name* — each must be a documented
-            decision, and exemptions are recorded in the details.
+            decision, and exemptions are recorded in the details. An exemption
+            for a layer the candidate now populates is stale and fails the
+            gate so the register cannot rot (the ``takes_up_medicaid_if_eligible``
+            case: the candidate started producing the layer and the exemption
+            silently stopped meaning anything); remove it or re-reason it. An
+            exemption for a layer the reference never populates is dormant and
+            only reported (different reference vintages populate different
+            layers).
 
     Returns:
-        Pass iff no reference-populated variable is candidate-empty.
+        Pass iff no reference-populated variable is candidate-empty and no
+        exemption is stale.
     """
-    exempt = set(known_gaps)
+    exempt = set(str(name) for name in known_gaps)
     failures = []
     for name, ref_share in sorted(reference_nonzero.items()):
         if ref_share <= 0.0 or name in exempt:
@@ -1552,6 +1560,18 @@ def parity_gate(
                 "candidate is all-zero (the layer would mask engine "
                 "formulas or drop the variable entirely)."
             )
+    gap_count = len(failures)
+    stale = sorted(name for name in exempt if candidate_nonzero.get(name, 0.0) > 0.0)
+    if stale:
+        failures.append(
+            f"Stale known-gap exemptions — the candidate populates the layer "
+            f"now, remove the exemption or re-reason it: {stale}."
+        )
+    dormant = sorted(
+        name
+        for name in exempt
+        if name not in stale and reference_nonzero.get(name, 0.0) <= 0.0
+    )
     populated = sum(1 for share in reference_nonzero.values() if share > 0.0)
     return GateResult(
         name="parity",
@@ -1559,8 +1579,10 @@ def parity_gate(
         failures=tuple(failures),
         details={
             "reference_populated_layers": populated,
-            "gaps": len(failures),
+            "gaps": gap_count,
             "exempted": sorted(exempt),
+            "stale_exemptions": stale,
+            "dormant_exemptions": dormant,
         },
     )
 

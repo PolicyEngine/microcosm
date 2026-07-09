@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Reason'd, issue-linked parity exemption register (the debt ledger). Each entry names a layer the incumbent eCPS populates that the current Populace candidate does not, with the reason it is absent and the tracking issue that owns closing it. parity_gate is run with known_gaps = the keys of this file; the launch condition is that this register shrinks to deliberate scope decisions, not TODOs. Seeded from the first parity run of populace_us_2024.h5 against the pinned reference (see ecps_parity_reference.json). Every issue ref is an existing open PolicyEngine/populace issue.",
+  "description": "Reason'd, issue-linked parity exemption register (the debt ledger). Each entry names a layer the incumbent eCPS populates that the current Populace candidate does not, with the reason it is absent and the tracking issue that owns closing it. parity_gate is run with known_gaps = the keys of this file, and fails on any entry whose layer the candidate now populates (stale exemptions cannot rot silently); the launch condition is that this register shrinks to deliberate scope decisions, not TODOs. Seeded from the first parity run of populace_us_2024.h5 against the pinned reference (see ecps_parity_reference.json). Every issue ref is an existing open PolicyEngine/populace issue.",
   "known_gaps": {
     "alimony_expense": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
@@ -126,10 +126,6 @@
       "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
       "issue": "PolicyEngine/populace#242"
     },
-    "hours_worked_last_week": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
-    },
     "household_vehicles_owned": {
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
       "issue": "PolicyEngine/populace#49"
@@ -140,10 +136,6 @@
     },
     "household_weight": {
       "reason": "Incumbent stored a household_weight input column; Populace carries weights as a typed Frame weight vector, not a stored input variable. Classify as reported-observation vs reviewed-exclusion under #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "immigration_status_str": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
     },
     "investment_income_elected_form_4952": {
@@ -282,10 +274,6 @@
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
     },
-    "ssn_card_type": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "sstb_self_employment_income_before_lsr": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
@@ -318,10 +306,6 @@
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
     },
-    "takes_up_eitc": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
-    },
     "takes_up_head_start_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
@@ -339,10 +323,6 @@
       "issue": "PolicyEngine/populace#312"
     },
     "takes_up_ssi_if_eligible": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
-    },
-    "takes_up_tanf_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
     },
@@ -393,10 +373,6 @@
     "w2_wages_from_qualified_business": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
-    },
-    "weekly_hours_worked_before_lsr": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
     },
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
