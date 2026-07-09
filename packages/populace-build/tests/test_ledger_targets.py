@@ -367,6 +367,40 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
     assert spec.metadata["uprating_to_period"] == "2024"
 
 
+def test__given_mean_fact_without_time_mean_contract__then_compilation_fails() -> None:
+    # Given a mean-aggregated fact whose Populace mapping does NOT declare the
+    # fact_aggregation=time_mean contract
+    reference = LedgerTargetReference(
+        name="usda_snap.fy2024.national_average_monthly_persons.national_total",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="household",
+        measure="snap_person_indicator",
+        period=2024,
+        source="USDA FNS",
+        family="usda_snap",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="unsupported aggregation 'mean'"):
+        compile_ledger_target_references(
+            [
+                _consumer_fact_row(
+                    value=41_700_000,
+                    aggregation={"method": "mean"},
+                    observed_measure={
+                        "source_name": "usda_snap",
+                        "source_table": "SNAP participation summary",
+                        "source_measure_id": "average_monthly_persons",
+                        "source_concept": "usda_snap.average_monthly_persons",
+                        "unit": "count",
+                    },
+                )
+            ],
+            [reference],
+            country="us",
+        )
+
+
 def test__given_count_ledger_target_reference__then_compilation_fails() -> None:
     # Given
     reference = LedgerTargetReference(

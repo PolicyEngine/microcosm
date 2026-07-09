@@ -427,6 +427,29 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
         "cms_medicaid",
         {"target_role": "medicaid_chip_enrollment"},
     ),
+    # FNS reports fiscal-year average monthly caseloads. We proxy both as
+    # indicator sums over the simulated taker set: SPM units with positive
+    # annual snap (households) and their members (persons). The take-up
+    # assignment seeds takers to reproduce the FNS participation rate, so
+    # the taker set is the model counterpart of the average monthly
+    # caseload rather than an annual-ever count.
+    ("usda_snap", "average_monthly_households"): (
+        "snap",
+        "usda_snap",
+        {
+            "target_role": "snap_households",
+            "fact_aggregation": "time_mean",
+        },
+    ),
+    ("usda_snap", "average_monthly_persons"): (
+        "snap",
+        "usda_snap",
+        {
+            "target_role": "snap_persons",
+            "indicator_map_to": "person",
+            "fact_aggregation": "time_mean",
+        },
+    ),
 }
 
 

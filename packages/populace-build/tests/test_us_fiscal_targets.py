@@ -129,7 +129,9 @@ def test_us_fiscal_references_compile_against_external_ledger_facts() -> None:
         for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     assert len(registry) == len(US_FISCAL_TARGET_REFERENCES)
     for index, spec in enumerate(registry.specs):
@@ -249,7 +251,9 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    default_registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
     cd_registry = compile_us_fiscal_target_registry(
         facts,
         include_congressional_district_targets=True,
@@ -486,7 +490,9 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
         _census_acs_congressional_district_age_fact(),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    default_registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
     cd_registry = compile_us_fiscal_target_registry(
         facts,
         include_congressional_district_targets=True,
@@ -570,7 +576,9 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     by_source_record_id = {
         spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
@@ -602,7 +610,9 @@ def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     by_source_record_id = {
         spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
@@ -808,6 +818,111 @@ def test_direct_chip_enrollment_fact_prevents_duplicate_derived_chip_target() ->
     assert chip_specs[0].value == 7_000_000
     assert chip_specs[0].metadata["target_role"] == "chip_enrollment"
     assert "derived_operation" not in chip_specs[0].metadata
+
+
+def test_snap_household_caseload_fact_maps_to_snap_indicator() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_households",
+                value=22_255_000,
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[
+        "usda_snap.fy2024.national_average_monthly_households.national_total"
+        ".average_monthly_households"
+    ]
+    assert spec.family == "usda_snap"
+    assert spec.value == 22_255_000
+    assert spec.metadata["target_role"] == "snap_households"
+    assert spec.metadata["base_variable"] == "snap"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "indicator_map_to" not in spec.metadata
+    assert "state_fips" not in spec.metadata
+
+
+def test_state_snap_person_caseload_fact_maps_to_person_indicator() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_persons",
+                value=2_857_000,
+                record_set_slug="state_average_monthly_persons.nero",
+                value_id="ny",
+                geography_level="state",
+                geography_id="0400000US36",
+                entity_name="person",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[
+        "usda_snap.fy2024.state_average_monthly_persons.nero.ny.average_monthly_persons"
+    ]
+    assert spec.family == "usda_snap"
+    assert spec.value == 2_857_000
+    assert spec.metadata["target_role"] == "snap_persons"
+    assert spec.metadata["base_variable"] == "snap"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["indicator_map_to"] == "person"
+    assert spec.metadata["state_fips"] == "36"
+
+
+def _usda_snap_caseload_fact(
+    *,
+    measure_id: str,
+    value: float,
+    record_set_slug: str = "national_average_monthly_households",
+    value_id: str = "national_total",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    entity_name: str = "household",
+) -> dict[str, object]:
+    record_set_id = f"usda_snap.fy2024.{record_set_slug}"
+    source_record_id = f"{record_set_id}.{value_id}.{measure_id}"
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_record_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{source_record_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{source_record_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "fiscal_year", "value": "2024"},
+        "entity": {"name": entity_name},
+        "aggregation": {"method": "mean"},
+        "geography": {"level": geography_level, "id": geography_id},
+        "dimensions": {},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": record_set_id,
+            "groupby_dimension": "usda_snap.summary_scope",
+            "groupby_value_id": value_id,
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": "usda_snap",
+            "source_table": (
+                "SNAP Monthly State Participation and Benefit Summary FY69 to current"
+            ),
+            "source_measure_id": measure_id,
+            "source_concept": f"usda_snap.{measure_id}",
+            "unit": "count",
+        },
+        "source": {
+            "source_name": "usda_snap",
+            "source_table": (
+                "SNAP Monthly State Participation and Benefit Summary FY69 to current"
+            ),
+            "source_file": "FY24.xlsx",
+            "vintage": "fiscal_year_2024",
+            "url": "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+        },
+    }
 
 
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
@@ -1686,7 +1801,9 @@ def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
     assert (
@@ -1752,7 +1869,9 @@ def test_stale_soi_capital_gains_rebases_when_source_national_row_is_not_kept() 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
     assert (
@@ -1790,7 +1909,9 @@ def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     source_record_ids = {
         spec.metadata["ledger_source_record_id"] for spec in registry.specs
@@ -2381,7 +2502,9 @@ def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     specs = {spec.name: spec for spec in registry.specs}
     expected = {
@@ -2488,7 +2611,9 @@ def test_soi_itemized_return_universe_sets_itemized_filter_for_income_targets() 
         ),
     ]
 
-    registry = compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
 
     specs = {spec.name: spec for spec in registry.specs}
     for fact in facts:
@@ -3938,9 +4063,9 @@ def _cbo_income_source_projection_fact(
 
 
 def _aged_spec_by_source_record_id(registry, source_record_id):
-    return {
-        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
-    }[source_record_id]
+    return {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}[
+        source_record_id
+    ]
 
 
 def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:
@@ -3955,9 +4080,13 @@ def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(facts, target_period=2025, allow_unaged_dollar_targets=True)
+    default_registry = compile_us_fiscal_target_registry(
+        facts, target_period=2025, allow_unaged_dollar_targets=True
+    )
     explicit_off_registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=False,
+        facts,
+        target_period=2025,
+        age_targets=False,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4001,7 +4130,9 @@ def test_age_targets_uses_matching_cbo_series_ratio() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True,
+        facts,
+        target_period=2025,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4033,7 +4164,9 @@ def test_age_targets_falls_back_to_cbo_agi_growth_ratio() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True,
+        facts,
+        target_period=2025,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4075,7 +4208,9 @@ def test_age_targets_falls_back_to_agi_when_series_year_missing() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True,
+        facts,
+        target_period=2025,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4107,7 +4242,9 @@ def test_age_targets_leaves_counts_raw() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True,
+        facts,
+        target_period=2025,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4130,7 +4267,9 @@ def test_age_targets_records_unavailable_when_no_cbo_projection() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2025, age_targets=True,
+        facts,
+        target_period=2025,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4159,7 +4298,9 @@ def test_age_targets_no_op_when_source_equals_build_period() -> None:
     ]
 
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2024, age_targets=True,
+        facts,
+        target_period=2024,
+        age_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -4486,17 +4627,13 @@ def test_compile_enforces_the_period_contract_without_a_waiver() -> None:
         allow_unaged_dollar_targets=True,
     )
     waived = [
-        spec
-        for spec in aged.specs
-        if spec.metadata.get("period_contract_waiver")
+        spec for spec in aged.specs if spec.metadata.get("period_contract_waiver")
     ]
     assert waived, "expected un-ageable rows to carry an explicit waiver"
 
 
 def _soi_national_actual_fact(source_period: int, *, value: float) -> dict[str, object]:
-    source_record_id = (
-        f"irs_soi.ty{source_period}.table_1_1.all.adjusted_gross_income"
-    )
+    source_record_id = f"irs_soi.ty{source_period}.table_1_1.all.adjusted_gross_income"
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:soi-nat-{source_period}",
         "value": value,
