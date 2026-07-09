@@ -84,7 +84,9 @@ from populace.frame.units import US_SCHEMA
 
 __all__ = [
     "SCF_2022_SUMMARY_EXTRACT_MEMBER",
+    "SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256",
     "SCF_2022_SUMMARY_EXTRACT_URL",
+    "SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
     "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
@@ -110,6 +112,23 @@ SCF_2022_SUMMARY_EXTRACT_URL = (
 )
 #: The Stata member inside the zip.
 SCF_2022_SUMMARY_EXTRACT_MEMBER = "rscfp2022.dta"
+#: SHA-256 of the downloaded zip and its extracted Stata member. The extract is
+#: a fixed public artifact, so the build pins both digests and refuses any
+#: payload that does not match — a silently reissued vintage cannot slip in
+#: (the ``build_us_block_ladder_artifact._sha256`` provenance convention).
+#: Verified against the Federal Reserve download on 2026-07-09.
+SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256 = (
+    "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80"
+)
+SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256 = (
+    "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
+)
+#: Federal Reserve econres rejects the default urllib user-agent (HTTP 403), so
+#: the fetch presents a browser user-agent.
+_SCF_HTTP_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 
 #: The PolicyEngine-facing person input columns this stage produces — the
 #: three SSI countable-resource leaves (a real subset of the ``scf_wealth``
@@ -206,21 +225,43 @@ def _replace_sentinels(values: pd.Series) -> pd.Series:
     return numeric.mask(numeric.isin(_SCF_SENTINELS), 0.0).fillna(0.0)
 
 
-def fetch_scf_2022_summary_extract(cache_dir: str | Path | None = None) -> Path:
-    """Download and cache the SCF 2022 public summary extract.
+def _sha256_hexdigest(payload: bytes) -> str:
+    """SHA-256 hex digest of a byte payload."""
+
+    import hashlib
+
+    return hashlib.sha256(payload).hexdigest()
+
+
+def fetch_scf_2022_summary_extract(
+    cache_dir: str | Path | None = None,
+    *,
+    expected_member_sha256: str | None = SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256,
+    expected_zip_sha256: str | None = SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256,
+) -> Path:
+    """Download, verify, and cache the SCF 2022 public summary extract.
 
     The extract is a fixed public artifact (a single Stata file in a zip), so
-    a content-addressable cache keeps the build reproducible: the file is
-    fetched once and reused. This is the provisioning helper the release
-    builder calls; unit tests inject a donor table directly and never hit the
-    network.
+    the build pins its SHA-256 and refuses any payload that does not match: a
+    reproducible, sha-verified cache. A cached member whose digest matches is
+    reused without a network call; a cached member whose digest has drifted is
+    re-fetched. The provisioning helper the release builder calls; unit tests
+    inject a donor table directly and never hit the network.
 
     Args:
         cache_dir: Directory to cache the extracted ``.dta`` in. Defaults to
             ``~/.cache/populace/scf``.
+        expected_member_sha256: Pinned SHA-256 of ``rscfp2022.dta``. Verified
+            on both the cache-hit and the fresh-download paths. ``None`` skips
+            member verification (only the no-network cache-return path uses it).
+        expected_zip_sha256: Pinned SHA-256 of the downloaded zip. Verified on
+            the fresh-download path. ``None`` skips zip verification.
 
     Returns:
-        The path to the extracted ``rscfp2022.dta``.
+        The path to the extracted, sha-verified ``rscfp2022.dta``.
+
+    Raises:
+        ValueError: If a freshly downloaded payload does not match its pin.
     """
 
     import io
@@ -235,12 +276,37 @@ def fetch_scf_2022_summary_extract(cache_dir: str | Path | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     target = root / SCF_2022_SUMMARY_EXTRACT_MEMBER
     if target.exists() and target.stat().st_size > 0:
-        return target
-    with urllib.request.urlopen(SCF_2022_SUMMARY_EXTRACT_URL) as response:  # noqa: S310
+        if expected_member_sha256 is None:
+            return target
+        if _sha256_hexdigest(target.read_bytes()) == expected_member_sha256:
+            return target
+        # A cached member that no longer matches the pin is stale; re-fetch.
+
+    request = urllib.request.Request(
+        SCF_2022_SUMMARY_EXTRACT_URL,
+        headers={"User-Agent": _SCF_HTTP_USER_AGENT},
+    )
+    with urllib.request.urlopen(request) as response:  # noqa: S310
         payload = response.read()
+    if expected_zip_sha256 is not None:
+        digest = _sha256_hexdigest(payload)
+        if digest != expected_zip_sha256:
+            raise ValueError(
+                "SCF 2022 summary-extract zip failed sha-256 verification: "
+                f"expected {expected_zip_sha256}, got {digest}."
+            )
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         with archive.open(SCF_2022_SUMMARY_EXTRACT_MEMBER) as member:
-            target.write_bytes(member.read())
+            member_bytes = member.read()
+    if expected_member_sha256 is not None:
+        digest = _sha256_hexdigest(member_bytes)
+        if digest != expected_member_sha256:
+            raise ValueError(
+                f"SCF 2022 summary-extract member "
+                f"{SCF_2022_SUMMARY_EXTRACT_MEMBER!r} failed sha-256 "
+                f"verification: expected {expected_member_sha256}, got {digest}."
+            )
+    target.write_bytes(member_bytes)
     return target
 
 

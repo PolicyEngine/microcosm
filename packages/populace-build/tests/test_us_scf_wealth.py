@@ -393,6 +393,29 @@ def test_fetch_returns_cached_file_without_network(tmp_path) -> None:
     cached = tmp_path / "rscfp2022.dta"
     cached.write_bytes(b"stub")
     # A pre-existing non-empty cache file is returned as-is (no network call).
-    result = fetch_scf_2022_summary_extract(cache_dir=tmp_path)
+    # Verification is disabled so the stub is trusted; the point of this test is
+    # the no-network cache-return path, not the pin.
+    result = fetch_scf_2022_summary_extract(
+        cache_dir=tmp_path,
+        expected_member_sha256=None,
+        expected_zip_sha256=None,
+    )
     assert result == cached
     assert result.read_bytes() == b"stub"
+
+
+def test_fetch_reuses_cache_only_when_member_sha_matches(tmp_path) -> None:
+    from populace.build.us_runtime.scf_wealth import _sha256_hexdigest
+
+    cached = tmp_path / "rscfp2022.dta"
+    cached.write_bytes(b"pinned-payload")
+    pinned = _sha256_hexdigest(b"pinned-payload")
+    # A cache hit whose digest matches the pin is returned without a network
+    # call (any network attempt in this offline test would raise).
+    result = fetch_scf_2022_summary_extract(
+        cache_dir=tmp_path,
+        expected_member_sha256=pinned,
+        expected_zip_sha256=None,
+    )
+    assert result == cached
+    assert result.read_bytes() == b"pinned-payload"

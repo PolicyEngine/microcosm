@@ -5935,6 +5935,49 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "scf_wealth_inputs",
+            message=(
+                "Imputing SSI countable-resource assets (bank/stock/bond) from "
+                "the Federal Reserve SCF 2022 summary extract."
+            ),
+        )
+    # populace#356/#368 Deliverable 2: restore the three SSI countable-resource
+    # asset inputs (bank_account_assets / stock_assets / bond_assets). Without
+    # them ssi_countable_resources is 0 for every record and every SSI
+    # resource-limit reform silently scores $0 — the failure the #368 column and
+    # reform-coverage gates are RED on. A CLI-supplied extract path is used when
+    # given; otherwise the fixed-vintage public extract is fetched and cached.
+    scf_summary_extract_path = (
+        Path(args.scf_summary_extract)
+        if args.scf_summary_extract is not None
+        else fetch_scf_2022_summary_extract()
+    )
+    scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
+    base_frame = with_us_scf_wealth_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        scf_donor=scf_wealth_donor,
+    )
+    scf_wealth_gate = us_scf_wealth_signal_gate(base_frame)
+    if not scf_wealth_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "scf_wealth_gate",
+                status="failed",
+                message="SCF-wealth signal gate failed.",
+                failures=list(scf_wealth_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SCF-wealth signal failed: {failure}"
+                for failure in scf_wealth_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "source_inputs",
             message="Materializing ACA marketplace source outputs.",
         )
