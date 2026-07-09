@@ -829,6 +829,21 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=0.02)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument(
+        "--target-family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help=(
+            "Multiply the compiled loss weight of every target in FAMILY by "
+            "MULTIPLIER before calibration (repeatable, e.g. usda_snap=8). "
+            "Applied on top of the standard loss weighting, after which the "
+            "weight vector is renormalized to mean 1 so the overall loss "
+            "scale is unchanged. The build fails if FAMILY matches no "
+            "compiled target. Multipliers are recorded in the calibration "
+            "diagnostics."
+        ),
+    )
+    parser.add_argument(
         "--l0-refit-lambda-share",
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
@@ -1213,6 +1228,22 @@ def _parse_args() -> argparse.Namespace:
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
+    multipliers: dict[str, float] = {}
+    for entry in args.target_family_loss_multiplier:
+        family, separator, raw_value = entry.partition("=")
+        try:
+            value = float(raw_value)
+        except ValueError:
+            value = math.nan
+        if not separator or not family or not math.isfinite(value) or value <= 0.0:
+            parser.error(
+                "--target-family-loss-multiplier expects FAMILY=MULTIPLIER "
+                f"with a positive finite multiplier, got {entry!r}."
+            )
+        if family in multipliers:
+            parser.error(f"--target-family-loss-multiplier repeats family {family!r}.")
+        multipliers[family] = value
+    args.target_family_loss_multipliers = multipliers
     return args
 
 
@@ -4584,7 +4615,10 @@ def _load_warm_start_calibration_npz(
     return weights, payload
 
 
-def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
+def _fiscal_target_loss_weights(
+    registry: TargetRegistry,
+    family_multipliers: Mapping[str, float] | None = None,
+) -> np.ndarray:
     weights = _fiscal_target_concept_budget_weights(registry)
     bases = np.asarray(
         [_fiscal_target_value_basis(spec) for spec in registry.specs],
@@ -4599,6 +4633,21 @@ def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
         current_total = weights[mask].sum()
         if current_total > 0:
             weights[mask] *= basis_total / current_total
+    weights = weights / weights.mean()
+    if not family_multipliers:
+        return weights
+    families = np.asarray(
+        [spec.family for spec in registry.specs],
+        dtype=object,
+    )
+    for family, multiplier in sorted(family_multipliers.items()):
+        mask = families == family
+        if not mask.any():
+            raise ValueError(
+                f"--target-family-loss-multiplier family {family!r} matches "
+                "no compiled target."
+            )
+        weights[mask] *= multiplier
     return weights / weights.mean()
 
 
@@ -5389,6 +5438,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    target_loss_family_multipliers: Mapping[str, float] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -5410,6 +5460,11 @@ def _write_release_calibration_diagnostics(
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
             "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "target_loss_family_multipliers": (
+                dict(target_loss_family_multipliers)
+                if target_loss_family_multipliers
+                else None
+            ),
             "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
@@ -7889,7 +7944,9 @@ def main() -> None:
         if args.dense_default_dataset
         else args.l0_refit_lambda_share / float(candidate_households)
     )
-    target_loss_weights = _fiscal_target_loss_weights(registry)
+    target_loss_weights = _fiscal_target_loss_weights(
+        registry, args.target_family_loss_multipliers
+    )
     if telemetry is not None:
         telemetry.stage(
             "calibrating",
@@ -7904,6 +7961,9 @@ def main() -> None:
             epochs=args.epochs,
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
+            target_family_loss_multipliers=(
+                dict(args.target_family_loss_multipliers) or None
+            ),
             n_targets=len(registry),
             n_candidate_households=candidate_households,
             l0_refit_lambda_share=(
@@ -8138,6 +8198,7 @@ def main() -> None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        target_loss_family_multipliers=args.target_family_loss_multipliers,
     )
     if telemetry is not None:
         telemetry.attach_artifact(
