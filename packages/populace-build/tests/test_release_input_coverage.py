@@ -231,6 +231,44 @@ def _probe(min_abs_effect: float = 1_000_000_000.0) -> ReformCoverageProbe:
     )
 
 
+def _tips_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="tips_probe",
+        name="OBBBA no-tax-on-tips deduction",
+        parameter_changes={
+            "gov.irs.deductions.tip_income.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        budget_measure="income_tax",
+        binding_inputs=("tip_income", "treasury_tipped_occupation_code"),
+        min_abs_effect=100_000_000.0,
+        reason="The cap repeal must bind through qualified tip income.",
+        issue="PolicyEngine/populace#38",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
+def _overtime_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="obbba_no_tax_on_overtime",
+        name="OBBBA no-tax-on-overtime deduction",
+        parameter_changes={
+            "gov.irs.deductions.overtime_income.cap.SINGLE": {
+                "2026-01-01.2026-12-31": 0
+            }
+        },
+        budget_measure="income_tax",
+        binding_inputs=("fsla_overtime_premium",),
+        min_abs_effect=100_000_000.0,
+        reason="The cap repeal must bind through the FLSA overtime premium.",
+        issue="PolicyEngine/populace#242",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
 class TestReformCoverageSmokeGate:
     def test_zero_bound_reform_fails(self, monkeypatch) -> None:
         # Case 5: with the asset inputs absent, everyone already passes the SSI
@@ -276,6 +314,55 @@ class TestReformCoverageSmokeGate:
         assert result.details["results"]["ssi_probe"]["effect"] == -1.0e10
         assert "expected a positive effect" in result.failures[0]
 
+    def test_negative_tip_effect_uses_probe_period_and_passes(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        periods: list[int] = []
+
+        class RecordingSim(_Sim):
+            def calculate(self, measure: str, period):
+                periods.append(period)
+                return super().calculate(measure, period)
+
+        def simulate(reform):
+            return RecordingSim(10.5e9 if reform == "REFORM" else 10.0e9)
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate,
+            probes=[_tips_probe()],
+            period=2024,
+        )
+
+        assert result.passed
+        assert periods == [2026, 2026]
+        assert result.details["default_period"] == 2024
+        tip_result = result.details["results"]["tips_probe"]
+        assert tip_result["period"] == 2026
+        assert tip_result["effect"] == pytest.approx(-0.5e9)
+        assert tip_result["expected_sign"] == "negative"
+
+    def test_negative_overtime_effect_passes_and_wrong_sign_fails(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[_overtime_probe()],
+        )
+        assert passing.passed
+        assert passing.details["results"]["obbba_no_tax_on_overtime"][
+            "effect"
+        ] == pytest.approx(-0.5e9)
+
+        wrong_sign = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(9.5e9 if reform else 10.0e9),
+            probes=[_overtime_probe()],
+        )
+        assert not wrong_sign.passed
+        assert "expected a negative effect" in wrong_sign.failures[0]
+
     def test_probeless_gate_is_refused(self) -> None:
         # A probe-less smoke gate would pass vacuously — refuse it.
         with pytest.raises(ValueError, match="at least one probe"):
@@ -294,6 +381,11 @@ class TestShippedManifest:
         for asset in SSI_COUNTABLE_RESOURCE_ASSETS:
             assert asset in manifest.required_columns
             assert asset not in manifest.reviewed_exclusions
+
+    def test_post_reference_flsa_input_is_a_hard_requirement(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "fsla_overtime_premium" in manifest.required_columns
+        assert "fsla_overtime_premium" not in manifest.reviewed_exclusions
 
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
@@ -317,6 +409,25 @@ class TestShippedManifest:
         assert set(tip.binding_inputs) == {
             "tip_income",
             "treasury_tipped_occupation_code",
+        }
+
+    def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:
+        overtime = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_no_tax_on_overtime"
+        )
+        assert overtime.period == 2026
+        assert overtime.expected_sign == "negative"
+        assert overtime.effect_direction == "baseline_minus_reform"
+        assert overtime.budget_measure == "income_tax"
+        assert overtime.binding_inputs == ("fsla_overtime_premium",)
+        assert set(overtime.parameter_changes) == {
+            "gov.irs.deductions.overtime_income.cap.JOINT",
+            "gov.irs.deductions.overtime_income.cap.SINGLE",
+            "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD",
+            "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE",
+            "gov.irs.deductions.overtime_income.cap.SEPARATE",
         }
 
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:
@@ -343,6 +454,10 @@ class TestShippedManifest:
             assert_release_input_coverage_manifest_current(
                 manifest=tampered, engine=None
             )
+
+    def test_duplicate_probe_ids_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate reform coverage probe id"):
+            _manifest(_CONTRACT.columns, probes=(_probe(), _probe()))
 
 
 def _load_manifest_generator():

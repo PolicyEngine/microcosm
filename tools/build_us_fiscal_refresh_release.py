@@ -46,6 +46,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_TIP_DONOR_SHA256,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -58,16 +60,19 @@ from populace.build.us_runtime import (
     assert_take_up_treatments_consistent,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
+    fetch_org_2024_donor,
     fetch_scf_2022_summary_extract,
     fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
+    load_org_2024_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
+    us_org_wages_signal_gate,
     us_pregnancy_signal_gate,
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
@@ -85,6 +90,7 @@ from populace.build.us_runtime import (
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
+    with_us_org_wages_inputs,
     with_us_pregnancy_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_tip_inputs,
@@ -888,6 +894,16 @@ def _parse_args() -> argparse.Namespace:
             "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
             "feeds tip_income and Treasury tipped-occupation coverage. When "
             "omitted the immutable donor revision is fetched and verified."
+        ),
+    )
+    parser.add_argument(
+        "--org-wages-donor",
+        type=Path,
+        help=(
+            "Optional local path to the canonical transformed 2024 CPS ORG "
+            "donor cache. When omitted, the twelve official 2024 CPS "
+            "basic-month ORG files are fetched, transformed, and verified "
+            "against the pinned canonical donor-content SHA-256."
         ),
     )
     parser.add_argument(
@@ -6064,7 +6080,10 @@ def main() -> None:
         if args.sipp_tip_donor is not None
         else fetch_sipp_2023_tip_donor()
     )
-    sipp_tip_donor = load_sipp_2023_tip_donor(sipp_tip_donor_path)
+    sipp_tip_donor = load_sipp_2023_tip_donor(
+        sipp_tip_donor_path,
+        expected_sha256=SIPP_2023_TIP_DONOR_SHA256,
+    )
     base_frame = with_us_sipp_tip_inputs(
         base_frame,
         seed=args.seed,
@@ -6086,6 +6105,47 @@ def main() -> None:
             + "; ".join(
                 f"SIPP-tip signal failed: {failure}"
                 for failure in sipp_tips_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "org_wages_inputs",
+            message=(
+                "Imputing CPS ORG hourly-pay inputs, carrying ASEC occupation "
+                "groups, assigning BLS union coverage, and deriving the FLSA "
+                "overtime premium."
+            ),
+        )
+    org_wages_donor_path = (
+        Path(args.org_wages_donor)
+        if args.org_wages_donor is not None
+        else fetch_org_2024_donor()
+    )
+    org_wages_donor = load_org_2024_donor(
+        org_wages_donor_path,
+        expected_content_sha256=ORG_2024_DONOR_CONTENT_SHA256,
+    )
+    base_frame = with_us_org_wages_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        org_donor=org_wages_donor,
+    )
+    org_wages_gate = us_org_wages_signal_gate(base_frame)
+    if not org_wages_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "org_wages_gate",
+                status="failed",
+                message="CPS ORG/FLSA signal gate failed.",
+                failures=list(org_wages_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"CPS ORG/FLSA signal failed: {failure}"
+                for failure in org_wages_gate.failures
             )
         )
     if telemetry is not None:

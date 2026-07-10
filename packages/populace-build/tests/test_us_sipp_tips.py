@@ -1,8 +1,9 @@
 """US SIPP tip-income and tipped-occupation source-stage tests.
 
-The retired eCPS pipeline annualized December SIPP monthly tip amounts,
-excluded Census allocation flags, QRF-imputed the resulting person-level
-income, and forced the draw to zero outside Treasury-listed occupations.
+The retired eCPS pipeline annualized observed-source December SIPP monthly tip
+amounts while excluding Census allocation-flag columns from the dollar sum,
+and QRF-imputed the resulting person-level income with Treasury-listed
+occupation as a predictor rather than a domain mask.
 These tests pin that source transformation and the release-stage healing and
 signal contracts.
 """
@@ -105,6 +106,15 @@ def _raw_sipp() -> pd.DataFrame:
                 month=12,
                 age=5,
                 monthly_income=0.0,
+            ),
+            # This allocated child is not a training target, but still counts
+            # in the retained adult's December household composition.
+            _raw_sipp_row(
+                ssuid=1,
+                month=12,
+                age=3,
+                monthly_income=0.0,
+                allocation_flags=(2,),
             ),
             # SIPP status 2 is an allocated/imputed source amount. It must be
             # excluded from training, not added to the dollar amount. Statuses
@@ -223,6 +233,13 @@ def test_stage_spec_loads_and_declares_both_outputs() -> None:
         "treasury_tipped_occupation_code",
     )
     assert set(SIPP_TIP_OUTPUT_COLUMNS) <= set(spec.outputs)
+    tip_model = next(
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_tip_income_model"
+    )
+    assert tip_model.parameters["observed_status_values"] == [0, 1, 9]
+    assert not any(operation.kind == "zero_when_false" for operation in spec.operations)
 
 
 def test_predictors_match_retired_sipp_tip_model() -> None:
@@ -256,8 +273,8 @@ def test_load_donor_uses_december_exact_tip_sum_and_observed_rows(tmp_path) -> N
     assert adult["tip_income"] == pytest.approx((100.0 + 50.0) * 12.0)
     assert adult["employment_income"] == pytest.approx(2_000.0 * 12.0)
     assert adult["treasury_tipped_occupation_code"] == 101
-    assert adult["count_under_18"] == 1
-    assert adult["count_under_6"] == 1
+    assert adult["count_under_18"] == 2
+    assert adult["count_under_6"] == 2
     assert adult[_DONOR_WEIGHT_COLUMN] == pytest.approx(2.0)
 
 
@@ -267,6 +284,17 @@ def test_load_donor_requires_allocation_flags(tmp_path) -> None:
     raw.to_csv(path, index=False)
     with pytest.raises(ValueError, match="missing required column"):
         load_sipp_2023_tip_donor(path)
+
+
+def test_load_donor_verifies_requested_sha(tmp_path) -> None:
+    path = tmp_path / "pu2023_slim.csv"
+    _raw_sipp().to_csv(path, index=False)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    donor = load_sipp_2023_tip_donor(path, expected_sha256=digest)
+    assert len(donor) == 2
+    with pytest.raises(ValueError, match="sha-256 verification"):
+        load_sipp_2023_tip_donor(path, expected_sha256="0" * 64)
 
 
 def test_treasury_tipped_occupation_mapping() -> None:
@@ -287,7 +315,54 @@ def test_impute_is_deterministic_for_a_seed() -> None:
     pd.testing.assert_frame_equal(first, second)
 
 
-def test_impute_carries_code_and_zeroes_non_tipped_people() -> None:
+def test_impute_caps_large_donor_with_retired_named_seed(monkeypatch) -> None:
+    captured: dict[str, np.ndarray] = {}
+
+    class FakeFittedQRF:
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {"tip_income": np.zeros(len(features), dtype=np.float64)},
+                index=features.index,
+            )
+
+    class FakeQRF:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def fit(self, frame: pd.DataFrame, **kwargs) -> FakeFittedQRF:
+            captured["row_ids"] = frame["employment_income"].to_numpy()
+            return FakeFittedQRF()
+
+    monkeypatch.setattr("populace.fit.QRF", FakeQRF)
+    donor = _donor_table(10_050)
+    donor["employment_income"] = np.arange(len(donor), dtype=np.float64)
+
+    impute_us_sipp_tips(_person_rows(20), donor, seed=7, n_estimators=3)
+
+    expected_positions = np.sort(
+        np.random.default_rng(5_559_651_045_748_063_828).choice(
+            len(donor), size=10_000, replace=False
+        )
+    )
+    np.testing.assert_array_equal(captured["row_ids"], expected_positions)
+
+
+def test_impute_carries_code_without_erasing_tips_outside_list(monkeypatch) -> None:
+    class FakeFittedQRF:
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {"tip_income": np.arange(len(features), dtype=np.float64) + 100.0},
+                index=features.index,
+            )
+
+    class FakeQRF:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def fit(self, *args, **kwargs) -> FakeFittedQRF:
+            return FakeFittedQRF()
+
+    monkeypatch.setattr("populace.fit.QRF", FakeQRF)
     person = _person_rows(90)
     result = impute_us_sipp_tips(
         person,
@@ -302,7 +377,7 @@ def test_impute_carries_code_and_zeroes_non_tipped_people() -> None:
     )
     tips = result["tip_income"].to_numpy()
     assert (tips >= 0).all()
-    assert np.all(tips[expected_codes == 0] == 0.0)
+    assert np.all(tips[expected_codes == 0] > 0.0)
     assert tips[expected_codes > 0].sum() > 0.0
 
 

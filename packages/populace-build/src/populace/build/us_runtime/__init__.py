@@ -166,6 +166,27 @@ from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
 )
+from populace.build.us_runtime.org_wages import (
+    BLS_STATE_UNION_REPRESENTATION_RATE_2024,
+    FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    FLSA_OVERTIME_OCCUPATION_CODES,
+    ORG_2024_DONOR_CONTENT_SHA256,
+    ORG_2024_DONOR_FILENAME,
+    ORG_PREDICTORS,
+    US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
+    US_ORG_WAGES_OUTPUT_COLUMNS,
+    US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS,
+    US_ORG_WAGES_STAGE_NAME,
+    derive_flsa_overtime_premium,
+    derive_us_org_occupation_inputs,
+    fetch_org_2024_donor,
+    impute_us_org_wages,
+    load_org_2024_donor,
+    us_org_wages_signal_gate,
+    us_org_wages_stage_spec,
+    us_org_wages_summary,
+    with_us_org_wages_inputs,
+)
 from populace.build.us_runtime.parity_reference import (
     ECPS_PARITY_KNOWN_GAPS_RESOURCE,
     ECPS_PARITY_REFERENCE_RESOURCE,
@@ -217,6 +238,7 @@ from populace.build.us_runtime.register_consistency import (
     us_register_contradictions,
 )
 from populace.build.us_runtime.release_input_coverage import (
+    POST_REFERENCE_ECPS_REQUIRED_INPUTS,
     SSI_COUNTABLE_RESOURCE_ASSETS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ReformCoverageProbe,
@@ -457,6 +479,25 @@ __all__ = [
     "us_sipp_tips_stage_spec",
     "us_sipp_tips_summary",
     "with_us_sipp_tip_inputs",
+    "BLS_STATE_UNION_REPRESENTATION_RATE_2024",
+    "FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES",
+    "FLSA_OVERTIME_OCCUPATION_CODES",
+    "ORG_2024_DONOR_CONTENT_SHA256",
+    "ORG_2024_DONOR_FILENAME",
+    "ORG_PREDICTORS",
+    "US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS",
+    "US_ORG_WAGES_OUTPUT_COLUMNS",
+    "US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS",
+    "US_ORG_WAGES_STAGE_NAME",
+    "derive_flsa_overtime_premium",
+    "derive_us_org_occupation_inputs",
+    "fetch_org_2024_donor",
+    "impute_us_org_wages",
+    "load_org_2024_donor",
+    "us_org_wages_signal_gate",
+    "us_org_wages_stage_spec",
+    "us_org_wages_summary",
+    "with_us_org_wages_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -545,6 +586,7 @@ __all__ = [
     "ValidationInputLeaf",
     "assert_validation_leaf_registry_current",
     "SSI_COUNTABLE_RESOURCE_ASSETS",
+    "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
@@ -638,7 +680,7 @@ US_DONORS: Mapping[str, DonorSpec] = {
     ),
     "org_wages": DonorSpec(
         survey="CPS ORG",
-        source="https://www.bls.gov/cps/earnings.htm",
+        source=("https://www2.census.gov/programs-surveys/cps/datasets/2024/basic/"),
         notes=(
             "Hourly-wage labor-market inputs. Donor load failures abort the "
             "build — the silent zero-fallback this stage once had is "

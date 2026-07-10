@@ -50,6 +50,7 @@ from populace.build.gates import GateResult, input_column_coverage_gate
 
 __all__ = [
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
     "ReleaseInputCoverageManifest",
@@ -62,6 +63,11 @@ __all__ = [
 ]
 
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+
+# The frozen reference artifact predates the retired pipeline's export of the
+# pure FLSA overtime-premium input (retired pipeline commit 69cc1b79). It is
+# nevertheless required for the shipped OBBBA overtime validation row to bind.
+POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset({"fsla_overtime_premium"})
 
 _US_PACKAGE = "populace.build.us"
 _ECPS_PARITY_REFERENCE_RESOURCE = "ecps_parity_reference.json"
@@ -144,9 +150,10 @@ class ReformCoverageProbe:
         expected_sign: Required sign of the direction-normalized effect.
         binding_inputs: The input leaves the reform binds through; named in the
             failure so the fix target is explicit.
-        min_abs_effect: The reform fails the smoke gate when
-            ``abs(effect) < min_abs_effect`` — a floor above simulation noise
-            and far below the plausible effect, so only a structural zero fails.
+        min_abs_effect: The reform fails the smoke gate when the effect in its
+            declared ``expected_sign`` direction is smaller than this floor.
+            The floor sits above simulation noise and far below the plausible
+            effect, so a structural zero or wrong-signed result fails.
         reason: Why a $0 here means a coverage hole (the mechanism).
         issue: Tracking issue for the restoration work.
     """
@@ -213,6 +220,11 @@ class ReleaseInputCoverageManifest:
             if column.name in by_name:
                 raise ValueError(f"Duplicate manifest column {column.name!r}.")
             by_name[column.name] = column
+        probe_ids: set[str] = set()
+        for probe in self.probes:
+            if probe.id in probe_ids:
+                raise ValueError(f"Duplicate reform coverage probe id {probe.id!r}.")
+            probe_ids.add(probe.id)
         object.__setattr__(self, "_by_name", by_name)
 
     @property
@@ -452,8 +464,9 @@ def assert_release_input_coverage_manifest_current(
     (when available):
 
     - The declared columns must equal the reference eCPS populated input surface
-      (``ecps_parity_reference.json``): the manifest is the eCPS export surface,
-      no more, no less. A layer the incumbent gains/loses must be reflected here.
+      (``ecps_parity_reference.json``) plus the explicit post-reference inputs
+      required by shipped reform probes. A change to either surface must be
+      reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
     - Every declared column must be a real PolicyEngine-US input leaf, and every
@@ -470,7 +483,7 @@ def assert_release_input_coverage_manifest_current(
     failures: list[str] = []
 
     declared = set(manifest.declared_columns)
-    surface = set(_ecps_populated_layers())
+    surface = set(_ecps_populated_layers()) | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
     missing_from_manifest = sorted(surface - declared)
     extra_in_manifest = sorted(declared - surface)
     if missing_from_manifest:
@@ -481,7 +494,8 @@ def assert_release_input_coverage_manifest_current(
         )
     if extra_in_manifest:
         failures.append(
-            "manifest declares column(s) the reference eCPS does not populate "
+            "manifest declares column(s) neither populated by the reference "
+            "eCPS nor documented as post-reference required inputs "
             f"{extra_in_manifest}; regenerate the manifest."
         )
 

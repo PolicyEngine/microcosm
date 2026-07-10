@@ -38,14 +38,6 @@
       "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
       "issue": "PolicyEngine/populace#32"
     },
-    "cps_race": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "detailed_occupation_recode": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "disability_benefits": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
@@ -98,14 +90,6 @@
       "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
       "issue": "PolicyEngine/populace#253"
     },
-    "has_never_worked": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "hourly_wage": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
-    },
     "household_vehicles_owned": {
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
       "issue": "PolicyEngine/populace#49"
@@ -126,37 +110,13 @@
       "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
       "issue": "PolicyEngine/populace#274"
     },
-    "is_computer_scientist": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
       "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
       "issue": "PolicyEngine/populace#253"
     },
-    "is_executive_administrative_professional": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_farmer_fisher": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_hispanic": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "is_household_head": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
-    },
-    "is_military": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_paid_hourly": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
     },
     "is_pursuing_credential_for_american_opportunity_credit": {
       "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
@@ -169,10 +129,6 @@
     "is_surviving_spouse": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
-    },
-    "is_union_member_or_covered": {
-      "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-      "issue": "PolicyEngine/populace#242"
     },
     "is_unmarried_partner_of_household_head": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",

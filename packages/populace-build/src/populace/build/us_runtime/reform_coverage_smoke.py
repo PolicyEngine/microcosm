@@ -129,7 +129,7 @@ def us_reform_coverage_smoke_gate(
         passed=not failures,
         failures=tuple(failures),
         details={
-            "period": int(period),
+            "default_period": int(period),
             "probes": len(probes),
             "results": results,
         },

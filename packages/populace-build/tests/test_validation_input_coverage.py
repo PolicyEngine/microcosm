@@ -39,6 +39,7 @@ class TestUsSourceStageOutputs:
         # A representative PUF income leaf declared by the tax-detail stage.
         assert "employment_income_before_lsr" in outputs
         assert "student_loan_interest" in outputs
+        assert "fsla_overtime_premium" in outputs
         # The two invisible-gap leaves are NOT declared by any stage — the
         # whole reason the gate needs their reviewed exclusions.
         assert "qualified_tuition_expenses" not in outputs
@@ -56,6 +57,7 @@ class TestUsValidationInputCoverageGate:
             "qualified_passenger_vehicle_loan_interest",
         }
         assert result.details["missing"] == []
+        assert "fsla_overtime_premium" in us_validation_input_leaf_requirements()
 
     def test_planted_missing_leaf_fails_loudly(self) -> None:
         # Plant a NEW validation row whose provision keys on an un-imputed,
@@ -96,16 +98,12 @@ class TestUsValidationInputCoverageGate:
                 # No reason: this leaf is expected to be present, not a tracked gap.
             ),
         )
-        monkeypatch.setattr(
-            module, "US_VALIDATION_PROVISION_INPUT_LEAVES", planted
-        )
+        monkeypatch.setattr(module, "US_VALIDATION_PROVISION_INPUT_LEAVES", planted)
 
         result = us_validation_input_coverage_gate()
         assert not result.passed
         assert result.details["missing"] == ["some_new_unimputed_input"]
-        assert any(
-            "obbba_new_untested_provision" in line for line in result.failures
-        )
+        assert any("obbba_new_untested_provision" in line for line in result.failures)
 
     def test_leaf_becoming_a_declared_output_flags_stale_exclusion(self) -> None:
         # If a known-gap leaf is later produced by a stage, its reviewed

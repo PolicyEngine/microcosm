@@ -21,8 +21,10 @@ Two PolicyEngine-US person inputs are produced:
 
 * ``treasury_tipped_occupation_code`` is a direct CPS carry-through derived
   from raw ASEC ``PEIOOCC``.
-* ``tip_income`` is a non-negative SIPP QRF draw, forced to zero outside a
-  Treasury-listed tipped occupation as declared by the source-stage contract.
+* ``tip_income`` is a non-negative SIPP QRF draw. Treasury-listed occupation
+  is a predictor, not a domain mask: the pinned reference eCPS carries positive
+  tips for some people outside the list, and the OBBBA formula applies its own
+  occupation-qualification test downstream.
 
 Healing behavior matches the other source stages: an existing pair of columns
 with signal is passed through untouched; missing or constant-default columns
@@ -111,6 +113,11 @@ _SIPP_OBSERVED_STATUS_VALUES = frozenset((0, 1, 9))
 _DONOR_WEIGHT_COLUMN = "sipp_weight"
 _MAX_TRAIN_SAMPLES = 10_000
 _DEFAULT_N_ESTIMATORS = 100
+# Stable seed produced by the retired pipeline's ``seeded_rng`` for
+# ``calibration_sipp_tip_training_sample:tip_income``. Keeping the named-source
+# seed matters on this sparse target: seed 0 materially under-samples positive
+# tip rows in the 10,000-row cap.
+_TIP_TRAINING_SAMPLE_SEED = 5_559_651_045_748_063_828
 
 # Weighted all-person plausibility bands.  The pinned reference eCPS has 7.09%
 # in a listed occupation and 0.79% with positive tip income.  These deliberately
@@ -264,8 +271,31 @@ def _derive_any_tipped_occupation_code(frame: pd.DataFrame) -> np.ndarray:
     return np.column_stack(mapped).max(axis=1).astype(np.int16)
 
 
-def load_sipp_2023_tip_donor(path: str | Path) -> pd.DataFrame:
+def _sha256_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_sipp_2023_tip_donor(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+) -> pd.DataFrame:
     """Load the retired SIPP tip donor transformation from its pinned CSV."""
+
+    path = Path(path)
+    if expected_sha256 is not None:
+        digest = _sha256_file(path)
+        if digest != expected_sha256:
+            raise ValueError(
+                "SIPP 2023 tip donor failed sha-256 verification: "
+                f"expected {expected_sha256}, got {digest}."
+            )
 
     required = {
         "SSUID",
@@ -290,10 +320,12 @@ def load_sipp_2023_tip_donor(path: str | Path) -> pd.DataFrame:
     for column in _SIPP_TIP_ALLOCATION_COLUMNS:
         flag = pd.to_numeric(raw[column], errors="coerce").fillna(0).astype(int)
         observed &= flag.isin(_SIPP_OBSERVED_STATUS_VALUES)
-    raw = raw.loc[observed].copy()
-    if raw.empty:
+    if not observed.any():
         raise ValueError("SIPP 2023 tip donor has no observed tip-amount records.")
 
+    # Derive household composition on every December member before applying
+    # the target-specific observed-source mask. An allocated child is not a tip
+    # training target, but still counts in a retained adult's household.
     donor = pd.DataFrame(index=raw.index)
     tip_amounts = raw.loc[:, list(_SIPP_TIP_AMOUNT_COLUMNS)].apply(
         pd.to_numeric, errors="coerce"
@@ -325,7 +357,7 @@ def load_sipp_2023_tip_donor(path: str | Path) -> pd.DataFrame:
     ).fillna(0.0)
     finite = np.isfinite(donor.loc[:, [*SIPP_TIP_PREDICTORS, "tip_income"]]).all(axis=1)
     positive_weight = donor[_DONOR_WEIGHT_COLUMN] > 0
-    return donor.loc[finite & positive_weight].reset_index(drop=True)
+    return donor.loc[observed & finite & positive_weight].reset_index(drop=True)
 
 
 def _recipient_features(person: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
@@ -385,7 +417,7 @@ def impute_us_sipp_tips(
             0.0
         )
     if len(fit_frame) > _MAX_TRAIN_SAMPLES:
-        selected = np.random.default_rng(0).choice(
+        selected = np.random.default_rng(_TIP_TRAINING_SAMPLE_SEED).choice(
             len(fit_frame), size=_MAX_TRAIN_SAMPLES, replace=False
         )
         fit_frame = fit_frame.iloc[np.sort(selected)].reset_index(drop=True)
@@ -400,7 +432,6 @@ def impute_us_sipp_tips(
     predicted = np.maximum(
         np.asarray(fitted.predict(features)["tip_income"], dtype=np.float64), 0.0
     )
-    predicted[occupation_code == 0] = 0.0
     return pd.DataFrame(
         {
             "tip_income": predicted,

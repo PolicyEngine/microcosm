@@ -105,6 +105,11 @@ class ValidationInputLeaf:
 #: :func:`assert_validation_leaf_registry_current`.
 US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
     ValidationInputLeaf(
+        leaf="fsla_overtime_premium",
+        provision_variables=("overtime_income_deduction",),
+        validation_rows=("obbba_no_tax_on_overtime",),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_tuition_expenses",
         provision_variables=("education_tax_credits",),
         validation_rows=("soi_education_credits",),

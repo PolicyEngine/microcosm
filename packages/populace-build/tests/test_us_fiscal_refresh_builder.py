@@ -526,6 +526,48 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     assert args.audit_export_targets
 
 
+def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-tip-donor",
+            "pu2023_slim.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_tip_donor == Path("pu2023_slim.csv")
+
+
+def test_org_wages_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--org-wages-donor",
+            "census_cps_org_2024_wages.csv.gz",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.org_wages_donor == Path("census_cps_org_2024_wages.csv.gz")
+
+
 def test_cd_targets_require_vintage_crosswalk(monkeypatch) -> None:
     builder = _load_builder_module()
 
@@ -1751,6 +1793,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(
+        builder, "assert_validation_leaf_registry_current", lambda: None
+    )
+    monkeypatch.setattr(
+        builder, "assert_release_input_coverage_manifest_current", lambda: None
+    )
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
     monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
     monkeypatch.setattr(
@@ -1944,6 +1992,68 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "fetch_sipp_2023_tip_donor",
+        lambda *args, **kwargs: Path("pu2023_slim.csv"),
+    )
+
+    def fake_load_sipp_tip_donor(path, *, expected_sha256=None):
+        captured["sipp_tip_donor_path"] = path
+        captured["sipp_tip_donor_sha256"] = expected_sha256
+        return pd.DataFrame()
+
+    def fake_with_sipp_tip_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_tip_stage_called"] = True
+        return frame
+
+    def fake_sipp_tips_signal_gate(frame):
+        captured["sipp_tip_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_tips_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_tip_donor",
+        fake_load_sipp_tip_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_tip_inputs",
+        fake_with_sipp_tip_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_tips_signal_gate",
+        fake_sipp_tips_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_org_2024_donor",
+        lambda *args, **kwargs: Path("census_cps_org_2024_wages.csv.gz"),
+    )
+
+    def fake_load_org_donor(path, *, expected_content_sha256=None):
+        captured["org_donor_path"] = path
+        captured["org_donor_sha256"] = expected_content_sha256
+        return pd.DataFrame()
+
+    def fake_with_org_inputs(frame, *, seed, time_period, org_donor):
+        captured["org_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(builder, "load_org_2024_donor", fake_load_org_donor)
+    monkeypatch.setattr(builder, "with_us_org_wages_inputs", fake_with_org_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_org_wages_signal_gate",
+        lambda frame: builder.GateResult(
+            name="org_wages_signal", passed=True, details={"checked": True}
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_ecps_parity_gate",
         lambda frame: builder.GateResult(
             name="ecps_parity",
@@ -2074,6 +2184,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         == out / "artifacts" / "target_materialization_cache"
     )
     assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
+    assert captured["sipp_tip_donor_path"] == Path("pu2023_slim.csv")
+    assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
+    assert captured["sipp_tip_stage_called"] is True
+    assert captured["sipp_tip_gate_called"] is True
+    assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
+    assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
+    assert captured["org_stage_called"] is True
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:

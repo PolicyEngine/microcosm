@@ -45,6 +45,18 @@ def _us_frame(**person_extra: object) -> Frame:
             "bond_assets": [0.0, 0.0, 800.0],
             "tip_income": [2_400.0, 0.0, 600.0],
             "treasury_tipped_occupation_code": [101, 0, 304],
+            "cps_race": [1, 2, 4],
+            "is_hispanic": [False, True, False],
+            "detailed_occupation_recode": [1, 20, 53],
+            "has_never_worked": [False, False, True],
+            "is_military": [False, True, False],
+            "is_computer_scientist": [False, True, False],
+            "is_executive_administrative_professional": [False, True, False],
+            "is_farmer_fisher": [False, True, False],
+            "hourly_wage": [25.0, 18.0, 0.0],
+            "is_paid_hourly": [False, True, False],
+            "is_union_member_or_covered": [False, True, False],
+            "fsla_overtime_premium": [0.0, 1_000.0, 0.0],
             **person_extra,
         }
     )

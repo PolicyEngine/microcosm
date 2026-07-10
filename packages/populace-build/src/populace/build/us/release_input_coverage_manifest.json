@@ -72,14 +72,10 @@
    "status": "required"
   },
   "cps_race": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "detailed_occupation_recode": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "disability_benefits": {
    "issue": "PolicyEngine/populace#38",
@@ -154,6 +150,9 @@
   "first_home_mortgage_origination_year": {
    "status": "required"
   },
+  "fsla_overtime_premium": {
+   "status": "required"
+  },
   "has_american_opportunity_credit_1098_t_or_exception": {
    "issue": "PolicyEngine/populace#253",
    "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
@@ -183,9 +182,7 @@
    "status": "required"
   },
   "has_never_worked": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_non_marketplace_direct_purchase_health_coverage_at_interview": {
    "status": "required"
@@ -209,9 +206,7 @@
    "status": "required"
   },
   "hourly_wage": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "hours_worked_last_week": {
    "status": "required"
@@ -248,9 +243,7 @@
    "status": "required"
   },
   "is_computer_scientist": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_disabled": {
    "status": "required"
@@ -261,14 +254,10 @@
    "status": "reviewed_exclusion"
   },
   "is_executive_administrative_professional": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_farmer_fisher": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_female": {
    "status": "required"
@@ -277,9 +266,7 @@
    "status": "required"
   },
   "is_hispanic": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_household_head": {
    "issue": "PolicyEngine/populace#38",
@@ -287,14 +274,10 @@
    "status": "reviewed_exclusion"
   },
   "is_military": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_paid_hourly": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_pregnant": {
    "status": "required"
@@ -315,9 +298,7 @@
    "status": "reviewed_exclusion"
   },
   "is_union_member_or_covered": {
-   "issue": "PolicyEngine/populace#242",
-   "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_unmarried_partner_of_household_head": {
    "issue": "PolicyEngine/populace#38",
@@ -651,11 +632,11 @@
   }
  },
  "counts": {
-  "required": 72,
-  "reviewed_exclusion": 86,
-  "total": 158
+  "required": 84,
+  "reviewed_exclusion": 75,
+  "total": 159
  },
- "derivation": "Required surface = ecps_parity_reference.json populated layers (input columns the pinned, sha-verified reference eCPS populates). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium input introduced by the retired pipeline in commit 69cc1b79. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -711,6 +692,37 @@
    },
    "period": 2026,
    "reason": "Setting the OBBBA tip-deduction cap to zero removes the deduction, so baseline-minus-reform income tax must be negative in 2026. With tip_income or the Treasury tipped-occupation code absent, qualified tip income is zero and the repeal scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "fsla_overtime_premium"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_no_tax_on_overtime",
+   "issue": "PolicyEngine/populace#242",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-overtime deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.JOINT": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SEPARATE": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SINGLE": {
+     "2026-01-01.2026-12-31": 0
+    },
+    "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting every OBBBA overtime-deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With fsla_overtime_premium absent or degenerate, qualified overtime is zero and the repeal scores $0."
   }
  ],
  "schema_version": 1,
