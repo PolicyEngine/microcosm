@@ -94,10 +94,16 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   path; base_household_weight_total 134690323.34024483 == Build F exactly; builder 0-diff build-f
   vs main). The SHA delta is HDF5 serialization non-determinism, not a data change. Proceeding on
   0b50660a (read dynamically by every arm).
-- **Step 2 (selection carry-over — running).** `verify_selection_carryover_buildj.py`: #330 identity
-  join of the Build I rmloss100 manifest onto base-j in frozen_support mode (raises on any
-  unmapped/ambiguous = the >0-miss STOP). Expect n_selected 57,240, n_unmapped 0, n_ambiguous 0
-  (the join keys on data-identity columns, unaffected by the h5-byte delta).
+- **Step 2 (selection carry-over — DONE, PASS).** #330 identity join of the Build I rmloss100
+  manifest (identities_sha256 `152baca3`, n_identities 57,240) onto base-j (n(household) 337,704)
+  in frozen_support mode: **n_selected 57,240, n_unmapped 0, n_ambiguous 0, mask.sum() 57,240** —
+  ZERO misses. Confirms F1 (identity columns preserved; the h5-byte delta doesn't touch the join)
+  and the release will select exactly this 57,240 support. No STOP. Log: logs/buildj-run/carryover.log.
+- **Step 3/4 ordering note.** The dense (full-frame, task step 3) and sparse (57k deployable, step
+  4) arms are INDEPENDENT: the sparse reduces to the 57k BEFORE ACA (own checkpoint buildj-sparse,
+  self-contained dense-polish solve — no dependency on the full-frame dense weights). To de-risk the
+  #368 verdict against session/jetsam kills, the **certifiable sparse arm runs FIRST** (all gates +
+  the SSI probe = the headline), then the dense DIAGNOSTIC parent. Serialized (no memory overlap).
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
