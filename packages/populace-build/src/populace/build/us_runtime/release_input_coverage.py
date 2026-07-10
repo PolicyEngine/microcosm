@@ -88,6 +88,8 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
 # family back behind a reviewed exclusion.
 RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
+        "alimony_expense",
+        "alimony_income",
         "casualty_loss",
         "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",

@@ -467,6 +467,12 @@ class TestShippedManifest:
         assert "casualty_loss" in manifest.required_columns
         assert "casualty_loss" not in manifest.reviewed_exclusions
 
+    def test_alimony_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("alimony_income", "alimony_expense"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_misc_itemized_input_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         column = "unreimbursed_business_employee_expenses"
@@ -562,6 +568,22 @@ class TestShippedManifest:
         assert probe.min_abs_effect == 1_000_000.0
         assert set(probe.parameter_changes) == {
             "gov.irs.deductions.itemized.casualty.active"
+        }
+
+    def test_shipped_alimony_probe_has_sign_period_and_expense_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "alimony_expense_ald_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "negative"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("alimony_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount"
         }
 
     def test_shipped_misc_itemized_probe_has_2026_period_sign_and_input(self) -> None:

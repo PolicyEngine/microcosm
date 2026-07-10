@@ -13,7 +13,7 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including casualty-loss field E20500 and unreimbursed employee business expense field E20400"
+          "locator": "IRS SOI Public Use File, including alimony income E00800, alimony expense E03500, casualty-loss E20500, and unreimbursed employee business expense E20400"
         }
       ],
       "operations": [
@@ -31,6 +31,10 @@
           "qualified_tuition_primary_source": "E03230",
           "qualified_tuition_optional_source": "E87530",
           "qualified_tuition_output": "qualified_tuition_expenses",
+          "alimony_income_source": "E00800",
+          "alimony_income_output": "alimony_income",
+          "alimony_expense_source": "E03500",
+          "alimony_expense_output": "alimony_expense",
           "casualty_loss_source": "E20500",
           "casualty_loss_output": "casualty_loss",
           "unreimbursed_business_employee_expenses_source": "E20400",
@@ -88,6 +92,8 @@
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -127,6 +133,8 @@
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -145,7 +153,7 @@
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation."
     },
     {
       "stage": "education_inputs",

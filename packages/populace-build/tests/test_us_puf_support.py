@@ -115,6 +115,7 @@ def _raw_asec_predictor_frame() -> Frame:
                 "RNT_VAL": [20.0, 0.0, 0.0],
                 "FRSE_VAL": [5.0, 0.0, 0.0],
                 "UC_VAL": [0.0, 70.0, 0.0],
+                "OI_OFF": [19, 0, 0],
                 "OI_VAL": [3.0, 0.0, 0.0],
                 "PHIP_VAL": [400.0, 0.0, 50.0],
                 "PEMCPREM": [100.0, 0.0, 25.0],
@@ -372,6 +373,24 @@ def test_puf_tax_unit_donor_carries_person_casualty_losses() -> None:
     )
 
     assert donor["casualty_loss"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_both_person_alimony_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "alimony_income": [1_000.0, 2_000.0, 4_000.0],
+            "alimony_expense": [500.0, 700.0, 3_000.0],
+        },
+        person_outputs=("alimony_income", "alimony_expense"),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["alimony_income"].tolist() == [3_000.0, 4_000.0]
+    assert donor["alimony_expense"].tolist() == [1_200.0, 3_000.0]
 
 
 def test_puf_tax_unit_donor_carries_person_misc_itemized_expenses() -> None:
@@ -655,6 +674,7 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert person["rental_income"].tolist() == [20.0, 0.0, 0.0]
     assert person["farm_income"].tolist() == [5.0, 0.0, 0.0]
     assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
+    assert person["alimony_income"].tolist() == [0.0, 0.0, 0.0]
     assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
     assert person["health_insurance_premiums_without_medicare_part_b"].tolist() == [
         400.0,

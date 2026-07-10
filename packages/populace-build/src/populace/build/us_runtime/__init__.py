@@ -35,6 +35,18 @@ from populace.build.source_manifest import (
     load_source_manifest,
     load_support_spine_manifest,
 )
+from populace.build.us_runtime.alimony import (
+    ALIMONY_ASEC_ARCHIVED_DERIVATION_URL,
+    ALIMONY_PUF_ARCHIVED_DERIVATION_URL,
+    US_ALIMONY_NONCONSTANT_PERSON_COLUMNS,
+    US_ALIMONY_OUTPUT_COLUMNS,
+    US_ALIMONY_STAGE_NAME,
+    derive_us_alimony_from_asec,
+    derive_us_alimony_from_puf,
+    us_alimony_signal_gate,
+    us_alimony_stage_spec,
+    us_alimony_summary,
+)
 from populace.build.us_runtime.asec_pool import (
     AsecSource,
     build_pooled_asec_unit_frame,
@@ -521,6 +533,16 @@ __all__ = [
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
+    "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
+    "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
+    "US_ALIMONY_NONCONSTANT_PERSON_COLUMNS",
+    "US_ALIMONY_OUTPUT_COLUMNS",
+    "US_ALIMONY_STAGE_NAME",
+    "derive_us_alimony_from_asec",
+    "derive_us_alimony_from_puf",
+    "us_alimony_signal_gate",
+    "us_alimony_stage_spec",
+    "us_alimony_summary",
     "US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS",
     "US_CASUALTY_LOSS_OUTPUT_COLUMNS",
     "US_CASUALTY_LOSS_STAGE_NAME",
@@ -931,8 +953,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Itemized-deduction detail, QBI components, partnership SE, "
-            "mortgage-interest split, direct E20500 casualty loss, and the "
-            "E20400 miscellaneous-expense proxy; IRS "
+            "mortgage-interest split, direct E00800/E03500 alimony, direct "
+            "E20500 casualty loss, and the E20400 miscellaneous-expense proxy; IRS "
             "disclosure aggregate rows are "
             "disaggregated from raw PUF totals before uprating, with Forbes "
             "top-tail synthesis disabled; support clipped to the PUF's own "

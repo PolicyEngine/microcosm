@@ -2,14 +2,6 @@
   "schema_version": 1,
   "description": "Reason'd, issue-linked parity exemption register (the debt ledger). Each entry names a layer the incumbent eCPS populates that the current Populace candidate does not, with the reason it is absent and the tracking issue that owns closing it. parity_gate is run with known_gaps = the keys of this file, and fails on any entry whose layer the candidate now populates (stale exemptions cannot rot silently); the launch condition is that this register shrinks to deliberate scope decisions, not TODOs. Seeded from the first parity run of populace_us_2024.h5 against the pinned reference (see ecps_parity_reference.json). Every issue ref is an existing open PolicyEngine/populace issue.",
   "known_gaps": {
-    "alimony_expense": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "alimony_income": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
     "business_is_sstb": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"

@@ -78,6 +78,8 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "social_security_disability",
     "social_security_dependents",
     "social_security_survivors",
+    "alimony_income",
+    "alimony_expense",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
@@ -129,8 +131,16 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
         "taxable_interest_income",
         "qualified_tuition_expenses",
         "casualty_loss",
+        "alimony_income",
+        "alimony_expense",
     }
 )
+
+# ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
+# only the cloned PUF half for this leaf; pruning the ASEC half would discard
+# reported source observations. Expense has no ASEC analogue, so its zero ASEC
+# half is unaffected by the ordinary all-channel sparsification loop.
+_PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS = frozenset({"alimony_income"})
 
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
@@ -171,6 +181,8 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
@@ -1078,7 +1090,16 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         .sum()
     )
 
-    for channel in tax_unit[tax_unit_channel].dropna().unique():
+    channels = tax_unit[tax_unit_channel].dropna().unique()
+    if column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
+        channels = np.asarray(
+            [
+                channel
+                for channel in channels
+                if channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+            ]
+        )
+    for channel in channels:
         channel_tax_unit_ids = tax_unit.loc[
             tax_unit[tax_unit_channel] == channel,
             "tax_unit_id",

@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.us_runtime.alimony import derive_us_alimony_from_puf
 from populace.build.us_runtime.casualty_losses import (
     derive_us_casualty_loss_from_puf,
 )
@@ -216,6 +217,10 @@ def derive_puf_policyengine_variables(
     qualified_tuition_primary_source: str | None = None,
     qualified_tuition_optional_source: str | None = None,
     qualified_tuition_output: str = "qualified_tuition_expenses",
+    alimony_income_source: str | None = None,
+    alimony_income_output: str = "alimony_income",
+    alimony_expense_source: str | None = None,
+    alimony_expense_output: str = "alimony_expense",
     casualty_loss_source: str | None = None,
     casualty_loss_output: str = "casualty_loss",
     unreimbursed_business_employee_expenses_source: str | None = None,
@@ -256,6 +261,20 @@ def derive_puf_policyengine_variables(
                 dtype="float64",
             )
         result[qualified_tuition_output] = tuition
+    alimony_sources = (alimony_income_source, alimony_expense_source)
+    if any(source is not None for source in alimony_sources):
+        if not all(source is not None for source in alimony_sources):
+            raise ValueError(
+                "PUF alimony derivation requires both income and expense source "
+                "columns when either is configured."
+            )
+        result = derive_us_alimony_from_puf(
+            result,
+            income_source_column=alimony_income_source,
+            income_output_column=alimony_income_output,
+            expense_source_column=alimony_expense_source,
+            expense_output_column=alimony_expense_output,
+        )
     if casualty_loss_source is not None:
         result = derive_us_casualty_loss_from_puf(
             result,
@@ -326,6 +345,7 @@ def disaggregate_puf_aggregate_records(
     result = pd.concat([regular, synthetic_df], ignore_index=True)
     result = _reconcile_puf_dividend_columns_from_components(result)
     result = _reconcile_puf_qualified_tuition_from_sources(result)
+    result = _reconcile_puf_alimony_from_sources(result)
     result = _reconcile_puf_casualty_loss_from_source(result)
     return _reconcile_puf_misc_itemized_from_source(result)
 
@@ -940,6 +960,15 @@ def _reconcile_puf_casualty_loss_from_source(
     if "casualty_loss" not in puf.columns or "E20500" not in puf.columns:
         return puf
     return derive_us_casualty_loss_from_puf(puf)
+
+
+def _reconcile_puf_alimony_from_sources(puf: pd.DataFrame) -> pd.DataFrame:
+    """Recompute both alimony leaves after raw source amounts are replaced."""
+
+    required = {"alimony_income", "alimony_expense", "E00800", "E03500"}
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_alimony_from_puf(puf)
 
 
 def _reconcile_puf_misc_itemized_from_source(

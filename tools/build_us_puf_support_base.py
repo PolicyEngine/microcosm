@@ -43,6 +43,7 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
     us_childcare_signal_gate,
     us_education_inputs_signal_gate,
@@ -235,6 +236,11 @@ def main() -> None:
             "Childcare-input signal gate failed:\n  "
             + "\n  ".join(childcare_gate.failures)
         )
+    alimony_gate = us_alimony_signal_gate(imputed)
+    if not alimony_gate.passed:
+        raise SystemExit(
+            "Alimony-input signal gate failed:\n  " + "\n  ".join(alimony_gate.failures)
+        )
     casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
     if not casualty_loss_gate.passed:
         raise SystemExit(
@@ -394,6 +400,11 @@ def main() -> None:
             "passed": childcare_gate.passed,
             "failures": list(childcare_gate.failures),
             "details": dict(childcare_gate.details),
+        },
+        "alimony_inputs_signal": {
+            "passed": alimony_gate.passed,
+            "failures": list(alimony_gate.failures),
+            "details": dict(alimony_gate.details),
         },
         "casualty_loss_signal": {
             "passed": casualty_loss_gate.passed,

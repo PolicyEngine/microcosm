@@ -70,6 +70,7 @@ from populace.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
+    us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
     us_childcare_signal_gate,
     us_education_inputs_signal_gate,
@@ -5876,6 +5877,23 @@ def main() -> None:
             + "; ".join(
                 "Childcare-input signal failed: " + failure
                 for failure in childcare_gate.failures
+            )
+        )
+    alimony_gate = us_alimony_signal_gate(base_frame)
+    if not alimony_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "alimony_input_gate",
+                status="failed",
+                message="Alimony-input signal gate failed.",
+                failures=list(alimony_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Alimony-input signal failed: " + failure
+                for failure in alimony_gate.failures
             )
         )
     casualty_loss_gate = us_casualty_loss_signal_gate(base_frame)

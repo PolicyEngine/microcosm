@@ -78,6 +78,8 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
 RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
+    "alimony_expense",
+    "alimony_income",
     "casualty_loss",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -183,6 +185,31 @@ REFORM_COVERAGE_PROBES = [
             "the baseline credit is a structural zero and abolition scores $0."
         ),
         "issue": "PolicyEngine/populace#278",
+    },
+    {
+        "id": "alimony_expense_ald_abolition",
+        "name": "Alimony expense above-the-line deduction abolition",
+        "parameter_changes": {
+            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
+                "2024-01-01.2100-12-31": False
+            }
+        },
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["alimony_expense"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "The retired export has no nondefault divorce_year input, so "
+            "PolicyEngine-US applies its default year 0 through the first "
+            "eligibility bracket. Setting that bracket's amount to false "
+            "abolishes the alimony-expense above-the-line deduction on the "
+            "release, so baseline-minus-reform income tax must be negative. "
+            "With alimony_expense absent or degenerate, the abolition scores "
+            "exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#38",
     },
     {
         "id": "obbba_casualty_loss_limit",

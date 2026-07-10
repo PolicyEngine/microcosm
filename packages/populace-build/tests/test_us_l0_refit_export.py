@@ -45,6 +45,8 @@ def _us_frame(**person_extra: object) -> Frame:
             "bond_assets": [0.0, 0.0, 800.0],
             "tip_income": [2_400.0, 0.0, 600.0],
             "treasury_tipped_occupation_code": [101, 0, 304],
+            "alimony_income": [5_000.0, 0.0, 1_000.0],
+            "alimony_expense": [0.0, 2_500.0, 0.0],
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
@@ -506,6 +508,26 @@ def test_required_us_release_source_columns_enforces_casualty_loss_signal() -> N
         assert_required_us_release_source_columns(raw_frame)
 
 
+@pytest.mark.parametrize("column", ["alimony_income", "alimony_expense"])
+def test_required_us_release_source_columns_enforces_alimony_signal(
+    column: str,
+) -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people[column] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(ValueError, match=rf"person.{column}: not nonconstant"):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_misc_itemized_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -608,6 +630,8 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert summary["geography_ladder_gate_enforced"] is False
     assert summary["geography_ladder_gate"]["passed"] is False
     assert summary["required_household_source_columns"][0] == "state_fips"
+    assert "alimony_income" in summary["required_person_source_columns"]
+    assert "alimony_expense" in summary["required_person_source_columns"]
     assert "casualty_loss" in summary["required_person_source_columns"]
     assert (
         "unreimbursed_business_employee_expenses"
