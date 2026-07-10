@@ -1749,6 +1749,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    # The consistency/contract preflights hit the installed policyengine-us
+    # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
+    monkeypatch.setattr(
+        builder, "assert_take_up_treatments_consistent", lambda: None
+    )
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
