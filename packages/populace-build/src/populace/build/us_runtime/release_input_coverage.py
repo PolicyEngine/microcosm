@@ -51,6 +51,7 @@ from populace.build.gates import GateResult, input_column_coverage_gate
 __all__ = [
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
     "ReleaseInputCoverageManifest",
@@ -80,6 +81,12 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "self_employed_pension_contributions_desired",
     }
 )
+
+# Populated inputs in the frozen reference that have been restored from their
+# primary-source derivations. Keeping this separate from the post-reference
+# additions lets the anti-rot check reject any future attempt to put a completed
+# family back behind a reviewed exclusion.
+RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset({"casualty_loss"})
 
 _US_PACKAGE = "populace.build.us"
 _ECPS_PARITY_REFERENCE_RESOURCE = "ecps_parity_reference.json"
@@ -524,6 +531,17 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{asset}: SSI countable-resource asset input must be a "
                 "required manifest column (#368)."
+            )
+
+    for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:
+        if column in reviewed:
+            failures.append(
+                f"{column}: restored reference eCPS input cannot return to a "
+                "reviewed exclusion."
+            )
+        elif column not in required:
+            failures.append(
+                f"{column}: restored reference eCPS input must remain required."
             )
 
     if engine is None:

@@ -45,6 +45,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "bond_assets": [0.0, 0.0, 800.0],
             "tip_income": [2_400.0, 0.0, 600.0],
             "treasury_tipped_occupation_code": [101, 0, 304],
+            "casualty_loss": [0.0, 2_500.0, 0.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
             "educational_assistance": [0.0, 500.0, 0.0],
             "traditional_401k_contributions_desired": [1_000.0, 0.0, 500.0],
@@ -481,6 +482,26 @@ def test_required_us_release_source_columns_rejects_constant_auto_input() -> Non
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_casualty_loss_signal() -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["casualty_loss"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.casualty_loss: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_export_us_l0_refit_h5_fails_geography_ladder_gate_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -543,6 +564,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert summary["geography_ladder_gate_enforced"] is False
     assert summary["geography_ladder_gate"]["passed"] is False
     assert summary["required_household_source_columns"][0] == "state_fips"
+    assert "casualty_loss" in summary["required_person_source_columns"]
     assert summary["required_household_nonconstant_source_columns"] == [
         "auto_loan_balance",
         "auto_loan_interest",

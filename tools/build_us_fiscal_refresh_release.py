@@ -70,6 +70,7 @@ from populace.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
+    us_casualty_loss_signal_gate,
     us_education_inputs_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
@@ -5849,6 +5850,23 @@ def main() -> None:
             + "; ".join(
                 f"Base population scale failed: {failure}"
                 for failure in base_population_gate.failures
+            )
+        )
+    casualty_loss_gate = us_casualty_loss_signal_gate(base_frame)
+    if not casualty_loss_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "casualty_loss_input_gate",
+                status="failed",
+                message="Casualty-loss signal gate failed.",
+                failures=list(casualty_loss_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Casualty-loss signal failed: " + failure
+                for failure in casualty_loss_gate.failures
             )
         )
     if telemetry is not None:

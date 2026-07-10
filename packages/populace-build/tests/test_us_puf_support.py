@@ -296,6 +296,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "qualified_tuition_expenses" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "casualty_loss" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -351,6 +352,22 @@ def test_puf_tax_unit_donor_derives_qualified_tuition_from_raw_fields() -> None:
     )
 
     assert donor["qualified_tuition_expenses"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_casualty_losses() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "casualty_loss": [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=("casualty_loss",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["casualty_loss"].tolist() == [3_000.0, 4_000.0]
 
 
 def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:

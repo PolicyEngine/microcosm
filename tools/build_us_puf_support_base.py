@@ -43,6 +43,7 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_casualty_loss_signal_gate,
     us_education_inputs_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
@@ -215,6 +216,12 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
+    if not casualty_loss_gate.passed:
+        raise SystemExit(
+            "Casualty-loss signal gate failed:\n  "
+            + "\n  ".join(casualty_loss_gate.failures)
+        )
     imputed = with_us_retirement_contribution_inputs(
         imputed,
         seed=args.seed,
@@ -358,6 +365,11 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "casualty_loss_signal": {
+            "passed": casualty_loss_gate.passed,
+            "failures": list(casualty_loss_gate.failures),
+            "details": dict(casualty_loss_gate.details),
+        },
         "education_inputs_signal": {
             "passed": education_inputs_gate.passed,
             "failures": list(education_inputs_gate.failures),

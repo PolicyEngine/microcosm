@@ -84,6 +84,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "home_mortgage_interest",
     "student_loan_interest",
     "qualified_tuition_expenses",
+    "casualty_loss",
     # The engine owns the realized contribution amounts through the
     # IRA-limit scale and self-employment caps; the persistable leaves are
     # the desired contributions, equal to the PUF's observed deductions at
@@ -126,6 +127,7 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
         "qualified_tuition_expenses",
+        "casualty_loss",
     }
 )
 
@@ -174,6 +176,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "home_mortgage_interest",
         "student_loan_interest",
         "qualified_tuition_expenses",
+        "casualty_loss",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -200,6 +203,10 @@ _PERSON_OUTPUT_TAX_UNIT_GRAIN_SOURCES: Mapping[str, str] = {
 # Contributions require compensation, so an earnings basis keeps per-person
 # contribution limits binding the way they do on the donor records.
 _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
+    "casualty_loss": (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ),
     "traditional_ira_contributions_desired": (
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",

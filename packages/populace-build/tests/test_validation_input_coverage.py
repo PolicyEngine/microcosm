@@ -49,6 +49,7 @@ class TestUsSourceStageOutputs:
         assert "traditional_ira_contributions_desired" in outputs
         assert "roth_ira_contributions_desired" in outputs
         assert "self_employed_pension_contributions_desired" in outputs
+        assert "casualty_loss" in outputs
 
 
 class TestUsValidationInputCoverageGate:
@@ -74,6 +75,7 @@ class TestUsValidationInputCoverageGate:
             "self_employed_pension_contributions_desired",
         ):
             assert requirements[leaf] == ["soi_savers_credit"]
+        assert requirements["casualty_loss"] == ["obbba_casualty_loss_limit"]
 
     def test_planted_missing_leaf_fails_loudly(self) -> None:
         # Plant a NEW validation row whose provision keys on an un-imputed,
@@ -134,6 +136,20 @@ class TestUsValidationInputCoverageGate:
         )
         assert not result.passed
         assert set(result.details["missing"]) == {"qualified_tuition_expenses"}
+
+    def test_removing_casualty_loss_makes_the_obbba_row_fail(self) -> None:
+        requirements = us_validation_input_leaf_requirements()
+
+        from populace.build.gates import source_stage_input_coverage_gate
+
+        result = source_stage_input_coverage_gate(
+            requirements,
+            declared_outputs=us_source_stage_outputs() - {"casualty_loss"},
+            reviewed_exclusions={},
+            name="us_validation_input_coverage",
+        )
+        assert not result.passed
+        assert set(result.details["missing"]) == {"casualty_loss"}
 
 
 class TestValidationInputLeafRegistry:

@@ -41,6 +41,15 @@ from populace.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from populace.build.us_runtime.casualty_losses import (
+    US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS,
+    US_CASUALTY_LOSS_OUTPUT_COLUMNS,
+    US_CASUALTY_LOSS_STAGE_NAME,
+    derive_us_casualty_loss_from_puf,
+    us_casualty_loss_signal_gate,
+    us_casualty_loss_stage_spec,
+    us_casualty_loss_summary,
+)
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
     SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
@@ -492,6 +501,13 @@ __all__ = [
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
+    "US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS",
+    "US_CASUALTY_LOSS_OUTPUT_COLUMNS",
+    "US_CASUALTY_LOSS_STAGE_NAME",
+    "derive_us_casualty_loss_from_puf",
+    "us_casualty_loss_signal_gate",
+    "us_casualty_loss_stage_spec",
+    "us_casualty_loss_summary",
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
@@ -869,7 +885,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Itemized-deduction detail, QBI components, partnership SE, "
-            "mortgage-interest split; IRS disclosure aggregate rows are "
+            "mortgage-interest split, and direct E20500 casualty loss; IRS "
+            "disclosure aggregate rows are "
             "disaggregated from raw PUF totals before uprating, with Forbes "
             "top-tail synthesis disabled; support clipped to the PUF's own "
             "realized ranges."

@@ -150,6 +150,11 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         validation_rows=("soi_savers_credit",),
     ),
     ValidationInputLeaf(
+        leaf="casualty_loss",
+        provision_variables=("casualty_loss_deduction",),
+        validation_rows=("obbba_casualty_loss_limit",),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),

@@ -17,6 +17,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.us_runtime.casualty_losses import (
+    derive_us_casualty_loss_from_puf,
+)
 from populace.calibrate import relative_error_loss
 
 __all__ = [
@@ -212,6 +215,8 @@ def derive_puf_policyengine_variables(
     qualified_tuition_primary_source: str | None = None,
     qualified_tuition_optional_source: str | None = None,
     qualified_tuition_output: str = "qualified_tuition_expenses",
+    casualty_loss_source: str | None = None,
+    casualty_loss_output: str = "casualty_loss",
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -246,6 +251,12 @@ def derive_puf_policyengine_variables(
                 dtype="float64",
             )
         result[qualified_tuition_output] = tuition
+    if casualty_loss_source is not None:
+        result = derive_us_casualty_loss_from_puf(
+            result,
+            source_column=casualty_loss_source,
+            output_column=casualty_loss_output,
+        )
     return result
 
 
@@ -303,7 +314,8 @@ def disaggregate_puf_aggregate_records(
     synthetic_df = pd.concat(pieces, ignore_index=True)
     result = pd.concat([regular, synthetic_df], ignore_index=True)
     result = _reconcile_puf_dividend_columns_from_components(result)
-    return _reconcile_puf_qualified_tuition_from_sources(result)
+    result = _reconcile_puf_qualified_tuition_from_sources(result)
+    return _reconcile_puf_casualty_loss_from_source(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -900,6 +912,22 @@ def _reconcile_puf_qualified_tuition_from_sources(
         )
     result[output] = tuition
     return result
+
+
+def _reconcile_puf_casualty_loss_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute casualty loss after aggregate-row amounts are replaced.
+
+    The raw ``E20500`` amount participates in PUF aggregate-record
+    disaggregation.  Reusing the pre-disaggregation derived column would leave
+    donor-template values on synthetic rows, so restore the archived direct
+    mapping after the source amounts reach their final rows.
+    """
+
+    if "casualty_loss" not in puf.columns or "E20500" not in puf.columns:
+        return puf
+    return derive_us_casualty_loss_from_puf(puf)
 
 
 def _assert_nonnegative_dividend_component(

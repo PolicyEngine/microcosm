@@ -366,6 +366,8 @@ class TestUsSources:
             "qualified_tuition_primary_source": "E03230",
             "qualified_tuition_optional_source": "E87530",
             "qualified_tuition_output": "qualified_tuition_expenses",
+            "casualty_loss_source": "E20500",
+            "casualty_loss_output": "casualty_loss",
         }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]

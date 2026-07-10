@@ -74,6 +74,11 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "self_employed_pension_contributions_desired",
 )
 
+# Reference-populated inputs whose primary-source restoration has shipped.
+# They remain hard requirements even if a stale parity-gap entry is
+# accidentally reintroduced later.
+RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = ("casualty_loss",)
+
 RETIREMENT_CONTRIBUTION_INPUTS = (
     "traditional_401k_contributions_desired",
     "roth_401k_contributions_desired",
@@ -176,6 +181,29 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/populace#278",
     },
     {
+        "id": "obbba_casualty_loss_limit",
+        "name": "OBBBA casualty-loss deduction reactivation",
+        "parameter_changes": {
+            "gov.irs.deductions.itemized.casualty.active": {
+                "2026-01-01.2026-12-31": True
+            }
+        },
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["casualty_loss"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Reactivating the casualty-loss deduction lowers income tax only "
+            "for tax units with casualty_loss above the statutory AGI floor, "
+            "so baseline-minus-reform income tax must be positive. With the "
+            "casualty-loss input absent or degenerate, the reactivation scores "
+            "exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#32",
+    },
+    {
         "id": "obbba_no_tax_on_tips",
         "name": "OBBBA no-tax-on-tips deduction",
         "parameter_changes": {
@@ -275,6 +303,19 @@ def build_manifest() -> dict:
             "SSI countable-resource asset inputs are not in the reference eCPS "
             f"populated surface, cannot pin them as required: {missing_assets}."
         )
+    restored_inputs = set(RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS)
+    missing_restored = sorted(restored_inputs - populated_layers)
+    if missing_restored:
+        raise ValueError(
+            "Restored reference inputs are absent from the reference populated "
+            f"surface: {missing_restored}."
+        )
+    stale_restored_gaps = sorted(restored_inputs & set(known_gaps))
+    if stale_restored_gaps:
+        raise ValueError(
+            "Restored reference inputs cannot remain in the parity-gap register: "
+            f"{stale_restored_gaps}."
+        )
 
     columns: dict[str, dict] = {}
     for name in sorted(populated_layers):
@@ -348,9 +389,10 @@ def build_manifest() -> dict:
             "retirement-contribution inputs required by shipped validation "
             "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
-            "(reason+issue from that register); EXCEPT the SSI countable-resource "
-            "asset inputs (bank_account_assets, stock_assets, bond_assets), which "
-            "are status='required' with NO exclusion per PolicyEngine/populace#368 "
+            "(reason+issue from that register); EXCEPT restored casualty_loss and "
+            "the SSI countable-resource asset inputs (bank_account_assets, "
+            "stock_assets, bond_assets), which are status='required' with NO "
+            "exclusion per PolicyEngine/populace#368 "
             "so the gate fails on today's artifacts and asset restoration "
             "(Deliverable 2) turns it green. All other populated layers are "
             "'required'. Regenerate with "
