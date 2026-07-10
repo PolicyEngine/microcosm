@@ -533,22 +533,6 @@ def target_spec_from_ledger_reference(
 ) -> TargetSpec:
     """Compile one resolved Ledger fact plus Populace mapping into a target."""
 
-    if reference.expected_unit is None:
-        raise ValueError(
-            f"Ledger target reference {reference.name!r}: expected_unit is "
-            "required; every reference must declare the unit its fact carries "
-            "so a thousands-vs-millions scale swap fails at the model boundary "
-            "(finding #9)."
-        )
-    if reference.value_scale != 1.0 and not reference.value_scale_declared:
-        raise ValueError(
-            f"Ledger target reference {reference.name!r}: value_scale "
-            f"{reference.value_scale!r} rescales the observed fact but is not "
-            "declared; set value_scale_declared=True to authorize a reviewed "
-            "non-identity scale (an undeclared scale must not silently reach the "
-            "model, finding #9)."
-        )
-
     value = _at(fact, "value")
     if value is None:
         raise ValueError(f"Ledger fact for {reference.name!r} is missing value.")
@@ -583,6 +567,25 @@ def target_spec_from_ledger_reference(
             f"Ledger target reference {reference.name!r}: measure is required; "
             "count-like facts must be represented as sums of prepared indicator "
             "columns."
+        )
+
+    # The unit/scale gate runs after the structural checks so a fact that
+    # cannot compile at all (missing value, unsupported aggregation) fails on
+    # that cause rather than on a missing declaration (finding #9).
+    if reference.expected_unit is None:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: expected_unit is "
+            "required; every reference must declare the unit its fact carries "
+            "so a thousands-vs-millions scale swap fails at the model boundary "
+            "(finding #9)."
+        )
+    if reference.value_scale != 1.0 and not reference.value_scale_declared:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_scale "
+            f"{reference.value_scale!r} rescales the observed fact but is not "
+            "declared; set value_scale_declared=True to authorize a reviewed "
+            "non-identity scale (an undeclared scale must not silently reach the "
+            "model, finding #9)."
         )
 
     fact_unit = _measure_unit(fact)

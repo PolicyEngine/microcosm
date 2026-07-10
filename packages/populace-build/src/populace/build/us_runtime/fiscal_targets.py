@@ -530,10 +530,16 @@ def _build_us_fiscal_expected_units() -> dict[tuple[str, str], str]:
     units[("census_stc", "collections")] = "usd"
     for source_name, measure_id, _group in DIRECT_LEDGER_TARGETS:
         units[(source_name, measure_id)] = "usd"
+    # Count-based indicators carry a count denomination in the fact stream, not
+    # dollars: CMS Medicaid/CHIP enrollment as ``people``, USDA SNAP average
+    # monthly caseload as ``count``. Every other indicator is a dollar measure.
     for source_name, measure_id in INDICATOR_LEDGER_TARGETS:
-        units[(source_name, measure_id)] = (
-            "people" if source_name == "cms_medicaid" else "usd"
-        )
+        if source_name == "cms_medicaid":
+            units[(source_name, measure_id)] = "people"
+        elif source_name == "usda_snap":
+            units[(source_name, measure_id)] = "count"
+        else:
+            units[(source_name, measure_id)] = "usd"
     return units
 
 
