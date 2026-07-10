@@ -137,6 +137,24 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
     certification STOPS here. Filed **populace#386** (full evidence + option space). Relaunch
     after the #386 decision is mechanical: all launchers staged/committed; if the fix changes
     facts, swap --ledger-facts to the re-exported feed and record the new registry version.
+- **Step 5 (#387 remedy merged; sparse RELAUNCHED).** #386's remedy landed on main as **#387
+  (012742e)**: a reviewed CMS Medicaid enrollment substitution register
+  (`US_MEDICAID_ENROLLMENT_SUBSTITUTIONS` in medicaid_take_up.py) — RI/44 -> the ledger-verified
+  November 2024 fact **273,400** (`cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_
+  enrollment`), issue-linked to #386, **cannot-rot** (if CMS backfills a real 2024-12 RI count the
+  entry goes stale and the gate FAILS, #286 doctrine), applied at release :5678 immediately
+  post-registry-compile so the augmented registry feeds the checkpoint identity, the target table,
+  AND the certification panel (substitution records go into build_manifest + gate diagnostics).
+  Merged origin/main into build-j-recert (a7ad0c8; zero conflicts — #387 touches only
+  medicaid_take_up.py, us_runtime/__init__.py, the release tool, and tests). **Registry
+  consequence**: the injected RI spec grows the surface 5,533 -> **5,534 specs and changes the
+  registry version** (was d71c59514e3a) — the Build I comparison gains the one-spec CMS-substitution
+  caveat (like-for-like-plus-injected-RI-target); dense/sparse Build J arms stay internally
+  consistent. Failed run's checkpoint dir was empty (died pre-checkpoint) -> clean rematerialization.
+  Relaunched sparse detached @ commit a7ad0c8: run id
+  `populace-us-2024-buildj-sparse-rmloss100-a7ad0c8-20260710T053754Z`. Watch: past the Medicaid
+  gate at the ~4-min mark (where 01aed9e died), then materialization -> solve -> gates -> H5 ->
+  SSI probe.
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
