@@ -17,8 +17,9 @@ or repository, which is the whole point of a registry-driven shard.
 
 This shard does not depend on the Frame kernel: a published population is an
 engine-native dataset, so loading it needs only ``huggingface_hub`` and the
-country engine (an optional extra). It therefore carries no kernel-compat gate —
-there is no kernel in its dependency closure to gate against.
+country engine (an optional extra). The loader still enforces the release's
+certified country-model and PolicyEngine Core version specifiers before it
+constructs that engine-native dataset.
 """
 
 from populace.data.contract import (
