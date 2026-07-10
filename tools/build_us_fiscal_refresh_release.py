@@ -40,6 +40,7 @@ from populace.build.gates import (
     target_profile_coverage_gate,
 )
 from populace.build.ledger_artifact import (
+    LedgerConsumerArtifact,
     load_ledger_consumer_artifact,
     vendor_ledger_consumer_artifact,
     verify_vendored_ledger_artifact,
@@ -5677,16 +5678,7 @@ def main() -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
-    # Release builds load fail-closed (finding #12): require_pins rejects a bare
-    # feed, demands both content-hash pins, and --- decisively for a vendored
-    # release --- makes a manifest-listed profile whose file is missing a hard
-    # error instead of a silent skip that then vendors an incomplete feed.
-    ledger_artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-        require_pins=True,
-    )
+    ledger_artifact = _load_release_ledger_artifact(args)
     extra_support_exclusions = _load_zero_support_exclusions(
         args.zero_support_exclusions
     )
