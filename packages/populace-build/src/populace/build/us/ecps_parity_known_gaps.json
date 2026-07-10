@@ -22,10 +22,6 @@
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
       "issue": "PolicyEngine/populace#49"
     },
-    "block_geoid": {
-      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "business_is_sstb": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
@@ -41,10 +37,6 @@
     "child_support_received": {
       "reason": "HHS OCSE child-support received/paid SPM input; not yet on the frame.",
       "issue": "PolicyEngine/populace#32"
-    },
-    "county_fips": {
-      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
     },
     "cps_race": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
@@ -109,10 +101,6 @@
     "has_never_worked": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
-    },
-    "health_savings_account_ald": {
-      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
     },
     "hourly_wage": {
       "reason": "Hours-worked / hourly-wage / labor input not yet carried through Populace US outputs (#242).",
@@ -258,10 +246,6 @@
       "reason": "SPM energy-subsidy (LIHEAP) resource input; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
     },
-    "spm_unit_pre_subsidy_childcare_expenses": {
-      "reason": "SPM childcare-expense input; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
-    },
     "spm_unit_tenure_type": {
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
@@ -332,10 +316,6 @@
     },
     "tip_income": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "tract_geoid": {
-      "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
     },
     "treasury_tipped_occupation_code": {
