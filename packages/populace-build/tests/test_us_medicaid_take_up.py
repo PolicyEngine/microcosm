@@ -25,9 +25,12 @@ import pytest
 pytest.importorskip("policyengine_us")
 
 from populace.build.us_runtime.medicaid_take_up import (  # noqa: E402
+    US_MEDICAID_ENROLLMENT_SUBSTITUTIONS,
+    US_MEDICAID_ENROLLMENT_TARGET_ROLE,
     US_MEDICAID_TAKE_UP_ANCHOR,
     US_MEDICAID_TAKE_UP_VARIABLE,
     _stable_person_draws,
+    apply_us_medicaid_enrollment_substitutions,
     us_medicaid_take_up_diagnostics,
     us_medicaid_take_up_gate,
     with_us_medicaid_take_up,
@@ -40,6 +43,7 @@ from populace.build.us_runtime.take_up_contract import (  # noqa: E402
     load_take_up_contract,
     seeded_take_up_programs,
 )
+from populace.calibrate import TargetRegistry, TargetSpec  # noqa: E402
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights  # noqa: E402
 
 UNIT_WEIGHT = 100.0
@@ -603,3 +607,275 @@ class TestBuilderHelpers:
             "36",
             "36",
         ]
+
+
+def _medicaid_state_spec(
+    state_fips: str,
+    value: float,
+    *,
+    source_period: str = "2024-12",
+    substitution: bool = False,
+) -> TargetSpec:
+    """A CMS state ``medicaid_enrollment`` spec shaped like a real compiled one.
+
+    Mirrors the metadata a ledger CMS enrollment fact carries through
+    :mod:`populace.build.ledger_targets` and the US target-measure map
+    (``materializer=policyengine_variable`` over ``medicaid_enrolled``, the
+    state geography keys, and a per-fact content-hash key), so the register's
+    template-cloning and the builder's target-table extraction are exercised
+    against a faithful surface rather than a stub.
+    """
+    padded = state_fips.zfill(2)
+    month = source_period.replace("-", "_")
+    record_set_id = f"cms_medicaid.month{month}.state_enrollment"
+    record_id = f"{record_set_id}.{padded}.total_medicaid_enrollment"
+    name = f"{record_id}@2024"
+    metadata = {
+        "materializer": "policyengine_variable",
+        "base_variable": "medicaid_enrolled",
+        "measure_mode": "indicator_sum",
+        "target_role": US_MEDICAID_ENROLLMENT_TARGET_ROLE,
+        "source_period": source_period,
+        "ledger_geography_level": "state",
+        "ledger_geography_id": f"0400000US{padded}",
+        "ledger_layout_record_set_id": record_set_id,
+        "ledger_layout_groupby_dimension": "geography_state",
+        "ledger_layout_groupby_value_id": padded,
+        "ledger_source_record_id": record_id,
+        "ledger_fact_period": source_period,
+        # A per-fact content-hash key the register must drop rather than stamp
+        # onto a neighbouring state's substituted spec.
+        "ledger_fact_key": f"factkey-{padded}-{month}",
+        "state_fips": padded,
+    }
+    if substitution:
+        metadata["medicaid_enrollment_substitution"] = "true"
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=value,
+        measure=name,
+        period=2024,
+        source="CMS Medicaid & CHIP monthly enrollment (April 2026 release)",
+        family="cms_medicaid",
+        metadata=metadata,
+    )
+
+
+def _medicaid_registry(
+    state_values: dict[str, float], *, extra_specs: tuple[TargetSpec, ...] = ()
+) -> TargetRegistry:
+    """A US target registry of natural CMS medicaid_enrollment state specs."""
+    specs = [
+        _medicaid_state_spec(state_fips, value)
+        for state_fips, value in state_values.items()
+    ]
+    specs.extend(extra_specs)
+    return TargetRegistry(specs, country="us")
+
+
+def _record_for(records, state_fips: str) -> dict:
+    padded = state_fips.zfill(2)
+    return next(record for record in records if record["state_fips"] == padded)
+
+
+def _healthy_assigned(
+    targets: dict[str, float], *, weight: float = 100.0, slack: int = 4
+) -> pd.DataFrame:
+    """A stage-output table where every state cleanly hits its CMS count.
+
+    Each state gets ``target / weight`` anchored, enrolled, eligible persons
+    (so the count is met and the anchor invariant holds) plus ``slack``
+    eligible non-enrolled persons (so the state is unsaturated, taking the
+    count-check branch rather than the saturation skip).
+    """
+    rows: list[dict[str, object]] = []
+    person_id = 0
+    for state_fips, target in targets.items():
+        n_on, remainder = divmod(round(target), round(weight))
+        assert remainder == 0, f"target {target} must be divisible by weight {weight}"
+        for i in range(n_on + slack):
+            enrolled = i < n_on
+            rows.append(
+                {
+                    "person_id": person_id,
+                    US_MEDICAID_TAKE_UP_VARIABLE: enrolled,
+                    "is_medicaid_eligible": True,
+                    US_MEDICAID_TAKE_UP_ANCHOR: enrolled,
+                    "person_weight": weight,
+                    "state_fips": state_fips,
+                }
+            )
+            person_id += 1
+    return pd.DataFrame(rows)
+
+
+class TestReviewedSubstitutionRegister:
+    """The populace#386 reviewed CMS Medicaid enrollment substitution register.
+
+    RI's December-2024 CMS snapshot is unreported at source, so the natural
+    FIPS-44 medicaid_enrollment spec is absent and the #334 count-calibration
+    gate fails closed. The register maps RI to its nearest-prior reported month
+    (November 2024 = 273,400) with cannot-rot semantics.
+    """
+
+    def test_pass_with_substitution(self) -> None:
+        # Without RI's target the gate fails closed on FIPS 44 (the Build J
+        # failure); the register supplies the cited nearest-prior-month count,
+        # RI gains a target, and the same assignment now passes.
+        builder = _load_builder_module()
+        targets = {"06": 600.0, "36": 400.0}
+        registry = _medicaid_registry(targets)
+
+        augmented, records = apply_us_medicaid_enrollment_substitutions(registry)
+
+        rhode_island = _record_for(records, "44")
+        assert rhode_island["applied"] is True
+        assert rhode_island["stale"] is False
+        assert rhode_island["substitute_value"] == 273_400.0
+        assert rhode_island["issue"] == "populace#386"
+
+        before = builder._medicaid_source_target_table(registry.specs)
+        after = builder._medicaid_source_target_table(augmented.specs)
+        assert "44" not in set(before["state_fips"])
+        assert "44" in set(after["state_fips"])
+        assert (
+            float(after.loc[after["state_fips"] == "44", "target"].iloc[0]) == 273_400.0
+        )
+
+        assigned = _healthy_assigned({**targets, "44": 273_400.0})
+        missing = us_medicaid_take_up_diagnostics(assigned, before, substitutions=())
+        assert "44" in missing["states_without_targets"]
+        assert not us_medicaid_take_up_gate(missing).passed
+
+        healed = us_medicaid_take_up_diagnostics(assigned, after, substitutions=records)
+        assert healed["states_without_targets"] == []
+        gate = us_medicaid_take_up_gate(healed)
+        assert gate.passed, gate.failures
+        # The applied record rides the release diagnostics artifact.
+        assert healed["medicaid_enrollment_substitutions"][0]["state_fips"] == "44"
+
+    def test_fails_without_substitution_on_a_genuinely_missing_state(self) -> None:
+        # The register heals only its reviewed hole (RI): a different state with
+        # no CMS target and no register entry must still fail the gate closed,
+        # so the register cannot become a silent blanket bypass.
+        builder = _load_builder_module()
+        registry = _medicaid_registry({"06": 600.0})
+
+        augmented, records = apply_us_medicaid_enrollment_substitutions(registry)
+
+        target_table = builder._medicaid_source_target_table(augmented.specs)
+        # Illinois (17) is genuinely missing from the feed and absent from the
+        # register; RI (44) is only supplied by the register.
+        assert set(target_table["state_fips"]) == {"06", "44"}
+        assigned = _healthy_assigned({"06": 600.0, "17": 500.0})
+        diagnostics = us_medicaid_take_up_diagnostics(
+            assigned, target_table, substitutions=records
+        )
+        assert diagnostics["states_without_targets"] == ["17"]
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert not gate.passed
+        assert any("17" in failure for failure in gate.failures)
+
+    def test_cannot_rot_fails_when_the_backfilled_ri_fact_appears(self) -> None:
+        # The moment CMS backfills a genuine RI December-2024 count, the natural
+        # FIPS-44 spec reappears: the register marks the entry stale, injects
+        # nothing (no duplicate target), and the gate fails so the substitution
+        # cannot outlive its justification (#286 stale-exclusion doctrine).
+        backfilled_ri = _medicaid_state_spec("44", 275_000.0, source_period="2024-12")
+        registry = _medicaid_registry({"06": 600.0}, extra_specs=(backfilled_ri,))
+
+        augmented, records = apply_us_medicaid_enrollment_substitutions(registry)
+
+        rhode_island = _record_for(records, "44")
+        assert rhode_island["stale"] is True
+        assert rhode_island["applied"] is False
+        # Nothing injected: the backfilled natural spec is the only RI spec.
+        assert len(augmented) == len(registry)
+        assert not any(
+            spec.metadata.get("medicaid_enrollment_substitution") == "true"
+            for spec in augmented.specs
+        )
+
+        # A healthy assignment (RI hits its backfilled count) still fails the
+        # gate purely on the stale register entry.
+        assigned = _healthy_assigned({"06": 600.0, "44": 275_000.0})
+        target_table = pd.DataFrame(
+            {"state_fips": ["06", "44"], "target": [600.0, 275_000.0]}
+        )
+        diagnostics = us_medicaid_take_up_diagnostics(
+            assigned, target_table, substitutions=records
+        )
+        gate = us_medicaid_take_up_gate(diagnostics)
+        assert not gate.passed
+        stale_failures = [failure for failure in gate.failures if "stale" in failure]
+        assert stale_failures
+        assert any(
+            "44" in failure
+            and "populace#386" in failure
+            and "cms_medicaid.month2024_11" in failure
+            for failure in stale_failures
+        )
+
+    def test_substitution_metadata_reaches_the_compiled_spec(self) -> None:
+        # The substituted value ships as a first-class compiled target whose
+        # metadata carries the full provenance, so the calibration target
+        # surface and release manifest render the substitution rather than a
+        # silent value swap.
+        registry = _medicaid_registry({"06": 600.0, "36": 400.0})
+
+        augmented, _ = apply_us_medicaid_enrollment_substitutions(registry)
+
+        injected = [
+            spec
+            for spec in augmented.specs
+            if spec.metadata.get("medicaid_enrollment_substitution") == "true"
+        ]
+        assert len(injected) == 1
+        spec = injected[0]
+        assert spec.value == 273_400.0
+        assert spec.metadata["state_fips"] == "44"
+        assert spec.metadata["target_role"] == US_MEDICAID_ENROLLMENT_TARGET_ROLE
+        assert spec.metadata["substitution_issue"] == "populace#386"
+        assert spec.metadata["substituted_for_source_period"] == "2024-12"
+        assert spec.metadata["source_period"] == "2024-11"
+        assert (
+            spec.metadata["ledger_source_record_id"]
+            == "cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_enrollment"
+        )
+        assert "System Limitations" in spec.metadata["substitution_reason"]
+        # The clone re-derives the state geography from the substitute record id
+        # and drops the template state's per-fact content-hash key.
+        assert spec.metadata["ledger_layout_groupby_value_id"] == "ri"
+        assert "ledger_fact_key" not in spec.metadata
+        # It keeps the template's materialization shape so it calibrates like a
+        # natural per-state count.
+        assert spec.metadata["materializer"] == "policyengine_variable"
+        assert spec.metadata["base_variable"] == "medicaid_enrolled"
+
+        # The provenance survives compilation into the calibration TargetSet
+        # (what the solver and the diagnostics target surface consume).
+        compiled = augmented.to_target_set()
+        target = next(
+            target
+            for target in compiled
+            if target.metadata.get("medicaid_enrollment_substitution") == "true"
+        )
+        assert target.value == 273_400.0
+        assert target.metadata["substitution_issue"] == "populace#386"
+
+    def test_register_pins_rhode_island_to_the_ledger_value(self) -> None:
+        # Guard the register's single reviewed entry against silent drift: the
+        # substituted fact id and value are the audited ledger source of record
+        # (RI November 2024 = 273,400).
+        assert len(US_MEDICAID_ENROLLMENT_SUBSTITUTIONS) == 1
+        entry = US_MEDICAID_ENROLLMENT_SUBSTITUTIONS[0]
+        assert entry.state_fips == "44"
+        assert entry.substitute_value == 273_400.0
+        assert entry.substitute_source_period == "2024-11"
+        assert entry.substituted_for_source_period == "2024-12"
+        assert (
+            entry.substitute_source_record_id
+            == "cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_enrollment"
+        )
+        assert entry.issue == "populace#386"
