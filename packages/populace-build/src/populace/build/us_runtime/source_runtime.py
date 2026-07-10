@@ -84,6 +84,8 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "qualified_tuition_output",
         "casualty_loss_source",
         "casualty_loss_output",
+        "unreimbursed_business_employee_expenses_source",
+        "unreimbursed_business_employee_expenses_output",
     }
 )
 
@@ -789,6 +791,19 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 "casualty_loss_output",
                 default="casualty_loss",
                 label="PUF PolicyEngine-variable derivation",
+            ),
+            unreimbursed_business_employee_expenses_source=_optional_string_param(
+                params,
+                "unreimbursed_business_employee_expenses_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unreimbursed_business_employee_expenses_output=(
+                _string_param_with_default(
+                    params,
+                    "unreimbursed_business_employee_expenses_output",
+                    default="unreimbursed_business_employee_expenses",
+                    label="PUF PolicyEngine-variable derivation",
+                )
             ),
         )
     except ValueError as exc:

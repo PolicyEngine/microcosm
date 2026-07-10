@@ -77,7 +77,10 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
-RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = ("casualty_loss",)
+RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
+    "casualty_loss",
+    "unreimbursed_business_employee_expenses",
+)
 
 RETIREMENT_CONTRIBUTION_INPUTS = (
     "traditional_401k_contributions_desired",
@@ -200,6 +203,28 @@ REFORM_COVERAGE_PROBES = [
             "so baseline-minus-reform income tax must be positive. With the "
             "casualty-loss input absent or degenerate, the reactivation scores "
             "exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "obbba_misc_itemized_deductions",
+        "name": "OBBBA miscellaneous-itemized deduction reactivation",
+        "parameter_changes": {
+            "gov.irs.deductions.itemized.misc.applies": {"2026-01-01.2026-12-31": True}
+        },
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["unreimbursed_business_employee_expenses"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "Reactivating the miscellaneous itemized deduction lowers income "
+            "tax only for tax units with qualifying expenses above its AGI "
+            "floor, so baseline-minus-reform income tax must be positive. "
+            "Without unreimbursed_business_employee_expenses, the retired "
+            "pipeline's only populated miscellaneous-expense input, the "
+            "reactivation is a structural zero on the export."
         ),
         "issue": "PolicyEngine/populace#32",
     },
@@ -389,8 +414,9 @@ def build_manifest() -> dict:
             "retirement-contribution inputs required by shipped validation "
             "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
-            "(reason+issue from that register); EXCEPT restored casualty_loss and "
-            "the SSI countable-resource asset inputs (bank_account_assets, "
+            "(reason+issue from that register); EXCEPT restored casualty_loss, "
+            "unreimbursed_business_employee_expenses, and the SSI countable-"
+            "resource asset inputs (bank_account_assets, "
             "stock_assets, bond_assets), which are status='required' with NO "
             "exclusion per PolicyEngine/populace#368 "
             "so the gate fails on today's artifacts and asset restoration "

@@ -20,6 +20,7 @@ import pandas as pd
 from populace.build.us_runtime.casualty_losses import (
     derive_us_casualty_loss_from_puf,
 )
+from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
 from populace.calibrate import relative_error_loss
 
 __all__ = [
@@ -217,6 +218,10 @@ def derive_puf_policyengine_variables(
     qualified_tuition_output: str = "qualified_tuition_expenses",
     casualty_loss_source: str | None = None,
     casualty_loss_output: str = "casualty_loss",
+    unreimbursed_business_employee_expenses_source: str | None = None,
+    unreimbursed_business_employee_expenses_output: str = (
+        "unreimbursed_business_employee_expenses"
+    ),
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -256,6 +261,12 @@ def derive_puf_policyengine_variables(
             result,
             source_column=casualty_loss_source,
             output_column=casualty_loss_output,
+        )
+    if unreimbursed_business_employee_expenses_source is not None:
+        result = derive_us_misc_itemized_from_puf(
+            result,
+            source_column=unreimbursed_business_employee_expenses_source,
+            output_column=unreimbursed_business_employee_expenses_output,
         )
     return result
 
@@ -315,7 +326,8 @@ def disaggregate_puf_aggregate_records(
     result = pd.concat([regular, synthetic_df], ignore_index=True)
     result = _reconcile_puf_dividend_columns_from_components(result)
     result = _reconcile_puf_qualified_tuition_from_sources(result)
-    return _reconcile_puf_casualty_loss_from_source(result)
+    result = _reconcile_puf_casualty_loss_from_source(result)
+    return _reconcile_puf_misc_itemized_from_source(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -928,6 +940,17 @@ def _reconcile_puf_casualty_loss_from_source(
     if "casualty_loss" not in puf.columns or "E20500" not in puf.columns:
         return puf
     return derive_us_casualty_loss_from_puf(puf)
+
+
+def _reconcile_puf_misc_itemized_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E20400 proxy after aggregate-row amounts are replaced."""
+
+    output = "unreimbursed_business_employee_expenses"
+    if output not in puf.columns or "E20400" not in puf.columns:
+        return puf
+    return derive_us_misc_itemized_from_puf(puf)
 
 
 def _assert_nonnegative_dividend_component(

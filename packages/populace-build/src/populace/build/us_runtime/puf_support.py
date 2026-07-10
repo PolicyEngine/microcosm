@@ -85,6 +85,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "student_loan_interest",
     "qualified_tuition_expenses",
     "casualty_loss",
+    "unreimbursed_business_employee_expenses",
     # The engine owns the realized contribution amounts through the
     # IRA-limit scale and self-employment caps; the persistable leaves are
     # the desired contributions, equal to the PUF's observed deductions at
@@ -177,6 +178,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "student_loan_interest",
         "qualified_tuition_expenses",
         "casualty_loss",
+        "unreimbursed_business_employee_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",

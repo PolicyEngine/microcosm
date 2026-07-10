@@ -48,6 +48,7 @@ from populace.build.us_runtime import (
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     us_immigration_composition_summary,
+    us_misc_itemized_signal_gate,
     us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
@@ -222,6 +223,12 @@ def main() -> None:
             "Casualty-loss signal gate failed:\n  "
             + "\n  ".join(casualty_loss_gate.failures)
         )
+    misc_itemized_gate = us_misc_itemized_signal_gate(imputed)
+    if not misc_itemized_gate.passed:
+        raise SystemExit(
+            "Miscellaneous-itemized signal gate failed:\n  "
+            + "\n  ".join(misc_itemized_gate.failures)
+        )
     imputed = with_us_retirement_contribution_inputs(
         imputed,
         seed=args.seed,
@@ -369,6 +376,11 @@ def main() -> None:
             "passed": casualty_loss_gate.passed,
             "failures": list(casualty_loss_gate.failures),
             "details": dict(casualty_loss_gate.details),
+        },
+        "misc_itemized_signal": {
+            "passed": misc_itemized_gate.passed,
+            "failures": list(misc_itemized_gate.failures),
+            "details": dict(misc_itemized_gate.details),
         },
         "education_inputs_signal": {
             "passed": education_inputs_gate.passed,

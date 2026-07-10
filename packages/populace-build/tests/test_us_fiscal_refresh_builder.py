@@ -1890,6 +1890,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "us_misc_itemized_signal_gate",
+        lambda frame: builder.GateResult(
+            name="misc_itemized_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_retirement_contribution_inputs",
         lambda frame, *, seed, time_period: frame,
     )

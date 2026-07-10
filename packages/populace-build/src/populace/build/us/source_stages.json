@@ -13,7 +13,7 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including casualty-loss field E20500"
+          "locator": "IRS SOI Public Use File, including casualty-loss field E20500 and unreimbursed employee business expense field E20400"
         }
       ],
       "operations": [
@@ -32,7 +32,9 @@
           "qualified_tuition_optional_source": "E87530",
           "qualified_tuition_output": "qualified_tuition_expenses",
           "casualty_loss_source": "E20500",
-          "casualty_loss_output": "casualty_loss"
+          "casualty_loss_output": "casualty_loss",
+          "unreimbursed_business_employee_expenses_source": "E20400",
+          "unreimbursed_business_employee_expenses_output": "unreimbursed_business_employee_expenses"
         },
         {
           "kind": "disaggregate_aggregate_records",
@@ -93,6 +95,7 @@
         "student_loan_interest",
         "qualified_tuition_expenses",
         "casualty_loss",
+        "unreimbursed_business_employee_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "rental_income",
@@ -131,6 +134,7 @@
         "student_loan_interest",
         "qualified_tuition_expenses",
         "casualty_loss",
+        "unreimbursed_business_employee_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -141,7 +145,7 @@
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation."
     },
     {
       "stage": "education_inputs",

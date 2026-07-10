@@ -76,6 +76,7 @@ from populace.build.us_runtime import (
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
+    us_misc_itemized_signal_gate,
     us_org_wages_signal_gate,
     us_pregnancy_signal_gate,
     us_reform_coverage_smoke_gate,
@@ -5867,6 +5868,23 @@ def main() -> None:
             + "; ".join(
                 "Casualty-loss signal failed: " + failure
                 for failure in casualty_loss_gate.failures
+            )
+        )
+    misc_itemized_gate = us_misc_itemized_signal_gate(base_frame)
+    if not misc_itemized_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "misc_itemized_input_gate",
+                status="failed",
+                message="Miscellaneous-itemized signal gate failed.",
+                failures=list(misc_itemized_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Miscellaneous-itemized signal failed: " + failure
+                for failure in misc_itemized_gate.failures
             )
         )
     if telemetry is not None:

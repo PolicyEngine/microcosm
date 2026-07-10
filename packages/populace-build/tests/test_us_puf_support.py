@@ -297,6 +297,10 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "qualified_tuition_expenses" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "casualty_loss" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "unreimbursed_business_employee_expenses"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -368,6 +372,23 @@ def test_puf_tax_unit_donor_carries_person_casualty_losses() -> None:
     )
 
     assert donor["casualty_loss"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_misc_itemized_expenses() -> None:
+    output = "unreimbursed_business_employee_expenses"
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            output: [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=(output,),
+        tax_unit_outputs=(),
+    )
+
+    assert donor[output].tolist() == [3_000.0, 4_000.0]
 
 
 def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:

@@ -183,6 +183,15 @@ from populace.build.us_runtime.medicaid_take_up import (
     with_us_medicaid_take_up,
     write_us_medicaid_take_up_diagnostics,
 )
+from populace.build.us_runtime.misc_itemized import (
+    US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS,
+    US_MISC_ITEMIZED_OUTPUT_COLUMNS,
+    US_MISC_ITEMIZED_STAGE_NAME,
+    derive_us_misc_itemized_from_puf,
+    us_misc_itemized_signal_gate,
+    us_misc_itemized_stage_spec,
+    us_misc_itemized_summary,
+)
 from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
@@ -508,6 +517,13 @@ __all__ = [
     "us_casualty_loss_signal_gate",
     "us_casualty_loss_stage_spec",
     "us_casualty_loss_summary",
+    "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
+    "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
+    "US_MISC_ITEMIZED_STAGE_NAME",
+    "derive_us_misc_itemized_from_puf",
+    "us_misc_itemized_signal_gate",
+    "us_misc_itemized_stage_spec",
+    "us_misc_itemized_summary",
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
@@ -885,7 +901,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Itemized-deduction detail, QBI components, partnership SE, "
-            "mortgage-interest split, and direct E20500 casualty loss; IRS "
+            "mortgage-interest split, direct E20500 casualty loss, and the "
+            "E20400 miscellaneous-expense proxy; IRS "
             "disclosure aggregate rows are "
             "disaggregated from raw PUF totals before uprating, with Forbes "
             "top-tail synthesis disabled; support clipped to the PUF's own "

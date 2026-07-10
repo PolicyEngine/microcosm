@@ -86,7 +86,12 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
 # primary-source derivations. Keeping this separate from the post-reference
 # additions lets the anti-rot check reject any future attempt to put a completed
 # family back behind a reviewed exclusion.
-RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset({"casualty_loss"})
+RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
+    {
+        "casualty_loss",
+        "unreimbursed_business_employee_expenses",
+    }
+)
 
 _US_PACKAGE = "populace.build.us"
 _ECPS_PARITY_REFERENCE_RESOURCE = "ecps_parity_reference.json"

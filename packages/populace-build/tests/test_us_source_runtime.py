@@ -100,6 +100,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
     result["E03230"] = np.where(result["RECID"] % 5 == 0, 1_500.0, 0.0)
     result["E87530"] = np.where(result["RECID"] % 7 == 0, 4_000.0, 0.0)
     result["E20500"] = np.where(result["RECID"] % 11 == 0, 8_000.0, 0.0)
+    result["E20400"] = np.where(result["RECID"] % 3 == 0, 2_500.0, 0.0)
     return result
 
 
@@ -191,6 +192,7 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
             qualified_tuition_primary_source="E03230",
             qualified_tuition_optional_source="E87530",
             casualty_loss_source="E20500",
+            unreimbursed_business_employee_expenses_source="E20400",
         ),
         seed=42,
     )
@@ -213,6 +215,9 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     assert (result["qualified_tuition_expenses"] >= 0.0).all()
     assert np.allclose(result["casualty_loss"], result["E20500"])
     assert (result["casualty_loss"] >= 0.0).all()
+    assert np.allclose(
+        result["unreimbursed_business_employee_expenses"], result["E20400"]
+    )
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:

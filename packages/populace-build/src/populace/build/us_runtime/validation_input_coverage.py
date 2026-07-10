@@ -155,6 +155,11 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         validation_rows=("obbba_casualty_loss_limit",),
     ),
     ValidationInputLeaf(
+        leaf="unreimbursed_business_employee_expenses",
+        provision_variables=("total_misc_deductions",),
+        validation_rows=("obbba_misc_itemized_deductions",),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),
