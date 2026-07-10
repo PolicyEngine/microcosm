@@ -176,6 +176,35 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   `populace-us-2024-buildj-sparse-rmloss100-20b94db-20260710T071342Z`. **Coordinator flag rule:
   gate-class #1 = #334 Medicaid (fixed by #387), #2 = #337 eCPS parity staleness (fixed here); a
   THIRD distinct gate class failing = flag for something systematic.**
+- **Step 7 (20b94db run: parity PASSED -> gate-class #3, zero-support; coordinator confirmed
+  same root cause; fixed + relaunched).** The 20b94db run cleared Medicaid AND eCPS parity,
+  materialized ACA + Medicaid + ALL FIVE JCT reform targets, wrote the target-frame checkpoint
+  (119 MB, atomic) + reform vector cache, then rc=1 at 07:37:57Z at the zero-support preflight
+  (:6436): `5 positive fiscal targets have zero materialized support` — the five cells VERBATIM:
+  `hhs_acf_tanf.fy2024.cash_assistance.{fl,ia,mo,ne,nj}.basic_assistance_excluding_relative_
+  foster_care_and_adoption_guardianship.all_funds@2024`. Coordinator ran the systematic check:
+  same root cause as #1/#2 (coverage growth), NOT systemic breakage — proceeding per the cycle;
+  three-class pattern goes to Max in the morning summary.
+  **Mechanism + verification (on the EXACT frame the gate measured — identity-matched checkpoint
+  load, registry `2496460ad8c3` / 5,515 = 5,533 − 19 excl + 1 RI substitution, base 0b50660a):**
+  #384 removed the stale constant-True TANF exclusion and the take-up seeding is LIVE
+  (takes_up_tanf_if_eligible on spm_unit: **13,205 / 59,900 True** — real variation vs Build H/I's
+  effective constant-True world). Under the seeded draw, five thin-TANF states' few carriers all
+  fall out (seed-0 draws + engine eligibility): measured per-state nonzero counts on the
+  materialized household TANF cells — **fl 0, ia 0, mo 0, ne 0, nj 0** (ZERO SUPPORT, exactly the
+  gate's five) while every other non-excluded state carries 1-14 supporting records (ca 14, ny 10,
+  oh 10, ...; national cell 156) and AL never compiles (pre-existing exclusion). The Build-I
+  19-cell exclusion list was pre-TANF-live vintage — Build I's AL-only TANF hole reflected the
+  constant-True world. Same class as the Build I AL precedent: per-artifact
+  support-expressibility; the 337,704 dense parent expresses these cells; selection-side remedy
+  (thin-state TANF carriers) = #346/#355-class work.
+  **Fix:** wrote `_buildj-runtime/inputs/sparse_zero_support_exclusions_buildj.json` — the 19
+  Build-I cells VERBATIM + the 5 TANF cells with measured justifications (sha `0be0c200…`,
+  24 cells); launcher now points at it. **Registry consequence:** sparse compiles
+  5,533 − 24 + 1 = **5,510 specs** (Build I compiled 5,514; delta = −5 TANF thin-state cells
+  + 1 RI substitution — both live-coverage consequences, to be stated in the verdict).
+  Relaunch note: changing exclusions changes the compiled registry -> checkpoint identity MISS ->
+  full rematerialization (~24 min), unavoidable by design (exclusions apply at compile).
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)

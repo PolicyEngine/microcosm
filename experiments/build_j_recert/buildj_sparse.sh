@@ -17,7 +17,7 @@ WT=/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert
 BASE="$RT/out/base-j/base_populace_us_2024_puf_support.h5"
 REF=/Users/maxghenis/PolicyEngine/_buildg-runtime/forensics/populace_us_2024.h5   # c2065b64
 SEL=/Users/maxghenis/PolicyEngine/_buildi-runtime/inputs/buildi_rmloss100_selection_source.json
-SPARSE_EXCL=/Users/maxghenis/PolicyEngine/_buildi-runtime/inputs/sparse_zero_support_exclusions_buildi.json
+SPARSE_EXCL=/Users/maxghenis/PolicyEngine/_buildj-runtime/inputs/sparse_zero_support_exclusions_buildj.json  # 24-cell: Build-I 19 + 5 TANF (live take-up seeding)
 FACTS=/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildh_v8.jsonl
 SCF="$RT/inputs/scf_cache/rscfp2022.dta"
 LOGDIR="$RT/logs/buildj-run"
@@ -46,7 +46,7 @@ say "  base sha:  $BASE_SHA"
 say "  sel  sha:  ${SEL_SHA12}… (rmloss100 manifest)"
 say "  ref  sha:  ${REF_SHA12}…"
 say "  facts sha: $FACTS_SHA (v8)"
-say "  excl sha:  ${EXCL_SHA12}… (19-cell Build-I, revalidated by release)"
+say "  excl sha:  ${EXCL_SHA12}… (24-cell Build-J: 19 Build-I + 5 TANF)"
 say "  scf  sha:  ${SCF_SHA12}… (rscfp2022.dta member)"
 if [ "$REF_SHA12" != "c2065b642ab0" ]; then say "FATAL ref sha prefix mismatch: $REF_SHA12"; echo 2 > "$LOGDIR/sparse.rc"; exit 2; fi
 if [ "$FACTS_SHA" != "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669" ]; then
