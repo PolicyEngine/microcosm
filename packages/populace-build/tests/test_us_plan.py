@@ -409,6 +409,11 @@ class TestUsSources:
                 or ".venv" in path.parts
                 or ".claude" in path.parts
                 or "out" in path.parts
+                # Run scaffolding and staged run outputs (launchers, base-rebuild
+                # summaries) are not shipped source and may record the incumbent
+                # in local-path provenance; the shipped tree under packages/ is
+                # still swept. Same non-shipped class as ``out``.
+                or "experiments" in path.parts
             ):
                 continue
             rel = str(path.relative_to(ROOT))
