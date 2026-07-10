@@ -186,15 +186,30 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "sas_or_stata",
+          "format": "stata_in_zip",
           "vintage": "2022",
-          "locator": "Federal Reserve Survey of Consumer Finances public extract"
+          "locator": "https://www.federalreserve.gov/econres/files/scfp2022s.zip",
+          "member": "rscfp2022.dta",
+          "sha256": "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80",
+          "member_sha256": "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
+        },
+        {
+          "kind": "public_microdata",
+          "format": "stata_in_zip",
+          "vintage": "2022",
+          "locator": "https://www.federalreserve.gov/econres/files/scf2022s.zip",
+          "member": "p22i6.dta",
+          "expected_rows": 22975,
+          "integrity_note": "Full-file SHA-256 pending one network-enabled provisioning fetch; do not reuse the unrelated summary-extract hashes. Runtime validates the exact member plus a complete one-to-one (y1, yy1) implicate join."
         }
       ],
       "operations": [
         {
-          "kind": "read_table",
-          "table": "scf_household",
+          "kind": "read_tables",
+          "tables": [
+            "scf_summary_extract",
+            "scf_full_extract"
+          ],
           "weight": "wgt"
         },
         {
@@ -208,13 +223,47 @@
           "scope": "not_applicable_or_missing_fields"
         },
         {
+          "kind": "join",
+          "left": "scf_summary_extract",
+          "right": "scf_full_extract",
+          "keys": [
+            "y1",
+            "yy1"
+          ],
+          "validation": "one_to_one_all_five_implicates"
+        },
+        {
           "kind": "derive",
           "outputs": [
             "auto_loan_interest",
+            "auto_loan_balance",
             "net_worth_components",
             "financial_asset_components",
             "household_asset_components"
-          ]
+          ],
+          "auto_loan_amount_columns": [
+            "x2209",
+            "x2309",
+            "x2409",
+            "x7158"
+          ],
+          "auto_loan_rate_columns": [
+            "x2219",
+            "x2319",
+            "x2419",
+            "x7170"
+          ],
+          "rate_divisor": 10000,
+          "floor_negative_source_values": true
+        },
+        {
+          "kind": "derive",
+          "outputs": [
+            "qualified_passenger_vehicle_loan_interest"
+          ],
+          "method": "expected_share_of_auto_loan_interest",
+          "annual_qualifying_loan_target": 6000000,
+          "source": "https://www.irs.gov/irb/2026-05_IRB"
         },
         {
           "kind": "fit_weighted_qrf",
@@ -233,7 +282,12 @@
           "kind": "head_carry",
           "from_entity": "household",
           "to_entity": "person",
-          "condition": "is_household_head"
+          "condition": "is_household_head",
+          "outputs": [
+            "bank_account_assets",
+            "bond_assets",
+            "stock_assets"
+          ]
         },
         {
           "kind": "support_clip",
@@ -263,14 +317,17 @@
         "scf_other_debt",
         "auto_loan_balance",
         "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
         "bank_account_assets",
         "bond_assets",
         "stock_assets"
       ],
       "nonnegative_outputs": [
-        "auto_loan_interest"
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest"
       ],
-      "notes": "Sentinel replacement is declared here so impossible negative auto-loan interest is rejected at the source boundary and again at export gates."
+      "notes": "The full SCF joins all five implicates to the summary extract on (y1, yy1). Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary and all three auto outputs are checked again at release gates."
     },
     {
       "stage": "sipp_tips",

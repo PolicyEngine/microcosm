@@ -15,8 +15,9 @@ Two shipped instances:
   ``qualified_tuition_expenses``, populated on 641 of 160,858 person records —
   education credits validate ~40% low (populace#253); and
 - the OBBBA auto-loan-interest deduction depends on
-  ``qualified_passenger_vehicle_loan_interest``, never imputed, so the
-  provision is structurally $0 in reform validation (populace#252).
+  ``qualified_passenger_vehicle_loan_interest``; the SCF auto-loan stage now
+  derives a documented qualifying-share proxy so the provision binds
+  (populace#252).
 
 Both were invisible because nothing checked that a validation row's inputs are
 actually produced. :func:`us_validation_input_coverage_gate` is that check.
@@ -105,6 +106,16 @@ class ValidationInputLeaf:
 #: :func:`assert_validation_leaf_registry_current`.
 US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
     ValidationInputLeaf(
+        leaf="tip_income",
+        provision_variables=("tip_income_deduction",),
+        validation_rows=("obbba_no_tax_on_tips",),
+    ),
+    ValidationInputLeaf(
+        leaf="treasury_tipped_occupation_code",
+        provision_variables=("tip_income_deduction",),
+        validation_rows=("obbba_no_tax_on_tips",),
+    ),
+    ValidationInputLeaf(
         leaf="fsla_overtime_premium",
         provision_variables=("overtime_income_deduction",),
         validation_rows=("obbba_no_tax_on_overtime",),
@@ -127,14 +138,6 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),
-        # #252: never imputed, so the OBBBA auto-loan deduction is structurally
-        # $0. A reviewed exclusion until the qualifying share of the existing
-        # auto_loan_interest is imputed or the deduction is calibrated.
-        reason=(
-            "OBBBA qualifying auto-loan interest never imputed — the auto-loan "
-            "deduction is structurally $0 (PolicyEngine/populace#252); reviewed "
-            "until the qualifying share of auto_loan_interest is imputed."
-        ),
     ),
 )
 

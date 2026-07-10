@@ -547,6 +547,27 @@ def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
     assert args.sipp_tip_donor == Path("pu2023_slim.csv")
 
 
+def test_scf_full_extract_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--scf-full-extract",
+            "p22i6.dta",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.scf_full_extract == Path("p22i6.dta")
+
+
 def test_org_wages_donor_override_parses(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setattr(
@@ -1992,6 +2013,42 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "fetch_scf_2022_full_extract",
+        lambda *args, **kwargs: Path("p22i6.dta"),
+    )
+
+    def fake_load_scf_auto_loan_donor(summary_path, full_path):
+        captured["scf_auto_summary_path"] = summary_path
+        captured["scf_auto_full_path"] = full_path
+        return pd.DataFrame()
+
+    def fake_with_scf_auto_loan_inputs(
+        frame, *, seed, time_period, scf_auto_loan_donor
+    ):
+        captured["scf_auto_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_auto_loan_donor",
+        fake_load_scf_auto_loan_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_auto_loan_inputs",
+        fake_with_scf_auto_loan_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_auto_loans_signal_gate",
+        lambda frame: builder.GateResult(
+            name="scf_auto_loans_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "fetch_sipp_2023_tip_donor",
         lambda *args, **kwargs: Path("pu2023_slim.csv"),
     )
@@ -2191,6 +2248,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
     assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
     assert captured["org_stage_called"] is True
+    assert captured["scf_auto_summary_path"] == Path("rscfp2022.dta")
+    assert captured["scf_auto_full_path"] == Path("p22i6.dta")
+    assert captured["scf_auto_stage_called"] is True
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:

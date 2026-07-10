@@ -203,6 +203,23 @@ _DEFAULT_N_ESTIMATORS = 100
 #: feature).
 _DONOR_WEIGHT_COLUMN = "scf_weight"
 
+#: Raw SCF summary-extract columns used to construct the shared eight-feature
+#: donor surface.  The auto-loan family reads the full SCF for its targets but
+#: deliberately reuses this summary-extract predictor construction so its QRF
+#: conditions on the same concepts as the retired pipeline and the SSI-assets
+#: stage.
+_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS: tuple[str, ...] = (
+    "wgt",
+    "age",
+    "hhsex",
+    "racecl5",
+    "married",
+    "kids",
+    "wageinc",
+    "intdivinc",
+    "ssretinc",
+)
+
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _HOUSEHOLD_ID_COLUMN = "person_household_id"
 
@@ -247,6 +264,52 @@ def _replace_sentinels(values: pd.Series) -> pd.Series:
 
     numeric = pd.to_numeric(values, errors="coerce")
     return numeric.mask(numeric.isin(_SCF_SENTINELS), 0.0).fillna(0.0)
+
+
+def _scf_summary_predictor_table(raw: pd.DataFrame) -> pd.DataFrame:
+    """Build the common SCF predictor/weight table from summary-extract rows.
+
+    The function keeps row order and row count unchanged.  Callers that join a
+    second SCF artifact (the auto-loan port) can therefore align the returned
+    predictors through the summary extract's ``(y1, yy1)`` keys before applying
+    the positive-weight filter.
+    """
+
+    missing = sorted(set(_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS) - set(raw.columns))
+    if missing:
+        raise ValueError(
+            f"SCF 2022 summary extract missing required column(s): {missing}."
+        )
+
+    donor = pd.DataFrame(index=raw.index)
+    donor["age"] = _replace_sentinels(raw["age"]).to_numpy(dtype=np.float64)
+    donor["is_female"] = (pd.to_numeric(raw["hhsex"], errors="coerce") == 2).to_numpy(
+        dtype=np.float64
+    )
+    donor["cps_race"] = (
+        pd.to_numeric(raw["racecl5"], errors="coerce")
+        .map(_SCF_RACECL5_TO_CPS_RACE)
+        .fillna(7)
+        .to_numpy(dtype=np.float64)
+    )
+    donor["is_married"] = (
+        pd.to_numeric(raw["married"], errors="coerce") == 1
+    ).to_numpy(dtype=np.float64)
+    donor["own_children_in_household"] = np.maximum(
+        _replace_sentinels(raw["kids"]).to_numpy(dtype=np.float64), 0.0
+    )
+    donor["employment_income"] = _replace_sentinels(raw["wageinc"]).to_numpy(
+        dtype=np.float64
+    )
+    donor["interest_dividend_income"] = _replace_sentinels(raw["intdivinc"]).to_numpy(
+        dtype=np.float64
+    )
+    donor["social_security_pension_income"] = _replace_sentinels(
+        raw["ssretinc"]
+    ).to_numpy(dtype=np.float64)
+    weight = pd.to_numeric(raw["wgt"], errors="coerce").fillna(0.0)
+    donor[_DONOR_WEIGHT_COLUMN] = np.maximum(weight.to_numpy(dtype=np.float64), 0.0)
+    return donor.loc[:, [*SCF_WEALTH_PREDICTORS, _DONOR_WEIGHT_COLUMN]]
 
 
 def _sha256_hexdigest(payload: bytes) -> str:
@@ -358,15 +421,7 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
         "stocks",
         "nmmf",
         "bond",
-        "wgt",
-        "age",
-        "hhsex",
-        "racecl5",
-        "married",
-        "kids",
-        "wageinc",
-        "intdivinc",
-        "ssretinc",
+        *_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS,
     }
     missing = sorted(required - set(raw.columns))
     if missing:
@@ -383,34 +438,9 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
                 dtype=np.float64
             )
         donor[output] = np.maximum(total, 0.0)
-    # Predictors (head/household values from the summary extract).
-    donor["age"] = _replace_sentinels(raw["age"]).to_numpy(dtype=np.float64)
-    donor["is_female"] = (
-        pd.to_numeric(raw["hhsex"], errors="coerce") == 2
-    ).to_numpy(dtype=np.float64)
-    donor["cps_race"] = (
-        pd.to_numeric(raw["racecl5"], errors="coerce")
-        .map(_SCF_RACECL5_TO_CPS_RACE)
-        .fillna(7)
-        .to_numpy(dtype=np.float64)
-    )
-    donor["is_married"] = (
-        pd.to_numeric(raw["married"], errors="coerce") == 1
-    ).to_numpy(dtype=np.float64)
-    donor["own_children_in_household"] = np.maximum(
-        _replace_sentinels(raw["kids"]).to_numpy(dtype=np.float64), 0.0
-    )
-    donor["employment_income"] = _replace_sentinels(raw["wageinc"]).to_numpy(
-        dtype=np.float64
-    )
-    donor["interest_dividend_income"] = _replace_sentinels(raw["intdivinc"]).to_numpy(
-        dtype=np.float64
-    )
-    donor["social_security_pension_income"] = _replace_sentinels(
-        raw["ssretinc"]
-    ).to_numpy(dtype=np.float64)
-    weight = pd.to_numeric(raw["wgt"], errors="coerce").fillna(0.0)
-    donor[_DONOR_WEIGHT_COLUMN] = np.maximum(weight.to_numpy(dtype=np.float64), 0.0)
+    predictors = _scf_summary_predictor_table(raw)
+    for column in (*SCF_WEALTH_PREDICTORS, _DONOR_WEIGHT_COLUMN):
+        donor[column] = predictors[column].to_numpy(dtype=np.float64)
     return donor.loc[donor[_DONOR_WEIGHT_COLUMN] > 0].reset_index(drop=True)
 
 
@@ -482,9 +512,7 @@ def _household_head_mask(person: pd.DataFrame) -> np.ndarray:
     person of each household).
     """
 
-    household = pd.to_numeric(
-        person[_HOUSEHOLD_ID_COLUMN], errors="coerce"
-    ).to_numpy()
+    household = pd.to_numeric(person[_HOUSEHOLD_ID_COLUMN], errors="coerce").to_numpy()
     lineno = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(9_999).to_numpy()
     position = np.arange(len(person))
     # Sort by household, then line number, then original position; the first
@@ -677,9 +705,7 @@ def with_us_scf_wealth_inputs(
     if have_all and _bank_assets_carry_signal(person):
         return frame
 
-    imputed = impute_us_scf_financial_assets(
-        person, scf_donor, seed=int(seed)
-    )
+    imputed = impute_us_scf_financial_assets(person, scf_donor, seed=int(seed))
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
         tables["person"][column] = imputed[column].to_numpy(dtype=np.float64)
@@ -717,9 +743,7 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         )
 
     unique_counts = {
-        column: int(
-            pd.to_numeric(person[column], errors="coerce").dropna().nunique()
-        )
+        column: int(pd.to_numeric(person[column], errors="coerce").dropna().nunique())
         for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
         if column in person.columns
     }

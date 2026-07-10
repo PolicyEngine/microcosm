@@ -304,8 +304,13 @@ class TestUsSources:
 
     def test_scf_nonnegative_requirement_is_source_declared(self) -> None:
         specs = US_SOURCE_MANIFEST.stage_map()
-        assert "auto_loan_interest" in specs["scf_wealth"].nonnegative_outputs
-        assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
+        for column in (
+            "auto_loan_balance",
+            "auto_loan_interest",
+            "qualified_passenger_vehicle_loan_interest",
+        ):
+            assert column in specs["scf_wealth"].nonnegative_outputs
+            assert column in US_NONNEGATIVE_SOURCE_OUTPUTS
         assert "net_worth" not in US_NONNEGATIVE_SOURCE_OUTPUTS
 
     def test_puf_stage_declares_partnership_s_corp_leaves_not_aggregate(self) -> None:

@@ -40,24 +40,31 @@ class TestUsSourceStageOutputs:
         assert "employment_income_before_lsr" in outputs
         assert "student_loan_interest" in outputs
         assert "fsla_overtime_premium" in outputs
-        # The two invisible-gap leaves are NOT declared by any stage — the
-        # whole reason the gate needs their reviewed exclusions.
+        # Tuition remains a known gap; qualifying auto-loan interest is now a
+        # declared SCF-stage output and may no longer hide behind an exclusion.
         assert "qualified_tuition_expenses" not in outputs
-        assert "qualified_passenger_vehicle_loan_interest" not in outputs
+        assert "qualified_passenger_vehicle_loan_interest" in outputs
 
 
 class TestUsValidationInputCoverageGate:
     def test_shipped_config_passes_with_known_gaps_allowlisted(self) -> None:
-        # The shipped state: both critical leaves are missing but each carries a
-        # reviewed exclusion with its tracking issue, so the gate passes.
+        # The shipped state: tuition remains reviewed; auto-loan interest is
+        # produced, so the row binds without an exclusion.
         result = us_validation_input_coverage_gate()
         assert result.passed, result.failures
         assert set(result.details["reviewed_exclusions"]) == {
-            "qualified_tuition_expenses",
-            "qualified_passenger_vehicle_loan_interest",
+            "qualified_tuition_expenses"
         }
         assert result.details["missing"] == []
-        assert "fsla_overtime_premium" in us_validation_input_leaf_requirements()
+        requirements = us_validation_input_leaf_requirements()
+        assert requirements["tip_income"] == ["obbba_no_tax_on_tips"]
+        assert requirements["treasury_tipped_occupation_code"] == [
+            "obbba_no_tax_on_tips"
+        ]
+        assert "fsla_overtime_premium" in requirements
+        assert requirements["qualified_passenger_vehicle_loan_interest"] == [
+            "obbba_auto_loan_interest"
+        ]
 
     def test_planted_missing_leaf_fails_loudly(self) -> None:
         # Plant a NEW validation row whose provision keys on an un-imputed,
@@ -133,10 +140,7 @@ class TestUsValidationInputCoverageGate:
             name="us_validation_input_coverage",
         )
         assert not result.passed
-        assert set(result.details["missing"]) == {
-            "qualified_tuition_expenses",
-            "qualified_passenger_vehicle_loan_interest",
-        }
+        assert set(result.details["missing"]) == {"qualified_tuition_expenses"}
 
 
 class TestValidationInputLeafRegistry:

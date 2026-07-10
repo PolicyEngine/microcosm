@@ -18,6 +18,7 @@ import pytest
 
 from populace.build.source_manifest import SourceStageSpec
 from populace.build.us_runtime import (
+    SIPP_2023_TIP_DONOR_REVISION,
     SIPP_2023_TIP_DONOR_SHA256,
     SIPP_2023_TIP_DONOR_URL,
     SIPP_TIP_OUTPUT_COLUMNS,
@@ -31,6 +32,7 @@ from populace.build.us_runtime import (
     us_sipp_tips_summary,
     with_us_sipp_tip_inputs,
 )
+from populace.build.us_runtime import sipp_tips as module
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 TIME_PERIOD = 2024
@@ -233,10 +235,21 @@ def test_stage_spec_loads_and_declares_both_outputs() -> None:
         "treasury_tipped_occupation_code",
     )
     assert set(SIPP_TIP_OUTPUT_COLUMNS) <= set(spec.outputs)
+    assert len(spec.artifacts) == 1
+    artifact = spec.artifacts[0]
+    assert artifact["sha256"] == SIPP_2023_TIP_DONOR_SHA256
+    assert SIPP_2023_TIP_DONOR_REVISION in artifact["locator"]
     tip_model = next(
         operation
         for operation in spec.operations
         if operation.kind == "fit_tip_income_model"
+    )
+    assert tuple(tip_model.parameters["predictors"]) == SIPP_TIP_PREDICTORS
+    assert tuple(tip_model.parameters["source_columns"]) == (
+        module._SIPP_TIP_AMOUNT_COLUMNS
+    )
+    assert tuple(tip_model.parameters["allocation_flag_columns"]) == (
+        module._SIPP_TIP_ALLOCATION_COLUMNS
     )
     assert tip_model.parameters["observed_status_values"] == [0, 1, 9]
     assert not any(operation.kind == "zero_when_false" for operation in spec.operations)
@@ -295,6 +308,36 @@ def test_load_donor_verifies_requested_sha(tmp_path) -> None:
     assert len(donor) == 2
     with pytest.raises(ValueError, match="sha-256 verification"):
         load_sipp_2023_tip_donor(path, expected_sha256="0" * 64)
+
+
+def test_load_donor_retains_allowed_statuses_one_and_nine(tmp_path) -> None:
+    raw = pd.DataFrame(
+        [
+            _raw_sipp_row(
+                ssuid=1,
+                month=12,
+                age=31,
+                monthly_income=2_500.0,
+                tips=(10.0,),
+                allocation_flags=(1,),
+            ),
+            _raw_sipp_row(
+                ssuid=2,
+                month=12,
+                age=42,
+                monthly_income=3_500.0,
+                tips=(20.0,),
+                allocation_flags=(9,),
+            ),
+        ]
+    )
+    path = tmp_path / "pu2023_slim.csv"
+    raw.to_csv(path, index=False)
+
+    donor = load_sipp_2023_tip_donor(path)
+
+    assert sorted(donor["age"].tolist()) == [31.0, 42.0]
+    assert sorted(donor["tip_income"].tolist()) == [120.0, 240.0]
 
 
 def test_treasury_tipped_occupation_mapping() -> None:

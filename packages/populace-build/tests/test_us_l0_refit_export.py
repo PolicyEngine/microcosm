@@ -77,6 +77,9 @@ def _us_frame(**person_extra: object) -> Frame:
                     "sldu": ["027", "024"],
                     "sldl": ["075", "051"],
                     "cbsa_code": ["35620", "31080"],
+                    "auto_loan_balance": [0.0, 24_000.0],
+                    "auto_loan_interest": [0.0, 1_200.0],
+                    "qualified_passenger_vehicle_loan_interest": [0.0, 240.0],
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -400,6 +403,52 @@ def test_required_us_release_source_columns_rejects_missing_geography_spine() ->
         assert_required_us_release_source_columns(raw_frame)
 
 
+@pytest.mark.parametrize(
+    "column",
+    [
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
+    ],
+)
+def test_required_us_release_source_columns_rejects_missing_auto_input(
+    column: str,
+) -> None:
+    frame = _us_frame()
+    raw_households = frame.table("household").drop(columns=[column])
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "household": raw_households,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(ValueError, match=rf"household.{column}: missing"):
+        assert_required_us_release_source_columns(raw_frame)
+
+
+def test_required_us_release_source_columns_rejects_constant_auto_input() -> None:
+    frame = _us_frame()
+    raw_households = frame.table("household").copy()
+    raw_households["qualified_passenger_vehicle_loan_interest"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "household": raw_households,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="household.qualified_passenger_vehicle_loan_interest: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_export_us_l0_refit_h5_fails_geography_ladder_gate_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -462,3 +511,8 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert summary["geography_ladder_gate_enforced"] is False
     assert summary["geography_ladder_gate"]["passed"] is False
     assert summary["required_household_source_columns"][0] == "state_fips"
+    assert summary["required_household_nonconstant_source_columns"] == [
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
+    ]

@@ -269,6 +269,24 @@ def _overtime_probe() -> ReformCoverageProbe:
     )
 
 
+def _auto_loan_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="obbba_auto_loan_interest",
+        name="OBBBA no-tax-on-auto-loan-interest deduction",
+        parameter_changes={
+            "gov.irs.deductions.auto_loan_interest.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        budget_measure="income_tax",
+        binding_inputs=("qualified_passenger_vehicle_loan_interest",),
+        min_abs_effect=100_000_000.0,
+        reason="The repeal must bind through qualifying vehicle-loan interest.",
+        issue="PolicyEngine/populace#252",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
 class TestReformCoverageSmokeGate:
     def test_zero_bound_reform_fails(self, monkeypatch) -> None:
         # Case 5: with the asset inputs absent, everyone already passes the SSI
@@ -363,6 +381,27 @@ class TestReformCoverageSmokeGate:
         assert not wrong_sign.passed
         assert "expected a negative effect" in wrong_sign.failures[0]
 
+    def test_negative_auto_loan_effect_passes_and_wrong_sign_fails(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[_auto_loan_probe()],
+        )
+        assert passing.passed
+        result = passing.details["results"]["obbba_auto_loan_interest"]
+        assert result["effect"] == pytest.approx(-0.5e9)
+        assert result["period"] == 2026
+
+        wrong_sign = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(9.5e9 if reform else 10.0e9),
+            probes=[_auto_loan_probe()],
+        )
+        assert not wrong_sign.passed
+        assert "expected a negative effect" in wrong_sign.failures[0]
+
     def test_probeless_gate_is_refused(self) -> None:
         # A probe-less smoke gate would pass vacuously — refuse it.
         with pytest.raises(ValueError, match="at least one probe"):
@@ -382,10 +421,20 @@ class TestShippedManifest:
             assert asset in manifest.required_columns
             assert asset not in manifest.reviewed_exclusions
 
-    def test_post_reference_flsa_input_is_a_hard_requirement(self) -> None:
+    def test_post_reference_obbba_inputs_are_hard_requirements(self) -> None:
         manifest = load_release_input_coverage_manifest()
-        assert "fsla_overtime_premium" in manifest.required_columns
-        assert "fsla_overtime_premium" not in manifest.reviewed_exclusions
+        for column in (
+            "fsla_overtime_premium",
+            "qualified_passenger_vehicle_loan_interest",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_legacy_auto_loan_columns_are_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("auto_loan_balance", "auto_loan_interest"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
 
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
@@ -428,6 +477,21 @@ class TestShippedManifest:
             "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD",
             "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE",
             "gov.irs.deductions.overtime_income.cap.SEPARATE",
+        }
+
+    def test_shipped_auto_loan_probe_has_2026_period_sign_and_input(self) -> None:
+        auto = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_auto_loan_interest"
+        )
+        assert auto.period == 2026
+        assert auto.expected_sign == "negative"
+        assert auto.effect_direction == "baseline_minus_reform"
+        assert auto.budget_measure == "income_tax"
+        assert auto.binding_inputs == ("qualified_passenger_vehicle_loan_interest",)
+        assert set(auto.parameter_changes) == {
+            "gov.irs.deductions.auto_loan_interest.cap"
         }
 
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:

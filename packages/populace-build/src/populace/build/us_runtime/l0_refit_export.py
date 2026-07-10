@@ -36,6 +36,9 @@ from populace.build.us_runtime.org_wages import (
 from populace.build.us_runtime.pregnancy import (
     US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.scf_auto_loans import (
+    US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+)
 from populace.build.us_runtime.scf_wealth import (
     US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -72,6 +75,13 @@ US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS = (
     "state_fips",
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
     *US_GEOGRAPHY_LADDER_COLUMNS,
+)
+
+# Unlike the geography spine above, these household inputs must carry signal:
+# presence-only would accept the engine's broadcast-zero defaults and silently
+# return the OBBBA auto-loan provision to a structural zero.
+US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS = (
+    US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS
 )
 
 
@@ -277,6 +287,9 @@ def assert_required_us_release_source_columns(
     columns: tuple[str, ...] = US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
     person_columns: tuple[str, ...] = US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
     household_columns: tuple[str, ...] = (US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS),
+    household_nonconstant_columns: tuple[str, ...] = (
+        US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
+    ),
 ) -> None:
     """Require source-stage columns needed by US release gates.
 
@@ -295,6 +308,7 @@ def assert_required_us_release_source_columns(
         ("tax_unit", columns, True),
         ("person", person_columns, True),
         ("household", household_columns, False),
+        ("household", household_nonconstant_columns, True),
     ):
         table = frame.table(entity)
         for column in required:
@@ -304,7 +318,18 @@ def assert_required_us_release_source_columns(
             if not check_nonconstant:
                 continue
             unique = table[column].dropna().unique()
-            if len(unique) < 2:
+            # A one-household test/export can still carry real (non-default)
+            # auto-loan signal even though two distinct values are impossible.
+            # For normal multi-household releases these columns must be truly
+            # nonconstant; an all-zero broadcast always fails.
+            single_nondefault_auto_value = (
+                entity == "household"
+                and column in household_nonconstant_columns
+                and len(table) == 1
+                and len(unique) == 1
+                and bool(unique[0])
+            )
+            if len(unique) < 2 and not single_nondefault_auto_value:
                 failures.append(f"{entity}.{column}: not nonconstant")
     if failures:
         raise ValueError(
@@ -444,6 +469,9 @@ def export_us_l0_refit_h5(
         ),
         "required_household_source_columns": list(
             US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS
+        ),
+        "required_household_nonconstant_source_columns": list(
+            US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
         ),
         "required_source_columns_checked": bool(require_source_columns),
         "geography_ladder_gate_enforced": bool(require_geography_ladder),
@@ -590,6 +618,7 @@ def main(argv: list[str] | None = None) -> None:
 __all__ = [
     "L0RefitWeights",
     "US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS",
+    "US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS",
     "attach_l0_refit_entity_weights",

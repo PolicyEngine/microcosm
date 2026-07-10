@@ -65,9 +65,15 @@ __all__ = [
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
 
 # The frozen reference artifact predates the retired pipeline's export of the
-# pure FLSA overtime-premium input (retired pipeline commit 69cc1b79). It is
-# nevertheless required for the shipped OBBBA overtime validation row to bind.
-POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset({"fsla_overtime_premium"})
+# pure FLSA overtime-premium input and predates OBBBA's distinct qualifying
+# passenger-vehicle interest leaf.  Both are hard requirements because the
+# shipped OBBBA validation rows otherwise become structural zeroes.
+POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
+    {
+        "fsla_overtime_premium",
+        "qualified_passenger_vehicle_loan_interest",
+    }
+)
 
 _US_PACKAGE = "populace.build.us"
 _ECPS_PARITY_REFERENCE_RESOURCE = "ecps_parity_reference.json"

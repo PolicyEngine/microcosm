@@ -251,6 +251,25 @@ from populace.build.us_runtime.release_input_coverage import (
     us_release_input_coverage_reviewed_exclusions,
     us_release_reform_coverage_probes,
 )
+from populace.build.us_runtime.scf_auto_loans import (
+    QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET,
+    SCF_2022_FULL_EXTRACT_MEMBER,
+    SCF_2022_FULL_EXTRACT_MEMBER_SHA256,
+    SCF_2022_FULL_EXTRACT_URL,
+    SCF_2022_FULL_EXTRACT_ZIP_SHA256,
+    SCF_AUTO_LOAN_AMOUNT_COLUMNS,
+    SCF_AUTO_LOAN_RATE_COLUMNS,
+    US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    US_SCF_AUTO_LOAN_OUTPUT_COLUMNS,
+    fetch_scf_2022_full_extract,
+    impute_us_scf_auto_loans,
+    load_scf_2022_auto_loan_donor,
+    qualified_auto_loan_interest_proxy,
+    us_scf_auto_loans_signal_gate,
+    us_scf_auto_loans_stage_spec,
+    us_scf_auto_loans_summary,
+    with_us_scf_auto_loan_inputs,
+)
 from populace.build.us_runtime.scf_wealth import (
     SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
     SCF_WEALTH_PREDICTORS,
@@ -449,6 +468,23 @@ __all__ = [
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
+    "QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET",
+    "SCF_2022_FULL_EXTRACT_MEMBER",
+    "SCF_2022_FULL_EXTRACT_MEMBER_SHA256",
+    "SCF_2022_FULL_EXTRACT_URL",
+    "SCF_2022_FULL_EXTRACT_ZIP_SHA256",
+    "SCF_AUTO_LOAN_AMOUNT_COLUMNS",
+    "SCF_AUTO_LOAN_RATE_COLUMNS",
+    "US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS",
+    "US_SCF_AUTO_LOAN_OUTPUT_COLUMNS",
+    "fetch_scf_2022_full_extract",
+    "impute_us_scf_auto_loans",
+    "load_scf_2022_auto_loan_donor",
+    "qualified_auto_loan_interest_proxy",
+    "us_scf_auto_loans_signal_gate",
+    "us_scf_auto_loans_stage_spec",
+    "us_scf_auto_loans_summary",
+    "with_us_scf_auto_loan_inputs",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
     "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
@@ -669,8 +705,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         survey="Fed SCF 2022",
         source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
-            "Wealth components (accounts, stocks, bonds, debts) and net "
-            "worth; household grain, head-carried person assets."
+            "Wealth components and debts; household-grain auto loans use the "
+            "full SCF while liquid assets are head-carried to person."
         ),
     ),
     "sipp_tips": DonorSpec(

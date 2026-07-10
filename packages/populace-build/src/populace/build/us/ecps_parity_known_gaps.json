@@ -14,14 +14,6 @@
       "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
       "issue": "PolicyEngine/populace#253"
     },
-    "auto_loan_balance": {
-      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-      "issue": "PolicyEngine/populace#49"
-    },
-    "auto_loan_interest": {
-      "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-      "issue": "PolicyEngine/populace#49"
-    },
     "business_is_sstb": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"

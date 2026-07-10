@@ -19,14 +19,10 @@
    "status": "reviewed_exclusion"
   },
   "auto_loan_balance": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "auto_loan_interest": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "bank_account_assets": {
    "note": "SSI countable-resource asset input; required with NO reviewed exclusion per PolicyEngine/populace#368 so the gate fails until the asset stage is restored (Deliverable 2). Currently absent — this is the intended red gate.",
@@ -374,6 +370,9 @@
   "qualified_dividend_income": {
    "status": "required"
   },
+  "qualified_passenger_vehicle_loan_interest": {
+   "status": "required"
+  },
   "qualified_reit_and_ptp_income": {
    "issue": "PolicyEngine/populace#298",
    "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
@@ -632,11 +631,11 @@
   }
  },
  "counts": {
-  "required": 84,
-  "reviewed_exclusion": 75,
-  "total": 159
+  "required": 87,
+  "reviewed_exclusion": 73,
+  "total": 160
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium input introduced by the retired pipeline in commit 69cc1b79. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented documented post-reference fsla_overtime_premium and qualified_passenger_vehicle_loan_interest inputs required by the shipped OBBBA probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -723,6 +722,25 @@
    },
    "period": 2026,
    "reason": "Setting every OBBBA overtime-deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With fsla_overtime_premium absent or degenerate, qualified overtime is zero and the repeal scores $0."
+  },
+  {
+   "binding_inputs": [
+    "qualified_passenger_vehicle_loan_interest"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_auto_loan_interest",
+   "issue": "PolicyEngine/populace#252",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-auto-loan-interest deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.auto_loan_interest.cap": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the OBBBA auto-loan-interest deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With qualified passenger-vehicle loan interest absent or degenerate, the repeal scores exactly $0."
   }
  ],
  "schema_version": 1,

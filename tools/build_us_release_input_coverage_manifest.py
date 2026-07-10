@@ -61,11 +61,12 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 )
 
 # The pinned reference H5 predates the retired pipeline's FLSA-premium export
-# (introduced in retired pipeline commit 69cc1b79). The campaign explicitly
-# requires the OBBBA overtime provision to bind, so this later pure input is a
-# hard release requirement even though it is not invented into the frozen
-# parity-share artifact.
-POST_REFERENCE_ECPS_REQUIRED_INPUTS = ("fsla_overtime_premium",)
+# and OBBBA's distinct qualifying passenger-vehicle interest leaf.  Both later
+# inputs are hard requirements because the shipped OBBBA provisions must bind.
+POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
+    "fsla_overtime_premium",
+    "qualified_passenger_vehicle_loan_interest",
+)
 
 #: Pinned reform-coverage probes. Raising the SSI resource limit from
 #: the 2024 statutory $2,000 individual / $3,000 couple to $10,000 / $20,000 is
@@ -161,6 +162,27 @@ REFORM_COVERAGE_PROBES = [
         ),
         "issue": "PolicyEngine/populace#242",
     },
+    {
+        "id": "obbba_auto_loan_interest",
+        "name": "OBBBA no-tax-on-auto-loan-interest deduction",
+        "parameter_changes": {
+            "gov.irs.deductions.auto_loan_interest.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["qualified_passenger_vehicle_loan_interest"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "Setting the OBBBA auto-loan-interest deduction cap to zero "
+            "removes the deduction, so reform income tax rises and "
+            "baseline-minus-reform must be negative in 2026. With qualified "
+            "passenger-vehicle loan interest absent or degenerate, the repeal "
+            "scores exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#252",
+    },
 ]
 
 
@@ -251,8 +273,9 @@ def build_manifest() -> dict:
         "derivation": (
             "Required surface = input columns in the pinned, sha-verified "
             "ecps_parity_reference.json populated layers, plus the documented "
-            "post-reference fsla_overtime_premium input introduced by the "
-            "retired pipeline in commit 69cc1b79. "
+            "documented post-reference fsla_overtime_premium and "
+            "qualified_passenger_vehicle_loan_interest inputs required by "
+            "the shipped OBBBA probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT the SSI countable-resource "
             "asset inputs (bank_account_assets, stock_assets, bond_assets), which "

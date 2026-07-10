@@ -61,11 +61,13 @@ from populace.build.us_runtime import (
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     fetch_org_2024_donor,
+    fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
     fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
     load_org_2024_donor,
+    load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
     us_eligibility_inputs_signal_gate,
@@ -77,6 +79,7 @@ from populace.build.us_runtime import (
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
     us_release_input_coverage_gate,
+    us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_tips_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
@@ -92,6 +95,7 @@ from populace.build.us_runtime import (
     with_us_medicaid_take_up,
     with_us_org_wages_inputs,
     with_us_pregnancy_inputs,
+    with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_tip_inputs,
     with_us_snap_discretionary_exemption_inputs,
@@ -885,6 +889,15 @@ def _parse_args() -> argparse.Namespace:
             "imputation (scf_wealth stage, populace#356/#368). When omitted the "
             "fixed-vintage extract is fetched and cached from the Federal "
             "Reserve."
+        ),
+    )
+    parser.add_argument(
+        "--scf-full-extract",
+        type=Path,
+        help=(
+            "Optional path to the Federal Reserve SCF 2022 full public Stata "
+            "extract (p22i6.dta) used for household auto-loan balance and "
+            "interest. When omitted, scf2022s.zip is fetched and cached."
         ),
     )
     parser.add_argument(
@@ -6065,6 +6078,47 @@ def main() -> None:
             + "; ".join(
                 f"SCF-wealth signal failed: {failure}"
                 for failure in scf_wealth_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "scf_auto_loan_inputs",
+            message=(
+                "Imputing household auto-loan balance and interest from the "
+                "full Federal Reserve SCF 2022 extract, then deriving the "
+                "OBBBA qualifying-interest proxy."
+            ),
+        )
+    scf_full_extract_path = (
+        Path(args.scf_full_extract)
+        if args.scf_full_extract is not None
+        else fetch_scf_2022_full_extract()
+    )
+    scf_auto_loan_donor = load_scf_2022_auto_loan_donor(
+        scf_summary_extract_path,
+        scf_full_extract_path,
+    )
+    base_frame = with_us_scf_auto_loan_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        scf_auto_loan_donor=scf_auto_loan_donor,
+    )
+    scf_auto_loan_gate = us_scf_auto_loans_signal_gate(base_frame)
+    if not scf_auto_loan_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "scf_auto_loan_gate",
+                status="failed",
+                message="SCF auto-loan signal gate failed.",
+                failures=list(scf_auto_loan_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SCF auto-loan signal failed: {failure}"
+                for failure in scf_auto_loan_gate.failures
             )
         )
     if telemetry is not None:

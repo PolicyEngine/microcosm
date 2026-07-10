@@ -24,6 +24,7 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.scf_auto_loans import US_SCF_AUTO_LOAN_OUTPUT_COLUMNS
 from populace.build.us_runtime.sipp_tips import US_SIPP_TIPS_OUTPUT_COLUMNS
 from populace.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
@@ -162,6 +163,7 @@ class TestKnownGapsRegister:
             | set(US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS)
             | set(US_SIPP_TIPS_OUTPUT_COLUMNS)
             | set(US_ORG_WAGES_OUTPUT_COLUMNS)
+            | set(US_SCF_AUTO_LOAN_OUTPUT_COLUMNS)
             | {US_SNAP_TAKE_UP_OUTPUT_COLUMN}
             | {
                 program.variable
@@ -175,6 +177,11 @@ class TestKnownGapsRegister:
             if gap.variable in produced
         )
         assert stale == [], f"register exempts release-produced layers: {stale}"
+
+    def test_legacy_auto_loan_gaps_are_retired(self) -> None:
+        gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
+        assert "auto_loan_balance" not in gaps
+        assert "auto_loan_interest" not in gaps
 
     def test_register_entries_are_unique(self) -> None:
         register = load_ecps_parity_known_gaps()

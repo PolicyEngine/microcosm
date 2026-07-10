@@ -148,9 +148,7 @@ def test_fetch_reuses_only_a_canonical_hash_matching_cache(
         lambda month: pytest.fail("valid cache must not fetch a monthly file"),
     )
 
-    assert (
-        fetch_org_2024_donor(tmp_path, expected_content_sha256=digest) == path
-    )
+    assert fetch_org_2024_donor(tmp_path, expected_content_sha256=digest) == path
 
 
 def test_month_transform_matches_retired_raw_cps_fields() -> None:

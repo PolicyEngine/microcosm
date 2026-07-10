@@ -639,9 +639,7 @@ def test_extra_support_exclusions_drop_per_run_without_touching_registry() -> No
     baseline = compile_us_fiscal_target_registry(
         facts, allow_unaged_dollar_targets=True
     )
-    baseline_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in baseline.specs
-    }
+    baseline_ids = {spec.metadata["ledger_source_record_id"] for spec in baseline.specs}
     # Without the per-run exclusion, California IS an active target.
     assert excluded_source_record_id in baseline_ids
 
@@ -954,6 +952,133 @@ def test_direct_chip_enrollment_fact_prevents_duplicate_derived_chip_target() ->
     assert chip_specs[0].value == 7_000_000
     assert chip_specs[0].metadata["target_role"] == "chip_enrollment"
     assert "derived_operation" not in chip_specs[0].metadata
+
+
+def test_snap_household_caseload_fact_maps_to_snap_indicator() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_households",
+                value=22_255_000,
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[
+        "usda_snap.fy2024.national_average_monthly_households.national_total"
+        ".average_monthly_households"
+    ]
+    assert spec.family == "usda_snap"
+    assert spec.value == 22_255_000
+    assert spec.metadata["target_role"] == "snap_households"
+    assert spec.metadata["base_variable"] == "snap"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "indicator_map_to" not in spec.metadata
+    assert "state_fips" not in spec.metadata
+
+
+def test_state_snap_household_caseload_fact_compiles_with_state_fips() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_households",
+                value=1_507_000,
+                record_set_slug="state_average_monthly_households.nero",
+                value_id="ny",
+                geography_level="state",
+                geography_id="0400000US36",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[
+        "usda_snap.fy2024.state_average_monthly_households.nero.ny"
+        ".average_monthly_households"
+    ]
+    assert spec.family == "usda_snap"
+    assert spec.value == 1_507_000
+    assert spec.metadata["target_role"] == "snap_households"
+    assert spec.metadata["base_variable"] == "snap"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "indicator_map_to" not in spec.metadata
+    assert spec.metadata["state_fips"] == "36"
+
+
+def test_snap_person_caseload_fact_is_not_compiled() -> None:
+    # The SNAP assistance unit is often a subset of the SPM unit, so a person
+    # indicator over taker-unit members overcounts FNS participants by ~50%.
+    # The persons measure must stay unmapped until sub-unit participation is
+    # modeled.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _usda_snap_caseload_fact(
+                measure_id="average_monthly_persons",
+                value=41_690_000,
+                record_set_slug="national_average_monthly_persons",
+                entity_name="person",
+            ),
+        ]
+    )
+
+    assert not [
+        spec for spec in registry.specs if "average_monthly_persons" in spec.name
+    ]
+
+
+def _usda_snap_caseload_fact(
+    *,
+    measure_id: str,
+    value: float,
+    record_set_slug: str = "national_average_monthly_households",
+    value_id: str = "national_total",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    entity_name: str = "household",
+) -> dict[str, object]:
+    record_set_id = f"usda_snap.fy2024.{record_set_slug}"
+    source_record_id = f"{record_set_id}.{value_id}.{measure_id}"
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_record_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{source_record_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{source_record_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "fiscal_year", "value": "2024"},
+        "entity": {"name": entity_name},
+        "aggregation": {"method": "mean"},
+        "geography": {"level": geography_level, "id": geography_id},
+        "dimensions": {},
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": record_set_id,
+            "groupby_dimension": "usda_snap.summary_scope",
+            "groupby_value_id": value_id,
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": "usda_snap",
+            "source_table": (
+                "SNAP Monthly State Participation and Benefit Summary FY69 to current"
+            ),
+            "source_measure_id": measure_id,
+            "source_concept": f"usda_snap.{measure_id}",
+            "unit": "count",
+        },
+        "source": {
+            "source_name": "usda_snap",
+            "source_table": (
+                "SNAP Monthly State Participation and Benefit Summary FY69 to current"
+            ),
+            "source_file": "FY24.xlsx",
+            "vintage": "fiscal_year_2024",
+            "url": "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+        },
+    }
 
 
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
@@ -3248,11 +3373,14 @@ def test_macro_realism_bands_cover_issue_40_backstops() -> None:
 
 
 def test_scf_nonnegative_targets_gate_negative_interest() -> None:
-    assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
-    result = nonnegative_columns_gate(
-        {"auto_loan_interest": [120.0, -9.0]},
-        US_NONNEGATIVE_SOURCE_OUTPUTS,
-    )
+    assert {
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
+    } <= US_NONNEGATIVE_SOURCE_OUTPUTS
+    columns = {name: [0.0, 0.0] for name in US_NONNEGATIVE_SOURCE_OUTPUTS}
+    columns["auto_loan_interest"] = [120.0, -9.0]
+    result = nonnegative_columns_gate(columns, US_NONNEGATIVE_SOURCE_OUTPUTS)
     assert not result.passed
     assert "auto_loan_interest" in result.failures[0]
 
