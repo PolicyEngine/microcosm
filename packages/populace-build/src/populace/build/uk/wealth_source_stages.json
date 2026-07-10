@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "UK household-wealth source stages are manifest-defined. Wealth holdings are imputed onto the UK population from the ONS Wealth and Assets Survey (WAS) by a weighted donor model over the listed predictors, clipped to the donor's realized range. Cash ISA and stocks & shares (investment) ISA holdings are surfaced as standalone outputs; the investment-ISA component is also folded into corporate_wealth for back-compatibility with the legacy archived UK-data wealth imputation, which summed investment ISAs into corporate_wealth and never represented cash ISAs. Executable Python belongs only in shared Populace runtimes.",
+  "stages": [
+    {
+      "stage": "household_wealth",
+      "survey": "ONS Wealth and Assets Survey, Round 8 (2018-2020)",
+      "source": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/methodologies/wealthandassetssurveyqmi",
+      "grain": "household",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "tab",
+          "vintage": "round-8-2018-2020",
+          "locator": "ONS Wealth and Assets Survey, UK Data Service end-user licence"
+        }
+      ],
+      "operations": [
+        { "kind": "read_table", "table": "was_household", "weight": "R8xshhwgt" },
+        {
+          "kind": "derive",
+          "outputs": [
+            "cash_isa",
+            "stocks_and_shares_isa",
+            "savings",
+            "corporate_wealth",
+            "gross_financial_wealth",
+            "net_financial_wealth",
+            "property_wealth",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "owned_land",
+            "num_vehicles",
+            "student_loan_balance"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "is_adult",
+            "is_child",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "savings_interest_income",
+            "dividend_income",
+            "hbai_household_net_income",
+            "tenure_type",
+            "num_bedrooms",
+            "council_tax"
+          ]
+        },
+        { "kind": "support_clip", "range": "donor_realized" },
+        { "kind": "fold_into", "output": "corporate_wealth", "component": "stocks_and_shares_isa" }
+      ],
+      "outputs": [
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "savings",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "net_financial_wealth",
+        "property_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "owned_land",
+        "num_vehicles",
+        "student_loan_balance"
+      ],
+      "nonnegative_outputs": [
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "savings",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "property_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "owned_land",
+        "num_vehicles",
+        "student_loan_balance"
+      ],
+      "notes": "Household wealth holdings imputed from the ONS Wealth and Assets Survey (Round 8). WAS field mapping: cash_isa <- DVCISAVR8 (value of cash ISAs, not mapped in the legacy imputation); stocks_and_shares_isa <- DVIISAVR8_aggr (value of investment ISAs, previously folded silently into corporate_wealth); savings <- DVSaValR8_aggr; property_wealth <- DVPropertyR8; main_residence_value <- DVhvalueR8; gross/net financial wealth <- HFINWR8_SUM/HFINWNTR8_Sum; owned_land <- DVLUKValR8_sum; num_vehicles <- vcarnr8; student_loan_balance <- Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr. corporate_wealth aggregates non-DB pensions, employee shares/options, UK shares, investment ISAs and unit trusts. Imputed onto the UK population by a weighted donor model over the listed predictors and clipped to the donor's realized range. cash_isa and stocks_and_shares_isa are surfaced as standalone outputs; stocks_and_shares_isa is also folded into corporate_wealth for back-compatibility."
+    }
+  ]
+}
