@@ -21,9 +21,38 @@ shocks applied to a person table carrying AI exposure scores —
 
 This is *scenario analysis*, not causal estimation: parameters are
 calibrated-from-literature anchors the analyst is expected to override (see
-:data:`PRESETS`; central anchors are Briggs & Kodnani 2023 — 7% job loss,
-+2.6% wages — and a +0.4pp capital return; the low variant follows Acemoglu
-2025's ~1% job loss).
+:data:`PRESETS`). The central anchors are the ones ESRI JR16 (Doorley,
+O'Connor, O'Shea & Tuda 2026, doi:10.26504/jr16) adopts from Briggs &
+Kodnani (2023): 7% job loss, and a +2.6pp wage change that is *not* a
+Goldman Sachs headline number but "the median wage change estimate of a
+number of studies surveyed by the authors" (JR16 fn.3, §3.2). JR16 notes
+this scenario is an upper bound relative to Acemoglu (2025), "The Simple
+Macroeconomics of AI", Economic Policy 40(121), 13–58 (employment effect
+0.9–1.1%, with *no* corresponding wage change estimated — JR16 fn.8) and
+McKinsey (2025) (wage +0.35%). The +0.4pp return-to-capital increase is
+from Cazzaniga, Pizzinelli et al. (2024, IMF), applied uniformly across
+households with non-rental capital income.
+
+Scenario grid for downstream drivers
+------------------------------------
+JR16's own robustness grid — the intended scenario-grid shape for
+downstream drivers of this module — spans employment displacement of
+1–10% crossed with wage changes of +1–5%, with the +0.4pp capital shock
+always on. Note the grid tops out at 10% displacement; the "high" preset
+below deliberately exceeds it (see the preset notes).
+
+Scope limitation: self-employed excluded
+----------------------------------------
+All shocks operate on *employees only*: the employed mask is
+``employment_income > 0`` and ``age >= 16``, so persons whose labour
+income is self-employment income receive no employment or wage shock.
+This mirrors ESRI JR16's treatment, but it is a real scope limitation —
+self-employed workers are exposed to AI too, and their exclusion is
+silent in the microdata. The employment-shock summary therefore reports
+``excluded_self_employed_weighted``, the weighted count of persons aged
+16+ with positive ``self_employment_income`` who fall outside the
+employed mask, so the omitted population is visible to downstream
+consumers.
 
 Displaced-worker contract
 -------------------------
@@ -92,10 +121,20 @@ DEFAULT_WEIGHT_COLUMN = "person_weight"
 #: property/rent columns are deliberately absent.
 DEFAULT_CAPITAL_COLUMNS = ("savings_interest_income", "dividend_income")
 
-#: Working-age bands the outputs are resolved by. Half-open [lower, upper);
-#: the final band is 65+.
+#: Default working-age bands the outputs are resolved by. Half-open
+#: [lower, upper); the final band is 65+. Drivers may pass an alternative
+#: scheme via the ``age_bands`` parameter of the shock functions.
 AGE_BANDS = ((16, 25), (25, 35), (35, 45), (45, 55), (55, 65), (65, None))
+#: Default youth band targeted by ``youth_displacement_multiplier``. Kept
+#: separate from ``age_bands`` so overriding the reporting bands never
+#: changes which workers the multiplier tilts toward.
 YOUTH_BAND = (16, 25)
+
+#: Column identifying self-employed persons for the scope-limitation count
+#: in the employment-shock summary (see the module docstring).
+SELF_EMPLOYMENT_INCOME_COLUMN = "self_employment_income"
+
+AgeBands = tuple[tuple[int, int | None], ...]
 
 #: Number of pseudo exposure-quintile groups used when the person table has
 #: no ``occupation_group`` column.
@@ -168,14 +207,43 @@ class ShockScenario:
         return self.capital_return_increase / self.base_capital_return
 
 
+#: Klein & Teeselink (2025, SSRN 5516798) find that highly AI-exposed firms
+#: cut total employment by -4.5% and junior employment by -5.8%. The ratio
+#: 5.8 / 4.5 ~= 1.29 is a UK-evidence-calibrated value for
+#: ``youth_displacement_multiplier`` (juniors displaced ~1.3x as intensely
+#: as workers overall). The default presets keep the multiplier at 1.0 —
+#: pure ESRI replication with age-neutral within-group selection — and the
+#: ``"central_youth_tilted"`` preset applies this calibration.
+KLEIN_TEESELINK_YOUTH_MULTIPLIER = 5.8 / 4.5
+
 #: Scenario presets — calibrated-from-literature anchors, not estimates;
-#: analysts should override them. Central: Briggs & Kodnani (2023) 7% job
-#: loss and +2.6% wages, with the ESRI +0.4pp return to capital
-#: (1.005% -> 1.405%, ~+39.8% capital income). Low: Acemoglu (2025) ~0.9-1.1%
-#: job loss, with proportionally muted wage/capital gains. High: a ~13%
-#: job-loss variant bracketing the Bank of England reading of ~-40% postings
-#: for the most-exposed occupations, DSIT's -3.9% employment per standard
-#: deviation of exposure and Klein & Teeselink's -5.8% for junior roles.
+#: analysts should override them. JR16's own robustness grid (employment
+#: 1-10% x wages +1-5%, +0.4pp capital always on) is the intended
+#: scenario-grid shape for downstream drivers.
+#:
+#: Central: 7% job loss and +2.6pp wages, the Briggs & Kodnani (2023)
+#: anchors adopted by ESRI JR16 (Doorley, O'Connor, O'Shea & Tuda 2026,
+#: doi:10.26504/jr16). The +2.6pp is "the median wage change estimate of a
+#: number of studies surveyed by the authors" (JR16 fn.3, §3.2) — not a
+#: Goldman headline — and JR16 notes this scenario is an upper bound versus
+#: Acemoglu (2025) employment 0.9-1.1% and McKinsey (2025) wage +0.35%.
+#: Capital: +0.4pp return from Cazzaniga/Pizzinelli et al. (2024, IMF)
+#: (1.005% -> 1.405%, ~+39.8% capital income), uniform across households
+#: with non-rental capital income.
+#:
+#: Low: ~1% job loss, following Acemoglu (2025), "The Simple Macroeconomics
+#: of AI", Economic Policy 40(121), 13-58 — employment effect 0.9-1.1%.
+#: Note Acemoglu estimates *no* corresponding wage change (JR16 fn.8); the
+#: preset's small wage/capital gains are this module's own muted variants,
+#: not his estimates.
+#:
+#: High: 13% job loss, from Brynjolfsson, Chandar & Chen (2025), "Canaries
+#: in the Coal Mine?" (Stanford Digital Economy Lab). Caveat: that 13% is a
+#: *cohort-specific* relative employment decline for early-career workers
+#: (aged 22-25) in the most-exposed occupations, not an aggregate
+#: displacement estimate; it is used here deliberately as an aggressive
+#: aggregate scenario. JR16's own robustness grid tops out at 10%
+#: displacement, so this preset sits above JR16's upper bound.
 PRESETS: dict[str, ShockScenario] = {
     "central": ShockScenario(
         name="central",
@@ -195,13 +263,23 @@ PRESETS: dict[str, ShockScenario] = {
         wage_uplift=0.04,
         capital_return_increase=0.008,
     ),
+    # Central parameters with the Klein & Teeselink (2025) UK-evidence
+    # youth calibration (~1.29x) applied; see
+    # KLEIN_TEESELINK_YOUTH_MULTIPLIER above.
+    "central_youth_tilted": ShockScenario(
+        name="central_youth_tilted",
+        displacement_rate=0.07,
+        wage_uplift=0.026,
+        capital_return_increase=0.004,
+        youth_displacement_multiplier=KLEIN_TEESELINK_YOUTH_MULTIPLIER,
+    ),
 }
 
 
-def age_band_label(age: float) -> str:
+def age_band_label(age: float, age_bands: AgeBands = AGE_BANDS) -> str:
     """Human-readable band label for ``age`` (e.g. ``"25-34"``, ``"65+"``)."""
 
-    for lower, upper in AGE_BANDS:
+    for lower, upper in age_bands:
         if upper is None:
             if age >= lower:
                 return f"{lower}+"
@@ -216,6 +294,8 @@ def apply_employment_shock(
     *,
     weight_column: str = DEFAULT_WEIGHT_COLUMN,
     draw_index: int = 0,
+    age_bands: AgeBands = AGE_BANDS,
+    youth_band: tuple[int, int] = YOUTH_BAND,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Transition a fraction of employed persons to unemployment (eq 3.4).
 
@@ -235,10 +315,19 @@ def apply_employment_shock(
     If ``occupation_group`` is absent, weighted exposure quintiles of the
     employed serve as pseudo-groups.
 
+    ``age_bands`` controls the reporting bands of the summary only;
+    ``youth_band`` (half-open, default 16-24) controls which workers the
+    ``youth_displacement_multiplier`` targets and is deliberately
+    independent of ``age_bands`` so overriding the reporting scheme never
+    changes the shock itself.
+
     Returns:
         ``(shocked, summary)`` — the ``draw_index`` realisation and a summary
         with draw-averaged displaced counts, weighted shares, per-age-band
-        and per-group breakdowns (including the eq 3.4 quotas).
+        and per-group breakdowns (including the eq 3.4 quotas), plus
+        ``excluded_self_employed_weighted``: the weighted count of persons
+        aged 16+ with positive self-employment income outside the employed
+        mask, who receive no shock (see the module docstring).
     """
 
     persons = _person_table(frame_or_df, weight_column)
@@ -273,6 +362,7 @@ def apply_employment_shock(
             groups=groups,
             quotas=quotas,
             youth_multiplier=scenario.youth_displacement_multiplier,
+            youth_band=youth_band,
             rng=np.random.default_rng(np.random.SeedSequence((scenario.seed, draw))),
         )
         for draw in range(scenario.n_draws)
@@ -295,8 +385,11 @@ def apply_employment_shock(
         "displaced_weighted_share": _safe_share(
             float(np.mean([weights[d].sum() for d in draws])), employed_weight
         ),
+        "excluded_self_employed_weighted": _excluded_self_employed_weighted(
+            shocked, employed, weights, age
+        ),
         "by_occupation_group": _group_summary(draws, quotas, groups, weights, employed),
-        "by_age_band": _age_band_summary(draws, age, weights, employed),
+        "by_age_band": _age_band_summary(draws, age, weights, employed, age_bands),
     }
     return shocked, summary
 
@@ -306,6 +399,7 @@ def apply_wage_shock(
     scenario: ShockScenario,
     *,
     weight_column: str = DEFAULT_WEIGHT_COLUMN,
+    age_bands: AgeBands = AGE_BANDS,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Uplift wages of non-displaced workers by complementarity (eq 3.5).
 
@@ -368,7 +462,7 @@ def apply_wage_shock(
                 "recipient_count": int((recipients & band).sum()),
                 "weighted_wage_bill_change": float(wage_bill_change[band].sum()),
             }
-            for label, band in _age_band_masks(age)
+            for label, band in _age_band_masks(age, age_bands)
         },
     }
     return shocked, summary
@@ -380,6 +474,7 @@ def apply_capital_shock(
     *,
     capital_columns: tuple[str, ...] = DEFAULT_CAPITAL_COLUMNS,
     weight_column: str = DEFAULT_WEIGHT_COLUMN,
+    age_bands: AgeBands = AGE_BANDS,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Scale interest/dividend-type income by the return-to-capital gain.
 
@@ -423,7 +518,7 @@ def apply_capital_shock(
             label: {
                 "weighted_capital_income_change": float((weights * change)[band].sum()),
             }
-            for label, band in _age_band_masks(age)
+            for label, band in _age_band_masks(age, age_bands)
         },
     }
     return shocked, summary
@@ -437,6 +532,8 @@ def run_scenario(
     weight_column: str = DEFAULT_WEIGHT_COLUMN,
     seed: int | None = None,
     draw_index: int = 0,
+    age_bands: AgeBands = AGE_BANDS,
+    youth_band: tuple[int, int] = YOUTH_BAND,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply employment, wage and capital shocks in sequence.
 
@@ -448,12 +545,18 @@ def run_scenario(
     Args:
         frame_or_df: Person table or :class:`~populace.frame.Frame`.
         scenario: A :class:`ShockScenario`, or a preset name from
-            :data:`PRESETS` (``"central"``, ``"low"``, ``"high"``).
+            :data:`PRESETS` (``"central"``, ``"low"``, ``"high"``,
+            ``"central_youth_tilted"``).
         capital_columns: Capital income columns to scale (rent excluded by
             default, following ESRI).
         weight_column: Person-weight column name.
         seed: Optional override of the scenario base seed.
         draw_index: Which employment-shock draw the returned table realises.
+        age_bands: Reporting age bands for every shock summary
+            (default :data:`AGE_BANDS`).
+        youth_band: Half-open band targeted by the youth displacement
+            multiplier (default :data:`YOUTH_BAND`); independent of
+            ``age_bands``.
 
     Returns:
         ``(shocked, summary)`` — the fully shocked person table (always a
@@ -466,22 +569,28 @@ def run_scenario(
             scenario = PRESETS[scenario]
         except KeyError:
             raise ValueError(
-                f"Unknown scenario preset {scenario!r}; presets: " f"{sorted(PRESETS)}."
+                f"Unknown scenario preset {scenario!r}; presets: {sorted(PRESETS)}."
             ) from None
     if seed is not None:
         scenario = replace(scenario, seed=seed)
 
     shocked, employment_summary = apply_employment_shock(
-        frame_or_df, scenario, weight_column=weight_column, draw_index=draw_index
+        frame_or_df,
+        scenario,
+        weight_column=weight_column,
+        draw_index=draw_index,
+        age_bands=age_bands,
+        youth_band=youth_band,
     )
     shocked, wage_summary = apply_wage_shock(
-        shocked, scenario, weight_column=weight_column
+        shocked, scenario, weight_column=weight_column, age_bands=age_bands
     )
     shocked, capital_summary = apply_capital_shock(
         shocked,
         scenario,
         capital_columns=capital_columns,
         weight_column=weight_column,
+        age_bands=age_bands,
     )
     summary = {
         "scenario": scenario.name,
@@ -546,6 +655,28 @@ def _employed_mask(persons: pd.DataFrame) -> pd.Series:
     return (persons[EMPLOYMENT_INCOME_COLUMN].astype(float) > 0.0) & (
         persons[AGE_COLUMN].astype(float) >= 16
     )
+
+
+def _excluded_self_employed_weighted(
+    persons: pd.DataFrame,
+    employed: np.ndarray,
+    weights: np.ndarray,
+    age: np.ndarray,
+) -> float:
+    """Weighted count of self-employed persons outside the employed mask.
+
+    Persons aged 16+ with positive ``self_employment_income`` who are not in
+    the employee mask receive no employment or wage shock (mirroring ESRI
+    JR16's employees-only treatment); this makes the omitted population
+    visible in the summary. Returns 0.0 when the column is absent.
+    """
+
+    if SELF_EMPLOYMENT_INCOME_COLUMN not in persons.columns:
+        return 0.0
+    self_employed = (
+        persons[SELF_EMPLOYMENT_INCOME_COLUMN].to_numpy(dtype=float) > 0.0
+    ) & (age >= 16)
+    return float(weights[self_employed & ~employed].sum())
 
 
 def _weighted_quantiles(
@@ -638,19 +769,21 @@ def _draw_displaced(
     groups: np.ndarray,
     quotas: dict[str, float],
     youth_multiplier: float,
+    youth_band: tuple[int, int],
     rng: np.random.Generator,
 ) -> np.ndarray:
     """One random within-group selection meeting each group's weighted quota.
 
     Selection order within a group is a weighted random permutation
-    (Efraimidis-Spirakis keys) with 16-24 year olds' selection intensity
-    scaled by ``youth_multiplier``; persons are taken in order until the
-    cumulative weight is as close as possible to the group's quota. With
-    ``youth_multiplier == 1`` this is ESRI's uniform random selection.
+    (Efraimidis-Spirakis keys) with ``youth_band`` workers' selection
+    intensity scaled by ``youth_multiplier``; persons are taken in order
+    until the cumulative weight is as close as possible to the group's
+    quota. With ``youth_multiplier == 1`` this is ESRI's uniform random
+    selection.
     """
 
     displaced = np.zeros(len(weights), dtype=bool)
-    youth_lower, youth_upper = YOUTH_BAND
+    youth_lower, youth_upper = youth_band
     for label, quota in quotas.items():
         if quota <= 0.0:
             continue
@@ -712,11 +845,13 @@ def _relative_complementarity(
     return theta / mean_theta, False
 
 
-def _age_band_masks(age: np.ndarray) -> list[tuple[str, np.ndarray]]:
+def _age_band_masks(
+    age: np.ndarray, age_bands: AgeBands
+) -> list[tuple[str, np.ndarray]]:
     """``(label, boolean mask)`` per age band, in band order."""
 
     masks: list[tuple[str, np.ndarray]] = []
-    for lower, upper in AGE_BANDS:
+    for lower, upper in age_bands:
         if upper is None:
             masks.append((f"{lower}+", age >= lower))
         else:
@@ -729,11 +864,12 @@ def _age_band_summary(
     age: np.ndarray,
     weights: np.ndarray,
     employed: np.ndarray,
+    age_bands: AgeBands,
 ) -> dict[str, dict[str, float]]:
     """Draw-averaged employment-shock breakdown per age band."""
 
     result: dict[str, dict[str, float]] = {}
-    for label, band in _age_band_masks(age):
+    for label, band in _age_band_masks(age, age_bands):
         employed_weight = float(weights[employed & band].sum())
         displaced_weight = float(np.mean([weights[d & band].sum() for d in draws]))
         result[label] = {

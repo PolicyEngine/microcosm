@@ -9,13 +9,20 @@ the published release (the raw workbooks/API pulls live outside the repo):
   ``soc_title``, ``employment_jobs``, ``median_annual_pay``. Only the job
   counts become targets: a median is not a sum constraint, so
   ``median_annual_pay`` is carried for provenance/diagnostics only.
-* **Annual Population Survey via Nomis** (dataset ``NM_17_1``) — employment
-  by SOC2020 sub-major occupation group (table ``T09b``) and, separately,
-  employment by age band (table ``T01``). The APS publishes no
-  occupation-by-age cross-tabulation, so the two margins are declared as
-  independent target families. Tidy columns: ``soc_code``, ``soc_title``,
-  ``employment``, ``period``, ``geography`` (occupation) and ``age_band``,
-  ``employment``, ``period``, ``geography`` (age).
+* **Annual Population Survey via Nomis** — employment by SOC2020 sub-major
+  occupation group (dataset ``NM_17_1``, table ``T09b``) and, separately,
+  employment by age band on the scheme ``16-24``/``25-34``/``35-44``/
+  ``45-54``/``55-64``/``65+`` (plus the ``16+`` roll-up), matching the
+  :mod:`~populace.build.uk_runtime.ai_shock_scenarios` reporting bands.
+  ``NM_17_1`` table ``T01`` only publishes 16-19/20-24/25-34/35-49/50-64/65+,
+  which cannot be reconciled with that scheme, so the age bands are derived
+  by summing the five-year bands of the companion APS dataset ``NM_170_1``
+  (labour market status by age, ``C_ECOPUK11`` = Employed, all persons);
+  its marginals agree exactly with ``T01`` where the schemes coincide. The
+  APS publishes no occupation-by-age cross-tabulation, so the two margins
+  are declared as independent target families. Tidy columns: ``soc_code``,
+  ``soc_title``, ``employment``, ``period``, ``geography`` (occupation) and
+  ``age_band``, ``employment``, ``period``, ``geography`` (age).
 
 Every builder returns an :class:`OccupationTargetBuild`: the compiled
 :class:`~populace.calibrate.TargetSet` plus the rows that could not become
@@ -42,6 +49,7 @@ from populace.calibrate import Target, TargetSet
 
 __all__ = [
     "ASHE_TABLE14_SOURCE",
+    "APS_NOMIS_AGE_SOURCE",
     "APS_NOMIS_SOURCE",
     "PACKAGED_APS_AGE_CSV",
     "PACKAGED_APS_OCCUPATION_CSV",
@@ -61,9 +69,14 @@ ASHE_TABLE14_SOURCE = (
     "2025 provisional edition, released 23 October 2025, ons.gov.uk"
 )
 
-#: Provenance for the APS pulls from the Nomis API (dataset NM_17_1).
+#: Provenance for the APS occupation pulls from the Nomis API (NM_17_1).
 APS_NOMIS_SOURCE = (
     "ONS Annual Population Survey via Nomis API dataset NM_17_1 (www.nomisweb.co.uk)"
+)
+
+#: Provenance for the APS age-band pulls from the Nomis API (NM_170_1).
+APS_NOMIS_AGE_SOURCE = (
+    "ONS Annual Population Survey via Nomis API dataset NM_170_1 (www.nomisweb.co.uk)"
 )
 
 #: The all-ages roll-up band published alongside the disjoint APS age bands.
@@ -301,18 +314,23 @@ def aps_age_band_employment_targets(
     csv_path: str | Path,
     *,
     include_total: bool = False,
-    source: str = APS_NOMIS_SOURCE,
+    source: str = APS_NOMIS_AGE_SOURCE,
 ) -> OccupationTargetBuild:
     """In-employment person-count targets by age band from the APS (Nomis).
 
-    The APS publishes no occupation-by-age cross-tabulation, so this age
-    margin complements :func:`aps_occupation_employment_targets` as an
-    independent family. The published ``16+`` roll-up duplicates the sum of
-    the disjoint bands; it is excluded by default and reported as skipped so
-    the exclusion is visible.
+    The band scheme is ``16-24``/``25-34``/``35-44``/``45-54``/``55-64``/
+    ``65+`` — the same reporting bands used by
+    :mod:`~populace.build.uk_runtime.ai_shock_scenarios` — derived by summing
+    the NM_170_1 five-year bands (see the module docstring for why NM_17_1
+    table T01 cannot supply this scheme directly). The APS publishes no
+    occupation-by-age cross-tabulation, so this age margin complements
+    :func:`aps_occupation_employment_targets` as an independent family. The
+    published ``16+`` roll-up duplicates the sum of the disjoint bands (up to
+    the publication rounding to the nearest hundred); it is excluded by
+    default and reported as skipped so the exclusion is visible.
 
     Args:
-        csv_path: Tidy CSV with columns ``age_band`` (``16-19`` … ``65+``,
+        csv_path: Tidy CSV with columns ``age_band`` (``16-24`` … ``65+``,
             plus the ``16+`` total), ``employment``, ``period``; an optional
             ``geography`` column is appended to the provenance.
         include_total: Keep the redundant ``16+`` roll-up as a target.
@@ -382,7 +400,12 @@ def aps_age_band_employment_targets(
                 measure=f"employment/age/{band_token}",
                 value=employment,
                 period=period,
-                source=_aps_row_source(source, row, f"table T01, {period}")
+                source=_aps_row_source(
+                    source,
+                    row,
+                    "employment by age, NM_170_1 five-year bands summed to "
+                    f"the ai_shock_scenarios reporting bands, {period}",
+                )
                 + f"; in employment, aged {age_band}",
             )
         )

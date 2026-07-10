@@ -8,6 +8,7 @@ from populace.build.uk_runtime.ai_shock_scenarios import (
     AGE_BANDS,
     COMPLEMENTARITY_COLUMN,
     DISPLACED_COLUMN,
+    KLEIN_TEESELINK_YOUTH_MULTIPLIER,
     PRE_SHOCK_EMPLOYMENT_INCOME_COLUMN,
     PRESETS,
     ShockScenario,
@@ -204,6 +205,27 @@ class TestEmploymentShock:
             > by_group["exposure_q1"]["displaced_weighted_share"]
         )
 
+    def test_excluded_self_employed_weighted_in_summary(self):
+        persons = synthetic_persons()
+        # Make a slice of non-employees self-employed, plus one employee with
+        # a side self-employment income (not excluded) and one under-16
+        # equivalent guard via employees only being 16+ already.
+        not_employed = ~employed_mask(persons)
+        self_employed = not_employed & (persons.index % 3 == 0)
+        persons["self_employment_income"] = 0.0
+        persons.loc[self_employed, "self_employment_income"] = 15_000.0
+        employee_with_side_income = persons.index[employed_mask(persons)][0]
+        persons.loc[employee_with_side_income, "self_employment_income"] = 2_000.0
+
+        _, summary = apply_employment_shock(persons, scenario())
+        expected = persons.loc[self_employed, "person_weight"].sum()
+        assert summary["excluded_self_employed_weighted"] == pytest.approx(expected)
+
+    def test_excluded_self_employed_zero_without_column(self):
+        persons = synthetic_persons()
+        _, summary = apply_employment_shock(persons, scenario())
+        assert summary["excluded_self_employed_weighted"] == 0.0
+
 
 class TestWageShock:
     def test_distributed_by_complementarity_with_target_mean(self):
@@ -310,13 +332,30 @@ class TestRunScenario:
         assert not first[DISPLACED_COLUMN].equals(second[DISPLACED_COLUMN])
 
     def test_preset_names_and_anchors(self):
-        assert set(PRESETS) == {"central", "low", "high"}
+        assert set(PRESETS) == {"central", "low", "high", "central_youth_tilted"}
         central = PRESETS["central"]
         assert central.displacement_rate == pytest.approx(0.07)
         assert central.wage_uplift == pytest.approx(0.026)
         assert central.capital_uplift == pytest.approx(0.398, abs=0.001)
         assert central.youth_displacement_multiplier == 1.0
         assert central.n_draws == 50
+
+    def test_klein_teeselink_youth_tilted_preset(self):
+        # Klein & Teeselink (2025): junior -5.8% vs total -4.5%.
+        assert KLEIN_TEESELINK_YOUTH_MULTIPLIER == pytest.approx(5.8 / 4.5)
+        assert KLEIN_TEESELINK_YOUTH_MULTIPLIER == pytest.approx(1.29, abs=0.01)
+        tilted = PRESETS["central_youth_tilted"]
+        central = PRESETS["central"]
+        # Central parameters, only the youth multiplier differs.
+        assert tilted.displacement_rate == central.displacement_rate
+        assert tilted.wage_uplift == central.wage_uplift
+        assert tilted.capital_return_increase == central.capital_return_increase
+        assert tilted.youth_displacement_multiplier == pytest.approx(
+            KLEIN_TEESELINK_YOUTH_MULTIPLIER
+        )
+        # Default presets stay at pure ESRI replication (multiplier 1.0).
+        for name in ("central", "low", "high"):
+            assert PRESETS[name].youth_displacement_multiplier == 1.0
 
     def test_composes_all_three_shocks(self):
         persons = synthetic_persons()
@@ -341,6 +380,37 @@ class TestRunScenario:
         }
         for shock in ("employment", "wage", "capital"):
             assert set(summary[shock]["by_age_band"]) == expected_labels
+
+    def test_age_bands_override_threads_through_all_summaries(self):
+        persons = synthetic_persons()
+        custom_bands = ((16, 30), (30, 50), (50, None))
+        _, summary = run_scenario(persons, scenario(), age_bands=custom_bands)
+
+        expected_labels = {"16-29", "30-49", "50+"}
+        for shock in ("employment", "wage", "capital"):
+            assert set(summary[shock]["by_age_band"]) == expected_labels
+        # Band totals partition the aggregate exactly.
+        total = sum(
+            band["displaced_weighted"]
+            for band in summary["employment"]["by_age_band"].values()
+        )
+        assert total == pytest.approx(summary["employment"]["displaced_weighted"])
+
+    def test_age_bands_override_preserves_youth_band_semantics(self):
+        persons = synthetic_persons()
+        custom_bands = ((16, 40), (40, None))
+        _, neutral = apply_employment_shock(persons, scenario(), age_bands=custom_bands)
+        _, tilted = apply_employment_shock(
+            persons,
+            scenario(youth_displacement_multiplier=3.0),
+            age_bands=custom_bands,
+        )
+        # The multiplier still targets 16-24 by default, which shifts
+        # displacement into the coarse 16-39 reporting band.
+        assert (
+            tilted["by_age_band"]["16-39"]["displaced_weighted_share"]
+            > neutral["by_age_band"]["16-39"]["displaced_weighted_share"]
+        )
 
     def test_unknown_preset_raises(self):
         with pytest.raises(ValueError, match="Unknown scenario preset"):

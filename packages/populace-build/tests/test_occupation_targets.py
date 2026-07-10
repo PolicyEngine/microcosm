@@ -7,6 +7,10 @@ from populace.build.uk_runtime import (
     aps_occupation_employment_targets,
     ashe_occupation_employment_targets,
 )
+from populace.build.uk_runtime.occupation_targets import (
+    PACKAGED_APS_AGE_CSV,
+    packaged_occupation_csv_path,
+)
 
 ASHE_FIXTURE = """soc_code,soc_title,employment_jobs,median_annual_pay
 1111,Chief executives and senior officials,133000,89835
@@ -25,9 +29,12 @@ APS_OCC_FIXTURE = """soc_code,soc_title,employment,period,geography
 
 APS_AGE_FIXTURE = """age_band,employment,period,geography
 16+,33321600,Jan 2025-Dec 2025,United Kingdom
-16-19,910600,Jan 2025-Dec 2025,United Kingdom
+16-24,3582100,Jan 2025-Dec 2025,United Kingdom
 65+,1590500,Jan 2025-Dec 2025,United Kingdom
 """
+
+#: The ai_shock_scenarios reporting bands the packaged age CSV must match.
+SCENARIO_AGE_BANDS = {"16-24", "25-34", "35-44", "45-54", "55-64", "65+"}
 
 
 def _write(tmp_path, name, text):
@@ -120,11 +127,11 @@ class TestApsAgeBandEmploymentTargets:
         )
         names = [target.name for target in build.target_set]
         assert names == [
-            "ons/aps/employment/age/16_19",
+            "ons/aps/employment/age/16_24",
             "ons/aps/employment/age/65plus",
         ]
         by_name = {target.name: target for target in build.target_set}
-        assert by_name["ons/aps/employment/age/16_19"].value == 910600
+        assert by_name["ons/aps/employment/age/16_24"].value == 3582100
         assert by_name["ons/aps/employment/age/65plus"].value == 1590500
         assert by_name["ons/aps/employment/age/65plus"].measure == (
             "employment/age/65plus"
@@ -141,3 +148,24 @@ class TestApsAgeBandEmploymentTargets:
         by_name = {target.name: target for target in build.target_set}
         assert by_name["ons/aps/employment/age/16plus"].value == 33321600
         assert build.skipped == ()
+
+
+class TestPackagedApsAgeCsv:
+    def test_band_set_equals_ai_shock_scenario_reporting_bands(self):
+        build = aps_age_band_employment_targets(
+            packaged_occupation_csv_path(PACKAGED_APS_AGE_CSV)
+        )
+        bands = {target.source.rsplit("aged ", 1)[1] for target in build.target_set}
+        assert bands == SCENARIO_AGE_BANDS
+
+    def test_bands_sum_to_the_16_plus_total_within_rounding(self):
+        build = aps_age_band_employment_targets(
+            packaged_occupation_csv_path(PACKAGED_APS_AGE_CSV),
+            include_total=True,
+        )
+        by_name = {target.name: target for target in build.target_set}
+        total = by_name.pop("ons/aps/employment/age/16plus").value
+        residual = total - sum(target.value for target in by_name.values())
+        # Published values are rounded to the nearest hundred; six bands can
+        # drift from the roll-up by at most half that per band.
+        assert abs(residual) <= 6 * 50

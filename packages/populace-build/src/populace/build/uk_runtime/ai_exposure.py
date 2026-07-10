@@ -44,7 +44,7 @@ index entry). Many-to-many links are resolved with employment-unweighted means
 and flagged ``chained`` in ``mapping_quality``; ``direct`` marks single-path
 links and ``imputed-from-parent`` marks unit groups filled from 3-digit or
 2-digit sibling means. The major-group table weights unit groups by ASHE
-Table 14 (2021, provisional) employee-job counts on SOC 2020 4-digit codes.
+Table 14 (2025) employee-job counts on SOC 2020 4-digit codes.
 
 Sources and licences
 --------------------
@@ -186,14 +186,29 @@ def exposure_for_soc(codes, measure: str = "c_aioe") -> np.ndarray:
 def exposure_for_major_group(groups, measure: str = "c_aioe") -> np.ndarray:
     """Employment-weighted AI-exposure scores for SOC 2020 major groups (1-9).
 
-    Uses the shipped major-group table (ASHE Table 14 2021 employee-job
+    Uses the shipped major-group table (ASHE Table 14 2025 employee-job
     weights). Unknown groups return NaN with a warning.
+
+    Accepts both codings of the 1-digit major group: plain ``1``-``9``
+    (string or integer) and the FRS adult.tab convention, which stores the
+    major group in thousands (``1000``-``9000``). Any 4-digit code that is
+    an exact multiple of 1000 is normalised to its leading digit, so both
+    codings return identical scores.
     """
 
     column = _measure_column(measure)
     table = load_major_group_ai_exposure_table()
     lookup = table[column].to_dict()
     normalised = _normalise_codes(groups)
+    normalised = np.array(
+        [
+            code[0]
+            if isinstance(code, str) and len(code) == 4 and code.endswith("000")
+            else code
+            for code in normalised
+        ],
+        dtype=object,
+    )
 
     result = np.full(len(normalised), np.nan, dtype=float)
     unmatched: list[str] = []

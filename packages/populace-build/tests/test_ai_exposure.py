@@ -93,7 +93,7 @@ def test_invalid_measure_raises() -> None:
 def test_major_group_lookup() -> None:
     table = load_major_group_ai_exposure_table()
     assert list(table.index) == [str(group) for group in range(1, 10)]
-    assert (table["weighting"] == "ashe_2021_table14_jobs").all()
+    assert (table["weighting"] == "ashe_2025_table14_jobs").all()
 
     scores = exposure_for_major_group([1, 2, 9], measure="c_aioe")
     assert np.isfinite(scores).all()
@@ -108,3 +108,22 @@ def test_major_group_lookup() -> None:
     with pytest.warns(UserWarning, match="0"):
         missing = exposure_for_major_group([0])
     assert np.isnan(missing[0])
+
+
+def test_major_group_accepts_frs_thousands_coding() -> None:
+    # FRS adult.tab codes SOC 2020 major groups as 1000-9000.
+    frs_codes = [group * 1000 for group in range(1, 10)]
+    plain_codes = list(range(1, 10))
+
+    for measure in ("c_aioe", "complementarity", "felten_aioe"):
+        np.testing.assert_allclose(
+            exposure_for_major_group(frs_codes, measure=measure),
+            exposure_for_major_group(plain_codes, measure=measure),
+        )
+
+    # String FRS coding works too, and non-multiples of 1000 stay unknown.
+    np.testing.assert_allclose(
+        exposure_for_major_group(["4000"]), exposure_for_major_group(["4"])
+    )
+    with pytest.warns(UserWarning, match="4100"):
+        assert np.isnan(exposure_for_major_group(["4100"])[0])
