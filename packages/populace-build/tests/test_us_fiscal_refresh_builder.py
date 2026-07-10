@@ -1752,9 +1752,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
-    monkeypatch.setattr(
-        builder, "assert_take_up_treatments_consistent", lambda: None
-    )
+    monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -1970,7 +1968,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "_with_medicaid_take_up_outputs",
-        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: (frame, {}),
+        lambda frame, specs, *, seed, substitutions=(), maximum_microsim_batch_size=None: (
+            frame,
+            {},
+        ),
     )
     monkeypatch.setattr(
         builder,

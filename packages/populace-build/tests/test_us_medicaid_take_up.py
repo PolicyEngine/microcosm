@@ -879,3 +879,34 @@ class TestReviewedSubstitutionRegister:
             == "cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_enrollment"
         )
         assert entry.issue == "populace#386"
+
+    def test_registry_without_medicaid_family_is_a_no_op(self) -> None:
+        # A registry that carries no medicaid_enrollment state family at all
+        # (a diagnostic run whose targets omit the CMS enrollment facts) has
+        # nothing to substitute into: the register injects nothing and does not
+        # raise. Medicaid-absence is the take-up stage's empty-target guard's
+        # job, not the register's — so main() still runs on such a registry.
+        registry = TargetRegistry(
+            (
+                TargetSpec(
+                    name="amount",
+                    entity="household",
+                    measure="income",
+                    value=100.0,
+                    source="fixture",
+                    metadata={"source_measure_id": "payment_amount"},
+                ),
+            ),
+            country="us",
+        )
+
+        augmented, records = apply_us_medicaid_enrollment_substitutions(registry)
+
+        assert len(augmented) == len(registry)
+        rhode_island = _record_for(records, "44")
+        assert rhode_island["applied"] is False
+        assert rhode_island["stale"] is False
+        assert not any(
+            spec.metadata.get("medicaid_enrollment_substitution") == "true"
+            for spec in augmented.specs
+        )

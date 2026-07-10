@@ -653,14 +653,21 @@ def apply_us_medicaid_enrollment_substitutions(
     injected; :func:`us_medicaid_take_up_gate` fails on it (the #286
     stale-exclusion doctrine, applied to a substitution register).
 
+    A registry that carries no ``medicaid_enrollment`` state family at all
+    (e.g. a diagnostic run whose targets omit the CMS enrollment facts) has
+    nothing for the register to stand in — every entry is recorded
+    ``applied=False, stale=False`` and injected nowhere. Medicaid-absence is
+    not this register's failure to raise: the take-up stage's own empty-target
+    guard (:func:`with_us_medicaid_take_up`) owns that condition.
+
     Returns:
         The augmented registry and one diagnostic record per register entry
         (consumed by the take-up gate and written to the release diagnostics).
 
     Raises:
-        ValueError: If an active substitution has no natural
-            ``medicaid_enrollment`` state spec in the registry to derive the
-            substituted target's calibration shape from.
+        ValueError: If an active substitution's ``substitute_source_record_id``
+            is not a well-formed CMS state-enrollment fact id (a malformed
+            register entry, surfaced by :func:`_state_enrollment_record_id_parts`).
     """
     natural = _medicaid_enrollment_state_specs(registry)
     template = next(iter(natural.values()), None)
@@ -669,6 +676,10 @@ def apply_us_medicaid_enrollment_substitutions(
     for substitution in substitutions:
         state_fips = substitution.state_fips.zfill(2)
         stale = state_fips in natural
+        # `template is None` iff the registry has no natural medicaid_enrollment
+        # state spec, so the substitution has no calibration shape to clone and
+        # no family to stand in — inapplicable here, not injected and not stale.
+        applied = not stale and template is not None
         records.append(
             {
                 "state_fips": state_fips,
@@ -685,23 +696,16 @@ def apply_us_medicaid_enrollment_substitutions(
                 "substitute_value": float(substitution.substitute_value),
                 "reason": substitution.reason,
                 "issue": substitution.issue,
-                "applied": not stale,
+                "applied": applied,
                 "stale": stale,
             }
         )
-        if stale:
-            # CMS backfilled the substituted-for month: the natural spec is
-            # already in the registry. Inject nothing (a second row would be a
-            # duplicate state target) and let the gate fail on the now-stale
-            # register entry.
+        if not applied:
+            # Stale: CMS backfilled the substituted-for month, so the natural
+            # spec is already in the registry — inject nothing (a second row
+            # would be a duplicate state target) and let the gate fail on the
+            # now-stale register entry. No family: nothing to substitute into.
             continue
-        if template is None:
-            raise ValueError(
-                "Cannot apply the reviewed Medicaid enrollment substitution "
-                f"for state {state_fips}: the registry carries no "
-                "medicaid_enrollment state spec to derive the substituted "
-                "target's calibration shape from."
-            )
         specs.append(_substituted_medicaid_enrollment_spec(template, substitution))
     return TargetRegistry(specs, country=registry.country), tuple(records)
 
