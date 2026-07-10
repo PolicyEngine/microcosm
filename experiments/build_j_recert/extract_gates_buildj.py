@@ -71,7 +71,6 @@ def main() -> int:
 
     if parity:
         print("\n--- EXPORT-MASS PARITY ---")
-        pg = parity.get("input_mass_parity", parity) if isinstance(parity, dict) else parity
         print(f"  passed = {find(parity, 'passed')}")
         fails = find(parity, "failures")
         print(f"  failures = {fails}")

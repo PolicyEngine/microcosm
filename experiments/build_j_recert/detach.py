@@ -10,7 +10,6 @@ the child PID in <pidfile>, and exits immediately. No killing watchdog:
 the chunk runs to natural completion; monitoring is via the script's own
 rc/append logs + a memory-pressure sampler. STAGING/LOCAL ONLY.
 """
-import os
 import subprocess
 import sys
 import time
