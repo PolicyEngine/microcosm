@@ -314,14 +314,6 @@
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
     },
-    "tip_income": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "treasury_tipped_occupation_code": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
     "unadjusted_basis_qualified_property": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"

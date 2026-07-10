@@ -36,6 +36,9 @@ from populace.build.us_runtime.pregnancy import (
 from populace.build.us_runtime.scf_wealth import (
     US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.sipp_tips import (
+    US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -54,6 +57,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
     *US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
     *US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+    *US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
 )
 
 #: The geography spine a US release carries by default: state and district,

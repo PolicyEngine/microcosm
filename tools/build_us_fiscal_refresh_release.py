@@ -59,9 +59,11 @@ from populace.build.us_runtime import (
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     fetch_scf_2022_summary_extract,
+    fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_tip_donor,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
@@ -71,6 +73,7 @@ from populace.build.us_runtime import (
     us_register_consistency_gate,
     us_release_input_coverage_gate,
     us_scf_wealth_signal_gate,
+    us_sipp_tips_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -84,6 +87,7 @@ from populace.build.us_runtime import (
     with_us_medicaid_take_up,
     with_us_pregnancy_inputs,
     with_us_scf_wealth_inputs,
+    with_us_sipp_tip_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
@@ -875,6 +879,15 @@ def _parse_args() -> argparse.Namespace:
             "imputation (scf_wealth stage, populace#356/#368). When omitted the "
             "fixed-vintage extract is fetched and cached from the Federal "
             "Reserve."
+        ),
+    )
+    parser.add_argument(
+        "--sipp-tip-donor",
+        type=Path,
+        help=(
+            "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
+            "feeds tip_income and Treasury tipped-occupation coverage. When "
+            "omitted the immutable donor revision is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -6036,6 +6049,43 @@ def main() -> None:
             + "; ".join(
                 f"SCF-wealth signal failed: {failure}"
                 for failure in scf_wealth_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "sipp_tip_inputs",
+            message=(
+                "Imputing tip income from the sha-pinned SIPP donor and "
+                "carrying Treasury tipped-occupation codes from ASEC."
+            ),
+        )
+    sipp_tip_donor_path = (
+        Path(args.sipp_tip_donor)
+        if args.sipp_tip_donor is not None
+        else fetch_sipp_2023_tip_donor()
+    )
+    sipp_tip_donor = load_sipp_2023_tip_donor(sipp_tip_donor_path)
+    base_frame = with_us_sipp_tip_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        sipp_donor=sipp_tip_donor,
+    )
+    sipp_tips_gate = us_sipp_tips_signal_gate(base_frame)
+    if not sipp_tips_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "sipp_tips_gate",
+                status="failed",
+                message="SIPP-tip signal gate failed.",
+                failures=list(sipp_tips_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SIPP-tip signal failed: {failure}"
+                for failure in sipp_tips_gate.failures
             )
         )
     if telemetry is not None:

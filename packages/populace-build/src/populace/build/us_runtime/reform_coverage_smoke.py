@@ -60,21 +60,21 @@ def us_reform_coverage_smoke_gate(
     """Score each pinned probe on the export; a ~$0 bound reform fails.
 
     For each probe, the budget-measure change (reform vs baseline, signed by
-    ``effect_direction``) must have magnitude at least ``min_abs_effect``. A
-    smaller magnitude means the reform did not bind — its ``binding_inputs`` are
-    absent/degenerate on the export — and fails the release.
+    ``effect_direction``) must have the declared ``expected_sign`` and magnitude
+    at least ``min_abs_effect``. A zero, undersized, or wrong-signed effect means
+    the reform did not bind as declared and fails the release.
 
     Args:
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
             builds the reformed simulation. Each result answers
             ``.calculate(measure, period).sum()`` as a weighted total.
         probes: Probes to run. Defaults to the shipped manifest's probe set.
-        period: The period to score at.
+        period: Default period for probes without a probe-specific period.
         name: Gate name for the manifest.
 
     Returns:
         The reform-coverage smoke gate result. Passes iff every probe scores at
-        least its ``min_abs_effect`` in magnitude.
+        its expected sign and at least its ``min_abs_effect`` in magnitude.
     """
     probes = tuple(
         probes if probes is not None else us_release_reform_coverage_probes()
@@ -91,28 +91,35 @@ def us_reform_coverage_smoke_gate(
     for probe in probes:
         reform = _build_reform(dict(probe.parameter_changes))
         reformed = simulate(reform)
-        baseline_total = _weighted_total(baseline, probe.budget_measure, period)
-        reform_total = _weighted_total(reformed, probe.budget_measure, period)
+        probe_period = int(probe.period if probe.period is not None else period)
+        baseline_total = _weighted_total(baseline, probe.budget_measure, probe_period)
+        reform_total = _weighted_total(reformed, probe.budget_measure, probe_period)
         if probe.effect_direction == "baseline_minus_reform":
             effect = baseline_total - reform_total
         else:
             effect = reform_total - baseline_total
+        signed_magnitude = effect if probe.expected_sign == "positive" else -effect
+        passed = signed_magnitude >= probe.min_abs_effect
         results[probe.id] = {
             "name": probe.name,
+            "period": probe_period,
             "budget_measure": probe.budget_measure,
             "baseline_total": baseline_total,
             "reform_total": reform_total,
             "effect": effect,
+            "expected_sign": probe.expected_sign,
             "min_abs_effect": probe.min_abs_effect,
             "binding_inputs": list(probe.binding_inputs),
             "issue": probe.issue,
-            "passed": abs(effect) >= probe.min_abs_effect,
+            "passed": passed,
         }
-        if abs(effect) < probe.min_abs_effect:
+        if not passed:
             failures.append(
                 f"{probe.id}: '{probe.name}' scores {effect:+,.0f} on "
-                f"{probe.budget_measure} (|effect| < ${probe.min_abs_effect:,.0f}) "
-                "— the reform did not bind, so its input leaves "
+                f"{probe.budget_measure} for {probe_period}; expected a "
+                f"{probe.expected_sign} effect with magnitude at least "
+                f"${probe.min_abs_effect:,.0f}. The reform did not bind as "
+                "declared, so its input leaves "
                 f"{list(probe.binding_inputs)} are absent or degenerate on the "
                 f"export. {probe.reason} Restore them ({probe.issue})."
             )

@@ -139,6 +139,9 @@ class ReformCoverageProbe:
         budget_measure: The variable whose weighted total change is scored.
         effect_direction: ``"reform_minus_baseline"`` or
             ``"baseline_minus_reform"``.
+        period: Optional probe-specific scoring year. OBBBA probes use 2026
+            while the release's source-data period remains 2024.
+        expected_sign: Required sign of the direction-normalized effect.
         binding_inputs: The input leaves the reform binds through; named in the
             failure so the fix target is explicit.
         min_abs_effect: The reform fails the smoke gate when
@@ -157,6 +160,8 @@ class ReformCoverageProbe:
     reason: str
     issue: str
     effect_direction: str = "reform_minus_baseline"
+    period: int | None = None
+    expected_sign: str = "positive"
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -175,6 +180,12 @@ class ReformCoverageProbe:
             )
         if not (self.min_abs_effect > 0):
             raise ValueError(f"{self.id}: min_abs_effect must be positive.")
+        if self.period is not None and self.period < 1990:
+            raise ValueError(f"{self.id}: period must be a plausible year.")
+        if self.expected_sign not in {"positive", "negative"}:
+            raise ValueError(
+                f"{self.id}: expected_sign must be 'positive' or 'negative'."
+            )
 
 
 @dataclass(frozen=True)
@@ -303,6 +314,12 @@ def load_release_input_coverage_manifest(
                 effect_direction=str(
                     raw_probe.get("effect_direction", "reform_minus_baseline")
                 ),
+                period=(
+                    None
+                    if raw_probe.get("period") is None
+                    else int(raw_probe["period"])
+                ),
+                expected_sign=str(raw_probe.get("expected_sign", "positive")),
             )
         )
 

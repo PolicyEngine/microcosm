@@ -592,17 +592,13 @@
    "status": "reviewed_exclusion"
   },
   "tip_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tract_geoid": {
    "status": "required"
   },
   "treasury_tipped_occupation_code": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unadjusted_basis_qualified_property": {
    "issue": "PolicyEngine/populace#298",
@@ -655,8 +651,8 @@
   }
  },
  "counts": {
-  "required": 70,
-  "reviewed_exclusion": 88,
+  "required": 72,
+  "reviewed_exclusion": 86,
   "total": 158
  },
  "derivation": "Required surface = ecps_parity_reference.json populated layers (input columns the pinned, sha-verified reference eCPS populates). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -680,6 +676,7 @@
    ],
    "budget_measure": "ssi",
    "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
    "id": "ssi_asset_limit_10k_20k",
    "issue": "PolicyEngine/populace#356",
    "min_abs_effect": 1000000000.0,
@@ -692,7 +689,28 @@
      "2024-01-01.2100-12-31": 10000
     }
    },
+   "period": 2024,
    "reason": "Raising the SSI resource limit is a pure relaxation that only changes who passes meets_ssi_resource_test, which compares ssi_countable_resources = bank_account_assets + stock_assets + bond_assets against the limit. With those asset inputs absent, countable resources are 0 for every record, everyone already passes the resource test, and raising the limit scores exactly $0. Dense-native reference: +$1.6B at $10k/$20k, ~+$16.1B with no limit (PolicyEngine/populace#356)."
+  },
+  {
+   "binding_inputs": [
+    "tip_income",
+    "treasury_tipped_occupation_code"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_no_tax_on_tips",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 100000000.0,
+   "name": "OBBBA no-tax-on-tips deduction",
+   "parameter_changes": {
+    "gov.irs.deductions.tip_income.cap": {
+     "2026-01-01.2026-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the OBBBA tip-deduction cap to zero removes the deduction, so baseline-minus-reform income tax must be negative in 2026. With tip_income or the Treasury tipped-occupation code absent, qualified tip income is zero and the repeal scores exactly $0."
   }
  ],
  "schema_version": 1,

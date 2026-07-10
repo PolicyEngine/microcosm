@@ -23,6 +23,7 @@ from populace.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from populace.build.us_runtime.sipp_tips import US_SIPP_TIPS_OUTPUT_COLUMNS
 from populace.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
 from populace.build.us_runtime.take_up_contract import load_take_up_contract
 
@@ -158,6 +159,7 @@ class TestKnownGapsRegister:
             set(US_IMMIGRATION_OUTPUT_COLUMNS)
             | set(US_HOURS_WORKED_OUTPUT_COLUMNS)
             | set(US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS)
+            | set(US_SIPP_TIPS_OUTPUT_COLUMNS)
             | {US_SNAP_TAKE_UP_OUTPUT_COLUMN}
             | {
                 program.variable

@@ -43,6 +43,8 @@ def _us_frame(**person_extra: object) -> Frame:
             "bank_account_assets": [5_000.0, 0.0, 1_200.0],
             "stock_assets": [0.0, 30_000.0, 0.0],
             "bond_assets": [0.0, 0.0, 800.0],
+            "tip_income": [2_400.0, 0.0, 600.0],
+            "treasury_tipped_occupation_code": [101, 0, 304],
             **person_extra,
         }
     )

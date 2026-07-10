@@ -280,9 +280,10 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "census_extract",
-          "vintage": "latest_available",
-          "locator": "Census Survey of Income and Program Participation"
+          "format": "csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use slim tip extract; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "1f0bcb8e045ef1118e8eba4b4a2997bdaaf947bd0dd09d41fa7c7d5657a3d7d5"
         }
       ],
       "operations": [
@@ -294,8 +295,10 @@
           "kind": "fit_tip_income_model",
           "predictors": [
             "employment_income",
-            "is_tipped_occupation",
-            "age"
+            "age",
+            "count_under_18",
+            "count_under_6",
+            "is_tipped_occupation"
           ]
         },
         {
@@ -304,23 +307,27 @@
         }
       ],
       "outputs": [
-        "tip_income"
+        "tip_income",
+        "treasury_tipped_occupation_code"
       ],
       "nonnegative_outputs": [
-        "tip_income"
-      ]
+        "tip_income",
+        "treasury_tipped_occupation_code"
+      ],
+      "notes": "Tip income is the weighted-QRF port pinned to the retired implementation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: December SIPP monthly tips across jobs 1-7 times 12, conditioned on employment income, age, child counts, and Treasury tipped occupation. treasury_tipped_occupation_code is mapped directly from CPS ASEC PEIOOCC using the IRS/Treasury 2025-42 tipped-occupation list and Census 2018 occupation/SOC crosswalk. The final retired downloader moved to an unpinned SIPP 2024 zip; this stage deliberately uses the same implementation's sha-pinned 2023 donor that built the reference eCPS."
     },
     {
       "stage": "org_wages",
       "survey": "CPS ORG",
-      "source": "https://www.bls.gov/cps/earnings.htm",
+      "source": "https://www2.census.gov/programs-surveys/cps/datasets/2024/basic/",
       "grain": "person",
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "cps_basic_monthly",
-          "vintage": "build_year",
-          "locator": "CPS Outgoing Rotation Group"
+          "format": "stata",
+          "vintage": "2024",
+          "locator": "EPI CPS ORG 2024 immutable mirror revision 35054105a3d6797af2e443d3efa9f1d57713ba78",
+          "sha256": "bc336f15696b7bc85546886fa28860b8b38020701c02d5f7deb219c482b2de72"
         }
       ],
       "operations": [
@@ -331,14 +338,39 @@
         {
           "kind": "fit_labor_market_models",
           "predictors": [
+            "employment_income",
+            "weekly_hours_worked",
             "age",
             "is_female",
-            "cps_race",
             "is_hispanic",
+            "race_wbho",
             "state_fips",
-            "employment_income",
+          ],
+          "targets": [
+            "hourly_wage",
+            "is_paid_hourly"
+          ]
+        },
+        {
+          "kind": "assign_union_representation",
+          "source": "BLS 2024 Union Members Tables 1 and 5"
+        },
+        {
+          "kind": "derive_asec_flsa_descriptors",
+          "source_column": "POCCU2"
+        },
+        {
+          "kind": "derive_flsa_overtime_premium",
+          "inputs": [
+            "employment_income_before_lsr",
             "hours_worked_last_week",
-            "weeks_worked"
+            "weeks_worked",
+            "is_paid_hourly",
+            "has_never_worked",
+            "is_military",
+            "is_executive_administrative_professional",
+            "is_farmer_fisher",
+            "is_computer_scientist"
           ]
         }
       ],
@@ -346,13 +378,20 @@
         "hourly_wage",
         "is_paid_hourly",
         "is_union_member_or_covered",
+        "detailed_occupation_recode",
+        "has_never_worked",
+        "is_military",
+        "is_computer_scientist",
+        "is_executive_administrative_professional",
+        "is_farmer_fisher",
         "fsla_overtime_premium"
       ],
       "nonnegative_outputs": [
         "hourly_wage",
+        "detailed_occupation_recode",
         "fsla_overtime_premium"
       ],
-      "notes": "Usual weekly hours are owned by the hours_worked stage (ASEC HRSWK), matching the retired enhanced-CPS pipeline mapping; this stage consumes them as predictors."
+      "notes": "Port of the retired implementation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1 (datasets/org/org.py and datasets/cps/cps.py). The immutable EPI mirror supplies sha-pinned 2024 CPS ORG donor rows; the final retired predictors, QRF targets, BLS 2024 union-representation assignment, POCCU2 mappings, domain constraints, and FLSA premium-share formula are retained. The final downloader rebuilt the donor from 12 live Census monthly files without content hashes, so this stage pins the retired artifact repository's immutable mirror instead of accepting mutable monthly bytes. Usual weekly hours remain owned by hours_worked (ASEC HRSWK) and are consumed here as the final retired QRF predictor."
     },
     {
       "stage": "meps_esi_premiums",

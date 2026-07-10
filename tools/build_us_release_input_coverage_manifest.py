@@ -59,7 +59,7 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
     "bond_assets",
 )
 
-#: The single pinned reform-coverage probe: raising the SSI resource limit from
+#: Pinned reform-coverage probes. Raising the SSI resource limit from
 #: the 2024 statutory $2,000 individual / $3,000 couple to $10,000 / $20,000 is
 #: a pure relaxation that binds only through ``ssi_countable_resources``. Nonzero
 #: iff the asset inputs are restored. Dense-native reference magnitudes: +$1.6B
@@ -79,7 +79,9 @@ REFORM_COVERAGE_PROBES = [
             },
         },
         "budget_measure": "ssi",
+        "period": 2024,
         "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
         "binding_inputs": list(SSI_COUNTABLE_RESOURCE_ASSETS),
         "min_abs_effect": 1_000_000_000.0,
         "reason": (
@@ -93,7 +95,30 @@ REFORM_COVERAGE_PROBES = [
             "limit (PolicyEngine/populace#356)."
         ),
         "issue": "PolicyEngine/populace#356",
-    }
+    },
+    {
+        "id": "obbba_no_tax_on_tips",
+        "name": "OBBBA no-tax-on-tips deduction",
+        "parameter_changes": {
+            "gov.irs.deductions.tip_income.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": [
+            "tip_income",
+            "treasury_tipped_occupation_code",
+        ],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "Setting the OBBBA tip-deduction cap to zero removes the deduction, "
+            "so baseline-minus-reform income tax must be negative in 2026. "
+            "With tip_income or the Treasury tipped-occupation code absent, "
+            "qualified tip income is zero and the repeal scores exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#38",
+    },
 ]
 
 

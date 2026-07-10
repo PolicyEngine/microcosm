@@ -263,6 +263,19 @@ class TestReformCoverageSmokeGate:
         assert result.passed
         assert result.details["results"]["ssi_probe"]["effect"] == pytest.approx(1.6e9)
 
+    def test_wrong_signed_effect_fails(self, monkeypatch) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        def simulate(reform):
+            return _Sim(3.0e10 if reform == "REFORM" else 4.0e10)
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=[_probe()], period=2024
+        )
+        assert not result.passed
+        assert result.details["results"]["ssi_probe"]["effect"] == -1.0e10
+        assert "expected a positive effect" in result.failures[0]
+
     def test_probeless_gate_is_refused(self) -> None:
         # A probe-less smoke gate would pass vacuously — refuse it.
         with pytest.raises(ValueError, match="at least one probe"):
@@ -289,6 +302,22 @@ class TestShippedManifest:
         assert set(SSI_COUNTABLE_RESOURCE_ASSETS) <= set(ssi.binding_inputs)
         assert ssi.budget_measure == "ssi"
         assert ssi.min_abs_effect > 0
+        assert ssi.expected_sign == "positive"
+
+    def test_shipped_tip_probe_has_2026_period_sign_and_inputs(self) -> None:
+        tip = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_no_tax_on_tips"
+        )
+        assert tip.period == 2026
+        assert tip.expected_sign == "negative"
+        assert tip.effect_direction == "baseline_minus_reform"
+        assert tip.budget_measure == "income_tax"
+        assert set(tip.binding_inputs) == {
+            "tip_income",
+            "treasury_tipped_occupation_code",
+        }
 
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:
         # The #368 red-gate guarantee cannot be quietly undone: turning an SSI
