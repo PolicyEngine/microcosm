@@ -33,9 +33,7 @@
    "status": "required"
   },
   "block_geoid": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "bond_assets": {
    "note": "SSI countable-resource asset input; required with NO reviewed exclusion per PolicyEngine/populace#368 so the gate fails until the asset stage is restored (Deliverable 2). Currently absent — this is the intended red gate.",
@@ -71,9 +69,7 @@
    "status": "required"
   },
   "county_fips": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "cps_race": {
    "issue": "PolicyEngine/populace#38",
@@ -207,9 +203,7 @@
    "status": "required"
   },
   "health_savings_account_ald": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "home_mortgage_interest": {
    "status": "required"
@@ -467,9 +461,7 @@
    "status": "reviewed_exclusion"
   },
   "spm_unit_pre_subsidy_childcare_expenses": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM childcare-expense input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "spm_unit_tenure_type": {
    "issue": "PolicyEngine/populace#32",
@@ -605,9 +597,7 @@
    "status": "reviewed_exclusion"
   },
   "tract_geoid": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Fine-grain geography code carried by the incumbent but not on the small national candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "treasury_tipped_occupation_code": {
    "issue": "PolicyEngine/populace#38",
@@ -665,8 +655,8 @@
   }
  },
  "counts": {
-  "required": 65,
-  "reviewed_exclusion": 93,
+  "required": 70,
+  "reviewed_exclusion": 88,
   "total": 158
  },
  "derivation": "Required surface = ecps_parity_reference.json populated layers (input columns the pinned, sha-verified reference eCPS populates). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
