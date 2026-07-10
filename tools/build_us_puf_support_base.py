@@ -43,11 +43,13 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_education_inputs_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     us_immigration_composition_summary,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
+    with_us_education_inputs,
     with_us_immigration_inputs,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
@@ -206,6 +208,17 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    imputed = with_us_education_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    education_inputs_gate = us_education_inputs_signal_gate(imputed)
+    if not education_inputs_gate.passed:
+        raise SystemExit(
+            "Education-input signal gate failed:\n  "
+            + "\n  ".join(education_inputs_gate.failures)
+        )
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
         ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
@@ -327,6 +340,11 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "education_inputs_signal": {
+            "passed": education_inputs_gate.passed,
+            "failures": list(education_inputs_gate.failures),
+            "details": dict(education_inputs_gate.details),
+        },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
@@ -395,9 +413,7 @@ def impute_and_audit_us_puf_support(
     )
     report = weights_audit_gate(fit_records)
     if not report.passed:
-        raise SystemExit(
-            "Weights audit failed:\n  " + "\n  ".join(report.failures)
-        )
+        raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     weights_audit = {
         "passed": report.passed,
         "failures": list(report.failures),

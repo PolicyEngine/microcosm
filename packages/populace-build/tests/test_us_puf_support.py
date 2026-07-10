@@ -295,6 +295,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "qualified_tuition_expenses" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -333,6 +334,23 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
         not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     )
     assert "health_savings_account_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+
+
+def test_puf_tax_unit_donor_derives_qualified_tuition_from_raw_fields() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "E03230": [500.0, 2_000.0, -10.0],
+            "E87530": [1_000.0, 1_500.0, 4_000.0],
+        },
+        person_outputs=("qualified_tuition_expenses",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["qualified_tuition_expenses"].tolist() == [3_000.0, 4_000.0]
 
 
 def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:

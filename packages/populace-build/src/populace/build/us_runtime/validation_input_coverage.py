@@ -10,10 +10,9 @@ produced by no stage, the provision is a structural zero on the dataset and its
 validation row reads as a silent zero until an external benchmark exposes it.
 Two shipped instances:
 
-- education credits (``soi_baseline_levels`` row ``soi_education_credits``,
-  ``tax_expenditure_reforms`` has no education row) depend on
-  ``qualified_tuition_expenses``, populated on 641 of 160,858 person records —
-  education credits validate ~40% low (populace#253); and
+- education credits (``soi_baseline_levels`` row ``soi_education_credits``)
+  depend on ``qualified_tuition_expenses``; the PUF education stage now
+  produces that leaf and its five AOTC factual inputs (populace#253); and
 - the OBBBA auto-loan-interest deduction depends on
   ``qualified_passenger_vehicle_loan_interest``; the SCF auto-loan stage now
   derives a documented qualifying-share proxy so the provision binds
@@ -124,15 +123,6 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         leaf="qualified_tuition_expenses",
         provision_variables=("education_tax_credits",),
         validation_rows=("soi_education_credits",),
-        # #253: populated on 641/160,858 person records; education credits
-        # validate ~40% below the IRS SOI actual. A reviewed exclusion until
-        # the leaf is imputed from enrollment + published tuition
-        # distributions (NCES/IPEDS) or education claims are calibrated.
-        reason=(
-            "Qualifying tuition input essentially unimputed — 641/160,858 person "
-            "records (PolicyEngine/populace#253); education credits validate ~40% "
-            "low until it is imputed or education claims are calibrated."
-        ),
     ),
     ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",

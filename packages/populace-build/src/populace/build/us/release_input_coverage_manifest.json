@@ -14,9 +14,7 @@
    "status": "reviewed_exclusion"
   },
   "attends_eligible_educational_institution_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "auto_loan_balance": {
    "status": "required"
@@ -84,9 +82,7 @@
    "status": "reviewed_exclusion"
   },
   "educational_assistance": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "Educational-assistance income input tied to the education-credit surface; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "educator_expense": {
    "issue": "PolicyEngine/populace#32",
@@ -150,14 +146,10 @@
    "status": "required"
   },
   "has_american_opportunity_credit_1098_t_or_exception": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_american_opportunity_credit_institution_ein": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "has_champva_health_coverage_at_interview": {
    "status": "required"
@@ -245,9 +237,7 @@
    "status": "required"
   },
   "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_executive_administrative_professional": {
    "status": "required"
@@ -279,9 +269,7 @@
    "status": "required"
   },
   "is_pursuing_credential_for_american_opportunity_credit": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_separated": {
    "issue": "PolicyEngine/populace#38",
@@ -379,9 +367,7 @@
    "status": "reviewed_exclusion"
   },
   "qualified_tuition_expenses": {
-   "issue": "PolicyEngine/populace#253",
-   "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (#253).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "real_estate_taxes": {
    "status": "required"
@@ -631,8 +617,8 @@
   }
  },
  "counts": {
-  "required": 87,
-  "reviewed_exclusion": 73,
+  "required": 94,
+  "reviewed_exclusion": 66,
   "total": 160
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented documented post-reference fsla_overtime_premium and qualified_passenger_vehicle_loan_interest inputs required by the shipped OBBBA probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",

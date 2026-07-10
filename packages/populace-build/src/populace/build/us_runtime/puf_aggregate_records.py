@@ -209,6 +209,9 @@ def derive_puf_policyengine_variables(
     qualified_dividend_source: str = "E00650",
     qualified_dividend_output: str = "qualified_dividend_income",
     non_qualified_dividend_output: str = "non_qualified_dividend_income",
+    qualified_tuition_primary_source: str | None = None,
+    qualified_tuition_optional_source: str | None = None,
+    qualified_tuition_output: str = "qualified_tuition_expenses",
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -225,6 +228,24 @@ def derive_puf_policyengine_variables(
 
     result[qualified_dividend_output] = qualified
     result[non_qualified_dividend_output] = ordinary - qualified
+    if qualified_tuition_primary_source is not None:
+        _require_columns(result, [qualified_tuition_primary_source])
+        tuition = _numeric_series(result[qualified_tuition_primary_source]).clip(
+            lower=0.0
+        )
+        if (
+            qualified_tuition_optional_source is not None
+            and qualified_tuition_optional_source in result
+        ):
+            optional = _numeric_series(result[qualified_tuition_optional_source]).clip(
+                lower=0.0
+            )
+            tuition = pd.Series(
+                np.maximum(tuition.to_numpy(), optional.to_numpy()),
+                index=result.index,
+                dtype="float64",
+            )
+        result[qualified_tuition_output] = tuition
     return result
 
 

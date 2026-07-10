@@ -10,10 +10,6 @@
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
     },
-    "attends_eligible_educational_institution_for_american_opportunity_credit": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-      "issue": "PolicyEngine/populace#253"
-    },
     "business_is_sstb": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
@@ -37,10 +33,6 @@
     "domestic_production_ald": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
-    },
-    "educational_assistance": {
-      "reason": "Educational-assistance income input tied to the education-credit surface; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#253"
     },
     "educator_expense": {
       "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
@@ -74,14 +66,6 @@
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
     },
-    "has_american_opportunity_credit_1098_t_or_exception": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-      "issue": "PolicyEngine/populace#253"
-    },
-    "has_american_opportunity_credit_institution_ein": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-      "issue": "PolicyEngine/populace#253"
-    },
     "household_vehicles_owned": {
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
       "issue": "PolicyEngine/populace#49"
@@ -102,17 +86,9 @@
       "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
       "issue": "PolicyEngine/populace#274"
     },
-    "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-      "issue": "PolicyEngine/populace#253"
-    },
     "is_household_head": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
-    },
-    "is_pursuing_credential_for_american_opportunity_credit": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (education credits understated).",
-      "issue": "PolicyEngine/populace#253"
     },
     "is_separated": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
@@ -165,10 +141,6 @@
     "qualified_reit_and_ptp_income": {
       "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
       "issue": "PolicyEngine/populace#298"
-    },
-    "qualified_tuition_expenses": {
-      "reason": "American Opportunity / tuition education-credit input essentially unimputed on the candidate frame (#253).",
-      "issue": "PolicyEngine/populace#253"
     },
     "receives_housing_assistance": {
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",

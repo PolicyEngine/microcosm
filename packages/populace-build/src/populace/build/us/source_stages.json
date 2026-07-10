@@ -27,7 +27,10 @@
           "ordinary_dividend_source": "E00600",
           "qualified_dividend_source": "E00650",
           "qualified_dividend_output": "qualified_dividend_income",
-          "non_qualified_dividend_output": "non_qualified_dividend_income"
+          "non_qualified_dividend_output": "non_qualified_dividend_income",
+          "qualified_tuition_primary_source": "E03230",
+          "qualified_tuition_optional_source": "E87530",
+          "qualified_tuition_output": "qualified_tuition_expenses"
         },
         {
           "kind": "disaggregate_aggregate_records",
@@ -86,6 +89,7 @@
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
+        "qualified_tuition_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "rental_income",
@@ -122,6 +126,7 @@
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
+        "qualified_tuition_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -132,7 +137,51 @@
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent."
+    },
+    {
+      "stage": "education_inputs",
+      "survey": "IRS PUF 2015 (uprated) + Census CPS ASEC",
+      "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "fixed_width_or_csv",
+          "vintage": "2015",
+          "locator": "IRS SOI Public Use File E03230 and optional E87530 tuition fields"
+        },
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person ED_VAL educational-assistance field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_education_inputs"
+        }
+      ],
+      "outputs": [
+        "qualified_tuition_expenses",
+        "educational_assistance",
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein"
+      ],
+      "nonnegative_outputs": [
+        "qualified_tuition_expenses",
+        "educational_assistance"
+      ],
+      "notes": "Exact retired eCPS input construction: positive qualified tuition sets all five affirmative American Opportunity Credit factual inputs; educational_assistance carries directly from measured ASEC ED_VAL. The five flags and tuition therefore share one support mask, which the signal gate enforces."
     },
     {
       "stage": "capital_gain_distributions",

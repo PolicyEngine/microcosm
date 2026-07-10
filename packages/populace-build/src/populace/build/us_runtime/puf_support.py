@@ -83,6 +83,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "real_estate_taxes",
     "home_mortgage_interest",
     "student_loan_interest",
+    "qualified_tuition_expenses",
     # The engine owns the realized contribution amounts through the
     # IRA-limit scale and self-employment caps; the persistable leaves are
     # the desired contributions, equal to the PUF's observed deductions at
@@ -124,6 +125,7 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
 _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
+        "qualified_tuition_expenses",
     }
 )
 
@@ -171,6 +173,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
+        "qualified_tuition_expenses",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -204,6 +207,7 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
     "self_employed_pension_contributions_desired": (
         "self_employment_income_before_lsr",
     ),
+    "qualified_tuition_expenses": ("is_full_time_college_student",),
 }
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
     "employment_income": ("employment_income_before_lsr",),
@@ -472,9 +476,7 @@ def impute_us_puf_tax_detail_support(
         # Record the kind the fit *resolved* to (not the "design" spec above):
         # the build-level weights audit reads this back to prove the production
         # fit did not silently resolve unweighted (populace #300).
-        fit_records.append(
-            FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind)
-        )
+        fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind))
 
     features = _tax_unit_feature_frame(frame, predictors)
     puf_mask = (
@@ -1227,6 +1229,11 @@ def _person_source_values(
         "taxable_unemployment_compensation" in arrays
     ):
         return _numeric_array(arrays["taxable_unemployment_compensation"])
+    if output == "qualified_tuition_expenses" and "E03230" in arrays:
+        tuition = _numeric_array(arrays["E03230"])
+        if "E87530" in arrays:
+            tuition = np.maximum(tuition, _numeric_array(arrays["E87530"]))
+        return np.maximum(tuition, 0.0)
     if output in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS:
         if output != "social_security_retirement":
             for source in ("social_security", "total_social_security", "E02400"):

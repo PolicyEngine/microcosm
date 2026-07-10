@@ -17,6 +17,9 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
+from populace.build.us_runtime.education_inputs import (
+    derive_us_education_inputs_from_manifest,
+)
 from populace.build.us_runtime.eligibility_inputs import (
     derive_us_eligibility_inputs_from_manifest,
 )
@@ -70,6 +73,9 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "qualified_dividend_source",
         "qualified_dividend_output",
         "non_qualified_dividend_output",
+        "qualified_tuition_primary_source",
+        "qualified_tuition_optional_source",
+        "qualified_tuition_output",
     }
 )
 
@@ -195,6 +201,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_pregnancy": derive_us_pregnancy_from_manifest,
         "derive_snap_abawd_discretionary_exemption": derive_us_snap_discretionary_exemption_from_manifest,
@@ -740,6 +747,22 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "non_qualified_dividend_output",
                 default="non_qualified_dividend_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_primary_source=_optional_string_param(
+                params,
+                "qualified_tuition_primary_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_optional_source=_optional_string_param(
+                params,
+                "qualified_tuition_optional_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_output=_string_param_with_default(
+                params,
+                "qualified_tuition_output",
+                default="qualified_tuition_expenses",
                 label="PUF PolicyEngine-variable derivation",
             ),
         )

@@ -189,6 +189,9 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
             "puf_tax_detail"
         )
+        assert US_STAGE_NAMES.index("puf_tax_detail") < US_STAGE_NAMES.index(
+            "education_inputs"
+        )
 
     def test_source_specs_are_manifest_only_not_python_loaders(self) -> None:
         for spec in US_SOURCE_STAGE_SPECS:
@@ -356,6 +359,9 @@ class TestUsSources:
             "qualified_dividend_source": "E00650",
             "qualified_dividend_output": "qualified_dividend_income",
             "non_qualified_dividend_output": "non_qualified_dividend_income",
+            "qualified_tuition_primary_source": "E03230",
+            "qualified_tuition_optional_source": "E87530",
+            "qualified_tuition_output": "qualified_tuition_expenses",
         }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]

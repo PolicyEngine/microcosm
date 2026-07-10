@@ -40,28 +40,24 @@ class TestUsSourceStageOutputs:
         assert "employment_income_before_lsr" in outputs
         assert "student_loan_interest" in outputs
         assert "fsla_overtime_premium" in outputs
-        # Tuition remains a known gap; qualifying auto-loan interest is now a
-        # declared SCF-stage output and may no longer hide behind an exclusion.
-        assert "qualified_tuition_expenses" not in outputs
+        # Tuition and qualifying auto-loan interest are declared source-stage
+        # outputs and may no longer hide behind exclusions.
+        assert "qualified_tuition_expenses" in outputs
         assert "qualified_passenger_vehicle_loan_interest" in outputs
 
 
 class TestUsValidationInputCoverageGate:
-    def test_shipped_config_passes_with_known_gaps_allowlisted(self) -> None:
-        # The shipped state: tuition remains reviewed; auto-loan interest is
-        # produced, so the row binds without an exclusion.
+    def test_shipped_config_passes_without_reviewed_exclusions(self) -> None:
         result = us_validation_input_coverage_gate()
         assert result.passed, result.failures
-        assert set(result.details["reviewed_exclusions"]) == {
-            "qualified_tuition_expenses"
-        }
+        assert result.details["reviewed_exclusions"] == {}
         assert result.details["missing"] == []
         requirements = us_validation_input_leaf_requirements()
         assert requirements["tip_income"] == ["obbba_no_tax_on_tips"]
         assert requirements["treasury_tipped_occupation_code"] == [
             "obbba_no_tax_on_tips"
         ]
-        assert "fsla_overtime_premium" in requirements
+        assert requirements["fsla_overtime_premium"] == ["obbba_no_tax_on_overtime"]
         assert requirements["qualified_passenger_vehicle_loan_interest"] == [
             "obbba_auto_loan_interest"
         ]
@@ -112,31 +108,15 @@ class TestUsValidationInputCoverageGate:
         assert result.details["missing"] == ["some_new_unimputed_input"]
         assert any("obbba_new_untested_provision" in line for line in result.failures)
 
-    def test_leaf_becoming_a_declared_output_flags_stale_exclusion(self) -> None:
-        # If a known-gap leaf is later produced by a stage, its reviewed
-        # exclusion is stale and the gate flags it so the register cannot rot.
-        result = us_validation_input_coverage_gate(
-            source_stage_outputs=[
-                *us_source_stage_outputs(),
-                "qualified_tuition_expenses",
-            ],
-        )
-        assert not result.passed
-        assert any("Stale reviewed exclusions" in line for line in result.failures)
-        assert "qualified_tuition_expenses" in result.details["stale_exclusions"]
-
-    def test_removing_the_gap_reason_makes_the_row_fail(self) -> None:
-        # A registry entry with no reason (not a tracked gap) that is still
-        # unproduced must fail: this is the guard against re-shipping the #252
-        # silent zero once the leaf is expected to be present.
+    def test_removing_tuition_from_outputs_makes_the_row_fail(self) -> None:
         requirements = us_validation_input_leaf_requirements()
 
         from populace.build.gates import source_stage_input_coverage_gate
 
         result = source_stage_input_coverage_gate(
             requirements,
-            declared_outputs=us_source_stage_outputs(),
-            reviewed_exclusions={},  # no leaf allowlisted
+            declared_outputs=us_source_stage_outputs() - {"qualified_tuition_expenses"},
+            reviewed_exclusions={},
             name="us_validation_input_coverage",
         )
         assert not result.passed

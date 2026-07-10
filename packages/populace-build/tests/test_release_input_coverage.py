@@ -436,6 +436,20 @@ class TestShippedManifest:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
 
+    def test_education_input_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "qualified_tuition_expenses",
+            "educational_assistance",
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+            "has_american_opportunity_credit_institution_ein",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -471,6 +485,7 @@ class TestShippedManifest:
         assert overtime.effect_direction == "baseline_minus_reform"
         assert overtime.budget_measure == "income_tax"
         assert overtime.binding_inputs == ("fsla_overtime_premium",)
+        assert overtime.min_abs_effect > 0
         assert set(overtime.parameter_changes) == {
             "gov.irs.deductions.overtime_income.cap.JOINT",
             "gov.irs.deductions.overtime_income.cap.SINGLE",

@@ -70,6 +70,7 @@ from populace.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
+    us_education_inputs_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
@@ -89,6 +90,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    with_us_education_inputs,
     with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
@@ -5979,6 +5981,36 @@ def main() -> None:
             + "; ".join(
                 f"Eligibility-inputs signal failed: {failure}"
                 for failure in eligibility_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "education_inputs",
+            message=(
+                "Carrying ASEC educational assistance and deriving AOTC "
+                "factual inputs from PUF qualified tuition."
+            ),
+        )
+    base_frame = with_us_education_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    education_inputs_gate = us_education_inputs_signal_gate(base_frame)
+    if not education_inputs_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "education_inputs_gate",
+                status="failed",
+                message="Education-input signal gate failed.",
+                failures=list(education_inputs_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Education-input signal failed: {failure}"
+                for failure in education_inputs_gate.failures
             )
         )
     if telemetry is not None:

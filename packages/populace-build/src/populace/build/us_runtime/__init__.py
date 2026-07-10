@@ -72,6 +72,17 @@ from populace.build.us_runtime.demographics import (
     demographics_payload,
     write_demographics,
 )
+from populace.build.us_runtime.education_inputs import (
+    US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS,
+    US_EDUCATION_INPUTS_STAGE_NAME,
+    derive_us_education_inputs_from_manifest,
+    us_education_inputs_signal_gate,
+    us_education_inputs_stage_spec,
+    us_education_inputs_summary,
+    with_us_education_inputs,
+)
 from populace.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
@@ -468,6 +479,15 @@ __all__ = [
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
+    "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
+    "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
+    "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
+    "US_EDUCATION_INPUTS_STAGE_NAME",
+    "derive_us_education_inputs_from_manifest",
+    "us_education_inputs_signal_gate",
+    "us_education_inputs_stage_spec",
+    "us_education_inputs_summary",
+    "with_us_education_inputs",
     "QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET",
     "SCF_2022_FULL_EXTRACT_MEMBER",
     "SCF_2022_FULL_EXTRACT_MEMBER_SHA256",
@@ -831,6 +851,15 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "realized ranges."
         ),
     ),
+    US_EDUCATION_INPUTS_STAGE_NAME: DonorSpec(
+        survey="IRS PUF 2015 (uprated) + Census CPS ASEC",
+        source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
+        notes=(
+            "Qualified tuition comes from the PUF E03230/E87530 maximum; "
+            "the five affirmative AOTC factual inputs follow positive tuition, "
+            "and educational assistance carries directly from ASEC ED_VAL."
+        ),
+    ),
     "capital_gain_distributions": DonorSpec(
         survey="IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
         source=(
@@ -873,6 +902,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
+    US_EDUCATION_INPUTS_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",
     "sipp_tips",

@@ -5,3 +5,4 @@ Writable continuation commits use `git --git-dir=.coverage-git --work-tree=.` be
 - overtime/FLSA | complete (targeted pytest + Ruff green) | b6e58363457497fbdb5f3123539c09ee930cd122
 - SIPP tips | complete (targeted salvage pytest green) | 0c7bbfb691aed03cbfd5c985c40da237d5e2505b
 - SCF auto loans | complete (targeted salvage pytest green) | 0c7bbfb691aed03cbfd5c985c40da237d5e2505b
+- overtime/FLSA | verified green (104-test mandated set; 70-test family rerun + Ruff) | 68739314c6cc205bf28a3314348755a083eb3d82

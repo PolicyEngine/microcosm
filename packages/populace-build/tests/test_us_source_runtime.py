@@ -15,6 +15,7 @@ from populace.build.us_runtime import US_SOURCE_MANIFEST
 from populace.build.us_runtime.puf_aggregate_records import (
     AGGREGATE_RECIDS,
     SYNTHETIC_RECID_START,
+    derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
 )
 from populace.build.us_runtime.source_runtime import (
@@ -95,7 +96,10 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
                 "E00600": abs_agi * 0.05,
             }
         )
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+    result["E03230"] = np.where(result["RECID"] % 5 == 0, 1_500.0, 0.0)
+    result["E87530"] = np.where(result["RECID"] % 7 == 0, 4_000.0, 0.0)
+    return result
 
 
 def _make_aca_people() -> pd.DataFrame:
@@ -180,7 +184,14 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         stop_after="disaggregate_aggregate_records",
     )
 
-    expected = disaggregate_puf_aggregate_records(mini_puf, seed=42)
+    expected = disaggregate_puf_aggregate_records(
+        derive_puf_policyengine_variables(
+            mini_puf,
+            qualified_tuition_primary_source="E03230",
+            qualified_tuition_optional_source="E87530",
+        ),
+        seed=42,
+    )
     pd.testing.assert_frame_equal(result, expected)
     assert not result["RECID"].isin(AGGREGATE_RECIDS).any()
     assert (result["RECID"] >= SYNTHETIC_RECID_START).any()
@@ -193,6 +204,12 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         result["non_qualified_dividend_income"],
         result["E00600"] - result["E00650"],
     )
+    regular = result["RECID"] < SYNTHETIC_RECID_START
+    assert np.allclose(
+        result.loc[regular, "qualified_tuition_expenses"],
+        np.maximum(result.loc[regular, "E03230"], result.loc[regular, "E87530"]),
+    )
+    assert (result["qualified_tuition_expenses"] >= 0.0).all()
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:
