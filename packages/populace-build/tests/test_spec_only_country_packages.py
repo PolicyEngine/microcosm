@@ -90,6 +90,10 @@ def test__given_country_package_manifests__then_resources_are_local_specs() -> N
     assert offenders == []
 
 
+# Shared package-data directories under build/ that are not country packages.
+NON_COUNTRY_DIRECTORIES = frozenset({"schemas"})
+
+
 def test__given_country_like_directories__then_each_has_a_manifest() -> None:
     # Given
     roots = [
@@ -98,6 +102,7 @@ def test__given_country_like_directories__then_each_has_a_manifest() -> None:
         if path.is_dir()
         and not path.name.startswith("__")
         and not path.name.endswith("_runtime")
+        and path.name not in NON_COUNTRY_DIRECTORIES
     ]
 
     # When

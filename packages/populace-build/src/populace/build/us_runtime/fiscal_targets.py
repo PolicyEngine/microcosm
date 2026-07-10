@@ -1901,8 +1901,46 @@ def _model_target_key(fact: object) -> tuple[str, ...] | None:
 def _normalized_record_set_id(record_set_id: str) -> str:
     if not record_set_id:
         return ""
+    # Preserve the period TYPE while erasing the year so tax-year, calendar-year,
+    # and fiscal-year record sets stay distinct in _dynamic_target_key's
+    # latest-fact selection (finding #10); mirrors ledger_targets._normalized_
+    # record_set_id.
     return ".".join(
-        part for part in record_set_id.split(".") if not _is_period_token(part)
+        _period_token_type(part) or part for part in record_set_id.split(".")
+    )
+
+
+def _period_token_type(value: str) -> str | None:
+    """Return a period-type marker for a period-like token, else ``None``."""
+    normalized = value.lower().replace("-", "_")
+    if normalized.startswith("month"):
+        rest = normalized[len("month") :]
+        if _is_year_month(rest) or _is_year(rest):
+            return "month"
+        return None
+    if normalized[:2] in {"ty", "cy", "fy"} and _is_year(normalized[2:]):
+        return normalized[:2]
+    if _is_year_month(normalized):
+        return "month"
+    if _is_year(normalized):
+        return "year"
+    return None
+
+
+def _is_year(value: str) -> bool:
+    return value.isdigit() and len(value) == 4
+
+
+def _is_year_month(value: str) -> bool:
+    parts = value.split("_", maxsplit=1)
+    if len(parts) != 2:
+        return False
+    year, month = parts
+    return (
+        year.isdigit()
+        and len(year) == 4
+        and month.isdigit()
+        and len(month) in {1, 2}
     )
 
 
@@ -1936,18 +1974,6 @@ def _is_soi_cd_premium_tax_credit_amount_conflict(
         measure_id == "premium_tax_credit_amount"
         and _is_soi_congressional_district_record_set(fact)
     )
-
-
-def _is_period_token(value: str) -> bool:
-    normalized = value.lower().replace("-", "_")
-    if normalized.startswith("month"):
-        normalized = normalized[len("month") :]
-    parts = normalized.split("_", maxsplit=1)
-    if len(parts) == 2 and all(part.isdigit() for part in parts):
-        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
-    if normalized[:2] in {"ty", "cy", "fy"}:
-        normalized = normalized[2:]
-    return normalized.isdigit() and len(normalized) == 4
 
 
 def _period_key(fact: object) -> tuple[int, int, str]:
@@ -2160,6 +2186,10 @@ def _soi_reference_from_fact(
         entity="household",
         measure=source_record_id,
         period=target_period,
+        # The reference expects exactly the unit the fact it was generated from
+        # carries; a later source period whose unit drifted then fails the gate
+        # (finding #9).
+        expected_unit=_measure_unit(fact),
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
@@ -2256,6 +2286,7 @@ def _state_income_tax_reference_from_fact(
         entity="household",
         measure=source_record_id,
         period=target_period,
+        expected_unit=_measure_unit(fact),
         family="state_income_tax",
         metadata={
             "source_measure_id": "collections",
@@ -2325,6 +2356,7 @@ def _population_age_reference_from_fact(
         entity="household",
         measure=source_record_id,
         period=target_period,
+        expected_unit=_measure_unit(fact),
         family="census_population",
         metadata=metadata,
     )
@@ -2383,6 +2415,7 @@ def _direct_reference_from_fact(
         entity="household",
         measure=source_record_id,
         period=target_period,
+        expected_unit=_measure_unit(fact),
         family=family,
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
@@ -2588,6 +2621,10 @@ def _source_name(fact: object) -> str:
     return _str_at(fact, "observed_measure", "source_name") or _str_at(
         fact, "source", "source_name"
     )
+
+
+def _measure_unit(fact: object) -> str:
+    return _str_at(fact, "measure", "unit") or _str_at(fact, "observed_measure", "unit")
 
 
 def _measure_id(fact: object) -> str:

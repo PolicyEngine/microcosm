@@ -113,6 +113,7 @@
   "target_references": [
     {
       "entity": "household",
+      "expected_unit": "usd",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
       "measure": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -129,6 +130,7 @@
     },
     {
       "entity": "household",
+      "expected_unit": "usd",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
       "measure": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
@@ -145,6 +147,7 @@
     },
     {
       "entity": "household",
+      "expected_unit": "usd",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
       "measure": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
@@ -161,6 +164,7 @@
     },
     {
       "entity": "household",
+      "expected_unit": "usd",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
       "measure": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
@@ -177,6 +181,7 @@
     },
     {
       "entity": "household",
+      "expected_unit": "usd",
       "family": "jct",
       "ledger_source_record_id": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
       "measure": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",

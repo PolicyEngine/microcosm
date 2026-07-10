@@ -255,6 +255,7 @@ def test__given_supported_ledger_fact__then_populace_target_preserves_lineage() 
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         entity_by_ledger_entity={"tax_unit": "tax_unit"},
         family_by_source_name={"irs_soi": "irs_soi"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
@@ -287,6 +288,7 @@ def test__given_consumer_contract_row__then_populace_target_preserves_lineage() 
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         entity_by_ledger_entity={"tax_unit": "tax_unit"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
@@ -317,6 +319,7 @@ def test__given_consumer_contract_jsonl__then_populace_selects_targets(
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         entity_by_ledger_entity={"tax_unit": "tax_unit"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
@@ -333,6 +336,7 @@ def test__given_ledger_target_reference__then_it_compiles_model_mapping() -> Non
     # Given
     reference = LedgerTargetReference(
         name="nation/irs/adjusted gross income/total",
+        expected_unit="usd",
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure="adjusted_gross_income",
@@ -405,6 +409,7 @@ def test__given_count_ledger_target_reference__then_compilation_fails() -> None:
     # Given
     reference = LedgerTargetReference(
         name="census_pep.cy2024.national_resident_population_age.0_to_4.population",
+        expected_unit="count",
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="person",
         measure="person_count",
@@ -473,6 +478,7 @@ def test__given_duplicate_semantic_facts__then_aggregate_reference_still_compile
     )
     reference = LedgerTargetReference(
         name="nation/irs/total tax/total",
+        expected_unit="usd",
         ledger_fact_key="ledger.aggregate_fact.v2:def456",
         entity="tax_unit",
         measure="income_tax",
@@ -546,6 +552,7 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
     # Given
     reference = LedgerTargetReference(
         name="latest SOI AGI total",
+        expected_unit="usd",
         ledger_selector={
             "source_name": "irs_soi",
             "source_measure_id": "adjusted_gross_income",
@@ -585,6 +592,7 @@ def test__given_selector_matches_future_year__then_latest_eligible_period_is_use
     # Given
     reference = LedgerTargetReference(
         name="latest eligible SOI AGI total",
+        expected_unit="usd",
         ledger_selector={
             "source_name": "irs_soi",
             "source_measure_id": "adjusted_gross_income",
@@ -624,6 +632,7 @@ def test__given_selector_matches_future_month__then_latest_eligible_period_is_us
     # Given
     reference = LedgerTargetReference(
         name="latest eligible Medicaid enrollment",
+        expected_unit="people",
         ledger_selector={
             "source_name": "cms_medicaid",
             "source_measure_id": "total_medicaid_chip_enrollment",
@@ -663,6 +672,7 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
     # Given
     reference = LedgerTargetReference(
         name="latest eligible Medicaid enrollment",
+        expected_unit="people",
         ledger_selector={
             "source_name": "cms_medicaid",
             "source_measure_id": "total_medicaid_chip_enrollment",
@@ -700,6 +710,7 @@ def test__given_selector_matches_only_future_year__then_compilation_fails() -> N
     # Given
     reference = LedgerTargetReference(
         name="latest eligible SOI AGI total",
+        expected_unit="usd",
         ledger_selector={
             "source_name": "irs_soi",
             "source_measure_id": "adjusted_gross_income",
@@ -751,6 +762,7 @@ def test__given_non_count_reference_without_measure__then_compilation_fails(
     # Given
     reference = LedgerTargetReference(
         name="missing measure target",
+        expected_unit="usd",
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure=measure,
@@ -857,6 +869,7 @@ def test__given_domain_scoped_fact_with_domain_filter__then_target_uses_filter()
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
 
@@ -907,6 +920,7 @@ def test__given_scoped_fact_with_only_domain_filter__then_it_is_unsupported() ->
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
     fact = _ledger_fact(
@@ -933,6 +947,7 @@ def test__given_scoped_fact_with_filter_mapping__then_target_uses_filter() -> No
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_source_record_id={source_record_id: "agi_under_1"},
     )
     fact = _ledger_fact(
@@ -971,6 +986,7 @@ def test__given_rate_fact__then_it_is_reported_as_unsupported() -> None:
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
     fact = _ledger_fact(aggregation={"method": "rate"})
@@ -989,6 +1005,7 @@ def test__given_count_fact__then_it_is_reported_as_unsupported() -> None:
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
 
@@ -1204,6 +1221,7 @@ def test__given_malformed_value__then_it_is_reported_as_unsupported() -> None:
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
 
@@ -1221,6 +1239,7 @@ def test__given_overflow_value__then_it_is_reported_as_unsupported() -> None:
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
 
@@ -1238,6 +1257,7 @@ def test__given_negative_value_without_signed_mapping__then_it_is_unsupported() 
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
 
@@ -1255,6 +1275,7 @@ def test__given_negative_value_with_signed_mapping__then_target_is_signed() -> N
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
         signed_by_concept=frozenset({"us:statutes/26/62#adjusted_gross_income"}),
     )
@@ -1275,6 +1296,7 @@ def test__given_ledger_target_metadata__then_coverage_gate_uses_structured_field
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
     )
     selection = select_ledger_targets([_ledger_fact()], mapping)
@@ -1305,6 +1327,7 @@ def test__given_current_soi_like_row__then_ledger_adapter_matches_current_target
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         entity_by_ledger_entity={"tax_unit": "tax_unit"},
         family_by_source_name={"irs_soi": "irs_soi"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
@@ -1332,6 +1355,7 @@ def test_ledger_metadata_records_assertion_and_fact_period():
         measure_by_concept={
             "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
         },
+        expected_unit_by_measure={"adjusted_gross_income": "usd"},
         filter_by_domain={"all_individual_income_tax_returns": "is_tax_filer"},
     )
     # Legacy rows that omit the assertion field are not stamped in metadata
@@ -1375,6 +1399,7 @@ def test_ledger_reference_selector_matches_on_assertion():
     ]
     reference = LedgerTargetReference(
         name="cbo_projected_agi",
+        expected_unit="usd",
         ledger_selector={
             "source_measure_id": "adjusted_gross_income",
             "assertion": "source_projection",
@@ -1388,3 +1413,256 @@ def test_ledger_reference_selector_matches_on_assertion():
     (spec,) = registry.specs
     assert spec.value == 16_000_000_000_000
     assert spec.metadata["ledger_assertion"] == "source_projection"
+
+
+# ---------------------------------------------------------------------------
+# Finding #9: expected-unit gate (the thousands-vs-millions failure class).
+# ---------------------------------------------------------------------------
+
+
+def _agi_row_with_unit(unit: str, **overrides):
+    return _consumer_fact_row(
+        observed_measure={
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.1",
+            "source_measure_id": "adjusted_gross_income",
+            "source_concept": "irs_soi.adjusted_gross_income",
+            "unit": unit,
+        },
+        **overrides,
+    )
+
+
+def test__given_mapping_unit_mismatch__then_compilation_fails_naming_both_units() -> (
+    None
+):
+    # Given: the model measure is declared in usd_billions, the fact is thousands.
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+        expected_unit_by_measure={"adjusted_gross_income": "usd_billions"},
+    )
+
+    # When / Then: hard error at compile, naming both units.
+    with pytest.raises(
+        ValueError,
+        match="unit 'usd_thousands' does not match the expected unit 'usd_billions'",
+    ):
+        select_ledger_targets([_agi_row_with_unit("usd_thousands")], mapping)
+
+
+def test__given_mapping_without_expected_unit__then_compilation_fails() -> None:
+    # Given: a measure mapping with no declared expected unit.
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="declares no expected unit"):
+        select_ledger_targets([_agi_row_with_unit("usd")], mapping)
+
+
+def test__given_reference_unit_mismatch__then_compilation_fails_naming_both_units() -> (
+    None
+):
+    # Given
+    reference = LedgerTargetReference(
+        name="soi agi total",
+        expected_unit="usd_billions",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+    )
+
+    # When / Then
+    with pytest.raises(
+        ValueError,
+        match="fact unit 'usd_thousands' does not match the declared "
+        "expected_unit 'usd_billions'",
+    ):
+        compile_ledger_target_references(
+            [_agi_row_with_unit("usd_thousands")], [reference], country="us"
+        )
+
+
+def test__given_reference_without_expected_unit__then_compilation_fails() -> None:
+    # Given: a reference that resolves a fact but declares no expected_unit.
+    reference = LedgerTargetReference(
+        name="soi agi total no unit",
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="expected_unit is required"):
+        compile_ledger_target_references(
+            [_consumer_fact_row()], [reference], country="us"
+        )
+
+
+def test__given_reference_value_scale__then_value_is_scaled_and_recorded() -> None:
+    # Given: a fact published in billions, scaled to raw dollars for the model.
+    reference = LedgerTargetReference(
+        name="soi agi billions",
+        expected_unit="usd_billions",
+        value_scale=1e9,
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [_agi_row_with_unit("usd_billions", value=15_286)],
+        [reference],
+        country="us",
+    )
+
+    # Then
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(15_286 * 1e9)
+    assert spec.metadata["ledger_expected_unit"] == "usd_billions"
+    assert spec.metadata["ledger_value_scale"] == "1000000000"
+
+
+def test__given_zero_value_scale__then_reference_construction_fails() -> None:
+    with pytest.raises(ValueError, match="value_scale must be a finite non-zero"):
+        LedgerTargetReference(
+            name="bad scale",
+            expected_unit="usd",
+            value_scale=0.0,
+            ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Finding #10: typed periods must not collapse in latest-fact selection.
+# ---------------------------------------------------------------------------
+
+_TYPED_AGI_SELECTOR = {
+    "source_name": "irs_soi",
+    "source_measure_id": "adjusted_gross_income",
+    "geography_level": "country",
+    "geography_id": "0100000US",
+    "entity_name": "tax_unit",
+    "layout_groupby_value_id": "all",
+}
+
+
+def _typed_agi_fact(period_type: str, record_token: str, *, value: float):
+    return _consumer_fact_row(
+        aggregate_fact_key=f"ledger.aggregate_fact.v2:agi-{record_token}",
+        legacy_fact_key=f"ledger.fact.v1:agi-{record_token}",
+        semantic_fact_key=f"ledger.semantic_fact.v2:agi-{record_token}",
+        lineage={
+            "source_record_id": (
+                f"irs_soi.{record_token}.table_1_1.all.adjusted_gross_income"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:cell"],
+            "source_row_keys": [],
+        },
+        value=value,
+        period={"type": period_type, "value": int(record_token[2:])},
+        layout={
+            "record_set_id": f"irs_soi.{record_token}.table_1_1",
+            "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+            "groupby_value_id": "all",
+            "measure_id": "adjusted_gross_income",
+        },
+    )
+
+
+def test__given_typed_periods__then_period_type_selects_the_right_series() -> None:
+    # Given: a tax-year 2023 fact and a (later) calendar-year 2024 fact that a
+    # bare selector would otherwise merge into one "latest" series.
+    tax_year = _typed_agi_fact("tax_year", "ty2023", value=15_000_000_000_000)
+    calendar_year = _typed_agi_fact("calendar_year", "cy2024", value=16_000_000_000_000)
+    facts = [tax_year, calendar_year]
+
+    tax_reference = LedgerTargetReference(
+        name="agi tax-year total",
+        expected_unit="usd",
+        period_type="tax_year",
+        ledger_selector=_TYPED_AGI_SELECTOR,
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+    calendar_reference = LedgerTargetReference(
+        name="agi calendar-year total",
+        expected_unit="usd",
+        period_type="calendar_year",
+        ledger_selector=_TYPED_AGI_SELECTOR,
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When / Then: the tax-year reference resolves the tax-year fact even though
+    # the calendar-year fact has a later period; typed selection never crosses.
+    tax_registry = compile_ledger_target_references(facts, [tax_reference], country="us")
+    assert tax_registry.specs[0].value == 15_000_000_000_000
+    assert tax_registry.specs[0].metadata["ledger_period_type"] == "tax_year"
+    assert (
+        tax_registry.specs[0].metadata["ledger_reference_period_type"] == "tax_year"
+    )
+
+    calendar_registry = compile_ledger_target_references(
+        facts, [calendar_reference], country="us"
+    )
+    assert calendar_registry.specs[0].value == 16_000_000_000_000
+    assert calendar_registry.specs[0].metadata["ledger_period_type"] == "calendar_year"
+
+
+def test__given_mixed_period_types_without_period_type__then_ambiguity_error() -> None:
+    # Given: both a tax-year and calendar-year fact match the selector.
+    facts = [
+        _typed_agi_fact("tax_year", "ty2024", value=15_000_000_000_000),
+        _typed_agi_fact("calendar_year", "cy2024", value=16_000_000_000_000),
+    ]
+    reference = LedgerTargetReference(
+        name="agi ambiguous total",
+        expected_unit="usd",
+        ledger_selector=_TYPED_AGI_SELECTOR,
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    # When / Then: fail closed rather than silently picking one series.
+    with pytest.raises(ValueError, match="multiple period types"):
+        compile_ledger_target_references(facts, [reference], country="us")
+
+
+def test__given_same_period_type_across_years__then_latest_still_selected() -> None:
+    # Regression: the typed-period fix must not break same-type latest-selection.
+    facts = [
+        _typed_agi_fact("tax_year", "ty2022", value=14_000_000_000_000),
+        _typed_agi_fact("tax_year", "ty2023", value=15_000_000_000_000),
+    ]
+    reference = LedgerTargetReference(
+        name="agi latest tax-year",
+        expected_unit="usd",
+        ledger_selector=_TYPED_AGI_SELECTOR,
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2024,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(facts, [reference], country="us")
+    assert registry.specs[0].value == 15_000_000_000_000

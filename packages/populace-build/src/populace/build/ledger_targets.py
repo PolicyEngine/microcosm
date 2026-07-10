@@ -42,6 +42,11 @@ class LedgerTargetMapping:
     entity_by_ledger_entity: Mapping[str, str] = field(default_factory=dict)
     family_by_source_name: Mapping[str, str] = field(default_factory=dict)
     family_by_concept: Mapping[str, str] = field(default_factory=dict)
+    # Model measure (or fact concept) -> the unit its facts must carry. A fact
+    # that compiles to a measure with no declared expected unit is a hard error,
+    # and a fact whose unit disagrees is a hard error: the model boundary gate
+    # against a thousands-vs-millions scale swap (finding #9).
+    expected_unit_by_measure: Mapping[str, str] = field(default_factory=dict)
     default_family: str = "ledger"
 
 
@@ -66,6 +71,15 @@ class LedgerTargetReference:
     measure: str | None = None
     filter: str | None = None
     period: int | str | None = None
+    # Typed-period selection (finding #10): when set, only facts whose
+    # period.type matches are eligible; when unset and candidates span multiple
+    # period types, compilation fails closed rather than silently mixing series.
+    period_type: str | None = None
+    # Unit gate (finding #9): the exact unit the resolved fact must carry, and a
+    # scale applied to the observed value to reach the model's numeric scale.
+    # Required at compile time (a None expected_unit is a hard error).
+    expected_unit: str | None = None
+    value_scale: float = 1.0
     source: str | None = None
     family: str = "ledger"
     signed: bool = False
@@ -100,6 +114,19 @@ class LedgerTargetReference:
                 f"LedgerTargetReference {self.name!r}: ledger_selector must be a "
                 f"mapping, got {type(self.ledger_selector).__name__}."
             )
+        try:
+            value_scale = float(self.value_scale)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: value_scale must be "
+                f"numeric, got {self.value_scale!r}."
+            ) from exc
+        if not math.isfinite(value_scale) or value_scale == 0:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: value_scale must be a "
+                f"finite non-zero number, got {self.value_scale!r}."
+            )
+        object.__setattr__(self, "value_scale", value_scale)
         if not self.entity:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: entity must be non-empty."
@@ -500,6 +527,14 @@ def target_spec_from_ledger_reference(
 ) -> TargetSpec:
     """Compile one resolved Ledger fact plus Populace mapping into a target."""
 
+    if reference.expected_unit is None:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: expected_unit is "
+            "required; every reference must declare the unit its fact carries "
+            "so a thousands-vs-millions scale swap fails at the model boundary "
+            "(finding #9)."
+        )
+
     value = _at(fact, "value")
     if value is None:
         raise ValueError(f"Ledger fact for {reference.name!r} is missing value.")
@@ -535,6 +570,29 @@ def target_spec_from_ledger_reference(
             "count-like facts must be represented as sums of prepared indicator "
             "columns."
         )
+
+    fact_unit = _measure_unit(fact)
+    if fact_unit != reference.expected_unit:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: resolved fact unit "
+            f"{fact_unit!r} does not match the declared expected_unit "
+            f"{reference.expected_unit!r} (the thousands-vs-millions gate)."
+        )
+    if reference.period_type is not None:
+        fact_period_type = _str_at(fact, "period", "type")
+        if fact_period_type != reference.period_type:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: resolved fact "
+                f"period type {fact_period_type!r} does not match the declared "
+                f"period_type {reference.period_type!r}."
+            )
+    scaled_value = numeric_value * reference.value_scale
+    if not math.isfinite(scaled_value):
+        raise ValueError(
+            f"Ledger fact for {reference.name!r} is non-finite after applying "
+            f"value_scale {reference.value_scale!r}: {scaled_value!r}."
+        )
+
     period = (
         reference.period
         if reference.period is not None
@@ -547,7 +605,7 @@ def target_spec_from_ledger_reference(
         name=reference.name,
         entity=reference.entity,
         measure=reference.measure,
-        value=numeric_value,
+        value=scaled_value,
         filter=reference.filter,
         period=period,
         se=reference.se,
@@ -695,6 +753,30 @@ def target_spec_from_ledger_fact(
     if numeric_value < 0 and not _allows_signed_target(fact, mapping):
         raise _unsupported("missing_signed_target_mapping", fact)
 
+    # Unit gate at the model boundary (finding #9): a fact that is about to
+    # compile into a target must have a declared expected unit for its measure
+    # (or concept), and the fact's own unit must match it exactly. Both a
+    # missing declaration and a mismatch are hard errors, not soft "unsupported"
+    # skips, so a thousands-vs-millions swap cannot pass silently.
+    expected_unit = _expected_unit_for_measure(
+        mapping, measure, _measure_concepts(fact)
+    )
+    if not expected_unit:
+        raise ValueError(
+            f"Ledger fact {identifier!r} compiles to model measure {measure!r} "
+            "but LedgerTargetMapping declares no expected unit for it; add an "
+            "expected_unit_by_measure entry (the thousands-vs-millions gate)."
+        )
+    fact_unit = _measure_unit(fact)
+    if fact_unit != expected_unit:
+        raise ValueError(
+            f"Ledger fact {identifier!r} unit {fact_unit!r} does not match the "
+            f"expected unit {expected_unit!r} declared for model measure "
+            f"{measure!r} (the thousands-vs-millions gate)."
+        )
+
+    metadata = _ledger_metadata(fact, fact_key=fact_key)
+    metadata["ledger_expected_unit"] = expected_unit
     try:
         return TargetSpec(
             name=identifier,
@@ -706,7 +788,7 @@ def target_spec_from_ledger_fact(
             source=_source_citation(fact),
             family=family,
             signed=numeric_value < 0,
-            metadata=_ledger_metadata(fact, fact_key=fact_key),
+            metadata=metadata,
         )
     except (TypeError, ValueError) as exc:
         raise _unsupported(f"invalid_target_spec:{type(exc).__name__}", fact) from exc
@@ -800,6 +882,7 @@ def _resolve_reference_fact(
             for fact in fact_index.facts
             if _fact_matches_selector(fact, reference.ledger_selector)
         ]
+        matches = _selector_matches_for_period_type(reference, matches)
         eligible_matches = _eligible_selector_matches(reference, matches)
         if len(eligible_matches) == 1:
             return eligible_matches[0]
@@ -831,6 +914,35 @@ def _resolve_reference_fact(
         f"Ledger target reference {reference.name!r} did not match a Ledger fact "
         f"identifier: {identifiers!r}."
     )
+
+
+def _selector_matches_for_period_type(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> list[object]:
+    """Constrain selector matches to a single, unambiguous period type.
+
+    When the reference declares a ``period_type`` only facts of that type are
+    eligible. When it does not and the matched facts span more than one period
+    type, compilation fails closed (finding #10) rather than silently letting
+    "latest wins" pick across tax-year / calendar-year / fiscal-year series.
+    """
+    if reference.period_type is not None:
+        return [
+            fact
+            for fact in matches
+            if _str_at(fact, "period", "type") == reference.period_type
+        ]
+    period_types = {_str_at(fact, "period", "type") for fact in matches}
+    if len(period_types) > 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} matched Ledger facts "
+            f"with multiple period types {sorted(period_types)!r} for selector "
+            f"{dict(reference.ledger_selector)!r} but declares no period_type; "
+            "set period_type to disambiguate (tax-year vs calendar-year vs "
+            "fiscal-year facts are distinct series and must not be merged)."
+        )
+    return matches
 
 
 def _eligible_selector_matches(
@@ -884,6 +996,10 @@ def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
         _str_at(fact, "geography", "id"),
         _str_at(fact, "entity", "name"),
         _str_at(fact, "aggregation", "method"),
+        # Period TYPE is part of the series identity (finding #10): tax-year,
+        # calendar-year, and fiscal-year facts for the same measure are distinct
+        # series and must never collapse into one "latest" candidate set.
+        _str_at(fact, "period", "type"),
         _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
         _str_at(fact, "layout", "groupby_dimension"),
         _str_at(fact, "layout", "groupby_value_id"),
@@ -896,21 +1012,53 @@ def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
 def _normalized_record_set_id(record_set_id: str) -> str:
     if not record_set_id:
         return ""
+    # Replace period-like tokens with a period-TYPE marker rather than dropping
+    # them: erasing the year lets same-series facts across years share one
+    # invariant key, but keeping the ty/cy/fy/month marker stops tax-year,
+    # calendar-year, and fiscal-year record sets from collapsing into one
+    # "latest" series (finding #10).
     return ".".join(
-        part for part in record_set_id.split(".") if not _is_period_token(part)
+        _period_token_type(part) or part for part in record_set_id.split(".")
     )
 
 
-def _is_period_token(value: str) -> bool:
+def _period_token_type(value: str) -> str | None:
+    """Return a period-type marker for a period-like token, else ``None``.
+
+    ``ty2024`` -> ``ty``, ``cy2024`` -> ``cy``, ``fy2024`` -> ``fy``,
+    ``month2024_01`` / ``2024_01`` -> ``month``, a bare ``2024`` -> ``year``. A
+    non-period token returns ``None`` and is preserved verbatim by callers.
+    """
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
-        normalized = normalized[len("month") :]
-    parts = normalized.split("_", maxsplit=1)
-    if len(parts) == 2 and all(part.isdigit() for part in parts):
-        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
-    if normalized[:2] in {"ty", "cy", "fy"}:
-        normalized = normalized[2:]
-    return normalized.isdigit() and len(normalized) == 4
+        rest = normalized[len("month") :]
+        if _is_year_month(rest) or _is_year(rest):
+            return "month"
+        return None
+    if normalized[:2] in {"ty", "cy", "fy"} and _is_year(normalized[2:]):
+        return normalized[:2]
+    if _is_year_month(normalized):
+        return "month"
+    if _is_year(normalized):
+        return "year"
+    return None
+
+
+def _is_year(value: str) -> bool:
+    return value.isdigit() and len(value) == 4
+
+
+def _is_year_month(value: str) -> bool:
+    parts = value.split("_", maxsplit=1)
+    if len(parts) != 2:
+        return False
+    year, month = parts
+    return (
+        year.isdigit()
+        and len(year) == 4
+        and month.isdigit()
+        and len(month) in {1, 2}
+    )
 
 
 def _period_key(fact: object) -> tuple[int, int, str]:
@@ -960,6 +1108,13 @@ def _not_after_target_period(
 def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata = dict(reference.metadata)
     metadata["ledger_value_operation"] = reference.value_operation
+    # The unit gate and scale, recorded next to ledger_measure_unit for audit
+    # (finding #9); the reference's declared period type, when set (finding #10).
+    if reference.expected_unit:
+        metadata["ledger_expected_unit"] = reference.expected_unit
+    metadata["ledger_value_scale"] = _format_float(reference.value_scale)
+    if reference.period_type is not None:
+        metadata["ledger_reference_period_type"] = reference.period_type
     for key, value in sorted(reference.ledger_selector.items()):
         if isinstance(value, Mapping):
             continue
@@ -972,6 +1127,23 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     if reference.uprating_to_period is not None:
         metadata["uprating_to_period"] = str(reference.uprating_to_period)
     return metadata
+
+
+def _measure_unit(fact: object) -> str:
+    return _str_at(fact, "measure", "unit") or _str_at(fact, "observed_measure", "unit")
+
+
+def _expected_unit_for_measure(
+    mapping: LedgerTargetMapping,
+    measure: str,
+    concepts: tuple[str, ...],
+) -> str | None:
+    if measure in mapping.expected_unit_by_measure:
+        return mapping.expected_unit_by_measure[measure]
+    for concept in concepts:
+        if concept in mapping.expected_unit_by_measure:
+            return mapping.expected_unit_by_measure[concept]
+    return None
 
 
 def _at(obj: object, *path: str) -> Any:
