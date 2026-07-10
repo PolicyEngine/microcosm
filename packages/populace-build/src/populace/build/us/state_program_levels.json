@@ -26,7 +26,7 @@
     "source": "CA FTB, California EITC / YCTC / FYTC Report (Oct 2025), Table 1 p.8",
     "source_url": "https://www.ftb.ca.gov/about-ftb/data-reports-plans/California-Earned-Income-Tax-Credit-and-Young-Child-Tax-credit-Report-2023.pdf"
    },
-   "description": "Refundable; 398,059 returns, 483,629 qualifying children."
+   "description": "Refundable; 398,059 returns, 483,629 qualifying children. Gap analysis (2026-07 audit): +38.7% vs TY2023 = ~6pp benchmark vintage (max $1,117 -> $1,154, phase-out start $25,775 -> $26,626: +6.2% measured on the same data) + ~30pp take-up. The model pays every eligible unit: 546-559k eligible units in the data vs FTB's 398,059 actual returns (claim/eligible 0.71-0.73, matching published take-up: CalEITC 54% among SNAP-enrolled per CPL/JPubE 2023). Per-unit amounts align ($1,025 sim vs $1,037 actual) \u2014 the gap is purely excess unit count; demographics ruled out (weighted CA under-6 is 6.2% BELOW ACS 2024). A flat per-return credit passes the take-up gap straight to the total."
   },
   {
    "id": "state_ny_eitc",
@@ -78,7 +78,7 @@
     "source": "CO DOR Office of Research and Analysis, Individual Income Tax Credits TY2023 (updated Mar 2026)",
     "source_url": "https://cdor.colorado.gov/data-and-reports/income-tax-data/income-tax-credits"
    },
-   "description": "Refundable; 130,188 claims, avg $685. Children under 6, 10-60% of the federal CTC by AGI tier."
+   "description": "Refundable; 130,188 claims, avg $685. Children under 6, 10-60% of the federal CTC by AGI tier. Vintage caveat (2026-07 audit): the +30.4% gap is entirely law-change vintage, proven by replication \u2014 running the pre-HB23-1112 TY2023 law (60/30/10% of federal CTC) on this same data reproduces the DOR actual to the dollar ($89.2M vs $89,158,930), and the TY2024 flat-amount restructure (HB23-1112: $1,200/$600/$200 per under-6 child-dependent, $0-earners newly eligible) adds +30.0%. Against the bill's own fiscal-note-implied TY2024 level (~$135M) the sim runs ~14% under. Replace with CO DOR TY2024 actuals when published."
   },
   {
    "id": "state_wa_wftc",
@@ -488,7 +488,7 @@
    "benchmark": {
     "value": 98372000,
     "year": "FY2024",
-    "source": "DC Tax Expenditure Report (OCFO/ORA, Sept 2024), item 128 p.235",
+    "source": "DC Tax Expenditure Report (OCFO/ORA, Sept 2024), item 129 p.235",
     "source_url": "https://ora-cfo.dc.gov/sites/default/files/dc/sites/ora-cfo/publication/attachments/2024%20Tax%20Expenditure%20Report.pdf",
     "score_type": "approximation"
    },
@@ -534,7 +534,105 @@
     "source_url": "https://data.census.gov/table/ACSDT1Y2024.B01003?g=040XX00US16",
     "score_type": "approximation"
    },
-   "description": "Upper bound: the credit is prorated by months not receiving SNAP and excludes incarcerated months, and the seniors add-on ($20, in force through 2024) is omitted; expect populace below the benchmark."
+   "description": "Upper bound: the credit is prorated by months not receiving SNAP and excludes incarcerated months, and the seniors add-on ($20, in force through 2024) is omitted; expect populace below the benchmark. Note: the 2,001,619 population figure matches the Census Vintage-2024 PEP estimate rather than the cited ACS 1-year table; either way an upper-bound approximation."
+  },
+  {
+   "id": "state_va_eitc_cli",
+   "name": "Virginia EITC / low-income credit (Sec. 58.1-339.8, all elections)",
+   "variable": "va_eitc",
+   "period": 2024,
+   "benchmark": {
+    "value": 224156631,
+    "year": "FY2025-processed (mostly TY2024)",
+    "source": "VA TAX Annual Report FY2025, Table 3.1 ($224,156,631, 522,435 returns); RD717 FY2025 Tax Preferences Report Table 2 p.7 splits the 15% refundable election at $130.39M/253,759 returns",
+    "source_url": "https://www.tax.virginia.gov/sites/default/files/inline-files/2025-annual-report.pdf",
+    "score_type": "actual"
+   },
+   "description": "Va. Code 58.1-339.8 offers three mutually exclusive elections: $300/exemption low-income credit (CLI), 20% nonrefundable EITC, or 15% refundable EITC (20% refundable starts TY2025). policyengine-us embeds the election inside va_eitc (the nonrefundable branch takes max(20% x federal EITC, CLI) via va_non_refundable_eitc_if_claimed), so va_eitc alone is the whole-section comparator \u2014 do NOT add va_low_income_tax_credit on top (it is an intermediate; summing double-counts, verified: sum $511M vs official $224M). FY-processed basis mixes tax years (FY2024 comparator: $207.5M)."
+  },
+  {
+   "id": "state_oh_eitc",
+   "name": "Ohio EITC (30% nonrefundable)",
+   "variable": "oh_eitc",
+   "period": 2024,
+   "benchmark": {
+    "value": 59300000,
+    "year": "FY2025 (TY2024 proxy)",
+    "source": "OH Tax Expenditure Report FY2026-27, item 2.23 (GRF revenue foregone; FY2024 $56.4M, FY2025 $59.3M, FY2026 $60.9M \u2014 all estimates from ODT return data)",
+    "source_url": "https://archives.obm.ohio.gov/Files/Budget_and_Planning/Operating_Budget/Fiscal_Years_2026-2027/Tax%20Expenditure%20Report%202026-2027.pdf",
+    "score_type": "approximation"
+   },
+   "description": "R.C. 5747.71, 30% of federal EITC, nonrefundable against liability after most other credits. FY2025 captures TY2024 filings. Ohio exempts income below ~$26k, so the low-income liability available to offset is thin \u2014 the model's capping fidelity drives this row."
+  },
+  {
+   "id": "state_mo_wftc",
+   "name": "Missouri Working Family Tax Credit (20% nonrefundable)",
+   "variable": "mo_wftc",
+   "period": 2024,
+   "benchmark": {
+    "value": 46062034,
+    "year": "TY2024 (issued CY2025)",
+    "source": "MO DOR Working Family Tax Credits Issued Calendar Year 2025: $46,062,034, 182,367 credits, avg $252.58 (Sec. 143.177.5 reports prior tax year; 20% rate confirmed for TY2024, trigger fired). TY2023 at 10%: $28.5M",
+    "source_url": "https://dor.mo.gov/public-reports/documents/2025-MO-WFTC-Report.pdf",
+    "score_type": "actual"
+   },
+   "description": "Sec. 143.177, 20% of federal EITC from TY2024, nonrefundable with no carryforward (issued = used)."
+  },
+  {
+   "id": "state_sc_eitc",
+   "name": "South Carolina EITC (125% nonrefundable)",
+   "variable": "sc_eitc",
+   "period": 2024,
+   "benchmark": {
+    "value": 23220000,
+    "year": "FY2024-25",
+    "source": "SC RFA Tax Expenditure Report (Jan 27 2026), p.6: $23.22M FY2024-25 estimated GF revenue loss. Concept note: SC DOR reports $212.0M CLAIMED on TY2023 returns (99,122 credits) \u2014 a ~9x claimed-vs-used wedge from nonrefundability plus SC's 0% bracket",
+    "source_url": "https://rfa.sc.gov/sites/default/files/2026-01/Tax%20Expenditure%20Report%20Final%201.27.2026_3.pdf",
+    "score_type": "approximation"
+   },
+   "description": "Sec. 12-6-3632, 125% of federal EITC, nonrefundable, full-year residents. The revenue-loss (used) concept matches the model's liability-limited variable; the claimed amount would be the pre-offset 125% computation."
+  },
+  {
+   "id": "state_co_fac",
+   "name": "Colorado Family Affordability Credit (refundable)",
+   "variable": "co_family_affordability_credit",
+   "period": 2024,
+   "benchmark": {
+    "value": 654000000,
+    "year": "TY2024 (implied)",
+    "source": "HB24-1311 Final Fiscal Note (Aug 5 2024), Table 1: -$327M FY2023-24 (half-year accrual) and 'up to -$684M' FY2024-25; implied full-TY2024 = 2 x $327M = $654M at the note's ~75% take-up (~$880M at 100%). C.R.S. 39-22-130; TY2024 pays full statutory $3,200 (age 0-5) / $2,400 (6-16) \u2014 the surplus trigger starts TY2025",
+    "source_url": "https://content.leg.colorado.gov/sites/default/files/documents/2024A/bills/fn/2024a_hb1311_f1.pdf",
+    "score_type": "approximation"
+   },
+   "description": "No CO DOR TY2024 actuals yet (the DOR credits dataset still ends TY2023). populace pays every eligible unit, so the like-for-like comparison is the note's 100%-take-up ~$880M; the headline benchmark is the note's take-up-adjusted central. Flat per-child refundable credit \u2014 same take-up exposure class as CA YCTC (populace#341). Replace with DOR actuals when published."
+  },
+  {
+   "id": "state_id_ctc",
+   "name": "Idaho Child Tax Credit ($205/child nonrefundable)",
+   "variable": "id_ctc",
+   "period": 2024,
+   "benchmark": {
+    "value": 63962000,
+    "year": "CY2024 (revised)",
+    "source": "ID DFM General Fund Revenue Book, Jan 2026 ed. p.20, Idaho Tax Preferences row 63-3029L: $63.962M CY2024 (Jan 2025 ed. had $66.475M); DFM foregone-revenue estimate, no Tax Commission actuals published",
+    "source_url": "https://stagingdfmmainsa.blob.core.windows.net/dfm-main-website/wp-content/uploads/publications/eab/gfrb/gfrb_jan2026.pdf",
+    "score_type": "approximation"
+   },
+   "description": "Sec. 63-3029L, $205 per qualifying child, nonrefundable, residents, sunsets after TY2025."
+  },
+  {
+   "id": "state_ut_ctc",
+   "name": "Utah Child Tax Credit ($1,000/child ages 1-3, nonrefundable)",
+   "variable": "ut_ctc",
+   "period": 2024,
+   "benchmark": {
+    "value": 40022410,
+    "year": "TY2024",
+    "source": "UT State Tax Commission, Individual Income Tax Credits Claimed by Tax Year 2010-2024 (Apr 30 2026), Nonrefundable Child Tax Credit row: $40,022,410 / 39,754 returns TY2024. Concept: amount CLAIMED (avg ~$1,007 = the per-child amount, i.e. pre-offset); the HB170 fiscal note projected only $9.63M FY2025 revenue impact",
+    "source_url": "https://files.tax.utah.gov/tax/esu/income-credits/individualcredits.xlsx",
+    "score_type": "actual"
+   },
+   "description": "Utah Code 59-10-1047 (HB170 2023): $1,000 per child aged 1-3 at year-end, nonrefundable, phased out $0.10/$1 above $27k MFS / $43k single-HoH / $54k MFJ. The 4x claimed-vs-fiscal-note wedge and the model's liability/ordering caps both bear on this row \u2014 treat large errors as a concept flag first. HB153 adds age 4 only from TY2025."
   }
  ]
 }

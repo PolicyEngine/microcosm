@@ -72,6 +72,17 @@ from populace.build.us_runtime.demographics import (
     demographics_payload,
     write_demographics,
 )
+from populace.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS,
+    US_ELIGIBILITY_INPUTS_STAGE_NAME,
+    derive_us_eligibility_inputs_from_manifest,
+    us_eligibility_inputs_signal_gate,
+    us_eligibility_inputs_stage_spec,
+    us_eligibility_inputs_summary,
+    with_us_eligibility_inputs,
+)
 from populace.build.us_runtime.fiscal_targets import (
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
@@ -108,6 +119,17 @@ from populace.build.us_runtime.geography_ladder import (
     us_geography_ladder_gate,
     with_household_us_geography_ladder,
 )
+from populace.build.us_runtime.hours_worked import (
+    US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
+    US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
+    US_HOURS_WORKED_STAGE_NAME,
+    derive_us_hours_worked_from_manifest,
+    us_hours_worked_signal_gate,
+    us_hours_worked_stage_spec,
+    us_hours_worked_summary,
+    with_us_hours_worked_inputs,
+)
 from populace.build.us_runtime.immigration import (
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
@@ -125,6 +147,21 @@ from populace.build.us_runtime.immigration import (
 from populace.build.us_runtime.input_mass import (
     us_input_mass_totals,
 )
+from populace.build.us_runtime.medicaid_take_up import (
+    US_MEDICAID_ENROLLMENT_SUBSTITUTIONS,
+    US_MEDICAID_ENROLLMENT_TARGET_ROLE,
+    US_MEDICAID_ENROLLMENT_TARGET_TABLE,
+    US_MEDICAID_ENROLLMENT_TOLERANCE,
+    US_MEDICAID_TAKE_UP_ANCHOR,
+    US_MEDICAID_TAKE_UP_STAGE,
+    US_MEDICAID_TAKE_UP_VARIABLE,
+    MedicaidEnrollmentSubstitution,
+    apply_us_medicaid_enrollment_substitutions,
+    us_medicaid_take_up_diagnostics,
+    us_medicaid_take_up_gate,
+    with_us_medicaid_take_up,
+    write_us_medicaid_take_up_diagnostics,
+)
 from populace.build.us_runtime.nonzero_shares import (
     nonzero_share,
     us_nonzero_shares,
@@ -137,6 +174,17 @@ from populace.build.us_runtime.parity_reference import (
     ParityKnownGap,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
+)
+from populace.build.us_runtime.pregnancy import (
+    US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    US_PREGNANCY_OUTPUT_COLUMN,
+    US_PREGNANCY_REQUIRED_SOURCE_COLUMNS,
+    US_PREGNANCY_STAGE_NAME,
+    derive_us_pregnancy_from_manifest,
+    us_pregnancy_signal_gate,
+    us_pregnancy_stage_spec,
+    us_pregnancy_summary,
+    with_us_pregnancy_inputs,
 )
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -152,6 +200,9 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.reform_coverage_smoke import (
+    us_reform_coverage_smoke_gate,
+)
 from populace.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
@@ -160,6 +211,58 @@ from populace.build.us_runtime.reform_validation import (
     out_of_sample_reform_specs,
     reform_validation_payload,
     write_reform_validation,
+)
+from populace.build.us_runtime.register_consistency import (
+    us_register_consistency_gate,
+    us_register_contradictions,
+)
+from populace.build.us_runtime.release_input_coverage import (
+    SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_RELEASE_INPUT_COVERAGE_RESOURCE,
+    ReformCoverageProbe,
+    ReleaseInputColumn,
+    ReleaseInputCoverageManifest,
+    assert_release_input_coverage_manifest_current,
+    load_release_input_coverage_manifest,
+    us_release_input_coverage_gate,
+    us_release_input_coverage_required_columns,
+    us_release_input_coverage_reviewed_exclusions,
+    us_release_reform_coverage_probes,
+)
+from populace.build.us_runtime.scf_wealth import (
+    SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
+    SCF_WEALTH_PREDICTORS,
+    US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+    US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+    US_SCF_WEALTH_STAGE_NAME,
+    fetch_scf_2022_summary_extract,
+    impute_us_scf_financial_assets,
+    load_scf_2022_financial_asset_donor,
+    us_scf_wealth_signal_gate,
+    us_scf_wealth_stage_spec,
+    us_scf_wealth_summary,
+    with_us_scf_wealth_inputs,
+)
+from populace.build.us_runtime.snap_discretionary_exemption import (
+    US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+    US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN,
+    US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS,
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
+    derive_us_snap_discretionary_exemption_from_manifest,
+    us_snap_discretionary_exemption_signal_gate,
+    us_snap_discretionary_exemption_stage_spec,
+    us_snap_discretionary_exemption_summary,
+    with_us_snap_discretionary_exemption_inputs,
+)
+from populace.build.us_runtime.snap_take_up import (
+    US_SNAP_TAKE_UP_OUTPUT_COLUMN,
+    US_SNAP_TAKE_UP_RAW_COLUMN,
+    US_SNAP_TAKE_UP_STAGE_NAME,
+    derive_us_snap_take_up_from_manifest,
+    us_snap_take_up_signal_gate,
+    us_snap_take_up_stage_spec,
+    us_snap_take_up_summary,
+    with_us_snap_take_up_inputs,
 )
 from populace.build.us_runtime.source_coverage import (
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
@@ -189,6 +292,7 @@ from populace.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
+    count_calibrated_take_up_programs,
     load_take_up_contract,
     seeded_take_up_programs,
 )
@@ -259,6 +363,62 @@ __all__ = [
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
     "UndocumentedControls",
+    "US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS",
+    "US_HOURS_WORKED_OUTPUT_COLUMNS",
+    "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
+    "US_HOURS_WORKED_STAGE_NAME",
+    "derive_us_hours_worked_from_manifest",
+    "us_hours_worked_signal_gate",
+    "us_hours_worked_stage_spec",
+    "us_hours_worked_summary",
+    "with_us_hours_worked_inputs",
+    "US_SNAP_TAKE_UP_OUTPUT_COLUMN",
+    "US_SNAP_TAKE_UP_RAW_COLUMN",
+    "US_SNAP_TAKE_UP_STAGE_NAME",
+    "derive_us_snap_take_up_from_manifest",
+    "us_snap_take_up_signal_gate",
+    "us_snap_take_up_stage_spec",
+    "us_snap_take_up_summary",
+    "with_us_snap_take_up_inputs",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS",
+    "US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME",
+    "derive_us_snap_discretionary_exemption_from_manifest",
+    "us_snap_discretionary_exemption_signal_gate",
+    "us_snap_discretionary_exemption_stage_spec",
+    "us_snap_discretionary_exemption_summary",
+    "with_us_snap_discretionary_exemption_inputs",
+    "US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS",
+    "US_PREGNANCY_OUTPUT_COLUMN",
+    "US_PREGNANCY_REQUIRED_SOURCE_COLUMNS",
+    "US_PREGNANCY_STAGE_NAME",
+    "derive_us_pregnancy_from_manifest",
+    "us_pregnancy_signal_gate",
+    "us_pregnancy_stage_spec",
+    "us_pregnancy_summary",
+    "with_us_pregnancy_inputs",
+    "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_STAGE_NAME",
+    "derive_us_eligibility_inputs_from_manifest",
+    "us_eligibility_inputs_signal_gate",
+    "us_eligibility_inputs_stage_spec",
+    "us_eligibility_inputs_summary",
+    "with_us_eligibility_inputs",
+    "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
+    "SCF_WEALTH_PREDICTORS",
+    "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
+    "US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS",
+    "US_SCF_WEALTH_STAGE_NAME",
+    "fetch_scf_2022_summary_extract",
+    "impute_us_scf_financial_assets",
+    "load_scf_2022_financial_asset_donor",
+    "us_scf_wealth_signal_gate",
+    "us_scf_wealth_stage_spec",
+    "us_scf_wealth_summary",
+    "with_us_scf_wealth_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -266,10 +426,24 @@ __all__ = [
     "with_us_immigration_inputs",
     "US_TAKE_UP_SHARE_BAND",
     "SeededTakeUpResult",
+    "US_MEDICAID_ENROLLMENT_SUBSTITUTIONS",
+    "US_MEDICAID_ENROLLMENT_TARGET_ROLE",
+    "US_MEDICAID_ENROLLMENT_TARGET_TABLE",
+    "US_MEDICAID_ENROLLMENT_TOLERANCE",
+    "US_MEDICAID_TAKE_UP_ANCHOR",
+    "US_MEDICAID_TAKE_UP_STAGE",
+    "US_MEDICAID_TAKE_UP_VARIABLE",
+    "MedicaidEnrollmentSubstitution",
+    "apply_us_medicaid_enrollment_substitutions",
+    "count_calibrated_take_up_programs",
+    "us_medicaid_take_up_diagnostics",
+    "us_medicaid_take_up_gate",
     "us_take_up_participation_diagnostics",
     "us_take_up_signal_gate",
     "us_take_up_summary",
+    "with_us_medicaid_take_up",
     "with_us_take_up_inputs",
+    "write_us_medicaid_take_up_diagnostics",
     "write_us_take_up_participation_diagnostics",
     "TakeUpContract",
     "TakeUpProgram",
@@ -332,6 +506,20 @@ __all__ = [
     "US_VALIDATION_PROVISION_INPUT_LEAVES",
     "ValidationInputLeaf",
     "assert_validation_leaf_registry_current",
+    "SSI_COUNTABLE_RESOURCE_ASSETS",
+    "US_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "ReformCoverageProbe",
+    "ReleaseInputColumn",
+    "ReleaseInputCoverageManifest",
+    "assert_release_input_coverage_manifest_current",
+    "load_release_input_coverage_manifest",
+    "us_release_input_coverage_gate",
+    "us_release_input_coverage_required_columns",
+    "us_release_input_coverage_reviewed_exclusions",
+    "us_release_reform_coverage_probes",
+    "us_reform_coverage_smoke_gate",
+    "us_register_consistency_gate",
+    "us_register_contradictions",
     "write_us_source_coverage_diagnostics",
     "support_channel_column",
     "support_clone_index_column",
@@ -434,6 +622,18 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "calibration targets."
         ),
     ),
+    "medicaid_take_up": DonorSpec(
+        survey="CPS ASEC reported coverage + CMS Medicaid monthly enrollment snapshot",
+        source="https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360",
+        notes=(
+            "Medicaid take-up by anchored count-calibration (contract "
+            "treatment count_calibrated, populace #331): CPS-reported "
+            "Medicaid coverage at interview anchors the flag; the fill is "
+            "calibrated to CMS December 2024 state enrollment snapshots. "
+            "Point-in-time semantics per #332; heals the #170 "
+            "enrollment==eligibility degeneracy."
+        ),
+    ),
     "prior_year_income": DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -450,6 +650,58 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "entry-year, nativity, and program-participation fields via the "
             "ASEC-UA residual method (SSRN 4662801), targeted to published "
             "undocumented population/worker/student control totals."
+        ),
+    ),
+    US_HOURS_WORKED_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Hours-worked inputs mapped directly from measured ASEC person "
+            "variables (HRSWK, A_HRS1, WKSWORK) — nothing imputed. Without "
+            "them the engine defaults every person to 40 weekly hours and "
+            "hours-conditioned rules (SNAP work requirements) become no-ops."
+        ),
+    ),
+    US_SNAP_TAKE_UP_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + USDA FNS participation rate estimates",
+        source="https://www.fns.usda.gov/snap/participation-rates",
+        notes=(
+            "SNAP take-up: reported recipients (SPM_SNAPSUB) always take "
+            "up; non-reporting units drawn to the cited FNS participation "
+            "rate. Without it the engine defaults every eligible unit to "
+            "100% take-up."
+        ),
+    ),
+    US_ELIGIBILITY_INPUTS_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "SNAP eligibility/exemption inputs mapped directly from "
+            "measured ASEC person variables (PEDIS*, A_HSCOL/A_FTPT, "
+            "PEPAR1/PEPAR2, VET_VAL, SSI_VAL) — nothing imputed. Without "
+            "them disability, student, parent/child, and veteran "
+            "exemption channels default to False/0."
+        ),
+    ),
+    US_PREGNANCY_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + CDC natality-derived national pregnancy rate",
+        source="https://www.cdc.gov/nchs/nvss/births.htm",
+        notes=(
+            "Pregnancy seeded among women 15-44 at the national "
+            "point-in-time rate (births x 39/52 over female 15-44 "
+            "population), matching the retired pipeline's national "
+            "fallback; state-level rates are follow-up work (#351). "
+            "The ASEC does not measure pregnancy."
+        ),
+    ),
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
+        source="https://www.law.cornell.edu/uscode/text/7/2015#o_6",
+        notes=(
+            "ABAWD discretionary exemptions seeded at the statutory cap "
+            "(8% from FY2024) across potentially covered adults 18-64; "
+            "the engine intersects with modeled coverage. Assumes full "
+            "state usage of the cap (#323)."
         ),
     ),
     "puf_tax_detail": DonorSpec(
@@ -498,6 +750,11 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "unit_assignment",
     "derive_cps_carried",
     US_IMMIGRATION_STAGE_NAME,
+    US_HOURS_WORKED_STAGE_NAME,
+    US_SNAP_TAKE_UP_STAGE_NAME,
+    US_ELIGIBILITY_INPUTS_STAGE_NAME,
+    US_PREGNANCY_STAGE_NAME,
+    US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     "capital_gain_distributions",
@@ -511,6 +768,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "vehicle_assets",
     "entity_placement",
     "aca_marketplace_inputs",
+    "medicaid_take_up",
     "export",
 )
 

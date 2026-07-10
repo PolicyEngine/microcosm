@@ -32,13 +32,22 @@ from pathlib import Path
 from typing import Any
 
 from populace.build.us_runtime.fiscal_targets import (
+    STATE_FIPS_TO_POSTAL,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
 
+# Postal code -> integer FIPS, for slicing person-level rates by state (the
+# numeric household state_fips broadcasts to persons; the string state code
+# does not).
+_STATE_FIPS: dict[str, int] = {
+    postal: int(fips) for fips, postal in STATE_FIPS_TO_POSTAL.items()
+}
+
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
     "BaselineLevelSpec",
+    "state_spm_poverty_level_specs",
     "ReformValidationSpec",
     "in_sample_reform_specs",
     "out_of_sample_reform_specs",
@@ -46,6 +55,7 @@ __all__ = [
     "soi_baseline_level_specs",
     "state_program_level_specs",
     "state_program_reform_specs",
+    "state_reform_specs",
     "default_baseline_level_specs",
     "load_default_reform_specs",
     "reform_validation_payload",
@@ -98,7 +108,7 @@ class ReformValidationSpec:
     jct_score_fy2027: float | None = None
     budget_measure: str = DEFAULT_BUDGET_MEASURE
     description: str = ""
-    neutralized_variable: str | None = None
+    neutralized_variable: str | list[str] | None = None
     parameter_changes: dict[str, Any] | None = None
     # How the budget effect is signed relative to the simulations. JCT scores a
     # *tax expenditure* as the revenue raised by repeal (reform − baseline, the
@@ -136,11 +146,21 @@ class ReformValidationSpec:
         if self.neutralized_variable:
             from policyengine_core.reforms import Reform
 
-            variable = self.neutralized_variable
+            # A str neutralizes one variable; a list neutralizes each. The
+            # list form exists for credits whose umbrella total is a derived
+            # reporting variable the tax formula never reads (e.g. md_eitc =
+            # md_refundable_eitc + md_non_refundable_eitc): repeal must
+            # neutralize the components on the tax path, not the umbrella.
+            variables = (
+                [self.neutralized_variable]
+                if isinstance(self.neutralized_variable, str)
+                else list(self.neutralized_variable)
+            )
 
             class _Neutralize(Reform):
                 def apply(self) -> None:
-                    self.neutralize_variable(variable)
+                    for variable in variables:
+                        self.neutralize_variable(variable)
 
             return _Neutralize
 
@@ -358,6 +378,64 @@ def state_program_reform_specs(
     return tuple(specs)
 
 
+def _state_reforms_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("state_reforms.json")))
+
+
+def state_reform_specs(
+    path: Path | None = None,
+    *,
+    period: int,
+) -> tuple[ReformValidationSpec, ...]:
+    """State legislative reforms scored against official state fiscal notes.
+
+    Each is a parametric bill from the PolicyEngine state-legislative-tracker:
+    the reform's parameter changes are applied on top of current law and the
+    change in the state's own income-tax variable (reform − baseline) is
+    compared to the state's published fiscal note. State income-tax variables
+    are ``defined_for`` their state, so the national delta IS the state delta.
+    Unlike OBBBA provisions these bills are NOT in the policyengine-us
+    baseline, so no revert/stacking applies — each is a plain enactment.
+    State income taxes are not calibration targets, so every row is
+    out-of-sample.
+    """
+    config_path = path or _state_reforms_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    specs: list[ReformValidationSpec] = []
+    for raw in payload.get("reforms", ()):
+        bench = raw.get("benchmark", {})
+        specs.append(
+            ReformValidationSpec(
+                id=raw["id"],
+                name=raw["name"],
+                category=raw.get("category", "State reform"),
+                in_sample=False,
+                period=int(raw.get("period", period)),
+                jct_score=(
+                    float(bench["score"]) if bench.get("score") is not None else None
+                ),
+                jct_window=str(bench.get("window", "")),
+                jct_source=str(bench.get("source", "")),
+                jct_source_url=str(bench.get("source_url", "")),
+                jct_score_type=str(bench.get("score_type", "fiscal_note")),
+                budget_measure=str(raw.get("budget_measure", "state_income_tax")),
+                description=str(raw.get("description", "")),
+                parameter_changes=raw["parameter_changes"],
+                # An enacted bill's effect is reform − baseline (a rate cut
+                # yields a negative delta, matching the fiscal note's sign).
+                # A bill that has since become baseline law (e.g. GA HB1001 via
+                # HB463) is validated as a counterfactual revert instead and
+                # declares baseline_minus_reform, like the OBBBA provisions.
+                effect_direction=str(
+                    raw.get("effect_direction", "reform_minus_baseline")
+                ),
+            )
+        )
+    return tuple(specs)
+
+
 @dataclass(frozen=True)
 class BaselineLevelSpec:
     """A baseline total compared to a published actual (no counterfactual).
@@ -371,13 +449,20 @@ class BaselineLevelSpec:
 
     id: str
     name: str
-    variable: str
+    # One variable, or a list summed together (for benchmarks that cover
+    # mutually exclusive elections reported as one unsplit official figure,
+    # e.g. Virginia's Sec. 58.1-339.8 low-income credit / EITC elections).
+    variable: str | list[str]
     period: int
     benchmark_value: float
     benchmark_year: str
     source: str
     source_url: str
     description: str = ""
+    # Restrict the weighted total to households in one state (two-letter
+    # code). Used by the federal-EITC-by-state cross-check, where the measured
+    # variable (eitc) is national but the benchmark is an IRS state total.
+    state: str | None = None
     # SOI credit columns report the amount USED to offset tax (liability-
     # limited), while PE per-credit variables are the amount AVAILABLE. For
     # nonrefundable-credit lines, set cap_variable (income_tax_before_credits)
@@ -392,10 +477,25 @@ class BaselineLevelSpec:
     # benchmarks (e.g. state match-rate × IRS federal EITC in the state, or
     # eligible children × credit amount).
     benchmark_score_type: str = "actual"
+    # "total" (default): weighted sum of ``variable``. "rate": weighted share
+    # of persons for whom ``variable`` is truthy among the ``mask_variable``
+    # population (all persons when mask_variable is None), computed at person
+    # level and sliced to ``state`` when set. Used by the Census state-SPM
+    # poverty backtests, whose benchmarks are rates rather than dollar totals.
+    statistic: str = "total"
+    # Person-level boolean restricting a rate's population (e.g. ``is_child``
+    # for child poverty). Only meaningful with statistic="rate".
+    mask_variable: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
             raise ValueError("BaselineLevelSpec requires id and variable.")
+        if self.statistic not in ("total", "rate"):
+            raise ValueError(f"Unknown statistic {self.statistic!r} in {self.id}.")
+        if self.statistic == "rate" and not isinstance(self.variable, str):
+            raise ValueError(f"Rate level {self.id} requires a single variable.")
+        if self.statistic == "rate" and self.cap_variable:
+            raise ValueError(f"Rate level {self.id} cannot use cap_variable.")
 
 
 def _soi_baseline_levels_config_path() -> Path:
@@ -417,6 +517,7 @@ def _baseline_level_specs_from_config(
                 name=raw["name"],
                 variable=raw["variable"],
                 period=int(raw["period"]),
+                state=raw.get("state") or None,
                 benchmark_value=float(bench["value"]),
                 benchmark_year=str(bench.get("year", "")),
                 source=str(bench.get("source", "")),
@@ -425,6 +526,8 @@ def _baseline_level_specs_from_config(
                 cap_variable=raw.get("cap_variable") or None,
                 category=str(raw.get("category", default_category)),
                 benchmark_score_type=str(bench.get("score_type", "actual")),
+                statistic=str(raw.get("statistic", "total")),
+                mask_variable=raw.get("mask_variable") or None,
             )
         )
     return tuple(specs)
@@ -463,9 +566,59 @@ def state_program_level_specs(
     )
 
 
+def _federal_eitc_by_state_config_path() -> Path:
+    return Path(str(files("populace.build.us").joinpath("federal_eitc_by_state.json")))
+
+
+def federal_eitc_state_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Federal EITC totals per state vs IRS EITC Central TY2024 actuals.
+
+    The measured variable is the national federal ``eitc`` sliced to each
+    state's households (``state`` field). Flat-match state EITCs inherit this
+    geography mechanically, so the cross-check isolates federal-geography
+    error from state-rule error in the state-program suite.
+    """
+    return _baseline_level_specs_from_config(
+        path or _federal_eitc_by_state_config_path(),
+        default_category="Federal EITC by state",
+    )
+
+
+def _state_spm_poverty_levels_config_path() -> Path:
+    return Path(
+        str(files("populace.build.us").joinpath("state_spm_poverty_levels.json"))
+    )
+
+
+def state_spm_poverty_level_specs(
+    path: Path | None = None,
+) -> tuple[BaselineLevelSpec, ...]:
+    """Census state SPM poverty rates (overall and child) vs the baseline.
+
+    Each line is a statistic="rate" level: the weighted share of persons in
+    SPM poverty (``in_poverty``), optionally restricted to children
+    (``mask_variable: is_child``), sliced to one state — compared to the
+    Census P60-287 2022–2024 three-year-average state SPM rates. Poverty is
+    nowhere in the calibration target surface, so these are genuinely
+    out-of-sample; the person/child *counts* in each state are calibrated,
+    which pins the denominators but not the rates.
+    """
+    return _baseline_level_specs_from_config(
+        path or _state_spm_poverty_levels_config_path(),
+        default_category="Census state SPM",
+    )
+
+
 def default_baseline_level_specs() -> tuple[BaselineLevelSpec, ...]:
-    """All shipped baseline-level backtests: IRS SOI + state programs."""
-    return (*soi_baseline_level_specs(), *state_program_level_specs())
+    """All shipped backtests: SOI + state programs + EITC geo + SPM rates."""
+    return (
+        *soi_baseline_level_specs(),
+        *state_program_level_specs(),
+        *federal_eitc_state_level_specs(),
+        *state_spm_poverty_level_specs(),
+    )
 
 
 def load_default_reform_specs(
@@ -474,15 +627,18 @@ def load_default_reform_specs(
     obbba_path: Path | None = None,
     tax_expenditure_path: Path | None = None,
     state_program_path: Path | None = None,
+    state_reforms_path: Path | None = None,
 ) -> tuple[ReformValidationSpec, ...]:
     """In-sample JCT tax expenditures + out-of-sample OBBBA provisions + the
     big-provision tax-expenditure reforms (CTC/EITC/CDCC/standard/itemized) +
-    state-program repeal reforms scored against official state outlays."""
+    state-program repeal reforms scored against official state outlays +
+    state legislative reforms scored against official state fiscal notes."""
     return (
         *in_sample_reform_specs(period=period),
         *out_of_sample_reform_specs(obbba_path, period=period),
         *tax_expenditure_reform_specs(tax_expenditure_path, period=period),
         *state_program_reform_specs(state_program_path, period=period),
+        *state_reform_specs(state_reforms_path, period=period),
     )
 
 
@@ -710,15 +866,82 @@ def reform_validation_payload(
     # Baseline-level backtest rows (SOI actuals): no counterfactual — every
     # level reads the shared baseline simulation, so together they cost one
     # extra measure per line, not one simulation per line.
+    def _state_sliced_total(variable: str, state: str, period: int) -> float:
+        """Weighted total of ``variable`` over households in ``state``.
+
+        Values are mapped to household level (numeric maps aggregate across
+        entities; string state codes do not, which is why the slice happens
+        on the household side).
+        """
+        nonlocal baseline
+        import numpy as np
+
+        if baseline is None:
+            baseline = simulate(None)  # type: ignore[misc]
+        values = baseline.calculate(variable, period, map_to="household")
+        states = np.asarray(baseline.calculate("state_code_str", period))
+        mask = states == state
+        return float(
+            (np.asarray(values)[mask] * np.asarray(values.weights)[mask]).sum()
+        )
+
+    def _person_rate(level: BaselineLevelSpec) -> float:
+        """Weighted share of persons with ``variable`` truthy among the mask
+        population, sliced to ``state`` when set.
+
+        Everything is computed at person level: spm_unit/household variables
+        broadcast down to persons, and the numeric ``state_fips`` broadcasts
+        where the string ``state_code_str`` cannot.
+        """
+        nonlocal baseline
+        import numpy as np
+
+        if baseline is None:
+            baseline = simulate(None)  # type: ignore[misc]
+        values = baseline.calculate(level.variable, level.period, map_to="person")
+        weights = np.asarray(values.weights)
+        flags = np.asarray(values) > 0
+        mask = np.ones(len(flags), dtype=bool)
+        if level.mask_variable:
+            mask &= (
+                np.asarray(
+                    baseline.calculate(
+                        level.mask_variable, level.period, map_to="person"
+                    )
+                )
+                > 0
+            )
+        if level.state:
+            fips = np.asarray(
+                baseline.calculate("state_fips", level.period, map_to="person")
+            )
+            mask &= fips == _STATE_FIPS[level.state]
+        denominator = float(weights[mask].sum())
+        if denominator == 0:
+            return 0.0
+        return float((flags[mask] * weights[mask]).sum() / denominator)
+
     def _level_total(level: BaselineLevelSpec) -> float:
         nonlocal baseline
+        if level.statistic == "rate":
+            return _person_rate(level)
+        variables = (
+            [level.variable]
+            if isinstance(level.variable, str)
+            else list(level.variable)
+        )
+        if level.state:
+            return sum(
+                _state_sliced_total(v, level.state, level.period) for v in variables
+            )
         if level.cap_variable:
             if baseline is None:
                 baseline = simulate(None)  # type: ignore[misc]
-            return _capped_weighted_total(
-                baseline, level.variable, level.cap_variable, level.period
+            return sum(
+                _capped_weighted_total(baseline, v, level.cap_variable, level.period)
+                for v in variables
             )
-        return baseline_total(level.variable, level.period)
+        return sum(baseline_total(v, level.period) for v in variables)
 
     for level in baseline_levels:
         total = None if simulate is None else _level_total(level)
@@ -729,6 +952,7 @@ def reform_validation_payload(
                 "category": level.category,
                 "in_sample": False,
                 "period": level.period,
+                "unit": "percent" if level.statistic == "rate" else "currency-USD",
                 "description": level.description or None,
                 "jct": {
                     "score": _finite(level.benchmark_value),

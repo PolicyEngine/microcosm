@@ -1749,6 +1749,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    # The consistency/contract preflights hit the installed policyengine-us
+    # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
+    monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -1827,6 +1831,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_hours_worked_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_snap_take_up_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_eligibility_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_snap_discretionary_exemption_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_take_up_signal_gate",
         lambda frame: builder.GateResult(
             name="us_take_up_signal",
@@ -1843,6 +1872,75 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "programs": [],
             "gate": {"passed": True},
         },
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_hours_worked_signal_gate",
+        lambda frame: builder.GateResult(
+            name="hours_worked_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="snap_take_up_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_eligibility_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="eligibility_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_pregnancy_signal_gate",
+        lambda frame: builder.GateResult(
+            name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_discretionary_exemption_signal_gate",
+        lambda frame: builder.GateResult(
+            name="snap_discretionary_exemption_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_scf_2022_summary_extract",
+        lambda *args, **kwargs: Path("rscfp2022.dta"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_financial_asset_donor",
+        lambda path: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_wealth_inputs",
+        lambda frame, *, seed, time_period, scf_donor: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        lambda frame: builder.GateResult(
+            name="scf_wealth_signal",
+            passed=True,
+            details={"checked": True},
+        ),
     )
     monkeypatch.setattr(
         builder,
@@ -1863,6 +1961,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_health_input_signal_gate",
         lambda frame: builder.GateResult(
             name="health_input_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_medicaid_take_up_outputs",
+        lambda frame, specs, *, seed, substitutions=(), maximum_microsim_batch_size=None: (
+            frame,
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        lambda diagnostics: builder.GateResult(
+            name="medicaid_take_up",
             passed=True,
             details={"checked": True},
         ),
@@ -4096,6 +4211,167 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         assert artifact["sha256"]
 
 
+def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                target=1.0,
+                initial_estimate=1.0,
+                final_estimate=1.0,
+            ),
+        ),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+
+        def __len__(self):
+            return 1
+
+    return dict(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=FakeRegistry(),
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        default_dataset={"method": "dense_no_l0", "sparse": False},
+    )
+
+
+def test_build_manifests_records_selection_source_provenance(
+    monkeypatch, tmp_path
+) -> None:
+    # A frozen-support build records its selection provenance in both manifests
+    # so the informed-L0 step is reproducible from main (populace#328).
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-sel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    selection_source = {
+        "mode": "frozen_support",
+        "join_key": [
+            "source_year",
+            "source_household_id",
+            "household_support_channel",
+            "household_support_clone_index",
+        ],
+        "source": {
+            "kind": "h5",
+            "path": "certified.h5",
+            "sha256": "c" * 64,
+        },
+        "n_source": 57_240,
+        "n_base_candidates": 337_704,
+        "n_selected": 57_240,
+        "n_unmapped": 0,
+        "n_ambiguous": 0,
+    }
+
+    builder._build_manifests(
+        selection_source=selection_source,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == selection_source
+    assert release_manifest["build"]["selection_source"] == selection_source
+    assert build_manifest["calibration"]["selection_source"]["n_selected"] == 57_240
+    assert build_manifest["calibration"]["selection_source"]["n_unmapped"] == 0
+
+
+def test_build_manifests_selection_source_absent_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    # A build with no selection source records the disabled sentinel, not None.
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-nosel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "populace-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == {"enabled": False}
+    assert release_manifest["build"]["selection_source"] == {"enabled": False}
+
+
 def test_build_manifests_uses_incumbent_aware_calibration_gate(
     monkeypatch, tmp_path
 ) -> None:
@@ -4962,3 +5238,158 @@ def test__given_only_build_commit_changed__then_reform_cache_is_reused(
     assert compilation["target_materialization_cache"]["hits"] == 1
     assert compilation["target_materialization_cache"]["misses"] == 0
     assert compilation["target_materialization_cache"]["writes"] == 0
+
+
+def _sentinel_frame(label: str):
+    """A stand-in frame whose only role is object identity.
+
+    The export-gate tests patch ``us_input_mass_totals`` to key off ``id(frame)``
+    and never touch the schema, so a bare tagged object suffices — building a
+    real US-schema Frame (which needs the engine + every entity table) is
+    unnecessary to exercise the #327 reference-selection logic.
+    """
+    return SimpleNamespace(label=label)
+
+
+def test_export_input_mass_gate_defaults_to_base_reference(monkeypatch) -> None:
+    """#327: with no reference_frame, the export gate compares vs the raw base.
+
+    This is the historical behaviour, preserved: a PUF-imputed column that
+    calibration scales far above its raw-base mass (capital gains here) fails
+    the ±50% band against the raw base.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+
+    totals = {
+        id(export): {"long_term_capital_gains": 7.02e11, "employment_income": 1.1e13},
+        id(base): {"long_term_capital_gains": 2.12e11, "employment_income": 1.1e13},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+    )
+    assert not gate.passed
+    assert any("long_term_capital_gains" in f for f in gate.failures)
+    # employment_income (unchanged) does not fail.
+    assert not any("employment_income" in f for f in gate.failures)
+
+
+def test_export_input_mass_gate_passes_against_certified_reference(monkeypatch) -> None:
+    """#327: with the live-default reference, calibration gains are in-band.
+
+    The export mass (capital gains scaled up toward SOI/CBO) is far above the
+    raw base but ~equal to the certified live-default reference — so against the
+    reference the gate passes, vindicating the 11/14 mis-referenced columns.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # export >> raw base (the +230% the raw-base gate flagged), but export
+        # is within ±50% of the certified reference (per #327: -18.8%).
+        id(export): {"long_term_capital_gains": 7.02e11},
+        id(base): {"long_term_capital_gains": 2.12e11},
+        id(reference): {"long_term_capital_gains": 8.64e11},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert gate.passed, gate.failures
+
+
+def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
+    monkeypatch,
+) -> None:
+    """#327: the loss/zeroing arm stays strict against the reference.
+
+    A genuine #278 zeroing (a sparse selection dropping an untargeted input the
+    reference carries) still fails even when the reference — not the raw base —
+    is the yardstick.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # traditional_ira_contributions zeroed in the export (the #278 signature);
+        # health_savings_account halved (drift beyond ±50% vs the reference).
+        id(export): {
+            "traditional_ira_contributions": 0.0,
+            "health_savings_account_ald": 5.0e9,
+        },
+        id(base): {
+            "traditional_ira_contributions": 3.0e10,
+            "health_savings_account_ald": 1.4e10,
+        },
+        id(reference): {
+            "traditional_ira_contributions": 3.1e10,
+            "health_savings_account_ald": 1.38e10,
+        },
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert not gate.passed
+    assert any("traditional_ira_contributions" in f for f in gate.failures)
+    assert any("health_savings_account_ald" in f for f in gate.failures)
+
+
+def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
+    """main() must call the cheap consistency preflights before source stages.
+
+    populace#377 (register consistency) and populace#381 (take-up contract
+    engine-drift) both abort a build in seconds when a register is stale. A
+    regression that drops the preflight call would only surface after hours of
+    source staging, so pin the wiring at the code-object level (these globals
+    are looked up by name inside ``main``).
+    """
+    builder = _load_builder_module()
+    called = set(builder.main.__code__.co_names)
+    for preflight in (
+        "assert_release_input_coverage_manifest_current",
+        "us_register_consistency_gate",
+        "assert_take_up_contract_current",
+        "assert_take_up_treatments_consistent",
+    ):
+        assert preflight in called, f"main() no longer calls {preflight}"

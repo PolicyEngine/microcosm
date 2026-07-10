@@ -19,18 +19,18 @@ Two sides of the pointer live here:
   current?" for dashboards and scorers.
 
 The Hub client is injected (``api=``) everywhere it is used, so the suite
-exercises the real ordering and payloads against a fake — no network, no
-mocking of our own internals.
+exercises the real branch, commit, tag, and pointer ordering against a fake —
+no network and no mocking of our own internals.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from populace.data.contract import required_release_files, validate_release_dir
@@ -120,28 +120,28 @@ def publish_release(
     """Upload a release directory and point ``latest.json`` at it.
 
     The order is the guarantee: the release contract is validated first (an
-    invalid release never reaches the Hub), optional root artifacts declared by
-    ``release_manifest.json`` are uploaded next, every release file is uploaded
-    after that, and the pointer goes up **last**, so a consumer that reads
-    ``latest.json`` always finds the files it names. If ``create_tag=True``, the
-    release tag is created after the root artifacts and release files but before
-    the pointer, so a newly visible ``latest.json`` never points at a manifest
-    whose artifact revision is still missing.
+    invalid release never reaches the Hub), then an immutable branch commit is
+    created with every release file and artifact and tagged. Only after that
+    certificate exists does one atomic main-branch commit update the release
+    copies, mutable root conveniences, and ``latest.json`` (the final
+    operation). Backends without the branch and atomic-commit surface are
+    refused before any remote mutation.
 
     Args:
         release_dir: Local ``releases/<build_id>`` directory.
         repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
-        api: A ``huggingface_hub.HfApi``-shaped object (anything with
-            ``upload_file(path_or_fileobj=, path_in_repo=, repo_id=,
-            repo_type=)``); constructed lazily when omitted.
+        api: A ``huggingface_hub.HfApi``-shaped object with branch, atomic
+            commit, tag, and branch-deletion methods; constructed lazily when
+            omitted. Non-atomic upload-only backends are refused.
         artifact_root: Directory holding root dataset artifacts declared in
             ``release_manifest.json`` (for example ``populace_us_2024.h5``).
             Contract files are always read from ``release_dir`` and uploaded
             under ``releases/<build_id>/``; artifact paths are uploaded to their
             manifest-declared repo paths.
-        create_tag: Create an immutable Hub tag for the release after uploads.
-            The tag defaults to the release id. This is required when artifact
-            revisions in ``release_manifest.json`` are pinned to the release id.
+        create_tag: Create an immutable Hub tag for the release snapshot before
+            updating main. The tag defaults to the release id. This is required
+            when artifact revisions in ``release_manifest.json`` are pinned to
+            the release id.
         tag_name: Optional tag name override when ``create_tag=True``.
         extra_files: Additional filenames in ``release_dir`` to upload
             beyond the contract files (e.g. a diagnostics artifact).
@@ -205,43 +205,160 @@ def publish_release(
 
     if api is None:
         api = _hf_api()
-
-    last_commit = None
-    if artifact_root is not None:
-        for path_in_repo in root_artifacts:
-            local = artifact_root / path_in_repo
-            last_commit = api.upload_file(
-                path_or_fileobj=str(local),
-                path_in_repo=path_in_repo,
-                repo_id=repo_id,
-                repo_type="dataset",
-            )
-
-    for filename in filenames:
-        local = release_dir / filename
-        last_commit = api.upload_file(
-            path_or_fileobj=str(local),
-            path_in_repo=f"releases/{release_id}/{filename}",
-            repo_id=repo_id,
-            repo_type="dataset",
+    payload = latest_pointer_payload(release_id, updated_at=updated_at)
+    if create_tag and not callable(getattr(api, "create_tag", None)):
+        raise TypeError(
+            "publish_release requires a Hub backend with create_tag support; "
+            "release manifests pin artifacts to immutable release tags."
         )
+    if not _supports_atomic_publication(api):
+        raise TypeError(
+            "publish_release requires a Hub backend with create_branch, "
+            "create_commit, create_tag, and delete_branch support so release "
+            "publication is immutable-first and atomic."
+        )
+    _publish_atomic(
+        api,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        repo_id=repo_id,
+        release_id=release_id,
+        tag=tag,
+        filenames=filenames,
+        root_artifacts=root_artifacts,
+        payload=payload,
+        create_tag=create_tag,
+    )
+    return payload
 
+
+def _supports_atomic_publication(api: object) -> bool:
+    return all(
+        callable(getattr(api, method, None))
+        for method in ("create_branch", "create_commit", "create_tag", "delete_branch")
+    )
+
+
+def _commit_operations(
+    *,
+    release_dir: Path,
+    artifact_root: Path | None,
+    release_id: str,
+    filenames: list[str],
+    root_artifacts: Mapping[str, str],
+    pointer: bytes | None = None,
+) -> list:
+    try:
+        from huggingface_hub import CommitOperationAdd
+    except ImportError as exc:  # pragma: no cover - declared dependency
+        raise ImportError(
+            "populace-data needs huggingface_hub to publish releases; "
+            "reinstall populace-data with its dependencies."
+        ) from exc
+
+    operations = [
+        CommitOperationAdd(
+            path_in_repo=f"releases/{release_id}/{filename}",
+            path_or_fileobj=str(release_dir / filename),
+        )
+        for filename in filenames
+    ]
+    if artifact_root is not None:
+        operations.extend(
+            CommitOperationAdd(
+                path_in_repo=path_in_repo,
+                path_or_fileobj=str(artifact_root / path_in_repo),
+            )
+            for path_in_repo in root_artifacts
+        )
+    if pointer is not None:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=LATEST_POINTER_PATH,
+                path_or_fileobj=pointer,
+            )
+        )
+    return operations
+
+
+def _repo_revision(api: object, *, repo_id: str) -> str | None:
+    repo_info = getattr(api, "repo_info", None)
+    if not callable(repo_info):
+        return None
+    info = repo_info(repo_id=repo_id, repo_type="dataset", revision="main")
+    if isinstance(info, Mapping):
+        value = info.get("sha")
+    else:
+        value = getattr(info, "sha", None)
+    return str(value) if value else None
+
+
+def _publish_atomic(
+    api: object,
+    *,
+    release_dir: Path,
+    artifact_root: Path | None,
+    repo_id: str,
+    release_id: str,
+    tag: str,
+    filenames: list[str],
+    root_artifacts: Mapping[str, str],
+    payload: dict,
+    create_tag: bool,
+) -> None:
+    staging_branch = f"release-staging/{release_id}"
+    main_revision = _repo_revision(api, repo_id=repo_id)
+    api.create_branch(
+        repo_id=repo_id,
+        branch=staging_branch,
+        repo_type="dataset",
+        revision=main_revision,
+    )
+    immutable_commit = api.create_commit(
+        repo_id=repo_id,
+        repo_type="dataset",
+        revision=staging_branch,
+        commit_message=f"Publish immutable release {release_id}",
+        operations=_commit_operations(
+            release_dir=release_dir,
+            artifact_root=artifact_root,
+            release_id=release_id,
+            filenames=filenames,
+            root_artifacts=root_artifacts,
+        ),
+    )
+    immutable_revision = _commit_revision(immutable_commit)
+    if immutable_revision is None:
+        raise RuntimeError(
+            "Hub create_commit returned no revision for immutable release "
+            f"{release_id!r}; refusing to update main or latest.json."
+        )
     if create_tag:
         _create_release_tag(
             api,
             repo_id=repo_id,
             tag=tag,
-            revision=_commit_revision(last_commit),
+            revision=immutable_revision,
         )
-
-    payload = latest_pointer_payload(release_id, updated_at=updated_at)
-    api.upload_file(
-        path_or_fileobj=json.dumps(payload, indent=1).encode(),
-        path_in_repo=LATEST_POINTER_PATH,
+    api.delete_branch(
         repo_id=repo_id,
+        branch=staging_branch,
         repo_type="dataset",
     )
-    return payload
+    api.create_commit(
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message=f"Update latest release to {release_id}",
+        parent_commit=main_revision,
+        operations=_commit_operations(
+            release_dir=release_dir,
+            artifact_root=artifact_root,
+            release_id=release_id,
+            filenames=filenames,
+            root_artifacts=root_artifacts,
+            pointer=json.dumps(payload, indent=1).encode(),
+        ),
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -383,10 +500,9 @@ def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | 
         kwargs["revision"] = revision
     create_tag = getattr(api, "create_tag", None)
     if create_tag is None:
-        # Fake APIs in downstream smoke scripts sometimes only implement
-        # upload_file. Return a small sentinel rather than failing after a
-        # successful upload sequence; the real HfApi has create_tag.
-        return SimpleNamespace(tag=tag, revision=revision)
+        raise TypeError(
+            "publish_release requires a Hub backend with create_tag support."
+        )
     return create_tag(**kwargs)
 
 
