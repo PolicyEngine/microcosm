@@ -453,7 +453,9 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     new release id without a commit here, so pinning which release is current
     (or its digest) would red main on every publish. Exact-metadata coverage
     lives in :func:`test_resolve_certified_release_returns_pointer_pinned_metadata`;
-    this test only proves the currently published chain is coherent.
+    this test only proves the currently published chain is coherent. Pinning a
+    release *identity* belongs to policyengine.py's certification fixtures,
+    which are updated atomically with each certification PR.
     """
     spec = resolve(country)
     try:
@@ -469,7 +471,7 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
             )
         raise
 
-    assert certified.release_id.startswith(f"populace-{country}-")
+    assert certified.release_id.startswith(f"populace-{country}-{spec.year}-")
     assert certified.artifact_repo_id == spec.hf_repo
     assert certified.artifact_path == spec.filename
     assert certified.artifact_revision == certified.release_id
