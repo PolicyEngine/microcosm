@@ -1,0 +1,95 @@
+#!/bin/bash
+# Build J STEP 1 — base pool rebuild on main's stages (populace#368 re-certification).
+# Replicates Build F's base command EXACTLY on origin/main's base builder
+# (byte-identical to Build F's tools/build_us_puf_support_base.py) to (a) satisfy the
+# #368 "base pool rebuild" step and (b) EMPIRICALLY confirm determinism. The SNAP
+# (#350/#352/#353) and SCF-wealth (#373) enrichments are RELEASE-TIME source stages
+# (us_runtime/*), NOT base-builder stages, so the base sha is expected == Build F's
+# 18833fb6 (documented finding vs the task's "new base sha expected" premise).
+#
+# Compute discipline: ~12 min (Build F was 12m14s), one chunk (<30 min). Detached via
+# setsid+caffeinate; pidfile + real rc + append log + memory-pressure sampler.
+# NO killing watchdog (six jetsam kills + healthy-run kills taught this — sample only).
+# STAGING/LOCAL ONLY.
+set -u
+RT=/Users/maxghenis/PolicyEngine/_buildj-runtime
+WT=/Users/maxghenis/PolicyEngine/_worktrees/populace-build-j-recert
+USD=/Users/maxghenis/PolicyEngine/policyengine-us-data/policyengine_us_data/storage
+BIN=/Users/maxghenis/PolicyEngine/_buildf-runtime/inputs   # canonical base inputs (Build F set)
+AGING_FACTS="$BIN/consumer_facts_builde_aging_v5.jsonl"     # a5d34d4a
+CDX="$BIN/congressional_district_vintage_crosswalk.csv"     # 383a6666
+BLADDER="$BIN/us_block_ladder_2020.npz"                     # 7ba39b95
+OUTDIR="$RT/out/base-j"
+BASE="$OUTDIR/base_populace_us_2024_puf_support.h5"
+LOGDIR="$RT/logs/buildj-run"
+LOG="$LOGDIR/chain_base.log"
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+PLOG="$LOGDIR/pressure_base_$TS.log"
+mkdir -p "$LOGDIR" "$OUTDIR"
+say() { echo "[$(date -u +%FT%TZ)] $1" | tee -a "$LOG"; }
+rm -f "$LOGDIR/base.rc"
+
+cd "$WT" || { say "FATAL cannot cd $WT"; echo 2 > "$LOGDIR/base.rc"; exit 2; }
+source .venv/bin/activate 2>/dev/null
+
+# ---- integrity preflight on inputs (reproduce Build F's exact base) ----
+chk() { local got exp; got=$(shasum -a 256 "$1" | cut -c1-16); [ "$got" = "$2" ] || { say "FATAL sha mismatch $1: $got != $2"; echo 2 > "$LOGDIR/base.rc"; exit 2; }; }
+for f in "$USD/census_cps_2024.h5" "$USD/census_cps_2023.h5" "$USD/census_cps_2022.h5" "$USD/puf_2024.h5" "$AGING_FACTS" "$CDX" "$BLADDER"; do
+  [ -f "$f" ] || { say "FATAL missing input $f"; echo 2 > "$LOGDIR/base.rc"; exit 2; }
+done
+chk "$AGING_FACTS" a5d34d4aad325d8c
+chk "$CDX" 383a666631aafd4f
+chk "$BLADDER" 7ba39b959068181b
+
+SHORT=$(git rev-parse --short HEAD)
+PEUS=$(.venv/bin/python -c "from importlib.metadata import version; print(version('policyengine-us'))" 2>/dev/null)
+say "BUILD J BASE START commit=$SHORT pe-us=$PEUS pid=$$ pressure_log=$PLOG"
+say "  inputs: asec 2024/2023/2022 + puf_2024; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
+
+if [ -f "$BASE" ]; then
+  say "BASE: already present at $BASE — verifying sha only (delete to force rebuild)"
+else
+  # ---- memory-pressure sampler (self-terminates on python exit; SAMPLE ONLY, no kill) ----
+  ( echo "ts_utc,free_pct,swap_used_mb,py_rss_mb,py_pid"
+    while :; do
+      fp=$(memory_pressure 2>/dev/null | awk -F': ' '/free percentage/{gsub(/%/,"",$2);print $2}')
+      sw=$(sysctl -n vm.swapusage 2>/dev/null | sed -E 's/.*used = ([0-9.]+)M.*/\1/')
+      pid=$(pgrep -f 'build_us_puf_support_base.py' | head -1)
+      rss=""; if [ -n "$pid" ]; then rss=$(ps -o rss= -p "$pid" 2>/dev/null | awk '{print int($1/1024)}'); fi
+      echo "$(date -u +%FT%TZ),${fp:-},${sw:-},${rss:-},${pid:-}"
+      [ -z "$pid" ] && sleep 4 && pid2=$(pgrep -f 'build_us_puf_support_base.py' | head -1) && [ -z "$pid2" ] && break
+      sleep 15
+    done ) >> "$PLOG" 2>&1 &
+  SAMPLER=$!
+
+  say "BASE: rebuilding (3-year ASEC pool 2024+2023+2022, 2x PUF clone, spec-less equal thirds)"
+  .venv/bin/python tools/build_us_puf_support_base.py \
+    --asec-h5 2024="$USD/census_cps_2024.h5" \
+    --asec-h5 2023="$USD/census_cps_2023.h5" \
+    --asec-h5 2022="$USD/census_cps_2022.h5" \
+    --puf-h5 "$USD/puf_2024.h5" \
+    --target-year 2024 \
+    --seed 0 --n-estimators 32 \
+    --ledger-facts "$AGING_FACTS" \
+    --assign-congressional-districts \
+    --congressional-district-vintage-crosswalk "$CDX" \
+    --congressional-district-seed 0 \
+    --block-ladder-artifact "$BLADDER" \
+    --out "$OUTDIR" \
+    >> "$LOGDIR/base_j.log" 2>&1
+  rc=$?
+  kill "$SAMPLER" 2>/dev/null
+  say "BASE: python exited rc=$rc"
+  if [ $rc -ne 0 ]; then echo "$rc" > "$LOGDIR/base.rc"; say "BASE FAILED rc=$rc — diagnose in base_j.log"; exit "$rc"; fi
+fi
+
+BASE_SHA=$(shasum -a 256 "$BASE" | cut -d' ' -f1)
+echo "$BASE_SHA" > "$LOGDIR/base.sha"
+say "BASE sha: $BASE_SHA"
+if [ "$BASE_SHA" = "18833fb68e60ee74461608d81a5c5ab7d52435e17026d9e3b062d9de18d6871f" ]; then
+  say "BASE sha CONFIRMS Build F 18833fb6 — base pool unchanged (assets/SNAP are release-time source stages, not base-builder stages)"
+else
+  say "BASE sha DIFFERS from 18833fb6 — investigate before proceeding (base builder or deps changed the pool)"
+fi
+echo "0" > "$LOGDIR/base.rc"
+say "BUILD J BASE DONE rc=0 sha=$BASE_SHA"
