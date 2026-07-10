@@ -59,6 +59,8 @@ follows this pattern once the ledger splits the concepts.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -70,15 +72,20 @@ from populace.build.us_runtime.take_up import (
     _SOURCE_IDENTITY_COLUMNS,
     _stable_unit_draws,
 )
+from populace.calibrate import TargetRegistry, TargetSpec
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
 __all__ = [
+    "US_MEDICAID_ENROLLMENT_SUBSTITUTIONS",
+    "US_MEDICAID_ENROLLMENT_TARGET_ROLE",
     "US_MEDICAID_ENROLLMENT_TARGET_TABLE",
     "US_MEDICAID_ENROLLMENT_TOLERANCE",
     "US_MEDICAID_TAKE_UP_ANCHOR",
     "US_MEDICAID_TAKE_UP_STAGE",
     "US_MEDICAID_TAKE_UP_VARIABLE",
+    "MedicaidEnrollmentSubstitution",
+    "apply_us_medicaid_enrollment_substitutions",
     "us_medicaid_source_person_table",
     "us_medicaid_take_up_diagnostics",
     "us_medicaid_take_up_gate",
@@ -92,6 +99,11 @@ US_MEDICAID_TAKE_UP_VARIABLE = "takes_up_medicaid_if_eligible"
 US_MEDICAID_TAKE_UP_ANCHOR = "has_medicaid_health_coverage_at_interview"
 US_MEDICAID_ELIGIBILITY_COLUMN = "is_medicaid_eligible"
 US_MEDICAID_ENROLLMENT_TARGET_TABLE = "cms_medicaid_enrollment_by_state"
+
+#: The ``target_role`` the CMS state Medicaid enrollment specs carry; the
+#: reviewed-substitution register keys on it to find the natural per-state
+#: count specs and to rot-check a substitution against a backfilled month.
+US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
 
 #: Relative miss tolerance for an unsaturated state's calibrated enrollment
 #: against its CMS count. Greedy calibration overshoots by at most one unit
@@ -245,6 +257,7 @@ def with_us_medicaid_take_up(
     state_fips: np.ndarray,
     state_targets: pd.DataFrame,
     seed: int,
+    substitutions: Sequence[dict[str, object]] = (),
 ) -> tuple[Frame, dict[str, object]]:
     """Assign ``takes_up_medicaid_if_eligible`` onto the frame's person table.
 
@@ -252,6 +265,11 @@ def with_us_medicaid_take_up(
     then greedy count-calibration among eligible non-anchored persons) and
     writes the flag back. The column is always recomputed — this stage owns
     it; a persisted landmine is repaired, not trusted.
+
+    ``substitutions`` are the reviewed CMS enrollment substitution records in
+    effect (from :func:`apply_us_medicaid_enrollment_substitutions`); they are
+    threaded into the diagnostics so the gate can rot-check them and the
+    release artifact records them.
 
     Returns:
         The new frame and the release diagnostics payload
@@ -315,12 +333,17 @@ def with_us_medicaid_take_up(
         frame.strata,
         mass_log=frame.mass_log,
     )
-    diagnostics = us_medicaid_take_up_diagnostics(output, state_targets)
+    diagnostics = us_medicaid_take_up_diagnostics(
+        output, state_targets, substitutions=substitutions
+    )
     return result, diagnostics
 
 
 def us_medicaid_take_up_diagnostics(
-    assigned: pd.DataFrame, state_targets: pd.DataFrame
+    assigned: pd.DataFrame,
+    state_targets: pd.DataFrame,
+    *,
+    substitutions: Sequence[dict[str, object]] = (),
 ) -> dict[str, object]:
     """The #170 eligibility-to-enrollment surface, by state and nationally.
 
@@ -330,6 +353,13 @@ def us_medicaid_take_up_diagnostics(
     the engine's gate), the CMS target, the enrollment/eligibility ratio, and
     whether the state is ``saturated`` (target at or above eligible weight, so
     full enrollment is the calibrated answer, not a landmine).
+
+    ``substitutions`` are the reviewed CMS enrollment substitution records
+    (:func:`apply_us_medicaid_enrollment_substitutions`) in effect for this
+    build. They ride the diagnostics so the release artifact records exactly
+    which states shipped a substituted point-in-time count and so the gate can
+    fail on a stale (backfilled) substitution — the anti-rot half of the
+    register.
     """
     eligible = assigned[US_MEDICAID_ELIGIBILITY_COLUMN].fillna(False).astype(bool)
     anchored = assigned[US_MEDICAID_TAKE_UP_ANCHOR].fillna(False).astype(bool)
@@ -409,6 +439,7 @@ def us_medicaid_take_up_diagnostics(
         "saturated_states": sorted(
             row["state_fips"] for row in states if row["saturated"]
         ),
+        "medicaid_enrollment_substitutions": [dict(record) for record in substitutions],
     }
 
 
@@ -444,6 +475,12 @@ def us_medicaid_take_up_gate(
     count checks: there, full enrollment IS the calibrated answer and the
     shortfall is an eligibility-undercount question outside this stage's
     scope.
+
+    Finally, the gate enforces the anti-rot half of the reviewed-substitution
+    register (:func:`apply_us_medicaid_enrollment_substitutions`): a
+    substitution whose substituted-for month has since been backfilled by CMS
+    (``stale``) fails the gate, so a reviewed substitution cannot outlive its
+    justification (the #286 stale-exclusion doctrine).
     """
     failures: list[str] = []
     states = diagnostics.get("states", [])
@@ -500,12 +537,277 @@ def us_medicaid_take_up_gate(
                 f"the CMS count {target:.0f} (floor {floor:.0f}) by more than "
                 f"the granularity allowance {allowed_miss:.0f}."
             )
+    for record in diagnostics.get("medicaid_enrollment_substitutions", []):
+        if record.get("stale"):
+            failures.append(
+                f"state {record['state_fips']}: the reviewed Medicaid "
+                f"enrollment substitution ({record['issue']}) is stale — CMS "
+                f"now reports a genuine {record['substituted_for_source_period']}"
+                " count, so the nearest-prior-month substitution "
+                f"({record['substitute_source_record_id']}) has outlived its "
+                "justification and must be removed from the register."
+            )
     return GateResult(
         name="medicaid_take_up",
         passed=not failures,
         failures=tuple(failures),
         details=diagnostics,
     )
+
+
+@dataclass(frozen=True)
+class MedicaidEnrollmentSubstitution:
+    """One reviewed CMS Medicaid enrollment substitution (populace #386).
+
+    Maps a state whose point-in-time CMS enrollment snapshot is unreported at
+    source to its nearest-prior reported month, so the count-calibration gate
+    ships a cited administrative value instead of failing closed or silently
+    degrading that state to anchored-only enrollment. No Ledger fact is
+    synthesized: the substitution lives at the registry-compile/gate layer, is
+    recorded in the compiled spec's metadata (so the release certification
+    panel renders it) and in the take-up diagnostics.
+
+    The register is anti-rot: a substitution applies only while its
+    substituted-for month is genuinely absent (the unreported month's
+    zero-valued CMS row compiles to no ``medicaid_enrollment`` spec). The
+    moment CMS backfills a real count for that state-month, the natural spec
+    reappears and :func:`us_medicaid_take_up_gate` fails on the now-stale
+    entry — the substitution cannot outlive its justification.
+
+    Attributes:
+        state_fips: Zero-padded two-char state FIPS the substitution covers.
+        substituted_for_source_record_id: The missing point-in-time Ledger
+            fact (the unreported month) this stands in for.
+        substituted_for_source_period: Source month of the missing fact
+            (``"2024-12"``); the natural spec's reappearance at this state is
+            what makes the entry stale.
+        substitute_source_record_id: The nearest-prior-month Ledger fact the
+            value is taken from.
+        substitute_source_period: Source month of the substitute fact
+            (``"2024-11"``).
+        substitute_value: The substitute fact's administrative count, verified
+            against the pinned Ledger source.
+        reason: Why the substituted-for month is missing — quotes the CMS
+            footnote.
+        issue: Tracking issue (``"populace#386"``).
+    """
+
+    state_fips: str
+    substituted_for_source_record_id: str
+    substituted_for_source_period: str
+    substitute_source_record_id: str
+    substitute_source_period: str
+    substitute_value: float
+    reason: str
+    issue: str
+
+
+#: The reviewed CMS Medicaid enrollment substitution register. Rhode Island is
+#: the only hole in the pinned April-2026 CMS PI feed: its December-2024 Total
+#: Medicaid Enrollment is reported as 0 under an "Unable to Provide Data"
+#: footnote and never backfilled, so the point-in-time snapshot compiles to no
+#: FIPS-44 ``medicaid_enrollment`` spec and the count-calibration gate fails
+#: closed (populace#386, blocking the #368 Build J re-certification).
+US_MEDICAID_ENROLLMENT_SUBSTITUTIONS: tuple[MedicaidEnrollmentSubstitution, ...] = (
+    MedicaidEnrollmentSubstitution(
+        state_fips="44",
+        substituted_for_source_record_id=(
+            "cms_medicaid.month2024_12.state_enrollment.ri.total_medicaid_enrollment"
+        ),
+        substituted_for_source_period="2024-12",
+        substitute_source_record_id=(
+            "cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_enrollment"
+        ),
+        substitute_source_period="2024-11",
+        substitute_value=273_400.0,
+        reason=(
+            "CMS reports Rhode Island December 2024 Total Medicaid Enrollment "
+            'as 0 with the footnote "Unable to Provide Data due to System '
+            'Limitations" (pi-dataset-april-2026-release.csv, both the '
+            "preliminary P/N and final U/Y rows); RI did not report the month "
+            "and the April 2026 release still carries the footnoted 0. "
+            "Substituted RI's nearest prior reported month, November 2024 "
+            "(Total Medicaid Enrollment 273,400)."
+        ),
+        issue="populace#386",
+    ),
+)
+
+
+def apply_us_medicaid_enrollment_substitutions(
+    registry: TargetRegistry,
+    *,
+    substitutions: Sequence[MedicaidEnrollmentSubstitution] = (
+        US_MEDICAID_ENROLLMENT_SUBSTITUTIONS
+    ),
+) -> tuple[TargetRegistry, tuple[dict[str, object], ...]]:
+    """Apply the reviewed CMS Medicaid enrollment substitution register.
+
+    For each register entry whose substituted-for month is genuinely missing,
+    injects a ``medicaid_enrollment`` :class:`~populace.calibrate.TargetSpec`
+    for the state — the cited nearest-prior-month count, carrying the
+    substitution provenance in its metadata so it flows into the compiled
+    registry, the take-up target table, and the release certification panel.
+    An entry whose substituted-for month has since compiled to a genuine
+    per-state spec (CMS backfilled a real count) is marked ``stale`` and NOT
+    injected; :func:`us_medicaid_take_up_gate` fails on it (the #286
+    stale-exclusion doctrine, applied to a substitution register).
+
+    Returns:
+        The augmented registry and one diagnostic record per register entry
+        (consumed by the take-up gate and written to the release diagnostics).
+
+    Raises:
+        ValueError: If an active substitution has no natural
+            ``medicaid_enrollment`` state spec in the registry to derive the
+            substituted target's calibration shape from.
+    """
+    natural = _medicaid_enrollment_state_specs(registry)
+    template = next(iter(natural.values()), None)
+    specs = list(registry.specs)
+    records: list[dict[str, object]] = []
+    for substitution in substitutions:
+        state_fips = substitution.state_fips.zfill(2)
+        stale = state_fips in natural
+        records.append(
+            {
+                "state_fips": state_fips,
+                "substituted_for_source_record_id": (
+                    substitution.substituted_for_source_record_id
+                ),
+                "substituted_for_source_period": (
+                    substitution.substituted_for_source_period
+                ),
+                "substitute_source_record_id": (
+                    substitution.substitute_source_record_id
+                ),
+                "substitute_source_period": substitution.substitute_source_period,
+                "substitute_value": float(substitution.substitute_value),
+                "reason": substitution.reason,
+                "issue": substitution.issue,
+                "applied": not stale,
+                "stale": stale,
+            }
+        )
+        if stale:
+            # CMS backfilled the substituted-for month: the natural spec is
+            # already in the registry. Inject nothing (a second row would be a
+            # duplicate state target) and let the gate fail on the now-stale
+            # register entry.
+            continue
+        if template is None:
+            raise ValueError(
+                "Cannot apply the reviewed Medicaid enrollment substitution "
+                f"for state {state_fips}: the registry carries no "
+                "medicaid_enrollment state spec to derive the substituted "
+                "target's calibration shape from."
+            )
+        specs.append(_substituted_medicaid_enrollment_spec(template, substitution))
+    return TargetRegistry(specs, country=registry.country), tuple(records)
+
+
+def _medicaid_enrollment_state_specs(
+    registry: TargetRegistry,
+) -> dict[str, TargetSpec]:
+    """Natural state-level ``medicaid_enrollment`` specs keyed by state FIPS.
+
+    Prior substitutions (metadata ``medicaid_enrollment_substitution == 'true'``)
+    are excluded so applying the register is idempotent and a substitution is
+    rot-checked only against a genuine, CMS-reported per-state count.
+    """
+    specs: dict[str, TargetSpec] = {}
+    for spec in registry.specs:
+        metadata = spec.metadata
+        if metadata.get("target_role") != US_MEDICAID_ENROLLMENT_TARGET_ROLE:
+            continue
+        if metadata.get("ledger_geography_level") != "state":
+            continue
+        if metadata.get("medicaid_enrollment_substitution") == "true":
+            continue
+        state_fips = metadata.get("state_fips")
+        if state_fips:
+            specs[str(state_fips).zfill(2)] = spec
+    return specs
+
+
+def _substituted_medicaid_enrollment_spec(
+    template: TargetSpec,
+    substitution: MedicaidEnrollmentSubstitution,
+) -> TargetSpec:
+    """A ``medicaid_enrollment`` spec standing in for an unreported month.
+
+    Clones the calibration/materialization shape of an existing state's
+    ``medicaid_enrollment`` spec (same base variable, measure mode,
+    materializer, geography level, groupby dimension) so the substituted state
+    calibrates and materializes identically, then re-points the state identity
+    and value to the register's nearest-prior-month count and stamps the
+    substitution provenance into the metadata. No Ledger fact is synthesized:
+    the substituted value is the cited prior-month administrative count, and
+    the spec is visibly marked ``medicaid_enrollment_substitution`` so the
+    release certification panel can render it.
+    """
+    state_fips = substitution.state_fips.zfill(2)
+    record_set_id, groupby_value_id = _state_enrollment_record_id_parts(
+        substitution.substitute_source_record_id
+    )
+    name = (
+        f"{substitution.substitute_source_record_id}"
+        ".medicaid_enrollment_substitution"
+    )
+    metadata = dict(template.metadata)
+    # Per-fact content-hash keys describe the template state's row; drop them
+    # rather than stamp a neighbouring state's identity onto this one.
+    for per_fact_key in (
+        "ledger_fact_key",
+        "ledger_aggregate_fact_key",
+        "ledger_semantic_fact_key",
+        "ledger_legacy_fact_key",
+    ):
+        metadata.pop(per_fact_key, None)
+    metadata.update(
+        {
+            "state_fips": state_fips,
+            "ledger_geography_id": f"0400000US{state_fips}",
+            "ledger_layout_groupby_value_id": groupby_value_id,
+            "ledger_layout_record_set_id": record_set_id,
+            "ledger_source_record_id": substitution.substitute_source_record_id,
+            "ledger_fact_period": substitution.substitute_source_period,
+            "source_period": substitution.substitute_source_period,
+            "medicaid_enrollment_substitution": "true",
+            "substituted_for_source_record_id": (
+                substitution.substituted_for_source_record_id
+            ),
+            "substituted_for_source_period": (
+                substitution.substituted_for_source_period
+            ),
+            "substitution_reason": substitution.reason,
+            "substitution_issue": substitution.issue,
+        }
+    )
+    return replace(
+        template,
+        name=name,
+        measure=name,
+        value=float(substitution.substitute_value),
+        metadata=metadata,
+    )
+
+
+def _state_enrollment_record_id_parts(record_id: str) -> tuple[str, str]:
+    """``(record_set_id, state groupby value id)`` from a CMS enrollment id.
+
+    Ledger CMS state-enrollment fact ids are
+    ``cms_medicaid.month{YYYY}_{MM}.state_enrollment.{state}.{measure}``; a
+    malformed id fails loudly rather than stamping a misleading provenance.
+    """
+    parts = record_id.split(".")
+    if len(parts) != 5 or parts[2] != "state_enrollment":
+        raise ValueError(
+            "Medicaid enrollment substitution source_record_id must look like "
+            "'cms_medicaid.month{YYYY}_{MM}.state_enrollment.{state}.{measure}';"
+            f" got {record_id!r}."
+        )
+    return ".".join(parts[:3]), parts[3]
 
 
 def write_us_medicaid_take_up_diagnostics(
