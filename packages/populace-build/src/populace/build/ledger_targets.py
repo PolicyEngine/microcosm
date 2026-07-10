@@ -80,6 +80,12 @@ class LedgerTargetReference:
     # Required at compile time (a None expected_unit is a hard error).
     expected_unit: str | None = None
     value_scale: float = 1.0
+    # A non-identity value_scale is a rescale of the observed fact and must be
+    # reviewed: production references only apply a scale they explicitly declare.
+    # An undeclared value_scale other than 1.0 is a hard error at compile time so
+    # an unreviewed thousands/millions rescale cannot ride in on a default
+    # (finding #9).
+    value_scale_declared: bool = False
     source: str | None = None
     family: str = "ledger"
     signed: bool = False
@@ -533,6 +539,14 @@ def target_spec_from_ledger_reference(
             "required; every reference must declare the unit its fact carries "
             "so a thousands-vs-millions scale swap fails at the model boundary "
             "(finding #9)."
+        )
+    if reference.value_scale != 1.0 and not reference.value_scale_declared:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_scale "
+            f"{reference.value_scale!r} rescales the observed fact but is not "
+            "declared; set value_scale_declared=True to authorize a reviewed "
+            "non-identity scale (an undeclared scale must not silently reach the "
+            "model, finding #9)."
         )
 
     value = _at(fact, "value")

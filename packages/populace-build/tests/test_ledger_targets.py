@@ -1514,6 +1514,7 @@ def test__given_reference_value_scale__then_value_is_scaled_and_recorded() -> No
         name="soi agi billions",
         expected_unit="usd_billions",
         value_scale=1e9,
+        value_scale_declared=True,
         ledger_fact_key="ledger.aggregate_fact.v2:abc123",
         entity="tax_unit",
         measure="adjusted_gross_income",
@@ -1544,6 +1545,47 @@ def test__given_zero_value_scale__then_reference_construction_fails() -> None:
             entity="tax_unit",
             measure="adjusted_gross_income",
         )
+
+
+def test_sol_counterexample_any_finite_scale_is_treated_as_authorized() -> None:
+    # value_scale defaults to 1.0 and __post_init__ accepts any finite non-zero
+    # scale, so an arbitrary 1_000_000 rescale would silently reach the model as
+    # if it were authorized. A production reference must explicitly declare an
+    # intended non-identity scale; an undeclared scale is a hard error at compile
+    # (finding #9 / Sol finding 4).
+    undeclared = LedgerTargetReference(
+        name="soi agi undeclared scale",
+        expected_unit="usd",
+        value_scale=1_000_000,
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+    )
+    with pytest.raises(ValueError, match="value_scale.*is not declared"):
+        compile_ledger_target_references(
+            [_agi_row_with_unit("usd", value=15_286)],
+            [undeclared],
+            country="us",
+        )
+
+    # The identical scale, explicitly declared, is authorized and applied.
+    declared = LedgerTargetReference(
+        name="soi agi declared scale",
+        expected_unit="usd",
+        value_scale=1_000_000,
+        value_scale_declared=True,
+        ledger_fact_key="ledger.aggregate_fact.v2:abc123",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+    )
+    registry = compile_ledger_target_references(
+        [_agi_row_with_unit("usd", value=15_286)],
+        [declared],
+        country="us",
+    )
+    assert registry.specs[0].value == pytest.approx(15_286 * 1_000_000)
 
 
 # ---------------------------------------------------------------------------
