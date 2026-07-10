@@ -82,4 +82,38 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   in logs/buildj-run/base.wrapperpid). Replicates Build F's exact base command on main's
   (identical) builder: 3-year ASEC pool 2024+2023+2022, 2x PUF clone, seed 0, n-estimators 32,
   aging-facts a5d34d4a, CD assignment (cdx 383a6666, seed 0), block ladder 7ba39b95. Expect sha
-  18833fb6 (finding F1). Build F base was 12m14s -> one chunk. [Blocking on base.rc + base.sha.]
+  18833fb6 (finding F1). Build F base was 12m14s; this run ran ~15 min active (99% CPU, RSS ~52 GB,
+  free% ~86 — healthy, no jetsam risk; slower tail vs Build F is variance). [Blocking on base.rc.]
+
+## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
+Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
+release dir holds every certification artifact. NO bypass flags are passed (gates ALL ON).
+- **calibration_diagnostics.json** — final_loss, within-10%, ESS, realized_max_weight_ratio, key
+  fits (fed income tax SOI, SS, net cap gain, mortgage tax-exp). Bar = Build I 0.030833 / 0.8888 /
+  +0.22%.
+- **input_mass_parity.json** — export-mass gate (35 cols, ±50%, $1B floor; reviewed exclusions
+  estate_income + non_sch_d_capital_gains ONLY). Bar = Build I PASS 0/35.
+- **reform_coverage_smoke.json** — the #369 SSI probe `ssi_asset_limit_10k_20k` (binding on
+  bank_account_assets/stock_assets/bond_assets; individual->$10k couple->$20k; direction
+  reform_minus_baseline; **PERIOD = 2024**; $1B floor). Read `details.results.ssi_asset_limit_10k_20k
+  .effect` — VERBATIM = the SSI probe magnitude for the verdict. Gate hard-fails if <$1B (no bypass).
+  Note the release scores at **2024** (the scf_wealth doc's +$9.7B / #374's +$9.66B SCF-only overlay
+  were quoted at 2026 — state the period alongside the number). A relaxation raises SSI cost -> effect
+  positive. Expected: nonzero (>=$1B), LOWER than the +$9.66B overlay (re-solve vs overlay), still
+  above the dense-native +$1.6B (the SIPP-blend gap, #356 open — state, don't fix).
+- **Structural + coverage + degenerate + take-up + register gates** — the release raises/writes a
+  verdict per gate; `release_gates.passed` is the aggregate. Watch surfaces:
+  - **#369 input-coverage manifest** (`release_input_coverage_manifest.json`: 65 required + 93
+    reviewed-exclusions incl. the 3 asset leaves now REQUIRED). Hard, no `--allow-input-coverage-gaps`.
+  - **#369 reform-smoke** (above).
+  - **degenerate (#286)** — TANF exclusion REMOVED by #384 -> `takes_up_tanf_if_eligible` must now
+    carry signal AND be unexcused (Build I's rmloss100 made it non-degenerate). A constant-at-default
+    unexcused column fails; a stale exclusion fails.
+  - **#384 register-consistency (#377)** — cross-checks signal-side vs excused-side registers; any
+    column both required-to-signal AND excused (degenerate/documented-absent) fails. Cheap preflight.
+  - **#384 cross-register + take-up preflights**; **eCPS parity (#316)**; **export-mass**; **base
+    population / immigration (#266) / validation-input-coverage (#278/9)** structural gates.
+  A gate failure is a FINDING: diagnose precisely (three-strike per chunk), do NOT bypass.
+- **release_manifest.json** + exported **populace_us_2024.h5** — written last; `--skip-reform-validation`
+  avoids the Build I MD-UNKNOWN tail bug (policyengine-us#8975 / populace#367) without touching the
+  certified dataset (gates + export-mass + H5 all complete before the optional reform-validation tail).

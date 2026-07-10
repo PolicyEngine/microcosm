@@ -75,6 +75,7 @@ SAMPLER=$!
   --checkpoint-root "$RT/checkpoints/buildj-dense" \
   --seed 0 \
   --dense-default-dataset \
+  --skip-reform-validation \
   --no-staging \
   >> "$LOGDIR/release_dense.log" 2>&1
 rc=$?

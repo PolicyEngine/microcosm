@@ -82,6 +82,7 @@ SAMPLER=$!
   --release-id "$RID" \
   --checkpoint-root "$RT/checkpoints/buildj-sparse" \
   --seed 0 \
+  --skip-reform-validation \
   --no-staging \
   >> "$LOGDIR/release_sparse.log" 2>&1
 rc=$?
