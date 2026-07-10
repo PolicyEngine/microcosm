@@ -199,3 +199,20 @@ def test_lineage_array_item_type_enforced():
         ValueError, match=r"lineage.source_cell_keys\[0\]': expected type string"
     ):
         validate_consumer_fact_row(row, line_number=3, source="feed")
+
+
+def test_sol_counterexample_non_finite_number_value_is_rejected():
+    # json.loads accepts the JS constants NaN/Infinity/-Infinity and hands back
+    # a float that satisfies the ``number`` type check, silently poisoning a
+    # calibration target (finding #7). The validator must reject a non-finite
+    # numeric wherever it appears in a row.
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        row = _schema_complete_fact_row(value=bad)
+        with pytest.raises(ValueError, match="is not finite"):
+            validate_consumer_fact_row(row, line_number=3, source="feed")
+
+    # Non-finite in a nested numeric field is caught too.
+    nested = _schema_complete_fact_row()
+    nested["source"]["source_size_bytes"] = float("inf")
+    with pytest.raises(ValueError, match="is not finite"):
+        validate_consumer_fact_row(nested, line_number=3, source="feed")

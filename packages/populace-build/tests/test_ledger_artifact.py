@@ -409,6 +409,22 @@ def test_rejects_unknown_assertion_and_schema_version(tmp_path):
         load_ledger_consumer_artifact(artifact_dir)
 
 
+def test_sol_counterexample_non_finite_fact_number_is_rejected(tmp_path):
+    # json.dumps writes the bare tokens NaN / Infinity / -Infinity, which
+    # json.loads accepts by default. The feed loader must reject them at parse
+    # time rather than compile a non-finite value into a target (finding #7).
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        facts_path = tmp_path / "nonfinite.jsonl"
+        _write_facts(facts_path, [_schema_complete_fact_row(value=bad)])
+        raw = facts_path.read_text()
+        assert ("NaN" in raw) or ("Infinity" in raw)
+        with pytest.raises(ValueError, match="non-finite JSON constant|not finite"):
+            load_ledger_consumer_artifact(facts_path)
+        # Legacy passthrough (validation off) must also refuse the constant.
+        with pytest.raises(ValueError, match="non-finite JSON constant|not finite"):
+            load_ledger_consumer_artifact(facts_path, validate_rows=False)
+
+
 def test_rejects_missing_and_empty_feeds(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_ledger_consumer_artifact(tmp_path / "missing.jsonl")

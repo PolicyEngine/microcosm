@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from importlib.resources import files
 from typing import Any
@@ -170,6 +171,13 @@ def _validate(value: Any, schema: dict[str, Any], path: str, *, prefix: str) -> 
         return
 
     where = f"{prefix} field {path!r}" if path else prefix
+
+    # A non-finite float (NaN / Infinity / -Infinity) satisfies a bare
+    # ``number`` type check but is not a valid contract value (finding #7):
+    # ``json.loads`` accepts the JS constants by default, so reject them on
+    # every numeric regardless of where they appear in the row.
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"{where}: number {value!r} is not finite.")
 
     if "type" in schema and not _matches_type(value, schema):
         raise ValueError(

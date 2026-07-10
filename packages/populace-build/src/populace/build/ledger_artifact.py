@@ -29,7 +29,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from populace.build.ledger_schema import (
     CONSUMER_FACT_SCHEMA_SHA256,
@@ -51,6 +51,21 @@ CONSUMER_ARTIFACT_SCHEMA_VERSION = "policyengine_ledger.consumer_artifact.v1"
 VENDORED_ARTIFACT_SCHEMA_VERSION = "populace.vendored_ledger_artifact.v1"
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
+
+
+def _reject_non_finite_json_constant(token: str) -> NoReturn:
+    """``json.loads`` ``parse_constant`` hook: reject NaN/Infinity/-Infinity.
+
+    Stdlib ``json`` accepts the JavaScript literals ``NaN``, ``Infinity`` and
+    ``-Infinity`` by default and hands back the corresponding float, which then
+    satisfies a ``number`` schema check and silently poisons a calibration
+    target (finding #7). Consumer facts are a numeric contract, so a non-finite
+    value is a hard load error.
+    """
+    raise ValueError(
+        f"Ledger facts JSONL contains the non-finite JSON constant {token!r}; "
+        "consumer fact numbers must be finite."
+    )
 
 
 @dataclass(frozen=True)
@@ -246,7 +261,9 @@ def _load_fact_rows(
             if not stripped:
                 continue
             try:
-                row = json.loads(stripped)
+                row = json.loads(
+                    stripped, parse_constant=_reject_non_finite_json_constant
+                )
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"
@@ -294,16 +311,21 @@ def _verify_manifest_profiles(
 ) -> dict[str, str]:
     """Re-hash each manifest-listed profile file from bytes.
 
-    Accepts an exact byte match, or a match against the bytes minus one
-    trailing newline (upstream Ledger's legacy pre-newline hash semantics),
-    recording ``legacy_pre_newline`` in provenance rather than accepting it
-    silently. Under ``require_pins`` a listed profile whose file is absent is a
-    hard error.
+    Accepts an exact byte match, or --- only for a legacy manifest that predates
+    the schema pin --- a match against the bytes minus one trailing newline
+    (upstream Ledger's legacy pre-newline hash semantics), recording
+    ``legacy_pre_newline`` in provenance rather than accepting it silently. The
+    pre-newline exception is version-gated exactly as Ledger's loader does it:
+    it is available only when the manifest omits ``consumer_fact_schema_sha256``
+    (finding #12). A manifest that declares the schema pin is a modern, fully
+    pinned feed and its profiles must match byte-for-byte. Under ``require_pins``
+    a listed profile whose file is absent is a hard error.
     """
     profiles = manifest.get("profiles")
     semantics: dict[str, str] = {}
     if not isinstance(profiles, dict):
         return semantics
+    allow_legacy_pre_newline = manifest.get("consumer_fact_schema_sha256") is None
     for profile_id, profile_meta in sorted(profiles.items()):
         meta = profile_meta or {}
         profile_file = _find_profile_file(artifact_dir, str(profile_id), meta)
@@ -321,12 +343,22 @@ def _verify_manifest_profiles(
                 f"Ledger consumer artifact profile {profile_id!r} file "
                 f"{profile_file.name} has no manifest sha256 to verify against."
             )
-        actual, semantic = _profile_hash_match(profile_file, str(declared))
+        actual, semantic = _profile_hash_match(
+            profile_file,
+            str(declared),
+            allow_legacy_pre_newline=allow_legacy_pre_newline,
+        )
         if semantic is None:
+            legacy_note = (
+                ""
+                if allow_legacy_pre_newline
+                else " (a schema-pinned manifest requires an exact byte match; "
+                "the legacy pre-newline hash is not accepted)"
+            )
             raise ValueError(
                 f"Ledger consumer artifact profile {profile_id!r} file "
                 f"{profile_file.name} does not match its manifest hash: "
-                f"{actual} != {declared}."
+                f"{actual} != {declared}{legacy_note}."
             )
         semantics[str(profile_id)] = semantic
     return semantics
@@ -349,12 +381,17 @@ def _find_profile_file(
     return None
 
 
-def _profile_hash_match(path: Path, declared: str) -> tuple[str, str | None]:
+def _profile_hash_match(
+    path: Path,
+    declared: str,
+    *,
+    allow_legacy_pre_newline: bool,
+) -> tuple[str, str | None]:
     raw = path.read_bytes()
     exact = hashlib.sha256(raw).hexdigest()
     if exact == declared:
         return exact, "exact"
-    if raw.endswith(b"\n"):
+    if allow_legacy_pre_newline and raw.endswith(b"\n"):
         pre_newline = hashlib.sha256(raw[:-1]).hexdigest()
         if pre_newline == declared:
             return pre_newline, "legacy_pre_newline"

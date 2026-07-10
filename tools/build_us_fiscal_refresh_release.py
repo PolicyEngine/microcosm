@@ -5570,6 +5570,23 @@ def _staging_telemetry(
     )
 
 
+def _load_release_ledger_artifact(
+    args: argparse.Namespace,
+) -> LedgerConsumerArtifact:
+    """Load the pinned Ledger consumer feed for a release, fail-closed.
+
+    ``require_pins=True`` (finding #12) rejects a bare feed, demands both
+    content-hash pins, and makes a manifest-listed profile whose file is missing
+    a hard error instead of a silent skip that then vendors an incomplete feed.
+    """
+    return load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+        require_pins=True,
+    )
+
+
 def main() -> None:
     args = _parse_args()
     if _git_dirty():
@@ -5660,10 +5677,15 @@ def main() -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
+    # Release builds load fail-closed (finding #12): require_pins rejects a bare
+    # feed, demands both content-hash pins, and --- decisively for a vendored
+    # release --- makes a manifest-listed profile whose file is missing a hard
+    # error instead of a silent skip that then vendors an incomplete feed.
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
+        require_pins=True,
     )
     extra_support_exclusions = _load_zero_support_exclusions(
         args.zero_support_exclusions
