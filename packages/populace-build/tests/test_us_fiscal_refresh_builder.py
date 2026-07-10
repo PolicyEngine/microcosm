@@ -1749,6 +1749,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    # The consistency/contract preflights hit the installed policyengine-us
+    # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
+    monkeypatch.setattr(
+        builder, "assert_take_up_treatments_consistent", lambda: None
+    )
     monkeypatch.setattr(
         builder,
         "load_ledger_consumer_artifact",
@@ -5366,3 +5372,23 @@ def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
     assert not gate.passed
     assert any("traditional_ira_contributions" in f for f in gate.failures)
     assert any("health_savings_account_ald" in f for f in gate.failures)
+
+
+def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
+    """main() must call the cheap consistency preflights before source stages.
+
+    populace#377 (register consistency) and populace#381 (take-up contract
+    engine-drift) both abort a build in seconds when a register is stale. A
+    regression that drops the preflight call would only surface after hours of
+    source staging, so pin the wiring at the code-object level (these globals
+    are looked up by name inside ``main``).
+    """
+    builder = _load_builder_module()
+    called = set(builder.main.__code__.co_names)
+    for preflight in (
+        "assert_release_input_coverage_manifest_current",
+        "us_register_consistency_gate",
+        "assert_take_up_contract_current",
+        "assert_take_up_treatments_consistent",
+    ):
+        assert preflight in called, f"main() no longer calls {preflight}"

@@ -53,6 +53,8 @@ from populace.build.us_runtime import (
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
     assert_release_input_coverage_manifest_current,
+    assert_take_up_contract_current,
+    assert_take_up_treatments_consistent,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     fetch_scf_2022_summary_extract,
@@ -65,6 +67,7 @@ from populace.build.us_runtime import (
     us_medicaid_take_up_gate,
     us_pregnancy_signal_gate,
     us_reform_coverage_smoke_gate,
+    us_register_consistency_gate,
     us_release_input_coverage_gate,
     us_scf_wealth_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
@@ -421,9 +424,6 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 # degenerate column, or one of these becoming non-degenerate, fails the
 # default-valued-columns gate so this list cannot rot.
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
-    "takes_up_tanf_if_eligible": (
-        "TANF take-up imputation backlog; constant True forces 100% take-up."
-    ),
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
     ),
@@ -5595,6 +5595,37 @@ def main() -> None:
     # PolicyEngine-US input leaves. A drifted manifest fails here before the
     # expensive calibration so a stale contract cannot silently narrow coverage.
     assert_release_input_coverage_manifest_current()
+    # Preflight (populace#377): no column may be required-to-signal by one
+    # register (seeded/count-calibrated take-up, health nonconstant, coverage
+    # 'required') and excused as absent/degenerate by another (degenerate
+    # reviewed exclusions, coverage reviewed exclusions, parity known gaps,
+    # documented-absent). Such a pincer aborts every build AFTER the expensive
+    # source stages — the stale TANF exclusion did exactly that on Build G and
+    # Build I. Fail it here, in seconds.
+    register_consistency_gate = us_register_consistency_gate(
+        degenerate_reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+        documented_absent_inputs=US_DOCUMENTED_ABSENT_INPUTS,
+        nonconstant_required_columns=US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    )
+    if not register_consistency_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Register consistency failed: {failure}"
+                for failure in register_consistency_gate.failures
+            )
+        )
+    # Preflight (populace#381): the checked-in take-up contract must still match
+    # the installed policyengine-us (entity/default/engine_class of every
+    # ``takes_up_*`` flag) and its curated treatments must not contradict the
+    # engine class. These are cheap engine-metadata checks; running them here,
+    # before the expensive source stages, means an engine bump that changes a
+    # take-up default or flips a seeded flag to a formula fails in seconds
+    # instead of shipping a mechanical universal-take-up landmine. The seeding
+    # stages below read this same contract, so a stale contract must abort the
+    # build, not merely a test.
+    assert_take_up_contract_current()
+    assert_take_up_treatments_consistent()
     ledger_artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
