@@ -155,6 +155,27 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   `populace-us-2024-buildj-sparse-rmloss100-a7ad0c8-20260710T053754Z`. Watch: past the Medicaid
   gate at the ~4-min mark (where 01aed9e died), then materialization -> solve -> gates -> H5 ->
   SSI probe.
+- **Step 6 (a7ad0c8 run: Medicaid gate PASSED -> NEXT anti-rot catch, eCPS parity; fixed +
+  relaunched).** The a7ad0c8 run cleared the #334 Medicaid gate (#387 substitution works — RI
+  target present) and died at the NEXT gate in sequence, rc=1 at 05:41:47Z: `eCPS parity failed:
+  Stale known-gap exemptions — the candidate populates the layer now, remove the exemption or
+  re-reason it: ['block_geoid', 'county_fips', 'health_savings_account_ald',
+  'spm_unit_pre_subsidy_childcare_expenses', 'tract_geoid']`. **Gate-class #2, another anti-rot
+  catch (#337's staleness check), also a GOOD failure** — the week's coverage merges populate five
+  layers the debt ledger still exempted. Verified EACH against the actual candidate frame (the
+  gate's own `us_nonzero_shares` on the rmloss100-reduced 57,240): block/tract/county geo triplet
+  **1.0 == reference 1.0** (the #277/#289 geography-ladder spine, base-carried);
+  spm_unit_pre_subsidy_childcare_expenses **0.0755** vs ref 0.1022 (raw CPS childcare signal now
+  carried); health_savings_account_ald **0.00936** vs ref 0.0962 (populated but thin, ~10% of the
+  incumbent share). All five = GENUINE population (not spurious writes) -> the mechanism's
+  prescribed path is REMOVE (staleness keys on share>0; no reason text can satisfy it; "re-reason"
+  is only for spurious population). Removed the five from `ecps_parity_known_gaps.json` (93 -> 88
+  entries; depth gaps for HSA/childcare stay tracked by their existing issue #32); parity register
+  tests green (13 passed). NOTE for wrap-up: this register edit lives on build-j-recert and needs
+  a main PR alongside certification. Committed 20b94db; relaunched sparse: run id
+  `populace-us-2024-buildj-sparse-rmloss100-20b94db-20260710T071342Z`. **Coordinator flag rule:
+  gate-class #1 = #334 Medicaid (fixed by #387), #2 = #337 eCPS parity staleness (fixed here); a
+  THIRD distinct gate class failing = flag for something systematic.**
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
