@@ -186,6 +186,95 @@
       "notes": "Retired published-eCPS construction: the PUF publication path drops the reported american_opportunity_credit tax output before AOTC factual-input postprocessing, so archived extended_cps.py takes its positive-qualified-tuition fallback and sets all five affirmative AOTC inputs on that mask (publication candidate 9f8db56e9ed1ca25f0ed16285fcc928343d2e474). educational_assistance carries directly from measured ASEC ED_VAL (archived cps.py at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1). The pinned export independently confirms that the five flags and tuition share one support mask."
     },
     {
+      "stage": "retirement_contributions",
+      "survey": "Census CPS ASEC + published retirement-contribution shares",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person RETCB_VAL, WSAL_VAL, and SEMP_VAL fields"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimates",
+          "vintage": "2022-2024",
+          "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
+          "locator": "IRS SOI IRA contribution totals and Publication 1304 Table 1.4 Keogh-plan payments"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_time_series",
+          "vintage": "2023",
+          "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
+          "locator": "BEA/FRED employee and employer defined-contribution pension-plan contribution series Y351RC1A027NBEA and W351RC0A144NBEA"
+        },
+        {
+          "kind": "research_report",
+          "format": "pdf",
+          "vintage": "2024",
+          "source": "https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf",
+          "locator": "Vanguard How America Saves 2024 Roth defined-contribution participation evidence"
+        },
+        {
+          "kind": "research_report",
+          "format": "web",
+          "vintage": "2024",
+          "source": "https://www.psca.org/news/psca-news/2024/12/401k-savings-and-participation-rates-rise/",
+          "locator": "Plan Sponsor Council of America 67th Annual Survey Roth participation evidence"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_retirement_contributions",
+          "se_pension_share": 0.046,
+          "dc_share_of_remainder": 0.908,
+          "roth_dc_share": 0.15,
+          "traditional_ira_share": 0.392
+        },
+        {
+          "kind": "impute_retirement_contributions_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired"
+      ],
+      "nonnegative_outputs": [
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired"
+      ],
+      "notes": "Exact port of the retired published-eCPS allocation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1 (datasets/cps/cps.py lines 1500-1552; imputation_parameters.yaml lines 24-55). Measured ASEC RETCB_VAL is allocated across self-employed pension, defined-contribution, and IRA pools only where ASEC reports the corresponding earned-income source. After PUF support expansion, the retired second-stage treatment (extended_cps.py lines 639-780 and 1014-1073) QRF-imputes all five leaves onto the PUF half from the ASEC rows and PUF-imputed income. PolicyEngine-US applies statutory limits to these five desired-contribution leaves; this source stage does not cap or synthesize the measured total."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",

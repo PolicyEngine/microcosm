@@ -125,6 +125,31 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         validation_rows=("soi_education_credits",),
     ),
     ValidationInputLeaf(
+        leaf="traditional_401k_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="roth_401k_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="traditional_ira_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="roth_ira_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="self_employed_pension_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),

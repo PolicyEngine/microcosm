@@ -47,6 +47,11 @@ def _us_frame(**person_extra: object) -> Frame:
             "treasury_tipped_occupation_code": [101, 0, 304],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
             "educational_assistance": [0.0, 500.0, 0.0],
+            "traditional_401k_contributions_desired": [1_000.0, 0.0, 500.0],
+            "roth_401k_contributions_desired": [200.0, 0.0, 100.0],
+            "traditional_ira_contributions_desired": [300.0, 0.0, 150.0],
+            "roth_ira_contributions_desired": [400.0, 0.0, 200.0],
+            "self_employed_pension_contributions_desired": [0.0, 800.0, 0.0],
             "is_pursuing_credential_for_american_opportunity_credit": [
                 True,
                 False,

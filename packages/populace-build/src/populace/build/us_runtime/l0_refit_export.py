@@ -39,6 +39,9 @@ from populace.build.us_runtime.org_wages import (
 from populace.build.us_runtime.pregnancy import (
     US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.scf_auto_loans import (
     US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
@@ -68,6 +71,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
     *US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
     *US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
 )
 

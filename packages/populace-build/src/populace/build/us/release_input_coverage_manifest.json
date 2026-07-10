@@ -385,12 +385,21 @@
    "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
    "status": "reviewed_exclusion"
   },
+  "roth_401k_contributions_desired": {
+   "status": "required"
+  },
+  "roth_ira_contributions_desired": {
+   "status": "required"
+  },
   "salt_refund_income": {
    "issue": "PolicyEngine/populace#38",
    "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
    "status": "reviewed_exclusion"
   },
   "selected_marketplace_plan_benchmark_ratio": {
+   "status": "required"
+  },
+  "self_employed_pension_contributions_desired": {
    "status": "required"
   },
   "self_employment_income_before_lsr": {
@@ -563,6 +572,12 @@
   "tract_geoid": {
    "status": "required"
   },
+  "traditional_401k_contributions_desired": {
+   "status": "required"
+  },
+  "traditional_ira_contributions_desired": {
+   "status": "required"
+  },
   "treasury_tipped_occupation_code": {
    "status": "required"
   },
@@ -617,11 +632,11 @@
   }
  },
  "counts": {
-  "required": 94,
+  "required": 99,
   "reviewed_exclusion": 66,
-  "total": 160
+  "total": 165
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented documented post-reference fsla_overtime_premium and qualified_passenger_vehicle_loan_interest inputs required by the shipped OBBBA probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -681,6 +696,29 @@
    },
    "period": 2024,
    "reason": "Abolishing the American Opportunity Tax Credit sets the credit to zero, so baseline-minus-reform AOTC must be positive. With qualified tuition or any of the five affirmative AOTC factual inputs absent or degenerate, the baseline credit is a structural zero and the abolition scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired"
+   ],
+   "budget_measure": "savers_credit",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "savers_credit_abolition",
+   "issue": "PolicyEngine/populace#278",
+   "min_abs_effect": 100000000.0,
+   "name": "Retirement Saver's Credit abolition",
+   "parameter_changes": {
+    "gov.irs.credits.retirement_saving.contributions_cap": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Setting the Saver's Credit contribution cap to zero abolishes the credit, so baseline-minus-reform Saver's Credit must be positive. PolicyEngine-US builds qualified contributions from the realized forms of all five desired retirement-contribution inputs. If the desired-input family is absent or degenerate, the baseline credit is a structural zero and abolition scores $0."
   },
   {
    "binding_inputs": [

@@ -60,12 +60,26 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
     "bond_assets",
 )
 
-# The pinned reference H5 predates the retired pipeline's FLSA-premium export
-# and OBBBA's distinct qualifying passenger-vehicle interest leaf.  Both later
-# inputs are hard requirements because the shipped OBBBA provisions must bind.
+# The pinned reference H5 predates the retired pipeline's FLSA-premium export,
+# OBBBA's distinct qualifying passenger-vehicle interest leaf, and its five
+# final desired retirement-contribution inputs. These later inputs are hard
+# requirements because the shipped validation provisions must bind.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "fsla_overtime_premium",
     "qualified_passenger_vehicle_loan_interest",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
+)
+
+RETIREMENT_CONTRIBUTION_INPUTS = (
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
 )
 
 AOTC_EDUCATION_INPUTS = (
@@ -136,6 +150,30 @@ REFORM_COVERAGE_PROBES = [
             "zero and the abolition scores exactly $0."
         ),
         "issue": "PolicyEngine/populace#253",
+    },
+    {
+        "id": "savers_credit_abolition",
+        "name": "Retirement Saver's Credit abolition",
+        "parameter_changes": {
+            "gov.irs.credits.retirement_saving.contributions_cap": {
+                "2024-01-01.2100-12-31": 0
+            }
+        },
+        "budget_measure": "savers_credit",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": list(RETIREMENT_CONTRIBUTION_INPUTS),
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "Setting the Saver's Credit contribution cap to zero abolishes "
+            "the credit, so baseline-minus-reform Saver's Credit must be "
+            "positive. PolicyEngine-US builds qualified contributions from "
+            "the realized forms of all five desired retirement-contribution "
+            "inputs. If the desired-input family is absent or degenerate, "
+            "the baseline credit is a structural zero and abolition scores $0."
+        ),
+        "issue": "PolicyEngine/populace#278",
     },
     {
         "id": "obbba_no_tax_on_tips",
@@ -305,9 +343,10 @@ def build_manifest() -> dict:
         "derivation": (
             "Required surface = input columns in the pinned, sha-verified "
             "ecps_parity_reference.json populated layers, plus the documented "
-            "documented post-reference fsla_overtime_premium and "
-            "qualified_passenger_vehicle_loan_interest inputs required by "
-            "the shipped OBBBA probes. "
+            "post-reference fsla_overtime_premium, "
+            "qualified_passenger_vehicle_loan_interest, and five desired "
+            "retirement-contribution inputs required by shipped validation "
+            "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT the SSI countable-resource "
             "asset inputs (bank_account_assets, stock_assets, bond_assets), which "

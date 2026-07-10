@@ -65,13 +65,19 @@ __all__ = [
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
 
 # The frozen reference artifact predates the retired pipeline's export of the
-# pure FLSA overtime-premium input and predates OBBBA's distinct qualifying
-# passenger-vehicle interest leaf.  Both are hard requirements because the
-# shipped OBBBA validation rows otherwise become structural zeroes.
+# pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
+# vehicle interest leaf, and the final pipeline's five desired retirement-
+# contribution inputs. These are hard requirements because their shipped
+# validation rows otherwise become structural zeroes.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
         "fsla_overtime_premium",
         "qualified_passenger_vehicle_loan_interest",
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
     }
 )
 

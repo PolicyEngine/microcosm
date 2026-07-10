@@ -450,6 +450,18 @@ class TestShippedManifest:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
 
+    def test_retirement_contribution_family_is_a_hard_requirement(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -495,6 +507,28 @@ class TestShippedManifest:
         assert aotc.min_abs_effect > 0
         assert set(aotc.parameter_changes) == {
             "gov.irs.credits.education.american_opportunity_credit.abolition"
+        }
+
+    def test_shipped_savers_credit_probe_binds_through_contributions(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "savers_credit_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "savers_credit"
+        assert set(probe.binding_inputs) == {
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        }
+        assert probe.min_abs_effect == 100_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.credits.retirement_saving.contributions_cap"
         }
 
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:

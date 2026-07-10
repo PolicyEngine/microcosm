@@ -263,6 +263,18 @@ from populace.build.us_runtime.release_input_coverage import (
     us_release_input_coverage_reviewed_exclusions,
     us_release_reform_coverage_probes,
 )
+from populace.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+    US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+    US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+    US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
+    derive_us_retirement_contributions_from_manifest,
+    impute_us_retirement_contributions_to_puf_support_from_manifest,
+    us_retirement_contributions_signal_gate,
+    us_retirement_contributions_stage_spec,
+    us_retirement_contributions_summary,
+    with_us_retirement_contribution_inputs,
+)
 from populace.build.us_runtime.scf_auto_loans import (
     QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET,
     SCF_2022_FULL_EXTRACT_MEMBER,
@@ -490,6 +502,16 @@ __all__ = [
     "us_education_inputs_stage_spec",
     "us_education_inputs_summary",
     "with_us_education_inputs",
+    "US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS",
+    "US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS",
+    "US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS",
+    "US_RETIREMENT_CONTRIBUTION_STAGE_NAME",
+    "derive_us_retirement_contributions_from_manifest",
+    "impute_us_retirement_contributions_to_puf_support_from_manifest",
+    "us_retirement_contributions_signal_gate",
+    "us_retirement_contributions_stage_spec",
+    "us_retirement_contributions_summary",
+    "with_us_retirement_contribution_inputs",
     "QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET",
     "SCF_2022_FULL_EXTRACT_MEMBER",
     "SCF_2022_FULL_EXTRACT_MEMBER_SHA256",
@@ -863,6 +885,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "educational assistance carries directly from ASEC ED_VAL."
         ),
     ),
+    US_RETIREMENT_CONTRIBUTION_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC + published retirement-contribution shares",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured ASEC RETCB_VAL is allocated across five desired "
+            "retirement-contribution leaves using archived IRS/BEA/Vanguard/"
+            "PSCA shares, then CPS-trained QRF predictions replace the PUF "
+            "support half. PolicyEngine-US owns all statutory caps."
+        ),
+    ),
     "capital_gain_distributions": DonorSpec(
         survey="IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
         source=(
@@ -903,6 +935,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PREGNANCY_STAGE_NAME,
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
+    US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     US_EDUCATION_INPUTS_STAGE_NAME,

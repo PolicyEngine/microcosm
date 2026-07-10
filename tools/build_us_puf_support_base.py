@@ -47,10 +47,12 @@ from populace.build.us_runtime import (
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     us_immigration_composition_summary,
+    us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_education_inputs,
     with_us_immigration_inputs,
+    with_us_retirement_contribution_inputs,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
@@ -194,6 +196,11 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_retirement_contribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -208,6 +215,17 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    imputed = with_us_retirement_contribution_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    retirement_contributions_gate = us_retirement_contributions_signal_gate(imputed)
+    if not retirement_contributions_gate.passed:
+        raise SystemExit(
+            "Retirement-contribution signal gate failed:\n  "
+            + "\n  ".join(retirement_contributions_gate.failures)
+        )
     imputed = with_us_education_inputs(
         imputed,
         seed=args.seed,
@@ -344,6 +362,11 @@ def main() -> None:
             "passed": education_inputs_gate.passed,
             "failures": list(education_inputs_gate.failures),
             "details": dict(education_inputs_gate.details),
+        },
+        "retirement_contributions_signal": {
+            "passed": retirement_contributions_gate.passed,
+            "failures": list(retirement_contributions_gate.failures),
+            "details": dict(retirement_contributions_gate.details),
         },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,

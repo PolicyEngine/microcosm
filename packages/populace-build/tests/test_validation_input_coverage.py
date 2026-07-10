@@ -44,6 +44,11 @@ class TestUsSourceStageOutputs:
         # outputs and may no longer hide behind exclusions.
         assert "qualified_tuition_expenses" in outputs
         assert "qualified_passenger_vehicle_loan_interest" in outputs
+        assert "traditional_401k_contributions_desired" in outputs
+        assert "roth_401k_contributions_desired" in outputs
+        assert "traditional_ira_contributions_desired" in outputs
+        assert "roth_ira_contributions_desired" in outputs
+        assert "self_employed_pension_contributions_desired" in outputs
 
 
 class TestUsValidationInputCoverageGate:
@@ -61,6 +66,14 @@ class TestUsValidationInputCoverageGate:
         assert requirements["qualified_passenger_vehicle_loan_interest"] == [
             "obbba_auto_loan_interest"
         ]
+        for leaf in (
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ):
+            assert requirements[leaf] == ["soi_savers_credit"]
 
     def test_planted_missing_leaf_fails_loudly(self) -> None:
         # Plant a NEW validation row whose provision keys on an un-imputed,

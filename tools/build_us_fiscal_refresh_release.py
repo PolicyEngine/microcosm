@@ -80,6 +80,7 @@ from populace.build.us_runtime import (
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
     us_release_input_coverage_gate,
+    us_retirement_contributions_signal_gate,
     us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_tips_signal_gate,
@@ -97,6 +98,7 @@ from populace.build.us_runtime import (
     with_us_medicaid_take_up,
     with_us_org_wages_inputs,
     with_us_pregnancy_inputs,
+    with_us_retirement_contribution_inputs,
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_tip_inputs,
@@ -5847,6 +5849,33 @@ def main() -> None:
             + "; ".join(
                 f"Base population scale failed: {failure}"
                 for failure in base_population_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "retirement_contribution_inputs",
+            message=("Verifying ASEC-sourced desired retirement-contribution inputs."),
+        )
+    base_frame = with_us_retirement_contribution_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    retirement_contributions_gate = us_retirement_contributions_signal_gate(base_frame)
+    if not retirement_contributions_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "retirement_contribution_inputs_gate",
+                status="failed",
+                message="Retirement-contribution signal gate failed.",
+                failures=list(retirement_contributions_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Retirement-contribution signal failed: " + failure
+                for failure in retirement_contributions_gate.failures
             )
         )
     if telemetry is not None:

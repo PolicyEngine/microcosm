@@ -16,6 +16,7 @@ from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
+    US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_STAGE_NAMES,
@@ -186,6 +187,9 @@ class TestUsSources:
         assert frame_structural_stages.issubset(US_STAGE_NAMES)
 
     def test_puf_support_channel_precedes_puf_detail_donor_stage(self) -> None:
+        assert US_STAGE_NAMES.index(
+            US_RETIREMENT_CONTRIBUTION_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME)
         assert US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
             "puf_tax_detail"
         )
