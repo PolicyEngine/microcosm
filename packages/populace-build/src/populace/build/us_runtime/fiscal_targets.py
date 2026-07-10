@@ -484,6 +484,28 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
         "cms_medicaid",
         {"target_role": "medicaid_chip_enrollment"},
     ),
+    # FNS reports fiscal-year average monthly caseloads. We proxy the
+    # household caseload as an indicator sum over SPM units with positive
+    # annual snap. The take-up assignment seeds takers to reproduce the FNS
+    # participation rate, so the taker set is the model counterpart of the
+    # average monthly caseload rather than an annual-ever count. Validated
+    # on populace-us-2024-buildi-sparse-rmloss100: 21.89M weighted taker
+    # units vs the 22.20M FY2024 FNS national average (-1.4%) with no
+    # calibration pressure on counts.
+    #
+    # average_monthly_persons is deliberately NOT mapped: the real SNAP
+    # assistance unit is often a subset of the SPM unit (FY2024 FNS persons
+    # per household is 1.88 vs 2.82 members per simulated taker unit), and
+    # PolicyEngine-US does not model sub-unit participation, so a person
+    # indicator overcounts by ~50% and would fight the household target.
+    ("usda_snap", "average_monthly_households"): (
+        "snap",
+        "usda_snap",
+        {
+            "target_role": "snap_households",
+            "fact_aggregation": "time_mean",
+        },
+    ),
 }
 
 
