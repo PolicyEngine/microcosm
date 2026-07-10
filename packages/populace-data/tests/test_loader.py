@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,9 @@ import populace.data.loader as loader
 from populace.data import DEFAULT_VARIANT, download, latest_year, load, resolve
 from populace.data.release import LATEST_POINTER_PATH, latest_pointer_payload
 
+#: Release id served by the hub fixture. Any well-formed id works: nothing in
+#: this suite may assert which release the live Hub currently points at,
+#: because re-certification moves ``latest.json`` without a commit here.
 RELEASE_ID = "populace-us-2024-buildi-sparse-rmloss100-6e8e929-20260709T034135Z"
 TAGGED_ARTIFACT = b"certified release artifact"
 MUTABLE_ROOT_ARTIFACT = b"uncertified in-flight root artifact"
@@ -107,6 +111,7 @@ class FakeHubDownload:
             RELEASE_ID, updated_at="2026-07-09T04:00:00+00:00"
         )
         manifest = manifest or _release_manifest()
+        self.tmp_path = tmp_path
         self.calls: list[tuple[str, str, str | None]] = []
         self.files: dict[tuple[str, str, str | None], Path] = {}
         self._add(
@@ -211,6 +216,72 @@ def test_download_uses_pointer_manifest_and_release_revision(
         ("policyengine/populace-us", manifest_path, RELEASE_ID),
         ("policyengine/populace-us", "populace_us_2024.h5", RELEASE_ID),
     ]
+
+
+def test_resolve_certified_release_returns_pointer_pinned_metadata(
+    tmp_path: Path,
+) -> None:
+    """Exact release-metadata equalities are pinned against the hub fixture."""
+    hub = FakeHubDownload(tmp_path)
+
+    certified = loader._resolve_certified_release(resolve("us", 2024), hub_download=hub)
+
+    assert certified.release_id == RELEASE_ID
+    assert certified.artifact_repo_id == "policyengine/populace-us"
+    assert certified.artifact_path == "populace_us_2024.h5"
+    assert certified.artifact_revision == RELEASE_ID
+    assert certified.artifact_sha256 == hashlib.sha256(TAGGED_ARTIFACT).hexdigest()
+    assert certified.model.name == "policyengine-us"
+    assert certified.model.built_version == "1.764.6"
+    assert certified.core.name == "policyengine-core"
+    assert certified.core.built_version == "3.26.11"
+
+
+def test_recertification_advances_the_pointer_and_resolution_follows(
+    tmp_path: Path,
+) -> None:
+    """Publishing a successor release moves ``latest.json``; resolution follows.
+
+    The pointer is the loader's only entry point — there is no API for
+    requesting a superseded release id — so a re-certification changes what
+    every consumer resolves without any commit in this repository.
+    """
+    hub = FakeHubDownload(tmp_path)
+    spec = resolve("us", 2024)
+    assert (
+        loader._resolve_certified_release(spec, hub_download=hub).release_id
+        == RELEASE_ID
+    )
+
+    successor_id = "populace-us-2024-buildj-sparse-rmloss100-75d5add-20260710T094201Z"
+    successor_artifact = b"successor certified release artifact"
+    pointer = latest_pointer_payload(
+        successor_id, updated_at="2026-07-10T10:00:00+00:00"
+    )
+    hub._add(
+        hub.tmp_path,
+        "policyengine/populace-us",
+        LATEST_POINTER_PATH,
+        None,
+        json.dumps(pointer).encode(),
+    )
+    hub._add(
+        hub.tmp_path,
+        "policyengine/populace-us",
+        pointer["paths"]["release_manifest"],
+        successor_id,
+        json.dumps(
+            _release_manifest(
+                artifact_content=successor_artifact, release_id=successor_id
+            )
+        ).encode(),
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    assert certified.release_id == successor_id
+    assert certified.artifact_revision == successor_id
+    assert certified.artifact_sha256 == hashlib.sha256(successor_artifact).hexdigest()
 
 
 def test_pointer_vs_root_divergence_never_serves_mutable_root(
@@ -372,25 +443,20 @@ def _is_offline_error(exc: Exception) -> bool:
 
 
 @pytest.mark.skipif(_hf_offline(), reason="Hugging Face offline mode is enabled")
-@pytest.mark.parametrize(
-    ("country", "release_id", "expected_sha"),
-    [
-        (
-            "us",
-            RELEASE_ID,
-            "5e2a10b97f1fa740fbc1cc1be3450a19b2089c56de59d3754db13ec0dd048b88",
-        ),
-        (
-            "uk",
-            "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
-            "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
-        ),
-    ],
-)
-def test_existing_certified_release_metadata_resolves_through_latest_pointer(
-    country: str, release_id: str, expected_sha: str
+@pytest.mark.parametrize("country", ["us", "uk"])
+def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
+    country: str,
 ) -> None:
-    """Real pointers and pinned manifests resolve without downloading large H5s."""
+    """The real pointer and pinned manifest resolve without downloading large H5s.
+
+    Deliberately release-agnostic: re-certification moves ``latest.json`` to a
+    new release id without a commit here, so pinning which release is current
+    (or its digest) would red main on every publish. Exact-metadata coverage
+    lives in :func:`test_resolve_certified_release_returns_pointer_pinned_metadata`;
+    this test only proves the currently published chain is coherent. Pinning a
+    release *identity* belongs to policyengine.py's certification fixtures,
+    which are updated atomically with each certification PR.
+    """
     spec = resolve(country)
     try:
         certified = loader._resolve_certified_release(spec)
@@ -405,7 +471,9 @@ def test_existing_certified_release_metadata_resolves_through_latest_pointer(
             )
         raise
 
-    assert certified.release_id == release_id
-    assert certified.artifact_sha256 == expected_sha
-    assert certified.artifact_revision == release_id
+    assert certified.release_id.startswith(f"populace-{country}-{spec.year}-")
+    assert certified.artifact_repo_id == spec.hf_repo
     assert certified.artifact_path == spec.filename
+    assert certified.artifact_revision == certified.release_id
+    assert re.fullmatch(r"[0-9a-f]{64}", certified.artifact_sha256)
+    assert certified.model.name == spec.engine_package
