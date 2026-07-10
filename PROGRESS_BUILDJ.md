@@ -104,6 +104,39 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   self-contained dense-polish solve — no dependency on the full-frame dense weights). To de-risk the
   #368 verdict against session/jetsam kills, the **certifiable sparse arm runs FIRST** (all gates +
   the SSI probe = the headline), then the dense DIAGNOSTIC parent. Serialized (no memory overlap).
+- **Step 4 (sparse arm — BLOCKED at the #334 Medicaid take-up gate; STOP per protocol).** Run
+  `populace-us-2024-buildj-sparse-rmloss100-01aed9e-20260710T023838Z` exited **rc=1 at 02:42:52Z**
+  (~4 min in, before calibration):
+  `Medicaid take-up failed: states without CMS enrollment targets: ['44']`.
+  **A REAL fail-closed finding, not an ops failure — the first release-scale run of #334.**
+  Diagnosis (verified at every layer):
+  - CMS PI dataset (`pi-dataset-april-2026-release.csv`, the pinned ledger artifact): BOTH RI
+    202412 rows (P/N and final U/Y) carry Total Medicaid Enrollment **0** with footnote
+    **"Unable to Provide Data due to System Limitations"** — RI did not report December 2024.
+    The gap is exactly ONE state-month: RI 202411 = 273,400; 202501 = 279,404 (same CSV, final
+    rows); CMS never backfilled (April 2026 release still 0).
+  - Ledger package `cms-medicaid-chip-monthly-enrollment-december-2024` (vintage
+    april_2026_release, extracted 2026-05-11) faithfully selects the 0 row; v8 feed faithfully
+    carries all five RI month2024_12 facts at value 0
+    (`…state_enrollment.ri.total_medicaid_enrollment` etc.).
+  - Registry compile on v8 (verified live): version **d71c59514e3a / 5,533 specs — IDENTICAL to
+    Build H/I even under #334** (the medicaid_enrollment targets were already among the 5,533;
+    the STAGE is new, the targets are not — F2 double-confirmed). 50 state-level
+    medicaid_enrollment specs; **FIPS 44 absent** (a 0-valued count compiles to no spec).
+  - The gate is unconditionally hard (no --allow bypass exists, correct per #368 doctrine), has
+    no reviewed-exclusion mechanism, and runs BEFORE calibration in BOTH arms -> the dense arm
+    would fail identically (NOT launched; zero wasted compute). #334's PR designed exactly this
+    failure mode ("fails on … a state missing its target row"), tested on fixtures; Build J is
+    the first run against the real feed. The v9-feed fix path is MOOT: the CMS family is already
+    in v8 (475 facts); a re-export reproduces the same source 0.
+  - **Positive #368 signal en route to the block**: the run passed the #373 scf_wealth signal
+    gate (raise-point :5993 < medicaid gate :6053) — the SSI asset columns materialized WITH
+    signal on the 57k frame. Asset restoration works; the SSI probe (post-H5) was never reached.
+  - Per the STOP rule (no usable RI value exists at source; do NOT synthesize — nearest-month,
+    cross-source T-MSIS, or an exclusion register are #334 design decisions), Build J
+    certification STOPS here. Filed **populace#386** (full evidence + option space). Relaunch
+    after the #386 decision is mechanical: all launchers staged/committed; if the fix changes
+    facts, swap --ledger-facts to the re-exported feed and record the new registry version.
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
