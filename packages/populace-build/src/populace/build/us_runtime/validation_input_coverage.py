@@ -160,6 +160,11 @@ US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
         validation_rows=("obbba_misc_itemized_deductions",),
     ),
     ValidationInputLeaf(
+        leaf="spm_unit_pre_subsidy_childcare_expenses",
+        provision_variables=("cdcc",),
+        validation_rows=("te_cdcc", "obbba_cdcc", "soi_cdcc"),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),

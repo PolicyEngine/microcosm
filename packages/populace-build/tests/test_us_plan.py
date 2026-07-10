@@ -13,6 +13,7 @@ from populace.build.source_manifest import (
     SupportSpineSpec,
 )
 from populace.build.us_runtime import (
+    US_CHILDCARE_STAGE_NAME,
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
@@ -190,6 +191,9 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(
             US_RETIREMENT_CONTRIBUTION_STAGE_NAME
         ) < US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME)
+        assert US_STAGE_NAMES.index(US_CHILDCARE_STAGE_NAME) < US_STAGE_NAMES.index(
+            US_PUF_SUPPORT_STAGE_NAME
+        )
         assert US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
             "puf_tax_detail"
         )

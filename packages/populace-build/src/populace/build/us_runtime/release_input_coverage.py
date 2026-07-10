@@ -89,6 +89,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
 RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
         "casualty_loss",
+        "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",
     }
 )

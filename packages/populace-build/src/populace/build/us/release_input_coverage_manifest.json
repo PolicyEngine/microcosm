@@ -632,7 +632,7 @@
   "reviewed_exclusion": 64,
   "total": 165
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT restored casualty_loss, unreimbursed_business_employee_expenses, and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT restored casualty_loss, spm_unit_pre_subsidy_childcare_expenses, unreimbursed_business_employee_expenses, and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -753,6 +753,31 @@
    },
    "period": 2026,
    "reason": "Reactivating the miscellaneous itemized deduction lowers income tax only for tax units with qualifying expenses above its AGI floor, so baseline-minus-reform income tax must be positive. Without unreimbursed_business_employee_expenses, the retired pipeline's only populated miscellaneous-expense input, the reactivation is a structural zero on the export."
+  },
+  {
+   "binding_inputs": [
+    "spm_unit_pre_subsidy_childcare_expenses"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "obbba_cdcc",
+   "issue": "PolicyEngine/populace#278",
+   "min_abs_effect": 1000000.0,
+   "name": "OBBBA Child and Dependent Care Credit reversion",
+   "parameter_changes": {
+    "gov.irs.credits.cdcc.phase_out.amended_structure.applies": {
+     "2026-01-01.2026-12-31": false
+    },
+    "gov.irs.credits.cdcc.phase_out.max": {
+     "2026-01-01.2026-12-31": 0.35
+    },
+    "gov.irs.credits.cdcc.phase_out.min": {
+     "2026-01-01.2026-12-31": 0.2
+    }
+   },
+   "period": 2026,
+   "reason": "Reverting the OBBBA CDCC enhancement raises income tax, so baseline-minus-reform income tax must be negative. With measured pre-subsidy childcare expenses absent or degenerate, no filer has qualifying care expenses and the reversion scores exactly $0."
   },
   {
    "binding_inputs": [

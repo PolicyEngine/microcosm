@@ -16,6 +16,7 @@ from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.casualty_losses import (
     US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.childcare import US_CHILDCARE_OUTPUT_COLUMNS
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
@@ -82,6 +83,8 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
 )
+
+US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS = US_CHILDCARE_OUTPUT_COLUMNS
 
 #: The geography spine a US release carries by default: state and district,
 #: plus the block-anchored ladder (populace #275). A release missing or
@@ -302,6 +305,7 @@ def assert_required_us_release_source_columns(
     *,
     columns: tuple[str, ...] = US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
     person_columns: tuple[str, ...] = US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
+    spm_unit_columns: tuple[str, ...] = US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS,
     household_columns: tuple[str, ...] = (US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS),
     household_nonconstant_columns: tuple[str, ...] = (
         US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
@@ -323,6 +327,7 @@ def assert_required_us_release_source_columns(
     for entity, required, check_nonconstant in (
         ("tax_unit", columns, True),
         ("person", person_columns, True),
+        ("spm_unit", spm_unit_columns, True),
         ("household", household_columns, False),
         ("household", household_nonconstant_columns, True),
     ):
@@ -345,7 +350,16 @@ def assert_required_us_release_source_columns(
                 and len(unique) == 1
                 and bool(unique[0])
             )
-            if len(unique) < 2 and not single_nondefault_auto_value:
+            single_nondefault_spm_value = (
+                entity == "spm_unit"
+                and column in spm_unit_columns
+                and len(table) == 1
+                and len(unique) == 1
+                and bool(unique[0])
+            )
+            if len(unique) < 2 and not (
+                single_nondefault_auto_value or single_nondefault_spm_value
+            ):
                 failures.append(f"{entity}.{column}: not nonconstant")
     if failures:
         raise ValueError(
@@ -482,6 +496,9 @@ def export_us_l0_refit_h5(
         "required_source_columns": list(US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS),
         "required_person_source_columns": list(
             US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
+        ),
+        "required_spm_unit_source_columns": list(
+            US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS
         ),
         "required_household_source_columns": list(
             US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS
@@ -636,6 +653,7 @@ __all__ = [
     "US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS",
+    "US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS",
     "attach_l0_refit_entity_weights",
     "attach_l0_refit_weights",

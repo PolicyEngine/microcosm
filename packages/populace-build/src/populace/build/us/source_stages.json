@@ -283,6 +283,56 @@
       "notes": "Exact port of the retired published-eCPS allocation at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1 (datasets/cps/cps.py lines 1500-1552; imputation_parameters.yaml lines 24-55). Measured ASEC RETCB_VAL is allocated across self-employed pension, defined-contribution, and IRA pools only where ASEC reports the corresponding earned-income source. After PUF support expansion, the retired second-stage treatment (extended_cps.py lines 639-780 and 1014-1073) QRF-imputes all five leaves onto the PUF half from the ASEC rows and PUF-imputed income. PolicyEngine-US applies statutory limits to these five desired-contribution leaves; this source stage does not cap or synthesize the measured total."
     },
     {
+      "stage": "childcare_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC replicated SPM-unit SPM_CHILDCAREXPNS field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_childcare_inputs"
+        },
+        {
+          "kind": "impute_childcare_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "reduction": "value_from_first_person"
+        }
+      ],
+      "outputs": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ],
+      "nonnegative_outputs": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ],
+      "notes": "Measured ASEC SPM_CHILDCAREXPNS carries directly to spm_unit_pre_subsidy_childcare_expenses (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces non-person output with value_from_first_person (extended_cps.py lines 234-248, 639-739, and 1014-1069). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",

@@ -473,6 +473,12 @@ class TestShippedManifest:
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
 
+    def test_childcare_input_is_a_hard_requirement(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "spm_unit_pre_subsidy_childcare_expenses"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -572,6 +578,24 @@ class TestShippedManifest:
         assert probe.min_abs_effect == 100_000_000.0
         assert set(probe.parameter_changes) == {
             "gov.irs.deductions.itemized.misc.applies"
+        }
+
+    def test_shipped_cdcc_probe_has_2026_period_sign_and_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_cdcc"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "negative"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("spm_unit_pre_subsidy_childcare_expenses",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.credits.cdcc.phase_out.max",
+            "gov.irs.credits.cdcc.phase_out.min",
+            "gov.irs.credits.cdcc.phase_out.amended_structure.applies",
         }
 
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:

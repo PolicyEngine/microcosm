@@ -79,6 +79,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
 # accidentally reintroduced later.
 RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "casualty_loss",
+    "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
 )
 
@@ -227,6 +228,30 @@ REFORM_COVERAGE_PROBES = [
             "reactivation is a structural zero on the export."
         ),
         "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "obbba_cdcc",
+        "name": "OBBBA Child and Dependent Care Credit reversion",
+        "parameter_changes": {
+            "gov.irs.credits.cdcc.phase_out.max": {"2026-01-01.2026-12-31": 0.35},
+            "gov.irs.credits.cdcc.phase_out.min": {"2026-01-01.2026-12-31": 0.2},
+            "gov.irs.credits.cdcc.phase_out.amended_structure.applies": {
+                "2026-01-01.2026-12-31": False
+            },
+        },
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["spm_unit_pre_subsidy_childcare_expenses"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Reverting the OBBBA CDCC enhancement raises income tax, so "
+            "baseline-minus-reform income tax must be negative. With measured "
+            "pre-subsidy childcare expenses absent or degenerate, no filer has "
+            "qualifying care expenses and the reversion scores exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#278",
     },
     {
         "id": "obbba_no_tax_on_tips",
@@ -415,6 +440,7 @@ def build_manifest() -> dict:
             "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT restored casualty_loss, "
+            "spm_unit_pre_subsidy_childcare_expenses, "
             "unreimbursed_business_employee_expenses, and the SSI countable-"
             "resource asset inputs (bank_account_assets, "
             "stock_assets, bond_assets), which are status='required' with NO "

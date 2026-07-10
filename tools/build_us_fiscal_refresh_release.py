@@ -71,6 +71,7 @@ from populace.build.us_runtime import (
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
     us_casualty_loss_signal_gate,
+    us_childcare_signal_gate,
     us_education_inputs_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
@@ -93,6 +94,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_eligibility_inputs,
     with_us_hours_worked_inputs,
@@ -5851,6 +5853,29 @@ def main() -> None:
             + "; ".join(
                 f"Base population scale failed: {failure}"
                 for failure in base_population_gate.failures
+            )
+        )
+    base_frame = with_us_childcare_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        allow_existing_without_source=True,
+    )
+    childcare_gate = us_childcare_signal_gate(base_frame)
+    if not childcare_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "childcare_input_gate",
+                status="failed",
+                message="Childcare-input signal gate failed.",
+                failures=list(childcare_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Childcare-input signal failed: " + failure
+                for failure in childcare_gate.failures
             )
         )
     casualty_loss_gate = us_casualty_loss_signal_gate(base_frame)

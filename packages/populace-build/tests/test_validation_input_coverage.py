@@ -51,6 +51,7 @@ class TestUsSourceStageOutputs:
         assert "self_employed_pension_contributions_desired" in outputs
         assert "casualty_loss" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs
+        assert "spm_unit_pre_subsidy_childcare_expenses" in outputs
 
 
 class TestUsValidationInputCoverageGate:
@@ -79,6 +80,11 @@ class TestUsValidationInputCoverageGate:
         assert requirements["casualty_loss"] == ["obbba_casualty_loss_limit"]
         assert requirements["unreimbursed_business_employee_expenses"] == [
             "obbba_misc_itemized_deductions"
+        ]
+        assert requirements["spm_unit_pre_subsidy_childcare_expenses"] == [
+            "obbba_cdcc",
+            "soi_cdcc",
+            "te_cdcc",
         ]
 
     def test_planted_missing_leaf_fails_loudly(self) -> None:
@@ -158,6 +164,21 @@ class TestUsValidationInputCoverageGate:
     def test_removing_misc_expense_makes_the_obbba_row_fail(self) -> None:
         requirements = us_validation_input_leaf_requirements()
         leaf = "unreimbursed_business_employee_expenses"
+
+        from populace.build.gates import source_stage_input_coverage_gate
+
+        result = source_stage_input_coverage_gate(
+            requirements,
+            declared_outputs=us_source_stage_outputs() - {leaf},
+            reviewed_exclusions={},
+            name="us_validation_input_coverage",
+        )
+        assert not result.passed
+        assert set(result.details["missing"]) == {leaf}
+
+    def test_removing_childcare_makes_cdcc_rows_fail(self) -> None:
+        requirements = us_validation_input_leaf_requirements()
+        leaf = "spm_unit_pre_subsidy_childcare_expenses"
 
         from populace.build.gates import source_stage_input_coverage_gate
 

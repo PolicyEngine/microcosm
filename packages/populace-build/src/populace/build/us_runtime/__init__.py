@@ -50,6 +50,17 @@ from populace.build.us_runtime.casualty_losses import (
     us_casualty_loss_stage_spec,
     us_casualty_loss_summary,
 )
+from populace.build.us_runtime.childcare import (
+    US_CHILDCARE_OUTPUT_COLUMNS,
+    US_CHILDCARE_REQUIRED_SOURCE_COLUMNS,
+    US_CHILDCARE_STAGE_NAME,
+    derive_us_childcare_from_manifest,
+    impute_us_childcare_to_puf_support_from_manifest,
+    us_childcare_signal_gate,
+    us_childcare_stage_spec,
+    us_childcare_summary,
+    with_us_childcare_inputs,
+)
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
     SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
@@ -517,6 +528,15 @@ __all__ = [
     "us_casualty_loss_signal_gate",
     "us_casualty_loss_stage_spec",
     "us_casualty_loss_summary",
+    "US_CHILDCARE_OUTPUT_COLUMNS",
+    "US_CHILDCARE_REQUIRED_SOURCE_COLUMNS",
+    "US_CHILDCARE_STAGE_NAME",
+    "derive_us_childcare_from_manifest",
+    "impute_us_childcare_to_puf_support_from_manifest",
+    "us_childcare_signal_gate",
+    "us_childcare_stage_spec",
+    "us_childcare_summary",
+    "with_us_childcare_inputs",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -896,6 +916,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "state usage of the cap (#323)."
         ),
     ),
+    US_CHILDCARE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured replicated SPM_CHILDCAREXPNS is validated and carried "
+            "to the SPM-unit childcare leaf. After support expansion, an "
+            "ASEC-trained weighted QRF replaces only the PUF half and the "
+            "archived first-person reduction places predictions on SPM units."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -970,6 +1000,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_PREGNANCY_STAGE_NAME,
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
+    US_CHILDCARE_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     US_EDUCATION_INPUTS_STAGE_NAME,

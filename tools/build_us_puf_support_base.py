@@ -44,6 +44,7 @@ from populace.build.us_runtime import (
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
     us_casualty_loss_signal_gate,
+    us_childcare_signal_gate,
     us_education_inputs_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
@@ -52,6 +53,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
+    with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_immigration_inputs,
     with_us_retirement_contribution_inputs,
@@ -198,6 +200,11 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_childcare_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_retirement_contribution_inputs(
         base,
         seed=args.seed,
@@ -217,6 +224,17 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    imputed = with_us_childcare_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    childcare_gate = us_childcare_signal_gate(imputed)
+    if not childcare_gate.passed:
+        raise SystemExit(
+            "Childcare-input signal gate failed:\n  "
+            + "\n  ".join(childcare_gate.failures)
+        )
     casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
     if not casualty_loss_gate.passed:
         raise SystemExit(
@@ -372,6 +390,11 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "childcare_inputs_signal": {
+            "passed": childcare_gate.passed,
+            "failures": list(childcare_gate.failures),
+            "details": dict(childcare_gate.details),
+        },
         "casualty_loss_signal": {
             "passed": casualty_loss_gate.passed,
             "failures": list(casualty_loss_gate.failures),
