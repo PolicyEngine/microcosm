@@ -43,14 +43,21 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   `_buildj-runtime/inputs/scf_cache/rscfp2022.dta`; passed via `--scf-summary-extract`.
 
 ## Architectural findings (verified on origin/main; correct the task's mental model where needed)
-- **F1 — the base pool does NOT change for assets/SNAP.** #350/#352/#353 (SNAP) and #373 (SCF
-  wealth) modified `packages/populace-build/src/populace/build/us_runtime/*` + `source_stages.json`
-  + the RELEASE tool `tools/build_us_fiscal_refresh_release.py` — NOT the base builder
-  `tools/build_us_puf_support_base.py` (byte-identical to Build F's; `git diff` empty). Assets +
-  SNAP are RELEASE-TIME source stages that enrich the frame during the release build. So a base
-  rebuild with the same inputs/builder/pe-us is expected to reproduce **18833fb6** (NOT a "new"
-  sha). The rebuild is run anyway to (a) satisfy the #368 step and (b) empirically confirm
-  determinism; the confirming/again sha is a deliverable. [Base rebuild in flight — Step 1.]
+- **F1 — the base pool DATA does NOT change for assets/SNAP; the h5 SHA does (HDF5
+  non-determinism).** #350/#352/#353 (SNAP) and #373 (SCF wealth) modified `us_runtime/*` +
+  `source_stages.json` + the RELEASE tool — NOT the base builder `build_us_puf_support_base.py`
+  (0-diff build-f vs origin/main). Assets + SNAP are RELEASE-TIME source stages. **VERIFIED after
+  the rebuild (Step 1):** the Build J base summary is byte-identical to Build F's `18833fb6` base
+  summary EXCEPT the self-referential `output_sha256` + `output_h5` path (263/265 json lines
+  identical); `base_household_weight_total = 134690323.34024483` matches Build F EXACTLY (a
+  QRF/imputation change would perturb it); puf_donor_rows 211677, seed 0, n_estimators 32 all
+  match. So the base DATA is unchanged. The base h5 SHA is **`0b50660a…`** (NOT 18833fb6) purely
+  because HDF5 serialization is non-reproducible (embedded timestamps / chunk layout), not a data
+  change. BENIGN: (a) the checkpoint identity + all arms read the base sha DYNAMICALLY
+  (self-consistent on 0b50660a); (b) the Build I comparison stays like-for-like (identical pool
+  data); (c) the rmloss100 identity join keys on DATA columns (source_year/household_id/channel/
+  clone), not the file hash. The task's "new base sha expected" is literally true (new bytes) but
+  the pool is unchanged — corrects my pre-rebuild prediction that the SHA byte-value would reproduce.
 - **F2 — the calibration target registry is unchanged.** `fiscal_target_references.json` is
   byte-identical between Build H (b42fbfe) and origin/main (both `010fbfa5…`). So v8 facts
   (94b7155f) remain valid and the registry compiles to the same 5533/5514 surface -> the Build I
@@ -78,12 +85,19 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   Established findings F1/F2/F3 above. Wrote the detacher (`detach.py`, start_new_session=True +
   caffeinate) and the base launcher (`buildj_base.sh`, integrity preflight + pressure sampler, no
   killing watchdog).
-- **Step 1 (base rebuild — IN FLIGHT).** Launched `buildj_base.sh` detached (wrapper pid recorded
-  in logs/buildj-run/base.wrapperpid). Replicates Build F's exact base command on main's
-  (identical) builder: 3-year ASEC pool 2024+2023+2022, 2x PUF clone, seed 0, n-estimators 32,
-  aging-facts a5d34d4a, CD assignment (cdx 383a6666, seed 0), block ladder 7ba39b95. Expect sha
-  18833fb6 (finding F1). Build F base was 12m14s; this run ran ~15 min active (99% CPU, RSS ~52 GB,
-  free% ~86 — healthy, no jetsam risk; slower tail vs Build F is variance). [Blocking on base.rc.]
+- **Step 1 (base rebuild — DONE, rc=0).** `buildj_base.sh` completed 02:06:03Z (~19.6 min wall;
+  Build F was 12m14s — the extra is CPU contention with concurrent recon, healthy throughout: 99%
+  CPU, RSS peaked ~53 GB, free% ~86, no jetsam). Base at
+  `_buildj-runtime/out/base-j/base_populace_us_2024_puf_support.h5` (1,879,908,154 bytes). **Base
+  sha `0b50660a21e0e138cbdcf941303240435b8cf92f4ca3824b2c062ae1085e9c51`** — differs from Build F's
+  18833fb6, but the base DATA is IDENTICAL (finding F1: summary byte-identical except the self-sha +
+  path; base_household_weight_total 134690323.34024483 == Build F exactly; builder 0-diff build-f
+  vs main). The SHA delta is HDF5 serialization non-determinism, not a data change. Proceeding on
+  0b50660a (read dynamically by every arm).
+- **Step 2 (selection carry-over — running).** `verify_selection_carryover_buildj.py`: #330 identity
+  join of the Build I rmloss100 manifest onto base-j in frozen_support mode (raises on any
+  unmapped/ambiguous = the >0-miss STOP). Expect n_selected 57,240, n_unmapped 0, n_ambiguous 0
+  (the join keys on data-identity columns, unaffected by the h5-byte delta).
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
