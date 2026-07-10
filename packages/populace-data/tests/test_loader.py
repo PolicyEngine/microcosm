@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import huggingface_hub
 import pytest
+from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
 
 import populace.data.loader as loader
 from populace.data import DEFAULT_VARIANT, download, latest_year, load, resolve
@@ -396,6 +397,12 @@ def test_existing_certified_release_metadata_resolves_through_latest_pointer(
     except Exception as exc:
         if _is_offline_error(exc):
             pytest.skip(f"Hugging Face metadata unavailable offline: {exc}")
+        if isinstance(exc, (RepositoryNotFoundError, GatedRepoError)) or "401" in str(
+            exc
+        ):
+            pytest.skip(
+                f"repo requires credentials this environment lacks (private): {exc}"
+            )
         raise
 
     assert certified.release_id == release_id
