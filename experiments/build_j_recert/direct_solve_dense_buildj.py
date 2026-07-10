@@ -42,7 +42,8 @@ BASE = RT / "out/base-j/base_populace_us_2024_puf_support.h5"
 FACTS = Path("/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildh_v8.jsonl")
 FACTS_SHA = "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669"
 PEUS = "1.764.6"
-REG_VERSION_EXPECTED = "d71c59514e3a"
+# Build J dense registry = compile(v8) + the #387 RI substitution (5,534 specs).
+# The version is computed live and checked against the checkpoint identity.
 OUT = RT / "out/buildj-run/densewts_direct"
 OUT.mkdir(parents=True, exist_ok=True)
 
@@ -82,13 +83,15 @@ def main():
         congressional_district_vintage_crosswalk=None,
         age_targets=True, allow_unaged_dollar_targets=False,
         extra_support_exclusions=None)
-    target_specs = registry0.specs
+    from populace.build.us_runtime import apply_us_medicaid_enrollment_substitutions
+    registry1, sub_records = apply_us_medicaid_enrollment_substitutions(registry0)
+    target_specs = registry1.specs
     active_registry = release.TargetRegistry(target_specs, country="us")
-    log(f"registry version = {active_registry.version}  "
-        f"(expected {REG_VERSION_EXPECTED})  n_specs={len(target_specs)}")
-    if active_registry.version != REG_VERSION_EXPECTED:
-        log(f"FATAL registry version mismatch — got {active_registry.version}, "
-            f"expected {REG_VERSION_EXPECTED}. STOP.")
+    log(f"registry version = {active_registry.version}  n_specs={len(target_specs)} "
+        f"(expect 5534 = 5533 + RI substitution)")
+    log(f"substitutions: {[(r['state_fips'], r['applied'], r['stale']) for r in sub_records]}")
+    if len(target_specs) != 5534:
+        log("FATAL spec count != 5534. STOP.")
         sys.exit(3)
 
     identity = release._target_frame_checkpoint_identity(

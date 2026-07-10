@@ -232,6 +232,45 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   `populace-us-2024-buildj-sparse-rmloss100-75d5add-20260710T094201Z`. The 091ace02f962
   checkpoint should HIT (this fix does not touch the registry compile) -> straight to solve +
   gates (~6-10 min warm).
+- **Step 9 (SPARSE rc=0 — CERTIFIED; verbatim numbers).** Run
+  `populace-us-2024-buildj-sparse-rmloss100-75d5add-20260710T094201Z` completed 09:51:35Z
+  (~9.5 min wall, warm checkpoint), **rc=0, release_gates.passed=True, failures=[]**, complete
+  release_manifest.json (sha256 `3d292c2231d918cf58b68d14bfabd0a1ea252a43ae1890cec5228bd10db21ba9`)
+  + exported H5 383,024,738 bytes (sha256
+  `9d1e460ddbc49c9b467b936f07edd4576ae2667ef39fdea2490bc5577c038d51`) + calibration npz
+  (`e913bc33…`).
+  **Headline vs Build I:** final_loss **0.030843270944171754** (BI 0.030833, BH 0.03091516);
+  fraction_within_10pct **0.8900181488203267** (BI 0.8888 — BEATS; BH 0.8901); ESS **12,088.6**
+  (BI 12,303.4); realized_max_weight_ratio **4.994** (BI 4.993); n_records 57,240 / n_nonzero
+  57,240; initial_loss 0.360592; top_1pct_weight_share 0.10568.
+  **Gates (ALL PASS):** target_profile_coverage, health_input_signal, degenerate_input_signal,
+  base_population_scale, immigration_composition, hours_worked_signal, snap_take_up_signal,
+  eligibility_inputs_signal, pregnancy_signal, snap_discretionary_exemption_signal, ecps_parity,
+  validation_input_coverage, input coverage #369 (70 required incl the 3 asset leaves + the 5
+  promotions; degenerate_required=[]; 0 failures), Medicaid take-up (RI substitution
+  applied=True stale=False, recorded in build_manifest + us_medicaid_take_up.json), take-up
+  contract (passed=True), register consistency, zero-support (post-24-excl **0**), reform smoke.
+  **Export-mass parity: PASS 0 failures / 35 columns** (enforced; ±50%; $1B floor; reviewed
+  exclusions estate_income + non_sch_d_capital_gains ONLY, both used, unused=[]). Key columns:
+  miscellaneous_income **+11.46%** (BI +11.5%), home_mortgage_interest **+28.92%** (BI +27.9%),
+  first_home_mortgage_interest **+29.00%** (BI +28.0%) — all in band. candidate_only now carries
+  the restored surface: bank/stock/bond assets, HSA ALD, childcare, SNAP train, take-up flags.
+  **Marquee fits:** fed income tax liability (SOI ht2 us.all amount) **+0.5809%** (BI +0.22%);
+  SS benefits (ssa_supplement payment_amount) **−0.2247%** (BI −0.18%); net capital gain (CBO)
+  **−25.6881%** (BI −24.18%); mortgage tax-exp (JCT) **+38.5949%** (BI +36.73%).
+  **SSI PROBE (the #368 point):** `ssi_asset_limit_10k_20k` effect **+$5,153,370,118 @ 2024**
+  (baseline SSI $55,192,291,256 -> reform $60,345,661,375), **PASSED** ($1B floor; enforced).
+  vs #374: **below** the +$9.66B SCF-only overlay (re-solve direction confirmed), **above** the
+  ~+$1.60B dense-native class — the SIPP-blend refinement (#374 step 1) remains OPEN, stated.
+  **Registry:** `091ace02f962`, 5,510 declared/compiled = 5,533 − 24 zero-support exclusions
+  + 1 RI substitution (Build I: d71c59514e3a, 5,514 = 5,533 − 19). Comparison caveat: Build-I
+  like-for-like PLUS {RI CMS substitution #387, 5 TANF thin-state exclusions under live take-up,
+  the new stage columns}.
+  **Verdict: the sparse artifact is CERTIFIABLE.** Dense diagnostic arm launched serialized
+  (D1 materialization in flight, chunk-boundary watcher armed -> D2 direct solve -> D3
+  warm-start release). Handoff note: the register fixes (parity known-gaps −5, coverage-manifest
+  promotion) live on build-j-recert and need a main PR for reproducibility-from-main.
+  STAGING/LOCAL ONLY — publication + default flip = Max's call.
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
