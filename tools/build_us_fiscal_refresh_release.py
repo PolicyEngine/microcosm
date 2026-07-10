@@ -52,6 +52,7 @@ from populace.build.us_runtime import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_SOURCE_MANIFEST,
+    apply_us_medicaid_enrollment_substitutions,
     assert_release_input_coverage_manifest_current,
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
@@ -5646,6 +5647,14 @@ def main() -> None:
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
         extra_support_exclusions=extra_support_exclusions,
+    )
+    # Reviewed CMS Medicaid enrollment substitutions (populace#386): a state
+    # whose point-in-time snapshot is unreported at source ships its cited
+    # nearest-prior-month count instead of failing the take-up gate closed.
+    # The records ride the take-up diagnostics; the gate fails a stale entry
+    # (CMS backfilled the substituted-for month) so the register cannot rot.
+    target_registry, medicaid_enrollment_substitutions = (
+        apply_us_medicaid_enrollment_substitutions(target_registry)
     )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:
