@@ -149,12 +149,14 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
+          "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
           "locator": "IRS SOI Public Use File E03230 and optional E87530 tuition fields"
         },
         {
           "kind": "public_microdata",
           "format": "census_asec",
           "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
           "locator": "Census CPS ASEC person ED_VAL educational-assistance field"
         }
       ],
@@ -181,7 +183,7 @@
         "qualified_tuition_expenses",
         "educational_assistance"
       ],
-      "notes": "Exact retired eCPS input construction: positive qualified tuition sets all five affirmative American Opportunity Credit factual inputs; educational_assistance carries directly from measured ASEC ED_VAL. The five flags and tuition therefore share one support mask, which the signal gate enforces."
+      "notes": "Retired published-eCPS construction: the PUF publication path drops the reported american_opportunity_credit tax output before AOTC factual-input postprocessing, so archived extended_cps.py takes its positive-qualified-tuition fallback and sets all five affirmative AOTC inputs on that mask (publication candidate 9f8db56e9ed1ca25f0ed16285fcc928343d2e474). educational_assistance carries directly from measured ASEC ED_VAL (archived cps.py at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1). The pinned export independently confirms that the five flags and tuition share one support mask."
     },
     {
       "stage": "capital_gain_distributions",

@@ -660,6 +660,30 @@
   },
   {
    "binding_inputs": [
+    "qualified_tuition_expenses",
+    "is_pursuing_credential_for_american_opportunity_credit",
+    "attends_eligible_educational_institution_for_american_opportunity_credit",
+    "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+    "has_american_opportunity_credit_1098_t_or_exception",
+    "has_american_opportunity_credit_institution_ein"
+   ],
+   "budget_measure": "american_opportunity_credit",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "aotc_abolition",
+   "issue": "PolicyEngine/populace#253",
+   "min_abs_effect": 100000000.0,
+   "name": "American Opportunity Tax Credit abolition",
+   "parameter_changes": {
+    "gov.irs.credits.education.american_opportunity_credit.abolition": {
+     "2024-01-01.2100-12-31": true
+    }
+   },
+   "period": 2024,
+   "reason": "Abolishing the American Opportunity Tax Credit sets the credit to zero, so baseline-minus-reform AOTC must be positive. With qualified tuition or any of the five affirmative AOTC factual inputs absent or degenerate, the baseline credit is a structural zero and the abolition scores exactly $0."
+  },
+  {
+   "binding_inputs": [
     "tip_income",
     "treasury_tipped_occupation_code"
    ],

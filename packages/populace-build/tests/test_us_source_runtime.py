@@ -204,10 +204,9 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         result["non_qualified_dividend_income"],
         result["E00600"] - result["E00650"],
     )
-    regular = result["RECID"] < SYNTHETIC_RECID_START
     assert np.allclose(
-        result.loc[regular, "qualified_tuition_expenses"],
-        np.maximum(result.loc[regular, "E03230"], result.loc[regular, "E87530"]),
+        result["qualified_tuition_expenses"],
+        np.maximum(result["E03230"], result["E87530"]),
     )
     assert (result["qualified_tuition_expenses"] >= 0.0).all()
 

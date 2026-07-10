@@ -68,6 +68,15 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "qualified_passenger_vehicle_loan_interest",
 )
 
+AOTC_EDUCATION_INPUTS = (
+    "qualified_tuition_expenses",
+    "is_pursuing_credential_for_american_opportunity_credit",
+    "attends_eligible_educational_institution_for_american_opportunity_credit",
+    "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+    "has_american_opportunity_credit_1098_t_or_exception",
+    "has_american_opportunity_credit_institution_ein",
+)
+
 #: Pinned reform-coverage probes. Raising the SSI resource limit from
 #: the 2024 statutory $2,000 individual / $3,000 couple to $10,000 / $20,000 is
 #: a pure relaxation that binds only through ``ssi_countable_resources``. Nonzero
@@ -104,6 +113,29 @@ REFORM_COVERAGE_PROBES = [
             "limit (PolicyEngine/populace#356)."
         ),
         "issue": "PolicyEngine/populace#356",
+    },
+    {
+        "id": "aotc_abolition",
+        "name": "American Opportunity Tax Credit abolition",
+        "parameter_changes": {
+            "gov.irs.credits.education.american_opportunity_credit.abolition": {
+                "2024-01-01.2100-12-31": True
+            }
+        },
+        "budget_measure": "american_opportunity_credit",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": list(AOTC_EDUCATION_INPUTS),
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "Abolishing the American Opportunity Tax Credit sets the credit "
+            "to zero, so baseline-minus-reform AOTC must be positive. With "
+            "qualified tuition or any of the five affirmative AOTC factual "
+            "inputs absent or degenerate, the baseline credit is a structural "
+            "zero and the abolition scores exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#253",
     },
     {
         "id": "obbba_no_tax_on_tips",

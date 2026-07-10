@@ -89,7 +89,7 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E24515": "unrecaptured_section_1250_gain",
     "E24518": "collectibles_capital_gains",
     "E26270": "partnership_and_s_corp_income",
-    "E87521": "net_investment_income_tax",
+    "E87521": "american_opportunity_credit",
 }
 _COMBINED_SOURCE_FIELDS = {
     "capital_gains_proxy": ("P22250", "P23250", "E01100"),
@@ -302,7 +302,8 @@ def disaggregate_puf_aggregate_records(
 
     synthetic_df = pd.concat(pieces, ignore_index=True)
     result = pd.concat([regular, synthetic_df], ignore_index=True)
-    return _reconcile_puf_dividend_columns_from_components(result)
+    result = _reconcile_puf_dividend_columns_from_components(result)
+    return _reconcile_puf_qualified_tuition_from_sources(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -866,6 +867,38 @@ def _reconcile_puf_dividend_columns_from_components(puf: pd.DataFrame) -> pd.Dat
         result["E00650"] = qualified
     if "E00600" in result.columns:
         result["E00600"] = ordinary
+    return result
+
+
+def _reconcile_puf_qualified_tuition_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute tuition after aggregate-row source amounts are replaced.
+
+    ``derive_puf_policyengine_variables`` runs before aggregate-record
+    disaggregation.  The disaggregator subsequently reallocates the raw
+    ``E03230``/``E87530`` amounts, so carrying the earlier derived column would
+    leave donor-template values that no longer agree with either source field.
+    Re-deriving here preserves the retired ``max(E03230, E87530)`` contract on
+    every regular and synthetic row.
+    """
+
+    output = "qualified_tuition_expenses"
+    primary = "E03230"
+    optional = "E87530"
+    if output not in puf.columns or primary not in puf.columns:
+        return puf
+
+    result = puf.copy()
+    tuition = _numeric_series(result[primary]).clip(lower=0.0)
+    if optional in result.columns:
+        optional_tuition = _numeric_series(result[optional]).clip(lower=0.0)
+        tuition = pd.Series(
+            np.maximum(tuition.to_numpy(), optional_tuition.to_numpy()),
+            index=result.index,
+            dtype="float64",
+        )
+    result[output] = tuition
     return result
 
 

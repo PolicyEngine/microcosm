@@ -17,11 +17,17 @@ import pytest
 from populace.build.source_manifest import SourceStageSpec
 from populace.build.source_runtime import SourceRuntimeError
 from populace.build.us_runtime import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
     US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS,
     US_EDUCATION_INPUTS_STAGE_NAME,
+    clone_us_frame_for_puf_support,
     derive_us_education_inputs_from_manifest,
+    impute_us_puf_tax_detail_support,
+    support_channel_column,
     us_education_inputs_signal_gate,
     us_education_inputs_stage_spec,
     us_education_inputs_summary,
@@ -129,6 +135,10 @@ class TestManifestDeclaration:
         assert spec.stage == US_EDUCATION_INPUTS_STAGE_NAME == "education_inputs"
         assert US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS == _EXPECTED_AOTC_COLUMNS
         assert US_EDUCATION_INPUTS_OUTPUT_COLUMNS == _EXPECTED_OUTPUT_COLUMNS
+        assert (
+            US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS
+            == _EXPECTED_OUTPUT_COLUMNS
+        )
         assert tuple(spec.outputs) == _EXPECTED_OUTPUT_COLUMNS
         assert US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS == (
             "ED_VAL",
@@ -292,6 +302,53 @@ class TestFrameIntegration:
 
         with pytest.raises(SourceRuntimeError, match="ED_VAL"):
             with_us_education_inputs(stripped, seed=0, time_period=TIME_PERIOD)
+
+    def test_puf_support_to_education_stage_preserves_real_source_signal(
+        self,
+    ) -> None:
+        rows = [{"ED_VAL": 1_000.0} for _ in range(4)]
+        rows.extend({} for _ in range(96))
+        expanded = clone_us_frame_for_puf_support(_us_frame(rows))
+        donor = pd.DataFrame(
+            {
+                "puf_predictor_tax_unit_person_count": np.ones(100),
+                "qualified_tuition_expenses": [1_000.0, 4_000.0, *([0.0] * 98)],
+                "weight": np.ones(100),
+            }
+        )
+
+        imputed = impute_us_puf_tax_detail_support(
+            expanded,
+            donor,
+            predictors=("puf_predictor_tax_unit_person_count",),
+            person_outputs=("qualified_tuition_expenses",),
+            tax_unit_outputs=(),
+            seed=0,
+            n_estimators=20,
+        )
+        person = imputed.table("person")
+        channel = person[support_channel_column("person")]
+        assert not person.loc[
+            channel == BASE_ASEC_SUPPORT_CHANNEL,
+            "qualified_tuition_expenses",
+        ].any()
+        assert person.loc[
+            channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            "qualified_tuition_expenses",
+        ].gt(0).any()
+
+        result = with_us_education_inputs(
+            imputed,
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+
+        gate = us_education_inputs_signal_gate(result)
+        assert gate.passed, gate.failures
+        result_person = result.table("person")
+        tuition_positive = result_person["qualified_tuition_expenses"] > 0
+        for column in _EXPECTED_AOTC_COLUMNS:
+            assert result_person[column].equals(tuition_positive)
 
 
 class TestGate:

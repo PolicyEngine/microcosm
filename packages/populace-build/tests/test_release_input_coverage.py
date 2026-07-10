@@ -474,6 +474,29 @@ class TestShippedManifest:
             "treasury_tipped_occupation_code",
         }
 
+    def test_shipped_aotc_probe_binds_through_education_inputs(self) -> None:
+        aotc = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "aotc_abolition"
+        )
+        assert aotc.period == 2024
+        assert aotc.expected_sign == "positive"
+        assert aotc.effect_direction == "baseline_minus_reform"
+        assert aotc.budget_measure == "american_opportunity_credit"
+        assert set(aotc.binding_inputs) == {
+            "qualified_tuition_expenses",
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+            "has_american_opportunity_credit_institution_ein",
+        }
+        assert aotc.min_abs_effect > 0
+        assert set(aotc.parameter_changes) == {
+            "gov.irs.credits.education.american_opportunity_credit.abolition"
+        }
+
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:
         overtime = next(
             probe

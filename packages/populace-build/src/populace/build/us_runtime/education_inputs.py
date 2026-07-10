@@ -1,11 +1,16 @@
 """Education-credit inputs from IRS PUF tuition and CPS ASEC assistance.
 
 The retired eCPS build derived person qualified tuition as the larger of IRS
-PUF fields E03230 and E87530 (falling back to E03230), then treated every
-positive-tuition person as satisfying the five affirmative American
-Opportunity Tax Credit factual inputs.  It carried educational assistance
-directly from CPS ASEC ``ED_VAL``.  The pinned reference confirms that contract:
-qualified tuition and all five flags have the same nonzero share.
+PUF fields E03230 and E87530 (falling back to E03230) and carried educational
+assistance directly from CPS ASEC ``ED_VAL``.  In the archived publication
+path at ``9f8db56e9ed1ca25f0ed16285fcc928343d2e474``,
+``calibration/puf_impute.py`` drops the reported PUF
+``american_opportunity_credit`` output before
+``datasets/cps/extended_cps.py::_impute_aotc_eligibility_inputs`` runs.  That
+method therefore takes its documented fallback: every positive-tuition person
+gets the five affirmative American Opportunity Tax Credit factual inputs.  The
+pinned reference independently confirms the published result: qualified
+tuition and all five flags have exactly the same support mask.
 
 This stage is intentionally factual-input-only.  It does not persist computed
 education credits or eligibility formulas owned by PolicyEngine-US.
@@ -35,6 +40,7 @@ from populace.frame.units import US_SCHEMA
 
 __all__ = [
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
+    "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_EDUCATION_INPUTS_STAGE_NAME",
@@ -61,6 +67,8 @@ US_EDUCATION_INPUTS_OUTPUT_COLUMNS: tuple[str, ...] = (
     *US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
 )
 
+US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS = US_EDUCATION_INPUTS_OUTPUT_COLUMNS
+
 US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "ED_VAL",
     "qualified_tuition_expenses",
@@ -83,7 +91,14 @@ def us_education_inputs_stage_spec() -> SourceStageSpec:
         raise ValueError(
             f"US source manifest declares no {US_EDUCATION_INPUTS_STAGE_NAME!r} stage."
         )
-    return stage_map[US_EDUCATION_INPUTS_STAGE_NAME]
+    spec = stage_map[US_EDUCATION_INPUTS_STAGE_NAME]
+    missing = sorted(set(US_EDUCATION_INPUTS_OUTPUT_COLUMNS) - set(spec.outputs))
+    if missing:
+        raise ValueError(
+            f"{US_EDUCATION_INPUTS_STAGE_NAME!r} manifest stage does not declare "
+            f"output(s) {missing}; the runtime and manifest have drifted."
+        )
+    return spec
 
 
 def derive_us_education_inputs_from_manifest(

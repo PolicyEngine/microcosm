@@ -1,8 +1,11 @@
 # eCPS Coverage Progress
 
-Writable continuation commits use `git --git-dir=.coverage-git --work-tree=.` because the linked worktree Git directory is sandbox-read-only.
+Continuation checkpoints belong on the native `buildm-ecps-coverage` branch;
+the temporary shadow repository used by an earlier linked-worktree sandbox has
+been removed.
 
 - overtime/FLSA | complete (targeted pytest + Ruff green) | b6e58363457497fbdb5f3123539c09ee930cd122
 - SIPP tips | complete (targeted salvage pytest green) | 0c7bbfb691aed03cbfd5c985c40da237d5e2505b
 - SCF auto loans | complete (targeted salvage pytest green) | 0c7bbfb691aed03cbfd5c985c40da237d5e2505b
 - overtime/FLSA | verified green (104-test mandated set; 70-test family rerun + Ruff) | 68739314c6cc205bf28a3314348755a083eb3d82
+- education inputs | complete (archived published-path semantics verified; post-disaggregation tuition invariant fixed; donor-to-support smoke + mandated/expanded targeted pytest + Ruff green; AOTC abolition probe = $12.28B on pinned eCPS with policyengine-us 1.764.6) | this native checkpoint

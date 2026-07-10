@@ -74,6 +74,7 @@ from populace.build.us_runtime.demographics import (
 )
 from populace.build.us_runtime.education_inputs import (
     US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
     US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS,
     US_EDUCATION_INPUTS_STAGE_NAME,
@@ -480,6 +481,7 @@ __all__ = [
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
+    "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_EDUCATION_INPUTS_STAGE_NAME",
@@ -856,8 +858,9 @@ US_DONORS: Mapping[str, DonorSpec] = {
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
             "Qualified tuition comes from the PUF E03230/E87530 maximum; "
-            "the five affirmative AOTC factual inputs follow positive tuition, "
-            "and educational assistance carries directly from ASEC ED_VAL."
+            "the published retired path drops the reported AOTC output and its "
+            "five affirmative factual inputs therefore follow positive tuition; "
+            "educational assistance carries directly from ASEC ED_VAL."
         ),
     ),
     "capital_gain_distributions": DonorSpec(

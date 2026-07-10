@@ -45,6 +45,33 @@ def _us_frame(**person_extra: object) -> Frame:
             "bond_assets": [0.0, 0.0, 800.0],
             "tip_income": [2_400.0, 0.0, 600.0],
             "treasury_tipped_occupation_code": [101, 0, 304],
+            "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
+            "educational_assistance": [0.0, 500.0, 0.0],
+            "is_pursuing_credential_for_american_opportunity_credit": [
+                True,
+                False,
+                True,
+            ],
+            "attends_eligible_educational_institution_for_american_opportunity_credit": [
+                True,
+                False,
+                True,
+            ],
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit": [
+                True,
+                False,
+                True,
+            ],
+            "has_american_opportunity_credit_1098_t_or_exception": [
+                True,
+                False,
+                True,
+            ],
+            "has_american_opportunity_credit_institution_ein": [
+                True,
+                False,
+                True,
+            ],
             "cps_race": [1, 2, 4],
             "is_hispanic": [False, True, False],
             "detailed_occupation_recode": [1, 20, 53],

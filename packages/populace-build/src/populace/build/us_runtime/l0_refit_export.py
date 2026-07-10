@@ -16,6 +16,9 @@ from populace.build.gates import input_mass_parity_gate
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from populace.build.us_runtime.education_inputs import (
+    US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -64,6 +67,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
     *US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
     *US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
+    *US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
 )
 
