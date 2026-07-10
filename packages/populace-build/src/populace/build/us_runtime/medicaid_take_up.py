@@ -751,8 +751,7 @@ def _substituted_medicaid_enrollment_spec(
         substitution.substitute_source_record_id
     )
     name = (
-        f"{substitution.substitute_source_record_id}"
-        ".medicaid_enrollment_substitution"
+        f"{substitution.substitute_source_record_id}.medicaid_enrollment_substitution"
     )
     metadata = dict(template.metadata)
     # Per-fact content-hash keys describe the template state's row; drop them

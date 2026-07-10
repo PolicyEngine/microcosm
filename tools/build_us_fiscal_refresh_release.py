@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2381,10 +2381,18 @@ def _with_medicaid_take_up_outputs(
     target_specs: tuple,
     *,
     seed: int,
+    substitutions: Sequence[dict[str, object]] = (),
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> tuple[Frame, dict[str, object]]:
-    """Assign Medicaid take-up (populace #331) and return frame + diagnostics."""
+    """Assign Medicaid take-up (populace #331) and return frame + diagnostics.
+
+    ``substitutions`` are the reviewed CMS enrollment substitution records
+    (populace#386) produced by :func:`apply_us_medicaid_enrollment_substitutions`;
+    they ride the take-up diagnostics so the gate can rot-check a backfilled
+    substitution and the ``us_medicaid_take_up.json`` release artifact records
+    exactly which states shipped a substituted point-in-time count.
+    """
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
         raise RuntimeError(
@@ -2403,6 +2411,7 @@ def _with_medicaid_take_up_outputs(
         state_fips=_person_state_fips(frame),
         state_targets=target_table,
         seed=seed,
+        substitutions=substitutions,
     )
 
 
@@ -5031,6 +5040,7 @@ def _build_manifests(
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
+    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
 ) -> None:
@@ -5109,6 +5119,14 @@ def _build_manifests(
                 "version": registry.version,
                 "n_specs": len(registry),
             },
+            # Reviewed CMS Medicaid enrollment substitutions (populace#386):
+            # the per-state records the register applied to the compiled target
+            # surface, so a release artifact shows exactly which point-in-time
+            # counts were substituted (and why) alongside the registry version
+            # that carries the injected spec's provenance metadata.
+            "medicaid_enrollment_substitutions": [
+                dict(record) for record in medicaid_enrollment_substitutions
+            ],
         },
         "gates": {
             "calibration": {
@@ -5653,6 +5671,10 @@ def main() -> None:
     # nearest-prior-month count instead of failing the take-up gate closed.
     # The records ride the take-up diagnostics; the gate fails a stale entry
     # (CMS backfilled the substituted-for month) so the register cannot rot.
+    # Applied once here, before the dense/sparse split, so the injected spec
+    # flows through `target_specs` into the materialized calibration registry
+    # that BOTH the dense (`calibrate`) and sparse (`calibrate_l0_refit`) arms
+    # consume, and into the take-up target table and build manifest.
     target_registry, medicaid_enrollment_substitutions = (
         apply_us_medicaid_enrollment_substitutions(target_registry)
     )
@@ -6056,6 +6078,7 @@ def main() -> None:
         base_frame,
         target_specs,
         seed=args.seed,
+        substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
     medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)
@@ -6776,6 +6799,7 @@ def main() -> None:
         selection_source=selection_source_payload,
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
+        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
         staging=(
             {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}
             if telemetry is not None
