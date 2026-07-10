@@ -1,0 +1,12 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	ignorecase = true
+	precomposeunicode = true
+	worktree = ..
+[user]
+	name = Max Ghenis
+	email = mghenis@gmail.com
+[remote "origin"]
+	url = https://github.com/PolicyEngine/populace.git
