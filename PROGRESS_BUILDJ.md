@@ -205,6 +205,33 @@ zero-support (post-excl) 0. Build I was pinned to Build H lineage and did NOT ad
   + 1 RI substitution — both live-coverage consequences, to be stated in the verdict).
   Relaunch note: changing exclusions changes the compiled registry -> checkpoint identity MISS ->
   full rematerialization (~24 min), unavoidable by design (exclusions apply at compile).
+- **Step 8 (d798158 run: zero-support PASSED -> 4th stale-register catch, SAME five columns;
+  fixed + swept ALL registers + relaunched).** The d798158 run cleared zero-support (24-cell list
+  works) and rematerialized everything (fresh checkpoint at the FINAL Build J registry:
+  **5,510 specs, version `091ace02f962`** = 5,533 − 24 excl + 1 RI substitution), then rc=1 at
+  08:56:41Z at the #369 input-coverage gate (:6488): `Stale reviewed exclusions — the column
+  carries signal now, promote it to a hard requirement:` the IDENTICAL five columns from
+  gate-class #2. NOT a fourth cause — the coverage manifest DERIVES from the parity known-gaps
+  register (my Step-6 fix), so its exclusions for the five were stale by construction.
+  **Fix:** regenerated via `tools/build_us_release_input_coverage_manifest.py` — diff = EXACTLY
+  five reviewed_exclusion -> required promotions (65->70 required / 93->88 exclusions / 158 total,
+  SSI probe intact), nothing else. test_release_input_coverage **14 passed** (incl. the
+  manifest==regeneration guard); the release's exact #384 register-consistency preflight
+  **passes** with the promotions (five not in degenerate/documented-absent -> no signal/excused
+  collision).
+  **ONE-PASS REGISTER SWEEP (end the serial discovery):** grepped every register for the five
+  columns + takes_up_tanf-era assumptions. Result: parity known-gaps FIXED (Step 6), coverage
+  manifest FIXED (here), `US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS` CLEAN (SSI/Medicare/DC-PTC/
+  second-home entries only — none of the five, no TANF), `US_DOCUMENTED_ABSENT_INPUTS` CLEAN,
+  take-up contract = #384-aligned TANF treatment declaration (not an exclusion),
+  `takes_up_tanf_if_eligible` already "required" in the manifest, zero-support = Build-J 24-cell
+  (passed in-run), medicaid substitution register = RI applied (passed in-run). Remaining
+  failure surfaces are ARTIFACT-dependent gates (export-mass, degenerate-on-export, reform smoke,
+  take-up contract post-solve) — real certification surfaces, not register staleness.
+  Committed 75d5add; relaunched sparse: run id
+  `populace-us-2024-buildj-sparse-rmloss100-75d5add-20260710T094201Z`. The 091ace02f962
+  checkpoint should HIT (this fix does not touch the registry compile) -> straight to solve +
+  gates (~6-10 min warm).
 
 ## Gate map + verdict-data locations (verified on origin/main; for the resumed run + verdict)
 Runs = worktree `.venv/bin/python tools/build_us_fiscal_refresh_release.py`; the sparse (deployable)
