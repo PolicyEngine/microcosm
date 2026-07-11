@@ -47,6 +47,9 @@ from pathlib import Path
 from typing import Any
 
 from populace.build.gates import GateResult, input_column_coverage_gate
+from populace.build.us_runtime.capital_gain_details import (
+    US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.child_support import US_CHILD_SUPPORT_OUTPUT_COLUMNS
 from populace.build.us_runtime.disability_benefits import (
     US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
@@ -117,6 +120,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_FORM_4952_OUTPUT_COLUMNS,
+        *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "household_weight",

@@ -75,6 +75,7 @@ from populace.build.us_runtime import (
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
     us_alimony_signal_gate,
+    us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
     us_child_support_signal_gate,
     us_childcare_signal_gate,
@@ -5975,6 +5976,23 @@ def main() -> None:
             + "; ".join(
                 "Form 4952 election signal failed: " + failure
                 for failure in form_4952_election_gate.failures
+            )
+        )
+    capital_gain_details_gate = us_capital_gain_details_signal_gate(base_frame)
+    if not capital_gain_details_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "capital_gain_details_input_gate",
+                status="failed",
+                message="Capital-gain details input signal gate failed.",
+                failures=list(capital_gain_details_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Capital-gain details signal failed: " + failure
+                for failure in capital_gain_details_gate.failures
             )
         )
     base_frame = with_us_childcare_inputs(

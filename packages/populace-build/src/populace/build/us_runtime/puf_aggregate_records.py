@@ -18,6 +18,9 @@ import numpy as np
 import pandas as pd
 
 from populace.build.us_runtime.alimony import derive_us_alimony_from_puf
+from populace.build.us_runtime.capital_gain_details import (
+    derive_us_capital_gain_details_from_puf,
+)
 from populace.build.us_runtime.casualty_losses import (
     derive_us_casualty_loss_from_puf,
 )
@@ -250,6 +253,10 @@ def derive_puf_policyengine_variables(
     investment_income_elected_form_4952_output: str = (
         "investment_income_elected_form_4952"
     ),
+    collectibles_capital_gain_source: str | None = None,
+    collectibles_capital_gain_output: str = "long_term_capital_gains_on_collectibles",
+    unrecaptured_section_1250_gain_source: str | None = None,
+    unrecaptured_section_1250_gain_output: str = "unrecaptured_section_1250_gain",
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -327,6 +334,24 @@ def derive_puf_policyengine_variables(
             result,
             source_column=investment_income_elected_form_4952_source,
             output_column=investment_income_elected_form_4952_output,
+        )
+    capital_gain_detail_sources = (
+        collectibles_capital_gain_source,
+        unrecaptured_section_1250_gain_source,
+    )
+    if any(source is not None for source in capital_gain_detail_sources):
+        if not all(source is not None for source in capital_gain_detail_sources):
+            raise ValueError(
+                "PUF capital-gain detail derivation requires both collectibles "
+                "and unrecaptured-section-1250 source columns when either is "
+                "configured."
+            )
+        result = derive_us_capital_gain_details_from_puf(
+            result,
+            collectibles_source_column=collectibles_capital_gain_source,
+            collectibles_output_column=collectibles_capital_gain_output,
+            unrecaptured_source_column=unrecaptured_section_1250_gain_source,
+            unrecaptured_output_column=unrecaptured_section_1250_gain_output,
         )
     farm_sources = (farm_operations_income_source, farm_rent_income_source)
     if any(source is not None for source in farm_sources):
@@ -406,6 +431,7 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_educator_expense_from_source(result)
     result = _reconcile_puf_misc_itemized_from_source(result)
     result = _reconcile_puf_form_4952_election_from_source(result)
+    result = _reconcile_puf_capital_gain_details_from_sources(result)
     return _reconcile_puf_farm_business_income_from_sources(result)
 
 
@@ -1069,6 +1095,22 @@ def _reconcile_puf_form_4952_election_from_source(
     if output not in puf.columns or "E58990" not in puf.columns:
         return puf
     return derive_us_form_4952_election_from_puf(puf)
+
+
+def _reconcile_puf_capital_gain_details_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute E24518/E24515 carries after source amounts are replaced."""
+
+    required = {
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
+        "E24518",
+        "E24515",
+    }
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_capital_gain_details_from_puf(puf)
 
 
 def _reconcile_puf_farm_business_income_from_sources(

@@ -115,6 +115,11 @@ SIPP_VEHICLE_INPUTS = (
 
 FORM_4952_INPUTS = ("investment_income_elected_form_4952",)
 
+CAPITAL_GAIN_DETAIL_INPUTS = (
+    "long_term_capital_gains_on_collectibles",
+    "unrecaptured_section_1250_gain",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -129,6 +134,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FARM_BUSINESS_INCOME_INPUTS,
     *SIPP_VEHICLE_INPUTS,
     *FORM_4952_INPUTS,
+    *CAPITAL_GAIN_DETAIL_INPUTS,
     "domestic_production_ald",
     "household_weight",
     "spm_unit_pre_subsidy_childcare_expenses",
@@ -403,6 +409,48 @@ REFORM_COVERAGE_PROBES = [
             "gain and lowers income tax, so baseline-minus-reform income tax "
             "must be positive. Without the restored E58990 input the "
             "neutralization is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#274",
+    },
+    {
+        "id": "collectibles_gain_neutralization",
+        "name": "Long-term collectibles gain neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "long_term_capital_gains_on_collectibles",
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["long_term_capital_gains_on_collectibles"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US includes collectibles in capital_gains_28_percent_"
+            "rate_gain. Neutralizing only the E24518 memo leaf reclassifies "
+            "those gains from the special 28-percent bucket to the ordinary "
+            "preferential capital-gain schedule, so baseline-minus-reform "
+            "income tax must be positive. Without the restored leaf the "
+            "neutralization is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#274",
+    },
+    {
+        "id": "unrecaptured_section_1250_gain_neutralization",
+        "name": "Unrecaptured section 1250 gain neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "unrecaptured_section_1250_gain",
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["unrecaptured_section_1250_gain"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US taxes the E24515 memo leaf at the special "
+            "unrecaptured-section-1250 rate. Neutralizing only that leaf "
+            "reclassifies the same net gain onto the ordinary preferential "
+            "capital-gain schedule, so baseline-minus-reform income tax must "
+            "be positive. Without the restored leaf the neutralization is a "
+            "structural zero."
         ),
         "issue": "PolicyEngine/populace#274",
     },

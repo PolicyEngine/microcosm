@@ -559,6 +559,12 @@ class TestUsSources:
             "investment_income_elected_form_4952_output": (
                 "investment_income_elected_form_4952"
             ),
+            "collectibles_capital_gain_source": "E24518",
+            "collectibles_capital_gain_output": (
+                "long_term_capital_gains_on_collectibles"
+            ),
+            "unrecaptured_section_1250_gain_source": "E24515",
+            "unrecaptured_section_1250_gain_output": "unrecaptured_section_1250_gain",
         }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]

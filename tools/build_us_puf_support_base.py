@@ -44,6 +44,7 @@ from populace.build.us_runtime import (
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
     us_alimony_signal_gate,
+    us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
     us_child_support_signal_gate,
     us_childcare_signal_gate,
@@ -297,6 +298,12 @@ def main() -> None:
             "Form 4952 election signal gate failed:\n  "
             + "\n  ".join(form_4952_election_gate.failures)
         )
+    capital_gain_details_gate = us_capital_gain_details_signal_gate(imputed)
+    if not capital_gain_details_gate.passed:
+        raise SystemExit(
+            "Capital-gain details signal gate failed:\n  "
+            + "\n  ".join(capital_gain_details_gate.failures)
+        )
     imputed = with_us_childcare_inputs(
         imputed,
         seed=args.seed,
@@ -502,6 +509,11 @@ def main() -> None:
             "passed": form_4952_election_gate.passed,
             "failures": list(form_4952_election_gate.failures),
             "details": dict(form_4952_election_gate.details),
+        },
+        "capital_gain_details_signal": {
+            "passed": capital_gain_details_gate.passed,
+            "failures": list(capital_gain_details_gate.failures),
+            "details": dict(capital_gain_details_gate.details),
         },
         "childcare_inputs_signal": {
             "passed": childcare_gate.passed,

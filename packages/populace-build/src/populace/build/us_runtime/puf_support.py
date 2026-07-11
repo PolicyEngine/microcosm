@@ -76,6 +76,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "tax_exempt_interest_income",
     "short_term_capital_gains",
     "long_term_capital_gains_before_response",
+    "long_term_capital_gains_on_collectibles",
     "non_sch_d_capital_gains",
     "taxable_private_pension_income",
     "taxable_ira_distributions",
@@ -122,6 +123,7 @@ PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
 
 PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "domestic_production_ald",
+    "unrecaptured_section_1250_gain",
     "first_home_mortgage_balance",
     "second_home_mortgage_balance",
     "first_home_mortgage_interest",
@@ -138,7 +140,12 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
     }
 )
 _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
-_PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset({"domestic_production_ald"})
+_PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset(
+    {
+        "domestic_production_ald",
+        "unrecaptured_section_1250_gain",
+    }
+)
 _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
@@ -146,6 +153,7 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
         "educator_expense",
         "casualty_loss",
         "investment_income_elected_form_4952",
+        "long_term_capital_gains_on_collectibles",
         "alimony_income",
         "alimony_expense",
     }
@@ -189,6 +197,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "non_qualified_dividend_income",
         "tax_exempt_interest_income",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
         "taxable_pension_income",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
@@ -209,6 +218,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "casualty_loss",
         "unreimbursed_business_employee_expenses",
         "domestic_production_ald",
+        "unrecaptured_section_1250_gain",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",

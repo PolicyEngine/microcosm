@@ -124,6 +124,10 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "farm_rent_income_output",
         "investment_income_elected_form_4952_source",
         "investment_income_elected_form_4952_output",
+        "collectibles_capital_gain_source",
+        "collectibles_capital_gain_output",
+        "unrecaptured_section_1250_gain_source",
+        "unrecaptured_section_1250_gain_output",
     }
 )
 
@@ -936,6 +940,28 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "investment_income_elected_form_4952_output",
                 default="investment_income_elected_form_4952",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            collectibles_capital_gain_source=_optional_string_param(
+                params,
+                "collectibles_capital_gain_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            collectibles_capital_gain_output=_string_param_with_default(
+                params,
+                "collectibles_capital_gain_output",
+                default="long_term_capital_gains_on_collectibles",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unrecaptured_section_1250_gain_source=_optional_string_param(
+                params,
+                "unrecaptured_section_1250_gain_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unrecaptured_section_1250_gain_output=_string_param_with_default(
+                params,
+                "unrecaptured_section_1250_gain_output",
+                default="unrecaptured_section_1250_gain",
                 label="PUF PolicyEngine-variable derivation",
             ),
         )

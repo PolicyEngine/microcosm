@@ -13,13 +13,27 @@
           "kind": "public_microdata",
           "format": "fixed_width_or_csv",
           "vintage": "2015",
-          "locator": "IRS SOI Public Use File, including educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, and Form 4952 elected investment income E58990"
+          "locator": "IRS SOI Public Use File, including educator expense E03220, alimony income E00800, alimony expense E03500, domestic-production deduction E03240, casualty-loss E20500, unreimbursed employee business expense E20400, farm operations E02100, farm rent E27200, Form 4952 elected investment income E58990, collectibles gain E24518, and unrecaptured section 1250 gain E24515"
         },
         {
           "kind": "versioned_derived_microdata",
           "format": "hdf5_arrays",
           "vintage": "2024 (2015-based)",
           "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+          "lines": "654-702,804-850",
+          "outputs": [
+            "long_term_capital_gains_on_collectibles",
+            "unrecaptured_section_1250_gain"
+          ],
+          "imputation_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "imputation_lines": "90-198,940-1075"
         }
       ],
       "operations": [
@@ -54,7 +68,11 @@
           "farm_rent_income_source": "E27200",
           "farm_rent_income_output": "farm_rent_income",
           "investment_income_elected_form_4952_source": "E58990",
-          "investment_income_elected_form_4952_output": "investment_income_elected_form_4952"
+          "investment_income_elected_form_4952_output": "investment_income_elected_form_4952",
+          "collectibles_capital_gain_source": "E24518",
+          "collectibles_capital_gain_output": "long_term_capital_gains_on_collectibles",
+          "unrecaptured_section_1250_gain_source": "E24515",
+          "unrecaptured_section_1250_gain_output": "unrecaptured_section_1250_gain"
         },
         {
           "kind": "disaggregate_aggregate_records",
@@ -101,6 +119,8 @@
         "tax_exempt_interest_income",
         "short_term_capital_gains",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
         "non_sch_d_capital_gains",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
@@ -163,6 +183,8 @@
         "non_qualified_dividend_income",
         "tax_exempt_interest_income",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "unrecaptured_section_1250_gain",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
         "social_security_retirement",
@@ -1241,7 +1263,7 @@
         "mortgage_principal",
         "investment_interest_expense"
       ],
-      "notes": "The conversion is a declarative structural transform over PUF and SCF outputs, not a benchmark data loader."
+      "notes": "The archived conversion maps the sole interest field used by the retired derivation, E19200, to interest_deduction, assigns the identical amount as deductible mortgage interest (archived puf.py lines 654 and 1548-1550), and derives investment_interest_expense only as their nonnegative residual (utils/mortgage_interest.py lines 268-320). The retired enhanced-CPS QRF predicted those source-identical aliases separately before conversion, so positive residuals are stochastic prediction divergence rather than observed detail. The SHA-pinned PUF 1.8.0 artifact contains 499,045 all-zero investment_interest_expense values and omits both aliases and raw E19200; all three locked ASEC inputs omit them too. A nonzero hermetic restoration would synthesize an unobserved mortgage-versus-investment split, so investment_interest_expense remains a SOURCE UNAVAILABILITY WITH EVIDENCE exclusion."
     },
     {
       "stage": "acs_rent",

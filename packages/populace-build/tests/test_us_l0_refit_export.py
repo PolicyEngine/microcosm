@@ -59,6 +59,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "investment_income_elected_form_4952": [0.0, 500.0, 250.0],
+            "long_term_capital_gains_on_collectibles": [0.0, 2_500.0, 1_000.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
             "educational_assistance": [0.0, 500.0, 0.0],
             "traditional_401k_contributions_desired": [1_000.0, 0.0, 500.0],
@@ -155,6 +156,7 @@ def _us_frame(**person_extra: object) -> Frame:
                         [1.0, 0.8, 1.2], dtype="float64"
                     ),
                     "domestic_production_ald": [0.0, 10_000.0, 5_000.0],
+                    "unrecaptured_section_1250_gain": [0.0, 2_000.0, 500.0],
                 }
             ),
             "spm_unit": pd.DataFrame(

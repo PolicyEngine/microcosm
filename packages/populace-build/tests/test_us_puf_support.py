@@ -1045,6 +1045,7 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "second_home_mortgage_origination_year": [0, 2020],
             "health_savings_account_ald": [1_500.0, 0.0],
             "domestic_production_ald": [7_500.0, 0.0],
+            "unrecaptured_section_1250_gain": [500.0, 0.0],
         },
         person_outputs=(),
         tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -1052,6 +1053,7 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
 
     assert donor["health_savings_account_ald"].tolist() == [1_500.0, 0.0]
     assert donor["domestic_production_ald"].tolist() == [7_500.0, 0.0]
+    assert donor["unrecaptured_section_1250_gain"].tolist() == [500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
     assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]

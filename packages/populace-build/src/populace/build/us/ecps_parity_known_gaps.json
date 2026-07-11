@@ -122,8 +122,68 @@
       }
     },
     "investment_interest_expense": {
-      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-      "issue": "PolicyEngine/populace#274"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe maps the sole interest field used by the retired derivation, E19200, to interest_deduction at datasets/puf/puf.py line 654 and explicitly assigns that identical amount as deductible mortgage interest at lines 1548-1550. utils/mortgage_interest.py lines 141-155 and 268-320 derives investment_interest_expense only as max(total_interest_deduction - tax_unit_deductible, 0); the retired QRF separately predicted the two source-identical aliases before conversion, so any positive residual is stochastic prediction divergence rather than observed source detail. The SHA-pinned PUF 1.8.0 artifact consumed by the hermetic build has 499,045 all-zero investment_interest_expense values and omits interest_deduction, deductible_mortgage_interest, and raw E19200; all three locked ASEC inputs omit them too. A nonzero restoration would invent an unobserved mortgage-versus-investment split.",
+      "issue": "PolicyEngine/populace#274",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "utils", "mortgage_interest.py"],
+          "lines": "141-155,268-320,327-349"
+        },
+        "retired_puf_source_identity": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+          "interest_mapping_lines": "636-656",
+          "identical_mortgage_assignment_lines": "1548-1550",
+          "raw_source": "E19200"
+        },
+        "retired_qrf_and_conversion_order": {
+          "qrf_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "qrf_lines": "90-198,940-1075",
+          "conversion_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "conversion_lines": "1178-1190",
+          "finding": "The QRF predicts interest_deduction and deductible_mortgage_interest separately even though the PUF construction makes their tax-unit source amounts identical; a positive post-QRF residual is not observed microdata detail."
+        },
+        "required_intermediates": [
+          "interest_deduction",
+          "deductible_mortgage_interest"
+        ],
+        "processed_puf": {
+          "filename": "puf_2024.h5",
+          "release": "policyengine/irs-soi-puf/1.8.0",
+          "sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df",
+          "rows": 499045,
+          "positive_values": 0,
+          "weighted_total": 0.0,
+          "missing_columns": [
+            "interest_deduction",
+            "deductible_mortgage_interest",
+            "E19200"
+          ]
+        },
+        "hermetic_asec_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "missing_columns": ["interest_deduction", "deductible_mortgage_interest", "E19200"]
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "missing_columns": ["interest_deduction", "deductible_mortgage_interest", "E19200"]
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "missing_columns": ["interest_deduction", "deductible_mortgage_interest", "E19200"]
+          }
+        ],
+        "semantic_rejection": "SCF mortgage hints and aggregate SOI totals do not identify a return-level mortgage-versus-investment interest split. Re-running two stochastic predictions solely to manufacture a residual would synthesize values rather than restore a source observation.",
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-72 passes only the three locked ASEC H5 files and processed PUF H5; tools/build_us_puf_support_base.py lines 240-247 reads those arrays and cannot refresh omitted restricted raw-PUF columns."
+      }
     },
     "is_household_head": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
@@ -148,10 +208,6 @@
     "keogh_distributions": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
-    },
-    "long_term_capital_gains_on_collectibles": {
-      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-      "issue": "PolicyEngine/populace#274"
     },
     "net_worth": {
       "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
@@ -232,10 +288,6 @@
     "tenure_type": {
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
-    },
-    "unrecaptured_section_1250_gain": {
-      "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-      "issue": "PolicyEngine/populace#274"
     },
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",

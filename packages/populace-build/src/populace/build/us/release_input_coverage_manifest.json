@@ -188,7 +188,7 @@
   },
   "investment_interest_expense": {
    "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe maps the sole interest field used by the retired derivation, E19200, to interest_deduction at datasets/puf/puf.py line 654 and explicitly assigns that identical amount as deductible mortgage interest at lines 1548-1550. utils/mortgage_interest.py lines 141-155 and 268-320 derives investment_interest_expense only as max(total_interest_deduction - tax_unit_deductible, 0); the retired QRF separately predicted the two source-identical aliases before conversion, so any positive residual is stochastic prediction divergence rather than observed source detail. The SHA-pinned PUF 1.8.0 artifact consumed by the hermetic build has 499,045 all-zero investment_interest_expense values and omits interest_deduction, deductible_mortgage_interest, and raw E19200; all three locked ASEC inputs omit them too. A nonzero restoration would invent an unobserved mortgage-versus-investment split.",
    "status": "reviewed_exclusion"
   },
   "is_blind": {
@@ -267,9 +267,7 @@
    "status": "required"
   },
   "long_term_capital_gains_on_collectibles": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "miscellaneous_income": {
    "status": "required"
@@ -532,9 +530,7 @@
    "status": "required"
   },
   "unrecaptured_section_1250_gain": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unreimbursed_business_employee_expenses": {
    "status": "required"
@@ -570,8 +566,8 @@
   }
  },
  "counts": {
-  "required": 130,
-  "reviewed_exclusion": 35,
+  "required": 132,
+  "reviewed_exclusion": 33,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -803,6 +799,38 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US subtracts the tax-unit sum of investment_income_elected_form_4952 from net capital gain. Neutralizing only that leaf increases preferential net capital gain and lowers income tax, so baseline-minus-reform income tax must be positive. Without the restored E58990 input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "long_term_capital_gains_on_collectibles"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "collectibles_gain_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Long-term collectibles gain neutralization",
+   "neutralized_variable": "long_term_capital_gains_on_collectibles",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes collectibles in capital_gains_28_percent_rate_gain. Neutralizing only the E24518 memo leaf reclassifies those gains from the special 28-percent bucket to the ordinary preferential capital-gain schedule, so baseline-minus-reform income tax must be positive. Without the restored leaf the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "unrecaptured_section_1250_gain"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "unrecaptured_section_1250_gain_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Unrecaptured section 1250 gain neutralization",
+   "neutralized_variable": "unrecaptured_section_1250_gain",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US taxes the E24515 memo leaf at the special unrecaptured-section-1250 rate. Neutralizing only that leaf reclassifies the same net gain onto the ordinary preferential capital-gain schedule, so baseline-minus-reform income tax must be positive. Without the restored leaf the neutralization is a structural zero."
   },
   {
    "binding_inputs": [

@@ -1993,6 +1993,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_form_4952_election_signal_gate",
         fake_form_4952_election_signal_gate,
     )
+
+    def fake_capital_gain_details_signal_gate(frame):
+        captured["capital_gain_details_gate_called"] = True
+        return builder.GateResult(
+            name="capital_gain_details_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_capital_gain_details_signal_gate",
+        fake_capital_gain_details_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_childcare_inputs",
@@ -2552,6 +2566,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["disability_benefits_gate_called"] is True
     assert captured["educator_expense_gate_called"] is True
     assert captured["form_4952_election_gate_called"] is True
+    assert captured["capital_gain_details_gate_called"] is True
     assert captured["farm_business_income_gate_called"] is True
     assert captured["other_health_insurance_stage_called"] is True
     assert captured["other_health_insurance_gate_called"] is True
