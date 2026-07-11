@@ -117,6 +117,7 @@ PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
 )
 
 PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
+    "domestic_production_ald",
     "first_home_mortgage_balance",
     "second_home_mortgage_balance",
     "first_home_mortgage_interest",
@@ -133,6 +134,7 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
     }
 )
 _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
+_PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset({"domestic_production_ald"})
 _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
@@ -198,6 +200,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "qualified_tuition_expenses",
         "casualty_loss",
         "unreimbursed_business_employee_expenses",
+        "domestic_production_ald",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -575,6 +578,11 @@ def impute_us_puf_tax_detail_support(
                 predictions[column],
                 donor[column],
             )
+        if column in _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
         if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
             predictions[column] = _snap_to_observed_values(
                 predictions[column],
@@ -598,6 +606,18 @@ def impute_us_puf_tax_detail_support(
     for column in tax_unit_outputs:
         _ensure_float_output_column(tables["tax_unit"], column)
         tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
+    for column in tax_unit_outputs:
+        if column in _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS:
+            _sparsify_tax_unit_output_to_donor_positive_rate(
+                tables,
+                column=column,
+                donor_positive_rate=_weighted_positive_rate(
+                    donor[column],
+                    donor["weight"],
+                ),
+                household_weights=frame.weights_for("household").values,
+                tax_unit_channel=tax_unit_channel,
+            )
 
     person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     for column in person_outputs:
@@ -1197,6 +1217,72 @@ def _weighted_positive_rate(values: pd.Series, weights: pd.Series) -> float:
     if total_weight <= 0.0:
         return 0.0
     return float((numeric_weights * (numeric_values > 0.0)).sum() / total_weight)
+
+
+def _sparsify_tax_unit_output_to_donor_positive_rate(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    column: str,
+    donor_positive_rate: float,
+    household_weights: np.ndarray,
+    tax_unit_channel: str,
+) -> None:
+    """Prune a sparse tax-unit amount to the donor's weighted positive rate."""
+
+    positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
+    person = tables["person"]
+    household = tables["household"]
+    tax_unit = tables["tax_unit"]
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "household_weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+    household_weight = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"],
+    )
+    tax_unit_household_id = (
+        person.groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+        .astype("int64")
+    )
+    tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
+
+    for channel in tax_unit[tax_unit_channel].dropna().unique():
+        channel_mask = tax_unit[tax_unit_channel] == channel
+        channel_rows = tax_unit.loc[channel_mask]
+        amounts = pd.Series(
+            pd.to_numeric(channel_rows[column], errors="coerce")
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            index=channel_rows["tax_unit_id"].to_numpy(),
+        )
+        weights = tax_unit_weight.reindex(amounts.index).fillna(0.0)
+        positive = amounts > 0.0
+        positive_weight = float(weights[positive].sum())
+        desired_positive_weight = positive_rate * float(weights.sum())
+        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+            continue
+
+        ranked = (
+            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+            .sort_values("amount", ascending=False)
+            .copy()
+        )
+        cumulative = ranked["weight"].cumsum()
+        keep = cumulative <= desired_positive_weight
+        if not keep.any() and len(keep) > 0:
+            keep.iloc[0] = True
+        kept_ids = set(ranked.index[keep])
+
+        sparse_amounts = amounts.copy()
+        sparse_amounts.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+        original_total = float((amounts * weights).sum())
+        sparse_total = float((sparse_amounts * weights).sum())
+        if original_total != 0.0 and sparse_total != 0.0:
+            sparse_amounts *= original_total / sparse_total
+        tax_unit.loc[channel_mask, column] = sparse_amounts.to_numpy()
 
 
 def _sparsify_tax_unit_person_output_to_donor_positive_rate(

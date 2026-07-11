@@ -99,6 +99,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "alimony_expense",
     "alimony_income",
     "casualty_loss",
+    "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
     *QBI_INPUTS,
@@ -254,6 +255,45 @@ REFORM_COVERAGE_PROBES = [
             "are zero and the change is a structural zero. The archived "
             "all-or-nothing SSTB routing leaves its SSTB-allocable copies to "
             "the hard signal gate rather than overclaiming reform coverage."
+        ),
+        "issue": "PolicyEngine/populace#298",
+    },
+    {
+        "id": "domestic_production_ald_reactivation",
+        "name": "Former Section 199 domestic-production deduction reactivation",
+        "parameter_changes": {
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "alimony_expense_ald",
+                    "educator_expense",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                    "domestic_production_ald",
+                ]
+            }
+        },
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["domestic_production_ald"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US 1.764.6 excludes the former Section 199 deduction "
+            "from current-law above-the-line deductions. This probe preserves "
+            "the exact 2024 list and adds only domestic_production_ald, so "
+            "baseline-minus-reform income tax must be positive. Without the "
+            "restored E03240 input, reactivation is a structural zero."
         ),
         "issue": "PolicyEngine/populace#298",
     },

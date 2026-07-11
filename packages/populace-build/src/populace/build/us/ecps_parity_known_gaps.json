@@ -14,10 +14,6 @@
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
     },
-    "domestic_production_ald": {
-      "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-      "issue": "PolicyEngine/populace#298"
-    },
     "educator_expense": {
       "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"

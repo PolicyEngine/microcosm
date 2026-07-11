@@ -69,9 +69,7 @@
    "status": "reviewed_exclusion"
   },
   "domestic_production_ald": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "educational_assistance": {
    "status": "required"
@@ -594,8 +592,8 @@
   }
  },
  "counts": {
-  "required": 118,
-  "reviewed_exclusion": 47,
+  "required": 119,
+  "reviewed_exclusion": 46,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -726,6 +724,41 @@
    },
    "period": 2024,
    "reason": "Zeroing all W-2 wage and UBIA cap rates tightens the Section 199A deduction for high-income qualified businesses, so baseline-minus-reform QBID must be positive. If the total W-2 and UBIA inputs are absent, both baseline and reform guardrails are zero and the change is a structural zero. The archived all-or-nothing SSTB routing leaves its SSTB-allocable copies to the hard signal gate rather than overclaiming reform coverage."
+  },
+  {
+   "binding_inputs": [
+    "domestic_production_ald"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "domestic_production_ald_reactivation",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Former Section 199 domestic-production deduction reactivation",
+   "parameter_changes": {
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "alimony_expense_ald",
+      "educator_expense",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income",
+      "domestic_production_ald"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "PolicyEngine-US 1.764.6 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
   },
   {
    "binding_inputs": [

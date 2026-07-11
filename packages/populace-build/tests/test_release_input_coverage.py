@@ -491,9 +491,11 @@ class TestShippedManifest:
         for column in US_QBI_OUTPUT_COLUMNS:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
-        # DPAD is a separate direct-PUF leaf and remains tracked until its own
-        # green family commit; the QBI promotion must not hide it.
-        assert "domestic_production_ald" in manifest.reviewed_exclusions
+
+    def test_domestic_production_ald_is_promoted_separately_from_qbi(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "domestic_production_ald" in manifest.required_columns
+        assert "domestic_production_ald" not in manifest.reviewed_exclusions
 
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
@@ -656,6 +658,23 @@ class TestShippedManifest:
             "gov.irs.deductions.qbi.max.w2_wages.alt_rate",
             "gov.irs.deductions.qbi.max.business_property.rate",
         }
+
+    def test_shipped_domestic_production_probe_reactivates_only_its_ald(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "domestic_production_ald_reactivation"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("domestic_production_ald",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {"gov.irs.ald.deductions"}
+        deductions = probe.parameter_changes["gov.irs.ald.deductions"]
+        assert set(deductions) == {"2024-01-01.2024-12-31"}
+        assert deductions["2024-01-01.2024-12-31"].count("domestic_production_ald") == 1
 
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:
         overtime = next(

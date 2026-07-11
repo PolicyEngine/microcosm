@@ -304,6 +304,7 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     )
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "domestic_production_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -931,12 +932,14 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "first_home_mortgage_origination_year": [2018, 2016],
             "second_home_mortgage_origination_year": [0, 2020],
             "health_savings_account_ald": [1_500.0, 0.0],
+            "domestic_production_ald": [7_500.0, 0.0],
         },
         person_outputs=(),
         tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
 
     assert donor["health_savings_account_ald"].tolist() == [1_500.0, 0.0]
+    assert donor["domestic_production_ald"].tolist() == [7_500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
     assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]

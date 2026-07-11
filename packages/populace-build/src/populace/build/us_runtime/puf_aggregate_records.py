@@ -21,6 +21,9 @@ from populace.build.us_runtime.alimony import derive_us_alimony_from_puf
 from populace.build.us_runtime.casualty_losses import (
     derive_us_casualty_loss_from_puf,
 )
+from populace.build.us_runtime.domestic_production import (
+    derive_us_domestic_production_ald_from_puf,
+)
 from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
 from populace.calibrate import relative_error_loss
 
@@ -223,6 +226,8 @@ def derive_puf_policyengine_variables(
     alimony_expense_output: str = "alimony_expense",
     casualty_loss_source: str | None = None,
     casualty_loss_output: str = "casualty_loss",
+    domestic_production_ald_source: str | None = None,
+    domestic_production_ald_output: str = "domestic_production_ald",
     unreimbursed_business_employee_expenses_source: str | None = None,
     unreimbursed_business_employee_expenses_output: str = (
         "unreimbursed_business_employee_expenses"
@@ -280,6 +285,12 @@ def derive_puf_policyengine_variables(
             result,
             source_column=casualty_loss_source,
             output_column=casualty_loss_output,
+        )
+    if domestic_production_ald_source is not None:
+        result = derive_us_domestic_production_ald_from_puf(
+            result,
+            source_column=domestic_production_ald_source,
+            output_column=domestic_production_ald_output,
         )
     if unreimbursed_business_employee_expenses_source is not None:
         result = derive_us_misc_itemized_from_puf(
@@ -347,6 +358,7 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_qualified_tuition_from_sources(result)
     result = _reconcile_puf_alimony_from_sources(result)
     result = _reconcile_puf_casualty_loss_from_source(result)
+    result = _reconcile_puf_domestic_production_ald_from_source(result)
     return _reconcile_puf_misc_itemized_from_source(result)
 
 
@@ -969,6 +981,17 @@ def _reconcile_puf_alimony_from_sources(puf: pd.DataFrame) -> pd.DataFrame:
     if not required.issubset(puf.columns):
         return puf
     return derive_us_alimony_from_puf(puf)
+
+
+def _reconcile_puf_domestic_production_ald_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E03240 carry after aggregate-row amounts are replaced."""
+
+    output = "domestic_production_ald"
+    if output not in puf.columns or "E03240" not in puf.columns:
+        return puf
+    return derive_us_domestic_production_ald_from_puf(puf)
 
 
 def _reconcile_puf_misc_itemized_from_source(

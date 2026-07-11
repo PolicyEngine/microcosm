@@ -51,6 +51,7 @@ class TestUsSourceStageOutputs:
         assert "roth_ira_contributions_desired" in outputs
         assert "self_employed_pension_contributions_desired" in outputs
         assert "casualty_loss" in outputs
+        assert "domestic_production_ald" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs
         assert "spm_unit_pre_subsidy_childcare_expenses" in outputs
         assert set(US_QBI_OUTPUT_COLUMNS) <= outputs

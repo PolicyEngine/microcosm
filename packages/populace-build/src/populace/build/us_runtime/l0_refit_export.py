@@ -21,6 +21,9 @@ from populace.build.us_runtime.childcare import US_CHILDCARE_OUTPUT_COLUMNS
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from populace.build.us_runtime.domestic_production import (
+    US_DOMESTIC_PRODUCTION_ALD_NONCONSTANT_TAX_UNIT_COLUMNS,
+)
 from populace.build.us_runtime.education_inputs import (
     US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -71,6 +74,7 @@ from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
+    *US_DOMESTIC_PRODUCTION_ALD_NONCONSTANT_TAX_UNIT_COLUMNS,
 )
 
 US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
@@ -319,8 +323,8 @@ def assert_required_us_release_source_columns(
 ) -> None:
     """Require source-stage columns needed by US release gates.
 
-    Tax-unit columns come from the ACA Marketplace source stage; person
-    columns are the SSN/immigration surface (a missing or constant
+    Tax-unit columns come from the ACA Marketplace and PUF tax-detail stages;
+    person columns are the SSN/immigration surface (a missing or constant
     ``ssn_card_type`` reproduces the everyone-is-a-citizen failure of
     populace issue #225); household columns are the geography spine (a
     release without the block-anchored ladder of populace #275 cannot be

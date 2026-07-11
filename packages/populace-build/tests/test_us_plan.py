@@ -384,6 +384,8 @@ class TestUsSources:
             "alimony_expense_output": "alimony_expense",
             "casualty_loss_source": "E20500",
             "casualty_loss_output": "casualty_loss",
+            "domestic_production_ald_source": "E03240",
+            "domestic_production_ald_output": "domestic_production_ald",
             "unreimbursed_business_employee_expenses_source": "E20400",
             "unreimbursed_business_employee_expenses_output": "unreimbursed_business_employee_expenses",
         }

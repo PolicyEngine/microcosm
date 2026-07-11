@@ -73,6 +73,7 @@ from populace.build.us_runtime import (
     us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
     us_childcare_signal_gate,
+    us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_hours_worked_signal_gate,
@@ -5850,6 +5851,23 @@ def main() -> None:
             + "; ".join(
                 "QBI-input signal failed: " + failure
                 for failure in qbi_inputs_gate.failures
+            )
+        )
+    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(base_frame)
+    if not domestic_production_ald_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "domestic_production_ald_gate",
+                status="failed",
+                message="Domestic-production-ALD signal gate failed.",
+                failures=list(domestic_production_ald_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Domestic-production-ALD signal failed: " + failure
+                for failure in domestic_production_ald_gate.failures
             )
         )
     base_frame = with_us_childcare_inputs(
