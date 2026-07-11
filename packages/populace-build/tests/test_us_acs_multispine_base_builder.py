@@ -54,7 +54,7 @@ def _frame(
         person["takes_up_snap_if_eligible"] = [True, False]
     tables = {
         "person": person,
-        "household": pd.DataFrame({"household_id": [1, 2]}),
+        "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [6, 36]}),
         "tax_unit": pd.DataFrame({"tax_unit_id": [1, 2]}),
         "spm_unit": pd.DataFrame({"spm_unit_id": [1, 2]}),
         "family": pd.DataFrame({"family_id": [1, 2]}),
@@ -212,6 +212,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     output_h5 = tmp_path / "combined.h5"
     summary_path = tmp_path / "combined.summary.json"
     captured: dict[str, object] = {}
+    transfer_plan = {
+        "person": {
+            "benefit_participation": ("takes_up_snap_if_eligible",),
+        }
+    }
 
     def fake_load_manifest(path):
         captured["manifest_path"] = path
@@ -268,6 +273,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         builder,
         "_require_dense_donor_coverage",
         lambda frame, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "declared_acs_transfer_target_families",
+        lambda: transfer_plan,
     )
     monkeypatch.setattr(
         builder.acs_sources,
@@ -331,6 +341,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
+        "target_families": transfer_plan,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -368,9 +379,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             "tract": "2020_census",
         },
         "seed": 19,
-        "assignment": summary["orchestration"]["provenance"][
-            "geography_ladder"
-        ],
+        "assignment": summary["orchestration"]["provenance"]["geography_ladder"],
     }
     assert summary["acs_sources"]["manifest"] == str(manifest_path.resolve())
     assert (
@@ -482,25 +491,118 @@ def test_empty_transfer_audit_is_not_treated_as_success() -> None:
     assert "produced no fit records" in str(exc.value)
 
 
-def test_dense_donor_must_pass_release_input_coverage_before_download(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+class _DefaultsEngine:
+    _defaults = {
+        "age": 0,
+        "alimony_income": 0.0,
+        "employment_income_before_lsr": 0.0,
+        "has_esi": False,
+        "is_female": False,
+        "state_fips": 0,
+        "takes_up_snap_if_eligible": True,
+        "weekly_hours_worked_before_lsr": 40.0,
+    }
+
+    def default_values(self, names):
+        return {name: self._defaults[name] for name in names if name in self._defaults}
+
+
+def test_dense_donor_ignores_default_runtime_column_not_consumed_by_transfer() -> None:
     builder = _load_builder_module()
-    monkeypatch.setattr(
-        builder,
-        "us_release_input_coverage_gate",
-        lambda frame, engine: SimpleNamespace(
-            passed=False,
-            failures=("missing required column has_esi",),
-        ),
+    base = _frame()
+    base.person["weekly_hours_worked_before_lsr"] = [40.0, 40.0]
+
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        donor_channel=None,
+        target_families={
+            "person": {
+                "benefit_participation": ("takes_up_snap_if_eligible",),
+            }
+        },
     )
 
-    with pytest.raises(SystemExit) as exc:
-        builder._require_dense_donor_coverage(_frame(), engine=object())
 
-    assert "release input-coverage gate" in str(exc.value)
-    assert "has_esi" in str(exc.value)
-    assert "coverage-owned input-family stages" in str(exc.value)
+def test_dense_donor_missing_transfer_consumed_column_fails_hard() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            _frame(),
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={"person": {"health": ("has_esi",)}},
+        )
+
+    message = str(exc.value)
+    assert "hard ACS transfer-consumption gate" in message
+    assert "person.has_esi" in message
+    assert "transfer-consumed column is absent" in message
+
+
+def test_dense_donor_default_transfer_consumed_column_fails_hard() -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["has_esi"] = [False, False]
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={"person": {"health": ("has_esi",)}},
+        )
+
+    message = str(exc.value)
+    assert "hard ACS transfer-consumption gate" in message
+    assert "person.has_esi" in message
+    assert "every observed donor value equals the engine default" in message
+
+
+def test_dense_donor_default_consumed_optional_feature_fails_hard() -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["employment_income_before_lsr"] = [0.0, 0.0]
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={
+                "person": {
+                    "benefit_participation": ("takes_up_snap_if_eligible",),
+                }
+            },
+        )
+
+    message = str(exc.value)
+    assert "person.employment_income_before_lsr" in message
+    assert "every observed donor value equals the engine default" in message
+
+
+def test_signal_bearing_release_exclusion_is_irrelevant_to_donor_gate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["alimony_income"] = [0.0, 100.0]
+
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        donor_channel=None,
+        target_families={
+            "person": {
+                "benefit_participation": ("takes_up_snap_if_eligible",),
+            }
+        },
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_dense_donor_coverage_is_checked_on_resolved_puf_channel(
@@ -516,13 +618,21 @@ def test_dense_donor_coverage_is_checked_on_resolved_puf_channel(
         ]
     captured: dict[str, Frame] = {}
 
-    def fake_gate(frame, engine):
+    def fake_requirements(frame, target_families):
         captured["frame"] = frame
-        return SimpleNamespace(passed=True, failures=())
+        return {"person": ("age",)}
 
-    monkeypatch.setattr(builder, "us_release_input_coverage_gate", fake_gate)
+    monkeypatch.setattr(
+        builder,
+        "acs_transfer_donor_requirements",
+        fake_requirements,
+    )
 
-    builder._require_dense_donor_coverage(base, engine=object())
+    builder._require_dense_donor_coverage(
+        base,
+        engine=_DefaultsEngine(),
+        target_families={"person": {"test": ("age",)}},
+    )
 
     selected = captured["frame"]
     assert selected.n("person") == 1
@@ -540,15 +650,23 @@ def test_partial_donor_channel_metadata_fails_before_coverage_gate(
     ]
     called = False
 
-    def fake_gate(frame, engine):
+    def fake_requirements(frame, target_families):
         nonlocal called
         called = True
-        return SimpleNamespace(passed=True, failures=())
+        return {"person": ("age",)}
 
-    monkeypatch.setattr(builder, "us_release_input_coverage_gate", fake_gate)
+    monkeypatch.setattr(
+        builder,
+        "acs_transfer_donor_requirements",
+        fake_requirements,
+    )
 
     with pytest.raises(SystemExit, match="partial support metadata"):
-        builder._require_dense_donor_coverage(base, engine=object())
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            target_families={"person": {"test": ("age",)}},
+        )
 
     assert not called
 
@@ -793,8 +911,7 @@ def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
                 "entity": "person",
                 "rows": 1,
                 "reason": (
-                    "ACS group-quarters rows are outside the housing-tenure "
-                    "universe"
+                    "ACS group-quarters rows are outside the housing-tenure universe"
                 ),
             }
         ]

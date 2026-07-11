@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import numpy as np
 import pandas as pd
 import pytest
 
 import populace.build.us_runtime.acs_transfer as acs_transfer_module
 from populace.build.us_runtime.acs_transfer import (
+    ACS_DEFERRED_GEOGRAPHY_INPUTS,
     ACS_DONOR_CHANNEL_AUTO,
     ACS_GROUP_TRANSFER_PREDICTORS,
     ACS_NATIVE_PERSON_INPUTS,
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
     ACS_PERSON_TRANSFER_PREDICTORS,
     AcsTransferResult,
+    declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
     transfer_acs_inputs,
 )
@@ -404,6 +404,17 @@ def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -
     result = transfer_acs_inputs(
         recipient,
         donor,
+        target_families={
+            "person": {
+                "puf_tax_itemization": ("qualified_dividend_income",),
+                "housing": ("pre_subsidy_rent",),
+                "benefit_participation": ("takes_up_medicaid_if_eligible",),
+            },
+            "tax_unit": {
+                "puf_tax_itemization": ("first_home_mortgage_balance",),
+                "benefit_participation": ("takes_up_eitc",),
+            },
+        },
         donor_spine="asec_puf_test",
         seed=17,
         n_estimators=5,
@@ -478,7 +489,7 @@ def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -
         assert any(name.startswith(prefix) for name in fit_names)
 
 
-def test_default_families_include_puf_leaves_and_dynamic_take_up_columns() -> None:
+def test_default_families_exclude_runtime_owned_take_up_columns() -> None:
     families = default_acs_transfer_target_families(_donor_frame())
 
     assert "qualified_dividend_income" in families["person"]["puf_tax_itemization"]
@@ -486,18 +497,41 @@ def test_default_families_include_puf_leaves_and_dynamic_take_up_columns() -> No
     assert ACS_NATIVE_PERSON_INPUTS.isdisjoint(
         families["person"]["puf_tax_itemization"]
     )
-    assert families["person"]["benefit_participation"] == (
-        "takes_up_medicaid_if_eligible",
-    )
+    assert "benefit_participation" not in families["person"]
     assert (
         "first_home_mortgage_balance" in (families["tax_unit"]["puf_tax_itemization"])
     )
-    assert families["tax_unit"]["benefit_participation"] == ("takes_up_eitc",)
+    assert "benefit_participation" not in families["tax_unit"]
 
 
-def test_default_families_read_full_required_inventory_without_geography(
+def test_explicit_declared_plan_preserves_deferred_geography(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    plan = {
+        "person": {
+            "puf_tax_itemization": ("qualified_dividend_income",),
+        }
+    }
+    monkeypatch.setattr(
+        acs_transfer_module,
+        "declared_acs_transfer_target_families",
+        lambda: plan,
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+
+    result = transfer_acs_inputs(
+        _recipient_frame(),
+        _donor_frame(),
+        target_families=plan,
+        donor_channel=None,
+        seed=3,
+        n_estimators=1,
+    )
+
+    assert result.deferred_inputs == tuple(sorted(ACS_DEFERRED_GEOGRAPHY_INPUTS))
+
+
+def test_declared_families_are_independent_of_release_coverage_surface() -> None:
     donor = _with_columns(
         _donor_frame(),
         "person",
@@ -512,22 +546,6 @@ def test_default_families_read_full_required_inventory_without_geography(
         "household",
         {"county_fips": [1, 3, 5, 7]},
     )
-    monkeypatch.setattr(
-        acs_transfer_module,
-        "load_release_input_coverage_manifest",
-        lambda: SimpleNamespace(
-            required_columns=frozenset(
-                {
-                    "age",
-                    "county_fips",
-                    "employment_income_before_lsr",
-                    "has_esi",
-                    "is_blind",
-                    "ssn_card_type",
-                }
-            )
-        ),
-    )
 
     families = default_acs_transfer_target_families(donor)
 
@@ -535,7 +553,6 @@ def test_default_families_read_full_required_inventory_without_geography(
         "has_esi",
         "is_blind",
     )
-    assert families["person"]["model_required_categorical"] == ("ssn_card_type",)
     declared = {
         target
         for entity_families in families.values()
@@ -545,9 +562,30 @@ def test_default_families_read_full_required_inventory_without_geography(
     assert "county_fips" not in declared
     assert "employment_income_before_lsr" not in declared
     assert "age" not in declared
+    production_declared = declared_acs_transfer_target_families()
+    production_targets = {
+        target
+        for entity_families in production_declared.values()
+        for targets in entity_families.values()
+        for target in targets
+    }
+    assert production_targets.isdisjoint(
+        {
+            "immigration_status_str",
+            "selected_marketplace_plan_benchmark_ratio",
+            "ssn_card_type",
+            "takes_up_aca_if_eligible",
+            "takes_up_eitc",
+            "takes_up_medicaid_if_eligible",
+            "takes_up_snap_if_eligible",
+            "takes_up_tanf_if_eligible",
+            "weekly_hours_worked_before_lsr",
+        }
+    )
+    assert "has_esi" in production_declared["person"]["model_required_boolean"]
 
 
-def test_default_transfer_adds_every_donor_observed_required_model_input(
+def test_explicit_transfer_adds_requested_model_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     donor = _with_columns(
@@ -569,17 +607,22 @@ def test_default_transfer_adds_every_donor_observed_required_model_input(
         "ssn_card_type",
         "immigration_status_str",
     }
-    monkeypatch.setattr(
-        acs_transfer_module,
-        "load_release_input_coverage_manifest",
-        lambda: SimpleNamespace(required_columns=frozenset(required)),
-    )
     monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
     _MeanQRF.calls = []
 
     result = transfer_acs_inputs(
         _recipient_frame(),
         donor,
+        target_families={
+            "person": {
+                "model_required_boolean": ("has_esi", "is_blind"),
+                "model_required_categorical": (
+                    "ssn_card_type",
+                    "immigration_status_str",
+                ),
+                "model_required_numeric": ("other_medical_expenses",),
+            }
+        },
         seed=4,
         n_estimators=1,
         max_targets_per_fit=1,

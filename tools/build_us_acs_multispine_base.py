@@ -22,7 +22,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build import FitWeightRecord, weights_audit_gate
+from populace.build import (
+    FitWeightRecord,
+    default_valued_columns_gate,
+    weights_audit_gate,
+)
 from populace.build.us_runtime import acs_sources
 from populace.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
@@ -36,6 +40,9 @@ from populace.build.us_runtime.acs_pums import (
 from populace.build.us_runtime.acs_transfer import (
     ACS_DONOR_CHANNEL_AUTO,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    TargetFamilies,
+    acs_transfer_donor_requirements,
+    declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
     resolve_acs_donor_channel,
 )
@@ -43,9 +50,6 @@ from populace.build.us_runtime.base_pool import spine_column
 from populace.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
-)
-from populace.build.us_runtime.release_input_coverage import (
-    us_release_input_coverage_gate,
 )
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.units import US_SCHEMA
@@ -148,7 +152,12 @@ def main(argv: list[str] | None = None) -> int:
     base_sha256 = _sha256(args.base_h5)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
-    _require_dense_donor_coverage(base, donor_channel=args.donor_channel)
+    transfer_plan = declared_acs_transfer_target_families()
+    _require_dense_donor_coverage(
+        base,
+        donor_channel=args.donor_channel,
+        target_families=transfer_plan,
+    )
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
     puma_ladder_sha256 = _sha256(args.puma_ladder)
@@ -166,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         source,
         chunksize=args.chunksize,
         acs_share=args.acs_share,
+        target_families=transfer_plan,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -175,7 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
-    transfer_coverage = _require_default_transfer_coverage(result, base)
+    transfer_coverage = _require_default_transfer_coverage(
+        result,
+        base,
+        target_families=transfer_plan,
+    )
     weights_audit = _audit_fits(result)
 
     # The pooled frame owns its assembled blocks. Release the dense donor
@@ -260,21 +274,80 @@ def _require_dense_donor_coverage(
     engine: Any | None = None,
     *,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
+    target_families: TargetFamilies | None = None,
 ) -> None:
-    """Fail before download unless the selected donor passes the hard contract."""
+    """Fail unless every column consumed by the QRF plan has donor signal."""
 
     if engine is None:
         from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         engine = PolicyEngineUSEngine()
     selected, resolved_channel = _coverage_donor_channel(base, donor_channel)
-    gate = us_release_input_coverage_gate(selected, engine)
-    if not gate.passed:
+    plan = target_families or declared_acs_transfer_target_families()
+    try:
+        requirements = acs_transfer_donor_requirements(selected, plan)
+    except ValueError as exc:
         raise SystemExit(
-            "Dense ASEC-by-PUF donor failed the release input-coverage gate; "
-            f"selected channel={resolved_channel!r}. Run this tool only after "
-            "the coverage-owned input-family stages:\n  " + "\n  ".join(gate.failures)
+            "Dense ASEC-by-PUF donor has an invalid ACS transfer feature "
+            f"surface; selected channel={resolved_channel!r}: {exc}."
+        ) from exc
+
+    failures: list[str] = []
+    present_values: dict[str, Any] = {}
+    owners: dict[str, str] = {}
+    for entity, columns in requirements.items():
+        if entity not in selected.entities:
+            failures.extend(
+                f"{entity}.{column}: transfer-consumed column is absent "
+                "because the donor entity is missing."
+                for column in columns
+            )
+            continue
+        table = selected.table(entity)
+        for column in columns:
+            if column not in table.columns:
+                actual_owner = _column_owner(selected, column)
+                location = (
+                    f"; found on entity {actual_owner!r}"
+                    if actual_owner is not None
+                    else ""
+                )
+                failures.append(
+                    f"{entity}.{column}: transfer-consumed column is absent{location}."
+                )
+                continue
+            values = table[column].to_numpy()
+            if not pd.notna(values).any():
+                failures.append(
+                    f"{entity}.{column}: transfer-consumed column has no "
+                    "observed donor values."
+                )
+                continue
+            present_values[column] = values
+            owners[column] = entity
+
+    defaults = engine.default_values(sorted(present_values))
+    default_gate = default_valued_columns_gate(present_values, defaults)
+    default_valued = default_gate.details["default_valued_columns"]
+    for column, default in sorted(default_valued.items()):
+        failures.append(
+            f"{owners[column]}.{column}: every observed donor value equals "
+            f"the engine default ({default!r}); QRF transfer requires usable "
+            "target/predictor signal."
         )
+
+    if failures:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor failed the hard ACS transfer-consumption "
+            f"gate; selected channel={resolved_channel!r}:\n  " + "\n  ".join(failures)
+        )
+
+
+def _column_owner(frame: Frame, column: str) -> str | None:
+    try:
+        return frame.column_entity(column)
+    except ValueError:
+        return None
 
 
 def _coverage_donor_channel(
@@ -317,8 +390,7 @@ def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
     missing = [column for column in required if column not in household]
     if missing:
         raise SystemExit(
-            "PUMA geography assignment omitted household column(s): "
-            f"{missing}."
+            f"PUMA geography assignment omitted household column(s): {missing}."
         )
     nulls = {
         column: int(household[column].isna().sum())
@@ -345,11 +417,14 @@ def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
 def _require_default_transfer_coverage(
     result: AcsMultispineResult,
     donor: Frame,
+    *,
+    target_families: TargetFamilies | None = None,
 ) -> dict[str, object]:
     """Prove every planned target is present and complete on its ACS universe."""
 
     expected: dict[str, str] = {}
-    for entity, entity_families in default_acs_transfer_target_families(donor).items():
+    plan = target_families or default_acs_transfer_target_families(donor)
+    for entity, entity_families in plan.items():
         for targets in entity_families.values():
             for target in targets:
                 expected[target] = entity
@@ -484,14 +559,11 @@ def _reviewed_limitations(
             entity is not None
             and entry.get("entity") == entity
             and isinstance(missing_by_spine, dict)
-            and int(missing_by_spine.get(ACS_2024_1YR_SPINE, 0))
-            == gq_counts[entity]
+            and int(missing_by_spine.get(ACS_2024_1YR_SPINE, 0)) == gq_counts[entity]
         )
 
     gq_nulls = [entry for entry in acs_nulls if is_exact_gq_null(entry)]
-    other_native_nulls = [
-        entry for entry in acs_nulls if not is_exact_gq_null(entry)
-    ]
+    other_native_nulls = [entry for entry in acs_nulls if not is_exact_gq_null(entry)]
     structural_pending = transfer_coverage.get("structural_pending", [])
     if not isinstance(structural_pending, list):
         raise TypeError("transfer_coverage.structural_pending must be a list.")
@@ -537,9 +609,7 @@ def _reviewed_limitations(
                 "Preserve nullable source semantics after transferring every "
                 "donor-observed model-required input with an eligible fit."
             ),
-            "engine_input_nulls_excluding_group_quarters_housing": (
-                other_native_nulls
-            ),
+            "engine_input_nulls_excluding_group_quarters_housing": (other_native_nulls),
             "calibration_blocker": False,
         },
         {

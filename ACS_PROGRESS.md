@@ -99,3 +99,14 @@
   national ladder rebuild covered 2,462 PUMAs and 331,449,281 people and
   reproduced pinned SHA-256 `39a2ab2a…51147d8`. Checks: 17 staging-summary
   tests pass; Ruff clean.
+- 2026-07-11 — Donor-gate semantics correction (this milestone commit): moved
+  ACS donor readiness off the final-release input-coverage manifest and onto an
+  entity-scoped QRF contract owned by `acs_transfer.py`. The staging builder
+  now gates and transfers the same declared 59-target plan, hard-failing an
+  absent, all-null, or all-engine-default consumed target/predictor while
+  leaving runtime-owned take-up, immigration, hours-before-LSR, and marketplace
+  inputs to their downstream fiscal-refresh stages. Signal-bearing raw columns
+  listed as release exclusions are irrelevant to donor readiness; release-path
+  enforcement is unchanged. The corrected 66-column donor requirement surface
+  passes against the real June dense base. Checks: all 41 ACS transfer + staging
+  builder tests pass, including the three donor-gate regressions; Ruff clean.

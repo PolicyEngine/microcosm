@@ -36,9 +36,6 @@ from populace.build.us_runtime.puf_support import (
     resolve_formula_owned_outputs,
     support_channel_column,
 )
-from populace.build.us_runtime.release_input_coverage import (
-    load_release_input_coverage_manifest,
-)
 from populace.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
@@ -56,6 +53,8 @@ __all__ = [
     "AcsTransferPattern",
     "AcsTransferResult",
     "TargetFamilies",
+    "acs_transfer_donor_requirements",
+    "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
     "required_acs_transfer_inputs",
     "resolve_acs_donor_channel",
@@ -107,7 +106,6 @@ ACS_DEFERRED_GEOGRAPHY_INPUTS = frozenset(
         "tract_geoid",
     }
 )
-_NONTRANSFERABLE_REQUIRED_INPUTS = ACS_DEFERRED_GEOGRAPHY_INPUTS | {"state_fips"}
 
 # These inputs are numeric in current dense artifacts, but their domain is a
 # finite set of years. QRF quantile interpolation is valid for continuous
@@ -214,6 +212,71 @@ _CPS_TENURE_CODES: Mapping[int, float] = {1: 1.0, 2: 3.0, 3: 0.0}
 
 type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 
+# The production QRF surface is an ACS-transfer contract, not the release
+# export-coverage contract.  Runtime-owned leaves (take-up draws, immigration,
+# hours-before-LSR, and marketplace-plan inputs) are deliberately absent: the
+# fiscal-refresh runtime seeds them after the raw donor/base-pool stage.  A raw
+# donor therefore cannot provide a meaningful QRF target for those columns.
+#
+# Keep this declaration entity- and family-scoped so the donor-readiness gate,
+# transfer, and post-transfer coverage audit all consume the exact same plan.
+_DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = {
+    "person": {
+        "puf_tax_itemization": tuple(
+            target
+            for target in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+            if target
+            not in ACS_NATIVE_PERSON_INPUTS
+            | {
+                # The raw base carries combined partnership/S-corporation
+                # income in partnership_income; these leaves have no usable
+                # donor support on this build line.
+                "partnership_self_employment_net_earnings",
+                "s_corp_income",
+            }
+        ),
+        "housing": _ADDITIONAL_PERSON_TRANSFER_TARGETS,
+        "model_required_numeric": (
+            "bank_account_assets",
+            "bond_assets",
+            "health_insurance_premiums_without_medicare_part_b",
+            "hours_worked_last_week",
+            "other_medical_expenses",
+            "over_the_counter_health_expenses",
+            "stock_assets",
+            "tax_exempt_private_pension_income",
+            "unemployment_compensation",
+            "veterans_benefits",
+        ),
+        "model_required_boolean": (
+            "has_champva_health_coverage_at_interview",
+            "has_esi",
+            "has_indian_health_service_coverage_at_interview",
+            "has_marketplace_health_coverage",
+            "has_marketplace_health_coverage_at_interview",
+            "has_medicaid_health_coverage_at_interview",
+            "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+            "has_other_means_tested_health_coverage_at_interview",
+            "has_tricare_health_coverage_at_interview",
+            "has_va_health_coverage_at_interview",
+            "is_blind",
+            "is_disabled",
+            "is_full_time_college_student",
+            "is_pregnant",
+        ),
+        "model_required_discrete": ("own_children_in_household",),
+    },
+    "tax_unit": {
+        "puf_tax_itemization": PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    },
+    "spm_unit": {
+        # Housing-assistance receipt is source-observed in the raw pool. Other
+        # takes_up_* leaves are runtime-owned draws and are not donor targets.
+        "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
+        "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
+    },
+}
+
 
 @dataclass(frozen=True)
 class AcsTransferPattern:
@@ -288,101 +351,135 @@ class _TargetEncoding:
 
 
 def required_acs_transfer_inputs() -> frozenset[str]:
-    """Return hard-required model leaves that ACS must receive from its donor.
+    """Return every model leaf in the declared production transfer plan."""
 
-    The coverage manifest remains owned by the release-coverage lane. This
-    function only reads that contract and removes native ACS leaves, required
-    transfer predictors, and geography that must never be donor-imputed.
+    return frozenset(
+        target
+        for entity_families in _DECLARED_ACS_TRANSFER_TARGET_FAMILIES.values()
+        for targets in entity_families.values()
+        for target in targets
+    )
+
+
+def declared_acs_transfer_target_families() -> TargetFamilies:
+    """Return the donor-independent production QRF target declaration.
+
+    The nested tuples are immutable; fresh dictionaries prevent a caller from
+    mutating the module-owned contract. Unlike
+    :func:`default_acs_transfer_target_families`, this declaration retains
+    absent targets so a preflight gate can fail closed before ACS acquisition.
     """
 
-    required = load_release_input_coverage_manifest().required_columns
-    return frozenset(
-        required
-        - ACS_NATIVE_PERSON_INPUTS
-        - set(ACS_PERSON_TRANSFER_PREDICTORS)
-        - _NONTRANSFERABLE_REQUIRED_INPUTS
-    )
+    return {
+        entity: dict(entity_families)
+        for entity, entity_families in _DECLARED_ACS_TRANSFER_TARGET_FAMILIES.items()
+    }
 
 
 def default_acs_transfer_target_families(donor: Frame) -> TargetFamilies:
-    """Return every donor-observed model-required transfer family.
+    """Return declared production targets that this donor actually carries.
 
-    The release input-coverage manifest is the inventory; this function does
-    not edit or regenerate it. Existing tax-detail, housing, and participation
-    labels stay explicit in provenance, while all other required leaves are
-    grouped as ``model_required`` on their owning donor entity.
+    Library callers using the implicit plan retain donor-observed behavior.
+    The production staging builder instead uses the unfiltered declaration,
+    gates it, and passes that exact plan explicitly to the transfer.
     """
 
     families: dict[str, dict[str, tuple[str, ...]]] = {}
-    assigned: set[str] = set()
-    person_entity = donor.schema.person_entity
-    person_targets = tuple(
-        column
-        for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-        if column in donor.table(person_entity).columns
-        and column not in ACS_NATIVE_PERSON_INPUTS
-    )
-    if person_targets:
-        families.setdefault(person_entity, {})["puf_tax_itemization"] = person_targets
-        assigned.update(person_targets)
-
-    housing_targets = tuple(
-        column
-        for column in _ADDITIONAL_PERSON_TRANSFER_TARGETS
-        if column in donor.table(person_entity).columns
-    )
-    if housing_targets:
-        families.setdefault(person_entity, {})["housing"] = housing_targets
-        assigned.update(housing_targets)
-
-    if "tax_unit" in donor.entities:
-        tax_unit_targets = tuple(
-            column
-            for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-            if column in donor.table("tax_unit").columns
-        )
-        if tax_unit_targets:
-            families.setdefault("tax_unit", {})["puf_tax_itemization"] = (
-                tax_unit_targets
-            )
-            assigned.update(tax_unit_targets)
-
-    for entity in donor.entities:
-        participation = tuple(
-            sorted(
-                column
-                for column in donor.table(entity).columns
-                if column.startswith("takes_up_")
-            )
-        )
-        if participation:
-            families.setdefault(entity, {})["benefit_participation"] = participation
-            assigned.update(participation)
-
-    required = required_acs_transfer_inputs()
-    for entity in donor.entities:
-        table = donor.table(entity)
-        targets = sorted(required.intersection(table.columns) - assigned)
-        grouped: dict[str, list[str]] = {}
-        for target in targets:
-            family = _required_target_family(table[target], target=target)
-            grouped.setdefault(family, []).append(target)
-        for family, grouped_targets in grouped.items():
-            families.setdefault(entity, {})[family] = tuple(grouped_targets)
-        assigned.update(targets)
+    for entity, entity_families in declared_acs_transfer_target_families().items():
+        if entity not in donor.entities:
+            continue
+        columns = donor.table(entity).columns
+        for family, declared_targets in entity_families.items():
+            targets = tuple(target for target in declared_targets if target in columns)
+            if targets:
+                families.setdefault(entity, {})[family] = targets
     return families
 
 
-def _required_target_family(series: pd.Series, *, target: str) -> str:
-    metadata = _engine_variable_metadata(target)
-    dtype = metadata.dtype if metadata is not None else None
-    if dtype == "bool" or pd.api.types.is_bool_dtype(series.dtype):
-        return "model_required_boolean"
-    if dtype == "int" or target in _DISCRETE_NUMERIC_TARGETS:
-        return "model_required_discrete"
-    if dtype == "str" or not pd.api.types.is_numeric_dtype(series.dtype):
-        return "model_required_categorical"
-    return "model_required_numeric"
+def acs_transfer_donor_requirements(
+    donor: Frame,
+    target_families: TargetFamilies,
+) -> dict[str, tuple[str, ...]]:
+    """Resolve raw donor columns consumed by one exact QRF transfer plan.
+
+    Required person/state predictors and every entity-scoped target are hard
+    requirements. Raw sources for donor-available optional predictors are also
+    included because the production ACS recipient exposes their counterparts,
+    so QRF availability patterns consume them. Housing transfer additionally
+    requires the concrete head and tenure sources that it promotes to mandatory.
+    """
+
+    required: dict[str, set[str]] = {
+        donor.schema.person_entity: {"age", "is_female"},
+    }
+    state_owner = _column_owner_or_none(donor, "state_fips")
+    if state_owner is None:
+        raise ValueError("required donor feature 'state_fips' is absent")
+    required.setdefault(state_owner, set()).add("state_fips")
+
+    target_names: set[str] = set()
+    for entity, entity_families in target_families.items():
+        entity_required = required.setdefault(entity, set())
+        for targets in entity_families.values():
+            entity_required.update(targets)
+            target_names.update(targets)
+
+    person = donor.table(donor.schema.person_entity)
+    for source in (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ):
+        if source in person.columns:
+            required[donor.schema.person_entity].add(source)
+    for components in _DONOR_COMBINED_COMPONENTS.values():
+        if all(component in person.columns for component in components):
+            required[donor.schema.person_entity].update(components)
+
+    housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(target_names))
+    head_source = next(
+        (
+            source
+            for source in (
+                "is_household_head",
+                "RELSHIPP",
+                "A_EXPRRP",
+                "A_LINENO",
+            )
+            if source in person.columns
+        ),
+        None,
+    )
+    if head_source is not None:
+        required[donor.schema.person_entity].add(head_source)
+    elif housing:
+        raise ValueError(
+            "pre_subsidy_rent target has no donor household-head feature source"
+        )
+
+    tenure_source = next(
+        (
+            (owner, source)
+            for source in (
+                "tenure_type",
+                "spm_unit_tenure_type",
+                "TEN",
+                "H_TENURE",
+            )
+            if (owner := _column_owner_or_none(donor, source)) is not None
+        ),
+        None,
+    )
+    if tenure_source is not None:
+        owner, source = tenure_source
+        required.setdefault(owner, set()).add(source)
+    elif housing:
+        raise ValueError(
+            "pre_subsidy_rent target has no donor housing-tenure feature source"
+        )
+
+    return {
+        entity: tuple(sorted(columns)) for entity, columns in sorted(required.items())
+    }
 
 
 def transfer_acs_inputs(
@@ -421,7 +518,9 @@ def transfer_acs_inputs(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
     )
-    default_plan = target_families is None
+    default_plan = target_families is None or (
+        target_families == declared_acs_transfer_target_families()
+    )
     deferred_inputs = (
         tuple(sorted(ACS_DEFERRED_GEOGRAPHY_INPUTS)) if default_plan else ()
     )
