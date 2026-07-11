@@ -1105,6 +1105,35 @@
       "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
     },
     {
+      "stage": "relationship_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person household sequence (PH_SEQ), within-household person sequence (P_SEQ), and marital status (A_MARITL)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_relationship_inputs"
+        }
+      ],
+      "outputs": [
+        "is_household_head",
+        "is_separated",
+        "is_surviving_spouse"
+      ],
+      "notes": "Exact measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1069-1075 and 1209-1221: is_household_head <- P_SEQ == 1; is_separated <- A_MARITL == 6; is_surviving_spouse <- A_MARITL == 4. Nothing is imputed. The stage fails unless every frame household has exactly one P_SEQ == 1 record (PH_SEQ before support cloning, person_household_id after cloning)."
+    },
+    {
       "stage": "eligibility_inputs",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",

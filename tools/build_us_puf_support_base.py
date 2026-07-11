@@ -59,6 +59,7 @@ from populace.build.us_runtime import (
     us_immigration_composition_summary,
     us_misc_itemized_signal_gate,
     us_qbi_inputs_signal_gate,
+    us_relationship_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
@@ -68,6 +69,7 @@ from populace.build.us_runtime import (
     with_us_education_inputs,
     with_us_immigration_inputs,
     with_us_qbi_input_reconciliation,
+    with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
@@ -212,6 +214,17 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_relationship_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    relationship_inputs_gate = us_relationship_inputs_signal_gate(base)
+    if not relationship_inputs_gate.passed:
+        raise SystemExit(
+            "Relationship-input signal gate failed:\n  "
+            + "\n  ".join(relationship_inputs_gate.failures)
+        )
     base = with_us_child_support_inputs(
         base,
         seed=args.seed,
@@ -544,6 +557,11 @@ def main() -> None:
             "passed": retirement_contributions_gate.passed,
             "failures": list(retirement_contributions_gate.failures),
             "details": dict(retirement_contributions_gate.details),
+        },
+        "relationship_inputs_signal": {
+            "passed": relationship_inputs_gate.passed,
+            "failures": list(relationship_inputs_gate.failures),
+            "details": dict(relationship_inputs_gate.details),
         },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,

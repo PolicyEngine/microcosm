@@ -431,6 +431,17 @@ from populace.build.us_runtime.register_consistency import (
     us_register_consistency_gate,
     us_register_contradictions,
 )
+from populace.build.us_runtime.relationship_inputs import (
+    US_RELATIONSHIP_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+    US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS,
+    US_RELATIONSHIP_INPUTS_STAGE_NAME,
+    derive_us_relationship_inputs_from_manifest,
+    us_relationship_inputs_signal_gate,
+    us_relationship_inputs_stage_spec,
+    us_relationship_inputs_summary,
+    with_us_relationship_inputs,
+)
 from populace.build.us_runtime.release_input_coverage import (
     POST_REFERENCE_ECPS_REQUIRED_INPUTS,
     SSI_COUNTABLE_RESOURCE_ASSETS,
@@ -688,6 +699,15 @@ __all__ = [
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
     "with_us_eligibility_inputs",
+    "US_RELATIONSHIP_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS",
+    "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
+    "US_RELATIONSHIP_INPUTS_STAGE_NAME",
+    "derive_us_relationship_inputs_from_manifest",
+    "us_relationship_inputs_signal_gate",
+    "us_relationship_inputs_stage_spec",
+    "us_relationship_inputs_summary",
+    "with_us_relationship_inputs",
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
     "US_ALIMONY_NONCONSTANT_PERSON_COLUMNS",
@@ -1217,6 +1237,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "exemption channels default to False/0."
         ),
     ),
+    US_RELATIONSHIP_INPUTS_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured household-head and marital-status flags mapped exactly "
+            "from P_SEQ and A_MARITL; nothing is imputed."
+        ),
+    ),
     US_PREGNANCY_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC + CDC natality-derived national pregnancy rate",
         source="https://www.cdc.gov/nchs/nvss/births.htm",
@@ -1340,6 +1368,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_IMMIGRATION_STAGE_NAME,
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
+    US_RELATIONSHIP_INPUTS_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PREGNANCY_STAGE_NAME,
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,

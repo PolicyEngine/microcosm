@@ -219,9 +219,7 @@
    "status": "required"
   },
   "is_household_head": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_military": {
    "status": "required"
@@ -236,21 +234,17 @@
    "status": "required"
   },
   "is_separated": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_surviving_spouse": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "is_union_member_or_covered": {
    "status": "required"
   },
   "is_unmarried_partner_of_household_head": {
    "issue": "PolicyEngine/populace#38",
-   "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1214-1221 derives is_unmarried_partner_of_household_head exclusively from person PERRP; datasets/cps/census_cps.py lines 306-318 declares that person source. All three SHA-recorded 2022-2024 ASEC HDF inputs consumed by the hermetic build omit PERRP. The 2022 and 2023 inputs also omit PECOHAB, A_EXPRRP, and A_FAMREL; only 2024 carries those alternatives, and its A_EXPRRP code 13 conflates partner with roommate. Populace's older-year relationship fallback uses only line, spouse, sex, and parent pointers and never identifies a partner. Using the 2024 pointer for one-third of the pool while treating the other two-thirds as false, or assigning partner status from the combined partner/roommate code, would synthesize statuses the locked sources do not report.",
    "status": "reviewed_exclusion"
   },
   "is_wic_at_nutritional_risk": {
@@ -566,8 +560,8 @@
   }
  },
  "counts": {
-  "required": 132,
-  "reviewed_exclusion": 33,
+  "required": 135,
+  "reviewed_exclusion": 30,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -583,6 +577,22 @@
   "vintage": "2024"
  },
  "reform_coverage_probes": [
+  {
+   "binding_inputs": [
+    "is_household_head"
+   ],
+   "budget_measure": "spm_unit_capped_work_childcare_expenses",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "household_head_childcare_cap_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Household-head childcare earned-cap neutralization",
+   "neutralized_variable": "is_household_head",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US uses is_household_head to identify whose earnings cap SPM work-childcare expenses when an SPM unit contains multiple tax units. Neutralizing only the measured head flag falls back to tax-unit roles and changes the cap. On the 865,046-person staged Build-J artifact, baseline-minus-neutralized capped expenses are -$265.50 million. Without the restored P_SEQ input the neutralization is a structural zero."
+  },
   {
    "binding_inputs": [
     "bank_account_assets",

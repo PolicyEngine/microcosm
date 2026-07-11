@@ -2098,6 +2098,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_relationship_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_education_inputs",
         lambda frame, *, seed, time_period: frame,
     )
@@ -2153,6 +2158,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_eligibility_inputs_signal_gate",
         lambda frame: builder.GateResult(
             name="eligibility_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_relationship_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="relationship_inputs_signal",
             passed=True,
             details={"checked": True},
         ),

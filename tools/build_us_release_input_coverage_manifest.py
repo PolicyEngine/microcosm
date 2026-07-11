@@ -120,6 +120,12 @@ CAPITAL_GAIN_DETAIL_INPUTS = (
     "unrecaptured_section_1250_gain",
 )
 
+RELATIONSHIP_INPUTS = (
+    "is_household_head",
+    "is_separated",
+    "is_surviving_spouse",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -135,6 +141,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *SIPP_VEHICLE_INPUTS,
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
+    *RELATIONSHIP_INPUTS,
     "domestic_production_ald",
     "household_weight",
     "spm_unit_pre_subsidy_childcare_expenses",
@@ -167,6 +174,28 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "household_head_childcare_cap_neutralization",
+        "name": "Household-head childcare earned-cap neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "is_household_head",
+        "budget_measure": "spm_unit_capped_work_childcare_expenses",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["is_household_head"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US uses is_household_head to identify whose earnings "
+            "cap SPM work-childcare expenses when an SPM unit contains multiple "
+            "tax units. Neutralizing only the measured head flag falls back to "
+            "tax-unit roles and changes the cap. On the 865,046-person staged "
+            "Build-J artifact, baseline-minus-neutralized capped expenses are "
+            "-$265.50 million. Without the restored P_SEQ input the "
+            "neutralization is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#38",
+    },
     {
         "id": "ssi_asset_limit_10k_20k",
         "name": "SSI asset limits raised to $10k individual / $20k couple",

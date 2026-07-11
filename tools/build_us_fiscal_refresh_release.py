@@ -96,6 +96,7 @@ from populace.build.us_runtime import (
     us_qbi_inputs_signal_gate,
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
+    us_relationship_inputs_signal_gate,
     us_release_input_coverage_gate,
     us_retirement_contributions_signal_gate,
     us_scf_auto_loans_signal_gate,
@@ -119,6 +120,7 @@ from populace.build.us_runtime import (
     with_us_other_health_insurance_inputs,
     with_us_pregnancy_inputs,
     with_us_qbi_input_reconciliation,
+    with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
@@ -6201,6 +6203,33 @@ def main() -> None:
             + "; ".join(
                 f"SNAP take-up signal failed: {failure}"
                 for failure in snap_take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "relationship_inputs",
+            message=("Deriving household-head and marital-status inputs from ASEC."),
+        )
+    base_frame = with_us_relationship_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    relationship_inputs_gate = us_relationship_inputs_signal_gate(base_frame)
+    if not relationship_inputs_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "relationship_inputs_gate",
+                status="failed",
+                message="Relationship-input signal gate failed.",
+                failures=list(relationship_inputs_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Relationship-input signal failed: {failure}"
+                for failure in relationship_inputs_gate.failures
             )
         )
     if telemetry is not None:

@@ -498,10 +498,26 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda args: ("raw", {"kind": "fixture"}),
     )
     monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+    monkeypatch.setattr(
+        builder,
+        "with_us_relationship_inputs",
+        lambda frame, *, seed, time_period: "relationship-inputs",
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_relationship_inputs_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
 
     def fake_child_support(frame, *, seed, time_period):
         child_support_calls.append((frame, seed, time_period))
-        return "child-support-direct" if frame == "cps" else "child-support-puf"
+        return (
+            "child-support-direct"
+            if frame == "relationship-inputs"
+            else "child-support-puf"
+        )
 
     monkeypatch.setattr(builder, "with_us_child_support_inputs", fake_child_support)
 
@@ -649,7 +665,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder.main()
 
     assert child_support_calls == [
-        ("cps", 7, 2024),
+        ("relationship-inputs", 7, 2024),
         ("qbi-reconciled", 7, 2024),
     ]
     expected_disability_calls = [("child-support-direct", 7, 2024)]

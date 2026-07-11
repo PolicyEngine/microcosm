@@ -185,21 +185,63 @@
         "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-72 passes only the three locked ASEC H5 files and processed PUF H5; tools/build_us_puf_support_base.py lines 240-247 reads those arrays and cannot refresh omitted restricted raw-PUF columns."
       }
     },
-    "is_household_head": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_separated": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "is_surviving_spouse": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
-    },
     "is_unmarried_partner_of_household_head": {
-      "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
-      "issue": "PolicyEngine/populace#38"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1214-1221 derives is_unmarried_partner_of_household_head exclusively from person PERRP; datasets/cps/census_cps.py lines 306-318 declares that person source. All three SHA-recorded 2022-2024 ASEC HDF inputs consumed by the hermetic build omit PERRP. The 2022 and 2023 inputs also omit PECOHAB, A_EXPRRP, and A_FAMREL; only 2024 carries those alternatives, and its A_EXPRRP code 13 conflates partner with roommate. Populace's older-year relationship fallback uses only line, spouse, sex, and parent pointers and never identifies a partner. Using the 2024 pointer for one-third of the pool while treating the other two-thirds as false, or assigning partner status from the combined partner/roommate code, would synthesize statuses the locked sources do not report.",
+      "issue": "PolicyEngine/populace#38",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1214-1221"
+        },
+        "required_person_loader_source": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "lines": "306-318"
+        },
+        "required_person_columns": ["PERRP"],
+        "official_variable_dictionary": {
+          "url": "https://api.census.gov/data/2024/cps/asec/mar/variables.html",
+          "PERRP": "Expanded relationship categories",
+          "PECOHAB": "Demographics Line Number of Cohabiting Partner",
+          "A_EXPRRP": "Demographics, Relationship expanded code"
+        },
+        "hermetic_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "missing_person_columns": ["PERRP", "PECOHAB", "A_EXPRRP", "A_FAMREL"]
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "missing_person_columns": ["PERRP", "PECOHAB", "A_EXPRRP", "A_FAMREL"]
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "missing_person_columns": ["PERRP"],
+            "present_person_columns": ["PECOHAB", "A_EXPRRP", "A_FAMREL"],
+            "positive_pecohab_rows": 8114,
+            "a_exprrp_partner_or_roommate_rows": 4257
+          }
+        ],
+        "pooled_source_year_shares": {
+          "2022": 0.3333333333333333,
+          "2023": 0.3333333333333333,
+          "2024": 0.3333333333333333
+        },
+        "semantic_non_substitutes": {
+          "A_EXPRRP": "Only the 2024 locked input carries it, and code 13 is the combined CPSRelationshipCode.PARTNER_OR_ROOMMATE category rather than the retired PERRP unmarried-partner category.",
+          "PECOHAB": "Only the 2024 locked input carries the cohabiting-partner line pointer; it cannot recover partner status for the equally weighted 2022 and 2023 source years.",
+          "derived_A_EXPRRP": "packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 397-422 derives older-year relationship codes from line, spouse, sex, and parent pointers and never emits code 13.",
+          "rejection": "Using only the 2024 alternatives and filling the equally weighted 2022-2023 source years as false, or splitting the combined partner/roommate category, would synthesize person statuses absent from the locked inputs."
+        },
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes only the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests and equal source-year shares; packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 61-75 reads those tables without refreshing omitted Census columns."
+      }
     },
     "is_wic_at_nutritional_risk": {
       "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
