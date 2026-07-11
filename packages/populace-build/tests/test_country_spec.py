@@ -236,7 +236,11 @@ class TestExistingPackagesGeneralize:
     def test_uk_package_loads(self) -> None:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
-        assert spec.resources == ("efrs_parity_reference.json",)
+        assert spec.resources == (
+            "efrs_parity_known_gaps.json",
+            "efrs_parity_reference.json",
+            "release_input_coverage_manifest.json",
+        )
 
 
 class TestRefusals:

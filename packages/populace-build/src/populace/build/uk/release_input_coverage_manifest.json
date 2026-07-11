@@ -1,0 +1,424 @@
+{
+ "candidate_evidence": {
+  "derived_from": "efrs_parity_known_gaps.json",
+  "filename": "populace_uk_2023.h5",
+  "period": "2023",
+  "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+  "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
+ },
+ "columns": {
+  "a_and_e_visits": {
+   "status": "required"
+  },
+  "aa_category": {
+   "status": "required"
+  },
+  "access_fund": {
+   "status": "required"
+  },
+  "accommodation_type": {
+   "status": "required"
+  },
+  "admitted_patient_visits": {
+   "status": "required"
+  },
+  "adult_ema": {
+   "status": "required"
+  },
+  "afcs_reported": {
+   "status": "required"
+  },
+  "age": {
+   "status": "required"
+  },
+  "age_started_or_accepted_current_education_or_training": {
+   "status": "required"
+  },
+  "alcohol_and_tobacco_consumption": {
+   "status": "required"
+  },
+  "attends_private_school_random_draw": {
+   "status": "required"
+  },
+  "brma": {
+   "status": "required"
+  },
+  "bsp_reported": {
+   "status": "required"
+  },
+  "bus_subsidy_spending": {
+   "status": "required"
+  },
+  "capital_gains": {
+   "status": "required"
+  },
+  "carers_allowance_reported": {
+   "status": "required"
+  },
+  "charitable_investment_gifts": {
+   "status": "required"
+  },
+  "child_benefit_opts_out": {
+   "status": "required"
+  },
+  "child_benefit_reported": {
+   "status": "required"
+  },
+  "child_ema": {
+   "status": "required"
+  },
+  "child_tax_credit_reported": {
+   "status": "required"
+  },
+  "childcare_expenses": {
+   "status": "required"
+  },
+  "clothing_and_footwear_consumption": {
+   "status": "required"
+  },
+  "communication_consumption": {
+   "status": "required"
+  },
+  "corporate_wealth": {
+   "status": "required"
+  },
+  "council_tax": {
+   "status": "required"
+  },
+  "council_tax_band": {
+   "status": "required"
+  },
+  "council_tax_benefit_reported": {
+   "status": "required"
+  },
+  "dfe_education_spending": {
+   "status": "required"
+  },
+  "diesel_spending": {
+   "status": "required"
+  },
+  "dividend_income": {
+   "status": "required"
+  },
+  "dla_m_category": {
+   "status": "required"
+  },
+  "dla_sc_category": {
+   "status": "required"
+  },
+  "domestic_energy_consumption": {
+   "status": "required"
+  },
+  "domestic_rates": {
+   "status": "required"
+  },
+  "education_consumption": {
+   "status": "required"
+  },
+  "education_grants": {
+   "status": "required"
+  },
+  "electricity_consumption": {
+   "status": "required"
+  },
+  "employee_pension_contributions": {
+   "status": "required"
+  },
+  "employer_pension_contributions": {
+   "status": "required"
+  },
+  "employment_income": {
+   "status": "required"
+  },
+  "employment_status": {
+   "status": "required"
+  },
+  "esa_contrib_reported": {
+   "status": "required"
+  },
+  "esa_income_reported": {
+   "status": "required"
+  },
+  "external_child_payments": {
+   "status": "required"
+  },
+  "food_and_non_alcoholic_beverages_consumption": {
+   "status": "required"
+  },
+  "free_school_fruit_veg": {
+   "status": "required"
+  },
+  "free_school_meals": {
+   "status": "required"
+  },
+  "full_rate_vat_expenditure_rate": {
+   "status": "required"
+  },
+  "gas_consumption": {
+   "status": "required"
+  },
+  "gender": {
+   "status": "required"
+  },
+  "gift_aid": {
+   "status": "required"
+  },
+  "gross_financial_wealth": {
+   "status": "required"
+  },
+  "health_consumption": {
+   "status": "required"
+  },
+  "healthy_start_vouchers": {
+   "status": "required"
+  },
+  "highest_education": {
+   "status": "required"
+  },
+  "hours_worked": {
+   "status": "required"
+  },
+  "household_furnishings_consumption": {
+   "status": "required"
+  },
+  "household_owns_tv": {
+   "status": "required"
+  },
+  "household_weight": {
+   "status": "required"
+  },
+  "housing_benefit_reported": {
+   "status": "required"
+  },
+  "housing_service_charges": {
+   "status": "required"
+  },
+  "housing_water_and_electricity_consumption": {
+   "status": "required"
+  },
+  "iidb_reported": {
+   "status": "required"
+  },
+  "income_support_reported": {
+   "status": "required"
+  },
+  "is_before_universal_credit_qualifying_young_person_terminal_date": {
+   "status": "required"
+  },
+  "is_disabled_for_benefits": {
+   "status": "required"
+  },
+  "is_parent": {
+   "status": "required"
+  },
+  "jsa_contrib_reported": {
+   "status": "required"
+  },
+  "jsa_income_reported": {
+   "status": "required"
+  },
+  "lump_sum_income": {
+   "status": "required"
+  },
+  "main_residence_value": {
+   "status": "required"
+  },
+  "main_residential_property_purchased_is_first_home": {
+   "status": "required"
+  },
+  "maintenance_expenses": {
+   "status": "required"
+  },
+  "maintenance_income": {
+   "status": "required"
+  },
+  "maximum_extended_childcare_hours_usage": {
+   "status": "required"
+  },
+  "miscellaneous_consumption": {
+   "status": "required"
+  },
+  "miscellaneous_income": {
+   "status": "required"
+  },
+  "mortgage_capital_repayment": {
+   "status": "required"
+  },
+  "mortgage_interest_repayment": {
+   "status": "required"
+  },
+  "net_financial_wealth": {
+   "status": "required"
+  },
+  "nhs_a_and_e_spending": {
+   "status": "required"
+  },
+  "nhs_admitted_patient_spending": {
+   "status": "required"
+  },
+  "nhs_outpatient_spending": {
+   "status": "required"
+  },
+  "non_residential_property_value": {
+   "status": "required"
+  },
+  "num_vehicles": {
+   "status": "required"
+  },
+  "other_residential_property_value": {
+   "status": "required"
+  },
+  "outpatient_visits": {
+   "status": "required"
+  },
+  "owned_land": {
+   "status": "required"
+  },
+  "pension_contributions_via_salary_sacrifice": {
+   "status": "required"
+  },
+  "pension_credit_reported": {
+   "status": "required"
+  },
+  "personal_pension_contributions": {
+   "status": "required"
+  },
+  "petrol_spending": {
+   "status": "required"
+  },
+  "pip_dl_category": {
+   "status": "required"
+  },
+  "pip_m_category": {
+   "status": "required"
+  },
+  "private_pension_income": {
+   "status": "required"
+  },
+  "private_transfer_income": {
+   "status": "required"
+  },
+  "property_income": {
+   "status": "required"
+  },
+  "property_purchased": {
+   "status": "required"
+  },
+  "rail_usage": {
+   "status": "required"
+  },
+  "receives_benefits_in_own_right": {
+   "status": "required"
+  },
+  "recreation_consumption": {
+   "status": "required"
+  },
+  "region": {
+   "status": "required"
+  },
+  "rent": {
+   "status": "required"
+  },
+  "restaurants_and_hotels_consumption": {
+   "status": "required"
+  },
+  "savings": {
+   "status": "required"
+  },
+  "savings_interest_income": {
+   "status": "required"
+  },
+  "sda_reported": {
+   "status": "required"
+  },
+  "self_employment_income": {
+   "status": "required"
+  },
+  "ssmg_reported": {
+   "status": "required"
+  },
+  "statutory_maternity_pay": {
+   "status": "required"
+  },
+  "statutory_sick_pay": {
+   "status": "required"
+  },
+  "structural_insurance_payments": {
+   "status": "required"
+  },
+  "student_loan_balance": {
+   "status": "required"
+  },
+  "student_loan_plan": {
+   "status": "required"
+  },
+  "student_loans": {
+   "status": "required"
+  },
+  "tenure_type": {
+   "status": "required"
+  },
+  "transport_consumption": {
+   "status": "required"
+  },
+  "universal_credit_reported": {
+   "status": "required"
+  },
+  "water_and_sewerage_charges": {
+   "status": "required"
+  },
+  "winter_fuel_allowance_reported": {
+   "status": "required"
+  },
+  "working_tax_credit_reported": {
+   "status": "required"
+  },
+  "would_claim_child_benefit": {
+   "status": "required"
+  },
+  "would_claim_extended_childcare": {
+   "status": "required"
+  },
+  "would_claim_marriage_allowance": {
+   "status": "required"
+  },
+  "would_claim_pc": {
+   "status": "required"
+  },
+  "would_claim_scp": {
+   "status": "required"
+  },
+  "would_claim_targeted_childcare": {
+   "status": "required"
+  },
+  "would_claim_tfc": {
+   "status": "required"
+  },
+  "would_claim_uc": {
+   "status": "required"
+  },
+  "would_claim_universal_childcare": {
+   "status": "required"
+  },
+  "would_evade_tv_licence_fee": {
+   "status": "required"
+  }
+ },
+ "counts": {
+  "required": 132,
+  "reviewed_exclusion": 0,
+  "total": 132
+ },
+ "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note.",
+ "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
+ "reference": {
+  "derived_from": "efrs_parity_reference.json",
+  "filename": "enhanced_frs_2023_24.h5",
+  "period": "2023",
+  "populated_input_columns": 132,
+  "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+  "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+  "vintage": "2023_24"
+ },
+ "schema_version": 1
+}

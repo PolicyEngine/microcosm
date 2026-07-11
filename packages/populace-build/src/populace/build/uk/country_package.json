@@ -3,6 +3,8 @@
   "country": "uk",
   "policy": "spec-only country package; Python execution lives in shared runtime modules",
   "resources": [
-    "efrs_parity_reference.json"
+    "efrs_parity_known_gaps.json",
+    "efrs_parity_reference.json",
+    "release_input_coverage_manifest.json"
   ]
 }
