@@ -51,12 +51,14 @@ from populace.build.us_runtime import (
     us_geography_ladder_gate,
     us_immigration_composition_summary,
     us_misc_itemized_signal_gate,
+    us_qbi_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_immigration_inputs,
+    with_us_qbi_input_reconciliation,
     with_us_retirement_contribution_inputs,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
@@ -225,6 +227,12 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    imputed = with_us_qbi_input_reconciliation(imputed)
+    qbi_inputs_gate = us_qbi_inputs_signal_gate(imputed)
+    if not qbi_inputs_gate.passed:
+        raise SystemExit(
+            "QBI-input signal gate failed:\n  " + "\n  ".join(qbi_inputs_gate.failures)
+        )
     imputed = with_us_childcare_inputs(
         imputed,
         seed=args.seed,
@@ -396,6 +404,11 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "qbi_inputs_signal": {
+            "passed": qbi_inputs_gate.passed,
+            "failures": list(qbi_inputs_gate.failures),
+            "details": dict(qbi_inputs_gate.details),
+        },
         "childcare_inputs_signal": {
             "passed": childcare_gate.passed,
             "failures": list(childcare_gate.failures),

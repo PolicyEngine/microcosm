@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from populace.build.gates import GateResult, input_column_coverage_gate
+from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 
 __all__ = [
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
@@ -93,6 +94,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "casualty_loss",
         "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",
+        *US_QBI_OUTPUT_COLUMNS,
     }
 )
 

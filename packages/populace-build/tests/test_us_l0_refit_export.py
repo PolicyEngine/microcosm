@@ -56,6 +56,21 @@ def _us_frame(**person_extra: object) -> Frame:
             "traditional_ira_contributions_desired": [300.0, 0.0, 150.0],
             "roth_ira_contributions_desired": [400.0, 0.0, 200.0],
             "self_employed_pension_contributions_desired": [0.0, 800.0, 0.0],
+            "estate_income_would_be_qualified": [True, False, True],
+            "farm_operations_income_would_be_qualified": [True, True, False],
+            "farm_rent_income_would_be_qualified": [True, False, True],
+            "partnership_s_corp_income_would_be_qualified": [True, False, True],
+            "rental_income_would_be_qualified": [True, False, True],
+            "self_employment_income_would_be_qualified": [True, True, False],
+            "sstb_self_employment_income_would_be_qualified": [False, True, False],
+            "business_is_sstb": [False, True, False],
+            "qualified_bdc_income": [0.0, 20.0, 0.0],
+            "qualified_reit_and_ptp_income": [100.0, 0.0, 50.0],
+            "sstb_self_employment_income_before_lsr": [0.0, 1_000.0, 0.0],
+            "sstb_unadjusted_basis_qualified_property": [0.0, 5_000.0, 0.0],
+            "sstb_w2_wages_from_qualified_business": [0.0, 2_000.0, 0.0],
+            "unadjusted_basis_qualified_property": [1_000.0, 5_000.0, 0.0],
+            "w2_wages_from_qualified_business": [500.0, 2_000.0, 0.0],
             "is_pursuing_credential_for_american_opportunity_credit": [
                 True,
                 False,
@@ -633,6 +648,8 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "alimony_income" in summary["required_person_source_columns"]
     assert "alimony_expense" in summary["required_person_source_columns"]
     assert "casualty_loss" in summary["required_person_source_columns"]
+    assert "business_is_sstb" in summary["required_person_source_columns"]
+    assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
     assert (
         "unreimbursed_business_employee_expenses"
         in summary["required_person_source_columns"]

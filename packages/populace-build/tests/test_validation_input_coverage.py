@@ -15,6 +15,7 @@ import importlib.util
 import pytest
 
 from populace.build.us_runtime import (
+    US_QBI_OUTPUT_COLUMNS,
     US_VALIDATION_PROVISION_INPUT_LEAVES,
     ValidationInputLeaf,
     assert_validation_leaf_registry_current,
@@ -52,6 +53,7 @@ class TestUsSourceStageOutputs:
         assert "casualty_loss" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs
         assert "spm_unit_pre_subsidy_childcare_expenses" in outputs
+        assert set(US_QBI_OUTPUT_COLUMNS) <= outputs
 
 
 class TestUsValidationInputCoverageGate:

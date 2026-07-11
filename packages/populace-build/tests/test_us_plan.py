@@ -17,6 +17,7 @@ from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
+    US_QBI_OUTPUT_COLUMNS,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
@@ -342,6 +343,13 @@ class TestUsSources:
         assert "medical_expense_deduction" not in outputs
         assert "charitable_deduction" not in outputs
         assert "interest_deduction" not in outputs
+
+    def test_puf_stage_declares_all_materialized_qbi_input_leaves(self) -> None:
+        outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
+
+        assert set(US_QBI_OUTPUT_COLUMNS) <= outputs
+        assert set(US_QBI_OUTPUT_COLUMNS) <= set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
+        assert "qualified_business_income" not in outputs
 
     def test_puf_stage_outputs_match_runtime_defaults(self) -> None:
         outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)

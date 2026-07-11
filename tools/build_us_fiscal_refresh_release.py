@@ -81,6 +81,7 @@ from populace.build.us_runtime import (
     us_misc_itemized_signal_gate,
     us_org_wages_signal_gate,
     us_pregnancy_signal_gate,
+    us_qbi_inputs_signal_gate,
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
     us_release_input_coverage_gate,
@@ -103,6 +104,7 @@ from populace.build.us_runtime import (
     with_us_medicaid_take_up,
     with_us_org_wages_inputs,
     with_us_pregnancy_inputs,
+    with_us_qbi_input_reconciliation,
     with_us_retirement_contribution_inputs,
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
@@ -489,30 +491,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
         "in pre-PUF-support bases; the S-corp leaf is constant zero there."
-    ),
-    "estate_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
-    ),
-    "farm_operations_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
-    ),
-    "farm_rent_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
-    ),
-    "partnership_s_corp_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
-    ),
-    "rental_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
-    ),
-    "self_employment_income_would_be_qualified": (
-        "QBI qualification flags default True pending formula-constrained "
-        "leaf imputation (PolicyEngine/populace#186)."
     ),
 }
 
@@ -5854,6 +5832,24 @@ def main() -> None:
             + "; ".join(
                 f"Base population scale failed: {failure}"
                 for failure in base_population_gate.failures
+            )
+        )
+    base_frame = with_us_qbi_input_reconciliation(base_frame)
+    qbi_inputs_gate = us_qbi_inputs_signal_gate(base_frame)
+    if not qbi_inputs_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "qbi_input_gate",
+                status="failed",
+                message="QBI-input signal gate failed.",
+                failures=list(qbi_inputs_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "QBI-input signal failed: " + failure
+                for failure in qbi_inputs_gate.failures
             )
         )
     base_frame = with_us_childcare_inputs(

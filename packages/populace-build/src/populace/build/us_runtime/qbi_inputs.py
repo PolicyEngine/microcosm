@@ -3,14 +3,16 @@
 The retired eCPS PUF pipeline used a pinned, seeded QBI simulation to create
 source-level qualification flags, SSTB classification and self-employment
 splits, allocable W-2 wages / UBIA, and qualified REIT/PTP and BDC income. The
-processed PUF donor consumed by the hermetic build carries those factual leaves;
-the shared weighted PUF QRF places them on the PUF support channel.
+frozen processed-PUF artifact consumed by the hermetic build carries those
+materialized simulated leaves; Populace does not redraw them. The shared
+weighted PUF QRF places them on the PUF support channel.
 
 This module restores the cross-column identities after imputation. In
-particular, the archived model is all-or-nothing at person grain: the SSTB flag
-routes the entire predicted Schedule C amount, W-2 wage pool and UBIA pool to
-the SSTB leaves, while their non-SSTB counterparts retain the complementary
-amounts. PolicyEngine-US owns the QBI deduction formulas and statutory limits.
+particular, the archived PUF model is all-or-nothing at tax-record grain: the
+SSTB flag routes the entire predicted Schedule C amount to the SSTB leaf and
+duplicates the total W-2 wage and UBIA pools into their SSTB-allocable leaves.
+The base W-2/UBIA leaves remain total pools, not non-SSTB complements.
+PolicyEngine-US owns the QBI deduction formulas and statutory limits.
 """
 
 from __future__ import annotations
@@ -26,8 +28,12 @@ from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
     "QBI_ARCHIVED_ASSUMPTIONS_URL",
+    "QBI_ARCHIVED_CLONE_URL",
     "QBI_ARCHIVED_DERIVATION_URL",
+    "QBI_ARCHIVED_EXPORT_URL",
     "QBI_ARCHIVED_IMPUTATION_URL",
+    "QBI_ARCHIVED_PUF_ARTIFACT_URL",
+    "QBI_ARCHIVED_SIMULATION_URL",
     "US_QBI_BOOLEAN_OUTPUT_COLUMNS",
     "US_QBI_NONCONSTANT_PERSON_COLUMNS",
     "US_QBI_NONNEGATIVE_OUTPUT_COLUMNS",
@@ -46,15 +52,15 @@ _ARCHIVED_ROOT = (
     f"{_ARCHIVED_DATA_REPOSITORY}/blob/{_ARCHIVED_COMMIT}/"
     "policyengine_" + "us_data/"
 )
-QBI_ARCHIVED_DERIVATION_URL = (
-    _ARCHIVED_ROOT + "datasets/puf/puf.py#L748-L787"
-)
+QBI_ARCHIVED_DERIVATION_URL = _ARCHIVED_ROOT + "datasets/puf/puf.py#L748-L787"
+QBI_ARCHIVED_SIMULATION_URL = _ARCHIVED_ROOT + "datasets/puf/puf.py#L105-L405"
+QBI_ARCHIVED_EXPORT_URL = _ARCHIVED_ROOT + "datasets/puf/puf.py#L860-L879"
 QBI_ARCHIVED_ASSUMPTIONS_URL = (
     _ARCHIVED_ROOT + "datasets/puf/qbi_assumptions.yaml#L1-L118"
 )
-QBI_ARCHIVED_IMPUTATION_URL = (
-    _ARCHIVED_ROOT + "calibration/puf_impute.py#L99-L198"
-)
+QBI_ARCHIVED_IMPUTATION_URL = _ARCHIVED_ROOT + "calibration/puf_impute.py#L99-L198"
+QBI_ARCHIVED_CLONE_URL = _ARCHIVED_ROOT + "calibration/puf_impute.py#L513-L685"
+QBI_ARCHIVED_PUF_ARTIFACT_URL = _ARCHIVED_ROOT + "datasets/puf/puf.py#L1655-L1660"
 
 US_QBI_STAGE_NAME = "puf_tax_detail"
 
@@ -68,9 +74,11 @@ _GENERAL_QUALIFICATION_FLAGS: tuple[str, ...] = (
 )
 _SSTB_QUALIFICATION_FLAG = "sstb_self_employment_income_would_be_qualified"
 US_QBI_BOOLEAN_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "business_is_sstb",
     *_GENERAL_QUALIFICATION_FLAGS,
     _SSTB_QUALIFICATION_FLAG,
+    # Keep the classifier last so the chained QRF can condition the SSTB draw
+    # on the qualification flags it must agree with.
+    "business_is_sstb",
 )
 US_QBI_NONNEGATIVE_OUTPUT_COLUMNS: tuple[str, ...] = (
     "qualified_bdc_income",
@@ -130,9 +138,7 @@ def us_qbi_inputs_stage_spec() -> SourceStageSpec:
 
 
 def _numeric(person: pd.DataFrame, column: str) -> np.ndarray:
-    values = pd.to_numeric(person[column], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
+    values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
     nonfinite = int(np.count_nonzero(~np.isfinite(values)))
     if nonfinite:
         raise ValueError(
@@ -173,9 +179,11 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     for column in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
         values = _numeric(result, column)
         flags[column] = values > 0.0
-    # The ASEC has no source-level QBI qualification observations. Its retired
-    # export therefore retains PolicyEngine's True defaults for ordinary QBI
-    # sources, while the SSTB-specific flag remains false without an SSTB.
+    # Populace's base ASEC support has no observations from the frozen PUF QBI
+    # simulation. Deliberately preserve PolicyEngine's ordinary qualification
+    # defaults on that channel and do not invent an SSTB classification there.
+    # This is a hermetic two-channel choice, not a claim about the retired
+    # clone implementation (which imputed absent PUF variables onto both halves).
     for column in _GENERAL_QUALIFICATION_FLAGS:
         flags[column][asec_mask] = True
     flags["business_is_sstb"][asec_mask] = False
@@ -185,26 +193,29 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     sstb_self_employment = _numeric(result, _SSTB_SELF_EMPLOYMENT_COLUMN)
     total_self_employment = non_sstb_self_employment + sstb_self_employment
 
-    business_is_sstb = flags["business_is_sstb"]
-    has_positive_mapped_source = (
-        (total_self_employment > 0.0)
-        | (_optional_numeric(result, "partnership_income") > 0.0)
-        | (_optional_numeric(result, "s_corp_income") > 0.0)
-        | (_optional_numeric(result, "estate_income") > 0.0)
-    )
-    business_is_sstb &= has_positive_mapped_source
-    flags["business_is_sstb"] = business_is_sstb
-
     base_self_employment_qualified = (
         flags["self_employment_income_would_be_qualified"]
         | flags[_SSTB_QUALIFICATION_FLAG]
     )
+    partnership_s_corp_income = _optional_numeric(
+        result, "partnership_income"
+    ) + _optional_numeric(result, "s_corp_income")
+    estate_income = _optional_numeric(result, "estate_income")
+    has_positive_qualified_mapped_source = (
+        ((total_self_employment > 0.0) & base_self_employment_qualified)
+        | (
+            (partnership_s_corp_income > 0.0)
+            & flags["partnership_s_corp_income_would_be_qualified"]
+        )
+        | ((estate_income > 0.0) & flags["estate_income_would_be_qualified"])
+    )
+    business_is_sstb = flags["business_is_sstb"] & has_positive_qualified_mapped_source
+    flags["business_is_sstb"] = business_is_sstb
+
     flags["self_employment_income_would_be_qualified"] = (
         ~business_is_sstb & base_self_employment_qualified
     )
-    flags[_SSTB_QUALIFICATION_FLAG] = (
-        business_is_sstb & base_self_employment_qualified
-    )
+    flags[_SSTB_QUALIFICATION_FLAG] = business_is_sstb & base_self_employment_qualified
 
     result[_SELF_EMPLOYMENT_COLUMN] = np.where(
         business_is_sstb,
@@ -228,6 +239,18 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         business_is_sstb,
         ubia,
         0.0,
+    )
+    non_qualified_dividends = np.maximum(
+        _optional_numeric(result, "non_qualified_dividend_income"),
+        0.0,
+    )
+    result["qualified_bdc_income"] = np.minimum(
+        _numeric(result, "qualified_bdc_income"),
+        non_qualified_dividends,
+    )
+    result["qualified_reit_and_ptp_income"] = np.minimum(
+        _numeric(result, "qualified_reit_and_ptp_income"),
+        non_qualified_dividends + np.maximum(partnership_s_corp_income, 0.0),
     )
     for column, values in flags.items():
         result[column] = values.astype(bool)
@@ -257,9 +280,7 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
         finite = np.isfinite(values)
         nonzero = finite & (values != 0.0)
         nonzero_share = (
-            float(weights[nonzero].sum()) / total_weight
-            if total_weight > 0.0
-            else 0.0
+            float(weights[nonzero].sum()) / total_weight if total_weight > 0.0 else 0.0
         )
         band = (
             _BOOLEAN_SHARE_BANDS[column]
@@ -292,10 +313,19 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
     sstb_ubia = pd.to_numeric(
         person["sstb_unadjusted_basis_qualified_property"], errors="coerce"
     ).to_numpy(dtype=np.float64)
-    self_qualified = person[
-        "self_employment_income_would_be_qualified"
-    ].astype(bool).to_numpy()
+    self_qualified = (
+        person["self_employment_income_would_be_qualified"].astype(bool).to_numpy()
+    )
     sstb_qualified = person[_SSTB_QUALIFICATION_FLAG].astype(bool).to_numpy()
+    non_qualified_dividends = np.maximum(
+        _optional_numeric(person, "non_qualified_dividend_income"),
+        0.0,
+    )
+    partnership_s_corp_income = _optional_numeric(
+        person, "partnership_income"
+    ) + _optional_numeric(person, "s_corp_income")
+    qualified_bdc_income = _numeric(person, "qualified_bdc_income")
+    qualified_reit_and_ptp_income = _numeric(person, "qualified_reit_and_ptp_income")
     invariants = {
         "sstb_rows_with_non_sstb_income": int(
             np.count_nonzero(business & ~np.isclose(self_employment, 0.0))
@@ -325,6 +355,19 @@ def us_qbi_inputs_summary(frame: Frame) -> dict[str, object]:
         ),
         "non_sstb_qualification_route_mismatches": int(
             np.count_nonzero(self_qualified & business)
+        ),
+        "qualified_bdc_exposure_mismatches": int(
+            np.count_nonzero(
+                qualified_bdc_income > non_qualified_dividends + _INVARIANT_ATOL
+            )
+        ),
+        "qualified_reit_ptp_exposure_mismatches": int(
+            np.count_nonzero(
+                qualified_reit_and_ptp_income
+                > non_qualified_dividends
+                + np.maximum(partnership_s_corp_income, 0.0)
+                + _INVARIANT_ATOL
+            )
         ),
     }
     return {"columns": columns, "invariants": invariants}

@@ -14,6 +14,12 @@
           "format": "fixed_width_or_csv",
           "vintage": "2015",
           "locator": "IRS SOI Public Use File, including alimony income E00800, alimony expense E03500, casualty-loss E20500, and unreimbursed employee business expense E20400"
+        },
+        {
+          "kind": "versioned_derived_microdata",
+          "format": "hdf5_arrays",
+          "vintage": "2024 (2015-based)",
+          "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5; qbi_simulation_version=1 materialized at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
         }
       ],
       "operations": [
@@ -117,7 +123,22 @@
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
-        "health_savings_account_ald"
+        "health_savings_account_ald",
+        "estate_income_would_be_qualified",
+        "farm_operations_income_would_be_qualified",
+        "farm_rent_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "rental_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+        "business_is_sstb",
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+        "sstb_self_employment_income_before_lsr",
+        "sstb_unadjusted_basis_qualified_property",
+        "sstb_w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "w2_wages_from_qualified_business"
       ],
       "nonnegative_outputs": [
         "employment_income_before_lsr",
@@ -151,9 +172,15 @@
         "first_home_mortgage_interest",
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
-        "second_home_mortgage_origination_year"
+        "second_home_mortgage_origination_year",
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+        "sstb_unadjusted_basis_qualified_property",
+        "sstb_w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "w2_wages_from_qualified_business"
       ],
-      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation."
+      "notes": "PUF detail is a primary-source donor and must stay separate from benchmark comparisons. IRS disclosure aggregate rows are replaced from raw PUF aggregate totals before uprating; Forbes top-tail synthesis is not enabled. Qualified tuition reproduces the retired source transform as max(E03230, E87530), falling back to E03230 when the optional field is absent. Alimony reproduces the retired direct PUF mappings alimony_income = E00800 and alimony_expense = E03500 at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/puf/puf.py lines 640-641, and is re-derived after aggregate-row disaggregation; reported ASEC OI_VAL with OI_OFF = 20 remains on the ASEC half while codes 20 (alimony) and 12 (strike benefits) are excluded from miscellaneous_income per datasets/cps/cps.py lines 1481-1492. Casualty loss reproduces the retired direct mapping casualty_loss = E20500 at the same commit, datasets/puf/puf.py lines 636-643, and is re-derived after aggregate-row disaggregation. Unreimbursed employee business expenses reproduce the archived E20400 proxy for all deductible miscellaneous expenses at the same commit, datasets/puf/puf.py lines 663-665, and are likewise re-derived after disaggregation. Section 199A inputs are carried from the versioned processed PUF artifact rather than redrawn: archived puf.py lines 105-405 define the seeded qualification, investment-income, SSTB, W-2, and UBIA simulations; lines 748-787 enforce the all-or-nothing SSTB split; lines 860-879 export the 15 leaves; qbi_assumptions.yaml lines 1-118 pin the assumptions; calibration/puf_impute.py lines 90-198 and 940-1075 pin the retired QRF targets and fit. Populace source-aligns boolean person counts and restores the archived split/exposure identities after its weighted PUF QRF."
     },
     {
       "stage": "education_inputs",

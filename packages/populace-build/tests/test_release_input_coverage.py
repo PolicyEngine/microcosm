@@ -32,6 +32,7 @@ import pytest
 import populace.build.us_runtime.reform_coverage_smoke as smoke_module
 from populace.build.us_runtime import (
     SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_QBI_OUTPUT_COLUMNS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ReformCoverageProbe,
     ReleaseInputColumn,
@@ -485,6 +486,15 @@ class TestShippedManifest:
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
 
+    def test_qbi_input_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in US_QBI_OUTPUT_COLUMNS:
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+        # DPAD is a separate direct-PUF leaf and remains tracked until its own
+        # green family commit; the QBI promotion must not hide it.
+        assert "domestic_production_ald" in manifest.reviewed_exclusions
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -618,6 +628,33 @@ class TestShippedManifest:
             "gov.irs.credits.cdcc.phase_out.max",
             "gov.irs.credits.cdcc.phase_out.min",
             "gov.irs.credits.cdcc.phase_out.amended_structure.applies",
+        }
+
+    def test_shipped_qbi_probes_cover_reit_and_wage_property_inputs(self) -> None:
+        probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        reit = probes["qbi_reit_ptp_rate_abolition"]
+        assert reit.period == 2024
+        assert reit.expected_sign == "positive"
+        assert reit.effect_direction == "baseline_minus_reform"
+        assert reit.budget_measure == "qualified_business_income_deduction"
+        assert reit.binding_inputs == ("qualified_reit_and_ptp_income",)
+        assert set(reit.parameter_changes) == {
+            "gov.irs.deductions.qbi.max.reit_ptp_rate"
+        }
+
+        guardrails = probes["qbi_wage_property_guardrails_zeroed"]
+        assert guardrails.period == 2024
+        assert guardrails.expected_sign == "positive"
+        assert guardrails.effect_direction == "baseline_minus_reform"
+        assert guardrails.budget_measure == "qualified_business_income_deduction"
+        assert set(guardrails.binding_inputs) == {
+            "w2_wages_from_qualified_business",
+            "unadjusted_basis_qualified_property",
+        }
+        assert set(guardrails.parameter_changes) == {
+            "gov.irs.deductions.qbi.max.w2_wages.rate",
+            "gov.irs.deductions.qbi.max.w2_wages.alt_rate",
+            "gov.irs.deductions.qbi.max.business_property.rate",
         }
 
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:

@@ -30,9 +30,7 @@
    "status": "required"
   },
   "business_is_sstb": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "casualty_loss": {
    "status": "required"
@@ -95,9 +93,7 @@
    "status": "required"
   },
   "estate_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_income": {
    "status": "required"
@@ -108,9 +104,7 @@
    "status": "reviewed_exclusion"
   },
   "farm_operations_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_rent_income": {
    "issue": "PolicyEngine/populace#38",
@@ -118,9 +112,7 @@
    "status": "reviewed_exclusion"
   },
   "farm_rent_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "financial_assistance": {
    "issue": "PolicyEngine/populace#38",
@@ -330,9 +322,7 @@
    "status": "required"
   },
   "partnership_s_corp_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "pre_subsidy_rent": {
    "issue": "PolicyEngine/populace#32",
@@ -345,9 +335,7 @@
    "status": "reviewed_exclusion"
   },
   "qualified_bdc_income": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_dividend_income": {
    "status": "required"
@@ -356,9 +344,7 @@
    "status": "required"
   },
   "qualified_reit_and_ptp_income": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_tuition_expenses": {
    "status": "required"
@@ -375,9 +361,7 @@
    "status": "required"
   },
   "rental_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "roth_401k_contributions_desired": {
    "status": "required"
@@ -405,9 +389,7 @@
    "status": "reviewed_exclusion"
   },
   "self_employment_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "short_term_capital_gains": {
    "status": "required"
@@ -441,24 +423,16 @@
    "status": "required"
   },
   "sstb_self_employment_income_before_lsr": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_self_employment_income_would_be_qualified": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_unadjusted_basis_qualified_property": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "sstb_w2_wages_from_qualified_business": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "state_fips": {
    "status": "required"
@@ -576,9 +550,7 @@
    "status": "required"
   },
   "unadjusted_basis_qualified_property": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "unemployment_compensation": {
    "status": "required"
@@ -595,9 +567,7 @@
    "status": "required"
   },
   "w2_wages_from_qualified_business": {
-   "issue": "PolicyEngine/populace#298",
-   "reason": "Section 199A QBI / passthrough-qualification input; not yet on the candidate frame (QBI base already off vs targets, #298).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "weekly_hours_worked_before_lsr": {
    "status": "required"
@@ -624,11 +594,11 @@
   }
  },
  "counts": {
-  "required": 103,
-  "reviewed_exclusion": 62,
+  "required": 118,
+  "reviewed_exclusion": 47,
   "total": 165
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT restored casualty_loss, spm_unit_pre_subsidy_childcare_expenses, unreimbursed_business_employee_expenses, and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -711,6 +681,51 @@
    },
    "period": 2024,
    "reason": "Setting the Saver's Credit contribution cap to zero abolishes the credit, so baseline-minus-reform Saver's Credit must be positive. PolicyEngine-US builds qualified contributions from the realized forms of all five desired retirement-contribution inputs. If the desired-input family is absent or degenerate, the baseline credit is a structural zero and abolition scores $0."
+  },
+  {
+   "binding_inputs": [
+    "qualified_reit_and_ptp_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_reit_ptp_rate_abolition",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Section 199A qualified REIT/PTP component abolition",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.max.reit_ptp_rate": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Setting only the qualified REIT/PTP component rate to zero removes that component from the Section 199A deduction, so baseline-minus-reform QBID must be positive. Without populated qualified_reit_and_ptp_income the change is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_wage_property_guardrails_zeroed",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Section 199A W-2 wage and UBIA guardrails zeroed",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.max.business_property.rate": {
+     "2024-01-01.2100-12-31": 0
+    },
+    "gov.irs.deductions.qbi.max.w2_wages.alt_rate": {
+     "2024-01-01.2100-12-31": 0
+    },
+    "gov.irs.deductions.qbi.max.w2_wages.rate": {
+     "2024-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2024,
+   "reason": "Zeroing all W-2 wage and UBIA cap rates tightens the Section 199A deduction for high-income qualified businesses, so baseline-minus-reform QBID must be positive. If the total W-2 and UBIA inputs are absent, both baseline and reform guardrails are zero and the change is a structural zero. The archived all-or-nothing SSTB routing leaves its SSTB-allocable copies to the hard signal gate rather than overclaiming reform coverage."
   },
   {
    "binding_inputs": [

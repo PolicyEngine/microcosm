@@ -74,6 +74,24 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "self_employed_pension_contributions_desired",
 )
 
+QBI_INPUTS = (
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified",
+    "sstb_self_employment_income_would_be_qualified",
+    "business_is_sstb",
+    "qualified_bdc_income",
+    "qualified_reit_and_ptp_income",
+    "sstb_self_employment_income_before_lsr",
+    "sstb_unadjusted_basis_qualified_property",
+    "sstb_w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "w2_wages_from_qualified_business",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -83,6 +101,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "casualty_loss",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
+    *QBI_INPUTS,
 )
 
 RETIREMENT_CONTRIBUTION_INPUTS = (
@@ -185,6 +204,58 @@ REFORM_COVERAGE_PROBES = [
             "the baseline credit is a structural zero and abolition scores $0."
         ),
         "issue": "PolicyEngine/populace#278",
+    },
+    {
+        "id": "qbi_reit_ptp_rate_abolition",
+        "name": "Section 199A qualified REIT/PTP component abolition",
+        "parameter_changes": {
+            "gov.irs.deductions.qbi.max.reit_ptp_rate": {"2024-01-01.2100-12-31": 0}
+        },
+        "budget_measure": "qualified_business_income_deduction",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["qualified_reit_and_ptp_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Setting only the qualified REIT/PTP component rate to zero "
+            "removes that component from the Section 199A deduction, so "
+            "baseline-minus-reform QBID must be positive. Without populated "
+            "qualified_reit_and_ptp_income the change is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#298",
+    },
+    {
+        "id": "qbi_wage_property_guardrails_zeroed",
+        "name": "Section 199A W-2 wage and UBIA guardrails zeroed",
+        "parameter_changes": {
+            "gov.irs.deductions.qbi.max.w2_wages.rate": {"2024-01-01.2100-12-31": 0},
+            "gov.irs.deductions.qbi.max.w2_wages.alt_rate": {
+                "2024-01-01.2100-12-31": 0
+            },
+            "gov.irs.deductions.qbi.max.business_property.rate": {
+                "2024-01-01.2100-12-31": 0
+            },
+        },
+        "budget_measure": "qualified_business_income_deduction",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": [
+            "w2_wages_from_qualified_business",
+            "unadjusted_basis_qualified_property",
+        ],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Zeroing all W-2 wage and UBIA cap rates tightens the Section "
+            "199A deduction for high-income qualified businesses, so "
+            "baseline-minus-reform QBID must be positive. If the total W-2 "
+            "and UBIA inputs are absent, both baseline and reform guardrails "
+            "are zero and the change is a structural zero. The archived "
+            "all-or-nothing SSTB routing leaves its SSTB-allocable copies to "
+            "the hard signal gate rather than overclaiming reform coverage."
+        ),
+        "issue": "PolicyEngine/populace#298",
     },
     {
         "id": "alimony_expense_ald_abolition",
@@ -466,9 +537,9 @@ def build_manifest() -> dict:
             "retirement-contribution inputs required by shipped validation "
             "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
-            "(reason+issue from that register); EXCEPT restored casualty_loss, "
-            "spm_unit_pre_subsidy_childcare_expenses, "
-            "unreimbursed_business_employee_expenses, and the SSI countable-"
+            "(reason+issue from that register); EXCEPT every primary-source "
+            "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "
+            "(including the Section 199A QBI family), and the SSI countable-"
             "resource asset inputs (bank_account_assets, "
             "stock_assets, bond_assets), which are status='required' with NO "
             "exclusion per PolicyEngine/populace#368 "

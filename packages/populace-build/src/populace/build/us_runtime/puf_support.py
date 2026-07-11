@@ -16,6 +16,11 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.qbi_inputs import (
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+    US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
+    US_QBI_OUTPUT_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
 
@@ -101,6 +106,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "partnership_income",
     "s_corp_income",
     "partnership_self_employment_net_earnings",
+    *US_QBI_OUTPUT_COLUMNS,
 )
 
 PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
@@ -126,6 +132,7 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
         "second_home_mortgage_origination_year",
     }
 )
+_PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
 _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
@@ -200,6 +207,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
+        *US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     }
 )
 # Person-grain PE input leaves the processed PUF artifact only observes as
@@ -229,6 +237,55 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "self_employment_income_before_lsr",
     ),
     "qualified_tuition_expenses": ("is_full_time_college_student",),
+    "estate_income_would_be_qualified": ("estate_income",),
+    "farm_operations_income_would_be_qualified": ("farm_operations_income",),
+    "farm_rent_income_would_be_qualified": ("farm_rent_income",),
+    "partnership_s_corp_income_would_be_qualified": (
+        "partnership_income",
+        "s_corp_income",
+    ),
+    "rental_income_would_be_qualified": ("rental_income",),
+    "self_employment_income_would_be_qualified": (
+        "self_employment_income_before_lsr",
+        "sstb_self_employment_income_before_lsr",
+    ),
+    "sstb_self_employment_income_would_be_qualified": (
+        "sstb_self_employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ),
+    "business_is_sstb": (
+        "sstb_self_employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "estate_income",
+    ),
+    "qualified_bdc_income": ("non_qualified_dividend_income",),
+    "qualified_reit_and_ptp_income": (
+        "non_qualified_dividend_income",
+        "partnership_income",
+        "s_corp_income",
+    ),
+    "sstb_self_employment_income_before_lsr": (
+        "business_is_sstb",
+        "self_employment_income_before_lsr",
+    ),
+    "sstb_unadjusted_basis_qualified_property": ("business_is_sstb",),
+    "sstb_w2_wages_from_qualified_business": ("business_is_sstb",),
+    "unadjusted_basis_qualified_property": (
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "rental_income",
+        "estate_income",
+    ),
+    "w2_wages_from_qualified_business": (
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "rental_income",
+        "estate_income",
+    ),
 }
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
     "employment_income": ("employment_income_before_lsr",),
@@ -435,7 +492,10 @@ def impute_us_puf_tax_detail_support(
     tax-unit predictions from the PUF donor; person-grain predicted tax-unit
     totals are distributed over the cloned people using their copied ASEC
     within-tax-unit shares, falling back to the first person in the unit when
-    the copied support has no mass for a variable.
+    the copied support has no mass for a variable. Boolean QBI targets are
+    modeled as tax-unit person counts, snapped to observed integer counts, and
+    placed on source-aligned people instead of collapsing every positive count
+    onto one person.
 
     Args:
         fit_records: An optional sink for the build-level weights audit (populace
@@ -515,6 +575,11 @@ def impute_us_puf_tax_detail_support(
                 predictions[column],
                 donor[column],
             )
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
         if column in _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS:
             predictions[column] = _snap_to_observed_values(
                 predictions[column],
@@ -537,14 +602,28 @@ def impute_us_puf_tax_detail_support(
     person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     for column in person_outputs:
         _ensure_float_output_column(tables["person"], column)
-        _write_person_tax_unit_totals(
-            tables["person"],
-            mask=person_puf_mask,
-            column=column,
-            totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
-            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
-            fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(column, ()),
-        )
+        totals = pd.Series(predictions[column].to_numpy(), index=tax_unit_ids)
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
+            _write_person_tax_unit_boolean_counts(
+                tables["person"],
+                mask=person_puf_mask,
+                column=column,
+                totals=totals,
+                fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
+                    column, ()
+                ),
+            )
+        else:
+            _write_person_tax_unit_totals(
+                tables["person"],
+                mask=person_puf_mask,
+                column=column,
+                totals=totals,
+                nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+                fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
+                    column, ()
+                ),
+            )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
             _sparsify_tax_unit_person_output_to_donor_positive_rate(
@@ -994,6 +1073,71 @@ def _snap_to_observed_values(
     return observed_array[positions]
 
 
+def _write_person_tax_unit_boolean_counts(
+    person: pd.DataFrame,
+    *,
+    mask: pd.Series,
+    column: str,
+    totals: pd.Series,
+    fallback_basis_columns: tuple[str, ...] = (),
+) -> None:
+    """Place a predicted number of true people within each tax unit.
+
+    PUF QBI flags are person inputs, but the shared support model trains at
+    tax-unit grain. Their donor targets are therefore integer counts. Treating
+    a count as an amount would put (say) ``2`` on one person and ``0`` on the
+    spouse; a later boolean cast would silently turn two true people into one.
+    This placement preserves the snapped count and ranks people by the source
+    columns the flag qualifies, with stable first-person fallback for ties.
+    """
+
+    row_ids = person.loc[mask, "person_tax_unit_id"]
+    if row_ids.empty:
+        return
+    score = np.zeros(len(row_ids), dtype=np.float64)
+    for basis_column in fallback_basis_columns:
+        if basis_column not in person.columns:
+            continue
+        score += (
+            pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
+            .fillna(0.0)
+            .clip(lower=0.0)
+            .to_numpy(dtype=np.float64)
+        )
+
+    placement = pd.DataFrame(
+        {
+            "tax_unit_id": row_ids.to_numpy(),
+            "score": score,
+            "source_position": np.arange(len(row_ids), dtype=np.int64),
+        },
+        index=row_ids.index,
+    ).sort_values(
+        ["tax_unit_id", "score", "source_position"],
+        ascending=[True, False, True],
+        kind="mergesort",
+    )
+    placement["rank"] = placement.groupby("tax_unit_id", sort=False).cumcount()
+    placement["unit_size"] = placement.groupby("tax_unit_id", sort=False)[
+        "tax_unit_id"
+    ].transform("size")
+    desired = (
+        placement["tax_unit_id"]
+        .map(totals)
+        .fillna(0.0)
+        .round()
+        .clip(lower=0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    desired = np.minimum(
+        desired,
+        placement["unit_size"].to_numpy(dtype=np.float64),
+    )
+    placement["selected"] = placement["rank"].to_numpy() < desired
+    selected = placement["selected"].reindex(row_ids.index).fillna(False)
+    person.loc[mask, column] = selected.to_numpy(dtype=np.float64)
+
+
 def _write_person_tax_unit_totals(
     person: pd.DataFrame,
     *,
@@ -1224,6 +1368,7 @@ def _person_source_values(
     source_aliases = {
         "employment_income_before_lsr": ("employment_income",),
         "self_employment_income_before_lsr": ("self_employment_income",),
+        "sstb_self_employment_income_before_lsr": ("sstb_self_employment_income",),
         "long_term_capital_gains_before_response": ("long_term_capital_gains",),
         "taxable_private_pension_income": ("taxable_pension_income",),
         # The PUF observes realized IRA deductions; at baseline the engine's

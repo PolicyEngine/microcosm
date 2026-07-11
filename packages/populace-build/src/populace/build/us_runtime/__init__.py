@@ -274,6 +274,24 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.qbi_inputs import (
+    QBI_ARCHIVED_ASSUMPTIONS_URL,
+    QBI_ARCHIVED_CLONE_URL,
+    QBI_ARCHIVED_DERIVATION_URL,
+    QBI_ARCHIVED_EXPORT_URL,
+    QBI_ARCHIVED_IMPUTATION_URL,
+    QBI_ARCHIVED_PUF_ARTIFACT_URL,
+    QBI_ARCHIVED_SIMULATION_URL,
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+    US_QBI_NONCONSTANT_PERSON_COLUMNS,
+    US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
+    US_QBI_OUTPUT_COLUMNS,
+    US_QBI_STAGE_NAME,
+    us_qbi_inputs_signal_gate,
+    us_qbi_inputs_stage_spec,
+    us_qbi_inputs_summary,
+    with_us_qbi_input_reconciliation,
+)
 from populace.build.us_runtime.reform_coverage_smoke import (
     us_reform_coverage_smoke_gate,
 )
@@ -566,6 +584,22 @@ __all__ = [
     "us_misc_itemized_signal_gate",
     "us_misc_itemized_stage_spec",
     "us_misc_itemized_summary",
+    "QBI_ARCHIVED_ASSUMPTIONS_URL",
+    "QBI_ARCHIVED_CLONE_URL",
+    "QBI_ARCHIVED_DERIVATION_URL",
+    "QBI_ARCHIVED_EXPORT_URL",
+    "QBI_ARCHIVED_IMPUTATION_URL",
+    "QBI_ARCHIVED_PUF_ARTIFACT_URL",
+    "QBI_ARCHIVED_SIMULATION_URL",
+    "US_QBI_BOOLEAN_OUTPUT_COLUMNS",
+    "US_QBI_NONCONSTANT_PERSON_COLUMNS",
+    "US_QBI_NONNEGATIVE_OUTPUT_COLUMNS",
+    "US_QBI_OUTPUT_COLUMNS",
+    "US_QBI_STAGE_NAME",
+    "us_qbi_inputs_signal_gate",
+    "us_qbi_inputs_stage_spec",
+    "us_qbi_inputs_summary",
+    "with_us_qbi_input_reconciliation",
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
@@ -952,7 +986,8 @@ US_DONORS: Mapping[str, DonorSpec] = {
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
         notes=(
-            "Itemized-deduction detail, QBI components, partnership SE, "
+            "Itemized-deduction detail, versioned processed-PUF Section 199A "
+            "simulation leaves (carried without redrawing), partnership SE, "
             "mortgage-interest split, direct E00800/E03500 alimony, direct "
             "E20500 casualty loss, and the E20400 miscellaneous-expense proxy; IRS "
             "disclosure aggregate rows are "
