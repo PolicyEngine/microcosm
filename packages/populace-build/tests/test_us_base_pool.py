@@ -34,7 +34,11 @@ MEMORY_AMPLIFICATION_LIMIT = 6
 MEMORY_FIXED_ALLOWANCE_BYTES = 32 * 1024 * 1024
 
 
-def _base_frame(*, support_metadata: bool = True) -> Frame:
+def _base_frame(
+    *,
+    support_metadata: bool = True,
+    weight_kind: WeightKind = WeightKind.DESIGN,
+) -> Frame:
     tables = {
         "person": pd.DataFrame(
             {
@@ -61,7 +65,7 @@ def _base_frame(*, support_metadata: bool = True) -> Frame:
         {
             "household": Weights(
                 np.asarray([100.0, 300.0]),
-                WeightKind.DESIGN,
+                weight_kind,
             )
         },
         pd.Series(["asec_2024", "asec_2024", "asec_2023"]),
@@ -72,6 +76,7 @@ def _acs_frame(
     *,
     support_metadata: bool = False,
     conflicting_support_metadata: bool = False,
+    weight_kind: WeightKind = WeightKind.DESIGN,
 ) -> Frame:
     tables = {
         "person": pd.DataFrame(
@@ -106,7 +111,7 @@ def _acs_frame(
         {
             "household": Weights(
                 np.asarray([ACS_RAW_HOUSEHOLD_MASS]),
-                WeightKind.DESIGN,
+                weight_kind,
             )
         },
     )
@@ -223,6 +228,19 @@ def test__given_acs__then_source_frames_remain_byte_identical() -> None:
     # Then
     assert _frame_digest(base) == base_digest
     assert _frame_digest(acs) == acs_digest
+
+
+def test__given_calibrated_base_and_design_acs__then_pool_is_importance_weighted() -> (
+    None
+):
+    base = _base_frame(weight_kind=WeightKind.CALIBRATED)
+    acs = _acs_frame(weight_kind=WeightKind.DESIGN)
+
+    result = with_optional_acs_spine(base, acs)
+
+    assert result.weights_for("household").kind is WeightKind.IMPORTANCE
+    assert base.weights_for("household").kind is WeightKind.CALIBRATED
+    assert acs.weights_for("household").kind is WeightKind.DESIGN
 
 
 def test__given_nullable_existing_spine__then_every_base_row_is_tagged() -> None:

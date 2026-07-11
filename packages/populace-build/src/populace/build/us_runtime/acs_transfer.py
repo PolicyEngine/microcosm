@@ -57,6 +57,7 @@ __all__ = [
     "TargetFamilies",
     "default_acs_transfer_target_families",
     "required_acs_transfer_inputs",
+    "resolve_acs_donor_channel",
     "transfer_acs_inputs",
 ]
 
@@ -245,6 +246,7 @@ class AcsTransferResult:
     imputed_inputs: tuple[AcsImputedInput, ...] = ()
     fit_records: tuple[FitWeightRecord, ...] = ()
     deferred_inputs: tuple[str, ...] = ()
+    resolved_donor_channel: str | None = None
 
 
 @dataclass(frozen=True)
@@ -437,7 +439,7 @@ def transfer_acs_inputs(
         )
 
     _validate_donor_source(donor_spine=donor_spine, donor_channel=donor_channel)
-    fit_donor, resolved_channel = _resolve_donor_channel(donor, donor_channel)
+    fit_donor, resolved_channel = resolve_acs_donor_channel(donor, donor_channel)
     output_tables = {
         entity: recipient.table(entity).copy() for entity in recipient.entities
     }
@@ -494,6 +496,7 @@ def transfer_acs_inputs(
         imputed_inputs=tuple(provenance),
         fit_records=tuple(fit_records),
         deferred_inputs=deferred_inputs,
+        resolved_donor_channel=resolved_channel,
     )
 
 
@@ -1229,20 +1232,22 @@ def _validate_donor_source(
         )
 
 
-def _resolve_donor_channel(
+def resolve_acs_donor_channel(
     donor: Frame,
     channel: str | None,
 ) -> tuple[Frame, str | None]:
+    """Resolve and select the transfer donor support channel fail-closed."""
+
     if channel is None:
         return donor, None
-    if channel != ACS_DONOR_CHANNEL_AUTO:
-        return _select_donor_channel(donor, channel), channel
 
     channel_columns = {
         entity: support_channel_column(entity)
         for entity in donor.entities
         if support_channel_column(entity) in donor.table(entity).columns
     }
+    if channel != ACS_DONOR_CHANNEL_AUTO:
+        return _select_donor_channel(donor, channel), channel
     if not channel_columns:
         return donor, None
     person_entity = donor.schema.person_entity

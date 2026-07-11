@@ -32,17 +32,12 @@ __all__ = [
 
 ASEC_PUF_SPINE = "asec_puf"
 
-# The launch worker has a 30 GiB RSS budget. The estimate includes the two
+# The launch worker has a 30 GB RSS budget. The estimate includes the two
 # incoming frames, the assembled tables, the Frame constructor's defensive
 # copies, and a fixed allowance for pandas/Python scratch allocations.
-DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = 30 * 1024**3
+DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = 30_000_000_000
 _PEAK_ESTIMATE_FIXED_OVERHEAD_BYTES = 256 * 1024**2
 _ID_OVERLAP_CHUNK_ROWS = 65_536
-_WEIGHT_KIND_RANK = {
-    WeightKind.DESIGN: 0,
-    WeightKind.IMPORTANCE: 1,
-    WeightKind.CALIBRATED: 2,
-}
 
 
 def spine_column(entity: str) -> str:
@@ -542,11 +537,13 @@ def _pooled_household_weights(
     acs_factor = acs_target / acs_existing.total
     base_values = base_existing.values * base_factor
     acs_values = acs_existing.values * acs_factor
-    kind = max(
-        (base_existing.kind, acs_existing.kind),
-        key=_WEIGHT_KIND_RANK.__getitem__,
+    # Rescaling and mixing distinct source frames creates importance weights.
+    # A calibrated donor does not make the new, explicitly uncalibrated union
+    # calibrated; the downstream solve owns that transition.
+    pooled = Weights(
+        np.concatenate([base_values, acs_values]),
+        WeightKind.IMPORTANCE,
     )
-    pooled = Weights(np.concatenate([base_values, acs_values]), kind)
     mass_log = (
         *base.mass_log,
         MassChangeRecord(

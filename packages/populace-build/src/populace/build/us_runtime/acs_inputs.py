@@ -345,9 +345,12 @@ def _add_native(
             f"ACS native mapping refuses to overwrite existing column {output!r}."
         )
     table[output] = values
+    missing_rows = int(pd.isna(values).sum())
     register[output] = {
         "entity": entity,
         "source_columns": list(source_columns),
         "transformation": transformation,
         "provenance": "acs_2024_1yr_native",
+        "observed_rows": int(len(values) - missing_rows),
+        "missing_rows": missing_rows,
     }

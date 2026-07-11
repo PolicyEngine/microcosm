@@ -719,6 +719,7 @@ def test_auto_channel_excludes_artificial_asec_zeros(
     )
 
     assert auto.frame.table("person")["qualified_dividend_income"].eq(100.0).all()
+    assert auto.resolved_donor_channel == "puf_tax_detail"
     assert auto.imputed_inputs[0].donor_channel == "puf_tax_detail"
     assert auto.imputed_inputs[0].patterns[0].donor_rows == len(base.person)
     assert all(
@@ -736,6 +737,7 @@ def test_auto_channel_excludes_artificial_asec_zeros(
         n_estimators=1,
     )
     assert whole.frame.table("person")["qualified_dividend_income"].eq(50.0).all()
+    assert whole.resolved_donor_channel is None
     assert whole.imputed_inputs[0].donor_channel is None
     assert whole.imputed_inputs[0].patterns[0].donor_rows == 2 * len(base.person)
 

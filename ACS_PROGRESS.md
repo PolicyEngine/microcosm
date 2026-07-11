@@ -46,7 +46,13 @@
 - 2026-07-10 — Bounded-memory pool milestone (this milestone commit): replaced
   copy-heavy intermediate Frame rebuilds with direct final entity assembly,
   chunked ID-overlap checks, and guarded in-place block consolidation. Added a
-  conservative 30 GiB peak-memory preflight while preserving exact no-ACS
+  conservative 30 GB peak-memory preflight while preserving exact no-ACS
   identity and source immutability. A 100k-row, 64-column two-spine benchmark
   reduced measured peak growth from 1,260.7 MiB to 607.8 MiB. Checks: Ruff
   clean; 27 base-pool tests pass.
+- 2026-07-10 — Contract-hardening milestone (this milestone commit): corrected
+  the uncalibrated mixed spine to `IMPORTANCE` weights, made the memory limit a
+  literal decimal 30 GB, recorded native observed/missing row counts, exposed
+  resolved donor-channel provenance, and aligned preflight channel selection
+  with transfer. Checks: Ruff clean; 57 pool, native-mapping, and transfer
+  tests pass.

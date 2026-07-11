@@ -87,6 +87,8 @@ def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates(
     assert result.native_inputs["acs_social_security_income"]["transformation"] == (
         "SSP * ADJINC / 1_000_000"
     )
+    assert result.native_inputs["employment_income_before_lsr"]["observed_rows"] == 1
+    assert result.native_inputs["employment_income_before_lsr"]["missing_rows"] == 1
 
 
 def test_acs_housing_mapping_preserves_rent_without_synthesizing_model_rent() -> None:
@@ -152,6 +154,8 @@ def test_acs_group_quarters_blank_tenure_is_not_synthesized() -> None:
 
     assert result.frame.table("household")["tenure_type"].isna().all()
     assert result.frame.table("spm_unit")["spm_unit_tenure_type"].isna().all()
+    assert result.native_inputs["tenure_type"]["observed_rows"] == 0
+    assert result.native_inputs["tenure_type"]["missing_rows"] == 1
 
 
 @pytest.mark.parametrize(
