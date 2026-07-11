@@ -36,3 +36,10 @@
   vacancy, GQ, and person-count validation. Smoke caps now select occupied
   housing units deterministically and discard unselected person chunks during
   streaming. Checks: Ruff clean; 13 loader tests pass.
+- 2026-07-10 — Fit-transfer milestone (this milestone commit): used the
+  existing populace-fit QRF transfer API to cover donor-observed required
+  model inputs without overwriting native ACS leaves. Fits are conditioned on
+  native state and observed predictor patterns; boolean, integer, and joint
+  immigration-status support is preserved; donor geography is explicitly
+  deferred; and every imputed column has immutable pattern/seed/channel/weight
+  provenance. Checks: Ruff clean; 19 transfer tests pass.
