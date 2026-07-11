@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event
 
 import pytest
 
@@ -20,6 +20,10 @@ from populace.build.us_runtime.acs_sources import (
 
 def _sha(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _artifact_cache_path(root: Path, artifact: AcsSourceArtifact) -> Path:
+    return root / artifact.sha256 / artifact.filename
 
 
 def _manifest(
@@ -103,13 +107,15 @@ def test_fetch_acs_pums_sources_streams_verifies_and_atomically_caches(
     assert source.household_zip.read_bytes() == payloads["csv_hus.zip"]
     assert source.person_zip.read_bytes() == payloads["csv_pus.zip"]
     assert opened == ["csv_hus.zip", "csv_pus.zip"]
-    assert list(tmp_path.glob("*.partial")) == []
+    assert list(tmp_path.rglob("*.partial")) == []
 
 
 def test_fetch_acs_pums_sources_reuses_only_verified_cache(tmp_path: Path) -> None:
     manifest = _manifest()
     for artifact in manifest.artifacts:
-        (tmp_path / artifact.filename).write_bytes(
+        path = _artifact_cache_path(tmp_path, artifact)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(
             b"household zip fixture"
             if artifact.role == "household"
             else b"person zip fixture"
@@ -124,8 +130,12 @@ def test_fetch_acs_pums_sources_reuses_only_verified_cache(tmp_path: Path) -> No
         opener=no_network,
     )
 
-    assert source.household_zip == tmp_path / "csv_hus.zip"
-    assert source.person_zip == tmp_path / "csv_pus.zip"
+    assert source.household_zip == _artifact_cache_path(
+        tmp_path, manifest.artifact("household")
+    )
+    assert source.person_zip == _artifact_cache_path(
+        tmp_path, manifest.artifact("person")
+    )
 
 
 def test_fetch_acs_pums_sources_rejects_hash_mismatch_and_removes_partial(
@@ -139,30 +149,34 @@ def test_fetch_acs_pums_sources_rejects_hash_mismatch_and_removes_partial(
     with pytest.raises(ValueError, match="sha-256.*csv_hus.zip"):
         fetch_acs_pums_sources(tmp_path, manifest=manifest, opener=corrupted)
 
-    assert not (tmp_path / "csv_hus.zip").exists()
-    assert list(tmp_path.glob("*.partial")) == []
+    assert not _artifact_cache_path(tmp_path, manifest.artifact("household")).exists()
+    assert list(tmp_path.rglob("*.partial")) == []
 
 
 def test_fetch_acs_pums_sources_rejects_oversize_before_writing_chunk(
     tmp_path: Path,
 ) -> None:
-    old = tmp_path / "csv_hus.zip"
+    manifest = _manifest()
+    old = _artifact_cache_path(tmp_path, manifest.artifact("household"))
+    old.parent.mkdir(parents=True)
     old.write_bytes(b"old unverified cache")
 
     def oversized(_request):
         return _Response(b"household zip fixture!")
 
     with pytest.raises(ValueError, match="exceeded.*pinned size"):
-        fetch_acs_pums_sources(tmp_path, manifest=_manifest(), opener=oversized)
+        fetch_acs_pums_sources(tmp_path, manifest=manifest, opener=oversized)
 
     assert old.read_bytes() == b"old unverified cache"
-    assert list(tmp_path.glob("*.partial")) == []
+    assert list(tmp_path.rglob("*.partial")) == []
 
 
 def test_fetch_acs_pums_sources_preserves_cache_on_interrupted_stream(
     tmp_path: Path,
 ) -> None:
-    old = tmp_path / "csv_hus.zip"
+    manifest = _manifest()
+    old = _artifact_cache_path(tmp_path, manifest.artifact("household"))
+    old.parent.mkdir(parents=True)
     old.write_bytes(b"old unverified cache")
 
     def interrupted(_request):
@@ -171,13 +185,13 @@ def test_fetch_acs_pums_sources_preserves_cache_on_interrupted_stream(
     with pytest.raises(OSError, match="fixture interrupted"):
         fetch_acs_pums_sources(
             tmp_path,
-            manifest=_manifest(),
+            manifest=manifest,
             opener=interrupted,
             chunk_bytes=3,
         )
 
     assert old.read_bytes() == b"old unverified cache"
-    assert list(tmp_path.glob("*.partial")) == []
+    assert list(tmp_path.rglob("*.partial")) == []
 
 
 def test_concurrent_fetchers_cannot_verify_different_bytes_than_they_publish(
@@ -245,7 +259,61 @@ def test_concurrent_fetchers_cannot_verify_different_bytes_than_they_publish(
 
     assert source.household_zip.read_bytes() == good
     assert source.person_zip.read_bytes() == person
-    assert list(tmp_path.glob("*.partial")) == []
+    assert list(tmp_path.rglob("*.partial")) == []
+
+
+def test_concurrent_valid_manifest_overrides_have_immutable_distinct_paths(
+    tmp_path: Path,
+) -> None:
+    payloads_a = {
+        "csv_hus.zip": b"household-a",
+        "csv_pus.zip": b"person-a",
+    }
+    payloads_b = {
+        "csv_hus.zip": b"household-b",
+        "csv_pus.zip": b"person-b",
+    }
+    manifest_a = _manifest(
+        household=payloads_a["csv_hus.zip"],
+        person=payloads_a["csv_pus.zip"],
+    )
+    manifest_b = _manifest(
+        household=payloads_b["csv_hus.zip"],
+        person=payloads_b["csv_pus.zip"],
+    )
+    rendezvous = Barrier(2)
+
+    def opener(payloads):
+        def open_one(request):
+            rendezvous.wait(timeout=5)
+            filename = request.full_url.rsplit("/", 1)[-1]
+            return _Response(payloads[filename])
+
+        return open_one
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(
+            fetch_acs_pums_sources,
+            tmp_path,
+            manifest=manifest_a,
+            opener=opener(payloads_a),
+        )
+        future_b = executor.submit(
+            fetch_acs_pums_sources,
+            tmp_path,
+            manifest=manifest_b,
+            opener=opener(payloads_b),
+        )
+        source_a = future_a.result(timeout=10)
+        source_b = future_b.result(timeout=10)
+
+    assert source_a.household_zip != source_b.household_zip
+    assert source_a.person_zip != source_b.person_zip
+    assert source_a.household_zip.read_bytes() == payloads_a["csv_hus.zip"]
+    assert source_a.person_zip.read_bytes() == payloads_a["csv_pus.zip"]
+    assert source_b.household_zip.read_bytes() == payloads_b["csv_hus.zip"]
+    assert source_b.person_zip.read_bytes() == payloads_b["csv_pus.zip"]
+    assert list(tmp_path.rglob("*.partial")) == []
 
 
 def test_load_acs_source_manifest_rejects_invalid_hash(tmp_path: Path) -> None:

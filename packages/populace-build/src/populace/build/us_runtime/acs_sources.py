@@ -4,8 +4,9 @@ The packaged manifest identifies the two exact Census archives used by the
 ``acs_2024_1yr`` spine.  Acquisition never trusts an existing cache by name:
 both its byte count and SHA-256 digest must match the manifest. Fresh downloads
 are streamed through unique same-directory ``.partial`` files, verified from
-the closed temporary bytes, and moved into place atomically, so interrupted,
-concurrent, or changed upstream payloads cannot be consumed by the loader.
+the closed temporary bytes, and moved into content-addressed cache directories
+atomically, so interrupted, concurrent, or changed upstream payloads cannot be
+consumed by the loader.
 """
 
 from __future__ import annotations
@@ -168,7 +169,11 @@ def fetch_acs_pums_sources(
 
     paths: dict[str, Path] = {}
     for artifact in source_manifest.artifacts:
-        destination = root / artifact.filename
+        # The digest directory makes a returned path immutable with respect to
+        # other valid manifest overrides. Two callers may publish concurrently,
+        # but different payloads can never replace one another by basename.
+        destination = root / artifact.sha256 / artifact.filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
         if _file_matches(destination, artifact):
             paths[artifact.role] = destination
             continue
@@ -180,7 +185,7 @@ def fetch_acs_pums_sources(
         try:
             with NamedTemporaryFile(
                 mode="wb",
-                dir=root,
+                dir=destination.parent,
                 prefix=f".{destination.name}.",
                 suffix=".partial",
                 delete=False,
