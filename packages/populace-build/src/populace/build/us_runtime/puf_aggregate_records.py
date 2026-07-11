@@ -30,6 +30,7 @@ from populace.build.us_runtime.educator_expenses import (
 from populace.build.us_runtime.farm_business_income import (
     derive_us_farm_business_income_from_puf,
 )
+from populace.build.us_runtime.form_4952 import derive_us_form_4952_election_from_puf
 from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
 from populace.calibrate import relative_error_loss
 
@@ -245,6 +246,10 @@ def derive_puf_policyengine_variables(
     farm_operations_income_output: str = "farm_operations_income",
     farm_rent_income_source: str | None = None,
     farm_rent_income_output: str = "farm_rent_income",
+    investment_income_elected_form_4952_source: str | None = None,
+    investment_income_elected_form_4952_output: str = (
+        "investment_income_elected_form_4952"
+    ),
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -316,6 +321,12 @@ def derive_puf_policyengine_variables(
             result,
             source_column=unreimbursed_business_employee_expenses_source,
             output_column=unreimbursed_business_employee_expenses_output,
+        )
+    if investment_income_elected_form_4952_source is not None:
+        result = derive_us_form_4952_election_from_puf(
+            result,
+            source_column=investment_income_elected_form_4952_source,
+            output_column=investment_income_elected_form_4952_output,
         )
     farm_sources = (farm_operations_income_source, farm_rent_income_source)
     if any(source is not None for source in farm_sources):
@@ -394,6 +405,7 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_domestic_production_ald_from_source(result)
     result = _reconcile_puf_educator_expense_from_source(result)
     result = _reconcile_puf_misc_itemized_from_source(result)
+    result = _reconcile_puf_form_4952_election_from_source(result)
     return _reconcile_puf_farm_business_income_from_sources(result)
 
 
@@ -1046,6 +1058,17 @@ def _reconcile_puf_misc_itemized_from_source(
     if output not in puf.columns or "E20400" not in puf.columns:
         return puf
     return derive_us_misc_itemized_from_puf(puf)
+
+
+def _reconcile_puf_form_4952_election_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E58990 carry after aggregate-row amounts are replaced."""
+
+    output = "investment_income_elected_form_4952"
+    if output not in puf.columns or "E58990" not in puf.columns:
+        return puf
+    return derive_us_form_4952_election_from_puf(puf)
 
 
 def _reconcile_puf_farm_business_income_from_sources(

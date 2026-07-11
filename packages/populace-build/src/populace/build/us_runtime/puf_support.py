@@ -89,6 +89,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
+    "investment_income_elected_form_4952",
     "student_loan_interest",
     "educator_expense",
     "qualified_tuition_expenses",
@@ -144,6 +145,7 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
         "qualified_tuition_expenses",
         "educator_expense",
         "casualty_loss",
+        "investment_income_elected_form_4952",
         "alimony_income",
         "alimony_expense",
     }
@@ -200,6 +202,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
         "qualified_tuition_expenses",

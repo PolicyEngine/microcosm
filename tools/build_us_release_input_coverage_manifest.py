@@ -113,6 +113,8 @@ SIPP_VEHICLE_INPUTS = (
     "household_vehicles_value",
 )
 
+FORM_4952_INPUTS = ("investment_income_elected_form_4952",)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -126,6 +128,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *OTHER_HEALTH_INSURANCE_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
     *SIPP_VEHICLE_INPUTS,
+    *FORM_4952_INPUTS,
     "domestic_production_ald",
     "household_weight",
     "spm_unit_pre_subsidy_childcare_expenses",
