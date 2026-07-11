@@ -437,6 +437,12 @@ class TestShippedManifest:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
 
+    def test_sipp_vehicle_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("household_vehicles_owned", "household_vehicles_value"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_education_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in (
@@ -908,6 +914,25 @@ class TestShippedManifest:
         assert auto.binding_inputs == ("qualified_passenger_vehicle_loan_interest",)
         assert set(auto.parameter_changes) == {
             "gov.irs.deductions.auto_loan_interest.cap"
+        }
+
+    def test_shipped_vehicle_asset_probe_binds_through_both_inputs(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "tx_snap_additional_vehicle_exemption_abolition"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "snap"
+        assert set(probe.binding_inputs) == {
+            "household_vehicles_owned",
+            "household_vehicles_value",
+        }
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption"
         }
 
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:

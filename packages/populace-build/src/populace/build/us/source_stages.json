@@ -1302,32 +1302,66 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "census_extract",
-          "vintage": "latest_available",
-          "locator": "Census Survey of Income and Program Participation"
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "sipp_household"
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EMS",
+            "TPTOTINC",
+            "TINC_BANK",
+            "TINC_STMF",
+            "TINC_BOND",
+            "TINC_RENT",
+            "TVEH_NUM",
+            "THVAL_VEH",
+            "THVAL_HOME",
+            "AVEH_NUM",
+            "AHVAL_VEH",
+            "AVEH1VAL",
+            "AVEH2VAL",
+            "AVEH3VAL"
+          ]
         },
         {
           "kind": "fit_vehicle_model",
           "predictors": [
-            "employment_income",
-            "interest_dividend_income",
-            "rental_income",
-            "age",
-            "is_female",
-            "is_married",
-            "tenure_type"
-          ]
-        },
-        {
-          "kind": "fold_into",
-          "output": "net_worth",
-          "component": "household_vehicles_value"
+            "household_employment_income",
+            "household_interest_income",
+            "household_dividend_income",
+            "household_rental_income",
+            "reference_age",
+            "reference_is_female",
+            "reference_is_married",
+            "count_under_18",
+            "household_size",
+            "is_homeowner"
+          ],
+          "weight": "household_weight",
+          "observed_status_values": [0, 1, 9],
+          "owned_allocation_flag": "AVEH_NUM",
+          "value_allocation_flags": ["AVEH1VAL", "AVEH2VAL", "AVEH3VAL"],
+          "training_sample_cap": 20000,
+          "count_model": "weighted_random_forest_classifier",
+          "value_model": "weighted_qrf_conditioned_on_predicted_count",
+          "n_estimators": 100,
+          "seed": 42
         }
       ],
       "outputs": [
@@ -1337,7 +1371,8 @@
       "nonnegative_outputs": [
         "household_vehicles_owned",
         "household_vehicles_value"
-      ]
+      ],
+      "notes": "Restores the retired household-grain SIPP vehicle family from the immutable full 2023 public-use donor at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 430-456 and 953-1059 pin the exact 20 columns, December household transform, target-specific observed-source masks, positive survey weights, and 20,000-row cap; calibration/source_impute.py lines 992-1084 and utils/asset_imputation.py lines 503-603 pin the CPS receiver and output types. Vehicle count is classified first and vehicle value is then drawn conditionally; both are clipped nonnegative, count is rounded int32, and value is float32. The 65.6 MB tip-only slim SIPP file lacks this family. Populace deliberately does not execute the old placeholder fold into net_worth: the retired pipeline blended SIPP/SCF vehicle value and reconciled a full SCF balance sheet, while Populace has not restored that full net-worth family. Persisting the two policy inputs independently avoids inventing a partial net-worth measure."
     },
     {
       "stage": "aca_marketplace_inputs",

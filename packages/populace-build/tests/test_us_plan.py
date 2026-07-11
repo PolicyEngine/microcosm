@@ -450,6 +450,38 @@ class TestUsSources:
             assert column in US_NONNEGATIVE_SOURCE_OUTPUTS
         assert "net_worth" not in US_NONNEGATIVE_SOURCE_OUTPUTS
 
+    def test_sipp_vehicle_stage_pins_full_donor_and_no_partial_net_worth(self) -> None:
+        spec = US_SOURCE_MANIFEST.stage_map()["vehicle_assets"]
+        artifact = spec.artifacts[0]
+        assert artifact["vintage"] == "2023"
+        assert artifact["sha256"] == (
+            "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
+        )
+        assert artifact["size_bytes"] == 3_726_010_471
+        assert "21280dca5995e978d706740a8a4b9b7860cfd7b6" in artifact["locator"]
+        model = next(
+            operation
+            for operation in spec.operations
+            if operation.kind == "fit_vehicle_model"
+        )
+        assert model.parameters["weight"] == "household_weight"
+        assert model.parameters["observed_status_values"] == [0, 1, 9]
+        assert model.parameters["owned_allocation_flag"] == "AVEH_NUM"
+        assert model.parameters["value_allocation_flags"] == [
+            "AVEH1VAL",
+            "AVEH2VAL",
+            "AVEH3VAL",
+        ]
+        assert model.parameters["seed"] == 42
+        assert model.parameters["n_estimators"] == 100
+        assert all(operation.kind != "fold_into" for operation in spec.operations)
+        assert "does not execute the old placeholder fold" in spec.notes
+        assert set(spec.outputs) == {
+            "household_vehicles_owned",
+            "household_vehicles_value",
+        }
+        assert set(spec.outputs) <= set(spec.nonnegative_outputs)
+
     def test_puf_stage_declares_partnership_s_corp_leaves_not_aggregate(self) -> None:
         outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
         assert "partnership_income" in outputs

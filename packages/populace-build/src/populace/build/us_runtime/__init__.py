@@ -481,6 +481,20 @@ from populace.build.us_runtime.sipp_tips import (
     us_sipp_tips_summary,
     with_us_sipp_tip_inputs,
 )
+from populace.build.us_runtime.sipp_vehicles import (
+    SIPP_2023_VEHICLE_DONOR_REVISION,
+    SIPP_2023_VEHICLE_DONOR_SHA256,
+    SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
+    SIPP_2023_VEHICLE_DONOR_URL,
+    US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    US_SIPP_VEHICLE_OUTPUT_COLUMNS,
+    fetch_sipp_2023_vehicle_donor,
+    load_sipp_2023_vehicle_donor,
+    us_sipp_vehicles_signal_gate,
+    us_sipp_vehicles_stage_spec,
+    us_sipp_vehicles_summary,
+    with_us_sipp_vehicle_inputs,
+)
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
     US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN,
@@ -826,6 +840,18 @@ __all__ = [
     "us_sipp_tips_stage_spec",
     "us_sipp_tips_summary",
     "with_us_sipp_tip_inputs",
+    "SIPP_2023_VEHICLE_DONOR_REVISION",
+    "SIPP_2023_VEHICLE_DONOR_SHA256",
+    "SIPP_2023_VEHICLE_DONOR_SIZE_BYTES",
+    "SIPP_2023_VEHICLE_DONOR_URL",
+    "US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS",
+    "US_SIPP_VEHICLE_OUTPUT_COLUMNS",
+    "fetch_sipp_2023_vehicle_donor",
+    "load_sipp_2023_vehicle_donor",
+    "us_sipp_vehicles_signal_gate",
+    "us_sipp_vehicles_stage_spec",
+    "us_sipp_vehicles_summary",
+    "with_us_sipp_vehicle_inputs",
     "BLS_STATE_UNION_REPRESENTATION_RATE_2024",
     "FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES",
     "FLSA_OVERTIME_OCCUPATION_CODES",
@@ -1244,8 +1270,9 @@ US_DONORS: Mapping[str, DonorSpec] = {
         survey="Census SIPP",
         source="https://www.census.gov/programs-surveys/sipp.html",
         notes=(
-            "Household vehicle count and value; vehicle value folds into "
-            "household net worth."
+            "Household vehicle count and value from the pinned full 2023 "
+            "public-use donor. They remain independent policy inputs until "
+            "the full mixed-source net-worth reconciliation is restored."
         ),
     ),
 }

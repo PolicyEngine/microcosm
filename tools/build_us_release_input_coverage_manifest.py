@@ -108,6 +108,11 @@ FARM_BUSINESS_INCOME_INPUTS = (
     "farm_rent_income",
 )
 
+SIPP_VEHICLE_INPUTS = (
+    "household_vehicles_owned",
+    "household_vehicles_value",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -120,6 +125,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
+    *SIPP_VEHICLE_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -690,6 +696,32 @@ REFORM_COVERAGE_PROBES = [
             "scores exactly $0."
         ),
         "issue": "PolicyEngine/populace#252",
+    },
+    {
+        "id": "tx_snap_additional_vehicle_exemption_abolition",
+        "name": "Texas SNAP additional-vehicle exemption abolition",
+        "parameter_changes": {
+            "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption": {
+                "2026-01-01.2100-12-31": 0
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": list(SIPP_VEHICLE_INPUTS),
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Setting the Texas TANF non-cash additional-vehicle exemption "
+            "to zero tightens the asset test used by Texas SNAP categorical "
+            "eligibility, so baseline-minus-reform SNAP must be positive. "
+            "PolicyEngine-US computes the exemption from both household "
+            "vehicle count and value; if either restored SIPP vehicle input "
+            "is absent or degenerate, this vehicle-specific reform loses its "
+            "intended binding channel. A persisted 30,000-household Populace "
+            "smoke scored +$3.58 million in 2026 SNAP."
+        ),
+        "issue": "PolicyEngine/populace#49",
     },
 ]
 

@@ -80,6 +80,9 @@ from populace.build.us_runtime.scf_wealth import (
 from populace.build.us_runtime.sipp_tips import (
     US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.sipp_vehicles import (
+    US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
+)
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -130,7 +133,8 @@ US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS = (
 # presence-only would accept the engine's broadcast-zero defaults and silently
 # return the OBBBA auto-loan provision to a structural zero.
 US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS = (
-    US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS
+    *US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    *US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
 
 

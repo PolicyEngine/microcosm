@@ -547,6 +547,27 @@ def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
     assert args.sipp_tip_donor == Path("pu2023_slim.csv")
 
 
+def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-vehicle-donor",
+            "pu2023.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_vehicle_donor == Path("pu2023.csv")
+
+
 def test_scf_full_extract_override_parses(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setattr(
@@ -2197,6 +2218,51 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "fetch_sipp_2023_vehicle_donor",
+        lambda *args, **kwargs: Path("pu2023.csv"),
+    )
+
+    def fake_load_sipp_vehicle_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_vehicle_donor_path"] = path
+        captured["sipp_vehicle_donor_sha256"] = expected_sha256
+        captured["sipp_vehicle_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_vehicle_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_vehicle_stage_called"] = True
+        captured["sipp_vehicle_seed"] = seed
+        return frame
+
+    def fake_sipp_vehicles_signal_gate(frame):
+        captured["sipp_vehicle_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_vehicles_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_vehicle_donor",
+        fake_load_sipp_vehicle_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_vehicle_inputs",
+        fake_with_sipp_vehicle_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_vehicles_signal_gate",
+        fake_sipp_vehicles_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
         "fetch_sipp_2023_tip_donor",
         lambda *args, **kwargs: Path("pu2023_slim.csv"),
     )
@@ -2451,6 +2517,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_vehicle_donor_sha256"]
+        == builder.SIPP_2023_VEHICLE_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_vehicle_donor_size_bytes"]
+        == builder.SIPP_2023_VEHICLE_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_vehicle_stage_called"] is True
+    assert captured["sipp_vehicle_seed"] == 42
+    assert captured["sipp_vehicle_gate_called"] is True
     assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
     assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
     assert captured["org_stage_called"] is True

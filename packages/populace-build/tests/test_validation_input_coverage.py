@@ -45,6 +45,8 @@ class TestUsSourceStageOutputs:
         # outputs and may no longer hide behind exclusions.
         assert "qualified_tuition_expenses" in outputs
         assert "qualified_passenger_vehicle_loan_interest" in outputs
+        assert "household_vehicles_owned" in outputs
+        assert "household_vehicles_value" in outputs
         assert "traditional_401k_contributions_desired" in outputs
         assert "roth_401k_contributions_desired" in outputs
         assert "traditional_ira_contributions_desired" in outputs

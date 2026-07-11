@@ -64,6 +64,7 @@ from populace.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
+from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
 
 __all__ = [
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
@@ -114,6 +115,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
+        *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",
         *US_QBI_OUTPUT_COLUMNS,

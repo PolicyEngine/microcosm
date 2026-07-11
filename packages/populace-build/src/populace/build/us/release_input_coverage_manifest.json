@@ -172,14 +172,10 @@
    "status": "required"
   },
   "household_vehicles_owned": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "household_vehicles_value": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "household_weight": {
    "issue": "PolicyEngine/populace#38",
@@ -578,8 +574,8 @@
   }
  },
  "counts": {
-  "required": 126,
-  "reviewed_exclusion": 39,
+  "required": 128,
+  "reviewed_exclusion": 37,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -1079,6 +1075,26 @@
    },
    "period": 2026,
    "reason": "Setting the OBBBA auto-loan-interest deduction cap to zero removes the deduction, so reform income tax rises and baseline-minus-reform must be negative in 2026. With qualified passenger-vehicle loan interest absent or degenerate, the repeal scores exactly $0."
+  },
+  {
+   "binding_inputs": [
+    "household_vehicles_owned",
+    "household_vehicles_value"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "tx_snap_additional_vehicle_exemption_abolition",
+   "issue": "PolicyEngine/populace#49",
+   "min_abs_effect": 1000000.0,
+   "name": "Texas SNAP additional-vehicle exemption abolition",
+   "parameter_changes": {
+    "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption": {
+     "2026-01-01.2100-12-31": 0
+    }
+   },
+   "period": 2026,
+   "reason": "Setting the Texas TANF non-cash additional-vehicle exemption to zero tightens the asset test used by Texas SNAP categorical eligibility, so baseline-minus-reform SNAP must be positive. PolicyEngine-US computes the exemption from both household vehicle count and value; if either restored SIPP vehicle input is absent or degenerate, this vehicle-specific reform loses its intended binding channel. A persisted 30,000-household Populace smoke scored +$3.58 million in 2026 SNAP."
   }
  ],
  "schema_version": 1,

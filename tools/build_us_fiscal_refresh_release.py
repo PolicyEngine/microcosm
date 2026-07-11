@@ -48,6 +48,8 @@ from populace.build.us_runtime import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
     SIPP_2023_TIP_DONOR_SHA256,
+    SIPP_2023_VEHICLE_DONOR_SHA256,
+    SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -64,12 +66,14 @@ from populace.build.us_runtime import (
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
     fetch_sipp_2023_tip_donor,
+    fetch_sipp_2023_vehicle_donor,
     hard_target_package_aliases,
     load_congressional_district_vintage_crosswalk,
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
+    load_sipp_2023_vehicle_donor,
     us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
     us_child_support_signal_gate,
@@ -95,6 +99,7 @@ from populace.build.us_runtime import (
     us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_tips_signal_gate,
+    us_sipp_vehicles_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
@@ -116,6 +121,7 @@ from populace.build.us_runtime import (
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_tip_inputs,
+    with_us_sipp_vehicle_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
@@ -901,6 +907,15 @@ def _parse_args() -> argparse.Namespace:
             "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
             "feeds tip_income and Treasury tipped-occupation coverage. When "
             "omitted the immutable donor revision is fetched and verified."
+        ),
+    )
+    parser.add_argument(
+        "--sipp-vehicle-donor",
+        type=Path,
+        help=(
+            "Optional local path to the sha-pinned full SIPP 2023 public-use "
+            "file that feeds household vehicle count and value. When omitted "
+            "the immutable donor revision is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -6347,6 +6362,48 @@ def main() -> None:
             + "; ".join(
                 f"SCF auto-loan signal failed: {failure}"
                 for failure in scf_auto_loan_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "sipp_vehicle_inputs",
+            message=(
+                "Imputing household vehicle count and value from the "
+                "sha-pinned full SIPP 2023 donor."
+            ),
+        )
+    sipp_vehicle_donor_path = (
+        Path(args.sipp_vehicle_donor)
+        if args.sipp_vehicle_donor is not None
+        else fetch_sipp_2023_vehicle_donor()
+    )
+    sipp_vehicle_donor = load_sipp_2023_vehicle_donor(
+        sipp_vehicle_donor_path,
+        expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
+    )
+    base_frame = with_us_sipp_vehicle_inputs(
+        base_frame,
+        # The retired MicroImpute model pins both forests to seed 42.
+        seed=42,
+        time_period=PERIOD,
+        sipp_donor=sipp_vehicle_donor,
+    )
+    sipp_vehicles_gate = us_sipp_vehicles_signal_gate(base_frame)
+    if not sipp_vehicles_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "sipp_vehicles_gate",
+                status="failed",
+                message="SIPP-vehicle signal gate failed.",
+                failures=list(sipp_vehicles_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SIPP-vehicle signal failed: {failure}"
+                for failure in sipp_vehicles_gate.failures
             )
         )
     if telemetry is not None:
