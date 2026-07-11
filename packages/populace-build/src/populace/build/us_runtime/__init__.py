@@ -200,6 +200,25 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puma_ladder import (
+    PUMA_LADDER_ARTIFACT_SHA256_ATTR,
+    PUMA_LADDER_VINTAGES_ATTR,
+    US_PUMA_LADDER_COLUMNS,
+    US_PUMA_LADDER_DERIVED_LAYERS,
+    US_PUMA_LADDER_KIND,
+    US_PUMA_LADDER_SCHEMA_VERSION,
+    US_PUMA_LADDER_TRACT_COLUMN,
+    UsPumaLadder,
+    assign_us_puma_ladder,
+    load_us_puma_ladder,
+    us_puma_ladder_assignment_summary,
+    us_puma_ladder_gate,
+    with_household_us_puma_ladder,
+)
+from populace.build.us_runtime.puma_ladder_sources import (
+    assemble_us_puma_ladder,
+    parse_tract_to_puma_relationship,
+)
 from populace.build.us_runtime.reform_coverage_smoke import (
     us_reform_coverage_smoke_gate,
 )
@@ -545,6 +564,21 @@ __all__ = [
     "validation_only_family_ids",
     "translate_congressional_district_facts_to_current_vintage",
     "with_household_congressional_districts",
+    "PUMA_LADDER_ARTIFACT_SHA256_ATTR",
+    "PUMA_LADDER_VINTAGES_ATTR",
+    "US_PUMA_LADDER_COLUMNS",
+    "US_PUMA_LADDER_DERIVED_LAYERS",
+    "US_PUMA_LADDER_KIND",
+    "US_PUMA_LADDER_SCHEMA_VERSION",
+    "US_PUMA_LADDER_TRACT_COLUMN",
+    "UsPumaLadder",
+    "assemble_us_puma_ladder",
+    "assign_us_puma_ladder",
+    "load_us_puma_ladder",
+    "parse_tract_to_puma_relationship",
+    "us_puma_ladder_assignment_summary",
+    "us_puma_ladder_gate",
+    "with_household_us_puma_ladder",
 ]
 
 
