@@ -44,8 +44,82 @@
       }
     },
     "financial_assistance": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1493-1496 derives person-level financial_assistance directly from FIN_VAL; datasets/cps/census_cps.py lines 39-58 and 306-359 make FIN_VAL a required person source. All three SHA-recorded 2022-2024 ASEC H5 inputs consumed by the hermetic --asec-h5 build omit FIN_VAL, FIN_YN, and I_FINVAL from their person tables. HFINVAL and FFINVAL are household/family aggregates and cannot recover the person recipient without synthetic allocation. The retired PUF-clone QRF at datasets/cps/extended_cps.py lines 140-194 and 639-745 trains financial_assistance from CPS person observations, so PUF provides no independent replacement source.",
+      "issue": "PolicyEngine/populace#38",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1493-1496"
+        },
+        "required_person_loader_source": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "lines": "39-58,306-359"
+        },
+        "puf_clone_qrf": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "lines": "140-194,639-745",
+          "target_line": 166
+        },
+        "no_independent_puf_source": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "tax_detail_target_lines": "90-149,158-198",
+          "financial_assistance_occurrences": 0
+        },
+        "required_person_columns": ["FIN_VAL"],
+        "missing_person_context_columns": ["FIN_YN", "I_FINVAL"],
+        "official_variable_dictionary": {
+          "url": "https://api.census.gov/data/2024/cps/asec/mar/variables.html",
+          "FIN_VAL": {"entity": "person", "label": "Financial assistance income amount"},
+          "HFINVAL": {"entity": "household", "label": "Financial assistance amount - Household"},
+          "FFINVAL": {"entity": "family", "label": "Financial assistance amount - Family"}
+        },
+        "policyengine_variable": {
+          "version": "1.764.6",
+          "entity": "person",
+          "definition_period": "year",
+          "documentation": "Cash financial assistance from outside the household."
+        },
+        "semantic_non_substitutes": {
+          "HFINVAL": "Household aggregate; it does not identify the recipient person or preserve allocation when household members belong to different program units.",
+          "FFINVAL": "Family aggregate; it does not identify the recipient person or preserve allocation when family members belong to different program units.",
+          "rejection": "Assigning an aggregate to a head or first member, or splitting it among members, would synthesize a person-level allocation that the locked source does not report."
+        },
+        "hermetic_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "missing_person_columns": ["FIN_VAL", "FIN_YN", "I_FINVAL"],
+            "present_household_columns": ["HFINVAL", "HFIN_YN"],
+            "present_family_columns": ["FFINVAL", "FINC_FIN"],
+            "positive_multi_person_families": 374
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "missing_person_columns": ["FIN_VAL", "FIN_YN", "I_FINVAL"],
+            "present_household_columns": ["HFINVAL", "HFIN_YN"],
+            "present_family_columns": ["FFINVAL", "FINC_FIN"],
+            "positive_multi_person_families": 393
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "missing_person_columns": ["FIN_VAL", "FIN_YN", "I_FINVAL"],
+            "present_household_columns": ["HFINVAL", "HFIN_YN"],
+            "present_family_columns": ["FFINVAL", "FINC_FIN"],
+            "positive_multi_person_families": 440
+          }
+        ],
+        "aggregate_identity": "For every locked artifact, HFINVAL equals the household sum of FFINVAL; neither aggregate identifies a recipient person.",
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes only the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; tools/build_us_puf_support_base.py lines 85-88 and 659-699 consumes only those mappings; packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 61-75 reads the prebuilt person/household tables without refreshing omitted Census columns."
+      }
     },
     "household_vehicles_owned": {
       "reason": "Vehicle-ownership / auto-loan input (populace#49 cites us-data #267/#281; see also #252 for the OBBBA auto-loan deduction); not yet on the frame.",

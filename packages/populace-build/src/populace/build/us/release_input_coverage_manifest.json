@@ -102,7 +102,7 @@
   },
   "financial_assistance": {
    "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1493-1496 derives person-level financial_assistance directly from FIN_VAL; datasets/cps/census_cps.py lines 39-58 and 306-359 make FIN_VAL a required person source. All three SHA-recorded 2022-2024 ASEC H5 inputs consumed by the hermetic --asec-h5 build omit FIN_VAL, FIN_YN, and I_FINVAL from their person tables. HFINVAL and FFINVAL are household/family aggregates and cannot recover the person recipient without synthetic allocation. The retired PUF-clone QRF at datasets/cps/extended_cps.py lines 140-194 and 639-745 trains financial_assistance from CPS person observations, so PUF provides no independent replacement source.",
    "status": "reviewed_exclusion"
   },
   "first_home_mortgage_balance": {
