@@ -56,3 +56,11 @@
   resolved donor-channel provenance, and aligned preflight channel selection
   with transfer. Checks: Ruff clean; 57 pool, native-mapping, and transfer
   tests pass.
+- 2026-07-10 — Hermetic acquisition milestone (this milestone commit): pinned
+  the official 2024 1-Year national `csv_hus.zip` (251,500,587 bytes;
+  SHA-256 `8281008e…e515d0`) and `csv_pus.zip` (602,847,146 bytes; SHA-256
+  `afdc6d90…469894`). Added bounded streaming, timeout/size enforcement,
+  unique verified temporaries, atomic cache replacement, strict manifest
+  validation, and a repository-ignored default cache. Hosted hashing verified
+  the full archives; the local sandbox DNS blocked cache materialization and
+  left no partial file. Checks: Ruff clean; 13 acquisition tests pass.

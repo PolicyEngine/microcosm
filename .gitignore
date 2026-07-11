@@ -7,6 +7,7 @@ __pycache__/
 dist/
 build/
 out/
+/inputs/
 *.h5
 !packages/*/build/
 # populace.build is a real namespace package, not a build-artifact dir
