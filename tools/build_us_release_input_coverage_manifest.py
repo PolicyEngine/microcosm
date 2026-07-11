@@ -97,6 +97,8 @@ CHILD_SUPPORT_INPUTS = (
     "child_support_expense",
 )
 
+DISABILITY_BENEFITS_INPUTS = ("disability_benefits",)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -105,6 +107,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "alimony_income",
     "casualty_loss",
     *CHILD_SUPPORT_INPUTS,
+    *DISABILITY_BENEFITS_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -370,6 +373,46 @@ REFORM_COVERAGE_PROBES = [
             "leaf, abolition is a structural zero."
         ),
         "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "disability_benefits_snap_exclusion",
+        "name": "Exclude disability benefits from SNAP unearned income",
+        "parameter_changes": {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "child_support_received",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2024,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["disability_benefits"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only disability_benefits from SNAP unearned-income "
+            "sources lowers countable income and must increase SNAP for some "
+            "recipients. Without the measured/QRF non-workers-compensation "
+            "benefit leaf, the source-list reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#38",
     },
     {
         "id": "alimony_expense_ald_abolition",

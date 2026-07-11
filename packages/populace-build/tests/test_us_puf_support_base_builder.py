@@ -456,12 +456,22 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
     assert exc.value.code == 2
 
 
-def test_main_runs_child_support_before_clone_and_after_puf_then_fails_gate(
+@pytest.mark.parametrize(
+    ("failing_gate", "failure_message"),
+    [
+        ("child_support", "PUF child-support channel is default-only"),
+        ("disability_benefits", "PUF disability-benefits channel is default-only"),
+    ],
+)
+def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    failing_gate: str,
+    failure_message: str,
 ) -> None:
     builder = _load_support_builder_module()
-    calls: list[tuple[object, int, int]] = []
+    child_support_calls: list[tuple[object, int, int]] = []
+    disability_benefits_calls: list[tuple[object, int, int]] = []
 
     monkeypatch.setattr(
         builder,
@@ -486,10 +496,22 @@ def test_main_runs_child_support_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
 
     def fake_child_support(frame, *, seed, time_period):
-        calls.append((frame, seed, time_period))
+        child_support_calls.append((frame, seed, time_period))
         return "child-support-direct" if frame == "cps" else "child-support-puf"
 
     monkeypatch.setattr(builder, "with_us_child_support_inputs", fake_child_support)
+
+    def fake_disability_benefits(frame, *, seed, time_period):
+        disability_benefits_calls.append((frame, seed, time_period))
+        if frame == "child-support-direct":
+            return "disability-benefits-direct"
+        return "disability-benefits-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_disability_benefits",
+        fake_disability_benefits,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_childcare_inputs",
@@ -542,17 +564,42 @@ def test_main_runs_child_support_before_clone_and_after_puf_then_fails_gate(
             "Gate",
             (),
             {
-                "passed": False,
-                "failures": ("PUF channel is default-only",),
+                "passed": failing_gate != "child_support",
+                "failures": (
+                    ("PUF child-support channel is default-only",)
+                    if failing_gate == "child_support"
+                    else ()
+                ),
+                "details": {},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_disability_benefits_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "disability_benefits",
+                "failures": (
+                    ("PUF disability-benefits channel is default-only",)
+                    if failing_gate == "disability_benefits"
+                    else ()
+                ),
                 "details": {},
             },
         )(),
     )
 
-    with pytest.raises(SystemExit, match="PUF channel is default-only"):
+    with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
-    assert calls == [
+    assert child_support_calls == [
         ("cps", 7, 2024),
         ("qbi-reconciled", 7, 2024),
     ]
+    expected_disability_calls = [("child-support-direct", 7, 2024)]
+    if failing_gate == "disability_benefits":
+        expected_disability_calls.append(("child-support-puf", 7, 2024))
+    assert disability_benefits_calls == expected_disability_calls

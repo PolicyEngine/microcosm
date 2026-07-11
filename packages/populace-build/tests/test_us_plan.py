@@ -15,6 +15,7 @@ from populace.build.source_manifest import (
 from populace.build.us_runtime import (
     US_CHILD_SUPPORT_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
+    US_DISABILITY_BENEFITS_STAGE_NAME,
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_PUF_SUPPORT_STAGE_NAME,
@@ -203,8 +204,61 @@ class TestUsSources:
             US_CHILD_SUPPORT_STAGE_NAME
         )
         assert US_STAGE_NAMES.index(US_CHILD_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
-            "education_inputs"
+            US_DISABILITY_BENEFITS_STAGE_NAME
         )
+        assert US_STAGE_NAMES.index(
+            US_DISABILITY_BENEFITS_STAGE_NAME
+        ) < US_STAGE_NAMES.index("education_inputs")
+
+    def test_disability_benefits_stage_pins_direct_formula_and_puf_imputation(
+        self,
+    ) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_DISABILITY_BENEFITS_STAGE_NAME]
+
+        assert stage.survey == "Census CPS ASEC"
+        assert stage.source == "https://www.census.gov/programs-surveys/cps.html"
+        assert stage.grain == "person"
+        assert stage.outputs == ("disability_benefits",)
+        assert stage.nonnegative_outputs == stage.outputs
+
+        operations = {operation.kind: operation for operation in stage.operations}
+        assert tuple(operations) == (
+            "read_table",
+            "derive_disability_benefits",
+            "impute_disability_benefits_to_puf_support",
+        )
+        assert operations["read_table"].parameters == {
+            "table": "person",
+            "weight": "person_weight",
+        }
+        assert operations["derive_disability_benefits"].parameters == {
+            "first_amount_source": "DIS_VAL1",
+            "first_code_source": "DIS_SC1",
+            "second_amount_source": "DIS_VAL2",
+            "second_code_source": "DIS_SC2",
+            "workers_compensation_code": 1,
+            "output": "disability_benefits",
+        }
+        assert operations["impute_disability_benefits_to_puf_support"].parameters == {
+            "predictors": [
+                "age",
+                "is_male",
+                "has_esi",
+                "tax_unit_is_joint",
+                "tax_unit_count_dependents",
+                "employment_income",
+                "self_employment_income",
+                "social_security",
+            ],
+            "max_train_samples": 5_000,
+            "n_estimators": 100,
+            "seed_from_build_config": True,
+            "weight": "person_weight",
+        }
+
+        donor = US_DONORS[US_DISABILITY_BENEFITS_STAGE_NAME]
+        assert donor.survey == stage.survey
+        assert donor.source == stage.source
 
     def test_child_support_stage_declares_direct_carry_and_joint_puf_imputation(
         self,

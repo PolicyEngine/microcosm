@@ -48,6 +48,9 @@ from typing import Any
 
 from populace.build.gates import GateResult, input_column_coverage_gate
 from populace.build.us_runtime.child_support import US_CHILD_SUPPORT_OUTPUT_COLUMNS
+from populace.build.us_runtime.disability_benefits import (
+    US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.domestic_production import (
     US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
 )
@@ -97,6 +100,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "alimony_income",
         "casualty_loss",
         *US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+        *US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",

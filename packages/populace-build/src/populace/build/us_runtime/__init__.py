@@ -121,6 +121,23 @@ from populace.build.us_runtime.demographics import (
     demographics_payload,
     write_demographics,
 )
+from populace.build.us_runtime.disability_benefits import (
+    DISABILITY_BENEFITS_ARCHIVED_DERIVATION_URL,
+    DISABILITY_BENEFITS_ARCHIVED_PUF_IMPUTATION_URL,
+    DISABILITY_BENEFITS_ARCHIVED_PUF_OUTPUTS_URL,
+    DISABILITY_BENEFITS_ARCHIVED_SOURCE_COLUMNS_URL,
+    US_DISABILITY_BENEFITS_NONCONSTANT_PERSON_COLUMNS,
+    US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
+    US_DISABILITY_BENEFITS_REQUIRED_SOURCE_COLUMNS,
+    US_DISABILITY_BENEFITS_STAGE_NAME,
+    derive_us_disability_benefits_from_asec,
+    derive_us_disability_benefits_from_manifest,
+    impute_us_disability_benefits_to_puf_support_from_manifest,
+    us_disability_benefits_signal_gate,
+    us_disability_benefits_stage_spec,
+    us_disability_benefits_summary,
+    with_us_disability_benefits,
+)
 from populace.build.us_runtime.domestic_production import (
     DOMESTIC_PRODUCTION_ALD_ARCHIVED_DERIVATION_URL,
     DOMESTIC_PRODUCTION_ALD_ARCHIVED_EXPORT_URL,
@@ -633,6 +650,21 @@ __all__ = [
     "us_child_support_stage_spec",
     "us_child_support_summary",
     "with_us_child_support_inputs",
+    "DISABILITY_BENEFITS_ARCHIVED_DERIVATION_URL",
+    "DISABILITY_BENEFITS_ARCHIVED_PUF_IMPUTATION_URL",
+    "DISABILITY_BENEFITS_ARCHIVED_PUF_OUTPUTS_URL",
+    "DISABILITY_BENEFITS_ARCHIVED_SOURCE_COLUMNS_URL",
+    "US_DISABILITY_BENEFITS_NONCONSTANT_PERSON_COLUMNS",
+    "US_DISABILITY_BENEFITS_OUTPUT_COLUMNS",
+    "US_DISABILITY_BENEFITS_REQUIRED_SOURCE_COLUMNS",
+    "US_DISABILITY_BENEFITS_STAGE_NAME",
+    "derive_us_disability_benefits_from_asec",
+    "derive_us_disability_benefits_from_manifest",
+    "impute_us_disability_benefits_to_puf_support_from_manifest",
+    "us_disability_benefits_signal_gate",
+    "us_disability_benefits_stage_spec",
+    "us_disability_benefits_summary",
+    "with_us_disability_benefits",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -1048,6 +1080,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "on the PUF support half using the archived predictor subset."
         ),
     ),
+    US_DISABILITY_BENEFITS_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured annual DIS_VAL1/DIS_VAL2 benefits are retained only "
+            "when their source code is not workers' compensation. After PUF "
+            "tax-detail imputation, an ASEC-trained weighted QRF replaces the "
+            "CPS-only person leaf on the PUF support half."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -1127,6 +1169,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     US_CHILD_SUPPORT_STAGE_NAME,
+    US_DISABILITY_BENEFITS_STAGE_NAME,
     US_EDUCATION_INPUTS_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",

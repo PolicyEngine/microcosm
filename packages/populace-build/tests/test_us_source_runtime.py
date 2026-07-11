@@ -23,9 +23,11 @@ from populace.build.us_runtime.source_runtime import (
     calibrate_us_binary_assignment_from_manifest,
     calibrate_us_binary_assignment_joint_targets_from_manifest,
     derive_us_child_support_from_manifest,
+    derive_us_disability_benefits_from_manifest,
     derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     impute_us_child_support_to_puf_support_from_manifest,
+    impute_us_disability_benefits_to_puf_support_from_manifest,
     us_source_operation_handlers,
 )
 
@@ -118,6 +120,19 @@ def test_us_child_support_handlers_are_in_shared_registry() -> None:
     assert (
         handlers["impute_child_support_to_puf_support"]
         is impute_us_child_support_to_puf_support_from_manifest
+    )
+
+
+def test_us_disability_benefits_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_disability_benefits"]
+        is derive_us_disability_benefits_from_manifest
+    )
+    assert (
+        handlers["impute_disability_benefits_to_puf_support"]
+        is impute_us_disability_benefits_to_puf_support_from_manifest
     )
 
 

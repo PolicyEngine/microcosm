@@ -492,6 +492,11 @@ class TestShippedManifest:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
 
+    def test_disability_benefits_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "disability_benefits" in manifest.required_columns
+        assert "disability_benefits" not in manifest.reviewed_exclusions
+
     def test_qbi_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in US_QBI_OUTPUT_COLUMNS:
@@ -698,6 +703,44 @@ class TestShippedManifest:
                     "snap_dependent_care_deduction",
                     "snap_excess_medical_expense_deduction",
                     "snap_excess_shelter_expense_deduction",
+                ]
+            }
+        }
+
+    def test_shipped_disability_probe_removes_only_snap_unearned_source(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "disability_benefits_snap_exclusion"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("disability_benefits",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "child_support_received",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
                 ]
             }
         }

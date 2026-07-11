@@ -47,6 +47,7 @@ from populace.build.us_runtime import (
     us_casualty_loss_signal_gate,
     us_child_support_signal_gate,
     us_childcare_signal_gate,
+    us_disability_benefits_signal_gate,
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
     us_geography_ladder_assignment_summary,
@@ -59,6 +60,7 @@ from populace.build.us_runtime import (
     with_household_us_geography_ladder,
     with_us_child_support_inputs,
     with_us_childcare_inputs,
+    with_us_disability_benefits,
     with_us_education_inputs,
     with_us_immigration_inputs,
     with_us_qbi_input_reconciliation,
@@ -211,6 +213,11 @@ def main() -> None:
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_disability_benefits(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_childcare_inputs(
         base,
         seed=args.seed,
@@ -257,6 +264,17 @@ def main() -> None:
         raise SystemExit(
             "Child-support signal gate failed:\n  "
             + "\n  ".join(child_support_gate.failures)
+        )
+    imputed = with_us_disability_benefits(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    disability_benefits_gate = us_disability_benefits_signal_gate(imputed)
+    if not disability_benefits_gate.passed:
+        raise SystemExit(
+            "Disability-benefits signal gate failed:\n  "
+            + "\n  ".join(disability_benefits_gate.failures)
         )
     imputed = with_us_childcare_inputs(
         imputed,
@@ -443,6 +461,11 @@ def main() -> None:
             "passed": child_support_gate.passed,
             "failures": list(child_support_gate.failures),
             "details": dict(child_support_gate.details),
+        },
+        "disability_benefits_signal": {
+            "passed": disability_benefits_gate.passed,
+            "failures": list(disability_benefits_gate.failures),
+            "details": dict(disability_benefits_gate.details),
         },
         "childcare_inputs_signal": {
             "passed": childcare_gate.passed,

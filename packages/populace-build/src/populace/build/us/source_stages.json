@@ -427,6 +427,61 @@
       "notes": "Measured annual ASEC CSP_VAL carries directly to child_support_received and positive annual CHSP_VAL carries directly to child_support_expense (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1493-1496 and 1572-1574). After PUF tax-detail imputation, one joint person-grain QRF uses the exact archived eight-predictor subset and at most 5,000 ASEC training people to replace both leaves on the PUF support half (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
     },
     {
+      "stage": "disability_benefits_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year and prior year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person DIS_VAL1, DIS_SC1, DIS_VAL2, and DIS_SC2 fields"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_disability_benefits",
+          "first_amount_source": "DIS_VAL1",
+          "first_code_source": "DIS_SC1",
+          "second_amount_source": "DIS_VAL2",
+          "second_code_source": "DIS_SC2",
+          "workers_compensation_code": 1,
+          "output": "disability_benefits"
+        },
+        {
+          "kind": "impute_disability_benefits_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "disability_benefits"
+      ],
+      "nonnegative_outputs": [
+        "disability_benefits"
+      ],
+      "notes": "The retired ASEC derivation sums annual DIS_VAL1 and DIS_VAL2 only when the corresponding DIS_SC source code is not 1 (workers' compensation), keeping Social Security disability and workers' compensation in their separate leaves (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1561-1571). After PUF tax-detail imputation, the CPS-only output is replaced on the PUF support half using the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). The archive did not explicitly pin the QRF tree count; Populace pins 100 trees and typed person weights as reproducibility hardening."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",
