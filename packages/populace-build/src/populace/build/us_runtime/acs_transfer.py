@@ -47,6 +47,7 @@ __all__ = [
     "ACS_DONOR_CHANNEL_AUTO",
     "ACS_DEFERRED_GEOGRAPHY_INPUTS",
     "ACS_GROUP_TRANSFER_PREDICTORS",
+    "DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT",
     "ACS_NATIVE_PERSON_INPUTS",
     "ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS",
     "ACS_PERSON_TRANSFER_PREDICTORS",
@@ -67,6 +68,11 @@ ASEC_PUF_DONOR_SPINE = "asec_puf"
 # resolves to the PUF channel; an unchanneled donor is used as-is. Explicit
 # ``None`` remains the deliberate whole-donor escape hatch.
 ACS_DONOR_CHANNEL_AUTO = "auto"
+
+# QRF retains one gated forest set per target in a fitted family. Bounding the
+# chain length keeps production transfer below the launch worker's memory
+# budget while continuing to use populace-fit's canonical chained QRF API.
+DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT = 8
 
 # Required, always-observed ACS predictors. State is broadcast from the
 # household table so every imputation is conditioned on the ACS record's real
@@ -388,6 +394,7 @@ def transfer_acs_inputs(
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
     n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -395,6 +402,11 @@ def transfer_acs_inputs(
     family is split into recipient optional-predictor availability patterns.
     Every pattern gets a separately seeded QRF fit on donor rows finite for
     exactly the predictors that pattern observes.
+
+    Families wider than ``max_targets_per_fit`` are deterministically split
+    into bounded chained-QRF batches so fitted forests cannot grow linearly
+    across the full model-input inventory. Joint categorical codecs remain in
+    one batch even when their two exported columns cross the nominal limit.
 
     ``donor_channel="auto"`` is the safe default: it selects
     ``puf_tax_detail`` when support metadata exists and otherwise uses an
@@ -404,7 +416,11 @@ def transfer_acs_inputs(
     """
 
     _validate_frames(recipient, donor)
-    _validate_fit_options(seed=seed, n_estimators=n_estimators)
+    _validate_fit_options(
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+    )
     default_plan = target_families is None
     deferred_inputs = (
         tuple(sorted(ACS_DEFERRED_GEOGRAPHY_INPUTS)) if default_plan else ()
@@ -414,6 +430,10 @@ def transfer_acs_inputs(
         if target_families is not None
         else default_acs_transfer_target_families(donor),
         recipient=recipient,
+    )
+    requested = _split_large_target_families(
+        requested,
+        max_targets_per_fit=max_targets_per_fit,
     )
     if not requested:
         return AcsTransferResult(
@@ -1103,7 +1123,12 @@ def _validate_frames(recipient: Frame, donor: Frame) -> None:
         raise ValueError("ACS recipient and donor must use the same entity schema.")
 
 
-def _validate_fit_options(*, seed: int, n_estimators: int) -> None:
+def _validate_fit_options(
+    *,
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+) -> None:
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError(f"seed must be a non-negative integer, got {seed!r}.")
     if (
@@ -1113,6 +1138,15 @@ def _validate_fit_options(*, seed: int, n_estimators: int) -> None:
     ):
         raise ValueError(
             f"n_estimators must be a positive integer, got {n_estimators!r}."
+        )
+    if (
+        isinstance(max_targets_per_fit, bool)
+        or not isinstance(max_targets_per_fit, int)
+        or max_targets_per_fit <= 0
+    ):
+        raise ValueError(
+            "max_targets_per_fit must be a positive integer, got "
+            f"{max_targets_per_fit!r}."
         )
 
 
@@ -1184,6 +1218,51 @@ def _normalize_target_families(
             if targets:
                 normalized.append((entity, family, targets))
     return normalized
+
+
+def _split_large_target_families(
+    families: Sequence[tuple[str, str, tuple[str, ...]]],
+    *,
+    max_targets_per_fit: int,
+) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Bound retained QRF forests without separating joint categorical codecs."""
+
+    bounded: list[tuple[str, str, tuple[str, ...]]] = []
+    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
+    for entity, family, targets in families:
+        atoms: list[tuple[str, ...]] = []
+        pair_added = False
+        for target in targets:
+            if target in immigration_pair and immigration_pair.issubset(targets):
+                if not pair_added:
+                    atoms.append(_IMMIGRATION_STATUS_TARGETS)
+                    pair_added = True
+                continue
+            atoms.append((target,))
+
+        batches: list[tuple[str, ...]] = []
+        current: list[str] = []
+        for atom in atoms:
+            if current and len(current) + len(atom) > max_targets_per_fit:
+                batches.append(tuple(current))
+                current = []
+            current.extend(atom)
+        if current:
+            batches.append(tuple(current))
+
+        if len(batches) == 1:
+            bounded.append((entity, family, batches[0]))
+            continue
+        width = len(str(len(batches)))
+        bounded.extend(
+            (
+                entity,
+                f"{family}__batch_{position:0{width}d}",
+                batch,
+            )
+            for position, batch in enumerate(batches, start=1)
+        )
+    return bounded
 
 
 def _missing_target_families(

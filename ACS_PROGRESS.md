@@ -61,6 +61,18 @@
   SHA-256 `8281008e…e515d0`) and `csv_pus.zip` (602,847,146 bytes; SHA-256
   `afdc6d90…469894`). Added bounded streaming, timeout/size enforcement,
   unique verified temporaries, atomic cache replacement, strict manifest
-  validation, and a repository-ignored default cache. Hosted hashing verified
-  the full archives; the local sandbox DNS blocked cache materialization and
-  left no partial file. Checks: Ruff clean; 13 acquisition tests pass.
+  validation, and a repository-ignored content-addressed cache. Hosted hashing
+  verified the full archives; the local sandbox DNS blocked cache
+  materialization and left no partial file. Checks: Ruff clean; 14 acquisition
+  tests pass.
+- 2026-07-10 — Multispine staging milestone (this milestone commit): wired
+  acquire/load/map/transfer/pool orchestration and a standalone nullable H5
+  staging builder. The builder gates the selected donor channel before
+  download, validates every planned ACS transfer, audits native/deferred input
+  nulls, bounds retained QRF forests to eight targets per fit, records fit
+  configuration and weights, releases the donor before a separate 30 GB
+  export preflight, and round-trips fixed-format nullable tables one at a time.
+  Group-quarters tenure/rent gaps and sub-PUMA geography remain explicit and
+  the summary marks the artifact non-simulation-ready until downstream
+  geography allocation/calibration. Checks: Ruff clean; 19 integration and
+  staging-writer tests pass.

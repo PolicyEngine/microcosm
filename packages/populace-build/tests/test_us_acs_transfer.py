@@ -469,11 +469,11 @@ def test_default_transfer_preserves_native_fields_and_registers_added_inputs() -
     assert {record.weight_kind for record in result.fit_records} == {"calibrated"}
     fit_names = {record.fit_name for record in result.fit_records}
     for prefix in (
-        "acs_transfer:person:benefit_participation:pattern_",
-        "acs_transfer:person:housing:pattern_",
-        "acs_transfer:person:puf_tax_itemization:pattern_",
-        "acs_transfer:tax_unit:benefit_participation:pattern_",
-        "acs_transfer:tax_unit:puf_tax_itemization:pattern_",
+        "acs_transfer:person:benefit_participation",
+        "acs_transfer:person:housing",
+        "acs_transfer:person:puf_tax_itemization",
+        "acs_transfer:tax_unit:benefit_participation",
+        "acs_transfer:tax_unit:puf_tax_itemization",
     ):
         assert any(name.startswith(prefix) for name in fit_names)
 
@@ -582,13 +582,16 @@ def test_default_transfer_adds_every_donor_observed_required_model_input(
         donor,
         seed=4,
         n_estimators=1,
+        max_targets_per_fit=1,
     )
 
     person = result.frame.person
     assert required.issubset(person.columns)
     assert {entry.column for entry in result.imputed_inputs}.issuperset(required)
     required_families = {
-        entry.family for entry in result.imputed_inputs if entry.column in required
+        entry.family.split("__batch_", 1)[0]
+        for entry in result.imputed_inputs
+        if entry.column in required
     }
     assert required_families == {
         "model_required_boolean",
@@ -622,6 +625,40 @@ def test_default_transfer_adds_every_donor_observed_required_model_input(
         and "immigration_status_str" not in call["targets"]
         for call in joint_calls
     )
+
+
+def test_large_target_family_is_split_to_bound_retained_qrf_forests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    targets = tuple(f"wide_target_{index:02d}" for index in range(11))
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            target: np.arange(8, dtype=np.float64) + index
+            for index, target in enumerate(targets)
+        },
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        _recipient_frame(),
+        donor,
+        target_families={"person": {"wide_numeric": targets}},
+        n_estimators=1,
+        max_targets_per_fit=3,
+    )
+
+    assert set(targets).issubset(result.frame.person.columns)
+    assert max(len(call["targets"].columns) for call in _MeanQRF.calls) <= 3
+    families = {entry.family for entry in result.imputed_inputs}
+    assert families == {
+        "wide_numeric__batch_1",
+        "wide_numeric__batch_2",
+        "wide_numeric__batch_3",
+        "wide_numeric__batch_4",
+    }
 
 
 def test_discrete_year_predictions_snap_to_observed_donor_support(
