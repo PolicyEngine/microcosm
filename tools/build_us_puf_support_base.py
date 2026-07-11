@@ -61,6 +61,7 @@ from populace.build.us_runtime import (
     us_qbi_inputs_signal_gate,
     us_relationship_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
+    us_retirement_distributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_child_support_inputs,
@@ -71,6 +72,7 @@ from populace.build.us_runtime import (
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
+    with_us_retirement_distribution_inputs,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
@@ -245,6 +247,11 @@ def main() -> None:
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_retirement_distribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -355,6 +362,17 @@ def main() -> None:
         raise SystemExit(
             "Retirement-contribution signal gate failed:\n  "
             + "\n  ".join(retirement_contributions_gate.failures)
+        )
+    imputed = with_us_retirement_distribution_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
+    if not retirement_distributions_gate.passed:
+        raise SystemExit(
+            "Retirement-distribution signal gate failed:\n  "
+            + "\n  ".join(retirement_distributions_gate.failures)
         )
     imputed = with_us_education_inputs(
         imputed,
@@ -557,6 +575,11 @@ def main() -> None:
             "passed": retirement_contributions_gate.passed,
             "failures": list(retirement_contributions_gate.failures),
             "details": dict(retirement_contributions_gate.details),
+        },
+        "retirement_distributions_signal": {
+            "passed": retirement_distributions_gate.passed,
+            "failures": list(retirement_distributions_gate.failures),
+            "details": dict(retirement_distributions_gate.details),
         },
         "relationship_inputs_signal": {
             "passed": relationship_inputs_gate.passed,

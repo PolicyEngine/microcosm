@@ -463,6 +463,10 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("disability_benefits", "PUF disability-benefits channel is default-only"),
         ("educator_expense", "PUF educator-expense channel is default-only"),
         ("form_4952", "PUF Form 4952 channel is default-only"),
+        (
+            "retirement_distributions",
+            "PUF retirement-distribution channel is default-only",
+        ),
     ],
 )
 def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
@@ -476,6 +480,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     disability_benefits_calls: list[tuple[object, int, int]] = []
     educator_expense_gate_frames: list[object] = []
     form_4952_gate_frames: list[object] = []
+    retirement_distribution_calls: list[tuple[object, int, int]] = []
+    retirement_distribution_gate_frames: list[object] = []
 
     monkeypatch.setattr(
         builder,
@@ -541,6 +547,18 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder,
         "with_us_retirement_contribution_inputs",
         lambda frame, *, seed, time_period: frame,
+    )
+
+    def fake_retirement_distributions(frame, *, seed, time_period):
+        retirement_distribution_calls.append((frame, seed, time_period))
+        if frame == "disability-benefits-direct":
+            return "retirement-distributions-direct"
+        return "retirement-distributions-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_distribution_inputs",
+        fake_retirement_distributions,
     )
     monkeypatch.setattr(
         builder,
@@ -660,6 +678,54 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "us_form_4952_election_signal_gate",
         fake_form_4952_election_signal_gate,
     )
+    monkeypatch.setattr(
+        builder,
+        "us_capital_gain_details_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_childcare_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(builder, "us_alimony_signal_gate", lambda frame: passing_gate)
+    monkeypatch.setattr(
+        builder,
+        "us_casualty_loss_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_misc_itemized_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_contributions_signal_gate",
+        lambda frame: passing_gate,
+    )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        retirement_distribution_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "retirement_distributions",
+                "failures": (
+                    ("PUF retirement-distribution channel is default-only",)
+                    if failing_gate == "retirement_distributions"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_distributions_signal_gate",
+        fake_retirement_distributions_signal_gate,
+    )
 
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
@@ -674,9 +740,32 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     assert disability_benefits_calls == expected_disability_calls
     assert educator_expense_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"educator_expense", "form_4952"}
+        if failing_gate in {"educator_expense", "form_4952", "retirement_distributions"}
         else []
     )
     assert form_4952_gate_frames == (
-        ["disability-benefits-puf"] if failing_gate == "form_4952" else []
+        ["disability-benefits-puf"]
+        if failing_gate in {"form_4952", "retirement_distributions"}
+        else []
     )
+    expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
+    if failing_gate == "retirement_distributions":
+        expected_retirement_distribution_calls.append(
+            ("disability-benefits-puf", 7, 2024)
+        )
+    assert retirement_distribution_calls == expected_retirement_distribution_calls
+    assert retirement_distribution_gate_frames == (
+        ["retirement-distributions-puf"]
+        if failing_gate == "retirement_distributions"
+        else []
+    )
+
+
+def test_main_summary_records_retirement_distribution_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"retirement_distributions_signal": {' in source
+    assert '"passed": retirement_distributions_gate.passed' in source
+    assert '"failures": list(retirement_distributions_gate.failures)' in source
+    assert '"details": dict(retirement_distributions_gate.details)' in source

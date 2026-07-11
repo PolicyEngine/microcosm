@@ -186,13 +186,17 @@ def test_handler_is_registered() -> None:
 
 
 def test_direct_mapping_sums_all_four_measured_slots() -> None:
-    result = _derive(_person_source())
+    person = _person_source()
+    person.loc[0, ["DST_SC1_YNG", "DST_VAL1_YNG"]] = [1, 25.0]
+    person.loc[0, ["DST_SC2_YNG", "DST_VAL2_YNG"]] = [1, 75.0]
+
+    result = _derive(person)
 
     np.testing.assert_array_equal(
         result[list(_OUTPUTS)].to_numpy(),
         np.asarray(
             [
-                [150.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [250.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 [0.0, 200.0, 0.0, 0.0, 0.0, 0.0],
                 [0.0, 0.0, 300.0, 0.0, 0.0, 0.0],
                 [0.0, 0.0, 0.0, 400.0, 0.0, 0.0],
