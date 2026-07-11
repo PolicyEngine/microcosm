@@ -398,6 +398,13 @@ class TestUsSources:
             "packages/populace-build/src/populace/build/us/ecps_parity_reference.json",
             "packages/populace-build/src/populace/build/us_runtime/parity_reference.py",
             "packages/populace-build/tests/test_us_parity_reference.py",
+            # UK coverage has the same frozen-incumbent exception: these files
+            # name only the immutable, sha-verified enhanced-FRS reference and
+            # never import or execute the retired data package.
+            "packages/populace-build/src/populace/build/uk/efrs_parity_reference.json",
+            "packages/populace-build/src/populace/build/uk_runtime/parity_reference.py",
+            "packages/populace-build/tests/test_uk_parity_reference.py",
+            "tools/build_uk_efrs_parity_reference.py",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []

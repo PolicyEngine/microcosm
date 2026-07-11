@@ -141,6 +141,12 @@ from populace.build.uk_runtime.oa_ladder_sources import (
     assemble_uk_oa_ladder,
     join_uk_oa_ladder_layers,
 )
+from populace.build.uk_runtime.parity_reference import (
+    EFRS_PARITY_REFERENCE_RESOURCE,
+    EfrsParityReference,
+    EfrsParitySource,
+    load_efrs_parity_reference,
+)
 from populace.build.uk_runtime.rowwise_dataset import (
     BENUNIT_ID_COLUMNS,
     HOUSEHOLD_ID_COLUMNS,
@@ -196,6 +202,7 @@ __all__ = [
     "CROSSWALK_COLUMNS",
     "DEFAULT_SPI_SUPPORT_HOUSEHOLDS",
     "EMPLOYMENT_BANDS",
+    "EFRS_PARITY_REFERENCE_RESOURCE",
     "ENGLAND_LAD_REGION_URL",
     "ENGLAND_WALES_OA2021_COUNT",
     "EW_OA_CONSTITUENCY_URL",
@@ -204,6 +211,8 @@ __all__ = [
     "EW_OA_LAD23_URL",
     "EW_OA_POPULATION_URL",
     "EW_OA_WARD_URL",
+    "EfrsParityReference",
+    "EfrsParitySource",
     "GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR",
     "GEOGRAPHY_LADDER_VINTAGES_ATTR",
     "FRS_REGION_TO_COUNTRY",
@@ -300,6 +309,7 @@ __all__ = [
     "load_england_wales_oa_population",
     "load_england_wales_oa_ward_lookup",
     "load_ew_oa_lad23_lookup",
+    "load_efrs_parity_reference",
     "load_lad_itl_lookup",
     "load_metric_tables",
     "load_ni_dz_hierarchy",
