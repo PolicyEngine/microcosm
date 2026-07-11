@@ -22,9 +22,9 @@
       "value_type": "bool",
       "default": true,
       "populace_treatment": "out_of_scope",
-      "scope_owner": "snap_take_up source stage (populace#243, landed in PR #294)",
+      "scope_owner": "snap_state_take_up source stage (populace#372); national prior from snap_take_up (populace#243, PR #294)",
       "rate": {"value": 0.82, "source": "https://www.fns.usda.gov/snap/participation-rates", "agency": "USDA FNS", "status": "sourced_administrative"},
-      "notes": "SNAP take-up is seeded by the snap_take_up source stage, reported-receipt-anchored on raw ASEC SPM_SNAPSUB and gated by snap_take_up_signal. Not seeded here to avoid duplicating that work; out_of_scope means out of scope for this module's Bernoulli seeding, not unseeded."
+      "notes": "SNAP take-up is seeded by the snap_take_up source stage (reported-receipt-anchored on raw ASEC SPM_SNAPSUB, national FNS rate fill, gated by snap_take_up_signal), then recalibrated per state by the snap_state_take_up stage to FNS average-monthly household caseloads among eligible non-anchored units (anchored count-calibration, medicaid_take_up pattern, gated by snap_state_take_up) — CPS receipt underreporting is state-dependent, so the national fill alone starves the worst-underreporting states of taker households (populace#372). The sourced national rate remains the prior, so this entry stays out_of_scope for this module's Bernoulli seeding rather than count_calibrated (that treatment forbids a sourced rate); out_of_scope means out of scope for this module's seeding, not unseeded."
     },
     {
       "variable": "takes_up_tanf_if_eligible",

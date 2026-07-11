@@ -254,6 +254,16 @@ from populace.build.us_runtime.snap_discretionary_exemption import (
     us_snap_discretionary_exemption_summary,
     with_us_snap_discretionary_exemption_inputs,
 )
+from populace.build.us_runtime.snap_state_take_up import (
+    US_SNAP_CASELOAD_TOLERANCE,
+    US_SNAP_HOUSEHOLDS_TARGET_TABLE,
+    US_SNAP_STATE_TAKE_UP_ANCHOR,
+    US_SNAP_STATE_TAKE_UP_STAGE,
+    us_snap_state_take_up_diagnostics,
+    us_snap_state_take_up_gate,
+    with_us_snap_state_take_up,
+    write_us_snap_state_take_up_diagnostics,
+)
 from populace.build.us_runtime.snap_take_up import (
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
     US_SNAP_TAKE_UP_RAW_COLUMN,
@@ -380,6 +390,14 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_SNAP_CASELOAD_TOLERANCE",
+    "US_SNAP_HOUSEHOLDS_TARGET_TABLE",
+    "US_SNAP_STATE_TAKE_UP_ANCHOR",
+    "US_SNAP_STATE_TAKE_UP_STAGE",
+    "us_snap_state_take_up_diagnostics",
+    "us_snap_state_take_up_gate",
+    "with_us_snap_state_take_up",
+    "write_us_snap_state_take_up_diagnostics",
     "US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS",
     "US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN",
     "US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS",
@@ -634,6 +652,21 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "enrollment==eligibility degeneracy."
         ),
     ),
+    US_SNAP_STATE_TAKE_UP_STAGE: DonorSpec(
+        survey=(
+            "Census CPS ASEC reported receipt + USDA FNS state "
+            "average-monthly household caseloads"
+        ),
+        source="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+        notes=(
+            "SNAP take-up by anchored count-calibration (contract treatment "
+            "count_calibrated, populace #372): reported ASEC receipt anchors "
+            "the flag; the fill is calibrated per state to FNS FY2024 "
+            "average-monthly household counts among eligible non-anchored "
+            "units, replacing the national snap_take_up fill that bakes in "
+            "state-dependent CPS underreporting."
+        ),
+    ),
     "prior_year_income": DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -769,6 +802,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "entity_placement",
     "aca_marketplace_inputs",
     "medicaid_take_up",
+    US_SNAP_STATE_TAKE_UP_STAGE,
     "export",
 )
 
