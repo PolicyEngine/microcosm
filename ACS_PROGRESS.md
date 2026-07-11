@@ -13,3 +13,9 @@
   geography, deterministic relationship-derived US unit structure, occupied
   housing filtering, and explicit WGTP/PWGTP group-quarters weight handling.
   Checks: Ruff clean; 13 ACS-loader + ASEC-pool tests pass.
+- 2026-07-10 — Optional base-pool milestone (this milestone commit): added
+  entity-level `asec_puf` / `acs_2024_1yr` spine provenance, safe ID-remapping
+  concatenation, source-specific missing-column alignment, support provenance,
+  and mass-conserving configurable ACS allocation. The no-ACS path returns the
+  identical frame object and has a serialized-digest regression. Checks: Ruff
+  clean; 18 tests pass, including floating-point and bounded-memory cases.
