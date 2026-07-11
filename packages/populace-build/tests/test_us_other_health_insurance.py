@@ -445,7 +445,7 @@ def test_esi_exclusion_pins_complete_hermetic_source_unavailability_evidence() -
         "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
         "lines": "197-271,1575-1581",
     }
-    assert evidence["optional_loader_fields"]["lines"] == "13-55"
+    assert evidence["optional_source_fields"]["lines"] == "13-55"
     assert evidence["required_columns"] == [
         "NOW_OWNGRP",
         "NOW_HIPAID",

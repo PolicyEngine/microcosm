@@ -58,9 +58,7 @@ def test_exclusion_pins_exact_archived_person_source_and_qrf_dependency() -> Non
         ],
         "lines": "1493-1496",
     }
-    assert evidence["required_person_loader_source"]["lines"] == (
-        "39-58,306-359"
-    )
+    assert evidence["required_person_source_declaration"]["lines"] == ("39-58,306-359")
     assert evidence["puf_clone_qrf"]["lines"] == "140-194,639-745"
     assert evidence["puf_clone_qrf"]["target_line"] == 166
     assert evidence["no_independent_puf_source"] == {
@@ -121,8 +119,7 @@ def test_exclusion_pins_all_sha_locked_hermetic_inputs_and_grain() -> None:
     assert "buildj_base.sh lines 65-69" in evidence["hermetic_build_contract"]
     assert "base_j.summary.json lines 55-75" in evidence["hermetic_build_contract"]
     asec_pool = (
-        ROOT
-        / "packages/populace-build/src/populace/build/us_runtime/asec_pool.py"
+        ROOT / "packages/populace-build/src/populace/build/us_runtime/asec_pool.py"
     ).read_text()
     assert 'pd.HDFStore(path, mode="r")' in asec_pool
 
@@ -147,19 +144,12 @@ def test_sha_locked_artifact_schemas_match_the_recorded_absence() -> None:
         assert _sha256(path) == item["sha256"]
         dataset = USSingleYearDataset(file_path=str(path))
         assert set(item["missing_person_columns"]).isdisjoint(dataset.person.columns)
-        assert set(item["present_household_columns"]) <= set(
-            dataset.household.columns
-        )
+        assert set(item["present_household_columns"]) <= set(dataset.household.columns)
         assert set(item["present_family_columns"]) <= set(dataset.family.columns)
         positive_multi_person_families = int(
-            (
-                (dataset.family["FFINVAL"] > 0)
-                & (dataset.family["FPERSONS"] > 1)
-            ).sum()
+            ((dataset.family["FFINVAL"] > 0) & (dataset.family["FPERSONS"] > 1)).sum()
         )
-        assert positive_multi_person_families == item[
-            "positive_multi_person_families"
-        ]
+        assert positive_multi_person_families == item["positive_multi_person_families"]
         family_amount_by_household = dataset.family.groupby("FH_SEQ", sort=False)[
             "FFINVAL"
         ].sum()

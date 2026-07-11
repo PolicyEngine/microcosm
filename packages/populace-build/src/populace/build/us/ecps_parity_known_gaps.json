@@ -14,7 +14,7 @@
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
           "lines": "197-271,1575-1581"
         },
-        "optional_loader_fields": {
+        "optional_source_fields": {
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
           "lines": "13-55"
@@ -55,7 +55,7 @@
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
           "lines": "1493-1496"
         },
-        "required_person_loader_source": {
+        "required_person_source_declaration": {
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
           "lines": "39-58,306-359"
@@ -197,7 +197,7 @@
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
           "lines": "1214-1221"
         },
-        "required_person_loader_source": {
+        "required_person_source_declaration": {
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
           "lines": "306-318"
@@ -271,7 +271,7 @@
           },
           "historical_source": "https://www.ncbi.nlm.nih.gov/books/NBK221951/"
         },
-        "category_rate_loader": {
+        "category_rate_source": {
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "parameters", "__init__.py"],
           "lines": "38-50",
@@ -283,7 +283,7 @@
           "lines": "1553-1559",
           "mapping": "receives_wic = person.WICYN == 1"
         },
-        "retired_loader_source": {
+        "retired_source_declaration": {
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
           "lines": "293-365",

@@ -77,7 +77,7 @@ def test_exclusion_pins_exact_archived_stochastic_derivation() -> None:
         "CHILD": 0.752,
         "NONE": 0,
     }
-    assert evidence["category_rate_loader"]["lines"] == "38-50"
+    assert evidence["category_rate_source"]["lines"] == "38-50"
     assert evidence["retired_receipt_mapping"] == {
         "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
         "path_parts": [
@@ -90,8 +90,8 @@ def test_exclusion_pins_exact_archived_stochastic_derivation() -> None:
         "lines": "1553-1559",
         "mapping": "receives_wic = person.WICYN == 1",
     }
-    assert evidence["retired_loader_source"]["lines"] == "293-365"
-    assert evidence["retired_loader_source"]["available_wic_fields"] == [
+    assert evidence["retired_source_declaration"]["lines"] == "293-365"
+    assert evidence["retired_source_declaration"]["available_wic_fields"] == [
         "SPM_WICVAL",
         "WICYN",
     ]
