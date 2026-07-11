@@ -126,6 +126,15 @@ RELATIONSHIP_INPUTS = (
     "is_surviving_spouse",
 )
 
+RETIREMENT_DISTRIBUTION_INPUTS = (
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "tax_exempt_ira_distributions",
+    "taxable_ira_distributions",
+    "keogh_distributions",
+    "taxable_sep_distributions",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -142,6 +151,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *RELATIONSHIP_INPUTS,
+    *RETIREMENT_DISTRIBUTION_INPUTS,
     "domestic_production_ald",
     "household_weight",
     "spm_unit_pre_subsidy_childcare_expenses",
@@ -174,6 +184,29 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "keogh_distribution_neutralization",
+        "name": "Keogh distribution neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "keogh_distributions",
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["keogh_distributions"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US includes keogh_distributions directly in taxable "
+            "retirement distributions and federal gross income. Neutralizing "
+            "only the measured code-5 ASEC leaf lowers federal income tax. On "
+            "the 865,046-person staged Build-J support, the locked ASEC source "
+            "carries $148.97 million of weighted Keogh distributions and the "
+            "baseline-minus-neutralized income-tax effect is +$24.47 million. "
+            "Without the restored DST_SC*/DST_VAL* mapping the effect is a "
+            "structural zero."
+        ),
+        "issue": "PolicyEngine/populace#38",
+    },
     {
         "id": "household_head_childcare_cap_neutralization",
         "name": "Household-head childcare earned-cap neutralization",

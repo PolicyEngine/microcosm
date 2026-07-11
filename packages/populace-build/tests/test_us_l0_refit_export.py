@@ -70,6 +70,12 @@ def _us_frame(**person_extra: object) -> Frame:
             "traditional_ira_contributions_desired": [300.0, 0.0, 150.0],
             "roth_ira_contributions_desired": [400.0, 0.0, 200.0],
             "self_employed_pension_contributions_desired": [0.0, 800.0, 0.0],
+            "taxable_401k_distributions": [1_000.0, 0.0, 500.0],
+            "taxable_403b_distributions": [0.0, 600.0, 0.0],
+            "tax_exempt_ira_distributions": [300.0, 0.0, 100.0],
+            "taxable_ira_distributions": [400.0, 0.0, 200.0],
+            "keogh_distributions": [0.0, 700.0, 0.0],
+            "taxable_sep_distributions": [0.0, 0.0, 250.0],
             "estate_income_would_be_qualified": [True, False, True],
             "farm_operations_income_would_be_qualified": [True, True, False],
             "farm_rent_income_would_be_qualified": [True, False, True],
@@ -589,6 +595,36 @@ def test_required_us_release_source_columns_enforces_form_4952_signal() -> None:
         assert_required_us_release_source_columns(raw_frame)
 
 
+@pytest.mark.parametrize(
+    "column",
+    [
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions",
+    ],
+)
+def test_required_us_release_source_columns_enforces_retirement_distribution_signal(
+    column: str,
+) -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people[column] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(ValueError, match=rf"person.{column}: not nonconstant"):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_domestic_production_signal() -> (
     None
 ):
@@ -857,6 +893,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     )
     assert "farm_operations_income" in summary["required_person_source_columns"]
     assert "farm_rent_income" in summary["required_person_source_columns"]
+    assert "keogh_distributions" in summary["required_person_source_columns"]
     assert "business_is_sstb" in summary["required_person_source_columns"]
     assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
     assert "domestic_production_ald" in summary["required_source_columns"]

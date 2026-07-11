@@ -1134,6 +1134,71 @@
       "notes": "Exact measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1069-1075 and 1209-1221: is_household_head <- P_SEQ == 1; is_separated <- A_MARITL == 6; is_surviving_spouse <- A_MARITL == 4. Nothing is imputed. The stage fails unless every frame household has exactly one P_SEQ == 1 record (PH_SEQ before support cloning, person_household_id after cloning)."
     },
     {
+      "stage": "retirement_distributions",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC person retirement-distribution account codes and amounts (DST_SC1/DST_VAL1, DST_SC2/DST_VAL2, DST_SC1_YNG/DST_VAL1_YNG, DST_SC2_YNG/DST_VAL2_YNG)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_retirement_distributions",
+          "output_by_account_code": {
+            "1": "taxable_401k_distributions",
+            "2": "taxable_403b_distributions",
+            "3": "tax_exempt_ira_distributions",
+            "4": "taxable_ira_distributions",
+            "5": "keogh_distributions",
+            "6": "taxable_sep_distributions"
+          }
+        },
+        {
+          "kind": "impute_retirement_distributions_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions"
+      ],
+      "nonnegative_outputs": [
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "tax_exempt_ira_distributions",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions"
+      ],
+      "notes": "Direct measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1448-1481. Four account-code/amount pairs are summed by person: code 1 -> taxable 401(k), 2 -> taxable 403(b), 3 -> tax-exempt Roth IRA, 4 -> taxable regular IRA, 5 -> Keogh, and 6 -> taxable SEP. Archived imputation_parameters.yaml lines 10-15 sets the 401(k), 403(b), regular-IRA, and SEP taxable fractions to 1.0; Keogh is directly taxable in the engine aggregate. Code 7 has no PolicyEngine-US leaf and is deliberately not allocated. After support expansion, the retired second stage (extended_cps.py lines 140-148, 639-745, and 1014-1073) QRF-imputes, among these six populated leaves, taxable 401(k), taxable 403(b), Keogh, and taxable SEP onto the PUF half. Its three tax-exempt employer-account companions remain zero under the 1.0 taxable shares and lie outside the populated coverage surface. The measured ASEC half remains exact, PUF-sourced taxable IRA is preserved, and tax-exempt Roth IRA remains a direct copied ASEC mapping. No uncited allocation or redraw is introduced."
+    },
+    {
       "stage": "eligibility_inputs",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",

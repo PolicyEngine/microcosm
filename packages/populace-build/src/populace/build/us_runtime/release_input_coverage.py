@@ -71,6 +71,9 @@ from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from populace.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.retirement_distributions import (
+    US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
 
 __all__ = [
@@ -130,6 +133,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "unreimbursed_business_employee_expenses",
         *US_QBI_OUTPUT_COLUMNS,
         *US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+        *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
     }
 )
 

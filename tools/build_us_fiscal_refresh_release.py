@@ -99,6 +99,7 @@ from populace.build.us_runtime import (
     us_relationship_inputs_signal_gate,
     us_release_input_coverage_gate,
     us_retirement_contributions_signal_gate,
+    us_retirement_distributions_signal_gate,
     us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_tips_signal_gate,
@@ -122,6 +123,7 @@ from populace.build.us_runtime import (
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
+    with_us_retirement_distribution_inputs,
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_tip_inputs,
@@ -6230,6 +6232,35 @@ def main() -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "retirement_distribution_inputs",
+            message=(
+                "Carrying measured ASEC retirement distributions by account type."
+            ),
+        )
+    base_frame = with_us_retirement_distribution_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    if not retirement_distributions_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "retirement_distribution_inputs_gate",
+                status="failed",
+                message="Retirement-distribution signal gate failed.",
+                failures=list(retirement_distributions_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Retirement-distribution signal failed: " + failure
+                for failure in retirement_distributions_gate.failures
             )
         )
     if telemetry is not None:

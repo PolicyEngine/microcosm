@@ -468,6 +468,20 @@ from populace.build.us_runtime.retirement_contributions import (
     us_retirement_contributions_summary,
     with_us_retirement_contribution_inputs,
 )
+from populace.build.us_runtime.retirement_distributions import (
+    RETIREMENT_DISTRIBUTIONS_ARCHIVED_DERIVATION_URL,
+    RETIREMENT_DISTRIBUTIONS_ARCHIVED_PARAMETERS_URL,
+    US_RETIREMENT_DISTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+    US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+    US_RETIREMENT_DISTRIBUTION_STAGE_NAME,
+    derive_us_retirement_distributions_from_manifest,
+    impute_us_retirement_distributions_to_puf_support_from_manifest,
+    us_retirement_distributions_signal_gate,
+    us_retirement_distributions_stage_spec,
+    us_retirement_distributions_summary,
+    with_us_retirement_distribution_inputs,
+)
 from populace.build.us_runtime.scf_auto_loans import (
     QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET,
     SCF_2022_FULL_EXTRACT_MEMBER,
@@ -867,6 +881,18 @@ __all__ = [
     "us_retirement_contributions_stage_spec",
     "us_retirement_contributions_summary",
     "with_us_retirement_contribution_inputs",
+    "RETIREMENT_DISTRIBUTIONS_ARCHIVED_DERIVATION_URL",
+    "RETIREMENT_DISTRIBUTIONS_ARCHIVED_PARAMETERS_URL",
+    "US_RETIREMENT_DISTRIBUTION_NONCONSTANT_PERSON_COLUMNS",
+    "US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS",
+    "US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS",
+    "US_RETIREMENT_DISTRIBUTION_STAGE_NAME",
+    "derive_us_retirement_distributions_from_manifest",
+    "impute_us_retirement_distributions_to_puf_support_from_manifest",
+    "us_retirement_distributions_signal_gate",
+    "us_retirement_distributions_stage_spec",
+    "us_retirement_distributions_summary",
+    "with_us_retirement_distribution_inputs",
     "QUALIFIED_AUTO_LOAN_ANNUAL_ISSUANCE_TARGET",
     "SCF_2022_FULL_EXTRACT_MEMBER",
     "SCF_2022_FULL_EXTRACT_MEMBER_SHA256",
@@ -1245,6 +1271,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "from P_SEQ and A_MARITL; nothing is imputed."
         ),
     ),
+    US_RETIREMENT_DISTRIBUTION_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "ASEC rows map exactly from all four DST_SC*/DST_VAL* pairs; the "
+            "archived CPS-only QRF replaces the four populated non-IRA leaves "
+            "on PUF support while preserving IRA channel ownership. Nothing "
+            "is allocated across accounts."
+        ),
+    ),
     US_PREGNANCY_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC + CDC natality-derived national pregnancy rate",
         source="https://www.cdc.gov/nchs/nvss/births.htm",
@@ -1369,6 +1405,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_RELATIONSHIP_INPUTS_STAGE_NAME,
+    US_RETIREMENT_DISTRIBUTION_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PREGNANCY_STAGE_NAME,
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,

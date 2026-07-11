@@ -253,9 +253,7 @@
    "status": "reviewed_exclusion"
   },
   "keogh_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "long_term_capital_gains_before_response": {
    "status": "required"
@@ -466,22 +464,16 @@
    "status": "required"
   },
   "tax_exempt_ira_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tax_exempt_private_pension_income": {
    "status": "required"
   },
   "taxable_401k_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "taxable_403b_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "taxable_interest_income": {
    "status": "required"
@@ -493,9 +485,7 @@
    "status": "required"
   },
   "taxable_sep_distributions": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tenure_type": {
    "issue": "PolicyEngine/populace#32",
@@ -560,8 +550,8 @@
   }
  },
  "counts": {
-  "required": 135,
-  "reviewed_exclusion": 30,
+  "required": 140,
+  "reviewed_exclusion": 25,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -577,6 +567,22 @@
   "vintage": "2024"
  },
  "reform_coverage_probes": [
+  {
+   "binding_inputs": [
+    "keogh_distributions"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "keogh_distribution_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "Keogh distribution neutralization",
+   "neutralized_variable": "keogh_distributions",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes keogh_distributions directly in taxable retirement distributions and federal gross income. Neutralizing only the measured code-5 ASEC leaf lowers federal income tax. On the 865,046-person staged Build-J support, the locked ASEC source carries $148.97 million of weighted Keogh distributions and the baseline-minus-neutralized income-tax effect is +$24.47 million. Without the restored DST_SC*/DST_VAL* mapping the effect is a structural zero."
+  },
   {
    "binding_inputs": [
     "is_household_head"
