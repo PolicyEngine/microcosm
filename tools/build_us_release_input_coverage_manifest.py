@@ -127,6 +127,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FARM_BUSINESS_INCOME_INPUTS,
     *SIPP_VEHICLE_INPUTS,
     "domestic_production_ald",
+    "household_weight",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
     *QBI_INPUTS,

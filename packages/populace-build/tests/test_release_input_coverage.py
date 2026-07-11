@@ -69,6 +69,38 @@ def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
     )
 
 
+def _household_weight_frame(
+    typed_values: np.ndarray,
+    *,
+    stored_values: np.ndarray | None = None,
+) -> Frame:
+    """A Frame whose authoritative household weights may shadow a stale column."""
+
+    typed_values = np.asarray(typed_values, dtype=np.float64)
+    n = len(typed_values)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(n, dtype="int64"),
+            "person_household_id": np.arange(1, n + 1, dtype="int64"),
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": np.arange(1, n + 1, dtype="int64")}
+    )
+    if stored_values is not None:
+        household["household_weight"] = np.asarray(stored_values, dtype=np.float64)
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(
+                values=typed_values,
+                kind=WeightKind.CALIBRATED,
+            )
+        },
+    )
+
+
 class _StubEngine:
     """Only ``default_values(names)`` — the single engine surface the gate uses."""
 
@@ -195,6 +227,36 @@ class TestReleaseInputCoverageGate:
         assert result.details["reviewed_exclusions"] == {
             "alimony_income": "Residual income-source layer not yet sourced; tracked."
         }
+
+    def test_typed_household_weights_count_as_persisted_input_signal(self) -> None:
+        manifest = _manifest((ReleaseInputColumn("household_weight", "required"),))
+        frame = _household_weight_frame(np.asarray([125.0, 275.0]))
+        assert "household_weight" not in frame.table("household")
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({"household_weight": 1.0}),
+            manifest=manifest,
+        )
+
+        assert result.passed
+        assert result.failures == ()
+
+    def test_typed_household_weights_override_stale_table_column(self) -> None:
+        manifest = _manifest((ReleaseInputColumn("household_weight", "required"),))
+        frame = _household_weight_frame(
+            np.asarray([1.0, 1.0]),
+            stored_values=np.asarray([125.0, 275.0]),
+        )
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({"household_weight": 1.0}),
+            manifest=manifest,
+        )
+
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["household_weight"]
 
 
 class _Series:
@@ -442,6 +504,11 @@ class TestShippedManifest:
         for column in ("household_vehicles_owned", "household_vehicles_value"):
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
+
+    def test_typed_household_weight_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "household_weight" in manifest.required_columns
+        assert "household_weight" not in manifest.reviewed_exclusions
 
     def test_education_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()

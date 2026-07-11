@@ -117,6 +117,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
+        "household_weight",
         "unreimbursed_business_employee_expenses",
         *US_QBI_OUTPUT_COLUMNS,
     }
@@ -466,6 +467,17 @@ def us_release_input_coverage_gate(
         for column in table.columns:
             if column in relevant and column not in present_values:
                 present_values[column] = table[column].to_numpy()
+
+    # Frame weights are typed pipeline state, not ordinary table data. The US
+    # adapter materializes this authoritative vector as ``household_weight``
+    # when writing PolicyEngine H5, overwriting any redundant table column.
+    # Mirror that export behavior here so the gate covers what is persisted.
+    if "household_weight" in relevant:
+        present_values.pop("household_weight", None)
+        if "household" in frame.weighted_entities:
+            present_values["household_weight"] = frame.weights_for(
+                "household"
+            ).values
 
     degenerate = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(

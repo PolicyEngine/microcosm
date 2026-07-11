@@ -121,10 +121,6 @@
         "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes only the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; tools/build_us_puf_support_base.py lines 85-88 and 659-699 consumes only those mappings; packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 61-75 reads the prebuilt person/household tables without refreshing omitted Census columns."
       }
     },
-    "household_weight": {
-      "reason": "Incumbent stored a household_weight input column; Populace carries weights as a typed Frame weight vector, not a stored input variable. Classify as reported-observation vs reviewed-exclusion under #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
     "investment_income_elected_form_4952": {
       "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
       "issue": "PolicyEngine/populace#274"
