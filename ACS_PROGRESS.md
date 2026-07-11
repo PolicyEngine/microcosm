@@ -19,3 +19,9 @@
   and mass-conserving configurable ACS allocation. The no-ACS path returns the
   identical frame object and has a serialized-digest regression. Checks: Ruff
   clean; 18 tests pass, including floating-point and bounded-memory cases.
+- 2026-07-10 — Native-input mapping milestone (this milestone commit): mapped
+  ACS demographics, adjusted WAGP/SEMP/SSIP, tenure, and observed property tax;
+  retained combined SSP/RETP/INTP and RNTP/GRNTP as native predictors rather
+  than inventing component splits or pre-subsidy rent. Blank universes remain
+  missing, and finite adjustment factors and output collisions are validated.
+  Checks: Ruff clean; 10 mapping-group and no-synthesis tests pass.
