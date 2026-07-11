@@ -29,11 +29,13 @@ def _household(serialno: str, **overrides: object) -> dict[str, object]:
         "ST": "06",
         "PUMA": "12345",
         "WGTP": 10,
+        "NP": 1,
         "ADJHSG": 1_000_000,
         "TEN": 1,
         "RNTP": None,
         "GRNTP": None,
         "TAXAMT": 2_400,
+        "TYPEHUGQ": 1,
     }
     row.update(overrides)
     return row
@@ -59,6 +61,7 @@ def _person(
         "SSIP": 0,
         "RETP": 0,
         "INTP": 0,
+        "PWGTP": 10,
     }
     row.update(overrides)
     return row
@@ -72,16 +75,22 @@ def _source(tmp_path: Path) -> AcsPumsSource:
         {
             "psam_husa.csv": [
                 _household("2024HU0000002", ST="36", PUMA="00100", WGTP=20),
-                _household("2024HU0000003", ST="12", PUMA="00500", WGTP=30),
+                _household(
+                    "2024HU0000003",
+                    ST="12",
+                    PUMA="00500",
+                    WGTP=30,
+                    NP=0,
+                ),
             ],
-            "psam_husb.csv": [_household("2024HU0000001")],
+            "psam_husb.csv": [_household("2024HU0000001", NP=3)],
         },
     )
     _write_csv_zip(
         person_zip,
         {
             "psam_pusa.csv": [
-                _person("2024HU0000002", 1, 20, MAR=6, WAGP=30_000),
+                _person("2024HU0000002", 1, 20, MAR=4, WAGP=30_000),
                 _person(
                     "2024HU0000001",
                     1,
@@ -104,7 +113,7 @@ def _source(tmp_path: Path) -> AcsPumsSource:
                     3,
                     25,
                     AGEP=10,
-                    MAR=6,
+                    MAR=5,
                     WAGP=None,
                 ),
             ],
@@ -176,6 +185,12 @@ def test_build_acs_pums_unit_frame_derives_only_structural_relationship_fields(
     assert (child["PEPAR1"], child["PEPAR2"]) == (1, 2)
     assert (head["A_EXPRRP"], spouse["A_EXPRRP"], child["A_EXPRRP"]) == (1, 4, 5)
     assert lone_head["A_EXPRRP"] == 2
+    assert (head["A_MARITL"], spouse["A_MARITL"], child["A_MARITL"]) == (
+        1,
+        1,
+        7,
+    )
+    assert lone_head["A_MARITL"] == 6
     assert head["person_marital_unit_id"] == spouse["person_marital_unit_id"]
     assert child["person_marital_unit_id"] != head["person_marital_unit_id"]
 
@@ -257,7 +272,7 @@ def test_build_acs_pums_unit_frame_uses_person_weight_for_gq_placeholder(
                     "2024GQ0000001",
                     1,
                     37,
-                    MAR=6,
+                    MAR=5,
                     PWGTP=99,
                 )
             ]
@@ -281,7 +296,7 @@ def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
         household_zip,
         {
             "psam_husa.csv": [
-                _household("2024HU0000001", WGTP=10),
+                _household("2024HU0000001", WGTP=10, NP=2),
                 _household(
                     "2024GQ0000001",
                     WGTP=0,
@@ -297,8 +312,8 @@ def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
         {
             "psam_pusa.csv": [
                 _person("2024HU0000001", 1, 20, PWGTP=11),
-                _person("2024HU0000001", 2, 25, MAR=6, PWGTP=12),
-                _person("2024GQ0000001", 1, 37, MAR=6, PWGTP=99),
+                _person("2024HU0000001", 2, 25, MAR=5, PWGTP=12),
+                _person("2024GQ0000001", 1, 37, MAR=5, PWGTP=99),
             ]
         },
     )
@@ -308,3 +323,149 @@ def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
     )
 
     assert frame.weights_for("household").values.tolist() == [99.0, 10.0]
+
+
+def test_build_acs_pums_unit_frame_uses_adjusted_income_for_dependency_test(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {"psam_husa.csv": [_household("2024HU0000001", NP=2)]},
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("2024HU0000001", 1, 20, MAR=5, WAGP=50_000),
+                _person(
+                    "2024HU0000001",
+                    2,
+                    33,
+                    AGEP=30,
+                    MAR=5,
+                    ADJINC=1_100_000,
+                    WAGP=100_000,
+                ),
+            ]
+        },
+    )
+
+    frame, _metadata = build_acs_pums_unit_frame(
+        AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+    )
+    people = frame.table("person")
+
+    assert people["person_tax_unit_id"].nunique() == 2
+    assert "WSAL_VAL" not in people
+    assert "SEMP_VAL" not in people
+
+
+def test_max_households_prioritizes_housing_units_and_filters_person_chunks(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("2024HU0000001", NP=2),
+                _household("2024HU0000002", NP=1),
+                _household("2024HU0000003", NP=0),
+                _household(
+                    "2024GQ0000001",
+                    NP=1,
+                    WGTP=0,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("2024HU0000001", 1, 20),
+                _person("2024HU0000001", 2, 25, MAR=5),
+                _person("2024HU0000002", 1, 20, MAR=5),
+                _person("2024GQ0000001", 1, 37, MAR=5, PWGTP=99),
+            ]
+        },
+    )
+
+    tables, metadata = load_acs_pums_tables(
+        AcsPumsSource(
+            household_zip=household_zip,
+            person_zip=person_zip,
+            max_households=2,
+        ),
+        chunksize=1,
+    )
+
+    assert set(tables["household"]["TYPEHUGQ"]) == {1}
+    assert len(tables["household"]) == 2
+    assert len(tables["person"]) == 3
+    assert metadata["vacant_household_rows_dropped"] == 1
+
+
+def test_load_acs_pums_tables_rejects_np_person_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {"psam_husa.csv": [_household("2024HU0000001", NP=2)]},
+    )
+    _write_csv_zip(
+        person_zip,
+        {"psam_pusa.csv": [_person("2024HU0000001", 1, 20)]},
+    )
+
+    with pytest.raises(ValueError, match="NP/person row-count mismatch"):
+        load_acs_pums_tables(
+            AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+        )
+
+
+def test_load_acs_pums_tables_accepts_official_state_header_alias(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    housing = _household("2024HU0000001")
+    housing["STATE"] = housing.pop("ST")
+    _write_csv_zip(household_zip, {"psam_husa.csv": [housing]})
+    _write_csv_zip(
+        person_zip,
+        {"psam_pusa.csv": [_person("2024HU0000001", 1, 20)]},
+    )
+
+    tables, _metadata = load_acs_pums_tables(
+        AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+    )
+
+    assert tables["household"]["ST"].tolist() == ["06"]
+
+
+def test_load_acs_pums_tables_requires_native_mapping_columns(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    housing = _household("2024HU0000001")
+    del housing["TAXAMT"]
+    _write_csv_zip(household_zip, {"psam_husa.csv": [housing]})
+    _write_csv_zip(
+        person_zip,
+        {"psam_pusa.csv": [_person("2024HU0000001", 1, 20)]},
+    )
+
+    with pytest.raises(ValueError, match="TAXAMT"):
+        load_acs_pums_tables(
+            AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+        )

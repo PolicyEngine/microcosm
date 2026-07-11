@@ -29,3 +29,10 @@
   PWGTP lookup to WGTP=0 group-quarters records so ordinary multi-person
   household duplicate SERIALNO values cannot make pandas reject the lookup.
   Checks: Ruff clean; 8 loader tests pass, including a mixed HU/GQ regression.
+- 2026-07-10 — Loader structural-integrity milestone (this milestone commit):
+  recoded official ACS MAR values into CPS marital codes using spouse presence;
+  passed adjusted WAGP/SEMP/INTP/RETP/SSP to microunit only for dependency
+  construction; required the 2024 native mapping columns; and used NP for
+  vacancy, GQ, and person-count validation. Smoke caps now select occupied
+  housing units deterministically and discard unselected person chunks during
+  streaming. Checks: Ruff clean; 13 loader tests pass.

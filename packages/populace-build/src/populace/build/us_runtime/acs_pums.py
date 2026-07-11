@@ -16,6 +16,8 @@ cannot contain a household with no person membership.
 
 from __future__ import annotations
 
+import hashlib
+import heapq
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,9 +40,11 @@ ACS_2024_1YR_SPINE = "acs_2024_1yr"
 ACS_2024_1YR_VINTAGE = 2024
 DEFAULT_CHUNKSIZE = 100_000
 
-_HOUSEHOLD_REQUIRED = ("SERIALNO", "PUMA", "WGTP")
-_HOUSEHOLD_STATE_COLUMNS = ("ST", "STATE")
-_HOUSEHOLD_OPTIONAL = (
+_HOUSEHOLD_REQUIRED = (
+    "SERIALNO",
+    "PUMA",
+    "WGTP",
+    "NP",
     "ADJHSG",
     "TEN",
     "RNTP",
@@ -48,8 +52,23 @@ _HOUSEHOLD_OPTIONAL = (
     "TAXAMT",
     "TYPEHUGQ",
 )
-_PERSON_REQUIRED = ("SERIALNO", "SPORDER", "RELSHIPP", "AGEP", "SEX", "MAR")
-_PERSON_OPTIONAL = (
+_HOUSEHOLD_STATE_COLUMNS = ("ST", "STATE")
+_HOUSEHOLD_FRAME_COLUMNS = (
+    "NP",
+    "ADJHSG",
+    "TEN",
+    "RNTP",
+    "GRNTP",
+    "TAXAMT",
+    "TYPEHUGQ",
+)
+_PERSON_REQUIRED = (
+    "SERIALNO",
+    "SPORDER",
+    "RELSHIPP",
+    "AGEP",
+    "SEX",
+    "MAR",
     "ADJINC",
     "WAGP",
     "SEMP",
@@ -59,10 +78,29 @@ _PERSON_OPTIONAL = (
     "INTP",
     "PWGTP",
 )
+_PERSON_OPTIONAL: tuple[str, ...] = ()
+
+# Temporary aliases consumed only by microunit's dependent gross-income test.
+# ACS combined sources stay combined: INTP is placed on one gross-income
+# component rather than split across interest/dividend/rent by invented shares.
+_MICROUNIT_INCOME_ALIASES = {
+    "WAGP": "WSAL_VAL",
+    "SEMP": "SEMP_VAL",
+    "INTP": "INT_VAL",
+    "RETP": "PNSN_VAL",
+    "SSP": "SS_VAL",
+}
 
 _ACS_REFERENCE_PERSON = 20
 _ACS_SPOUSE_CODES = frozenset({21, 23})
 _ACS_CHILD_CODES = frozenset({25, 26, 27})
+_ACS_TO_CPS_MARITAL_STATUS = {
+    1: 3,  # married, spouse absent until a RELSHIPP spouse is found
+    2: 4,  # widowed
+    3: 5,  # divorced
+    4: 6,  # separated
+    5: 7,  # never married
+}
 _ACS_RELATED_CODES = frozenset(
     {
         21,
@@ -141,7 +179,7 @@ def load_acs_pums_tables(
         source.household_zip,
         member_prefix="psam_hus",
         required=_HOUSEHOLD_REQUIRED,
-        optional=(*_HOUSEHOLD_STATE_COLUMNS, *_HOUSEHOLD_OPTIONAL),
+        optional=_HOUSEHOLD_STATE_COLUMNS,
         chunksize=chunksize,
     )
     state_column = next(
@@ -162,8 +200,9 @@ def load_acs_pums_tables(
         raise ValueError(f"ACS duplicate household SERIALNO value(s): {examples}.")
     household = household.sort_values("SERIALNO", kind="stable").reset_index(drop=True)
     all_household_serials = frozenset(household["SERIALNO"].tolist())
-    if source.max_households is not None:
-        household = household.head(source.max_households).copy()
+    household, vacant_count = _occupied_households(household)
+    if source.max_households is not None and len(household) > source.max_households:
+        household = _smoke_household_selection(household, source.max_households)
     selected_serials = frozenset(household["SERIALNO"].tolist())
 
     person, person_members = _read_archive(
@@ -172,15 +211,9 @@ def load_acs_pums_tables(
         required=_PERSON_REQUIRED,
         optional=_PERSON_OPTIONAL,
         chunksize=chunksize,
+        valid_serials=all_household_serials,
+        retained_serials=selected_serials,
     )
-    orphan_mask = ~person["SERIALNO"].isin(all_household_serials)
-    if orphan_mask.any():
-        examples = person.loc[orphan_mask, "SERIALNO"].drop_duplicates().head().tolist()
-        raise ValueError(
-            "ACS person SERIALNO value(s) missing from the household archive: "
-            f"{examples}."
-        )
-    person = person.loc[person["SERIALNO"].isin(selected_serials)].copy()
     duplicate_people = person.duplicated(["SERIALNO", "SPORDER"], keep=False)
     if duplicate_people.any():
         examples = (
@@ -193,12 +226,9 @@ def load_acs_pums_tables(
         drop=True
     )
 
-    occupied_serials = frozenset(person["SERIALNO"].unique().tolist())
-    vacant_count = int((~household["SERIALNO"].isin(occupied_serials)).sum())
-    household = household.loc[household["SERIALNO"].isin(occupied_serials)].copy()
-    household = household.reset_index(drop=True)
     if household.empty or person.empty:
         raise ValueError("ACS source selection contains no occupied household records.")
+    _validate_person_counts(household, person)
 
     metadata: dict[str, Any] = {
         "spine": ACS_2024_1YR_SPINE,
@@ -247,7 +277,7 @@ def build_acs_pums_unit_frame(
     household_weights = _household_weights(household, person)
     # SERIALNO belongs on the household table in the returned Frame. Its
     # source identity remains available per person through source_* lineage.
-    unit_input = person.drop(columns=["SERIALNO"])
+    unit_input = _with_microunit_income_aliases(person.drop(columns=["SERIALNO"]))
     strata = pd.Series(
         ACS_2024_1YR_SPINE,
         index=unit_input.index,
@@ -286,6 +316,8 @@ def _read_archive(
     required: tuple[str, ...],
     optional: tuple[str, ...],
     chunksize: int,
+    valid_serials: frozenset[str] | None = None,
+    retained_serials: frozenset[str] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     if not path.is_file():
         raise FileNotFoundError(f"ACS PUMS archive not found: {path}")
@@ -324,8 +356,91 @@ def _read_archive(
                     chunksize=chunksize,
                     low_memory=False,
                 )
-                pieces.extend(chunk for chunk in reader)
+                for chunk in reader:
+                    if valid_serials is not None:
+                        orphan = ~chunk["SERIALNO"].isin(valid_serials)
+                        if orphan.any():
+                            examples = (
+                                chunk.loc[orphan, "SERIALNO"]
+                                .drop_duplicates()
+                                .head()
+                                .tolist()
+                            )
+                            raise ValueError(
+                                "ACS person SERIALNO value(s) missing from the "
+                                f"household archive: {examples}."
+                            )
+                    if retained_serials is not None:
+                        chunk = chunk.loc[chunk["SERIALNO"].isin(retained_serials)]
+                    if not chunk.empty:
+                        pieces.append(chunk)
+    if not pieces:
+        return pd.DataFrame(columns=[*required, *optional]), members
     return pd.concat(pieces, ignore_index=True), members
+
+
+def _occupied_households(household: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    people = pd.to_numeric(household["NP"], errors="coerce")
+    if people.isna().any() or (people < 0).any() or (people % 1 != 0).any():
+        raise ValueError("ACS NP must be a finite nonnegative integer.")
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    if kind.isna().any() or (~kind.isin([1, 2, 3])).any():
+        bad = sorted(kind.loc[kind.isna() | ~kind.isin([1, 2, 3])].unique().tolist())
+        raise ValueError(f"ACS TYPEHUGQ contains unsupported code(s): {bad}.")
+    weight = pd.to_numeric(household["WGTP"], errors="coerce")
+    gq = kind.isin([2, 3])
+    if (people.loc[gq] != 1).any():
+        raise ValueError("ACS group-quarters placeholders must have NP=1.")
+    if (weight.loc[gq] != 0).any() or (weight.loc[~gq] <= 0).any():
+        raise ValueError(
+            "ACS TYPEHUGQ/WGTP disagree: GQ weights must be 0 and housing-unit "
+            "weights must be positive."
+        )
+    vacant = people == 0
+    if (gq & vacant).any():  # pragma: no cover - implied by NP=1 guard
+        raise ValueError("ACS group-quarters placeholders cannot be vacant.")
+    return household.loc[~vacant].reset_index(drop=True), int(vacant.sum())
+
+
+def _smoke_household_selection(
+    household: pd.DataFrame,
+    max_households: int,
+) -> pd.DataFrame:
+    """Choose a stable, geography-agnostic smoke subset, prioritizing HUs."""
+
+    serials = household["SERIALNO"].astype(str).tolist()
+    kinds = pd.to_numeric(household["TYPEHUGQ"], errors="raise").to_numpy()
+
+    def rank(position: int) -> tuple[int, bytes]:
+        housing_priority = 0 if kinds[position] == 1 else 1
+        digest = hashlib.sha256(serials[position].encode()).digest()
+        return housing_priority, digest
+
+    selected = heapq.nsmallest(max_households, range(len(household)), key=rank)
+    return household.iloc[sorted(selected)].reset_index(drop=True)
+
+
+def _validate_person_counts(
+    household: pd.DataFrame,
+    person: pd.DataFrame,
+) -> None:
+    observed = person.groupby("SERIALNO", sort=False).size()
+    expected = pd.Series(
+        pd.to_numeric(household["NP"], errors="raise").to_numpy(dtype=np.int64),
+        index=household["SERIALNO"],
+    )
+    aligned = observed.reindex(expected.index).fillna(0).astype(np.int64)
+    mismatch = aligned != expected
+    if mismatch.any():
+        examples = [
+            {
+                "SERIALNO": str(serial),
+                "NP": int(expected.loc[serial]),
+                "person_rows": int(aligned.loc[serial]),
+            }
+            for serial in expected.index[mismatch][:5]
+        ]
+        raise ValueError(f"ACS NP/person row-count mismatch: {examples}.")
 
 
 def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
@@ -333,7 +448,14 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
     result["PH_SEQ"] = result["household_id"].astype("int64")
     result["A_LINENO"] = _required_integer(result, "SPORDER")
     result["A_AGE"] = _required_integer(result, "AGEP")
-    result["A_MARITL"] = _required_integer(result, "MAR")
+    marital_status = _required_integer(result, "MAR")
+    unknown_marital = sorted(set(marital_status) - set(_ACS_TO_CPS_MARITAL_STATUS))
+    if unknown_marital:
+        raise ValueError(f"ACS MAR contains unsupported code(s): {unknown_marital}.")
+    result["A_MARITL"] = np.asarray(
+        [_ACS_TO_CPS_MARITAL_STATUS[value] for value in marital_status],
+        dtype=np.int64,
+    )
     result["A_SPOUSE"] = np.zeros(len(result), dtype=np.int64)
     result["PEPAR1"] = np.zeros(len(result), dtype=np.int64)
     result["PEPAR2"] = np.zeros(len(result), dtype=np.int64)
@@ -383,9 +505,18 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
         spouse_line = 0
         if len(spouse_positions) == 1:
             spouse_position = int(spouse_positions[0])
+            if (
+                marital_status[reference_position] != 1
+                or marital_status[spouse_position] != 1
+            ):
+                raise ValueError(
+                    "ACS RELSHIPP spouse pair must have MAR=1 for both people; "
+                    f"household id {_household_id!r}."
+                )
             spouse_line = int(result.loc[spouse_position, "A_LINENO"])
             result.loc[reference_position, "A_SPOUSE"] = spouse_line
             result.loc[spouse_position, "A_SPOUSE"] = reference_line
+            result.loc[[reference_position, spouse_position], "A_MARITL"] = 1
 
         has_relatives = bool(
             np.isin(household_relationships, list(_ACS_RELATED_CODES)).any()
@@ -402,6 +533,45 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
             if relationship in _ACS_CHILD_CODES:
                 result.loc[position, "PEPAR1"] = reference_line
                 result.loc[position, "PEPAR2"] = spouse_line
+    return result
+
+
+def _with_microunit_income_aliases(person: pd.DataFrame) -> pd.DataFrame:
+    """Expose adjusted ACS income to tax-unit construction, then discard it.
+
+    The aliases are not model inputs and are removed when household source
+    columns are attached. They exist solely so microunit's qualifying-relative
+    gross-income test sees the ACS amounts instead of treating every optional
+    component as absent.
+    """
+
+    if "ADJINC" not in person:
+        observed = [column for column in _MICROUNIT_INCOME_ALIASES if column in person]
+        if observed:
+            raise ValueError(
+                f"ACS income column(s) {observed} require adjustment column 'ADJINC'."
+            )
+        return person
+    result = person.copy()
+    adjustment = pd.to_numeric(result["ADJINC"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    for source, alias in _MICROUNIT_INCOME_ALIASES.items():
+        if source not in result:
+            continue
+        amount = pd.to_numeric(result[source], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        observed = ~np.isnan(amount)
+        if (observed & ~np.isfinite(amount)).any():
+            raise ValueError(f"ACS income source {source!r} must be finite.")
+        invalid = observed & (~np.isfinite(adjustment) | (adjustment <= 0))
+        if invalid.any():
+            raise ValueError(
+                "ACS ADJINC must be finite and positive wherever "
+                f"{source!r} is observed."
+            )
+        result[alias] = amount * (adjustment / 1_000_000.0)
     return result
 
 
@@ -439,6 +609,13 @@ def _attach_household_source_columns(
     source_household: pd.DataFrame,
 ) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    aliases = [
+        alias
+        for alias in _MICROUNIT_INCOME_ALIASES.values()
+        if alias in tables["person"]
+    ]
+    if aliases:
+        tables["person"] = tables["person"].drop(columns=aliases)
     household = tables["household"]
     source = source_household.reset_index(drop=True)
     if len(household) != len(source):  # pragma: no cover - structural guard
@@ -451,9 +628,8 @@ def _attach_household_source_columns(
     )
     household["puma"] = household["PUMA"].to_numpy()
     household["puma_geoid"] = household["ST"] + household["PUMA"]
-    for column in _HOUSEHOLD_OPTIONAL:
-        if column in source:
-            household[column] = source[column].to_numpy()
+    for column in _HOUSEHOLD_FRAME_COLUMNS:
+        household[column] = source[column].to_numpy()
     return Frame(
         tables,
         frame.schema,
