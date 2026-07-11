@@ -26,17 +26,12 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE_DIR = (
-    REPO_ROOT
-    / "packages"
-    / "populace-build"
-    / "src"
-    / "populace"
-    / "build"
-    / "uk"
+    REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "uk"
 )
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
@@ -45,9 +40,7 @@ MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
 CANDIDATE_REPO_TYPE = "dataset"
 CANDIDATE_FILENAME = "populace_uk_2023.h5"
-CANDIDATE_REVISION = (
-    "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
-)
+CANDIDATE_REVISION = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 CANDIDATE_HF_COMMIT = "a75a9a831d6b07aaffbd09713f2a1124f5c0f08f"
 CANDIDATE_SHA256 = "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 CANDIDATE_SIZE_BYTES = 1_315_880_118
@@ -177,9 +170,12 @@ def _nonzero_share(column: pd.Series) -> float:
     if column.dtype == bool:
         return float(column.mean())
     if pd.api.types.is_numeric_dtype(column):
-        values = pd.to_numeric(column, errors="coerce").fillna(0.0)
-        return float((values != 0.0).mean())
-    return float((column.astype(str).str.len() > 0).mean())
+        values = pd.to_numeric(column, errors="coerce").to_numpy(
+            dtype=float, na_value=np.nan
+        )
+        return float((np.isfinite(values) & (values != 0.0)).mean())
+    values = column.astype("string").str.strip()
+    return float((values.notna() & values.ne("")).fillna(False).mean())
 
 
 def _stored_default(variable: Any) -> object:
@@ -189,11 +185,25 @@ def _stored_default(variable: Any) -> object:
 
 
 def _nondefault_share(column: pd.Series, default: object) -> float:
-    if pd.api.types.is_numeric_dtype(column):
-        values = pd.to_numeric(column, errors="coerce").fillna(default)
-        return float((values != default).mean())
-    values = column.astype(str)
-    return float((values != str(default)).mean())
+    if isinstance(default, bool | np.bool_):
+        if pd.api.types.is_numeric_dtype(column):
+            values = pd.to_numeric(column, errors="coerce").to_numpy(
+                dtype=float, na_value=np.nan
+            )
+        else:
+            normalized = column.astype("string").str.strip().str.lower()
+            values = normalized.map(
+                {"false": 0.0, "0": 0.0, "true": 1.0, "1": 1.0}
+            ).to_numpy(dtype=float, na_value=np.nan)
+        return float((np.isfinite(values) & (values != float(bool(default)))).mean())
+    if isinstance(default, int | float | np.integer | np.floating):
+        values = pd.to_numeric(column, errors="coerce").to_numpy(
+            dtype=float, na_value=np.nan
+        )
+        return float((np.isfinite(values) & (values != float(default))).mean())
+    values = column.astype("string").str.strip()
+    valid = values.notna() & values.ne("")
+    return float((valid & values.ne(str(default).strip())).fillna(False).mean())
 
 
 def _batches(names: list[str]) -> list[list[str]]:
@@ -268,9 +278,7 @@ def build_candidate_evidence(
     default_only = sorted(
         name for name, share in nondefault_shares.items() if share <= 0.0
     )
-    signal = sorted(
-        name for name, share in nondefault_shares.items() if share > 0.0
-    )
+    signal = sorted(name for name, share in nondefault_shares.items() if share > 0.0)
     return {
         "source": {
             "repo_id": CANDIDATE_REPO_ID,
@@ -286,7 +294,7 @@ def build_candidate_evidence(
         "engine": {
             "package": "policyengine-uk",
             "version": version("policyengine-uk"),
-            "loader_input_aliases": reference["engine"]["loader_input_aliases"],
+            "h5_input_aliases": reference["engine"]["h5_input_aliases"],
         },
         "entity_records": entity_rows,
         "reference_columns_evaluated": len(surface),
@@ -346,9 +354,7 @@ def _validate_known_gaps(
     nondefault = evidence.get("nondefault_shares")
     if not isinstance(nondefault, dict):
         raise ValueError("candidate_evidence.nondefault_shares must be an object.")
-    expected = {
-        name for name in surface if float(nondefault.get(name, 0.0)) <= 0.0
-    }
+    expected = {name for name in surface if float(nondefault.get(name, 0.0)) <= 0.0}
     actual = set(raw_gaps)
     if actual != expected:
         raise ValueError(
@@ -395,7 +401,9 @@ def build_manifest(
         else:
             columns[name] = {"status": "required"}
 
-    required = sorted(name for name, entry in columns.items() if entry["status"] == "required")
+    required = sorted(
+        name for name, entry in columns.items() if entry["status"] == "required"
+    )
     reviewed = sorted(
         name
         for name, entry in columns.items()
@@ -462,9 +470,7 @@ def main() -> int:
         _write_or_check(KNOWN_GAPS_PATH, known_gaps, check=args.check)
     else:
         known_gaps = _load(KNOWN_GAPS_PATH)
-    manifest = build_manifest(
-        reference=reference, known_gaps_payload=known_gaps
-    )
+    manifest = build_manifest(reference=reference, known_gaps_payload=known_gaps)
     _write_or_check(MANIFEST_PATH, manifest, check=args.check)
     action = "current" if args.check else "wrote"
     print(

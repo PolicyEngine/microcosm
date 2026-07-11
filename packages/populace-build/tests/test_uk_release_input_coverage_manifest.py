@@ -7,15 +7,16 @@ import json
 from importlib.resources import files
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_release_input_coverage_manifest.py"
 _UK_PACKAGE = "populace.build.uk"
 
 
 def _resource(name: str) -> dict:
-    return json.loads(
-        files(_UK_PACKAGE).joinpath(name).read_text(encoding="utf-8")
-    )
+    return json.loads(files(_UK_PACKAGE).joinpath(name).read_text(encoding="utf-8"))
 
 
 def _load_generator():
@@ -75,9 +76,7 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
         "total": 132,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    assert {entry["status"] for entry in manifest["columns"].values()} == {
-        "required"
-    }
+    assert {entry["status"] for entry in manifest["columns"].values()} == {"required"}
 
 
 def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> None:
@@ -92,3 +91,13 @@ def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> Non
         "not yet ported from enhanced FRS pipeline — pending review"
     )
     assert entry["tracking_note"].strip()
+
+
+def test_candidate_signal_helpers_reject_null_and_blank_only_columns() -> None:
+    generator = _load_generator()
+    nulls = pd.Series([np.nan, None], dtype=object)
+    blanks = pd.Series(["", "  "], dtype=object)
+    for column in (nulls, blanks):
+        assert generator._nonzero_share(column) == 0.0
+        assert generator._nondefault_share(column, 0.0) == 0.0
+    assert generator._nondefault_share(pd.Series([0, None], dtype=object), 0.0) == 0.0

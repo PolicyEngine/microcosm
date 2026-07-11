@@ -87,7 +87,7 @@ class TestEfrsParityReference:
 
     def test_uk_loader_migration_inputs_are_covered(self) -> None:
         raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
-        aliases = raw["engine"]["loader_input_aliases"]
+        aliases = raw["engine"]["h5_input_aliases"]
         assert aliases == {
             "capital_gains": "capital_gains_before_response",
             "employee_pension_contributions": (

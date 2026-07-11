@@ -1,7 +1,7 @@
 {
  "description": "Frozen enhanced-FRS parity reference for the UK release input-coverage contract. Every PolicyEngine-UK input leaf the pinned artifact populates is recorded as its unweighted owning-entity nonzero share; formula-owned outputs, pipeline scratch columns, structural IDs, and all-zero input layers are not requirements.",
  "engine": {
-  "effective_loader_input_count": 226,
+  "effective_h5_input_count": 226,
   "formula_owned_export_columns_excluded": [
    "current_education",
    "is_benunit_head",
@@ -17,13 +17,13 @@
    "student_loan_repayments",
    "tax_free_savings_income"
   ],
-  "input_variable_count": 223,
-  "input_variable_scope": "CountryTaxBenefitSystem variables for which variable.is_input_variable() is true, plus the explicit raw H5 columns Simulation.__init__ moves onto canonical leaves",
-  "loader_input_aliases": {
+  "h5_input_aliases": {
    "capital_gains": "capital_gains_before_response",
    "employee_pension_contributions": "employee_pension_contributions_reported",
    "employment_income": "employment_income_before_lsr"
   },
+  "input_variable_count": 223,
+  "input_variable_scope": "CountryTaxBenefitSystem variables for which variable.is_input_variable() is true, plus the explicit raw H5 columns Simulation.__init__ moves onto canonical leaves",
   "package": "policyengine-uk",
   "structural_columns_excluded": [
    "person_id",

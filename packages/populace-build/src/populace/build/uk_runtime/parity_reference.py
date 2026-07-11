@@ -16,13 +16,17 @@ from importlib.resources import files
 from pathlib import Path
 
 __all__ = [
+    "EFRS_PARITY_KNOWN_GAPS_RESOURCE",
     "EFRS_PARITY_REFERENCE_RESOURCE",
+    "EfrsParityKnownGap",
     "EfrsParityReference",
     "EfrsParitySource",
+    "load_efrs_parity_known_gaps",
     "load_efrs_parity_reference",
 ]
 
 EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
+EFRS_PARITY_KNOWN_GAPS_RESOURCE = "efrs_parity_known_gaps.json"
 
 _UK_PACKAGE = "populace.build.uk"
 
@@ -52,9 +56,16 @@ class EfrsParityReference:
 
     @property
     def populated_layers(self) -> tuple[str, ...]:
-        return tuple(
-            name for name, share in self.nonzero_shares.items() if share > 0.0
-        )
+        return tuple(name for name, share in self.nonzero_shares.items() if share > 0.0)
+
+
+@dataclass(frozen=True)
+class EfrsParityKnownGap:
+    """One honestly reasoned, ledger-tracked reference coverage gap."""
+
+    variable: str
+    reason: str
+    tracking_note: str
 
 
 def _resource_text(resource: str) -> str:
@@ -162,3 +173,35 @@ def load_efrs_parity_reference(
         nonzero_shares=shares,
         schema_version=schema_version,
     )
+
+
+def load_efrs_parity_known_gaps(
+    resource: str = EFRS_PARITY_KNOWN_GAPS_RESOURCE,
+) -> tuple[EfrsParityKnownGap, ...]:
+    """Load the canonical UK exclusion ledger (which may honestly be empty)."""
+    payload = _resource_payload(resource)
+    raw_gaps = payload.get("known_gaps")
+    if not isinstance(raw_gaps, Mapping):
+        raise ValueError(f"{resource}: 'known_gaps' must be a JSON object.")
+    gaps: list[EfrsParityKnownGap] = []
+    for variable, entry in sorted(raw_gaps.items()):
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                f"{resource}: entry for {variable!r} must be a JSON object."
+            )
+        gaps.append(
+            EfrsParityKnownGap(
+                variable=str(variable),
+                reason=_require_str(
+                    entry.get("reason"),
+                    field_name=f"known_gaps[{variable}].reason",
+                    resource=resource,
+                ),
+                tracking_note=_require_str(
+                    entry.get("tracking_note"),
+                    field_name=f"known_gaps[{variable}].tracking_note",
+                    resource=resource,
+                ),
+            )
+        )
+    return tuple(gaps)

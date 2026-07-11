@@ -2,7 +2,7 @@
  "candidate_evidence": {
   "default_only_columns": [],
   "engine": {
-   "loader_input_aliases": {
+   "h5_input_aliases": {
     "capital_gains": "capital_gains_before_response",
     "employee_pension_contributions": "employee_pension_contributions_reported",
     "employment_income": "employment_income_before_lsr"

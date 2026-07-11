@@ -37,13 +37,7 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE_DIR = (
-    REPO_ROOT
-    / "packages"
-    / "populace-build"
-    / "src"
-    / "populace"
-    / "build"
-    / "uk"
+    REPO_ROOT / "packages" / "populace-build" / "src" / "populace" / "build" / "uk"
 )
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 
@@ -78,9 +72,7 @@ STRUCTURAL_COLUMNS = (
 # drop employment income — the central HMRC tax-base input — from the contract.
 LOADER_INPUT_ALIASES = {
     "capital_gains": "capital_gains_before_response",
-    "employee_pension_contributions": (
-        "employee_pension_contributions_reported"
-    ),
+    "employee_pension_contributions": ("employee_pension_contributions_reported"),
     "employment_income": "employment_income_before_lsr",
 }
 
@@ -129,8 +121,7 @@ def _verify_source(path: Path) -> None:
     digest = _sha256(path)
     if digest != SOURCE_SHA256:
         raise ValueError(
-            f"{path}: sha256 {digest} does not match the pinned eFRS "
-            f"{SOURCE_SHA256}."
+            f"{path}: sha256 {digest} does not match the pinned eFRS {SOURCE_SHA256}."
         )
 
 
@@ -169,9 +160,7 @@ def resolve_source_h5(explicit: Path | None = None) -> Path:
     try:
         from huggingface_hub import hf_hub_download, try_to_load_from_cache
     except ImportError as exc:  # pragma: no cover - CLI dependency diagnostic
-        raise RuntimeError(
-            "huggingface_hub is required without --input-h5."
-        ) from exc
+        raise RuntimeError("huggingface_hub is required without --input-h5.") from exc
 
     cached = try_to_load_from_cache(
         repo_id=SOURCE_REPO_ID,
@@ -250,8 +239,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
         period = str(store["time_period"].iloc[0])
         if period != SOURCE_PERIOD:
             raise ValueError(
-                f"{source_h5}: expected time_period {SOURCE_PERIOD!r}, got "
-                f"{period!r}."
+                f"{source_h5}: expected time_period {SOURCE_PERIOD!r}, got {period!r}."
             )
 
         columns_by_entity: dict[str, list[str]] = {}
@@ -318,8 +306,8 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
                 "H5 columns Simulation.__init__ moves onto canonical leaves"
             ),
             "input_variable_count": len(input_names),
-            "effective_loader_input_count": len(effective_input_names),
-            "loader_input_aliases": dict(sorted(LOADER_INPUT_ALIASES.items())),
+            "effective_h5_input_count": len(effective_input_names),
+            "h5_input_aliases": dict(sorted(LOADER_INPUT_ALIASES.items())),
             "structural_columns_excluded": list(STRUCTURAL_COLUMNS),
             "formula_owned_export_columns_excluded": formula_owned,
             "unknown_export_columns_excluded": unknown,
@@ -334,9 +322,9 @@ def main() -> int:
     args = _parse_args()
     source_h5 = resolve_source_h5(args.input_h5)
     reference = build_reference(source_h5)
-    rendered = json.dumps(
-        reference, indent=1, sort_keys=True, ensure_ascii=False
-    ) + "\n"
+    rendered = (
+        json.dumps(reference, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
+    )
     output = args.output.resolve()
     if args.check:
         if not output.is_file() or output.read_text(encoding="utf-8") != rendered:
@@ -347,10 +335,7 @@ def main() -> int:
         return 0
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered, encoding="utf-8")
-    print(
-        f"wrote {output} — {len(reference['nonzero_shares'])} populated input "
-        "layers"
-    )
+    print(f"wrote {output} — {len(reference['nonzero_shares'])} populated input layers")
     return 0
 
 

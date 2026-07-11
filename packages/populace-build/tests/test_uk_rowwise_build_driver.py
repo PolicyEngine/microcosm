@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -111,9 +112,23 @@ def _crosswalk_frame() -> pd.DataFrame:
     )
 
 
+def _allow_input_coverage(builder, monkeypatch) -> None:
+    """Keep unrelated driver tests focused while the wiring gets its own tests."""
+    monkeypatch.setattr(
+        builder,
+        "uk_release_input_coverage_gate",
+        lambda result, engine: SimpleNamespace(
+            passed=True,
+            failures=(),
+            details={"required_columns": 132, "missing": []},
+        ),
+    )
+
+
 def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _load_builder_module()
+    _allow_input_coverage(builder, monkeypatch)
     input_h5 = tmp_path / "populace_uk_2023.h5"
     crosswalk_path = tmp_path / "crosswalk.csv.gz"
     constituency_codes = tmp_path / "constituencies.csv"
@@ -154,9 +169,11 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
     output_h5 = output_dir / "populace_uk_2023_rowwise.h5"
     manifest_path = output_dir / builder.MANIFEST_FILENAME
     coverage_path = output_dir / builder.COVERAGE_FILENAME
+    input_coverage_path = output_dir / builder.INPUT_COVERAGE_FILENAME
     assert output_h5.exists()
     assert manifest_path.exists()
     assert coverage_path.exists()
+    assert input_coverage_path.exists()
     manifest = json.loads(manifest_path.read_text())
     assert manifest["build_kind"] == "uk_rowwise_local_geography_dataset"
     assert manifest["parameters"]["n_clones"] == 2
@@ -169,6 +186,8 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
     assert manifest["rowwise_dataset"]["assigned_constituencies"] == 2
     assert manifest["rowwise_dataset"]["assigned_local_authorities"] == 2
     assert manifest["coverage"][0]["covered_areas"] == 4
+    assert manifest["input_coverage"]["passed"] is True
+    assert manifest["outputs"]["input_coverage"]["sha256"]
     assert manifest["outputs"]["crosswalk"] is None
     with pd.HDFStore(output_h5, mode="r") as store:
         assert store["household"].shape[0] == 4
@@ -199,6 +218,50 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(monkeypatch, tmp_p
     assert manifest["outputs"]["coverage_summary"] is None
 
 
+def test_build_uk_rowwise_dataset_coverage_gate_blocks_h5_write(monkeypatch, tmp_path):
+    pytest.importorskip("tables")
+    pytest.importorskip("policyengine_uk")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    crosswalk_path = tmp_path / "crosswalk.csv.gz"
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    stale_manifest = output_dir / builder.MANIFEST_FILENAME
+    stale_coverage = output_dir / builder.COVERAGE_FILENAME
+    stale_manifest.write_text('{"stale_success": true}\n')
+    stale_coverage.write_text("stale,success\n")
+    _write_toy_h5(input_h5)
+    _crosswalk_frame().to_csv(crosswalk_path, index=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--out",
+            str(output_dir),
+            "--crosswalk",
+            str(crosswalk_path),
+            "--n-clones",
+            "1",
+            "--allow-missing-country",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Input coverage failed"):
+        builder.main()
+
+    output_h5 = output_dir / "populace_uk_2023_rowwise.h5"
+    assert not output_h5.exists()
+    assert not stale_manifest.exists()
+    assert not stale_coverage.exists()
+    diagnostic = json.loads((output_dir / builder.INPUT_COVERAGE_FILENAME).read_text())
+    assert diagnostic["enforced"] is True
+    assert diagnostic["input_coverage"]["passed"] is False
+    assert "employment_income" in diagnostic["input_coverage"]["details"]["missing"]
+
+
 def test_build_uk_rowwise_dataset_rejects_target_csv_without_code(tmp_path):
     builder = _load_builder_module()
     bad_codes = tmp_path / "bad.csv"
@@ -211,6 +274,7 @@ def test_build_uk_rowwise_dataset_rejects_target_csv_without_code(tmp_path):
 def test_build_uk_rowwise_dataset_counts_blank_geography(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _load_builder_module()
+    _allow_input_coverage(builder, monkeypatch)
     input_h5 = tmp_path / "populace_uk_2023.h5"
     crosswalk_path = tmp_path / "england_only_crosswalk.csv.gz"
     output_dir = tmp_path / "out"
@@ -248,6 +312,7 @@ def test_build_uk_rowwise_dataset_counts_blank_geography(monkeypatch, tmp_path):
 def test_build_uk_rowwise_dataset_infers_source_year_from_h5(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _load_builder_module()
+    _allow_input_coverage(builder, monkeypatch)
     input_h5 = tmp_path / "populace_uk_2024.h5"
     crosswalk_path = tmp_path / "crosswalk.csv.gz"
     output_dir = tmp_path / "out"
@@ -293,6 +358,7 @@ def test_build_uk_rowwise_dataset_infers_source_year_from_h5(monkeypatch, tmp_pa
         "/tmp/escaped.h5",
         "rowwise_build_manifest.json",
         "geography_coverage_summary.csv",
+        "input_coverage.json",
         "uk_official_geography_crosswalk.csv.gz",
     ],
 )
@@ -331,7 +397,11 @@ def test_validate_output_paths_rejects_crosswalk_collision(tmp_path):
 
 @pytest.mark.parametrize(
     "sidecar_name",
-    ["rowwise_build_manifest.json", "geography_coverage_summary.csv"],
+    [
+        "rowwise_build_manifest.json",
+        "geography_coverage_summary.csv",
+        "input_coverage.json",
+    ],
 )
 def test_validate_output_paths_rejects_supplied_crosswalk_sidecar_collision(
     sidecar_name,

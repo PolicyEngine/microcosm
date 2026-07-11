@@ -20,17 +20,22 @@ from typing import Any
 import pandas as pd
 
 from populace.build.uk_runtime import (
+    PolicyEngineUKCoverageEngine,
+    assert_uk_release_input_coverage_manifest_current,
     build_official_uk_geography_crosswalk,
     clone_uk_dataset_with_rowwise_geography,
     geography_coverage_summary,
+    uk_release_input_coverage_gate,
     validate_geography_coverage,
     write_geography_crosswalk,
+    write_uk_rowwise_dataset,
 )
 
 CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
 DATASET_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise.h5"
 MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
+INPUT_COVERAGE_FILENAME = "input_coverage.json"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -114,6 +119,23 @@ def main() -> int:
         source_year=source_year,
     )
     _validate_output_paths(input_h5=input_h5, output_h5=output_h5, args=args)
+    input_coverage_path = args.out / INPUT_COVERAGE_FILENAME
+    for owned_output in (
+        output_h5,
+        args.out / MANIFEST_FILENAME,
+        args.out / COVERAGE_FILENAME,
+        input_coverage_path,
+    ):
+        owned_output.unlink(missing_ok=True)
+
+    # Cheap preflight before any source/crosswalk work: the declared contract
+    # must still equal the frozen eFRS loader-input surface and every declared
+    # name must remain a live PolicyEngine-UK input leaf or loader alias. The UK
+    # row-wise path has no target-registry compiler; this occupies the same
+    # pre-expensive-work seam as the US assertion immediately before registry
+    # compilation.
+    coverage_engine = PolicyEngineUKCoverageEngine()
+    assert_uk_release_input_coverage_manifest_current(engine=coverage_engine)
     crosswalk_source = _load_or_build_crosswalk(args)
     crosswalk = crosswalk_source.frame
     crosswalk_path = crosswalk_source.path
@@ -123,7 +145,6 @@ def main() -> int:
     result = clone_uk_dataset_with_rowwise_geography(
         input_h5,
         crosswalk,
-        output_path=output_h5,
         n_clones=args.n_clones,
         seed=args.seed,
         source_year=source_year,
@@ -132,6 +153,31 @@ def main() -> int:
         constrain_to_region=not args.allow_cross_region_assignment,
         avoid_constituency_collisions=not args.allow_constituency_collisions,
     )
+    # Hard gate on the final in-memory export tables, after every row-wise
+    # mutation and before the H5 writer. There is deliberately no bypass flag:
+    # an absent/default-only required input must never produce a release H5.
+    input_coverage_gate = uk_release_input_coverage_gate(result, coverage_engine)
+    input_coverage_payload = {
+        "schema_version": 1,
+        "enforced": True,
+        "input_coverage": {
+            "passed": input_coverage_gate.passed,
+            "failures": list(input_coverage_gate.failures),
+            "details": dict(input_coverage_gate.details),
+        },
+    }
+    input_coverage_path.write_text(
+        json.dumps(input_coverage_payload, indent=2, sort_keys=True) + "\n"
+    )
+    if not input_coverage_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Input coverage failed: {failure}"
+                for failure in input_coverage_gate.failures
+            )
+        )
+    write_uk_rowwise_dataset(result, output_h5)
     rowwise_summary = _rowwise_summary(result, base_summary=base_summary)
     coverage_path = args.out / COVERAGE_FILENAME
     coverage_artifact = None
@@ -165,10 +211,12 @@ def main() -> int:
                 _artifact_info(crosswalk_path) if crosswalk_source.generated else None
             ),
             "coverage_summary": coverage_artifact,
+            "input_coverage": _artifact_info(input_coverage_path),
         },
         "base_dataset": base_summary,
         "rowwise_dataset": rowwise_summary,
         "coverage": coverage.to_dict("records") if not coverage.empty else [],
+        "input_coverage": input_coverage_payload["input_coverage"],
     }
     manifest_path = args.out / MANIFEST_FILENAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -195,7 +243,12 @@ def _dataset_output_path(
     path = Path(filename)
     if path.is_absolute() or path.name != filename or path.name in {"", ".", ".."}:
         raise ValueError("--dataset-filename must be a filename, not a path.")
-    reserved = {CROSSWALK_FILENAME, MANIFEST_FILENAME, COVERAGE_FILENAME}
+    reserved = {
+        CROSSWALK_FILENAME,
+        MANIFEST_FILENAME,
+        COVERAGE_FILENAME,
+        INPUT_COVERAGE_FILENAME,
+    }
     if path.name in reserved:
         raise ValueError(
             f"--dataset-filename must not use reserved name {path.name!r}."
@@ -212,6 +265,7 @@ def _validate_output_paths(
     output_sidecars = {
         (args.out / MANIFEST_FILENAME).resolve(),
         (args.out / COVERAGE_FILENAME).resolve(),
+        (args.out / INPUT_COVERAGE_FILENAME).resolve(),
     }
     generated_crosswalk_path = (args.out / CROSSWALK_FILENAME).resolve()
     reserved_paths = {
