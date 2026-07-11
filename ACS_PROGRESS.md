@@ -43,3 +43,10 @@
   immigration-status support is preserved; donor geography is explicitly
   deferred; and every imputed column has immutable pattern/seed/channel/weight
   provenance. Checks: Ruff clean; 19 transfer tests pass.
+- 2026-07-10 — Bounded-memory pool milestone (this milestone commit): replaced
+  copy-heavy intermediate Frame rebuilds with direct final entity assembly,
+  chunked ID-overlap checks, and guarded in-place block consolidation. Added a
+  conservative 30 GiB peak-memory preflight while preserving exact no-ACS
+  identity and source immutability. A 100k-row, 64-column two-spine benchmark
+  reduced measured peak growth from 1,260.7 MiB to 607.8 MiB. Checks: Ruff
+  clean; 27 base-pool tests pass.

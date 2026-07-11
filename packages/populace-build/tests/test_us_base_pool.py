@@ -12,6 +12,8 @@ import pytest
 from populace.build.us_runtime.base_pool import (
     ACS_2024_1YR_SPINE,
     ASEC_PUF_SPINE,
+    DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES,
+    estimate_optional_acs_pool_peak_bytes,
     spine_column,
     with_optional_acs_spine,
 )
@@ -26,10 +28,10 @@ BASE_HOUSEHOLD_MASS = 400.0
 ACS_RAW_HOUSEHOLD_MASS = 50.0
 DEFAULT_ACS_SHARE = 0.5
 QUARTER_ACS_SHARE = 0.25
-MEMORY_BENCHMARK_ROWS = 10_000
-MEMORY_BENCHMARK_COLUMNS_PER_SPINE = 32
-MEMORY_AMPLIFICATION_LIMIT = 12
-MEMORY_FIXED_ALLOWANCE_BYTES = 128 * 1024 * 1024
+MEMORY_BENCHMARK_ROWS = 25_000
+MEMORY_BENCHMARK_COLUMNS_PER_SPINE = 48
+MEMORY_AMPLIFICATION_LIMIT = 6
+MEMORY_FIXED_ALLOWANCE_BYTES = 32 * 1024 * 1024
 
 
 def _base_frame(*, support_metadata: bool = True) -> Frame:
@@ -156,6 +158,21 @@ def _add_support_metadata(
         table[support_clone_index_column(entity)] = 0
 
 
+def _shift_frame_ids(frame: Frame, offset: int) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][US_SCHEMA.person_id_column] += offset
+    for group in US_SCHEMA.group_entities:
+        tables[group][US_SCHEMA.id_column(group)] += offset
+        tables["person"][US_SCHEMA.membership_column(group)] += offset
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
 def _frame_digest(frame: Frame) -> str:
     payload = (
         [(entity, frame.table(entity)) for entity in frame.entities],
@@ -179,13 +196,60 @@ def test__given_no_acs__then_base_object_and_bytes_are_unchanged() -> None:
     digest_before = _frame_digest(base)
 
     # When
-    result = with_optional_acs_spine(base, None)
+    result = with_optional_acs_spine(
+        base,
+        None,
+        acs_share="not validated on the identity path",
+        max_peak_bytes=0,
+    )
 
     # Then
     assert result is base
     assert _frame_digest(result) == digest_before
     for entity in base.entities:
         assert spine_column(entity) not in base.table(entity)
+
+
+def test__given_acs__then_source_frames_remain_byte_identical() -> None:
+    # Given
+    base = _base_frame()
+    acs = _acs_frame()
+    base_digest = _frame_digest(base)
+    acs_digest = _frame_digest(acs)
+
+    # When
+    with_optional_acs_spine(base, acs)
+
+    # Then
+    assert _frame_digest(base) == base_digest
+    assert _frame_digest(acs) == acs_digest
+
+
+def test__given_nullable_existing_spine__then_every_base_row_is_tagged() -> None:
+    # Given
+    original = _base_frame(support_metadata=False)
+    tables = {entity: original.table(entity).copy() for entity in original.entities}
+    tables["person"][spine_column("person")] = pd.Series(
+        [ASEC_PUF_SPINE, pd.NA, ASEC_PUF_SPINE],
+        dtype="string",
+    )
+    base = Frame(
+        tables,
+        original.schema,
+        {"household": original.weights_for("household")},
+        original.strata,
+    )
+
+    # When
+    result = with_optional_acs_spine(base, _acs_frame())
+
+    # Then
+    assert result.table("person")[spine_column("person")].iloc[:3].tolist() == [
+        ASEC_PUF_SPINE,
+        ASEC_PUF_SPINE,
+        ASEC_PUF_SPINE,
+    ]
+    assert pd.isna(base.table("person")[spine_column("person")].iloc[1])
 
 
 def test__given_acs__then_every_entity_is_tagged_and_links_remain_valid() -> None:
@@ -219,6 +283,28 @@ def test__given_acs__then_every_entity_is_tagged_and_links_remain_valid() -> Non
             ]
         )
         assert set(acs_people[US_SCHEMA.membership_column(group)]) == acs_group_ids
+
+
+def test__given_disjoint_lower_acs_ids__then_group_rows_and_weights_sort_together() -> (
+    None
+):
+    # Given
+    base = _base_frame(support_metadata=False)
+    acs = _shift_frame_ids(_acs_frame(), -100_000)
+
+    # When
+    result = with_optional_acs_spine(base, acs)
+
+    # Then
+    household = result.table("household")
+    assert household[spine_column("household")].tolist() == [
+        ACS_2024_1YR_SPINE,
+        ASEC_PUF_SPINE,
+        ASEC_PUF_SPINE,
+    ]
+    assert result.weights_for("household").values.tolist() == pytest.approx(
+        [200.0, 50.0, 150.0]
+    )
 
 
 def test__given_source_specific_columns__then_other_spine_receives_missing_values() -> (
@@ -371,6 +457,7 @@ import numpy as np
 namespace = runpy.run_path({test_file!r})
 make_frame = namespace["_one_person_household_frame"]
 combine = namespace["with_optional_acs_spine"]
+estimate = namespace["estimate_optional_acs_pool_peak_bytes"]
 rows = {MEMORY_BENCHMARK_ROWS}
 columns = {MEMORY_BENCHMARK_COLUMNS_PER_SPINE}
 
@@ -395,10 +482,12 @@ def peak_bytes():
     return int(peak if sys.platform == "darwin" else peak * 1024)
 
 before = peak_bytes()
+estimated_peak_bytes = estimate(base, acs)
 result = combine(base, acs)
 after = peak_bytes()
 print(json.dumps({{
     "input_bytes": input_bytes,
+    "estimated_peak_bytes": estimated_peak_bytes,
     "peak_growth_bytes": max(0, after - before),
     "n_person": result.n("person"),
 }}))
@@ -419,6 +508,36 @@ print(json.dumps({{
         MEMORY_AMPLIFICATION_LIMIT * measurement["input_bytes"]
         + MEMORY_FIXED_ALLOWANCE_BYTES
     )
+    assert measurement["peak_growth_bytes"] <= measurement["estimated_peak_bytes"]
+    assert measurement["estimated_peak_bytes"] <= DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES
+
+
+def test__given_peak_estimate_above_limit__then_assembly_fails_before_copying() -> None:
+    # Given
+    base = _base_frame()
+    acs = _acs_frame()
+    estimated = estimate_optional_acs_pool_peak_bytes(base, acs)
+    base_digest = _frame_digest(base)
+    acs_digest = _frame_digest(acs)
+
+    # When / Then
+    with pytest.raises(MemoryError, match="estimated to require"):
+        with_optional_acs_spine(base, acs, max_peak_bytes=estimated - 1)
+    assert _frame_digest(base) == base_digest
+    assert _frame_digest(acs) == acs_digest
+
+
+@pytest.mark.parametrize("invalid_limit", [0, -1, 1.5, True, "30GB"])
+def test__given_invalid_peak_limit__then_validation_fails(
+    invalid_limit: object,
+) -> None:
+    # Given
+    base = _base_frame()
+    acs = _acs_frame()
+
+    # When / Then
+    with pytest.raises(ValueError, match="max_peak_bytes"):
+        with_optional_acs_spine(base, acs, max_peak_bytes=invalid_limit)
 
 
 @pytest.mark.parametrize(
