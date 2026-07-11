@@ -11,6 +11,7 @@ deliberately downstream.
 from __future__ import annotations
 
 import argparse
+import os
 import gc
 import hashlib
 import json
@@ -59,7 +60,9 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUTS_DIR = _REPOSITORY_ROOT / "inputs" / "acs_2024_1yr"
 DEFAULT_PUMA_LADDER = _REPOSITORY_ROOT / "build" / "us" / "us_puma_ladder_2020.npz"
 DEFAULT_N_ESTIMATORS = 32
-DEFAULT_STAGING_EXPORT_PEAK_LIMIT_BYTES = 30_000_000_000
+DEFAULT_STAGING_EXPORT_PEAK_LIMIT_BYTES = int(
+    os.environ.get("POPULACE_STAGING_EXPORT_PEAK_LIMIT_BYTES", 30_000_000_000)
+)
 _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
     "package:populace.build.us_runtime/acs_2024_1yr_sources.json"

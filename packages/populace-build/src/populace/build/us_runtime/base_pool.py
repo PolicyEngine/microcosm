@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from typing import Any
 
 import numpy as np
@@ -39,7 +41,9 @@ ASEC_PUF_SPINE = "asec_puf"
 # The launch worker has a 30 GB RSS budget. The estimate includes the two
 # incoming frames, the assembled tables, the Frame constructor's defensive
 # copies, and a fixed allowance for pandas/Python scratch allocations.
-DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = 30_000_000_000
+DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = int(
+    os.environ.get("POPULACE_ACS_POOL_PEAK_LIMIT_BYTES", 30_000_000_000)
+)
 _PEAK_ESTIMATE_FIXED_OVERHEAD_BYTES = 256 * 1024**2
 _ID_OVERLAP_CHUNK_ROWS = 65_536
 _PUMA_LADDER_ANCHOR_COLUMN = "__populace_puma_ladder_anchor"
