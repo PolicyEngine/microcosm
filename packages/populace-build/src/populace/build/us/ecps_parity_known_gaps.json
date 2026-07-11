@@ -350,10 +350,6 @@
         "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes only the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 61-75 reads only their person and household tables without refreshing or linking separate WIC certification records."
       }
     },
-    "net_worth": {
-      "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
-      "issue": "PolicyEngine/populace#49"
-    },
     "pre_subsidy_rent": {
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"

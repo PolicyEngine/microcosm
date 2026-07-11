@@ -1,12 +1,16 @@
-"""US SCF financial-asset (SSI countable-resource) stage tests (populace #356/#368).
+"""US SCF wealth and SSI countable-resource tests (#49/#356/#368).
 
 The three asset leaves ``bank_account_assets`` / ``stock_assets`` /
 ``bond_assets`` are what ``ssi_countable_resources`` sums; with them absent the
 SSI resource-limit reform class scores $0 (the #356 failure). This stage
-SCF-imputes them, head-carried onto the household reference person.
+SCF-imputes them onto the household reference person and restores signed
+household ``net_worth`` from the retired pipeline's direct SCF anchor.
 """
 
 from __future__ import annotations
+
+import importlib.util
+from importlib.metadata import version
 
 import numpy as np
 import pandas as pd
@@ -15,11 +19,15 @@ import pytest
 from populace.build.source_manifest import SourceStageSpec
 from populace.build.us_runtime import (
     SCF_FINANCIAL_ASSET_TARGET_COMPONENTS,
+    SCF_NET_WORTH_TARGET_COMPONENTS,
     SCF_WEALTH_PREDICTORS,
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+    US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+    US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
     US_SCF_WEALTH_STAGE_NAME,
     fetch_scf_2022_summary_extract,
     impute_us_scf_financial_assets,
+    impute_us_scf_net_worth,
     load_scf_2022_financial_asset_donor,
     us_scf_wealth_signal_gate,
     us_scf_wealth_stage_spec,
@@ -36,6 +44,10 @@ from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 TIME_PERIOD = 2024
 
 _DONOR_WEIGHT_COLUMN = "scf_weight"
+requires_us = pytest.mark.skipif(
+    importlib.util.find_spec("policyengine_us") is None,
+    reason="policyengine-us extra not installed",
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -47,12 +59,16 @@ def _raw_scf_summary() -> pd.DataFrame:
     rng = np.random.default_rng(0)
     n = 400
     liq = rng.gamma(2.0, 3_000.0, n)
+    net_worth = rng.lognormal(12.0, 1.1, n)
+    indebted = rng.random(n) < 0.10
+    net_worth[indebted] = -rng.gamma(2.0, 20_000.0, indebted.sum())
     return pd.DataFrame(
         {
             "liq": liq,
             "stocks": rng.gamma(1.0, 5_000.0, n),
             "nmmf": rng.gamma(1.0, 4_000.0, n),
             "bond": np.where(rng.random(n) < 0.05, rng.gamma(1.0, 9_000.0, n), 0.0),
+            "networth": net_worth,
             "wgt": rng.uniform(500.0, 2_000.0, n),
             "age": rng.integers(20, 85, n).astype(float),
             "hhsex": rng.integers(1, 3, n).astype(float),
@@ -87,6 +103,10 @@ def _donor_table() -> pd.DataFrame:
     frame["bond_assets"] = np.where(
         rng.random(n) < 0.04, rng.gamma(1.0, 9_000.0, n), 0.0
     )
+    net_worth = rng.lognormal(12.0, 1.1, n)
+    indebted = rng.random(n) < 0.12
+    net_worth[indebted] = -rng.gamma(2.0, 20_000.0, indebted.sum())
+    frame["net_worth"] = net_worth
     frame[_DONOR_WEIGHT_COLUMN] = rng.uniform(500.0, 2_000.0, n)
     return frame
 
@@ -140,7 +160,12 @@ def _person_rows(n_households: int = 60) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def _us_frame(person: pd.DataFrame, *, weights: list[float] | None = None) -> Frame:
+def _us_frame(
+    person: pd.DataFrame,
+    *,
+    weights: list[float] | None = None,
+    household_extra: dict[str, object] | None = None,
+) -> Frame:
     person = person.copy()
     n = len(person)
     household_ids = person["person_household_id"].to_numpy()
@@ -149,9 +174,12 @@ def _us_frame(person: pd.DataFrame, *, weights: list[float] | None = None) -> Fr
     person["person_spm_unit_id"] = person["person_household_id"] + 2_000
     person["person_family_id"] = person["person_household_id"] + 3_000
     person["person_marital_unit_id"] = np.arange(n, dtype="int64") + 4_000
+    household = pd.DataFrame({"household_id": unique_households})
+    for column, values in (household_extra or {}).items():
+        household[column] = values
     tables = {
         "person": person,
-        "household": pd.DataFrame({"household_id": unique_households}),
+        "household": household,
         "tax_unit": pd.DataFrame({"tax_unit_id": unique_households + 1_000}),
         "spm_unit": pd.DataFrame({"spm_unit_id": unique_households + 2_000}),
         "family": pd.DataFrame({"family_id": unique_households + 3_000}),
@@ -178,7 +206,10 @@ def test_stage_spec_loads_and_declares_outputs() -> None:
     spec = us_scf_wealth_stage_spec()
     assert isinstance(spec, SourceStageSpec)
     assert spec.stage == US_SCF_WEALTH_STAGE_NAME
-    for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+    for column in (
+        *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+        *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+    ):
         assert column in spec.outputs
 
 
@@ -196,6 +227,30 @@ def test_stock_target_sums_stocks_and_nmmf() -> None:
     assert SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["bond_assets"] == ("bond",)
 
 
+def test_net_worth_target_is_the_direct_signed_scf_anchor() -> None:
+    assert SCF_NET_WORTH_TARGET_COMPONENTS == {"net_worth": ("networth",)}
+    assert US_SCF_NET_WORTH_OUTPUT_COLUMNS == ("net_worth",)
+    assert US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS == ("net_worth",)
+
+    spec = us_scf_wealth_stage_spec()
+    derivation = next(
+        operation
+        for operation in spec.operations
+        if operation.kind == "derive"
+        and "net_worth_anchor" in operation.parameters["outputs"]
+    )
+    assert derivation.parameters["net_worth_source_column"] == "networth"
+    fit = next(
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+    )
+    assert fit.parameters["net_worth_target"] == "networth"
+    assert fit.parameters["net_worth_signed"] is True
+    assert "utils/asset_imputation.py lines 15-19" in spec.notes
+    assert "calibration/source_impute.py lines 1324-1338" in spec.notes
+
+
 # --------------------------------------------------------------------------- #
 # Donor loading                                                                 #
 # --------------------------------------------------------------------------- #
@@ -206,6 +261,7 @@ def test_load_donor_derives_targets_predictors_and_weight(tmp_path) -> None:
     donor = load_scf_2022_financial_asset_donor(path)
     for column in (
         *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+        *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *SCF_WEALTH_PREDICTORS,
         _DONOR_WEIGHT_COLUMN,
     ):
@@ -219,6 +275,10 @@ def test_load_donor_derives_targets_predictors_and_weight(tmp_path) -> None:
     assert (donor[_DONOR_WEIGHT_COLUMN] > 0).all()
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
         assert (donor[column] >= 0).all()
+    # Unlike the three SSI leaves, net worth is a signed direct carry.
+    np.testing.assert_allclose(donor["net_worth"], raw["networth"], rtol=1e-6)
+    assert (donor["net_worth"] < 0).any()
+    assert (donor["net_worth"] > 0).any()
 
 
 def test_load_donor_missing_column_raises(tmp_path) -> None:
@@ -298,10 +358,29 @@ def test_impute_missing_donor_column_raises() -> None:
         impute_us_scf_financial_assets(person, donor, seed=0, n_estimators=10)
 
 
+def test_impute_net_worth_is_signed_finite_and_household_aligned() -> None:
+    person = _person_rows(200)
+    household = _us_frame(person).table("household").iloc[::-1].copy()
+    result = impute_us_scf_net_worth(
+        person,
+        household,
+        _donor_table(),
+        seed=42,
+        n_estimators=20,
+    )
+
+    assert result.name == "net_worth"
+    assert result.index.equals(household.index)
+    assert np.isfinite(result.to_numpy()).all()
+    assert (result > 0).any()
+    assert (result < 0).any()
+    assert result.nunique() > 1
+
+
 # --------------------------------------------------------------------------- #
 # Frame integration                                                             #
 # --------------------------------------------------------------------------- #
-def test_with_inputs_writes_all_three_columns() -> None:
+def test_with_inputs_writes_asset_and_net_worth_columns() -> None:
     frame = _us_frame(_person_rows(60))
     donor = _donor_table()
     out = with_us_scf_wealth_inputs(
@@ -312,6 +391,10 @@ def test_with_inputs_writes_all_three_columns() -> None:
         assert column in person.columns
         assert person[column].to_numpy().dtype == np.float64
     assert person["bank_account_assets"].to_numpy().sum() > 0
+    net_worth = out.table("household")["net_worth"]
+    assert net_worth.to_numpy().dtype == np.float64
+    assert net_worth.nunique() > 1
+    assert (net_worth < 0).any()
 
 
 def test_with_inputs_is_idempotent_when_signal_present() -> None:
@@ -329,6 +412,10 @@ def test_with_inputs_is_idempotent_when_signal_present() -> None:
         once.table("person")["bank_account_assets"].to_numpy(),
         twice.table("person")["bank_account_assets"].to_numpy(),
     )
+    np.testing.assert_array_equal(
+        once.table("household")["net_worth"].to_numpy(),
+        twice.table("household")["net_worth"].to_numpy(),
+    )
 
 
 def test_with_inputs_reimputes_when_bank_assets_constant() -> None:
@@ -342,6 +429,35 @@ def test_with_inputs_reimputes_when_bank_assets_constant() -> None:
         frame, seed=42, time_period=TIME_PERIOD, scf_donor=donor
     )
     assert out.table("person")["bank_account_assets"].to_numpy().sum() > 0
+
+
+def test_with_inputs_heals_nonfinite_net_worth_without_redrawing_assets() -> None:
+    once = with_us_scf_wealth_inputs(
+        _us_frame(_person_rows(60)),
+        seed=42,
+        time_period=TIME_PERIOD,
+        scf_donor=_donor_table(),
+    )
+    tables = {entity: once.table(entity).copy() for entity in once.entities}
+    original_assets = tables["person"]["bank_account_assets"].to_numpy().copy()
+    tables["household"].loc[tables["household"].index[0], "net_worth"] = np.inf
+    damaged = Frame(
+        tables,
+        once.schema,
+        {entity: once.weights_for(entity) for entity in once.weighted_entities},
+    )
+
+    healed = with_us_scf_wealth_inputs(
+        damaged,
+        seed=99,
+        time_period=TIME_PERIOD,
+        scf_donor=_donor_table(),
+    )
+
+    np.testing.assert_array_equal(
+        healed.table("person")["bank_account_assets"].to_numpy(), original_assets
+    )
+    assert np.isfinite(healed.table("household")["net_worth"]).all()
 
 
 # --------------------------------------------------------------------------- #
@@ -369,10 +485,35 @@ def test_signal_gate_fails_on_constant_zero_surface() -> None:
     person["bank_account_assets"] = 0.0
     person["stock_assets"] = 0.0
     person["bond_assets"] = 0.0
-    frame = _us_frame(person)
+    frame = _us_frame(
+        person,
+        household_extra={"net_worth": np.zeros(20, dtype=np.float64)},
+    )
     gate = us_scf_wealth_signal_gate(frame)
     assert not gate.passed
     assert any("constant" in f or "nonzero share" in f for f in gate.failures)
+
+
+def test_signal_gate_requires_signed_net_worth_support() -> None:
+    out = with_us_scf_wealth_inputs(
+        _us_frame(_person_rows(200)),
+        seed=42,
+        time_period=TIME_PERIOD,
+        scf_donor=_donor_table(),
+    )
+    tables = {entity: out.table(entity).copy() for entity in out.entities}
+    tables["household"]["net_worth"] = (
+        np.abs(tables["household"]["net_worth"].to_numpy()) + 1.0
+    )
+    positive_only = Frame(
+        tables,
+        out.schema,
+        {entity: out.weights_for(entity) for entity in out.weighted_entities},
+    )
+
+    gate = us_scf_wealth_signal_gate(positive_only)
+    assert not gate.passed
+    assert any("net_worth negative share" in failure for failure in gate.failures)
 
 
 def test_summary_reports_shares_and_bands() -> None:
@@ -384,6 +525,22 @@ def test_summary_reports_shares_and_bands() -> None:
     assert 0.0 <= summary["bank_account_assets_nonzero_share"] <= 1.0
     assert "bank_nonzero_share_band" in summary
     assert summary["unique_counts"]["bank_account_assets"] >= 2
+    assert summary["net_worth_unique_count"] >= 2
+    assert 0.0 < summary["net_worth_negative_share"] < 1.0
+    assert 0.0 < summary["net_worth_positive_share"] < 1.0
+
+
+@requires_us
+def test_policyengine_1_764_6_net_worth_input_contract() -> None:
+    from policyengine_us import CountryTaxBenefitSystem
+
+    assert version("policyengine-us") == "1.764.6"
+    variable = CountryTaxBenefitSystem().variables["net_worth"]
+    assert variable.is_input_variable()
+    assert variable.entity.key == "household"
+    assert variable.value_type is float
+    assert variable.default_value == 0
+    assert str(variable.definition_period).lower() == "year"
 
 
 # --------------------------------------------------------------------------- #

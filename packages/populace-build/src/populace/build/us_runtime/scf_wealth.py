@@ -721,9 +721,7 @@ def impute_us_scf_net_worth(
         seed=seed,
         n_estimators=n_estimators,
     )
-    reference_household_ids = person.loc[
-        head_mask, _HOUSEHOLD_ID_COLUMN
-    ].to_numpy()
+    reference_household_ids = person.loc[head_mask, _HOUSEHOLD_ID_COLUMN].to_numpy()
     if pd.Series(reference_household_ids).duplicated().any():
         raise ValueError(
             "US SCF net-worth imputation produced duplicate reference households."
@@ -739,8 +737,7 @@ def impute_us_scf_net_worth(
     if aligned.isna().any():
         missing = household_ids[aligned.isna().to_numpy()][:5].tolist()
         raise ValueError(
-            "US SCF net-worth imputation does not cover household id(s) "
-            f"{missing}."
+            f"US SCF net-worth imputation does not cover household id(s) {missing}."
         )
     return pd.Series(
         aligned.to_numpy(dtype=np.float64),
@@ -761,12 +758,19 @@ def _bank_assets_carry_signal(person: pd.DataFrame) -> bool:
 
 
 def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
-    """Whether persisted household net worth is nondefault and nonconstant."""
+    """Whether persisted household net worth is finite and nonconstant."""
 
     if "net_worth" not in household:
         return False
-    values = pd.to_numeric(household["net_worth"], errors="coerce").dropna()
-    return values.nunique() > 1 and bool((values != 0).any())
+    values = pd.to_numeric(household["net_worth"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    return (
+        len(values) == len(household)
+        and bool(np.isfinite(values).all())
+        and np.unique(values).size > 1
+        and bool((values != 0).any())
+    )
 
 
 def with_us_scf_wealth_inputs(
@@ -821,9 +825,7 @@ def with_us_scf_wealth_inputs(
             person, scf_donor, seed=int(seed)
         )
         for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
-            tables["person"][column] = imputed_assets[column].to_numpy(
-                dtype=np.float64
-            )
+            tables["person"][column] = imputed_assets[column].to_numpy(dtype=np.float64)
     if not net_worth_carries_signal:
         tables["household"]["net_worth"] = impute_us_scf_net_worth(
             person,
@@ -881,6 +883,7 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         if "net_worth" in household
         else np.asarray([], dtype=np.float64)
     )
+    finite_net_worth = np.isfinite(net_worth)
 
     def _net_worth_share(mask: np.ndarray) -> float:
         return (
@@ -913,12 +916,16 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         else 0,
         "net_worth_nonfinite": int(np.count_nonzero(~np.isfinite(net_worth))),
         "net_worth_nonzero_share": _net_worth_share(
-            np.isfinite(net_worth) & (net_worth != 0)
+            finite_net_worth & (net_worth != 0)
         ),
-        "net_worth_positive_share": _net_worth_share(net_worth > 0),
-        "net_worth_negative_share": _net_worth_share(net_worth < 0),
+        "net_worth_positive_share": _net_worth_share(
+            finite_net_worth & (net_worth > 0)
+        ),
+        "net_worth_negative_share": _net_worth_share(
+            finite_net_worth & (net_worth < 0)
+        ),
         "net_worth_weighted_total": float(
-            np.sum(np.nan_to_num(net_worth) * household_weights)
+            np.sum(np.where(finite_net_worth, net_worth, 0.0) * household_weights)
         )
         if len(net_worth) == len(household_weights)
         else 0.0,
@@ -954,8 +961,8 @@ def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
             passed=False,
             failures=(
                 f"person columns missing: {missing}; household columns missing: "
-                f"{missing_household}."
-            ,),
+                f"{missing_household}.",
+            ),
             details={
                 "missing_person": missing,
                 "missing_household": missing_household,

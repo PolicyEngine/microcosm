@@ -88,6 +88,7 @@ from populace.build.us_runtime.scf_auto_loans import (
     US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
 from populace.build.us_runtime.scf_wealth import (
+    US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
     US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.sipp_tips import (
@@ -147,11 +148,13 @@ US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS = (
     *US_GEOGRAPHY_LADDER_COLUMNS,
 )
 
-# Unlike the geography spine above, these household inputs must carry signal:
-# presence-only would accept the engine's broadcast-zero defaults and silently
-# return the OBBBA auto-loan provision to a structural zero.
+# Unlike the geography spine above, these household inputs must carry signal.
+# Presence-only would accept broadcast-zero engine defaults, silently zeroing
+# the OBBBA auto-loan provision and erasing the restored vehicle/net-worth
+# distributions while still satisfying a key-only export check.
 US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS = (
     *US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    *US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
     *US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
 

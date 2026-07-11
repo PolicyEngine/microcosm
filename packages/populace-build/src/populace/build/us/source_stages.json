@@ -620,10 +620,12 @@
           "outputs": [
             "auto_loan_interest",
             "auto_loan_balance",
+            "net_worth_anchor",
             "net_worth_components",
             "financial_asset_components",
             "household_asset_components"
           ],
+          "net_worth_source_column": "networth",
           "auto_loan_amount_columns": [
             "x2209",
             "x2309",
@@ -659,7 +661,9 @@
             "employment_income",
             "interest_dividend_income",
             "social_security_pension_income"
-          ]
+          ],
+          "net_worth_target": "networth",
+          "net_worth_signed": true
         },
         {
           "kind": "head_carry",
@@ -710,7 +714,7 @@
         "auto_loan_interest",
         "qualified_passenger_vehicle_loan_interest"
       ],
-      "notes": "The full SCF joins all five implicates to the summary extract on (y1, yy1). Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary and all three auto outputs are checked again at release gates."
+      "notes": "The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45 utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting net_worth. Populace therefore persists that signed household anchor directly, including indebted households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance preserves the retired pipeline's name for original financed amounts, not remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS's approximately six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped."
     },
     {
       "stage": "sipp_tips",
@@ -1492,7 +1496,7 @@
         "household_vehicles_owned",
         "household_vehicles_value"
       ],
-      "notes": "Restores the retired household-grain SIPP vehicle family from the immutable full 2023 public-use donor at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 430-456 and 953-1059 pin the exact 20 columns, December household transform, target-specific observed-source masks, positive survey weights, and 20,000-row cap; calibration/source_impute.py lines 992-1084 and utils/asset_imputation.py lines 503-603 pin the CPS receiver and output types. Vehicle count is classified first and vehicle value is then drawn conditionally; both are clipped nonnegative, count is rounded int32, and value is float32. The 65.6 MB tip-only slim SIPP file lacks this family. Populace deliberately does not execute the old placeholder fold into net_worth: the retired pipeline blended SIPP/SCF vehicle value and reconciled a full SCF balance sheet, while Populace has not restored that full net-worth family. Persisting the two policy inputs independently avoids inventing a partial net-worth measure."
+      "notes": "Restores the retired household-grain SIPP vehicle family from the immutable full 2023 public-use donor at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 430-456 and 953-1059 pin the exact 20 columns, December household transform, target-specific observed-source masks, positive survey weights, and 20,000-row cap; calibration/source_impute.py lines 992-1084 and utils/asset_imputation.py lines 503-603 pin the CPS receiver and output types. Vehicle count is classified first and vehicle value is then drawn conditionally; both are clipped nonnegative, count is rounded int32, and value is float32. The 65.6 MB tip-only slim SIPP file lacks this family. Populace deliberately does not execute the old placeholder fold into net_worth: the retired pipeline blended SIPP/SCF vehicle value before reconciling construction-only balance-sheet components, while Populace now persists the independently source-backed direct SCF networth anchor. Keeping the vehicle leaves and signed SCF anchor as separate policy inputs avoids inventing a partial component formula."
     },
     {
       "stage": "aca_marketplace_inputs",

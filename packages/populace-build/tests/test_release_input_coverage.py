@@ -529,6 +529,11 @@ class TestShippedManifest:
             assert column in manifest.required_columns
             assert column not in manifest.reviewed_exclusions
 
+    def test_signed_scf_net_worth_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "net_worth" in manifest.required_columns
+        assert "net_worth" not in manifest.reviewed_exclusions
+
     def test_typed_household_weight_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         assert "household_weight" in manifest.required_columns

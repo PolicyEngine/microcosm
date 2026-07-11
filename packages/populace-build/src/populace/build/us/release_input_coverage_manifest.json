@@ -265,9 +265,7 @@
    "status": "required"
   },
   "net_worth": {
-   "issue": "PolicyEngine/populace#49",
-   "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "non_qualified_dividend_income": {
    "status": "required"
@@ -550,8 +548,8 @@
   }
  },
  "counts": {
-  "required": 140,
-  "reviewed_exclusion": 25,
+  "required": 141,
+  "reviewed_exclusion": 24,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",

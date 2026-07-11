@@ -891,10 +891,10 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Path to the Federal Reserve SCF 2022 public summary extract "
-            "(rscfp2022.dta) that feeds the SSI countable-resource asset "
-            "imputation (scf_wealth stage, populace#356/#368). When omitted the "
-            "fixed-vintage extract is fetched and cached from the Federal "
-            "Reserve."
+            "(rscfp2022.dta) that feeds the signed household net-worth and SSI "
+            "countable-resource asset imputations (scf_wealth stage, "
+            "populace#49/#356/#368). When omitted the fixed-vintage extract is "
+            "fetched and cached from the Federal Reserve."
         ),
     )
     parser.add_argument(
@@ -6380,15 +6380,16 @@ def main() -> None:
         telemetry.stage(
             "scf_wealth_inputs",
             message=(
-                "Imputing SSI countable-resource assets (bank/stock/bond) from "
-                "the Federal Reserve SCF 2022 summary extract."
+                "Imputing signed household net worth and SSI countable-resource "
+                "assets (bank/stock/bond) from the Federal Reserve SCF 2022 "
+                "summary extract."
             ),
         )
-    # populace#356/#368 Deliverable 2: restore the three SSI countable-resource
-    # asset inputs (bank_account_assets / stock_assets / bond_assets). Without
-    # them ssi_countable_resources is 0 for every record and every SSI
-    # resource-limit reform silently scores $0 — the failure the #368 column and
-    # reform-coverage gates are RED on. A CLI-supplied extract path is used when
+    # populace#49/#356/#368: restore signed household net_worth plus the three
+    # SSI countable-resource asset inputs (bank_account_assets / stock_assets /
+    # bond_assets) from their direct SCF summary-extract targets. Without the
+    # latter, ssi_countable_resources is 0 for every record and SSI resource-
+    # limit reforms silently score $0. A CLI-supplied extract path is used when
     # given; otherwise the fixed-vintage public extract is fetched and cached.
     scf_summary_extract_path = (
         Path(args.scf_summary_extract)

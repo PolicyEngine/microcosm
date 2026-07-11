@@ -151,6 +151,7 @@ def _us_frame(**person_extra: object) -> Frame:
                     "auto_loan_balance": [0.0, 24_000.0],
                     "auto_loan_interest": [0.0, 1_200.0],
                     "qualified_passenger_vehicle_loan_interest": [0.0, 240.0],
+                    "net_worth": [-50_000.0, 350_000.0],
                     "household_vehicles_owned": [0, 2],
                     "household_vehicles_value": [0.0, 30_000.0],
                 }
@@ -487,6 +488,7 @@ def test_required_us_release_source_columns_rejects_missing_geography_spine() ->
         "auto_loan_balance",
         "auto_loan_interest",
         "qualified_passenger_vehicle_loan_interest",
+        "net_worth",
         "household_vehicles_owned",
         "household_vehicles_value",
     ],
@@ -525,6 +527,26 @@ def test_required_us_release_source_columns_rejects_constant_auto_input() -> Non
     with pytest.raises(
         ValueError,
         match="household.qualified_passenger_vehicle_loan_interest: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
+def test_required_us_release_source_columns_rejects_constant_net_worth() -> None:
+    frame = _us_frame()
+    raw_households = frame.table("household").copy()
+    raw_households["net_worth"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "household": raw_households,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="household.net_worth: not nonconstant",
     ):
         assert_required_us_release_source_columns(raw_frame)
 
@@ -908,6 +930,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "auto_loan_balance",
         "auto_loan_interest",
         "qualified_passenger_vehicle_loan_interest",
+        "net_worth",
         "household_vehicles_owned",
         "household_vehicles_value",
     ]
