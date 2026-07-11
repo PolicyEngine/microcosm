@@ -1785,7 +1785,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         weight_entity="household",
         selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
-    captured: dict[str, object] = {}
+    captured: dict[str, object] = {"health_stage_events": []}
 
     class FakeFrame:
         def n(self, entity):
@@ -2252,10 +2252,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_with_aca_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("aca")
+        return frame
+
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
+        fake_with_aca_outputs,
     )
     monkeypatch.setattr(
         builder,
@@ -2266,22 +2277,69 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_with_medicaid_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        substitutions=(),
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("medicaid")
+        return frame, {}
+
+    def fake_medicaid_gate(diagnostics):
+        captured["health_stage_events"].append("medicaid_gate")
+        return builder.GateResult(
+            name="medicaid_take_up",
+            passed=True,
+            details={"checked": True},
+        )
+
     monkeypatch.setattr(
         builder,
         "_with_medicaid_take_up_outputs",
-        lambda frame, specs, *, seed, substitutions=(), maximum_microsim_batch_size=None: (
-            frame,
-            {},
-        ),
+        fake_with_medicaid_outputs,
     )
     monkeypatch.setattr(
         builder,
         "us_medicaid_take_up_gate",
-        lambda diagnostics: builder.GateResult(
-            name="medicaid_take_up",
+        fake_medicaid_gate,
+    )
+
+    def fake_with_other_health_insurance_inputs(
+        frame,
+        *,
+        seed,
+        time_period,
+        maximum_microsim_batch_size,
+    ):
+        captured["health_stage_events"].append("other_health")
+        captured["other_health_insurance_stage_called"] = True
+        captured["other_health_insurance_seed"] = seed
+        captured["other_health_insurance_period"] = time_period
+        captured["other_health_insurance_batch_size"] = maximum_microsim_batch_size
+        return frame
+
+    def fake_other_health_insurance_signal_gate(frame):
+        captured["health_stage_events"].append("other_health_gate")
+        captured["other_health_insurance_gate_called"] = True
+        return builder.GateResult(
+            name="other_health_insurance_premiums_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        fake_with_other_health_insurance_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        fake_other_health_insurance_signal_gate,
     )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
@@ -2388,6 +2446,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["child_support_gate_called"] is True
     assert captured["disability_benefits_gate_called"] is True
     assert captured["educator_expense_gate_called"] is True
+    assert captured["other_health_insurance_stage_called"] is True
+    assert captured["other_health_insurance_gate_called"] is True
+    assert captured["other_health_insurance_seed"] == 0
+    assert captured["other_health_insurance_period"] == builder.PERIOD
+    assert (
+        captured["other_health_insurance_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["health_stage_events"] == [
+        "aca",
+        "medicaid",
+        "medicaid_gate",
+        "other_health",
+        "other_health_gate",
+    ]
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:

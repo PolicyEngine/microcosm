@@ -18,6 +18,7 @@ from populace.build.us_runtime import (
     US_DISABILITY_BENEFITS_STAGE_NAME,
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
+    US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     US_QBI_OUTPUT_COLUMNS,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
@@ -209,6 +210,21 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(
             US_DISABILITY_BENEFITS_STAGE_NAME
         ) < US_STAGE_NAMES.index("education_inputs")
+        assert US_STAGE_NAMES.index("medicaid_take_up") < US_STAGE_NAMES.index(
+            US_OTHER_HEALTH_INSURANCE_STAGE_NAME
+        )
+        assert US_STAGE_NAMES.index(
+            US_OTHER_HEALTH_INSURANCE_STAGE_NAME
+        ) < US_STAGE_NAMES.index("export")
+
+    def test_other_health_insurance_donor_matches_manifest(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]
+        donor = US_DONORS[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]
+
+        assert donor.survey == stage.survey == "Census CPS ASEC"
+        assert donor.source == stage.source
+        assert "PHIP_VAL" in donor.notes
+        assert "PUF support half" in donor.notes
 
     def test_disability_benefits_stage_pins_direct_formula_and_puf_imputation(
         self,

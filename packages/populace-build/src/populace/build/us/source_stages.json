@@ -859,6 +859,12 @@
       "grain": "person",
       "artifacts": [
         {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years (2022-2024 for target 2024)",
+          "locator": "Census CPS ASEC NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL fields; the three NOW_* fields are absent from the current hermetic HDF inputs"
+        },
+        {
           "kind": "administrative_table",
           "format": "published_table",
           "vintage": "build_year",
@@ -873,10 +879,20 @@
         {
           "kind": "assign_by_plan_type",
           "inputs": [
-            "has_esi",
-            "is_esi_dependent",
-            "tax_unit_size",
-            "state_fips"
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP",
+            "PHIP_VAL"
+          ],
+          "owner_code": 1,
+          "employer_pays_all_code": 1,
+          "employer_pays_some_code": 2,
+          "family_plan_code": 1,
+          "self_only_plan_code": 2,
+          "source_unavailable_when_missing": [
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP"
           ]
         }
       ],
@@ -885,7 +901,8 @@
       ],
       "nonnegative_outputs": [
         "employer_sponsored_insurance_premiums"
-      ]
+      ],
+      "notes": "The retired derivation identifies the policy owner with NOW_OWNGRP, employer payment status with NOW_HIPAID, family/self-only plan type with NOW_GRPFTYP, and reported employee-paid premium with PHIP_VAL, then applies MEPS-IC family/self-only total and employee contribution priors (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 197-271 and 1575-1581). datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs used by the hermetic build omit the three NOW_* fields, so this stage is intentionally source-unavailable; has_esi and NOW_GRP are forbidden proxies."
     },
     {
       "stage": "prior_year_income",
@@ -1474,6 +1491,62 @@
         "takes_up_medicaid_if_eligible"
       ],
       "notes": "Anchored count-calibration (take-up contract treatment: count_calibrated; populace #331). Eligible reporters always take up; the fill draws at an in-build state rate (CMS count over weighted modeled eligibles, an assignment prior, never cited as provenance) and is greedily calibrated to the CMS December 2024 state snapshot among eligible non-anchored persons. Point-in-time (average-month) enrollment semantics per #332 - never ever-enrolled-in-year counts. The assign operation deliberately carries no eligibility mask: off-domain persons keep a draw-based propensity so eligibility-expanding reforms do not inherit a hard-coded zero response; the engine's is_medicaid_eligible gate hides the flag at baseline. States whose CMS count meets or exceeds modeled eligible weight saturate (all eligibles enroll) and are recorded as saturated in diagnostics, not failed (#170's eligibility-undercount shortfall is out of scope). CHIP deliberately excluded pending the #321 M-CHIP/separate-CHIP ledger concept split."
+    },
+    {
+      "stage": "other_health_insurance_premiums",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years (2022-2024 for target 2024)",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person PHIP_VAL reported premium, carried as health_insurance_premiums_without_medicare_part_b"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_other_health_insurance_premiums",
+          "reported_source": "health_insurance_premiums_without_medicare_part_b",
+          "chip_premium_source": "chip_premium",
+          "marketplace_net_premium_source": "marketplace_net_premium",
+          "medicaid_premium_source": "medicaid_premium",
+          "output": "other_health_insurance_premiums"
+        },
+        {
+          "kind": "impute_other_health_insurance_premiums_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_health_insurance_premiums"
+      ],
+      "nonnegative_outputs": [
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_health_insurance_premiums"
+      ],
+      "notes": "After ACA and Medicaid take-up inputs are materialized, the retired annual residual is max(PHIP_VAL - chip_premium - marketplace_net_premium - medicaid_premium, 0), with tax-unit modeled premiums assigned to the first person (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 828-944). The archived CPS-only output list and exact eight-predictor, at-most-5,000-person joint QRF are extended_cps.py lines 135-194, 234-248, and 639-745, with only the PUF support half replaced at lines 1014-1076. Because the archive predicted the two PUF leaves jointly without clipping one to the other, PUF-only residual-order exceedances remain diagnostics; measured ASEC rows must preserve the exact residual identity. The archive did not explicitly pin tree count or weights; Populace pins 100 trees and typed person weights as reproducibility hardening."
     }
   ]
 }

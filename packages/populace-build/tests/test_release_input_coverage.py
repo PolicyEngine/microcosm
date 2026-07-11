@@ -502,6 +502,11 @@ class TestShippedManifest:
         assert "educator_expense" in manifest.required_columns
         assert "educator_expense" not in manifest.reviewed_exclusions
 
+    def test_other_health_insurance_premiums_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "other_health_insurance_premiums" in manifest.required_columns
+        assert "other_health_insurance_premiums" not in manifest.reviewed_exclusions
+
     def test_qbi_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in US_QBI_OUTPUT_COLUMNS:

@@ -101,6 +101,8 @@ DISABILITY_BENEFITS_INPUTS = ("disability_benefits",)
 
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
+OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -111,6 +113,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *CHILD_SUPPORT_INPUTS,
     *DISABILITY_BENEFITS_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
+    *OTHER_HEALTH_INSURANCE_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",

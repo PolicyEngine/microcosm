@@ -57,6 +57,9 @@ from populace.build.us_runtime.domestic_production import (
 from populace.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.other_health_insurance import (
+    US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 
 __all__ = [
@@ -106,6 +109,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
+        *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "unreimbursed_business_employee_expenses",
         *US_QBI_OUTPUT_COLUMNS,

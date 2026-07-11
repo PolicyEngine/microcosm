@@ -51,6 +51,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "child_support_expense": [0.0, 2_400.0, 600.0],
             "disability_benefits": [0.0, 5_000.0, 1_500.0],
             "educator_expense": [0.0, 300.0, 150.0],
+            "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
@@ -635,6 +636,26 @@ def test_required_us_release_source_columns_enforces_educator_expense_signal() -
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_other_premium_signal() -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["other_health_insurance_premiums"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.other_health_insurance_premiums: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_misc_itemized_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -744,6 +765,9 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "child_support_expense" in summary["required_person_source_columns"]
     assert "disability_benefits" in summary["required_person_source_columns"]
     assert "educator_expense" in summary["required_person_source_columns"]
+    assert (
+        "other_health_insurance_premiums" in summary["required_person_source_columns"]
+    )
     assert "business_is_sstb" in summary["required_person_source_columns"]
     assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
     assert "domestic_production_ald" in summary["required_source_columns"]

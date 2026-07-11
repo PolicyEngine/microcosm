@@ -84,6 +84,7 @@ from populace.build.us_runtime import (
     us_medicaid_take_up_gate,
     us_misc_itemized_signal_gate,
     us_org_wages_signal_gate,
+    us_other_health_insurance_signal_gate,
     us_pregnancy_signal_gate,
     us_qbi_inputs_signal_gate,
     us_reform_coverage_smoke_gate,
@@ -107,6 +108,7 @@ from populace.build.us_runtime import (
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
     with_us_org_wages_inputs,
+    with_us_other_health_insurance_inputs,
     with_us_pregnancy_inputs,
     with_us_qbi_input_reconciliation,
     with_us_retirement_contribution_inputs,
@@ -6468,6 +6470,37 @@ def main() -> None:
             + "; ".join(
                 f"Medicaid take-up failed: {failure}"
                 for failure in medicaid_take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "other_health_insurance_inputs",
+            message=(
+                "Deriving the ASEC non-Medicare premium residual after ACA, "
+                "CHIP, and Medicaid premiums, then imputing the PUF support."
+            ),
+        )
+    base_frame = with_us_other_health_insurance_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    other_health_insurance_gate = us_other_health_insurance_signal_gate(base_frame)
+    if not other_health_insurance_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "other_health_insurance_input_gate",
+                status="failed",
+                message="Other-health-insurance premium signal gate failed.",
+                failures=list(other_health_insurance_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Other-health-insurance premium signal failed: " + failure
+                for failure in other_health_insurance_gate.failures
             )
         )
     if telemetry is not None and args.input_mass_reference_h5 is not None:

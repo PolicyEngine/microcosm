@@ -73,7 +73,7 @@
   },
   "employer_sponsored_insurance_premiums": {
    "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 197-271 and 1575-1581 requires NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL; datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs consumed by the hermetic --asec-h5 build contain PHIP_VAL but omit all three required NOW_* fields, so the retired owner/payment/plan-type derivation cannot execute. has_esi and NOW_GRP are not semantically valid substitutes.",
    "status": "reviewed_exclusion"
   },
   "employment_income_before_lsr": {
@@ -298,9 +298,7 @@
    "status": "required"
   },
   "other_health_insurance_premiums": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "other_medical_expenses": {
    "status": "required"
@@ -584,8 +582,8 @@
   }
  },
  "counts": {
-  "required": 123,
-  "reviewed_exclusion": 42,
+  "required": 124,
+  "reviewed_exclusion": 41,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",

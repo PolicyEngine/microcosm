@@ -300,6 +300,25 @@ from populace.build.us_runtime.org_wages import (
     us_org_wages_summary,
     with_us_org_wages_inputs,
 )
+from populace.build.us_runtime.other_health_insurance import (
+    OTHER_HEALTH_INSURANCE_ARCHIVED_DERIVATION_URL,
+    OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_IMPUTATION_URL,
+    OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_OUTPUTS_URL,
+    OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_PREDICTORS_URL,
+    OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_SPLICE_URL,
+    US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES,
+    US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+    US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS,
+    US_OTHER_HEALTH_INSURANCE_REQUIRED_SOURCE_COLUMNS,
+    US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
+    derive_us_other_health_insurance_from_asec,
+    derive_us_other_health_insurance_from_manifest,
+    impute_us_other_health_insurance_to_puf_support_from_manifest,
+    us_other_health_insurance_signal_gate,
+    us_other_health_insurance_stage_spec,
+    us_other_health_insurance_summary,
+    with_us_other_health_insurance_inputs,
+)
 from populace.build.us_runtime.parity_reference import (
     ECPS_PARITY_KNOWN_GAPS_RESOURCE,
     ECPS_PARITY_REFERENCE_RESOURCE,
@@ -798,6 +817,23 @@ __all__ = [
     "us_org_wages_stage_spec",
     "us_org_wages_summary",
     "with_us_org_wages_inputs",
+    "OTHER_HEALTH_INSURANCE_ARCHIVED_DERIVATION_URL",
+    "OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_IMPUTATION_URL",
+    "OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_OUTPUTS_URL",
+    "OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_PREDICTORS_URL",
+    "OTHER_HEALTH_INSURANCE_ARCHIVED_PUF_SPLICE_URL",
+    "US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES",
+    "US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS",
+    "US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS",
+    "US_OTHER_HEALTH_INSURANCE_REQUIRED_SOURCE_COLUMNS",
+    "US_OTHER_HEALTH_INSURANCE_STAGE_NAME",
+    "derive_us_other_health_insurance_from_asec",
+    "derive_us_other_health_insurance_from_manifest",
+    "impute_us_other_health_insurance_to_puf_support_from_manifest",
+    "us_other_health_insurance_signal_gate",
+    "us_other_health_insurance_stage_spec",
+    "us_other_health_insurance_summary",
+    "with_us_other_health_insurance_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -1014,6 +1050,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "enrollment==eligibility degeneracy."
         ),
     ),
+    US_OTHER_HEALTH_INSURANCE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured PHIP_VAL is reduced by PolicyEngine-calculated CHIP, "
+            "Marketplace, and Medicaid premiums after take-up stages; an "
+            "ASEC-trained weighted QRF replaces both premium leaves on the "
+            "PUF support half."
+        ),
+    ),
     "prior_year_income": DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -1207,6 +1253,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "entity_placement",
     "aca_marketplace_inputs",
     "medicaid_take_up",
+    US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
     "export",
 )
 

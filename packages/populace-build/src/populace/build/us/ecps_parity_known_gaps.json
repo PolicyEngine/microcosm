@@ -3,8 +3,45 @@
   "description": "Reason'd, issue-linked parity exemption register (the debt ledger). Each entry names a layer the incumbent eCPS populates that the current Populace candidate does not, with the reason it is absent and the tracking issue that owns closing it. parity_gate is run with known_gaps = the keys of this file, and fails on any entry whose layer the candidate now populates (stale exemptions cannot rot silently); the launch condition is that this register shrinks to deliberate scope decisions, not TODOs. Seeded from the first parity run of populace_us_2024.h5 against the pinned reference (see ecps_parity_reference.json). Every issue ref is an existing open PolicyEngine/populace issue.",
   "known_gaps": {
     "employer_sponsored_insurance_premiums": {
-      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 197-271 and 1575-1581 requires NOW_OWNGRP, NOW_HIPAID, NOW_GRPFTYP, and PHIP_VAL; datasets/cps/census_cps.py lines 13-55 declares the three NOW_* fields optional. All three SHA-recorded 2022-2024 HDF inputs consumed by the hermetic --asec-h5 build contain PHIP_VAL but omit all three required NOW_* fields, so the retired owner/payment/plan-type derivation cannot execute. has_esi and NOW_GRP are not semantically valid substitutes.",
+      "issue": "PolicyEngine/populace#32",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "197-271,1575-1581"
+        },
+        "optional_loader_fields": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "lines": "13-55"
+        },
+        "required_columns": ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP", "PHIP_VAL"],
+        "hermetic_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "present_columns": ["PHIP_VAL"],
+            "missing_columns": ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"]
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "present_columns": ["PHIP_VAL"],
+            "missing_columns": ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"]
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "present_columns": ["PHIP_VAL"],
+            "missing_columns": ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"]
+          }
+        ],
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; tools/build_us_puf_support_base.py lines 85-88, 647-687, and 748-755 consumes those mappings and does not refresh omitted raw Census columns."
+      }
     },
     "farm_operations_income": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
@@ -69,10 +106,6 @@
     "net_worth": {
       "reason": "SCF-derived household asset/net-worth stock; not yet imputed onto the candidate frame (wealth imputation backlog).",
       "issue": "PolicyEngine/populace#49"
-    },
-    "other_health_insurance_premiums": {
-      "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
     },
     "pre_subsidy_rent": {
       "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
