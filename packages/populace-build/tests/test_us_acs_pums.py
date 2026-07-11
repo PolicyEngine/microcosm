@@ -270,3 +270,41 @@ def test_build_acs_pums_unit_frame_uses_person_weight_for_gq_placeholder(
 
     assert frame.weights_for("household").values.tolist() == [99.0]
     assert frame.table("person")["A_EXPRRP"].tolist() == [14]
+
+
+def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
+    tmp_path: Path,
+) -> None:
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("2024HU0000001", WGTP=10),
+                _household(
+                    "2024GQ0000001",
+                    WGTP=0,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("2024HU0000001", 1, 20, PWGTP=11),
+                _person("2024HU0000001", 2, 25, MAR=6, PWGTP=12),
+                _person("2024GQ0000001", 1, 37, MAR=6, PWGTP=99),
+            ]
+        },
+    )
+
+    frame, _metadata = build_acs_pums_unit_frame(
+        AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+    )
+
+    assert frame.weights_for("household").values.tolist() == [99.0, 10.0]

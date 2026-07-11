@@ -25,3 +25,7 @@
   than inventing component splits or pre-subsidy rent. Blank universes remain
   missing, and finite adjustment factors and output collisions are validated.
   Checks: Ruff clean; 10 mapping-group and no-synthesis tests pass.
+- 2026-07-10 — Loader mixed-GQ hardening (this milestone commit): scoped the
+  PWGTP lookup to WGTP=0 group-quarters records so ordinary multi-person
+  household duplicate SERIALNO values cannot make pandas reject the lookup.
+  Checks: Ruff clean; 8 loader tests pass, including a mixed HU/GQ regression.

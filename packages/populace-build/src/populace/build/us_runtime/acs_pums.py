@@ -421,8 +421,9 @@ def _household_weights(household: pd.DataFrame, person: pd.DataFrame) -> Weights
                 "ACS WGTP=0 GQ placeholder must map to exactly one person; "
                 f"bad SERIALNO value(s): {bad_counts.head().tolist()}."
             )
+        gq_people = person.loc[person["SERIALNO"].isin(gq_serials)]
         person_weight = (
-            person.set_index("SERIALNO")["PWGTP"]
+            gq_people.set_index("SERIALNO")["PWGTP"]
             .pipe(pd.to_numeric, errors="coerce")
             .reindex(gq_serials)
             .to_numpy(dtype=np.float64)
