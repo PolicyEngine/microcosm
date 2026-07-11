@@ -27,6 +27,9 @@ from populace.build.us_runtime.domestic_production import (
 from populace.build.us_runtime.educator_expenses import (
     derive_us_educator_expense_from_puf,
 )
+from populace.build.us_runtime.farm_business_income import (
+    derive_us_farm_business_income_from_puf,
+)
 from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
 from populace.calibrate import relative_error_loss
 
@@ -238,6 +241,10 @@ def derive_puf_policyengine_variables(
     unreimbursed_business_employee_expenses_output: str = (
         "unreimbursed_business_employee_expenses"
     ),
+    farm_operations_income_source: str | None = None,
+    farm_operations_income_output: str = "farm_operations_income",
+    farm_rent_income_source: str | None = None,
+    farm_rent_income_output: str = "farm_rent_income",
 ) -> pd.DataFrame:
     """Translate raw IRS PUF columns into PolicyEngine input variables."""
 
@@ -310,6 +317,20 @@ def derive_puf_policyengine_variables(
             source_column=unreimbursed_business_employee_expenses_source,
             output_column=unreimbursed_business_employee_expenses_output,
         )
+    farm_sources = (farm_operations_income_source, farm_rent_income_source)
+    if any(source is not None for source in farm_sources):
+        if not all(source is not None for source in farm_sources):
+            raise ValueError(
+                "PUF farm-business derivation requires both operations and rent "
+                "source columns when either is configured."
+            )
+        result = derive_us_farm_business_income_from_puf(
+            result,
+            operations_source_column=farm_operations_income_source,
+            operations_output_column=farm_operations_income_output,
+            rent_source_column=farm_rent_income_source,
+            rent_output_column=farm_rent_income_output,
+        )
     return result
 
 
@@ -372,7 +393,8 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_casualty_loss_from_source(result)
     result = _reconcile_puf_domestic_production_ald_from_source(result)
     result = _reconcile_puf_educator_expense_from_source(result)
-    return _reconcile_puf_misc_itemized_from_source(result)
+    result = _reconcile_puf_misc_itemized_from_source(result)
+    return _reconcile_puf_farm_business_income_from_sources(result)
 
 
 def audit_puf_aggregate_disaggregation(
@@ -1024,6 +1046,22 @@ def _reconcile_puf_misc_itemized_from_source(
     if output not in puf.columns or "E20400" not in puf.columns:
         return puf
     return derive_us_misc_itemized_from_puf(puf)
+
+
+def _reconcile_puf_farm_business_income_from_sources(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute signed E02100/E27200 carries after disaggregation."""
+
+    required = {
+        "farm_operations_income",
+        "farm_rent_income",
+        "E02100",
+        "E27200",
+    }
+    if not required.issubset(puf.columns):
+        return puf
+    return derive_us_farm_business_income_from_puf(puf)
 
 
 def _assert_nonnegative_dividend_component(

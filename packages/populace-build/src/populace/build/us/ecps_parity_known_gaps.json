@@ -43,14 +43,6 @@
         "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; tools/build_us_puf_support_base.py lines 85-88, 647-687, and 748-755 consumes those mappings and does not refresh omitted raw Census columns."
       }
     },
-    "farm_operations_income": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
-    "farm_rent_income": {
-      "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-      "issue": "PolicyEngine/populace#38"
-    },
     "financial_assistance": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"

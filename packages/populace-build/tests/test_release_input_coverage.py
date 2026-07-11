@@ -507,6 +507,12 @@ class TestShippedManifest:
         assert "other_health_insurance_premiums" in manifest.required_columns
         assert "other_health_insurance_premiums" not in manifest.reviewed_exclusions
 
+    def test_signed_farm_business_income_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("farm_operations_income", "farm_rent_income"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_qbi_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in US_QBI_OUTPUT_COLUMNS:
@@ -814,6 +820,43 @@ class TestShippedManifest:
             "gov.irs.deductions.qbi.max.w2_wages.alt_rate",
             "gov.irs.deductions.qbi.max.business_property.rate",
         }
+
+    def test_shipped_farm_probes_each_remove_only_the_bound_qbi_leaf(self) -> None:
+        probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        current_income_definition = {
+            "self_employment_income",
+            "partnership_s_corp_income",
+            "farm_rent_income",
+            "farm_operations_income",
+            "rental_income",
+            "estate_income",
+        }
+        cases = {
+            "qbi_farm_operations_income_exclusion": (
+                "farm_operations_income",
+                "negative",
+            ),
+            "qbi_farm_rent_income_exclusion": ("farm_rent_income", "positive"),
+        }
+
+        for probe_id, (removed_input, expected_sign) in cases.items():
+            probe = probes[probe_id]
+            assert probe.period == 2026
+            assert probe.expected_sign == expected_sign
+            assert probe.effect_direction == "baseline_minus_reform"
+            assert probe.budget_measure == "qualified_business_income_deduction"
+            assert probe.binding_inputs == (removed_input,)
+            assert probe.min_abs_effect == 1_000_000.0
+            assert set(probe.parameter_changes) == {
+                "gov.irs.deductions.qbi.income_definition"
+            }
+            definition = probe.parameter_changes[
+                "gov.irs.deductions.qbi.income_definition"
+            ]
+            assert set(definition) == {"2026-01-01.2026-12-31"}
+            assert set(definition["2026-01-01.2026-12-31"]) == (
+                current_income_definition - {removed_input}
+            )
 
     def test_shipped_domestic_production_probe_reactivates_only_its_ald(self) -> None:
         probe = next(

@@ -79,6 +79,7 @@ from populace.build.us_runtime import (
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
+    us_farm_business_income_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
@@ -5856,6 +5857,23 @@ def main() -> None:
             + "; ".join(
                 "QBI-input signal failed: " + failure
                 for failure in qbi_inputs_gate.failures
+            )
+        )
+    farm_business_income_gate = us_farm_business_income_signal_gate(base_frame)
+    if not farm_business_income_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "farm_business_income_gate",
+                status="failed",
+                message="Farm-business-income signal gate failed.",
+                failures=list(farm_business_income_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Farm-business-income signal failed: " + failure
+                for failure in farm_business_income_gate.failures
             )
         )
     domestic_production_ald_gate = us_domestic_production_ald_signal_gate(base_frame)

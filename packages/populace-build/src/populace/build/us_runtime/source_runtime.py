@@ -118,6 +118,10 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "educator_expense_output",
         "unreimbursed_business_employee_expenses_source",
         "unreimbursed_business_employee_expenses_output",
+        "farm_operations_income_source",
+        "farm_operations_income_output",
+        "farm_rent_income_source",
+        "farm_rent_income_output",
     }
 )
 
@@ -898,6 +902,28 @@ def derive_us_puf_policyengine_variables_from_manifest(
                     default="unreimbursed_business_employee_expenses",
                     label="PUF PolicyEngine-variable derivation",
                 )
+            ),
+            farm_operations_income_source=_optional_string_param(
+                params,
+                "farm_operations_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_operations_income_output=_string_param_with_default(
+                params,
+                "farm_operations_income_output",
+                default="farm_operations_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_rent_income_source=_optional_string_param(
+                params,
+                "farm_rent_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_rent_income_output=_string_param_with_default(
+                params,
+                "farm_rent_income_output",
+                default="farm_rent_income",
+                label="PUF PolicyEngine-variable derivation",
             ),
         )
     except ValueError as exc:

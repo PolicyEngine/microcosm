@@ -103,6 +103,11 @@ EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
 
+FARM_BUSINESS_INCOME_INPUTS = (
+    "farm_operations_income",
+    "farm_rent_income",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -114,6 +119,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *DISABILITY_BENEFITS_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
+    *FARM_BUSINESS_INCOME_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -270,6 +276,63 @@ REFORM_COVERAGE_PROBES = [
             "are zero and the change is a structural zero. The archived "
             "all-or-nothing SSTB routing leaves its SSTB-allocable copies to "
             "the hard signal gate rather than overclaiming reform coverage."
+        ),
+        "issue": "PolicyEngine/populace#298",
+    },
+    {
+        "id": "qbi_farm_operations_income_exclusion",
+        "name": "Exclude farm-operations income from Section 199A QBI",
+        "parameter_changes": {
+            "gov.irs.deductions.qbi.income_definition": {
+                "2026-01-01.2026-12-31": [
+                    "self_employment_income",
+                    "partnership_s_corp_income",
+                    "farm_rent_income",
+                    "rental_income",
+                    "estate_income",
+                ]
+            }
+        },
+        "budget_measure": "qualified_business_income_deduction",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["farm_operations_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only farm_operations_income from the 2026 Section 199A "
+            "income definition isolates the restored signed Schedule F leaf. "
+            "The real staged candidate is loss-heavy, so excluding it raises "
+            "QBID and baseline-minus-reform is negative (-$4.16M). Without "
+            "farm_operations_income the reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#298",
+    },
+    {
+        "id": "qbi_farm_rent_income_exclusion",
+        "name": "Exclude farm-rent income from Section 199A QBI",
+        "parameter_changes": {
+            "gov.irs.deductions.qbi.income_definition": {
+                "2026-01-01.2026-12-31": [
+                    "self_employment_income",
+                    "partnership_s_corp_income",
+                    "farm_operations_income",
+                    "rental_income",
+                    "estate_income",
+                ]
+            }
+        },
+        "budget_measure": "qualified_business_income_deduction",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["farm_rent_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only farm_rent_income from the 2026 Section 199A income "
+            "definition isolates the restored signed E27200 leaf. The real "
+            "staged candidate produces +$9.14M baseline-minus-reform QBID. "
+            "Without farm_rent_income the reform is a structural zero."
         ),
         "issue": "PolicyEngine/populace#298",
     },

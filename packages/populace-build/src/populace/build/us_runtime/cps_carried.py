@@ -64,7 +64,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "other_medical_expenses",
         "over_the_counter_health_expenses",
         "rental_income",
-        "farm_income",
+        "farm_operations_income",
         "has_champva_health_coverage_at_interview",
         "has_esi",
         "has_indian_health_service_coverage_at_interview",
@@ -161,7 +161,7 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
 
     direct_sources: Mapping[str, str] = {
         "rental_income": "RNT_VAL",
-        "farm_income": "FRSE_VAL",
+        "farm_operations_income": "FRSE_VAL",
         "unemployment_compensation": "UC_VAL",
         "health_insurance_premiums_without_medicare_part_b": "PHIP_VAL",
         "medicare_part_b_premiums": "PEMCPREM",

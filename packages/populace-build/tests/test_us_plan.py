@@ -519,6 +519,10 @@ class TestUsSources:
             "educator_expense_output": "educator_expense",
             "unreimbursed_business_employee_expenses_source": "E20400",
             "unreimbursed_business_employee_expenses_output": "unreimbursed_business_employee_expenses",
+            "farm_operations_income_source": "E02100",
+            "farm_operations_income_output": "farm_operations_income",
+            "farm_rent_income_source": "E27200",
+            "farm_rent_income_output": "farm_rent_income",
         }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]

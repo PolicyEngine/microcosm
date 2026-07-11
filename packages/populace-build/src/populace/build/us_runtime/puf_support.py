@@ -103,6 +103,8 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "rental_income",
     "estate_income",
     "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
     "miscellaneous_income",
     "partnership_income",
     "s_corp_income",

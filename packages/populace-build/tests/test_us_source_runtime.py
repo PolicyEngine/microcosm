@@ -66,6 +66,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
                     "E26270": abs_agi * rng.uniform(0.01, 0.15) * sign,
                     "E00900": abs_agi * 0.03 * sign,
                     "E02100": abs_agi * 0.01 * sign,
+                    "E27200": abs_agi * 0.005 * sign,
                     "E00400": abs_agi * 0.01,
                     "E00600": abs_agi * 0.05,
                 }
@@ -98,6 +99,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
                 "E26270": abs_agi * 0.10 * sign,
                 "E00900": abs_agi * 0.03 * sign,
                 "E02100": abs_agi * 0.01 * sign,
+                "E27200": abs_agi * 0.005 * sign,
                 "E00400": abs_agi * 0.01,
                 "E00600": abs_agi * 0.05,
             }
@@ -245,6 +247,8 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
             domestic_production_ald_source="E03240",
             educator_expense_source="E03220",
             unreimbursed_business_employee_expenses_source="E20400",
+            farm_operations_income_source="E02100",
+            farm_rent_income_source="E27200",
         ),
         seed=42,
     )
@@ -276,6 +280,8 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     assert np.allclose(
         result["unreimbursed_business_employee_expenses"], result["E20400"]
     )
+    assert np.allclose(result["farm_operations_income"], result["E02100"])
+    assert np.allclose(result["farm_rent_income"], result["E27200"])
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:

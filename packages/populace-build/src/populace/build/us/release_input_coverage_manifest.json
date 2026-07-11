@@ -89,17 +89,13 @@
    "status": "required"
   },
   "farm_operations_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_operations_income_would_be_qualified": {
    "status": "required"
   },
   "farm_rent_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "farm_rent_income_would_be_qualified": {
    "status": "required"
@@ -582,8 +578,8 @@
   }
  },
  "counts": {
-  "required": 124,
-  "reviewed_exclusion": 41,
+  "required": 126,
+  "reviewed_exclusion": 39,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -714,6 +710,56 @@
    },
    "period": 2024,
    "reason": "Zeroing all W-2 wage and UBIA cap rates tightens the Section 199A deduction for high-income qualified businesses, so baseline-minus-reform QBID must be positive. If the total W-2 and UBIA inputs are absent, both baseline and reform guardrails are zero and the change is a structural zero. The archived all-or-nothing SSTB routing leaves its SSTB-allocable copies to the hard signal gate rather than overclaiming reform coverage."
+  },
+  {
+   "binding_inputs": [
+    "farm_operations_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "qbi_farm_operations_income_exclusion",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-operations income from Section 199A QBI",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.income_definition": {
+     "2026-01-01.2026-12-31": [
+      "self_employment_income",
+      "partnership_s_corp_income",
+      "farm_rent_income",
+      "rental_income",
+      "estate_income"
+     ]
+    }
+   },
+   "period": 2026,
+   "reason": "Removing only farm_operations_income from the 2026 Section 199A income definition isolates the restored signed Schedule F leaf. The real staged candidate is loss-heavy, so excluding it raises QBID and baseline-minus-reform is negative (-$4.16M). Without farm_operations_income the reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "farm_rent_income"
+   ],
+   "budget_measure": "qualified_business_income_deduction",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "qbi_farm_rent_income_exclusion",
+   "issue": "PolicyEngine/populace#298",
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-rent income from Section 199A QBI",
+   "parameter_changes": {
+    "gov.irs.deductions.qbi.income_definition": {
+     "2026-01-01.2026-12-31": [
+      "self_employment_income",
+      "partnership_s_corp_income",
+      "farm_operations_income",
+      "rental_income",
+      "estate_income"
+     ]
+    }
+   },
+   "period": 2026,
+   "reason": "Removing only farm_rent_income from the 2026 Section 199A income definition isolates the restored signed E27200 leaf. The real staged candidate produces +$9.14M baseline-minus-reform QBID. Without farm_rent_income the reform is a structural zero."
   },
   {
    "binding_inputs": [

@@ -52,6 +52,10 @@ def _us_frame(**person_extra: object) -> Frame:
             "disability_benefits": [0.0, 5_000.0, 1_500.0],
             "educator_expense": [0.0, 300.0, 150.0],
             "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
+            # Keep both signs without making the fixture's signed weighted
+            # total nearly cancel; the mass-parity tests reweight household 20.
+            "farm_operations_income": [4_000.0, 2_500.0, -600.0],
+            "farm_rent_income": [0.0, 1_500.0, -600.0],
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
@@ -656,6 +660,29 @@ def test_required_us_release_source_columns_enforces_other_premium_signal() -> N
         assert_required_us_release_source_columns(raw_frame)
 
 
+@pytest.mark.parametrize(
+    "column",
+    ["farm_operations_income", "farm_rent_income"],
+)
+def test_required_us_release_source_columns_enforces_farm_business_signal(
+    column: str,
+) -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people[column] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(ValueError, match=rf"person.{column}: not nonconstant"):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_misc_itemized_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -768,6 +795,8 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert (
         "other_health_insurance_premiums" in summary["required_person_source_columns"]
     )
+    assert "farm_operations_income" in summary["required_person_source_columns"]
+    assert "farm_rent_income" in summary["required_person_source_columns"]
     assert "business_is_sstb" in summary["required_person_source_columns"]
     assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
     assert "domestic_production_ald" in summary["required_source_columns"]

@@ -51,6 +51,7 @@ from populace.build.us_runtime import (
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
+    us_farm_business_income_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     us_immigration_composition_summary,
@@ -248,6 +249,12 @@ def main() -> None:
     if not qbi_inputs_gate.passed:
         raise SystemExit(
             "QBI-input signal gate failed:\n  " + "\n  ".join(qbi_inputs_gate.failures)
+        )
+    farm_business_income_gate = us_farm_business_income_signal_gate(imputed)
+    if not farm_business_income_gate.passed:
+        raise SystemExit(
+            "Farm-business-income signal gate failed:\n  "
+            + "\n  ".join(farm_business_income_gate.failures)
         )
     domestic_production_ald_gate = us_domestic_production_ald_signal_gate(imputed)
     if not domestic_production_ald_gate.passed:
@@ -458,6 +465,11 @@ def main() -> None:
             "passed": qbi_inputs_gate.passed,
             "failures": list(qbi_inputs_gate.failures),
             "details": dict(qbi_inputs_gate.details),
+        },
+        "farm_business_income_signal": {
+            "passed": farm_business_income_gate.passed,
+            "failures": list(farm_business_income_gate.failures),
+            "details": dict(farm_business_income_gate.details),
         },
         "domestic_production_ald_signal": {
             "passed": domestic_production_ald_gate.passed,

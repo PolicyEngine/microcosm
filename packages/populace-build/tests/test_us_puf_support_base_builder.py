@@ -556,6 +556,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     )
     monkeypatch.setattr(
         builder,
+        "us_farm_business_income_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_domestic_production_ald_signal_gate",
         lambda frame: passing_gate,
     )
