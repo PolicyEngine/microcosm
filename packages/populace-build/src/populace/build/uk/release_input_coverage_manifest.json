@@ -409,8 +409,14 @@
   "reviewed_exclusion": 0,
   "total": 132
  },
- "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note.",
+ "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. At release time, status additionally requires non-default signal on rows meeting the reviewed effective household-mass floor.",
  "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
+ "effective_mass_coverage": {
+  "minimum_nondefault_mass_share": 1e-06,
+  "rationale": "One part per million rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference.",
+  "reviewed_on": "2026-07-11",
+  "weight_source": "household_weight"
+ },
  "reference": {
   "derived_from": "efrs_parity_reference.json",
   "filename": "enhanced_frs_2023_24.h5",
@@ -420,5 +426,5 @@
   "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
   "vintage": "2023_24"
  },
- "schema_version": 1
+ "schema_version": 2
 }

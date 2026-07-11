@@ -13,8 +13,9 @@ baseline exposes a real gap.
 | --- | ---: | --- | --- |
 | Launch contract baseline | 132 required; 0 exclusions | SHA-pinned eFRS and certified Populace UK H5 surfaces | Complete |
 | National orchestration seam | No coverage-status change | Ordered stage protocol, preflight + final gate, atomic staging-H5 tests | Complete |
+| Effective-mass coverage | No raw status change; `gift_aid` and `charitable_investment_gifts` remain distributional/effective-weight gaps | Required signal must carry at least 0.000001 of its owning entity's effective population mass | Complete |
 
-## Open restoration question
+## Restoration diagnosis
 
 The HMRC adjudication miss is distributional, not an absent-column gap: total
 income-tax liability is £334.629bn against the £277bn SPI-anchored benchmark
@@ -55,9 +56,9 @@ geography-clone tool remains a downstream, separate build product. National
 calibration and additional source families are also out of scope until a family
 explicitly wires them through this stage boundary.
 
-## HMRC family decision gate
+## HMRC family adjudications
 
-Status: blocked before wiring; conductor decision required.
+Status: adjudicated on 2026-07-11; implementation in progress.
 
 The enhanced-FRS reference is pinned to `enhanced_frs_2023_24.h5` at model
 revision `655dd07e4bb9c777b00dac044949611f1feb824f` (SHA-256
@@ -67,28 +68,25 @@ Populace calibration cannot lift a zero initial weight because it optimizes its
 log and caps the result relative to that zero. Porting the QRF draws alone would
 therefore be fiscally inert; a reviewed positive-prior stage is required first.
 
-Four choices are not resolved by the US pattern or the immutable UK sources:
+The national base is the certified Populace UK candidate. Its existing
+zero-weight SPI rows will be dropped and replaced once with a new SPI support
+channel. A reviewed share of the unchanged national household mass will be
+allocated to that channel as importance weights and recorded through a
+deliberate `MassChangeRecord`; there will be no dead or duplicate SPI support.
 
-1. **National base and replacement policy.** The raw FRS base lacks other
-   enhanced families required by the 132-column gate. The certified Populace
-   candidate already contains SPI rows, and the support constructor correctly
-   refuses to run twice. No all-other-families, pre-SPI base artifact has been
-   identified. The conductor must choose a base artifact and whether existing
-   SPI rows are rebuilt or replaced.
-2. **Source vintage.** The certified path used the historical 2020–21 SPI donor
-   and 2022–23 HMRC target surface for period 2023. Current UK-data code expects
-   a 2022–23 SPI donor and 2023–24 HMRC surface mapped to 2024. Reproducing the
-   certified vintage and adopting current sources are different products.
-3. **Target semantics.** Current HMRC parsing reads savings interest but omits
-   it from the emitted target family, and its resolver rejects 2024 targets for
-   a 2023 build. A Populace port must choose the intended component set and
-   period mapping, then fail closed if that source cannot be materialized.
-4. **Coverage accounting.** All 132 reference columns, including the HMRC input
-   family, are already `required`. `gift_aid` and
-   `charitable_investment_gifts` have stored signal only on zero-weight rows, so
-   the column gate passes despite zero effective population mass. This family
-   has zero manifest-status promotion; restoration needs a weighted-support
-   diagnostic and must be recorded as distributional/effective-weight coverage.
+The go-forward source pair is the 2022–23 private SPI donor and the published
+2023–24 HMRC Personal Incomes Tables 3.6 and 3.7, explicitly mapped to the
+candidate's build period. Table 3.7 includes bank and building-society
+interest, so `savings_interest_income` is part of the required emitted family.
+The materializer will fail closed if any declared component or band is absent.
 
-Until those choices are adjudicated, no SPI QRF or HMRC income-band stage is
-wired and no input-coverage status is changed.
+Effective-mass coverage uses `household_weight`, mapped to the owning entity.
+A required column must place non-default signal on strictly positive mass and
+reach a reviewed minimum mass share of **0.000001 (one part per million)**.
+This rejects zero-weight support and numerical dust while sitting about 100
+times below the rarest populated record share in the pinned enhanced-FRS
+reference (0.000104), leaving substantial headroom for genuinely rare inputs.
+The floor is committed in the manifest and runtime together. Until the rebuilt
+SPI channel passes it, `gift_aid` and `charitable_investment_gifts` are recorded
+as distributional/effective-weight gaps, not restored inputs, even though their
+raw manifest status remains `required`.

@@ -77,6 +77,17 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
     assert {entry["status"] for entry in manifest["columns"].values()} == {"required"}
+    assert manifest["schema_version"] == 2
+    assert manifest["effective_mass_coverage"] == {
+        "weight_source": "household_weight",
+        "minimum_nondefault_mass_share": 1e-6,
+        "reviewed_on": "2026-07-11",
+        "rationale": (
+            "One part per million rejects zero-weight support and numerical "
+            "dust while remaining about 100 times below the rarest populated "
+            "record share in the pinned enhanced-FRS reference."
+        ),
+    }
 
 
 def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> None:

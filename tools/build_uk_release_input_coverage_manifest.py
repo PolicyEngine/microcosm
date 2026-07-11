@@ -57,6 +57,16 @@ EXCLUSION_TRACKING_NOTE = (
 )
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
+EFFECTIVE_MASS_COVERAGE = {
+    "weight_source": "household_weight",
+    "minimum_nondefault_mass_share": 1e-6,
+    "reviewed_on": "2026-07-11",
+    "rationale": (
+        "One part per million rejects zero-weight support and numerical dust "
+        "while remaining about 100 times below the rarest populated record "
+        "share in the pinned enhanced-FRS reference."
+    ),
+}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -412,7 +422,7 @@ def build_manifest(
     source = reference["source"]
     candidate_source = known_gaps_payload["candidate_evidence"]["source"]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "description": (
             "Declared full-coverage contract for a UK release: every populated "
             "effective loader input in the pinned enhanced FRS must be persisted "
@@ -435,12 +445,15 @@ def build_manifest(
             "sha256": str(candidate_source["sha256"]),
             "period": str(candidate_source["period"]),
         },
+        "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
             "inputs. status='required' exactly when the sha-pinned candidate "
             "evidence in efrs_parity_known_gaps.json records non-default signal; "
             "all other surface columns are reviewed_exclusion with reason "
-            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note."
+            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note. "
+            "At release time, status additionally requires non-default signal "
+            "on rows meeting the reviewed effective household-mass floor."
         ),
         "counts": {
             "required": len(required),

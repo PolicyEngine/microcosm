@@ -3,9 +3,10 @@
 Every populated effective loader input extracted from the immutable enhanced
 FRS reference is declared in ``release_input_coverage_manifest.json`` as either
 ``required`` or ``reviewed_exclusion``. Required columns must be present on the
-final export tables and carry at least one value different from the live
-PolicyEngine-UK default. A reviewed exclusion that later carries signal is
-stale and fails, so the debt ledger can only shrink deliberately.
+final export tables and carry non-default signal on rows with enough effective
+population mass to clear the reviewed manifest floor. A reviewed exclusion
+that later carries effective signal is stale and fails, so the debt ledger can
+only shrink deliberately.
 
 Three persisted compatibility columns are real UK loader inputs even though
 their source variables are formula-owned: ``Simulation.__init__`` moves them to
@@ -31,6 +32,7 @@ from populace.build.gates import GateResult, input_column_coverage_gate
 from populace.build.uk_runtime.parity_reference import load_efrs_parity_known_gaps
 
 __all__ = [
+    "UKEffectiveMassCoveragePolicy",
     "UK_LOADER_INPUT_ALIASES",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
     "PolicyEngineUKCoverageEngine",
@@ -55,6 +57,39 @@ REVIEWED_EXCLUSION_STATUS = "reviewed_exclusion"
 _VALID_STATUSES = frozenset({REQUIRED_STATUS, REVIEWED_EXCLUSION_STATUS})
 _UK_PACKAGE = "populace.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
+
+DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE = 1e-6
+
+
+@dataclass(frozen=True)
+class UKEffectiveMassCoveragePolicy:
+    """Reviewed threshold for signal carried by real population mass."""
+
+    minimum_nondefault_mass_share: float = DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
+    weight_source: str = "household_weight"
+    reviewed_on: str = "2026-07-11"
+    rationale: str = (
+        "One part per million rejects zero-weight support and numerical dust "
+        "while remaining about 100 times below the rarest populated record "
+        "share in the pinned enhanced-FRS reference."
+    )
+
+    def __post_init__(self) -> None:
+        floor = float(self.minimum_nondefault_mass_share)
+        if not np.isfinite(floor) or not 0.0 < floor <= 1.0:
+            raise ValueError(
+                "minimum_nondefault_mass_share must be finite and in (0, 1]."
+            )
+        if self.weight_source != "household_weight":
+            raise ValueError(
+                "UK effective-mass coverage must use household_weight, the "
+                "calibrated population-mass source."
+            )
+        if not self.reviewed_on.strip():
+            raise ValueError("UK effective-mass coverage needs a review date.")
+        if not self.rationale.strip():
+            raise ValueError("UK effective-mass coverage needs a rationale.")
+        object.__setattr__(self, "minimum_nondefault_mass_share", floor)
 
 
 @dataclass(frozen=True)
@@ -91,6 +126,9 @@ class UKReleaseInputCoverageManifest:
     reference: Mapping[str, str]
     candidate_evidence: Mapping[str, str]
     columns: tuple[UKReleaseInputColumn, ...]
+    effective_mass_coverage: UKEffectiveMassCoveragePolicy = field(
+        default_factory=UKEffectiveMassCoveragePolicy
+    )
     schema_version: int = 1
     _by_name: dict[str, UKReleaseInputColumn] = field(
         default_factory=dict, repr=False, compare=False
@@ -149,6 +187,20 @@ def load_uk_release_input_coverage_manifest(
     if not isinstance(raw_candidate, Mapping):
         raise ValueError(f"{resource}: 'candidate_evidence' must be a JSON object.")
 
+    raw_effective_mass = payload.get("effective_mass_coverage")
+    if not isinstance(raw_effective_mass, Mapping):
+        raise ValueError(
+            f"{resource}: 'effective_mass_coverage' must be a JSON object."
+        )
+    effective_mass_coverage = UKEffectiveMassCoveragePolicy(
+        minimum_nondefault_mass_share=float(
+            raw_effective_mass.get("minimum_nondefault_mass_share", 0.0)
+        ),
+        weight_source=str(raw_effective_mass.get("weight_source", "")),
+        reviewed_on=str(raw_effective_mass.get("reviewed_on", "")),
+        rationale=str(raw_effective_mass.get("rationale", "")),
+    )
+
     raw_columns = payload.get("columns")
     if not isinstance(raw_columns, Mapping) or not raw_columns:
         raise ValueError(
@@ -177,6 +229,7 @@ def load_uk_release_input_coverage_manifest(
             str(key): str(value) for key, value in raw_candidate.items()
         },
         columns=tuple(columns),
+        effective_mass_coverage=effective_mass_coverage,
         schema_version=schema_version,
     )
 
@@ -248,15 +301,18 @@ class PolicyEngineUKCoverageEngine:
         return defaults
 
 
-def _entity_tables(frame: Any) -> tuple[Any, ...]:
+def _entity_tables(frame: Any) -> tuple[tuple[str, Any], ...]:
     if hasattr(frame, "entities") and callable(getattr(frame, "table", None)):
-        return tuple(frame.table(entity) for entity in frame.entities)
+        return tuple((entity, frame.table(entity)) for entity in frame.entities)
     if isinstance(frame, Mapping):
-        return tuple(frame[entity] for entity in ("person", "benunit", "household"))
+        return tuple(
+            (entity, frame[entity]) for entity in ("person", "benunit", "household")
+        )
     tables = tuple(
-        getattr(frame, entity, None) for entity in ("person", "benunit", "household")
+        (entity, getattr(frame, entity, None))
+        for entity in ("person", "benunit", "household")
     )
-    if any(table is None for table in tables):
+    if any(table is None for _entity, table in tables):
         raise TypeError(
             "UK coverage gate expects a populace Frame, an entity-table mapping, "
             "or an object with person/benunit/household tables."
@@ -264,23 +320,8 @@ def _entity_tables(frame: Any) -> tuple[Any, ...]:
     return tables
 
 
-def _degenerate_columns(column_values: Mapping[str, Any], engine: Any) -> set[str]:
-    defaults = engine.default_values(sorted(column_values))
-    missing_defaults = sorted(set(column_values) - set(defaults))
-    if missing_defaults:
-        raise ValueError(
-            "Cannot enforce UK input coverage without live engine defaults for "
-            f"{missing_defaults}."
-        )
-    return {
-        name
-        for name, values in column_values.items()
-        if not _has_nondefault_signal(values, defaults[name])
-    }
-
-
-def _has_nondefault_signal(values: Any, default: object) -> bool:
-    """Whether a column has a valid value that differs from its live default."""
+def _nondefault_signal_mask(values: Any, default: object) -> np.ndarray:
+    """Row mask for valid values that differ from a live engine default."""
     observed = np.asarray(values)
     if observed.ndim == 0:
         observed = observed.reshape(1)
@@ -295,22 +336,23 @@ def _has_nondefault_signal(values: Any, default: object) -> bool:
             numeric = normalized.map(
                 {"false": 0.0, "0": 0.0, "true": 1.0, "1": 1.0}
             ).to_numpy(dtype=float, na_value=np.nan)
-        return bool(np.any(np.isfinite(numeric) & (numeric != float(bool(default)))))
+        return np.isfinite(numeric) & (numeric != float(bool(default)))
 
     if isinstance(default, int | float | np.integer | np.floating):
         numeric = pd.to_numeric(pd.Series(observed), errors="coerce").to_numpy(
             dtype=float, na_value=np.nan
         )
-        return bool(np.any(np.isfinite(numeric) & (numeric != float(default))))
+        return np.isfinite(numeric) & (numeric != float(default))
 
     if isinstance(default, str):
         normalized = pd.Series(observed, dtype="string").str.strip()
         signal = (
             normalized.notna() & normalized.ne("") & normalized.ne(default.strip())
         ).fillna(False)
-        return bool(signal.any())
+        return signal.to_numpy(dtype=bool)
 
-    for value in observed:
+    signal = np.zeros(len(observed), dtype=bool)
+    for index, value in enumerate(observed):
         missing = pd.isna(value)
         if isinstance(missing, bool | np.bool_) and missing:
             continue
@@ -323,10 +365,115 @@ def _has_nondefault_signal(values: Any, default: object) -> bool:
             continue
         try:
             if value != default:
-                return True
+                signal[index] = True
         except (TypeError, ValueError):
-            return True
-    return False
+            signal[index] = True
+    return signal
+
+
+def _effective_weights_by_entity(
+    frame: Any,
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, np.ndarray]:
+    """Resolve row-aligned effective population mass for all UK entities."""
+    resolve_weights = getattr(frame, "resolve_weights", None)
+    if callable(resolve_weights):
+        return {
+            entity: np.asarray(resolve_weights(entity).values, dtype=np.float64)
+            for entity in tables
+        }
+
+    household = tables["household"]
+    person = tables["person"]
+    if "household_weight" not in household:
+        raise ValueError(
+            "UK effective-mass coverage requires household.household_weight."
+        )
+    household_weights = pd.to_numeric(
+        household["household_weight"], errors="coerce"
+    ).to_numpy(dtype=float, na_value=np.nan)
+    if (
+        not np.isfinite(household_weights).all()
+        or (household_weights < 0.0).any()
+        or not (household_weights > 0.0).any()
+    ):
+        raise ValueError(
+            "UK effective-mass coverage requires finite, non-negative "
+            "household weights with positive total mass."
+        )
+    household_ids = household["household_id"]
+    if household_ids.isna().any() or household_ids.duplicated().any():
+        raise ValueError(
+            "UK effective-mass coverage requires unique household_id values."
+        )
+    weights_by_household = pd.Series(
+        household_weights,
+        index=household_ids.to_numpy(),
+    )
+    person_weights = person["person_household_id"].map(weights_by_household)
+    if person_weights.isna().any():
+        raise ValueError(
+            "UK effective-mass coverage cannot map every person to a weighted "
+            "household."
+        )
+
+    benunit_households = (
+        person[["person_benunit_id", "person_household_id"]]
+        .drop_duplicates()
+        .groupby("person_benunit_id", sort=False)["person_household_id"]
+        .agg(list)
+    )
+    ambiguous = benunit_households[benunit_households.map(len) != 1]
+    if len(ambiguous):
+        raise ValueError(
+            "UK effective-mass coverage requires each benunit to belong to "
+            "exactly one household."
+        )
+    household_by_benunit = benunit_households.map(lambda values: values[0])
+    benunit_weights = tables["benunit"]["benunit_id"].map(
+        household_by_benunit.map(weights_by_household)
+    )
+    if benunit_weights.isna().any():
+        raise ValueError(
+            "UK effective-mass coverage cannot map every benunit to a weighted "
+            "household."
+        )
+    return {
+        "person": person_weights.to_numpy(dtype=np.float64),
+        "benunit": benunit_weights.to_numpy(dtype=np.float64),
+        "household": household_weights,
+    }
+
+
+def _effective_mass_diagnostics(
+    column_values: Mapping[str, tuple[str, Any]],
+    *,
+    defaults: Mapping[str, object],
+    effective_weights: Mapping[str, np.ndarray],
+) -> dict[str, dict[str, object]]:
+    diagnostics: dict[str, dict[str, object]] = {}
+    for name, (entity, values) in sorted(column_values.items()):
+        weights = np.asarray(effective_weights[entity], dtype=np.float64)
+        signal = _nondefault_signal_mask(values, defaults[name])
+        if len(signal) != len(weights):
+            raise ValueError(
+                f"{name}: column length {len(signal)} disagrees with {entity} "
+                f"effective-weight length {len(weights)}."
+            )
+        positive = weights > 0.0
+        effective_signal = signal & positive
+        total_mass = float(weights[positive].sum())
+        signal_mass = float(weights[effective_signal].sum())
+        share = signal_mass / total_mass if total_mass > 0.0 else 0.0
+        diagnostics[name] = {
+            "entity": entity,
+            "signal_rows": int(signal.sum()),
+            "positive_mass_signal_rows": int(effective_signal.sum()),
+            "effective_signal_mass": signal_mass,
+            "total_effective_mass": total_mass,
+            "effective_signal_mass_share": share,
+        }
+    return diagnostics
 
 
 def uk_release_input_coverage_gate(
@@ -335,24 +482,88 @@ def uk_release_input_coverage_gate(
     *,
     manifest: UKReleaseInputCoverageManifest | None = None,
 ) -> GateResult:
-    """Enforce required presence/signal and cannot-rot UK exclusions."""
+    """Enforce required signal on rows carrying reviewed effective mass."""
     manifest = manifest or load_uk_release_input_coverage_manifest()
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
     relevant = required | set(reviewed)
-    present_values: dict[str, Any] = {}
-    for table in _entity_tables(frame):
+    table_items = _entity_tables(frame)
+    tables = {entity: table for entity, table in table_items}
+    effective_weights = _effective_weights_by_entity(frame, tables)
+    present_values: dict[str, tuple[str, Any]] = {}
+    for entity, table in table_items:
         for column in table.columns:
-            if column in relevant and column not in present_values:
-                present_values[column] = table[column].to_numpy()
-    degenerate = _degenerate_columns(present_values, engine)
-    return input_column_coverage_gate(
+            if column not in relevant:
+                continue
+            if column in present_values:
+                prior_entity = present_values[column][0]
+                raise ValueError(
+                    f"UK coverage column {column!r} occurs on both "
+                    f"{prior_entity!r} and {entity!r} tables."
+                )
+            present_values[column] = (entity, table[column].to_numpy())
+
+    defaults = engine.default_values(sorted(present_values))
+    missing_defaults = sorted(set(present_values) - set(defaults))
+    if missing_defaults:
+        raise ValueError(
+            "Cannot enforce UK input coverage without live engine defaults for "
+            f"{missing_defaults}."
+        )
+    diagnostics = _effective_mass_diagnostics(
+        present_values,
+        defaults=defaults,
+        effective_weights=effective_weights,
+    )
+    raw_degenerate = {
+        name
+        for name, (_entity, values) in present_values.items()
+        if not _nondefault_signal_mask(values, defaults[name]).any()
+    }
+    floor = manifest.effective_mass_coverage.minimum_nondefault_mass_share
+    insufficient_effective_mass = {
+        name
+        for name, details in diagnostics.items()
+        if float(details["effective_signal_mass_share"]) < floor
+    }
+    degenerate = raw_degenerate | insufficient_effective_mass
+    base = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
         reviewed_exclusions=reviewed,
         name="uk_release_input_coverage",
         reference_label="enhanced-FRS",
+    )
+    failures = list(base.failures)
+    for name in sorted((insufficient_effective_mass - raw_degenerate) & required):
+        prefix = f"{name}: required enhanced-FRS input column is present but every "
+        failures = [failure for failure in failures if not failure.startswith(prefix)]
+        column_details = diagnostics[name]
+        failures.append(
+            f"{name}: required enhanced-FRS input column carries non-default "
+            f"signal on effective population mass share "
+            f"{float(column_details['effective_signal_mass_share']):.12g}, below "
+            f"the reviewed floor {floor:.12g}; zero-weight support or numerical "
+            "dust is not release coverage. Rebuild the source channel with a "
+            "reviewed positive population-mass allocation."
+        )
+    details = {
+        **dict(base.details),
+        "effective_mass_policy": {
+            "weight_source": manifest.effective_mass_coverage.weight_source,
+            "minimum_nondefault_mass_share": floor,
+            "reviewed_on": manifest.effective_mass_coverage.reviewed_on,
+            "rationale": manifest.effective_mass_coverage.rationale,
+        },
+        "insufficient_effective_mass": sorted(insufficient_effective_mass),
+        "effective_mass_by_column": diagnostics,
+    }
+    return GateResult(
+        name=base.name,
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
     )
 
 
@@ -387,6 +598,12 @@ def assert_uk_release_input_coverage_manifest_current(
     """Fail before a build if the UK contract has narrowed or graph-rotted."""
     manifest = manifest or load_uk_release_input_coverage_manifest()
     failures: list[str] = []
+    if manifest.effective_mass_coverage != UKEffectiveMassCoveragePolicy():
+        failures.append(
+            "effective_mass_coverage disagrees with the reviewed UK runtime "
+            "policy; regenerate the manifest or review the code and manifest "
+            "together."
+        )
     declared = set(manifest.declared_columns)
     surface = set(_efrs_populated_layers())
     missing = sorted(surface - declared)

@@ -12,6 +12,7 @@ import pytest
 
 from populace.build.uk_runtime import (
     UK_LOADER_INPUT_ALIASES,
+    UKEffectiveMassCoveragePolicy,
     PolicyEngineUKCoverageEngine,
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
@@ -45,6 +46,30 @@ def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
     )
 
 
+def _weighted_person_frame(
+    columns: dict[str, np.ndarray],
+    household_weights: np.ndarray,
+) -> Frame:
+    weights = np.asarray(household_weights, dtype=float)
+    n = len(weights)
+    ids = np.arange(1, n + 1, dtype="int64")
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_benunit_id": ids,
+            "person_household_id": ids,
+            **{name: np.asarray(values) for name, values in columns.items()},
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "benunit": pd.DataFrame({"benunit_id": ids}),
+            "household": pd.DataFrame({"household_id": ids}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
 class _StubEngine:
     def __init__(
         self,
@@ -190,6 +215,91 @@ class TestUKReleaseInputCoverageGate:
             )
         }
 
+    def test_signal_only_on_zero_weight_rows_fails_effective_mass(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["insufficient_effective_mass"] == ["gift_aid"]
+        diagnostic = result.details["effective_mass_by_column"]["gift_aid"]
+        assert diagnostic["signal_rows"] == 1
+        assert diagnostic["positive_mass_signal_rows"] == 0
+        assert diagnostic["effective_signal_mass_share"] == 0.0
+        assert any("zero-weight support" in failure for failure in result.failures)
+
+    def test_positive_but_dust_mass_below_reviewed_floor_fails(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.5, 999_999.5]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["effective_mass_policy"][
+            "minimum_nondefault_mass_share"
+        ] == pytest.approx(1e-6)
+        assert result.details["effective_mass_by_column"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(5e-7)
+
+    def test_signal_above_reviewed_effective_mass_floor_passes(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([2.0, 999_998.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["effective_mass_by_column"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(2e-6)
+
+    def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
+        contract = _manifest(
+            (
+                UKReleaseInputColumn(
+                    "gift_aid",
+                    "reviewed_exclusion",
+                    reason="not yet ported from enhanced FRS pipeline — pending review",
+                    tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+                ),
+            )
+        )
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["stale_exclusions"] == []
+
 
 class TestUKManifest:
     def test_shipped_manifest_is_current(self) -> None:
@@ -206,10 +316,26 @@ class TestUKManifest:
     def test_manifest_refuses_empty_columns(self, tmp_path) -> None:
         bad = tmp_path / "empty.json"
         bad.write_text(
-            json.dumps({"reference": {}, "candidate_evidence": {}, "columns": {}})
+            json.dumps(
+                {
+                    "reference": {},
+                    "candidate_evidence": {},
+                    "effective_mass_coverage": {
+                        "weight_source": "household_weight",
+                        "minimum_nondefault_mass_share": 1e-6,
+                        "reviewed_on": "2026-07-11",
+                        "rationale": "reviewed test floor",
+                    },
+                    "columns": {},
+                }
+            )
         )
         with pytest.raises(ValueError, match="vacuous"):
             load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_effective_mass_policy_rejects_zero_floor(self) -> None:
+        with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+            UKEffectiveMassCoveragePolicy(minimum_nondefault_mass_share=0.0)
 
     def test_reviewed_exclusion_requires_tracking_note(self) -> None:
         with pytest.raises(ValueError, match="tracking note"):
