@@ -462,6 +462,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("child_support", "PUF child-support channel is default-only"),
         ("disability_benefits", "PUF disability-benefits channel is default-only"),
         ("educator_expense", "PUF educator-expense channel is default-only"),
+        ("form_4952", "PUF Form 4952 channel is default-only"),
     ],
 )
 def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
@@ -474,6 +475,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     child_support_calls: list[tuple[object, int, int]] = []
     disability_benefits_calls: list[tuple[object, int, int]] = []
     educator_expense_gate_frames: list[object] = []
+    form_4952_gate_frames: list[object] = []
 
     monkeypatch.setattr(
         builder,
@@ -621,6 +623,28 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         fake_educator_expense_signal_gate,
     )
 
+    def fake_form_4952_election_signal_gate(frame):
+        form_4952_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "form_4952",
+                "failures": (
+                    ("PUF Form 4952 channel is default-only",)
+                    if failing_gate == "form_4952"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_form_4952_election_signal_gate",
+        fake_form_4952_election_signal_gate,
+    )
+
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
@@ -633,5 +657,10 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         expected_disability_calls.append(("child-support-puf", 7, 2024))
     assert disability_benefits_calls == expected_disability_calls
     assert educator_expense_gate_frames == (
-        ["disability-benefits-puf"] if failing_gate == "educator_expense" else []
+        ["disability-benefits-puf"]
+        if failing_gate in {"educator_expense", "form_4952"}
+        else []
+    )
+    assert form_4952_gate_frames == (
+        ["disability-benefits-puf"] if failing_gate == "form_4952" else []
     )

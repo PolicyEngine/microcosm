@@ -122,6 +122,8 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "farm_operations_income_output",
         "farm_rent_income_source",
         "farm_rent_income_output",
+        "investment_income_elected_form_4952_source",
+        "investment_income_elected_form_4952_output",
     }
 )
 
@@ -923,6 +925,17 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "farm_rent_income_output",
                 default="farm_rent_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            investment_income_elected_form_4952_source=_optional_string_param(
+                params,
+                "investment_income_elected_form_4952_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            investment_income_elected_form_4952_output=_string_param_with_default(
+                params,
+                "investment_income_elected_form_4952_output",
+                default="investment_income_elected_form_4952",
                 label="PUF PolicyEngine-variable derivation",
             ),
         )

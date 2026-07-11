@@ -184,9 +184,7 @@
    "status": "required"
   },
   "investment_income_elected_form_4952": {
-   "issue": "PolicyEngine/populace#274",
-   "reason": "Capital-gains component detail (collectibles / unrecaptured 1250 / 4952 election / investment-interest) not yet split onto the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "investment_interest_expense": {
    "issue": "PolicyEngine/populace#274",
@@ -572,8 +570,8 @@
   }
  },
  "counts": {
-  "required": 129,
-  "reviewed_exclusion": 36,
+  "required": 130,
+  "reviewed_exclusion": 35,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -789,6 +787,22 @@
    },
    "period": 2024,
    "reason": "PolicyEngine-US 1.764.6 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "investment_income_elected_form_4952"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "form_4952_election_neutralization",
+   "issue": "PolicyEngine/populace#274",
+   "min_abs_effect": 1000000.0,
+   "name": "Form 4952 elected investment income neutralization",
+   "neutralized_variable": "investment_income_elected_form_4952",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US subtracts the tax-unit sum of investment_income_elected_form_4952 from net capital gain. Neutralizing only that leaf increases preferential net capital gain and lowers income tax, so baseline-minus-reform income tax must be positive. Without the restored E58990 input the neutralization is a structural zero."
   },
   {
    "binding_inputs": [

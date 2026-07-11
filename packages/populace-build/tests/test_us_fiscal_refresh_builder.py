@@ -1979,6 +1979,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_educator_expense_signal_gate",
         fake_educator_expense_signal_gate,
     )
+
+    def fake_form_4952_election_signal_gate(frame):
+        captured["form_4952_election_gate_called"] = True
+        return builder.GateResult(
+            name="form_4952_election_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_form_4952_election_signal_gate",
+        fake_form_4952_election_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_childcare_inputs",
@@ -2519,8 +2533,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_gate_called"] is True
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
-        captured["sipp_vehicle_donor_sha256"]
-        == builder.SIPP_2023_VEHICLE_DONOR_SHA256
+        captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
     )
     assert (
         captured["sipp_vehicle_donor_size_bytes"]
@@ -2538,6 +2551,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["child_support_gate_called"] is True
     assert captured["disability_benefits_gate_called"] is True
     assert captured["educator_expense_gate_called"] is True
+    assert captured["form_4952_election_gate_called"] is True
     assert captured["farm_business_income_gate_called"] is True
     assert captured["other_health_insurance_stage_called"] is True
     assert captured["other_health_insurance_gate_called"] is True

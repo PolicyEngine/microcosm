@@ -42,6 +42,9 @@ from populace.build.us_runtime.eligibility_inputs import (
 from populace.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.form_4952 import (
+    US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
     us_geography_ladder_gate,
@@ -115,6 +118,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
     *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
     *US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
+    *US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
 )
 
 US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS = US_CHILDCARE_OUTPUT_COLUMNS

@@ -386,6 +386,27 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/populace#298",
     },
     {
+        "id": "form_4952_election_neutralization",
+        "name": "Form 4952 elected investment income neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "investment_income_elected_form_4952",
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["investment_income_elected_form_4952"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US subtracts the tax-unit sum of "
+            "investment_income_elected_form_4952 from net capital gain. "
+            "Neutralizing only that leaf increases preferential net capital "
+            "gain and lowers income tax, so baseline-minus-reform income tax "
+            "must be positive. Without the restored E58990 input the "
+            "neutralization is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#274",
+    },
+    {
         "id": "child_support_received_snap_exclusion",
         "name": "Exclude child-support receipts from SNAP unearned income",
         "parameter_changes": {

@@ -52,6 +52,7 @@ from populace.build.us_runtime import (
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
     us_farm_business_income_signal_gate,
+    us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     us_immigration_composition_summary,
@@ -290,6 +291,12 @@ def main() -> None:
             "Educator-expense signal gate failed:\n  "
             + "\n  ".join(educator_expense_gate.failures)
         )
+    form_4952_election_gate = us_form_4952_election_signal_gate(imputed)
+    if not form_4952_election_gate.passed:
+        raise SystemExit(
+            "Form 4952 election signal gate failed:\n  "
+            + "\n  ".join(form_4952_election_gate.failures)
+        )
     imputed = with_us_childcare_inputs(
         imputed,
         seed=args.seed,
@@ -490,6 +497,11 @@ def main() -> None:
             "passed": educator_expense_gate.passed,
             "failures": list(educator_expense_gate.failures),
             "details": dict(educator_expense_gate.details),
+        },
+        "form_4952_election_signal": {
+            "passed": form_4952_election_gate.passed,
+            "failures": list(form_4952_election_gate.failures),
+            "details": dict(form_4952_election_gate.details),
         },
         "childcare_inputs_signal": {
             "passed": childcare_gate.passed,

@@ -44,10 +44,18 @@ def _weighted_total(simulation: Any, measure: str, period: int) -> float:
     return float(simulation.calculate(measure, period).sum())
 
 
-def _build_reform(parameter_changes: dict[str, Any]) -> Any:
+def _build_reform(probe: ReformCoverageProbe) -> Any:
     from policyengine_core.reforms import Reform
 
-    return Reform.from_dict(parameter_changes, country_id="us")
+    if probe.neutralized_variable:
+        variable = probe.neutralized_variable
+
+        class _Neutralize(Reform):
+            def apply(self) -> None:
+                self.neutralize_variable(variable)
+
+        return _Neutralize
+    return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
 
 
 def us_reform_coverage_smoke_gate(
@@ -89,7 +97,7 @@ def us_reform_coverage_smoke_gate(
     failures: list[str] = []
     results: dict[str, Any] = {}
     for probe in probes:
-        reform = _build_reform(dict(probe.parameter_changes))
+        reform = _build_reform(probe)
         reformed = simulate(reform)
         probe_period = int(probe.period if probe.period is not None else period)
         baseline_total = _weighted_total(baseline, probe.budget_measure, probe_period)

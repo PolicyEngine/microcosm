@@ -60,6 +60,7 @@ from populace.build.us_runtime.educator_expenses import (
 from populace.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.form_4952 import US_FORM_4952_OUTPUT_COLUMNS
 from populace.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -115,6 +116,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
+        *US_FORM_4952_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "household_weight",
@@ -196,6 +198,10 @@ class ReformCoverageProbe:
         id: Stable probe id.
         name: Human-readable reform description.
         parameter_changes: ``Reform.from_dict`` payload (country ``us``).
+            Exactly one of this mapping or ``neutralized_variable`` is
+            non-empty.
+        neutralized_variable: Input leaf neutralized by a
+            structural reform when no parameter change isolates the leaf.
         budget_measure: The variable whose weighted total change is scored.
         effect_direction: ``"reform_minus_baseline"`` or
             ``"baseline_minus_reform"``.
@@ -223,12 +229,25 @@ class ReformCoverageProbe:
     effect_direction: str = "reform_minus_baseline"
     period: int | None = None
     expected_sign: str = "positive"
+    neutralized_variable: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("ReformCoverageProbe.id is required.")
-        if not self.parameter_changes:
-            raise ValueError(f"{self.id}: parameter_changes is required.")
+        has_params = bool(self.parameter_changes)
+        has_neutralize = bool(self.neutralized_variable)
+        if has_params == has_neutralize:
+            raise ValueError(
+                f"{self.id}: provide exactly one of parameter_changes or "
+                "neutralized_variable."
+            )
+        if (
+            self.neutralized_variable
+            and self.neutralized_variable not in self.binding_inputs
+        ):
+            raise ValueError(
+                f"{self.id}: neutralized_variable must be one of binding_inputs."
+            )
         if not self.budget_measure:
             raise ValueError(f"{self.id}: budget_measure is required.")
         if self.effect_direction not in {
@@ -386,6 +405,11 @@ def load_release_input_coverage_manifest(
                     else int(raw_probe["period"])
                 ),
                 expected_sign=str(raw_probe.get("expected_sign", "positive")),
+                neutralized_variable=(
+                    None
+                    if raw_probe.get("neutralized_variable") is None
+                    else str(raw_probe["neutralized_variable"])
+                ),
             )
         )
 
@@ -475,9 +499,7 @@ def us_release_input_coverage_gate(
     if "household_weight" in relevant:
         present_values.pop("household_weight", None)
         if "household" in frame.weighted_entities:
-            present_values["household_weight"] = frame.weights_for(
-                "household"
-            ).values
+            present_values["household_weight"] = frame.weights_for("household").values
 
     degenerate = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(

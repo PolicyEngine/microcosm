@@ -84,9 +84,7 @@ def _household_weight_frame(
             "person_household_id": np.arange(1, n + 1, dtype="int64"),
         }
     )
-    household = pd.DataFrame(
-        {"household_id": np.arange(1, n + 1, dtype="int64")}
-    )
+    household = pd.DataFrame({"household_id": np.arange(1, n + 1, dtype="int64")})
     if stored_values is not None:
         household["household_weight"] = np.asarray(stored_values, dtype=np.float64)
     return Frame(
@@ -350,6 +348,32 @@ def _auto_loan_probe() -> ReformCoverageProbe:
     )
 
 
+def test_reform_probe_requires_exactly_one_reform_kind() -> None:
+    kwargs = {
+        "id": "form_4952",
+        "name": "Form 4952 neutralization",
+        "budget_measure": "income_tax",
+        "binding_inputs": ("investment_income_elected_form_4952",),
+        "min_abs_effect": 1_000_000.0,
+        "reason": "The neutralization binds only through the input.",
+        "issue": "PolicyEngine/populace#274",
+    }
+    with pytest.raises(ValueError, match="exactly one"):
+        ReformCoverageProbe(parameter_changes={}, **kwargs)
+    with pytest.raises(ValueError, match="exactly one"):
+        ReformCoverageProbe(
+            parameter_changes={"some.parameter": {"2024-01-01": 0}},
+            neutralized_variable="investment_income_elected_form_4952",
+            **kwargs,
+        )
+    with pytest.raises(ValueError, match="binding_inputs"):
+        ReformCoverageProbe(
+            parameter_changes={},
+            neutralized_variable="different_input",
+            **kwargs,
+        )
+
+
 class TestReformCoverageSmokeGate:
     def test_zero_bound_reform_fails(self, monkeypatch) -> None:
         # Case 5: with the asset inputs absent, everyone already passes the SSI
@@ -596,6 +620,21 @@ class TestShippedManifest:
         manifest = load_release_input_coverage_manifest()
         assert "domestic_production_ald" in manifest.required_columns
         assert "domestic_production_ald" not in manifest.reviewed_exclusions
+
+    def test_form_4952_election_is_promoted_with_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        output = "investment_income_elected_form_4952"
+        assert output in manifest.required_columns
+        assert output not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "form_4952_election_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == output
+        assert probe.binding_inputs == (output,)
 
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()

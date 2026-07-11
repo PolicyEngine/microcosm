@@ -84,6 +84,7 @@ from populace.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_farm_business_income_signal_gate,
+    us_form_4952_election_signal_gate,
     us_hours_worked_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
@@ -5957,6 +5958,23 @@ def main() -> None:
             + "; ".join(
                 "Educator-expense input signal failed: " + failure
                 for failure in educator_expense_gate.failures
+            )
+        )
+    form_4952_election_gate = us_form_4952_election_signal_gate(base_frame)
+    if not form_4952_election_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "form_4952_election_input_gate",
+                status="failed",
+                message="Form 4952 election input signal gate failed.",
+                failures=list(form_4952_election_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Form 4952 election signal failed: " + failure
+                for failure in form_4952_election_gate.failures
             )
         )
     base_frame = with_us_childcare_inputs(

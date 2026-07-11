@@ -555,6 +555,10 @@ class TestUsSources:
             "farm_operations_income_output": "farm_operations_income",
             "farm_rent_income_source": "E27200",
             "farm_rent_income_output": "farm_rent_income",
+            "investment_income_elected_form_4952_source": "E58990",
+            "investment_income_elected_form_4952_output": (
+                "investment_income_elected_form_4952"
+            ),
         }
 
         operation = operations[kinds.index("disaggregate_aggregate_records")]
