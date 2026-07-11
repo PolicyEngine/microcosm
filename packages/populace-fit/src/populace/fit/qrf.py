@@ -351,6 +351,10 @@ def _fit_forest(
         n_estimators=n_estimators,
         max_samples_leaf=max_samples_leaf,
         random_state=seed,
+        # Tree fitting and prediction parallelize without affecting the
+        # seed-determined draws; forests are deterministic per random_state
+        # regardless of worker count.
+        n_jobs=-1,
     )
     model.fit(x_fit, y_fit)
     return _Forest(model=model, columns=columns)
