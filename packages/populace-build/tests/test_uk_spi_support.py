@@ -6,20 +6,24 @@ import pytest
 
 from populace.build.uk_runtime import (
     BASE_FRS_SUPPORT_CHANNEL,
+    DEFAULT_SPI_PRIOR_MASS_SHARE,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_INCOME_COMPONENT_COLUMNS,
     SPI_INCOME_IMPUTATION_COLUMNS,
+    SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     area_support_summary,
     create_uk_spi_support_tables,
     fill_support_channel_from_source,
+    replace_uk_spi_support_tables,
     stacked_weights_to_long,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.frame import WeightKind
 
 
 def household_frame() -> pd.DataFrame:
@@ -217,6 +221,7 @@ def test_spi_variable_surfaces_include_efrs_stage1_and_stage2_fixes() -> None:
         "dividend_income",
         "private_pension_income",
         "property_income",
+        "other_investment_income",
     )
     assert "gift_aid" in SPI_INCOME_IMPUTATION_COLUMNS
     assert "charitable_investment_gifts" in SPI_INCOME_IMPUTATION_COLUMNS
@@ -227,6 +232,94 @@ def test_spi_variable_surfaces_include_efrs_stage1_and_stage2_fixes() -> None:
     assert "housing_benefit_reported" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "employee_pension_contributions" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "tax_free_savings_income" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
+
+
+def _certified_like_dead_spi_support():
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, 9, dtype="int64"),
+            "household_weight": np.arange(10.0, 90.0, 10.0),
+            "region": ["LONDON", "LONDON", "WALES", "WALES"] * 2,
+            "clone_index": [0] * 4 + [1] * 4,
+            "household_is_capital_gains_clone": [False, False, True, True] * 2,
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(101, 109, dtype="int64"),
+            "person_household_id": np.arange(1, 9, dtype="int64"),
+            "person_benunit_id": np.arange(201, 209, dtype="int64"),
+            "employment_income": np.arange(1_000.0, 9_000.0, 1_000.0),
+        }
+    )
+    benunit = pd.DataFrame(
+        {"benunit_id": np.arange(201, 209, dtype="int64")}
+    )
+    return create_uk_spi_support_tables(
+        person=person,
+        benunit=benunit,
+        household=household,
+        selected_household_ids=(1, 3, 5, 7),
+        source_year=2023,
+    )
+
+
+def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
+    dead = _certified_like_dead_spi_support()
+    dead_spi = dead.household[
+        dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
+    ]
+    original_total = float(dead.household["household_weight"].sum())
+
+    result = replace_uk_spi_support_tables(
+        person=dead.person,
+        benunit=dead.benunit,
+        household=dead.household,
+        seed=7,
+        source_year=2023,
+    )
+
+    assert result.replaced_spi_households == len(dead_spi) == 4
+    assert len(result.household) == len(dead.household)
+    assert result.spi_prior_mass_share == DEFAULT_SPI_PRIOR_MASS_SHARE == 0.5
+    assert result.household_weight_kind is WeightKind.IMPORTANCE
+    assert result.household["household_weight"].sum() == pytest.approx(original_total)
+
+    channel = result.household[support_channel_column("household")]
+    base = result.household[channel == BASE_FRS_SUPPORT_CHANNEL]
+    spi = result.household[channel == SPI_SYNTHETIC_SUPPORT_CHANNEL]
+    assert len(spi) == 4
+    assert spi["household_weight"].gt(0).all()
+    assert base["household_weight"].sum() == pytest.approx(original_total * 0.5)
+    assert spi["household_weight"].sum() == pytest.approx(original_total * 0.5)
+    assert set(channel) == {BASE_FRS_SUPPORT_CHANNEL, SPI_SYNTHETIC_SUPPORT_CHANNEL}
+
+    strata = ["clone_index", "household_is_capital_gains_clone", "region"]
+    pd.testing.assert_series_equal(
+        dead_spi.groupby(strata, dropna=False).size(),
+        spi.groupby(strata, dropna=False).size(),
+    )
+    assert len(result.mass_log) == 1
+    record = result.mass_log[-1]
+    assert record.entity == "household"
+    assert record.old_total == pytest.approx(original_total)
+    assert record.new_total == pytest.approx(original_total)
+    assert record.declared_factor == 1.0
+    assert record.reason == SPI_PRIOR_MASS_CHANGE_REASON
+
+
+def test_replace_spi_support_refuses_to_discard_positive_spi_mass() -> None:
+    dead = _certified_like_dead_spi_support()
+    household = dead.household.copy()
+    synthetic = household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
+    household.loc[synthetic, "household_weight"] = 1.0
+
+    with pytest.raises(ValueError, match="refusing to discard live population mass"):
+        replace_uk_spi_support_tables(
+            person=dead.person,
+            benunit=dead.benunit,
+            household=household,
+        )
 
 
 def test_spi_source_lineage_keeps_longwise_source_support_from_doubling() -> None:

@@ -36,6 +36,7 @@ UK_PACKAGE_DIR = (
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
+HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
 CANDIDATE_REPO_TYPE = "dataset"
@@ -422,7 +423,7 @@ def build_manifest(
     source = reference["source"]
     candidate_source = known_gaps_payload["candidate_evidence"]["source"]
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "description": (
             "Declared full-coverage contract for a UK release: every populated "
             "effective loader input in the pinned enhanced FRS must be persisted "
@@ -446,6 +447,9 @@ def build_manifest(
             "period": str(candidate_source["period"]),
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
+        "family_coverage": {
+            "hmrc_spi_income": _hmrc_family_coverage_contract(),
+        },
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
             "inputs. status='required' exactly when the sha-pinned candidate "
@@ -461,6 +465,88 @@ def build_manifest(
             "total": len(columns),
         },
         "columns": columns,
+    }
+
+
+def _hmrc_family_coverage_contract() -> dict[str, Any]:
+    payload = _load(HMRC_SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list) or len(stages) != 1:
+        raise ValueError(
+            f"{HMRC_SOURCE_STAGES_PATH}: expected exactly one source stage."
+        )
+    stage = stages[0]
+    if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
+        raise ValueError(
+            f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage."
+        )
+    artifacts = {
+        artifact["role"]: artifact
+        for artifact in stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
+    operations = {
+        operation["kind"]: operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
+    }
+    required_artifacts = {"qrf_donor", "calibration_surface"}
+    missing_artifacts = sorted(required_artifacts - set(artifacts))
+    required_operations = {
+        "replace_zero_weight_spi_support",
+        "derive_taxpayer_mask",
+        "calibrate_weighted_income_bands",
+        "gate_distributional_effective_mass",
+    }
+    missing_operations = sorted(required_operations - set(operations))
+    if missing_artifacts or missing_operations:
+        raise ValueError(
+            f"{HMRC_SOURCE_STAGES_PATH}: incomplete HMRC family contract; "
+            f"missing_artifacts={missing_artifacts}, "
+            f"missing_operations={missing_operations}."
+        )
+    calibration = operations["calibrate_weighted_income_bands"]
+    prior = operations["replace_zero_weight_spi_support"]
+    effective = operations["gate_distributional_effective_mass"]
+    floor = float(effective["minimum_nondefault_mass_share"])
+    if floor != EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"]:
+        raise ValueError(
+            "HMRC source-stage effective-mass floor disagrees with the release "
+            "input-coverage policy."
+        )
+    return {
+        "status": "required_at_build",
+        "stage": "hmrc_spi_income",
+        "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
+        "base_candidate_sha256": str(stage["base_candidate"]["sha256"]),
+        "source_vintages": {
+            "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
+            "hmrc_surface": str(artifacts["calibration_surface"]["vintage"]),
+            "mapped_build_period": str(
+                artifacts["calibration_surface"]["mapped_build_period"]
+            ),
+        },
+        "spi_prior_national_household_mass_share": float(
+            prior["spi_prior_national_household_mass_share"]
+        ),
+        "input_weight_kind": str(calibration["input_weight_kind"]),
+        "output_weight_kind": str(calibration["output_weight_kind"]),
+        "required_components": list(calibration["components"]),
+        "required_target_count": int(calibration["required_target_count"]),
+        "taxpayer_mask": str(calibration["taxpayer_mask"]),
+        "band_measure": str(calibration["breakdown_variable"]),
+        "effective_mass_requirements": {
+            str(column): {
+                "status": "distributional_required",
+                "minimum_nondefault_mass_share": floor,
+            }
+            for column in effective["columns"]
+        },
+        "promotion_rule": (
+            "Gift Aid inputs count as restored only in a build whose rebuilt "
+            "SPI channel clears the effective-mass floor; raw column presence "
+            "alone is not restoration."
+        ),
     }
 
 

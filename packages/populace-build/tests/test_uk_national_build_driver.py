@@ -23,17 +23,24 @@ def test_national_build_driver_uses_standalone_national_seam(
     builder = _load_builder_module()
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "hmrc.ods"
     input_h5.write_bytes(b"base")
+    spi_tab.write_bytes(b"spi")
+    hmrc_ods.write_bytes(b"hmrc")
     calls = []
 
     def fake_build(**kwargs):
         calls.append(kwargs)
+        kwargs["stages"][0].transform.last_result = SimpleNamespace(
+            evidence=lambda: {"stage": "hmrc_spi_income"}
+        )
         staging_h5.write_bytes(b"staged")
         kwargs["input_coverage_path"].write_text('{"passed": true}\n')
         return SimpleNamespace(
             input_h5=input_h5.resolve(),
             staging_h5=staging_h5.resolve(),
-            stage_names=(),
+            stage_names=("hmrc_spi_income",),
             input_coverage=SimpleNamespace(
                 passed=True,
                 failures=(),
@@ -43,6 +50,17 @@ def test_national_build_driver_uses_standalone_national_seam(
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
     monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=4,
+        ),
+    )
+    monkeypatch.setattr(
         sys,
         "argv",
         [
@@ -51,6 +69,10 @@ def test_national_build_driver_uses_standalone_national_seam(
             str(input_h5),
             "--staging-h5",
             str(staging_h5),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
         ],
     )
 
@@ -59,12 +81,21 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert len(calls) == 1
     assert calls[0]["input_h5"] == input_h5
     assert calls[0]["staging_h5"] == staging_h5
-    assert calls[0]["stages"] == ()
+    assert len(calls[0]["stages"]) == 1
+    assert calls[0]["stages"][0].name == "hmrc_spi_income"
+    transform = calls[0]["stages"][0].transform
+    assert transform.spi_tab_path == spi_tab
+    assert transform.hmrc_ods_path == hmrc_ods
     assert calls[0]["input_coverage_path"] == staging_h5.with_suffix(
         ".input_coverage.json"
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["build_kind"] == "uk_national_staging_dataset"
-    assert payload["stages"] == []
+    assert payload["stages"] == ["hmrc_spi_income"]
     assert payload["input_coverage"]["passed"] is True
     assert payload["artifacts"]["staging_h5"]["sha256"]
+    evidence_path = staging_h5.with_suffix(".hmrc_income.json")
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["base_candidate"]["revision"] == "test-revision"
+    assert evidence["family"]["stage"] == "hmrc_spi_income"
+    assert payload["artifacts"]["hmrc_evidence"]["sha256"]

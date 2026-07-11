@@ -24,6 +24,7 @@ from populace.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_manifest_current,
     uk_release_input_coverage_gate,
 )
+from populace.frame import MassChangeRecord, WeightKind
 
 __all__ = [
     "UKNationalBuildResult",
@@ -36,6 +37,8 @@ __all__ = [
 ]
 
 UK_NATIONAL_H5_TABLES = ("person", "benunit", "household", "time_period")
+UK_HOUSEHOLD_WEIGHT_KIND_ATTR = "populace_household_weight_kind"
+UK_MASS_LOG_ATTR = "populace_mass_log_json"
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,8 @@ class UKNationalDataset:
     benunit: pd.DataFrame
     household: pd.DataFrame
     time_period: str
+    household_weight_kind: WeightKind = WeightKind.DESIGN
+    mass_log: tuple[MassChangeRecord, ...] = ()
 
     def with_tables(
         self,
@@ -54,6 +59,8 @@ class UKNationalDataset:
         benunit: pd.DataFrame | None = None,
         household: pd.DataFrame | None = None,
         time_period: int | str | None = None,
+        household_weight_kind: WeightKind | None = None,
+        mass_log: tuple[MassChangeRecord, ...] | None = None,
     ) -> UKNationalDataset:
         """Return a dataset with selected tables replaced."""
 
@@ -62,6 +69,12 @@ class UKNationalDataset:
             benunit=self.benunit if benunit is None else benunit,
             household=self.household if household is None else household,
             time_period=(self.time_period if time_period is None else str(time_period)),
+            household_weight_kind=(
+                self.household_weight_kind
+                if household_weight_kind is None
+                else household_weight_kind
+            ),
+            mass_log=self.mass_log if mass_log is None else tuple(mass_log),
         )
 
 
@@ -111,6 +124,7 @@ def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
     if not input_path.is_file():
         raise FileNotFoundError(f"UK national dataset not found: {input_path}.")
 
+    stored_kind, stored_mass_log = _read_weight_metadata(input_path)
     with pd.HDFStore(input_path, mode="r") as store:
         keys = {key.lstrip("/") for key in store.keys()}
         missing = sorted(set(UK_NATIONAL_H5_TABLES) - keys)
@@ -126,6 +140,8 @@ def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
             benunit=store["benunit"],
             household=store["household"],
             time_period=str(raw_period.iloc[0]),
+            household_weight_kind=_weight_kind_from_stored(stored_kind),
+            mass_log=_mass_log_from_stored(stored_mass_log),
         )
     validate_uk_national_dataset(dataset)
     return dataset
@@ -143,6 +159,16 @@ def validate_uk_national_dataset(dataset: UKNationalDataset) -> None:
             raise TypeError(f"UK national {name} table must be a pandas DataFrame.")
     if not isinstance(dataset.time_period, str) or not dataset.time_period.strip():
         raise ValueError("UK national dataset time_period must be a non-empty string.")
+    if not isinstance(dataset.household_weight_kind, WeightKind):
+        raise TypeError(
+            "UK national dataset household_weight_kind must be a WeightKind."
+        )
+    if not isinstance(dataset.mass_log, tuple) or any(
+        not isinstance(record, MassChangeRecord) for record in dataset.mass_log
+    ):
+        raise TypeError(
+            "UK national dataset mass_log must be a tuple of MassChangeRecord."
+        )
 
     _require_columns(
         dataset.person,
@@ -186,6 +212,19 @@ def validate_uk_national_dataset(dataset: UKNationalDataset) -> None:
         raise ValueError(
             "household.household_weight must retain at least one positive value."
         )
+    household_records = [
+        record for record in dataset.mass_log if record.entity == "household"
+    ]
+    if household_records and not np.isclose(
+        household_records[-1].new_total,
+        float(weights.sum()),
+        rtol=1e-9,
+        atol=0.0,
+    ):
+        raise ValueError(
+            "UK national dataset household_weight total disagrees with the "
+            "latest household MassChangeRecord."
+        )
 
 
 def write_uk_national_dataset(
@@ -213,6 +252,7 @@ def write_uk_national_dataset(
                 format="table",
                 data_columns=True,
             )
+        _write_weight_metadata(temporary_path, dataset)
         temporary_path.replace(output_path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -338,3 +378,86 @@ def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
             f"{label}.{column} must be unique; duplicate value(s): "
             f"{list(map(str, duplicates[:5]))}."
         )
+
+
+def _weight_kind_from_stored(value: object) -> WeightKind:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    try:
+        return WeightKind(str(value))
+    except ValueError as exc:
+        raise ValueError(
+            f"Unknown stored UK household weight kind {value!r}."
+        ) from exc
+
+
+def _read_weight_metadata(path: Path) -> tuple[object, object]:
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to read UK national metadata.") from exc
+    with h5py.File(path, mode="r") as file:
+        return (
+            file.attrs.get(
+                UK_HOUSEHOLD_WEIGHT_KIND_ATTR,
+                WeightKind.DESIGN.value,
+            ),
+            file.attrs.get(UK_MASS_LOG_ATTR, "[]"),
+        )
+
+
+def _write_weight_metadata(path: Path, dataset: UKNationalDataset) -> None:
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = (
+            dataset.household_weight_kind.value
+        )
+        file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
+            [_mass_change_record_payload(record) for record in dataset.mass_log],
+            sort_keys=True,
+        )
+
+
+def _mass_log_from_stored(value: object) -> tuple[MassChangeRecord, ...]:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    try:
+        payload = json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Stored UK populace mass log is not valid JSON.") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Stored UK populace mass log must be a JSON list.")
+    records: list[MassChangeRecord] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            raise ValueError("Stored UK populace mass-log entries must be objects.")
+        try:
+            records.append(
+                MassChangeRecord(
+                    entity=str(entry["entity"]),
+                    old_total=float(entry["old_total"]),
+                    new_total=float(entry["new_total"]),
+                    declared_factor=(
+                        None
+                        if entry.get("declared_factor") is None
+                        else float(entry["declared_factor"])
+                    ),
+                    reason=str(entry["reason"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Stored UK populace mass-log entry is malformed.") from exc
+    return tuple(records)
+
+
+def _mass_change_record_payload(record: MassChangeRecord) -> dict[str, object]:
+    return {
+        "entity": record.entity,
+        "old_total": record.old_total,
+        "new_total": record.new_total,
+        "declared_factor": record.declared_factor,
+        "reason": record.reason,
+    }

@@ -417,6 +417,46 @@
   "reviewed_on": "2026-07-11",
   "weight_source": "household_weight"
  },
+ "family_coverage": {
+  "hmrc_spi_income": {
+   "band_measure": "hmrc_spi_assessable_income",
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "effective_mass_requirements": {
+    "charitable_investment_gifts": {
+     "minimum_nondefault_mass_share": 1e-06,
+     "status": "distributional_required"
+    },
+    "gift_aid": {
+     "minimum_nondefault_mass_share": 1e-06,
+     "status": "distributional_required"
+    }
+   },
+   "input_weight_kind": "importance",
+   "output_weight_kind": "calibrated",
+   "promotion_rule": "Gift Aid inputs count as restored only in a build whose rebuilt SPI channel clears the effective-mass floor; raw column presence alone is not restoration.",
+   "required_components": [
+    "employment_income",
+    "self_employment_income",
+    "state_pension",
+    "private_pension_income",
+    "property_income",
+    "savings_interest_income",
+    "dividend_income",
+    "other_investment_income"
+   ],
+   "required_target_count": 208,
+   "source_manifest": "hmrc_income_source_stages.json",
+   "source_vintages": {
+    "hmrc_surface": "2023-24",
+    "mapped_build_period": "2023",
+    "spi_donor": "2022-23"
+   },
+   "spi_prior_national_household_mass_share": 0.5,
+   "stage": "hmrc_spi_income",
+   "status": "required_at_build",
+   "taxpayer_mask": "hmrc_spi_taxpayer"
+  }
+ },
  "reference": {
   "derived_from": "efrs_parity_reference.json",
   "filename": "enhanced_frs_2023_24.h5",
@@ -426,5 +466,5 @@
   "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
   "vintage": "2023_24"
  },
- "schema_version": 2
+ "schema_version": 3
 }

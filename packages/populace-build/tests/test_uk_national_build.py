@@ -13,6 +13,7 @@ from populace.build.uk_runtime.national_build import (
     build_uk_national_dataset,
     load_uk_national_dataset,
 )
+from populace.frame import MassChangeRecord, WeightKind
 
 
 def _write_toy_h5(path: Path, *, employment_income: float = 0.0) -> None:
@@ -366,8 +367,24 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
     dataset = load_uk_national_dataset(input_h5)
+    dataset = dataset.with_tables(
+        household_weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(
+            MassChangeRecord(
+                entity="household",
+                old_total=2.0,
+                new_total=2.0,
+                declared_factor=1.0,
+                reason="test reviewed support-channel mass allocation",
+            ),
+        ),
+    )
 
     write_uk_national_dataset(dataset, staging_h5)
+
+    round_tripped = load_uk_national_dataset(staging_h5)
+    assert round_tripped.household_weight_kind is WeightKind.IMPORTANCE
+    assert round_tripped.mass_log == dataset.mass_log
 
     loaded = policyengine_data.UKSingleYearDataset(file_path=str(staging_h5))
     assert loaded.time_period == "2023"

@@ -77,7 +77,7 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
     assert {entry["status"] for entry in manifest["columns"].values()} == {"required"}
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
         "minimum_nondefault_mass_share": 1e-6,
@@ -87,6 +87,34 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
             "dust while remaining about 100 times below the rarest populated "
             "record share in the pinned enhanced-FRS reference."
         ),
+    }
+
+
+def test_hmrc_family_is_required_with_distributional_mass_accounting() -> None:
+    manifest = _resource("release_input_coverage_manifest.json")
+    family = manifest["family_coverage"]["hmrc_spi_income"]
+
+    assert family["status"] == "required_at_build"
+    assert family["source_manifest"] == "hmrc_income_source_stages.json"
+    assert family["source_vintages"] == {
+        "spi_donor": "2022-23",
+        "hmrc_surface": "2023-24",
+        "mapped_build_period": "2023",
+    }
+    assert family["spi_prior_national_household_mass_share"] == 0.5
+    assert family["input_weight_kind"] == "importance"
+    assert family["output_weight_kind"] == "calibrated"
+    assert family["required_target_count"] == 208
+    assert family["band_measure"] == "hmrc_spi_assessable_income"
+    assert family["effective_mass_requirements"] == {
+        "gift_aid": {
+            "status": "distributional_required",
+            "minimum_nondefault_mass_share": 1e-6,
+        },
+        "charitable_investment_gifts": {
+            "status": "distributional_required",
+            "minimum_nondefault_mass_share": 1e-6,
+        },
     }
 
 

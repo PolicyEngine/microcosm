@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "The UK HMRC/SPI income family is source-manifest-defined. Private donor data must be supplied locally, every artifact must be SHA-256 verified at runtime, declared source columns and published bands fail closed, and calibrated weights must retain a strictly positive reviewed prior.",
+  "stages": [
+    {
+      "stage": "hmrc_spi_income",
+      "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24",
+      "source": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
+      "grain": "person",
+      "base_candidate": {
+        "filename": "populace_uk_2023.h5",
+        "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+        "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+        "size_bytes": 1315880118,
+        "runtime_sha256_required": true
+      },
+      "artifacts": [
+        {
+          "role": "qrf_donor",
+          "kind": "private_microdata",
+          "format": "tab_delimited",
+          "survey": "Survey of Personal Incomes Public Use Tape 2022-23",
+          "vintage": "2022-23",
+          "tax_year_start": 2022,
+          "ukds_study_number": "SN 9422",
+          "doi": "10.5255/UKDA-SN-9422-1",
+          "filename": "put2223uk.tab",
+          "access": "private_local_input",
+          "locator": "caller-supplied local input",
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "calibration_surface",
+          "kind": "administrative_table",
+          "format": "ods",
+          "survey": "HMRC Personal Incomes Tables 3.6 and 3.7",
+          "publication": "https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024",
+          "vintage": "2023-24",
+          "tax_year_start": 2023,
+          "locator": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
+          "sheets": [
+            "Table_3_6",
+            "Table_3_7"
+          ],
+          "mapped_build_period": 2023,
+          "period_mapping": "tax_year_start",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "verify_certified_candidate",
+          "artifact": "base_candidate",
+          "runtime_sha256_required": true,
+          "fail_on_mismatch": true
+        },
+        {
+          "kind": "replace_zero_weight_spi_support",
+          "existing_channel": "spi",
+          "require_existing_weight": 0,
+          "replacement_strata": [
+            "clone_index",
+            "household_is_capital_gains_clone",
+            "region"
+          ],
+          "spi_prior_national_household_mass_share": 0.5,
+          "output_weight_kind": "importance",
+          "preserve_total_household_mass": true,
+          "require_mass_change_record": true,
+          "fail_on_live_existing_spi_mass": true
+        },
+        {
+          "kind": "strict_read_private_table",
+          "artifact_role": "qrf_donor",
+          "filename": "put2223uk.tab",
+          "delimiter": "\t",
+          "weight": "FACT",
+          "required_columns": [
+            "AGERANGE",
+            "GORCODE",
+            "SEX",
+            "FACT",
+            "PAY",
+            "EPB",
+            "TAXTERM",
+            "PROFITS",
+            "INCBBS",
+            "DIVIDENDS",
+            "PENSION",
+            "INCPROP",
+            "OTHERINV",
+            "GIFTAID",
+            "GIFTINV"
+          ],
+          "runtime_sha256_required": true,
+          "fail_on_missing_file": true,
+          "fail_on_missing_columns": true,
+          "fail_on_invalid_weight": true
+        },
+        {
+          "kind": "fit_weighted_qrf_stage1",
+          "training_artifact_role": "qrf_donor",
+          "predictors": [
+            "age",
+            "gender",
+            "region"
+          ],
+          "categorical_predictors": [
+            "gender",
+            "region"
+          ],
+          "source_sampling_weight": "FACT",
+          "sample_size": 100000,
+          "sample_with_replacement": true,
+          "post_sample_fit_weight": "uniform",
+          "fit_weight_kind": "design",
+          "double_apply_source_weight": false,
+          "source_columns": {
+            "employment_income": [
+              "PAY",
+              "EPB",
+              "TAXTERM"
+            ],
+            "self_employment_income": [
+              "PROFITS"
+            ],
+            "savings_interest_income": [
+              "INCBBS"
+            ],
+            "dividend_income": [
+              "DIVIDENDS"
+            ],
+            "private_pension_income": [
+              "PENSION"
+            ],
+            "property_income": [
+              "INCPROP"
+            ],
+            "other_investment_income": [
+              "OTHERINV"
+            ],
+            "gift_aid": [
+              "GIFTAID"
+            ],
+            "charitable_investment_gifts": [
+              "GIFTINV"
+            ]
+          },
+          "outputs": [
+            "employment_income",
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income",
+            "other_investment_income",
+            "gift_aid",
+            "charitable_investment_gifts"
+          ],
+          "joint_draw": true,
+          "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
+          "require_all_predictors": true,
+          "require_all_outputs": true
+        },
+        {
+          "kind": "fit_weighted_qrf_stage2",
+          "training_population": "certified_populace_uk_candidate_base_channel",
+          "target_population": "rebuilt_spi_support_channel",
+          "predictors": [
+            "age",
+            "gender",
+            "region",
+            "employment_income",
+            "self_employment_income",
+            "savings_interest_income",
+            "dividend_income",
+            "private_pension_income",
+            "property_income",
+            "other_investment_income"
+          ],
+          "categorical_predictors": [
+            "gender",
+            "region"
+          ],
+          "weight": "household_weight",
+          "weight_mapping": "household_to_person",
+          "outputs": [
+            "employee_pension_contributions",
+            "employer_pension_contributions",
+            "personal_pension_contributions",
+            "pension_contributions_via_salary_sacrifice",
+            "tax_free_savings_income",
+            "universal_credit_reported",
+            "pension_credit_reported",
+            "child_benefit_reported",
+            "housing_benefit_reported",
+            "income_support_reported",
+            "working_tax_credit_reported",
+            "child_tax_credit_reported",
+            "attendance_allowance_reported",
+            "state_pension_reported",
+            "dla_sc_reported",
+            "dla_m_reported",
+            "pip_m_reported",
+            "pip_dl_reported",
+            "sda_reported",
+            "carers_allowance_reported",
+            "iidb_reported",
+            "afcs_reported",
+            "bsp_reported",
+            "winter_fuel_allowance_reported",
+            "council_tax_benefit_reported",
+            "jsa_contrib_reported",
+            "jsa_income_reported",
+            "esa_contrib_reported",
+            "esa_income_reported"
+          ],
+          "reviewed_absent_outputs": {
+            "incapacity_benefit_reported": "Absent/all-default on the pinned enhanced-FRS export and certified Populace UK base; not a populated loader layer.",
+            "maternity_allowance_reported": "Absent from the pinned enhanced-FRS export and certified Populace UK base; no training source can be materialized for this stage."
+          },
+          "postprocess": {
+            "gross_savings_interest_income": "stage1 INCBBS draw + stage2 tax_free_savings_income",
+            "refresh_disability_categories": [
+              "aa_category",
+              "dla_sc_category",
+              "dla_m_category",
+              "pip_m_category",
+              "pip_dl_category"
+            ],
+            "refresh_disability_flags": [
+              "is_disabled_for_benefits",
+              "is_enhanced_disabled_for_benefits",
+              "is_severely_disabled_for_benefits"
+            ]
+          },
+          "joint_draw": true,
+          "require_all_predictors": true,
+          "require_all_materializable_outputs": true,
+          "require_all_outputs": false
+        },
+        {
+          "kind": "materialize_hmrc_income_bands_fail_closed",
+          "artifact_role": "calibration_surface",
+          "mapped_build_period": 2023,
+          "period_mapping": "tax_year_start",
+          "column_index_base": 0,
+          "data_row_start_index": 5,
+          "stop_label": "All ranges",
+          "count_unit_multiplier": 1000,
+          "amount_unit_multiplier": 1000000,
+          "component_columns": {
+            "employment_income": {
+              "sheet": "Table_3_6",
+              "count_column_index": 4,
+              "amount_column_index": 5
+            },
+            "self_employment_income": {
+              "sheet": "Table_3_6",
+              "count_column_index": 1,
+              "amount_column_index": 2
+            },
+            "state_pension": {
+              "sheet": "Table_3_6",
+              "count_column_index": 7,
+              "amount_column_index": 8
+            },
+            "private_pension_income": {
+              "sheet": "Table_3_6",
+              "count_column_index": 10,
+              "amount_column_index": 11
+            },
+            "property_income": {
+              "sheet": "Table_3_7",
+              "count_column_index": 1,
+              "amount_column_index": 2
+            },
+            "savings_interest_income": {
+              "sheet": "Table_3_7",
+              "count_column_index": 4,
+              "amount_column_index": 5
+            },
+            "dividend_income": {
+              "sheet": "Table_3_7",
+              "count_column_index": 7,
+              "amount_column_index": 8
+            },
+            "other_investment_income": {
+              "sheet": "Table_3_7",
+              "count_column_index": 10,
+              "amount_column_index": 11
+            }
+          },
+          "required_band_lower_bounds_gbp": [
+            12570,
+            15000,
+            20000,
+            30000,
+            40000,
+            50000,
+            70000,
+            100000,
+            150000,
+            200000,
+            300000,
+            500000,
+            1000000
+          ],
+          "required_measures": [
+            "count",
+            "amount"
+          ],
+          "fail_on_missing_sheet": true,
+          "fail_on_missing_component": true,
+          "fail_on_missing_band": true,
+          "fail_on_non_numeric_value": true
+        },
+        {
+          "kind": "derive_taxpayer_mask",
+          "output": "hmrc_spi_taxpayer",
+          "entity": "person",
+          "variable": "income_tax",
+          "comparison": "strictly_greater_than",
+          "threshold": 0,
+          "mapped_build_period": 2023,
+          "fail_on_missing_variable": true
+        },
+        {
+          "kind": "calibrate_weighted_income_bands",
+          "target_operation": "materialize_hmrc_income_bands_fail_closed",
+          "components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "other_investment_income"
+          ],
+          "breakdown_variable": "hmrc_spi_assessable_income",
+          "breakdown_definition": "sum of the eight published SPI income components",
+          "taxpayer_mask": "hmrc_spi_taxpayer",
+          "count_condition": "component > 0",
+          "measures": [
+            "count",
+            "amount"
+          ],
+          "weight": "household_weight",
+          "weight_mapping": "household_to_person",
+          "input_weight_kind": "importance",
+          "output_weight_kind": "calibrated",
+          "solver": "populace.calibrate.calibrate",
+          "max_weight_ratio": 5,
+          "maximum_abs_relative_error": 0.05,
+          "required_target_count": 208,
+          "require_strictly_positive_prior": true,
+          "preserve_total_household_mass": true,
+          "fail_on_unmaterialized_target": true,
+          "fail_on_zero_support": true
+        },
+        {
+          "kind": "gate_distributional_effective_mass",
+          "columns": [
+            "gift_aid",
+            "charitable_investment_gifts"
+          ],
+          "weight": "household_weight",
+          "weight_mapping": "household_to_person",
+          "minimum_nondefault_mass_share": 0.000001,
+          "fail_below_floor": true
+        }
+      ],
+      "official_table_components": [
+        "employment_income",
+        "self_employment_income",
+        "state_pension",
+        "private_pension_income",
+        "property_income",
+        "savings_interest_income",
+        "dividend_income",
+        "other_investment_income"
+      ],
+      "donor_relief_outputs": [
+        "gift_aid",
+        "charitable_investment_gifts"
+      ],
+      "outputs": [
+        "employment_income",
+        "self_employment_income",
+        "state_pension",
+        "private_pension_income",
+        "property_income",
+        "savings_interest_income",
+        "dividend_income",
+        "other_investment_income",
+        "gift_aid",
+        "charitable_investment_gifts"
+      ],
+      "notes": "Current-source contract: the private 2022-23 SPI donor trains the two guarded QRF stages; the public 2023-24 HMRC Tables 3.6/3.7 surface maps to build period 2023 by tax-year start. The certified base's dead SPI rows are replaced once and receive a reviewed 50% importance-weight prior with national household mass conserved. Savings interest and other investment income are explicit published components. State pension is target-only, while Gift Aid and charitable investment gifts are donor outputs and are not HMRC income-band components. The two reviewed stage-2 absences are declared explicitly; every other source/output/target fails closed."
+    }
+  ]
+}
