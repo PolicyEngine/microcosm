@@ -486,6 +486,12 @@ class TestShippedManifest:
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
 
+    def test_child_support_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("child_support_received", "child_support_expense"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
     def test_qbi_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in US_QBI_OUTPUT_COLUMNS:
@@ -630,6 +636,70 @@ class TestShippedManifest:
             "gov.irs.credits.cdcc.phase_out.max",
             "gov.irs.credits.cdcc.phase_out.min",
             "gov.irs.credits.cdcc.phase_out.amended_structure.applies",
+        }
+
+    def test_shipped_child_support_received_probe_removes_only_snap_source(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "child_support_received_snap_exclusion"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("child_support_received",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "disability_benefits",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        }
+
+    def test_shipped_child_support_expense_probe_removes_only_snap_deduction(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "child_support_expense_snap_deduction_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("child_support_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.deductions.allowed": {
+                "2024-01-01.2024-12-31": [
+                    "snap_standard_deduction",
+                    "snap_earned_income_deduction",
+                    "snap_dependent_care_deduction",
+                    "snap_excess_medical_expense_deduction",
+                    "snap_excess_shelter_expense_deduction",
+                ]
+            }
         }
 
     def test_shipped_qbi_probes_cover_reit_and_wage_property_inputs(self) -> None:

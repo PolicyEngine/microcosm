@@ -372,6 +372,61 @@
       "notes": "Measured ASEC SPM_CHILDCAREXPNS carries directly to spm_unit_pre_subsidy_childcare_expenses (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces non-person output with value_from_first_person (extended_cps.py lines 234-248, 639-739, and 1014-1069). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
     },
     {
+      "stage": "child_support_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year and prior year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person CSP_VAL child support received and CHSP_VAL annual child support paid fields"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_child_support_inputs",
+          "received_source": "CSP_VAL",
+          "received_output": "child_support_received",
+          "expense_source": "CHSP_VAL",
+          "expense_output": "child_support_expense"
+        },
+        {
+          "kind": "impute_child_support_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "child_support_received",
+        "child_support_expense"
+      ],
+      "nonnegative_outputs": [
+        "child_support_received",
+        "child_support_expense"
+      ],
+      "notes": "Measured annual ASEC CSP_VAL carries directly to child_support_received and positive annual CHSP_VAL carries directly to child_support_expense (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1493-1496 and 1572-1574). After PUF tax-detail imputation, one joint person-grain QRF uses the exact archived eight-predictor subset and at most 5,000 ASEC training people to replace both leaves on the PUF support half (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",

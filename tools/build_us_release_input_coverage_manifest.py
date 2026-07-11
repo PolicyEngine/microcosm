@@ -92,6 +92,11 @@ QBI_INPUTS = (
     "w2_wages_from_qualified_business",
 )
 
+CHILD_SUPPORT_INPUTS = (
+    "child_support_received",
+    "child_support_expense",
+)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -99,6 +104,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "alimony_expense",
     "alimony_income",
     "casualty_loss",
+    *CHILD_SUPPORT_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -296,6 +302,74 @@ REFORM_COVERAGE_PROBES = [
             "restored E03240 input, reactivation is a structural zero."
         ),
         "issue": "PolicyEngine/populace#298",
+    },
+    {
+        "id": "child_support_received_snap_exclusion",
+        "name": "Exclude child-support receipts from SNAP unearned income",
+        "parameter_changes": {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "disability_benefits",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2024,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["child_support_received"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only child_support_received from SNAP unearned-income "
+            "sources lowers countable income and must increase SNAP for some "
+            "recipients. Without the measured/QRF child-support receipt leaf, "
+            "the source-list reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "child_support_expense_snap_deduction_abolition",
+        "name": "Abolish the SNAP child-support expense deduction",
+        "parameter_changes": {
+            "gov.usda.snap.income.deductions.allowed": {
+                "2024-01-01.2024-12-31": [
+                    "snap_standard_deduction",
+                    "snap_earned_income_deduction",
+                    "snap_dependent_care_deduction",
+                    "snap_excess_medical_expense_deduction",
+                    "snap_excess_shelter_expense_deduction",
+                ]
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["child_support_expense"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only snap_child_support_deduction raises countable net "
+            "income and must reduce SNAP in states that take the expense as a "
+            "net-income deduction. Without the measured/QRF positive expense "
+            "leaf, abolition is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#32",
     },
     {
         "id": "alimony_expense_ald_abolition",

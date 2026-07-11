@@ -54,6 +54,8 @@ class TestUsSourceStageOutputs:
         assert "domestic_production_ald" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs
         assert "spm_unit_pre_subsidy_childcare_expenses" in outputs
+        assert "child_support_received" in outputs
+        assert "child_support_expense" in outputs
         assert set(US_QBI_OUTPUT_COLUMNS) <= outputs
 
 

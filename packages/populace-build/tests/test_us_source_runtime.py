@@ -22,8 +22,10 @@ from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
     calibrate_us_binary_assignment_from_manifest,
     calibrate_us_binary_assignment_joint_targets_from_manifest,
+    derive_us_child_support_from_manifest,
     derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
+    impute_us_child_support_to_puf_support_from_manifest,
     us_source_operation_handlers,
 )
 
@@ -105,6 +107,18 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
     result["E03240"] = np.where(result["RECID"] % 9 == 0, 6_000.0, 0.0)
     result["E20400"] = np.where(result["RECID"] % 3 == 0, 2_500.0, 0.0)
     return result
+
+
+def test_us_child_support_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_child_support_inputs"] is derive_us_child_support_from_manifest
+    )
+    assert (
+        handlers["impute_child_support_to_puf_support"]
+        is impute_us_child_support_to_puf_support_from_manifest
+    )
 
 
 def _make_aca_people() -> pd.DataFrame:

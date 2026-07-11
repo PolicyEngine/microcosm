@@ -454,3 +454,105 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         )
 
     assert exc.value.code == 2
+
+
+def test_main_runs_child_support_before_clone_and_after_puf_then_fails_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    calls: list[tuple[object, int, int]] = []
+
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda: type(
+            "Args",
+            (),
+            {
+                "out": tmp_path,
+                "target_year": 2024,
+                "seed": 7,
+                "n_estimators": 4,
+                "puf_h5": tmp_path / "puf.h5",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame_from_args",
+        lambda args: ("raw", {"kind": "fixture"}),
+    )
+    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+
+    def fake_child_support(frame, *, seed, time_period):
+        calls.append((frame, seed, time_period))
+        return "child-support-direct" if frame == "cps" else "child-support-puf"
+
+    monkeypatch.setattr(builder, "with_us_child_support_inputs", fake_child_support)
+    monkeypatch.setattr(
+        builder,
+        "with_us_childcare_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_contribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_immigration_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "clone_us_frame_for_puf_support",
+        lambda frame: "expanded",
+    )
+    monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
+    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "impute_and_audit_us_puf_support",
+        lambda expanded, donor, **kwargs: ("puf-imputed", {"passed": True}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_input_reconciliation",
+        lambda frame: "qbi-reconciled",
+    )
+    passing_gate = type(
+        "Gate",
+        (),
+        {"passed": True, "failures": (), "details": {}},
+    )()
+    monkeypatch.setattr(
+        builder, "us_qbi_inputs_signal_gate", lambda frame: passing_gate
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_domestic_production_ald_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_child_support_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": False,
+                "failures": ("PUF channel is default-only",),
+                "details": {},
+            },
+        )(),
+    )
+
+    with pytest.raises(SystemExit, match="PUF channel is default-only"):
+        builder.main()
+
+    assert calls == [
+        ("cps", 7, 2024),
+        ("qbi-reconciled", 7, 2024),
+    ]

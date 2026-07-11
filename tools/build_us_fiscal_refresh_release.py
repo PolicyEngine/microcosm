@@ -72,6 +72,7 @@ from populace.build.us_runtime import (
     load_sipp_2023_tip_donor,
     us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
+    us_child_support_signal_gate,
     us_childcare_signal_gate,
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
@@ -5868,6 +5869,23 @@ def main() -> None:
             + "; ".join(
                 "Domestic-production-ALD signal failed: " + failure
                 for failure in domestic_production_ald_gate.failures
+            )
+        )
+    child_support_gate = us_child_support_signal_gate(base_frame)
+    if not child_support_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "child_support_input_gate",
+                status="failed",
+                message="Child-support input signal gate failed.",
+                failures=list(child_support_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Child-support input signal failed: " + failure
+                for failure in child_support_gate.failures
             )
         )
     base_frame = with_us_childcare_inputs(

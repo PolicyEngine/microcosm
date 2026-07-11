@@ -13,6 +13,7 @@ from populace.build.source_manifest import (
     SupportSpineSpec,
 )
 from populace.build.us_runtime import (
+    US_CHILD_SUPPORT_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
@@ -199,8 +200,62 @@ class TestUsSources:
             "puf_tax_detail"
         )
         assert US_STAGE_NAMES.index("puf_tax_detail") < US_STAGE_NAMES.index(
+            US_CHILD_SUPPORT_STAGE_NAME
+        )
+        assert US_STAGE_NAMES.index(US_CHILD_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
             "education_inputs"
         )
+
+    def test_child_support_stage_declares_direct_carry_and_joint_puf_imputation(
+        self,
+    ) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_CHILD_SUPPORT_STAGE_NAME]
+
+        assert stage.survey == "Census CPS ASEC"
+        assert stage.source == "https://www.census.gov/programs-surveys/cps.html"
+        assert stage.grain == "person"
+        assert stage.outputs == (
+            "child_support_received",
+            "child_support_expense",
+        )
+        assert stage.nonnegative_outputs == stage.outputs
+
+        operations = {operation.kind: operation for operation in stage.operations}
+        assert tuple(operations) == (
+            "read_table",
+            "derive_child_support_inputs",
+            "impute_child_support_to_puf_support",
+        )
+        assert operations["read_table"].parameters == {
+            "table": "person",
+            "weight": "person_weight",
+        }
+        assert operations["derive_child_support_inputs"].parameters == {
+            "received_source": "CSP_VAL",
+            "received_output": "child_support_received",
+            "expense_source": "CHSP_VAL",
+            "expense_output": "child_support_expense",
+        }
+        assert operations["impute_child_support_to_puf_support"].parameters == {
+            "predictors": [
+                "age",
+                "is_male",
+                "has_esi",
+                "tax_unit_is_joint",
+                "tax_unit_count_dependents",
+                "employment_income",
+                "self_employment_income",
+                "social_security",
+            ],
+            "max_train_samples": 5_000,
+            "n_estimators": 100,
+            "seed_from_build_config": True,
+            "weight": "person_weight",
+        }
+
+        donor = US_DONORS[US_CHILD_SUPPORT_STAGE_NAME]
+        assert donor.survey == stage.survey
+        assert donor.source == stage.source
 
     def test_source_specs_are_manifest_only_not_python_loaders(self) -> None:
         for spec in US_SOURCE_STAGE_SPECS:

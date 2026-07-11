@@ -45,6 +45,7 @@ from populace.build.us_runtime import (
     translate_congressional_district_facts_to_current_vintage,
     us_alimony_signal_gate,
     us_casualty_loss_signal_gate,
+    us_child_support_signal_gate,
     us_childcare_signal_gate,
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
@@ -56,6 +57,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
+    with_us_child_support_inputs,
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_immigration_inputs,
@@ -204,6 +206,11 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_child_support_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_childcare_inputs(
         base,
         seed=args.seed,
@@ -239,6 +246,17 @@ def main() -> None:
         raise SystemExit(
             "Domestic-production-ALD signal gate failed:\n  "
             + "\n  ".join(domestic_production_ald_gate.failures)
+        )
+    imputed = with_us_child_support_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    child_support_gate = us_child_support_signal_gate(imputed)
+    if not child_support_gate.passed:
+        raise SystemExit(
+            "Child-support signal gate failed:\n  "
+            + "\n  ".join(child_support_gate.failures)
         )
     imputed = with_us_childcare_inputs(
         imputed,
@@ -420,6 +438,11 @@ def main() -> None:
             "passed": domestic_production_ald_gate.passed,
             "failures": list(domestic_production_ald_gate.failures),
             "details": dict(domestic_production_ald_gate.details),
+        },
+        "child_support_signal": {
+            "passed": child_support_gate.passed,
+            "failures": list(child_support_gate.failures),
+            "details": dict(child_support_gate.details),
         },
         "childcare_inputs_signal": {
             "passed": childcare_gate.passed,

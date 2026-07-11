@@ -62,6 +62,23 @@ from populace.build.us_runtime.casualty_losses import (
     us_casualty_loss_stage_spec,
     us_casualty_loss_summary,
 )
+from populace.build.us_runtime.child_support import (
+    CHILD_SUPPORT_ARCHIVED_PUF_IMPUTATION_URL,
+    CHILD_SUPPORT_ARCHIVED_PUF_OUTPUTS_URL,
+    CHILD_SUPPORT_EXPENSE_ARCHIVED_DERIVATION_URL,
+    CHILD_SUPPORT_RECEIVED_ARCHIVED_DERIVATION_URL,
+    US_CHILD_SUPPORT_NONCONSTANT_PERSON_COLUMNS,
+    US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+    US_CHILD_SUPPORT_REQUIRED_SOURCE_COLUMNS,
+    US_CHILD_SUPPORT_STAGE_NAME,
+    derive_us_child_support_from_asec,
+    derive_us_child_support_from_manifest,
+    impute_us_child_support_to_puf_support_from_manifest,
+    us_child_support_signal_gate,
+    us_child_support_stage_spec,
+    us_child_support_summary,
+    with_us_child_support_inputs,
+)
 from populace.build.us_runtime.childcare import (
     US_CHILDCARE_OUTPUT_COLUMNS,
     US_CHILDCARE_REQUIRED_SOURCE_COLUMNS,
@@ -601,6 +618,21 @@ __all__ = [
     "us_childcare_stage_spec",
     "us_childcare_summary",
     "with_us_childcare_inputs",
+    "CHILD_SUPPORT_ARCHIVED_PUF_IMPUTATION_URL",
+    "CHILD_SUPPORT_ARCHIVED_PUF_OUTPUTS_URL",
+    "CHILD_SUPPORT_EXPENSE_ARCHIVED_DERIVATION_URL",
+    "CHILD_SUPPORT_RECEIVED_ARCHIVED_DERIVATION_URL",
+    "US_CHILD_SUPPORT_NONCONSTANT_PERSON_COLUMNS",
+    "US_CHILD_SUPPORT_OUTPUT_COLUMNS",
+    "US_CHILD_SUPPORT_REQUIRED_SOURCE_COLUMNS",
+    "US_CHILD_SUPPORT_STAGE_NAME",
+    "derive_us_child_support_from_asec",
+    "derive_us_child_support_from_manifest",
+    "impute_us_child_support_to_puf_support_from_manifest",
+    "us_child_support_signal_gate",
+    "us_child_support_stage_spec",
+    "us_child_support_summary",
+    "with_us_child_support_inputs",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -1006,6 +1038,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "archived first-person reduction places predictions on SPM units."
         ),
     ),
+    US_CHILD_SUPPORT_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured annual CSP_VAL receipts and positive CHSP_VAL expenses "
+            "are carried directly. After PUF tax-detail imputation, one "
+            "ASEC-trained weighted QRF jointly replaces both person leaves "
+            "on the PUF support half using the archived predictor subset."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -1084,6 +1126,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_CHILDCARE_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
+    US_CHILD_SUPPORT_STAGE_NAME,
     US_EDUCATION_INPUTS_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",

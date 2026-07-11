@@ -17,6 +17,10 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
+from populace.build.us_runtime.child_support import (
+    derive_us_child_support_from_manifest,
+    impute_us_child_support_to_puf_support_from_manifest,
+)
 from populace.build.us_runtime.childcare import (
     derive_us_childcare_from_manifest,
     impute_us_childcare_to_puf_support_from_manifest,
@@ -59,10 +63,12 @@ __all__ = [
     "calibrate_us_binary_assignment_joint_targets_from_manifest",
     "compute_us_ratio_from_manifest",
     "derive_us_childcare_from_manifest",
+    "derive_us_child_support_from_manifest",
     "derive_us_puf_policyengine_variables_from_manifest",
     "derive_us_retirement_contributions_from_manifest",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "impute_us_childcare_to_puf_support_from_manifest",
+    "impute_us_child_support_to_puf_support_from_manifest",
     "impute_us_retirement_contributions_to_puf_support_from_manifest",
     "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
@@ -223,6 +229,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
         "derive_childcare_inputs": derive_us_childcare_from_manifest,
+        "derive_child_support_inputs": derive_us_child_support_from_manifest,
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
         "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
@@ -232,6 +239,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "impute_childcare_to_puf_support": (
             impute_us_childcare_to_puf_support_from_manifest
+        ),
+        "impute_child_support_to_puf_support": (
+            impute_us_child_support_to_puf_support_from_manifest
         ),
         "impute_retirement_contributions_to_puf_support": (
             impute_us_retirement_contributions_to_puf_support_from_manifest
