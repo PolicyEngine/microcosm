@@ -174,6 +174,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["puma"] = ["0100100", "0200100"]
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
+    combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -342,11 +343,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
     assert summary["calibration_applied"] is False
     assert summary["simulation_ready"] is False
-    assert summary["simulation_readiness_blockers"] == [
-        "calibration_not_applied",
-        "sub_puma_geography_deferred",
-        "native_acs_universe_blanks_preserved",
+    assert summary["simulation_ready_except_calibration"] is True
+    assert summary["simulation_readiness_blockers"] == ["calibration_not_applied"]
+    assert [item["id"] for item in summary["reviewed_limitations"]] == [
+        "acs_group_quarters_housing_universe",
+        "native_acs_source_universe_blanks",
+        "sub_puma_geographic_precision",
     ]
+    assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
+        "block_geoid",
+        "tract_geoid",
+    ]
+    assert summary["reviewed_engine_input_nulls"] == []
+    assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
         "path": str(puma_ladder_path.resolve()),
@@ -755,3 +764,72 @@ def test_group_quarters_rent_gap_is_explicit_structural_pending(
             ),
         }
     ]
+
+
+def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 3.0]
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "geography_ladder": {
+                "applied": True,
+                "seed": 29,
+                "layer_vintages": {
+                    "puma": "2020_puma",
+                    "congressional_district": "119th_congress",
+                    "county": "2020_census",
+                    "tract": "2020_census",
+                },
+                "unresolved_sub_puma_inputs": ["block_geoid", "tract_geoid"],
+            }
+        },
+    )
+    transfer_coverage = {
+        "structural_pending": [
+            {
+                "column": "pre_subsidy_rent",
+                "entity": "person",
+                "rows": 1,
+                "reason": (
+                    "ACS group-quarters rows are outside the housing-tenure "
+                    "universe"
+                ),
+            }
+        ]
+    }
+    input_null_audit = [
+        {
+            "entity": "person",
+            "column": "pre_subsidy_rent",
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+        {
+            "entity": "person",
+            "column": "employment_income_before_lsr",
+            "missing_rows_by_spine": {"acs_2024_1yr": 1},
+        },
+    ]
+
+    limitations = builder._reviewed_limitations(
+        result,
+        transfer_coverage=transfer_coverage,
+        input_null_audit=input_null_audit,
+    )
+
+    gq, native, geography = limitations
+    assert gq["status"] == "reviewed_structural_absence"
+    assert gq["affected_rows"] == {"household": 1, "person": 1, "spm_unit": 1}
+    assert gq["engine_input_nulls"] == [input_null_audit[0]]
+    assert gq["transfer_evidence"] == transfer_coverage["structural_pending"]
+    assert native["engine_input_nulls_excluding_group_quarters_housing"] == [
+        input_null_audit[1]
+    ]
+    assert geography["status"] == "reviewed_probabilistic_assignment"
+    assert geography["unavailable_exact_geography"] == [
+        "block_geoid",
+        "tract_geoid",
+    ]
+    assert geography["assignment_seed"] == 29
+    assert all(item["calibration_blocker"] is False for item in limitations)

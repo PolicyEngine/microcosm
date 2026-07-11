@@ -87,3 +87,15 @@
   artifact hash, vintages, seed, and assignment coverage. The no-ACS path
   remains an object/serialized-byte identity. Checks: post-rebase 139-test
   suite and focused 71 runtime + 16 staging-builder tests pass; Ruff clean.
+- 2026-07-11 — Phase C staging-readiness milestone (this milestone commit):
+  closed the prior GQ and sub-PUMA notes as reviewed, non-calibration-blocking
+  limitations. TYPEHUGQ 2/3 tenure/rent/property-tax fields remain structural
+  nulls because ACS does not define a housing-unit universe for group quarters;
+  filling them would synthesize values. Exact block/tract remain unavailable,
+  while observed ACS PUMA and seeded official PUMA-overlap assignments supply
+  state, 119th CD, and county filtering for both spines. The summary now marks
+  the artifact simulation-ready except for calibration, with calibration as
+  its sole readiness blocker and detailed null/geography evidence. A cached
+  national ladder rebuild covered 2,462 PUMAs and 331,449,281 people and
+  reproduced pinned SHA-256 `39a2ab2a…51147d8`. Checks: 17 staging-summary
+  tests pass; Ruff clean.

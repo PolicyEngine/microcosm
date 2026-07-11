@@ -66,8 +66,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Append the pinned ACS 2024 1-year PUMS spine to an already-built "
-            "dense ASEC-by-PUF base. The nullable result is a pre-calibration "
-            "staging artifact, not a simulation-ready dataset."
+            "dense ASEC-by-PUF base. The nullable result has reviewed source-"
+            "universe limitations and is simulation-ready except for the "
+            "downstream calibration solve."
         )
     )
     parser.add_argument("--base-h5", required=True, type=Path)
@@ -450,6 +451,165 @@ def _acs_group_quarters_person_mask(frame: Frame) -> pd.Series:
     ].isin(gq_households)
 
 
+def _reviewed_limitations(
+    result: AcsMultispineResult,
+    *,
+    transfer_coverage: dict[str, object],
+    input_null_audit: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Document accepted source-universe and geographic precision limits."""
+
+    geography = result.provenance["geography_ladder"]
+    if not isinstance(geography, dict):  # guarded by _require_puma_ladder_assignment
+        raise TypeError("geography_ladder provenance must be a mapping.")
+
+    acs_nulls = [
+        entry
+        for entry in input_null_audit
+        if isinstance(entry.get("missing_rows_by_spine"), dict)
+        and int(entry["missing_rows_by_spine"].get(ACS_2024_1YR_SPINE, 0)) > 0
+    ]
+    gq_counts = _acs_group_quarters_counts(result.frame)
+    gq_entity_by_column = {
+        "pre_subsidy_rent": "person",
+        "spm_unit_tenure_type": "spm_unit",
+        "tenure_type": "household",
+    }
+
+    def is_exact_gq_null(entry: dict[str, object]) -> bool:
+        column = entry.get("column")
+        entity = gq_entity_by_column.get(column)
+        missing_by_spine = entry.get("missing_rows_by_spine")
+        return (
+            entity is not None
+            and entry.get("entity") == entity
+            and isinstance(missing_by_spine, dict)
+            and int(missing_by_spine.get(ACS_2024_1YR_SPINE, 0))
+            == gq_counts[entity]
+        )
+
+    gq_nulls = [entry for entry in acs_nulls if is_exact_gq_null(entry)]
+    other_native_nulls = [
+        entry for entry in acs_nulls if not is_exact_gq_null(entry)
+    ]
+    structural_pending = transfer_coverage.get("structural_pending", [])
+    if not isinstance(structural_pending, list):
+        raise TypeError("transfer_coverage.structural_pending must be a list.")
+
+    return [
+        {
+            "id": "acs_group_quarters_housing_universe",
+            "status": "reviewed_structural_absence",
+            "affected_spine": ACS_2024_1YR_SPINE,
+            "affected_rows": gq_counts,
+            "affected_columns": {
+                "household": [
+                    "tenure_type",
+                    "acs_monthly_contract_rent",
+                    "acs_monthly_gross_rent",
+                    "acs_annual_property_tax",
+                ],
+                "spm_unit": ["spm_unit_tenure_type"],
+                "person": ["pre_subsidy_rent", "real_estate_taxes"],
+            },
+            "reason": (
+                "ACS PUMS housing-unit tenure, rent, and property-tax fields "
+                "are outside the TYPEHUGQ 2/3 group-quarters universe."
+            ),
+            "treatment": (
+                "Preserve those values as structural nulls; filling them with "
+                "zero or donor housing values would synthesize an unobserved "
+                "housing unit."
+            ),
+            "engine_input_nulls": gq_nulls,
+            "transfer_evidence": structural_pending,
+            "calibration_blocker": False,
+        },
+        {
+            "id": "native_acs_source_universe_blanks",
+            "status": "reviewed_source_missingness",
+            "affected_spine": ACS_2024_1YR_SPINE,
+            "reason": (
+                "Native ACS inputs retain official blank universes; the ACS "
+                "mapping contract forbids inventing zeros or component splits."
+            ),
+            "treatment": (
+                "Preserve nullable source semantics after transferring every "
+                "donor-observed model-required input with an eligible fit."
+            ),
+            "engine_input_nulls_excluding_group_quarters_housing": (
+                other_native_nulls
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "sub_puma_geographic_precision",
+            "status": "reviewed_probabilistic_assignment",
+            "observed_geography": {
+                "acs_2024_1yr": ["state_fips", "puma"],
+                "asec_puf": ["state_fips"],
+            },
+            "assigned_geography": [
+                "puma",
+                "congressional_district_geoid",
+                "county_fips",
+            ],
+            "unavailable_exact_geography": list(
+                geography.get(
+                    "unresolved_sub_puma_inputs",
+                    ["block_geoid", "tract_geoid"],
+                )
+            ),
+            "reason": (
+                "ACS PUMS identifies residence only through state and 2020 "
+                "PUMA; exact block, tract, county, and congressional district "
+                "cannot be recovered for a source microrecord."
+            ),
+            "treatment": (
+                "Retain each ACS record's observed PUMA, draw ASEC PUMA within "
+                "native state, and assign 119th-CD/county from official "
+                "population-weighted PUMA overlaps using the recorded seed. "
+                "Do not synthesize block or tract."
+            ),
+            "assignment_seed": geography.get("seed"),
+            "layer_vintages": geography.get("layer_vintages", {}),
+            "calibration_blocker": False,
+        },
+    ]
+
+
+def _acs_group_quarters_counts(frame: Frame) -> dict[str, int]:
+    household = frame.table("household")
+    person = frame.table("person")
+    household_tag = spine_column("household")
+    required_household = {"household_id", "TYPEHUGQ", household_tag}
+    required_person = {
+        "person_household_id",
+        "person_spm_unit_id",
+        spine_column("person"),
+    }
+    missing = sorted(
+        (required_household - set(household.columns))
+        | (required_person - set(person.columns))
+    )
+    if missing:
+        raise SystemExit(
+            "Cannot summarize reviewed ACS group-quarters limitations; "
+            f"combined frame lacks {missing}."
+        )
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce")
+    household_mask = household[household_tag].eq(ACS_2024_1YR_SPINE) & kind.isin([2, 3])
+    household_ids = household.loc[household_mask, "household_id"]
+    person_mask = person[spine_column("person")].eq(ACS_2024_1YR_SPINE) & person[
+        "person_household_id"
+    ].isin(household_ids)
+    return {
+        "household": int(household_mask.sum()),
+        "person": int(person_mask.sum()),
+        "spm_unit": int(person.loc[person_mask, "person_spm_unit_id"].nunique()),
+    }
+
+
 def _build_summary(
     *,
     args: argparse.Namespace,
@@ -476,11 +636,13 @@ def _build_summary(
         "artifact_kind": "nullable_precalibration_staging_h5",
         "calibration_applied": False,
         "simulation_ready": False,
-        "simulation_readiness_blockers": [
-            "calibration_not_applied",
-            "sub_puma_geography_deferred",
-            "native_acs_universe_blanks_preserved",
-        ],
+        "simulation_ready_except_calibration": True,
+        "simulation_readiness_blockers": ["calibration_not_applied"],
+        "reviewed_limitations": _reviewed_limitations(
+            result,
+            transfer_coverage=transfer_coverage,
+            input_null_audit=input_null_audit,
+        ),
         "period": args.period,
         "base": {
             "path": str(args.base_h5.resolve()),
@@ -515,7 +677,7 @@ def _build_summary(
         },
         "weights_audit": weights_audit,
         "transfer_coverage": transfer_coverage,
-        "pending_engine_input_nulls": input_null_audit,
+        "reviewed_engine_input_nulls": input_null_audit,
         "staging_export_peak_estimate_bytes": staging_export_peak_bytes,
         "rows": {
             "base": base_rows,
@@ -732,7 +894,7 @@ def _engine_input_null_audit(
     frame: Frame,
     engine: Any | None = None,
 ) -> list[dict[str, object]]:
-    """Inventory why this truthful staging frame is not simulation-ready."""
+    """Inventory nullable engine inputs for the reviewed-limitations summary."""
 
     if engine is None:
         from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
