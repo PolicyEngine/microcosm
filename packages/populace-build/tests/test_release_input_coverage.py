@@ -497,6 +497,11 @@ class TestShippedManifest:
         assert "disability_benefits" in manifest.required_columns
         assert "disability_benefits" not in manifest.reviewed_exclusions
 
+    def test_educator_expense_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "educator_expense" in manifest.required_columns
+        assert "educator_expense" not in manifest.reviewed_exclusions
+
     def test_qbi_input_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in US_QBI_OUTPUT_COLUMNS:
@@ -741,6 +746,39 @@ class TestShippedManifest:
                     "dividend_income",
                     "interest_income",
                     "miscellaneous_income",
+                ]
+            }
+        }
+
+    def test_shipped_educator_expense_probe_removes_only_its_ald(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "educator_expense_ald_abolition"
+        )
+
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("educator_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "alimony_expense_ald",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
                 ]
             }
         }

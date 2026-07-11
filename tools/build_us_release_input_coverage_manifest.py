@@ -99,6 +99,8 @@ CHILD_SUPPORT_INPUTS = (
 
 DISABILITY_BENEFITS_INPUTS = ("disability_benefits",)
 
+EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
+
 # Reference-populated inputs whose primary-source restoration has shipped.
 # They remain hard requirements even if a stale parity-gap entry is
 # accidentally reintroduced later.
@@ -108,6 +110,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "casualty_loss",
     *CHILD_SUPPORT_INPUTS,
     *DISABILITY_BENEFITS_INPUTS,
+    *EDUCATOR_EXPENSE_INPUTS,
     "domestic_production_ald",
     "spm_unit_pre_subsidy_childcare_expenses",
     "unreimbursed_business_employee_expenses",
@@ -413,6 +416,42 @@ REFORM_COVERAGE_PROBES = [
             "benefit leaf, the source-list reform is a structural zero."
         ),
         "issue": "PolicyEngine/populace#38",
+    },
+    {
+        "id": "educator_expense_ald_abolition",
+        "name": "Abolish the educator-expense above-the-line deduction",
+        "parameter_changes": {
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "alimony_expense_ald",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                ]
+            }
+        },
+        "budget_measure": "income_tax",
+        "period": 2024,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["educator_expense"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only educator_expense from the above-the-line deduction "
+            "source list raises taxable income and must increase income tax for "
+            "some filers. Without the restored PUF E03220 leaf, abolition is a "
+            "structural zero."
+        ),
+        "issue": "PolicyEngine/populace#32",
     },
     {
         "id": "alimony_expense_ald_abolition",

@@ -108,6 +108,8 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "casualty_loss_output",
         "domestic_production_ald_source",
         "domestic_production_ald_output",
+        "educator_expense_source",
+        "educator_expense_output",
         "unreimbursed_business_employee_expenses_source",
         "unreimbursed_business_employee_expenses_output",
     }
@@ -859,6 +861,17 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "domestic_production_ald_output",
                 default="domestic_production_ald",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            educator_expense_source=_optional_string_param(
+                params,
+                "educator_expense_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            educator_expense_output=_string_param_with_default(
+                params,
+                "educator_expense_output",
+                default="educator_expense",
                 label="PUF PolicyEngine-variable derivation",
             ),
             unreimbursed_business_employee_expenses_source=_optional_string_param(

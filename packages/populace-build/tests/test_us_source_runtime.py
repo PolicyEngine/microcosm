@@ -107,6 +107,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
     result["E03500"] = np.where(result["RECID"] % 17 == 0, 2_000.0, 0.0)
     result["E20500"] = np.where(result["RECID"] % 11 == 0, 8_000.0, 0.0)
     result["E03240"] = np.where(result["RECID"] % 9 == 0, 6_000.0, 0.0)
+    result["E03220"] = np.where(result["RECID"] % 7 == 0, 300.0, 0.0)
     result["E20400"] = np.where(result["RECID"] % 3 == 0, 2_500.0, 0.0)
     return result
 
@@ -227,6 +228,7 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
             alimony_expense_source="E03500",
             casualty_loss_source="E20500",
             domestic_production_ald_source="E03240",
+            educator_expense_source="E03220",
             unreimbursed_business_employee_expenses_source="E20400",
         ),
         seed=42,
@@ -254,6 +256,8 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     assert (result["casualty_loss"] >= 0.0).all()
     assert np.allclose(result["domestic_production_ald"], result["E03240"])
     assert (result["domestic_production_ald"] >= 0.0).all()
+    assert np.allclose(result["educator_expense"], result["E03220"])
+    assert (result["educator_expense"] >= 0.0).all()
     assert np.allclose(
         result["unreimbursed_business_employee_expenses"], result["E20400"]
     )

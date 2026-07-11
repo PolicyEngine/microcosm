@@ -461,6 +461,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
     [
         ("child_support", "PUF child-support channel is default-only"),
         ("disability_benefits", "PUF disability-benefits channel is default-only"),
+        ("educator_expense", "PUF educator-expense channel is default-only"),
     ],
 )
 def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
@@ -472,6 +473,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     builder = _load_support_builder_module()
     child_support_calls: list[tuple[object, int, int]] = []
     disability_benefits_calls: list[tuple[object, int, int]] = []
+    educator_expense_gate_frames: list[object] = []
 
     monkeypatch.setattr(
         builder,
@@ -592,6 +594,28 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         )(),
     )
 
+    def fake_educator_expense_signal_gate(frame):
+        educator_expense_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "educator_expense",
+                "failures": (
+                    ("PUF educator-expense channel is default-only",)
+                    if failing_gate == "educator_expense"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_educator_expense_signal_gate",
+        fake_educator_expense_signal_gate,
+    )
+
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
@@ -600,6 +624,9 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         ("qbi-reconciled", 7, 2024),
     ]
     expected_disability_calls = [("child-support-direct", 7, 2024)]
-    if failing_gate == "disability_benefits":
+    if failing_gate != "child_support":
         expected_disability_calls.append(("child-support-puf", 7, 2024))
     assert disability_benefits_calls == expected_disability_calls
+    assert educator_expense_gate_frames == (
+        ["disability-benefits-puf"] if failing_gate == "educator_expense" else []
+    )

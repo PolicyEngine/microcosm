@@ -90,6 +90,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "real_estate_taxes",
     "home_mortgage_interest",
     "student_loan_interest",
+    "educator_expense",
     "qualified_tuition_expenses",
     "casualty_loss",
     "unreimbursed_business_employee_expenses",
@@ -139,6 +140,7 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
         "qualified_tuition_expenses",
+        "educator_expense",
         "casualty_loss",
         "alimony_income",
         "alimony_expense",
@@ -197,6 +199,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "real_estate_taxes",
         "home_mortgage_interest",
         "student_loan_interest",
+        "educator_expense",
         "qualified_tuition_expenses",
         "casualty_loss",
         "unreimbursed_business_employee_expenses",
@@ -232,6 +235,7 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",
     ),
+    "educator_expense": ("employment_income_before_lsr",),
     "traditional_ira_contributions_desired": (
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",

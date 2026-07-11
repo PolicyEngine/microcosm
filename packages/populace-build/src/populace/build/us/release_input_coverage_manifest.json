@@ -69,9 +69,7 @@
    "status": "required"
   },
   "educator_expense": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM MOOP / work-expense / deduction input (childcare-MOOP-work-expense family of #32); not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "employer_sponsored_insurance_premiums": {
    "issue": "PolicyEngine/populace#32",
@@ -586,8 +584,8 @@
   }
  },
  "counts": {
-  "required": 122,
-  "reviewed_exclusion": 43,
+  "required": 123,
+  "reviewed_exclusion": 42,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -852,6 +850,39 @@
    },
    "period": 2024,
    "reason": "Removing only disability_benefits from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF non-workers-compensation benefit leaf, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "educator_expense"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "educator_expense_ald_abolition",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Abolish the educator-expense above-the-line deduction",
+   "parameter_changes": {
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "alimony_expense_ald",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only educator_expense from the above-the-line deduction source list raises taxable income and must increase income tax for some filers. Without the restored PUF E03220 leaf, abolition is a structural zero."
   },
   {
    "binding_inputs": [

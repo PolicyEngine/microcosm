@@ -1930,6 +1930,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_disability_benefits_signal_gate",
         fake_disability_benefits_signal_gate,
     )
+
+    def fake_educator_expense_signal_gate(frame):
+        captured["educator_expense_gate_called"] = True
+        return builder.GateResult(
+            name="educator_expense_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_educator_expense_signal_gate",
+        fake_educator_expense_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_childcare_inputs",
@@ -2373,6 +2387,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["scf_auto_stage_called"] is True
     assert captured["child_support_gate_called"] is True
     assert captured["disability_benefits_gate_called"] is True
+    assert captured["educator_expense_gate_called"] is True
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:

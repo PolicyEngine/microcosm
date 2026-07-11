@@ -461,12 +461,16 @@ class TestUsSources:
         assert "qualified_business_income" not in outputs
 
     def test_puf_stage_outputs_match_runtime_defaults(self) -> None:
-        outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)
+        stage = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"]
+        outputs = set(stage.outputs)
         runtime_outputs = set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS) | set(
             PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
         )
 
         assert outputs == runtime_outputs
+        assert "educator_expense" in stage.outputs
+        assert "educator_expense" in stage.nonnegative_outputs
+        assert "educator_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
 
     def test_puf_stage_disaggregates_aggregate_records_before_uprating(self) -> None:
         operations = US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].operations
@@ -495,6 +499,8 @@ class TestUsSources:
             "casualty_loss_output": "casualty_loss",
             "domestic_production_ald_source": "E03240",
             "domestic_production_ald_output": "domestic_production_ald",
+            "educator_expense_source": "E03220",
+            "educator_expense_output": "educator_expense",
             "unreimbursed_business_employee_expenses_source": "E20400",
             "unreimbursed_business_employee_expenses_output": "unreimbursed_business_employee_expenses",
         }

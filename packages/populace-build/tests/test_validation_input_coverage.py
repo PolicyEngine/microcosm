@@ -57,6 +57,7 @@ class TestUsSourceStageOutputs:
         assert "child_support_received" in outputs
         assert "child_support_expense" in outputs
         assert "disability_benefits" in outputs
+        assert "educator_expense" in outputs
         assert set(US_QBI_OUTPUT_COLUMNS) <= outputs
 
 

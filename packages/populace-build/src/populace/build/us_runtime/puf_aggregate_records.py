@@ -24,6 +24,9 @@ from populace.build.us_runtime.casualty_losses import (
 from populace.build.us_runtime.domestic_production import (
     derive_us_domestic_production_ald_from_puf,
 )
+from populace.build.us_runtime.educator_expenses import (
+    derive_us_educator_expense_from_puf,
+)
 from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
 from populace.calibrate import relative_error_loss
 
@@ -86,6 +89,7 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E02400": "total_social_security",
     "E02500": "taxable_social_security",
     "E03210": "student_loan_interest",
+    "E03220": "educator_expense",
     "E17500": "medical_expense_deduction",
     "E18400": "state_income_tax_paid",
     "E18500": "real_estate_taxes_paid",
@@ -228,6 +232,8 @@ def derive_puf_policyengine_variables(
     casualty_loss_output: str = "casualty_loss",
     domestic_production_ald_source: str | None = None,
     domestic_production_ald_output: str = "domestic_production_ald",
+    educator_expense_source: str | None = None,
+    educator_expense_output: str = "educator_expense",
     unreimbursed_business_employee_expenses_source: str | None = None,
     unreimbursed_business_employee_expenses_output: str = (
         "unreimbursed_business_employee_expenses"
@@ -291,6 +297,12 @@ def derive_puf_policyengine_variables(
             result,
             source_column=domestic_production_ald_source,
             output_column=domestic_production_ald_output,
+        )
+    if educator_expense_source is not None:
+        result = derive_us_educator_expense_from_puf(
+            result,
+            source_column=educator_expense_source,
+            output_column=educator_expense_output,
         )
     if unreimbursed_business_employee_expenses_source is not None:
         result = derive_us_misc_itemized_from_puf(
@@ -359,6 +371,7 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_alimony_from_sources(result)
     result = _reconcile_puf_casualty_loss_from_source(result)
     result = _reconcile_puf_domestic_production_ald_from_source(result)
+    result = _reconcile_puf_educator_expense_from_source(result)
     return _reconcile_puf_misc_itemized_from_source(result)
 
 
@@ -992,6 +1005,14 @@ def _reconcile_puf_domestic_production_ald_from_source(
     if output not in puf.columns or "E03240" not in puf.columns:
         return puf
     return derive_us_domestic_production_ald_from_puf(puf)
+
+
+def _reconcile_puf_educator_expense_from_source(puf: pd.DataFrame) -> pd.DataFrame:
+    """Recompute the E03220 carry after aggregate-row amounts are replaced."""
+
+    if "educator_expense" not in puf.columns or "E03220" not in puf.columns:
+        return puf
+    return derive_us_educator_expense_from_puf(puf)
 
 
 def _reconcile_puf_misc_itemized_from_source(
