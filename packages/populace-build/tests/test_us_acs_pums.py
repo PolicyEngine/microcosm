@@ -159,6 +159,7 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     assert household["ST"].tolist() == ["06", "36"]
     assert household["PUMA"].tolist() == ["12345", "00100"]
     assert household["state_fips"].tolist() == [6, 36]
+    assert household["puma"].tolist() == ["0612345", "3600100"]
     assert household["puma_geoid"].tolist() == ["0612345", "3600100"]
     assert frame.weights_for("household").values.tolist() == [10.0, 20.0]
     assert "SERIALNO" not in frame.table("person")

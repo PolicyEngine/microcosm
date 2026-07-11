@@ -119,11 +119,14 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.inputs_dir == builder.DEFAULT_INPUTS_DIR
     assert args.inputs_dir.is_absolute()
     assert args.inputs_dir.parts[-2:] == ("inputs", "acs_2024_1yr")
+    assert args.puma_ladder == builder.DEFAULT_PUMA_LADDER
+    assert args.puma_ladder.is_absolute()
     assert args.n_estimators == 32
     assert args.max_targets_per_fit == 8
     assert args.period == 2024
     assert args.acs_share == 0.5
     assert args.seed == 0
+    assert args.geography_seed == 0
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
 
     custom = builder._parse_args(
@@ -138,6 +141,10 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
             "0.3",
             "--seed",
             "17",
+            "--geography-seed",
+            "23",
+            "--puma-ladder",
+            "ladder.npz",
             "--n-estimators",
             "9",
             "--max-targets-per-fit",
@@ -149,6 +156,8 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert custom.chunksize == 1234
     assert custom.acs_share == 0.3
     assert custom.seed == 17
+    assert custom.geography_seed == 23
+    assert custom.puma_ladder == Path("ladder.npz")
     assert custom.n_estimators == 9
     assert custom.max_targets_per_fit == 3
     assert custom.donor_channel == "benefit_support"
@@ -162,10 +171,39 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     manifest = _manifest()
     base = _frame()
     combined = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    combined.table("household")["puma"] = ["0100100", "0200100"]
+    combined.table("household")["congressional_district_geoid"] = [101, 200]
+    combined.table("household")["county_fips"] = ["01001", "02020"]
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
     manifest_path.write_text("{}", encoding="utf-8")
+    puma_ladder_path = tmp_path / "us_puma_ladder_2020.npz"
+    puma_ladder_path.write_bytes(b"puma-ladder")
+    puma_ladder = builder.UsPumaLadder(
+        puma=np.asarray([100_100], dtype=np.int64),
+        puma_population=np.asarray([100.0]),
+        cd_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        cd_overlap_cd=np.asarray([101], dtype=np.int64),
+        cd_overlap_population=np.asarray([100.0]),
+        county_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        county_overlap_county=np.asarray([1_001], dtype=np.int32),
+        county_overlap_population=np.asarray([100.0]),
+        tract_overlap_puma=np.asarray([100_100], dtype=np.int64),
+        tract_overlap_tract=np.asarray([1_001_000_100], dtype=np.int64),
+        tract_overlap_population=np.asarray([100.0]),
+        metadata={
+            "schema_version": 1,
+            "kind": "us_puma_ladder",
+            "puma_vintage": "2020_puma",
+            "sampling_basis": "population",
+            "layers": {
+                "congressional_district": {"vintage": "119th_congress"},
+                "county": {"vintage": "2020_census"},
+                "tract": {"vintage": "2020_census"},
+            },
+        },
+    )
     inputs_dir = tmp_path / "inputs"
     household_zip = inputs_dir / "csv_hus.zip"
     person_zip = inputs_dir / "csv_pus.zip"
@@ -189,6 +227,23 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             fit_records=(FitWeightRecord("acs_transfer:person:benefits", "design"),),
             provenance={
                 "enabled": True,
+                "deferred_inputs": ["block_geoid", "tract_geoid"],
+                "geography_ladder": {
+                    "applied": True,
+                    "household_rows": 2,
+                    "ladder_pumas": 1,
+                    "layer_vintages": puma_ladder.layer_vintages,
+                    "sampling_basis": "population",
+                    "seed": 19,
+                    "resolved_model_inputs": [
+                        "congressional_district_geoid",
+                        "county_fips",
+                    ],
+                    "unresolved_sub_puma_inputs": [
+                        "block_geoid",
+                        "tract_geoid",
+                    ],
+                },
                 "imputed_inputs": [
                     {
                         "column": "takes_up_snap_if_eligible",
@@ -202,6 +257,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     def fake_write(frame, path, *, period):
         captured["write"] = (frame, path, period)
         path.write_bytes(b"combined-output")
+
+    def fake_load_puma_ladder(path):
+        captured["puma_ladder_path"] = path
+        return puma_ladder
 
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
     monkeypatch.setattr(
@@ -220,6 +279,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         fake_fetch,
     )
     monkeypatch.setattr(builder, "build_optional_acs_multispine", fake_build)
+    monkeypatch.setattr(
+        builder,
+        "load_us_puma_ladder",
+        fake_load_puma_ladder,
+    )
     monkeypatch.setattr(builder, "_engine_input_null_audit", lambda frame: [])
     monkeypatch.setattr(
         builder,
@@ -240,6 +304,8 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             str(manifest_path),
             "--inputs-dir",
             str(inputs_dir),
+            "--puma-ladder",
+            str(puma_ladder_path),
             "--max-households",
             "7",
             "--chunksize",
@@ -248,15 +314,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             "0.4",
             "--seed",
             "11",
+            "--geography-seed",
+            "19",
         ]
     )
 
     assert exit_code == 0
     assert captured["manifest_path"] == manifest_path
+    assert captured["puma_ladder_path"] == puma_ladder_path
     assert captured["fetch"] == (inputs_dir, manifest)
     actual_base, actual_source, build_options = captured["build"]
     assert actual_base is base
     assert actual_source.max_households == 7
+    assert build_options.pop("puma_ladder") is puma_ladder
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
@@ -264,6 +334,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "seed": 11,
         "n_estimators": 32,
         "max_targets_per_fit": 8,
+        "geography_seed": 19,
     }
     assert captured["write"] == (combined, output_h5, 2024)
 
@@ -277,6 +348,21 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "native_acs_universe_blanks_preserved",
     ]
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
+    assert summary["geography_ladder"] == {
+        "path": str(puma_ladder_path.resolve()),
+        "sha256": hashlib.sha256(b"puma-ladder").hexdigest(),
+        "pumas": 1,
+        "layer_vintages": {
+            "congressional_district": "119th_congress",
+            "county": "2020_census",
+            "puma": "2020_puma",
+            "tract": "2020_census",
+        },
+        "seed": 19,
+        "assignment": summary["orchestration"]["provenance"][
+            "geography_ladder"
+        ],
+    }
     assert summary["acs_sources"]["manifest"] == str(manifest_path.resolve())
     assert (
         summary["acs_sources"]["manifest_sha256"] == hashlib.sha256(b"{}").hexdigest()

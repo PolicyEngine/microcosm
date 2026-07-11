@@ -22,6 +22,7 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puma_ladder import UsPumaLadder
 from populace.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 BASE_HOUSEHOLD_MASS = 400.0
@@ -51,7 +52,9 @@ def _base_frame(
                 "base_only_income": [10.0, 20.0, 30.0],
             }
         ),
-        "household": pd.DataFrame({"household_id": [1, 2]}),
+        "household": pd.DataFrame(
+            {"household_id": [1, 2], "state_fips": [1, 1]}
+        ),
         "tax_unit": pd.DataFrame({"tax_unit_id": [10, 20]}),
         "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200]}),
         "family": pd.DataFrame({"family_id": [1_000, 2_000]}),
@@ -93,7 +96,8 @@ def _acs_frame(
         "household": pd.DataFrame(
             {
                 "household_id": [1],
-                "puma": [101],
+                "state_fips": [1],
+                "puma": ["0100101"],
             }
         ),
         "tax_unit": pd.DataFrame({"tax_unit_id": [10]}),
@@ -163,6 +167,37 @@ def _add_support_metadata(
         table[support_clone_index_column(entity)] = 0
 
 
+def _test_puma_ladder() -> UsPumaLadder:
+    puma = np.asarray([100_101, 100_202], dtype=np.int64)
+    population = np.asarray([40.0, 60.0])
+    return UsPumaLadder(
+        puma=puma,
+        puma_population=population,
+        cd_overlap_puma=puma.copy(),
+        cd_overlap_cd=np.asarray([101, 102], dtype=np.int64),
+        cd_overlap_population=population.copy(),
+        county_overlap_puma=puma.copy(),
+        county_overlap_county=np.asarray([1_001, 1_003], dtype=np.int32),
+        county_overlap_population=population.copy(),
+        tract_overlap_puma=puma.copy(),
+        tract_overlap_tract=np.asarray(
+            [1_001_000_100, 1_003_000_100], dtype=np.int64
+        ),
+        tract_overlap_population=population.copy(),
+        metadata={
+            "schema_version": 1,
+            "kind": "us_puma_ladder",
+            "puma_vintage": "2020_puma",
+            "sampling_basis": "population",
+            "layers": {
+                "congressional_district": {"vintage": "119th_congress"},
+                "county": {"vintage": "2020_census"},
+                "tract": {"vintage": "2020_census"},
+            },
+        },
+    )
+
+
 def _shift_frame_ids(frame: Frame, offset: int) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"][US_SCHEMA.person_id_column] += offset
@@ -206,6 +241,8 @@ def test__given_no_acs__then_base_object_and_bytes_are_unchanged() -> None:
         None,
         acs_share="not validated on the identity path",
         max_peak_bytes=0,
+        puma_ladder=_test_puma_ladder(),
+        geography_seed=-1,
     )
 
     # Then
@@ -213,6 +250,56 @@ def test__given_no_acs__then_base_object_and_bytes_are_unchanged() -> None:
     assert _frame_digest(result) == digest_before
     for entity in base.entities:
         assert spine_column(entity) not in base.table(entity)
+
+
+def test__given_mixed_spines__then_ladder_keeps_acs_puma_and_assigns_asec() -> (
+    None
+):
+    # Given
+    base = _base_frame()
+    acs = _acs_frame()
+    ladder = _test_puma_ladder()
+
+    # When
+    first = with_optional_acs_spine(
+        base,
+        acs,
+        puma_ladder=ladder,
+        geography_seed=17,
+        expected_congressional_district_vintage="119th_congress",
+    )
+    second = with_optional_acs_spine(
+        base,
+        acs,
+        puma_ladder=ladder,
+        geography_seed=17,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    # Then
+    geography = [
+        "state_fips",
+        "puma",
+        "congressional_district_geoid",
+        "county_fips",
+    ]
+    pd.testing.assert_frame_equal(
+        first.table("household")[geography],
+        second.table("household")[geography],
+    )
+    household = first.table("household")
+    acs_row = household[household[spine_column("household")].eq(ACS_2024_1YR_SPINE)]
+    assert acs_row["puma"].tolist() == ["0100101"]
+    assert acs_row["congressional_district_geoid"].tolist() == [101]
+    assert acs_row["county_fips"].tolist() == ["01001"]
+
+    asec_rows = household[
+        household[spine_column("household")].eq(ASEC_PUF_SPINE)
+    ]
+    assert set(asec_rows["puma"]).issubset({"0100101", "0100202"})
+    assert asec_rows["puma"].str.startswith("01").all()
+    assert asec_rows["county_fips"].str.startswith("01").all()
+    assert household["state_fips"].eq(1).all()
 
 
 def test__given_acs__then_source_frames_remain_byte_identical() -> None:

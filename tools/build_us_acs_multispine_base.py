@@ -1,13 +1,11 @@
 """Build a nullable ASEC-by-PUF plus ACS multispine staging artifact.
 
 This tool starts from the dense, input-complete ASEC-by-PUF H5 produced by
-the US input-family pipeline.  It acquires the byte-pinned ACS PUMS archives,
+the US input-family pipeline. It acquires the byte-pinned ACS PUMS archives,
 loads and maps the ACS spine, transfers model input leaves from the dense
-donor, audits every fit's resolved typed weight kind, and writes the combined
-base. Native ACS universe blanks and deferred sub-PUMA geography remain null
-by design, so this H5 is a pre-calibration staging artifact rather than a
-simulation-ready PolicyEngine dataset. Calibration and geography allocation
-are deliberately downstream stages.
+donor, assigns the PUMA-anchored state/CD/county geography ladder, audits every
+fit's resolved typed weight kind, and writes the combined base. Calibration is
+deliberately downstream.
 """
 
 from __future__ import annotations
@@ -42,6 +40,10 @@ from populace.build.us_runtime.acs_transfer import (
     resolve_acs_donor_channel,
 )
 from populace.build.us_runtime.base_pool import spine_column
+from populace.build.us_runtime.puma_ladder import (
+    UsPumaLadder,
+    load_us_puma_ladder,
+)
 from populace.build.us_runtime.release_input_coverage import (
     us_release_input_coverage_gate,
 )
@@ -51,6 +53,7 @@ from populace.frame.units import US_SCHEMA
 PERIOD = 2024
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUTS_DIR = _REPOSITORY_ROOT / "inputs" / "acs_2024_1yr"
+DEFAULT_PUMA_LADDER = _REPOSITORY_ROOT / "build" / "us" / "us_puma_ladder_2020.npz"
 DEFAULT_N_ESTIMATORS = 32
 DEFAULT_STAGING_EXPORT_PEAK_LIMIT_BYTES = 30_000_000_000
 _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
@@ -88,6 +91,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Hash-verified ACS archive cache (default: inputs/acs_2024_1yr).",
     )
     parser.add_argument(
+        "--puma-ladder",
+        default=DEFAULT_PUMA_LADDER,
+        type=Path,
+        help=(
+            "Validated national PUMA-ladder NPZ (default: "
+            "build/us/us_puma_ladder_2020.npz)."
+        ),
+    )
+    parser.add_argument(
         "--max-households",
         type=_positive_int,
         help="Optional deterministic smoke limit applied after ACS household sort.",
@@ -96,6 +108,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--chunksize", default=DEFAULT_CHUNKSIZE, type=_positive_int)
     parser.add_argument("--acs-share", default=0.5, type=_open_unit_interval)
     parser.add_argument("--seed", default=0, type=_nonnegative_int)
+    parser.add_argument(
+        "--geography-seed",
+        default=0,
+        type=_nonnegative_int,
+        help="Deterministic PUMA/CD/county assignment seed (default: 0).",
+    )
     parser.add_argument(
         "--n-estimators",
         default=DEFAULT_N_ESTIMATORS,
@@ -132,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
     _require_dense_donor_coverage(base, donor_channel=args.donor_channel)
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
+    puma_ladder_sha256 = _sha256(args.puma_ladder)
+    puma_ladder = load_us_puma_ladder(args.puma_ladder)
 
     source = acs_sources.fetch_acs_pums_sources(
         args.inputs_dir,
@@ -149,7 +169,10 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         n_estimators=args.n_estimators,
         max_targets_per_fit=args.max_targets_per_fit,
+        puma_ladder=puma_ladder,
+        geography_seed=args.geography_seed,
     )
+    _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
     transfer_coverage = _require_default_transfer_coverage(result, base)
     weights_audit = _audit_fits(result)
@@ -180,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         transfer_coverage=transfer_coverage,
         input_null_audit=input_null_audit,
         staging_export_peak_bytes=staging_export_peak_bytes,
+        puma_ladder=puma_ladder,
+        puma_ladder_sha256=puma_ladder_sha256,
     )
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
@@ -275,6 +300,44 @@ def _require_benefit_participation_transfer(result: AcsMultispineResult) -> None
         raise SystemExit(
             "ACS default transfer produced no takes_up_* benefit-participation "
             "input. Refusing to report a complete multispine base."
+        )
+
+
+def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
+    """Fail unless the enabled multispine resolved launch geography inputs."""
+
+    raw = result.provenance.get("geography_ladder")
+    if not isinstance(raw, dict) or raw.get("applied") is not True:
+        raise SystemExit(
+            "ACS multispine did not apply the required PUMA geography ladder."
+        )
+    household = result.frame.table("household")
+    required = ("puma", "congressional_district_geoid", "county_fips")
+    missing = [column for column in required if column not in household]
+    if missing:
+        raise SystemExit(
+            "PUMA geography assignment omitted household column(s): "
+            f"{missing}."
+        )
+    nulls = {
+        column: int(household[column].isna().sum())
+        for column in required
+        if household[column].isna().any()
+    }
+    if nulls:
+        raise SystemExit(
+            f"PUMA geography assignment left null household values: {nulls}."
+        )
+    deferred = result.provenance.get("deferred_inputs", [])
+    still_deferred = sorted(
+        {"congressional_district_geoid", "county_fips"}.intersection(deferred)
+        if isinstance(deferred, list)
+        else {"congressional_district_geoid", "county_fips"}
+    )
+    if still_deferred:
+        raise SystemExit(
+            "PUMA geography assignment still reports resolved input(s) as "
+            f"deferred: {still_deferred}."
         )
 
 
@@ -402,6 +465,8 @@ def _build_summary(
     transfer_coverage: dict[str, object],
     input_null_audit: list[dict[str, object]],
     staging_export_peak_bytes: int,
+    puma_ladder: UsPumaLadder,
+    puma_ladder_sha256: str,
 ) -> dict[str, object]:
     output_rows = _row_counts(result.frame)
     output_mass = float(result.frame.weights_for("household").total)
@@ -429,11 +494,20 @@ def _build_summary(
             manifest_path=args.source_manifest,
             manifest_sha256=manifest_sha256,
         ),
+        "geography_ladder": {
+            "path": str(args.puma_ladder.resolve()),
+            "sha256": puma_ladder_sha256,
+            "pumas": len(puma_ladder),
+            "layer_vintages": puma_ladder.layer_vintages,
+            "seed": args.geography_seed,
+            "assignment": result.provenance["geography_ladder"],
+        },
         "orchestration": {
             "chunksize": args.chunksize,
             "acs_share": args.acs_share,
             "max_households": args.max_households,
             "seed": args.seed,
+            "geography_seed": args.geography_seed,
             "n_estimators": args.n_estimators,
             "max_targets_per_fit": args.max_targets_per_fit,
             "donor_channel": args.donor_channel,
@@ -520,6 +594,9 @@ def _validate_artifact_paths(
         raise SystemExit("--out-h5 must differ from --base-h5.")
     if summary in {base, output}:
         raise SystemExit("--summary must differ from both --base-h5 and --out-h5.")
+    ladder = args.puma_ladder.resolve()
+    if ladder == output:
+        raise SystemExit("--puma-ladder must differ from --out-h5.")
 
 
 def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:

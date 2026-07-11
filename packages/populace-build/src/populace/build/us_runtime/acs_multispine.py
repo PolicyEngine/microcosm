@@ -36,6 +36,13 @@ from populace.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from populace.build.us_runtime.base_pool import with_optional_acs_spine
+from populace.build.us_runtime.congressional_district_vintage import (
+    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+)
+from populace.build.us_runtime.puma_ladder import (
+    UsPumaLadder,
+    us_puma_ladder_assignment_summary,
+)
 from populace.frame import Frame
 
 __all__ = ["AcsMultispineResult", "build_optional_acs_multispine"]
@@ -68,6 +75,11 @@ def build_optional_acs_multispine(
     seed: int = 0,
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    puma_ladder: UsPumaLadder | None = None,
+    geography_seed: int = 0,
+    expected_congressional_district_vintage: str | None = (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ),
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -111,17 +123,31 @@ def build_optional_acs_multispine(
     del mapped_frame
     fit_records = tuple(transferred.fit_records)
     imputed_provenance = _json_ready_sequence(transferred.imputed_inputs)
-    deferred_provenance = _json_ready_sequence(transferred.deferred_inputs)
+    deferred_inputs = tuple(transferred.deferred_inputs)
+    if puma_ladder is not None:
+        deferred_inputs = tuple(
+            column
+            for column in deferred_inputs
+            if column not in {"congressional_district_geoid", "county_fips"}
+        )
+    deferred_provenance = _json_ready_sequence(deferred_inputs)
     resolved_donor_channel = transferred.resolved_donor_channel
     fit_provenance = _json_ready_sequence(fit_records)
     transferred_frame = transferred.frame
     del transferred
 
-    pooled = with_optional_acs_spine(
-        base,
-        transferred_frame,
-        acs_share=acs_share,
-    )
+    pool_options: dict[str, Any] = {"acs_share": acs_share}
+    if puma_ladder is not None:
+        pool_options.update(
+            {
+                "puma_ladder": puma_ladder,
+                "geography_seed": geography_seed,
+                "expected_congressional_district_vintage": (
+                    expected_congressional_district_vintage
+                ),
+            }
+        )
+    pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
 
     provenance = {
@@ -141,6 +167,29 @@ def build_optional_acs_multispine(
             "max_targets_per_fit": max_targets_per_fit,
         },
     }
+    if puma_ladder is not None:
+        geography = us_puma_ladder_assignment_summary(
+            pooled.table("household"),
+            puma_ladder,
+            weight_values=pooled.weights_for("household").values,
+        )
+        geography.update(
+            {
+                "seed": geography_seed,
+                "expected_congressional_district_vintage": (
+                    expected_congressional_district_vintage
+                ),
+                "resolved_model_inputs": [
+                    "congressional_district_geoid",
+                    "county_fips",
+                ],
+                "unresolved_sub_puma_inputs": [
+                    "block_geoid",
+                    "tract_geoid",
+                ],
+            }
+        )
+        provenance["geography_ladder"] = _json_ready_mapping(geography)
     return AcsMultispineResult(
         frame=pooled,
         fit_records=fit_records,

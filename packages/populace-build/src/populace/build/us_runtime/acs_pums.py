@@ -626,8 +626,12 @@ def _attach_household_source_columns(
     household["state_fips"] = pd.to_numeric(source["ST"], errors="raise").to_numpy(
         dtype=np.int64
     )
-    household["puma"] = household["PUMA"].to_numpy()
     household["puma_geoid"] = household["ST"] + household["PUMA"]
+    # The PUMA ladder's canonical anchor is the full seven-digit
+    # state_fips+PUMA5CE geoid. Keep the raw five-digit Census value in PUMA
+    # for source lineage, and expose the ladder-ready geoid through both the
+    # canonical ``puma`` column and its explicit alias.
+    household["puma"] = household["puma_geoid"].to_numpy()
     for column in _HOUSEHOLD_FRAME_COLUMNS:
         household[column] = source[column].to_numpy()
     return Frame(

@@ -76,3 +76,14 @@
   the summary marks the artifact non-simulation-ready until downstream
   geography allocation/calibration. Checks: Ruff clean; 19 integration and
   staging-writer tests pass.
+- 2026-07-11 — Phase C rebase + geography-wire milestone (this milestone
+  commit): rebased the ACS commits onto the merged PUMA-ladder runtime and
+  artifact builder, normalized the ACS anchor to the seven-digit ST+PUMA
+  geoid, and assigned the pooled household table before its final Frame copy.
+  ACS rows retain their observed PUMA; ASEC-by-PUF rows draw PUMA within native
+  state; both spines receive deterministic 119th-CD and county assignments.
+  The staging builder now loads the national ladder artifact, fails closed if
+  launch geography is incomplete or still marked deferred, and records the
+  artifact hash, vintages, seed, and assignment coverage. The no-ACS path
+  remains an object/serialized-byte identity. Checks: post-rebase 139-test
+  suite and focused 71 runtime + 16 staging-builder tests pass; Ruff clean.

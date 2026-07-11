@@ -14,6 +14,7 @@ from populace.build.us_runtime import acs_multispine
 from populace.build.us_runtime.acs_pums import AcsPumsSource
 from populace.build.us_runtime.acs_transfer import AcsImputedInput
 from populace.build.us_runtime.base_pool import spine_column
+from populace.build.us_runtime.puma_ladder import UsPumaLadder
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -33,6 +34,11 @@ def test__given_no_source__then_base_frame_is_an_untouched_identity(
     monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", _must_not_run)
     monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", _must_not_run)
     monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", _must_not_run)
+    monkeypatch.setattr(
+        acs_multispine,
+        "us_puma_ladder_assignment_summary",
+        _must_not_run,
+    )
 
     result = acs_multispine.build_optional_acs_multispine(
         cast(Frame, base),
@@ -41,6 +47,8 @@ def test__given_no_source__then_base_frame_is_an_untouched_identity(
         acs_share=2.0,
         seed=-1,
         n_estimators=0,
+        puma_ladder=cast(Any, object()),
+        geography_seed=-1,
     )
 
     assert result.frame is base
@@ -244,6 +252,90 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
     assert result.fit_records[0].weight_kind == "design"
 
 
+def test__given_ladder__then_multispine_records_geography_assignment(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    base = _base_donor_frame()
+    raw_acs = _raw_acs_frame()
+    source = AcsPumsSource(
+        tmp_path / "csv_hus.zip",
+        tmp_path / "csv_pus.zip",
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            raw_acs,
+            {
+                "spine": "acs_2024_1yr",
+                "vintage": actual_source.vintage,
+                "chunksize": chunksize,
+            },
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        source,
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+        puma_ladder=_test_puma_ladder(),
+        geography_seed=31,
+    )
+
+    household = result.frame.table("household")
+    acs_row = household[household[spine_column("household")].eq("acs_2024_1yr")]
+    assert acs_row["puma"].tolist() == ["0600100"]
+    assert acs_row["congressional_district_geoid"].tolist() == [601]
+    assert acs_row["county_fips"].tolist() == ["06001"]
+    geography = result.provenance["geography_ladder"]
+    assert geography["applied"] is True
+    assert geography["seed"] == 31
+    assert geography["resolved_model_inputs"] == [
+        "congressional_district_geoid",
+        "county_fips",
+    ]
+    assert geography["unresolved_sub_puma_inputs"] == [
+        "block_geoid",
+        "tract_geoid",
+    ]
+
+
+def _test_puma_ladder() -> UsPumaLadder:
+    puma = np.asarray([600_100, 3_600_100], dtype=np.int64)
+    population = np.asarray([100.0, 200.0])
+    return UsPumaLadder(
+        puma=puma,
+        puma_population=population,
+        cd_overlap_puma=puma.copy(),
+        cd_overlap_cd=np.asarray([601, 3_601], dtype=np.int64),
+        cd_overlap_population=population.copy(),
+        county_overlap_puma=puma.copy(),
+        county_overlap_county=np.asarray([6_001, 36_001], dtype=np.int32),
+        county_overlap_population=population.copy(),
+        tract_overlap_puma=puma.copy(),
+        tract_overlap_tract=np.asarray(
+            [6_001_000_100, 36_001_000_100], dtype=np.int64
+        ),
+        tract_overlap_population=population.copy(),
+        metadata={
+            "schema_version": 1,
+            "kind": "us_puma_ladder",
+            "puma_vintage": "2020_puma",
+            "sampling_basis": "population",
+            "layers": {
+                "congressional_district": {"vintage": "119th_congress"},
+                "county": {"vintage": "2020_census"},
+                "tract": {"vintage": "2020_census"},
+            },
+        },
+    )
+
+
 def _base_donor_frame() -> Frame:
     person = pd.DataFrame(
         {
@@ -301,6 +393,7 @@ def _raw_acs_frame() -> Frame:
                 {
                     "household_id": [10],
                     "state_fips": [6],
+                    "puma": ["0600100"],
                     "ADJHSG": [1_000_000],
                     "TEN": [3],
                     "RNTP": [1_000.0],

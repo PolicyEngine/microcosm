@@ -13,6 +13,10 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puma_ladder import (
+    UsPumaLadder,
+    assign_us_puma_ladder,
+)
 from populace.frame import (
     US_SCHEMA,
     Frame,
@@ -38,6 +42,7 @@ ASEC_PUF_SPINE = "asec_puf"
 DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES = 30_000_000_000
 _PEAK_ESTIMATE_FIXED_OVERHEAD_BYTES = 256 * 1024**2
 _ID_OVERLAP_CHUNK_ROWS = 65_536
+_PUMA_LADDER_ANCHOR_COLUMN = "__populace_puma_ladder_anchor"
 
 
 def spine_column(entity: str) -> str:
@@ -54,6 +59,9 @@ def with_optional_acs_spine(
     *,
     acs_share: float = 0.5,
     max_peak_bytes: int | None = DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES,
+    puma_ladder: UsPumaLadder | None = None,
+    geography_seed: int = 0,
+    expected_congressional_district_vintage: str | None = None,
 ) -> Frame:
     """Append an ACS frame while conserving the base's household mass.
 
@@ -66,6 +74,13 @@ def with_optional_acs_spine(
     ``acs_share`` allocates that share of the incoming base household mass to
     ACS. The remaining share stays on the ASEC-by-PUF spine. Each allocation is
     recorded as a deliberate :class:`~populace.frame.MassChangeRecord`.
+
+    When ``puma_ladder`` is present, ACS records retain their known 2020 PUMA
+    while ASEC-by-PUF records draw a PUMA within their state. Congressional
+    district and county are then assigned from the ladder for both spines.
+    Assignment happens on the newly assembled household table before the one
+    final :class:`~populace.frame.Frame` construction, avoiding a second copy
+    of every entity table.
 
     ``max_peak_bytes`` is a fail-fast bound on estimated frame-resident peak
     memory. Pass ``None`` to disable the preflight. The estimate includes both
@@ -141,6 +156,15 @@ def with_optional_acs_spine(
         id_offsets=id_offsets,
         populate_acs_support_metadata=populate_acs_support_metadata,
     )
+    if puma_ladder is not None:
+        _assign_pooled_puma_ladder(
+            tables,
+            puma_ladder,
+            seed=geography_seed,
+            expected_congressional_district_vintage=(
+                expected_congressional_district_vintage
+            ),
+        )
     if household_order is not None:
         reordered = household_weights.values[household_order]
         household_weights = Weights(reordered, household_weights.kind)
@@ -319,6 +343,59 @@ def _combined_tables(
             consolidate()
         tables[entity] = combined
     return tables, household_order
+
+
+def _assign_pooled_puma_ladder(
+    tables: dict[str, pd.DataFrame],
+    ladder: UsPumaLadder,
+    *,
+    seed: int,
+    expected_congressional_district_vintage: str | None,
+) -> None:
+    """Assign the ladder while treating only ACS PUMAs as observed anchors."""
+
+    household = tables["household"]
+    tag = spine_column("household")
+    if tag not in household:
+        raise ValueError(
+            f"Pooled household table lacks required spine tag {tag!r}."
+        )
+    if "puma" not in household:
+        raise ValueError(
+            "ACS household table must carry canonical seven-digit puma geoids "
+            "before PUMA-ladder assignment."
+        )
+    if _PUMA_LADDER_ANCHOR_COLUMN in household:
+        raise ValueError(
+            "Pooled household table conflicts with the internal PUMA-ladder "
+            f"anchor column {_PUMA_LADDER_ANCHOR_COLUMN!r}."
+        )
+
+    acs_rows = household[tag].eq(ACS_2024_1YR_SPINE)
+    known = pd.to_numeric(household.loc[acs_rows, "puma"], errors="coerce")
+    invalid = known.isna() | ~np.isfinite(known) | (known <= 0)
+    if invalid.any():
+        examples = household.loc[acs_rows, "puma"].loc[invalid].head().tolist()
+        raise ValueError(
+            "Every ACS household must carry its observed seven-digit PUMA "
+            f"geoid before ladder assignment; invalid value(s): {examples}."
+        )
+
+    # ASEC rows must use the ladder's own state -> PUMA draw even if a future
+    # donor happens to carry a similarly named column. Only the ACS spine's
+    # source PUMA is an observed anchor for this multispine build.
+    household[_PUMA_LADDER_ANCHOR_COLUMN] = household["puma"].where(acs_rows)
+    assigned = assign_us_puma_ladder(
+        household,
+        ladder,
+        seed=seed,
+        expected_congressional_district_vintage=(
+            expected_congressional_district_vintage
+        ),
+        puma_column=_PUMA_LADDER_ANCHOR_COLUMN,
+    )
+    assigned.drop(columns=[_PUMA_LADDER_ANCHOR_COLUMN], inplace=True)
+    tables["household"] = assigned
 
 
 def _prepared_source_view(
