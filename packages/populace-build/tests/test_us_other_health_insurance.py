@@ -342,7 +342,7 @@ def test_joint_qrf_replaces_only_puf_and_does_not_invent_clipping(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             reported = _REPORTED_VALUES.copy()
             other = reported.copy()

@@ -255,7 +255,7 @@ def test_puf_half_uses_one_joint_qrf_in_archived_target_order(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             received = np.zeros(len(test), dtype=np.float64)
             expense = np.zeros(len(test), dtype=np.float64)
@@ -339,7 +339,7 @@ def test_puf_qrf_caps_training_at_5000_and_keeps_weights_aligned(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test_rows"] = len(test)
             return pd.DataFrame(
                 {
@@ -408,7 +408,7 @@ def test_signal_gate_rejects_missing_default_invalid_and_dead_puf_surface(
     )
 
     class ZeroFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             return pd.DataFrame(
                 {
                     _RECEIVED: np.zeros(len(test)),

@@ -143,7 +143,7 @@ def _donor(n: int = 60) -> pd.DataFrame:
 
 
 class _RentFitted:
-    def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
         rented = test["tenure_type__RENTED"] > 0
         return pd.DataFrame(
             {"rent": np.where(rented, 12_000.0, 0.0)},
@@ -284,7 +284,7 @@ def test_rent_fit_replays_archived_joint_target_sample(
     captured: dict[str, object] = {}
 
     class Fitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             return pd.DataFrame({"rent": np.zeros(len(test))}, index=test.index)
 
     class QRF:
@@ -342,7 +342,7 @@ def test_puf_half_reimputes_only_housing_assistance(
     calls: dict[str, object] = {}
 
     class Fitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             values = np.zeros(len(test), dtype=np.float64)
             values[1] = 1.0
             return pd.DataFrame(

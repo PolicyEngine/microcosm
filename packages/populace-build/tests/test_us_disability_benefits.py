@@ -309,7 +309,7 @@ def test_puf_half_uses_one_output_qrf_and_preserves_asec(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             predicted = np.zeros(len(test), dtype=np.float64)
             predicted[0] = 7_200.0
@@ -383,7 +383,7 @@ def test_puf_qrf_caps_training_at_5000_and_keeps_weights_aligned(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test_rows"] = len(test)
             return pd.DataFrame({_OUTPUT: np.zeros(len(test))}, index=test.index)
 

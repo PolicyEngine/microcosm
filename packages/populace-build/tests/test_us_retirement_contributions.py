@@ -172,7 +172,7 @@ def test_puf_half_uses_qrf_predictions_and_applies_income_constraints(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             return pd.DataFrame(
                 {

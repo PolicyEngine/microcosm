@@ -591,7 +591,9 @@ def impute_us_puf_tax_detail_support(
     )
     if not puf_mask.any():
         raise ValueError("PUF support channel has no tax-unit rows.")
-    predictions = fitted.predict(features.loc[puf_mask, list(predictors)])
+    predictions = fitted.predict(
+        features.loc[puf_mask, list(predictors)], release_models=True
+    )
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)

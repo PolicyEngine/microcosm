@@ -279,7 +279,7 @@ def test_join_refuses_missing_allocation_source() -> None:
 
 
 class _Fitted:
-    def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
         n = len(test)
         self_employment = np.zeros(n, dtype=np.float64)
         self_employment[:2] = [125.0, -25.0]

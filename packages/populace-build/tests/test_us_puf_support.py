@@ -852,7 +852,12 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
         ) -> "TinyPositiveQRF":
             return self
 
-        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
             return pd.DataFrame(
                 {
                     "taxable_interest_income": [0.25, 9.6],
@@ -918,7 +923,12 @@ def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
             assert weights == "design"
             return self
 
-        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
             return pd.DataFrame(
                 {"educator_expense": [300.0, 200.0]},
                 index=features.index,
@@ -1216,7 +1226,12 @@ def test_puf_tax_detail_imputation_reconciles_social_security_components(
         ) -> "TotalSocialSecurityQRF":
             return self
 
-        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
             return pd.DataFrame(
                 {
                     "social_security_retirement": [400.0, 800.0],
@@ -1302,7 +1317,12 @@ def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
         ) -> "FractionalYearQRF":
             return self
 
-        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
             return pd.DataFrame(
                 {
                     "first_home_mortgage_origination_year": [2008.4, 2017.6],

@@ -289,7 +289,7 @@ def test_puf_half_uses_qrf_and_asec_half_remains_exact(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             return pd.DataFrame(
                 0.0,
