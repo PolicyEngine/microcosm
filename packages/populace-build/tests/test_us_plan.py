@@ -402,9 +402,11 @@ class TestUsSources:
             # name only the immutable, sha-verified enhanced-FRS reference and
             # never import or execute the retired data package.
             "packages/populace-build/src/populace/build/uk/efrs_parity_reference.json",
+            "packages/populace-build/src/populace/build/uk/hmrc_income_source_stages.json",
             "packages/populace-build/src/populace/build/uk_runtime/parity_reference.py",
             "packages/populace-build/tests/test_uk_parity_reference.py",
             "tools/build_uk_efrs_parity_reference.py",
+            "UK_COVERAGE_PROGRESS.md",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []

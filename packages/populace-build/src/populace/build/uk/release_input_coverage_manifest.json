@@ -491,8 +491,9 @@
    ],
    "required_mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
    "required_target_count": 208,
+   "restoration_status": "blocked_pending_reviewed_frs_decomposition",
    "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "0706836e2fae9662986da6320d1df1d5847c9c0fd950f12a5a2a835475ac10bd",
+   "source_manifest_sha256": "545a27176d2fdb732c3b85aa88d31677cfbd781532b02f9bdd144e39bcd2f335",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",

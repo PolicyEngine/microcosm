@@ -120,7 +120,7 @@ def _allow_input_coverage(builder, monkeypatch) -> None:
         lambda result, engine: SimpleNamespace(
             passed=True,
             failures=(),
-            details={"required_columns": 132, "missing": []},
+            details={"required_columns": 145, "missing": []},
         ),
     )
 

@@ -69,6 +69,26 @@ def test_committed_manifest_matches_regeneration() -> None:
     assert generator.build_manifest() == committed
 
 
+def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
+    generator = _load_generator()
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except ImportError:
+        pytest.skip("huggingface_hub is unavailable")
+    cached = try_to_load_from_cache(
+        repo_id=generator.CANDIDATE_REPO_ID,
+        filename=generator.CANDIDATE_FILENAME,
+        revision=generator.CANDIDATE_REVISION,
+        repo_type=generator.CANDIDATE_REPO_TYPE,
+    )
+    if not isinstance(cached, str):
+        pytest.skip("pinned certified candidate revision is not cached")
+
+    regenerated = generator.build_candidate_evidence(Path(cached))
+    committed = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
+    assert regenerated == committed
+
+
 def test_initial_manifest_requires_every_populated_reference_input() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
@@ -97,6 +117,9 @@ def test_hmrc_family_is_required_with_distributional_mass_accounting() -> None:
     family = manifest["family_coverage"]["hmrc_spi_income"]
 
     assert family["status"] == "required_at_build"
+    assert family["restoration_status"] == (
+        "blocked_pending_reviewed_frs_decomposition"
+    )
     assert family["source_manifest"] == "hmrc_income_source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
     assert family["source_vintages"] == {
@@ -163,3 +186,30 @@ def test_candidate_signal_helpers_reject_null_and_blank_only_columns() -> None:
         assert generator._nonzero_share(column) == 0.0
         assert generator._nondefault_share(column, 0.0) == 0.0
     assert generator._nondefault_share(pd.Series([0, None], dtype=object), 0.0) == 0.0
+
+
+def test_implicit_candidate_resolution_requires_revision_mapping(monkeypatch) -> None:
+    generator = _load_generator()
+    import huggingface_hub
+
+    monkeypatch.setattr(generator, "_hf_token", lambda: None)
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda **_: None)
+    calls = []
+
+    def download(**kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("download required")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    with pytest.raises(RuntimeError, match="download required"):
+        generator.resolve_candidate_h5()
+
+    assert calls == [
+        {
+            "repo_id": generator.CANDIDATE_REPO_ID,
+            "filename": generator.CANDIDATE_FILENAME,
+            "revision": generator.CANDIDATE_REVISION,
+            "repo_type": generator.CANDIDATE_REPO_TYPE,
+            "token": None,
+        }
+    ]

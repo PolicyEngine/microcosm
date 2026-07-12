@@ -21,6 +21,12 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
 )
 from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.spi_support import (
+    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+)
 from populace.frame import MassChangeRecord, WeightKind
 
 
@@ -54,12 +60,19 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
                 "person_benunit_id": row_id,
                 "state_pension_reported": 0.0,
                 "tax_free_savings_income": 0.0,
+                SPI_HMRC_OTHER_INCOME_COLUMN: 0.0,
+                SPI_HMRC_STATE_PENSION_INCOME_COLUMN: 0.0,
             }
+            for leaf in SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS:
+                row[leaf] = 0.0
             for income_component in HMRC_SPI_INCOME_COMPONENTS:
                 if income_component != "state_pension":
                     row[income_component] = 0.0
             if component == "state_pension":
                 row["state_pension_reported"] = value
+                row[SPI_HMRC_STATE_PENSION_INCOME_COLUMN] = value
+            elif component == "employment_income":
+                row[SPI_HMRC_PAY_COLUMN] = value
             else:
                 row[component] = value
             rows.append(row)
@@ -146,17 +159,6 @@ class _FakeSimulation:
                 "person_id": person["person_id"],
                 "income_tax": np.ones(len(person)),
                 "state_pension": person["state_pension_reported"],
-                "total_income": (
-                    person[
-                        [
-                            component
-                            for component in HMRC_SPI_INCOME_COMPONENTS
-                            if component
-                            not in {"state_pension", "other_investment_income"}
-                        ]
-                    ].sum(axis=1)
-                    + person["state_pension_reported"]
-                ),
             }
         )
 
@@ -187,7 +189,6 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
                 "person_id",
                 "income_tax",
                 "state_pension",
-                "total_income",
             ],
             "period": "2023",
             "map_to": "person",

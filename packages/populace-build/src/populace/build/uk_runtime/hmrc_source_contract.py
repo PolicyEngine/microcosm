@@ -16,6 +16,9 @@ from populace.build.uk_runtime.hmrc_calibration import (
 )
 from populace.build.uk_runtime.hmrc_income import (
     HMRC_SPI_BUILD_PERIOD,
+    HMRC_SPI_COLLATED_ODS_MIME_TYPE,
+    HMRC_SPI_COLLATED_ODS_SHA256,
+    HMRC_SPI_COLLATED_ODS_SIZE_BYTES,
     HMRC_SPI_COLLATED_ODS_URL,
     HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
     HMRC_SPI_INCOME_COMPONENTS,
@@ -26,12 +29,16 @@ from populace.build.uk_runtime.hmrc_income import (
 )
 from populace.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+    SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
     SPI_DONOR_REQUIRED_COLUMNS,
+    SPI_DONOR_SHA256,
+    SPI_DONOR_SIZE_BYTES,
     SPI_DONOR_UKDS_STUDY,
     SPI_DONOR_VINTAGE,
-    SPI_INCOME_SOURCE_COLUMNS,
+    SPI_HMRC_EMPLOYED_INCOME_FORMULA,
+    SPI_QRF_SOURCE_COLUMNS,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     SPI_TI_IDENTITY_ABS_TOLERANCE_GBP,
 )
@@ -39,6 +46,11 @@ from populace.build.uk_runtime.spi_support import (
     DEFAULT_SPI_PRIOR_MASS_SHARE,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,
+    SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
+    SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_REPLACEMENT_STRATA_COLUMNS,
@@ -58,6 +70,7 @@ HMRC_DISTRIBUTIONAL_INPUTS = (
 
 _EXPECTED_OPERATION_KINDS = (
     "verify_certified_candidate",
+    "require_frs_hmrc_employment_crosswalk",
     "replace_zero_weight_spi_support",
     "strict_read_private_table",
     "fit_weighted_qrf_stage1",
@@ -147,6 +160,18 @@ def assert_uk_hmrc_income_source_contract_current(
     _expect(failures, "qrf_donor.doi", donor.get("doi"), SPI_DONOR_DOI)
     _expect(
         failures,
+        "qrf_donor.sha256",
+        donor.get("sha256"),
+        SPI_DONOR_SHA256,
+    )
+    _expect(
+        failures,
+        "qrf_donor.size_bytes",
+        donor.get("size_bytes"),
+        SPI_DONOR_SIZE_BYTES,
+    )
+    _expect(
+        failures,
         "qrf_donor.runtime_sha256_required",
         donor.get("runtime_sha256_required"),
         True,
@@ -194,6 +219,24 @@ def assert_uk_hmrc_income_source_contract_current(
         surface.get("runtime_sha256_required"),
         True,
     )
+    _expect(
+        failures,
+        "calibration_surface.sha256",
+        surface.get("sha256"),
+        HMRC_SPI_COLLATED_ODS_SHA256,
+    )
+    _expect(
+        failures,
+        "calibration_surface.size_bytes",
+        surface.get("size_bytes"),
+        HMRC_SPI_COLLATED_ODS_SIZE_BYTES,
+    )
+    _expect(
+        failures,
+        "calibration_surface.mime_type",
+        surface.get("mime_type"),
+        HMRC_SPI_COLLATED_ODS_MIME_TYPE,
+    )
 
     operations = _keyed_items(
         stage.get("operations"),
@@ -217,6 +260,49 @@ def assert_uk_hmrc_income_source_contract_current(
     verify = operations.get("verify_certified_candidate", {})
     _expect(failures, "verify.artifact", verify.get("artifact"), "base_candidate")
     _expect(failures, "verify.fail_on_mismatch", verify.get("fail_on_mismatch"), True)
+
+    frs_crosswalk = operations.get("require_frs_hmrc_employment_crosswalk", {})
+    normalized_constituents = (
+        *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+        SPI_HMRC_OTHER_INCOME_COLUMN,
+        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.normalized_constituents",
+        tuple(frs_crosswalk.get("normalized_constituents", ())),
+        normalized_constituents,
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.status",
+        frs_crosswalk.get("status"),
+        "blocked_pending_reviewed_frs_decomposition",
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.employed_income_formula",
+        frs_crosswalk.get("employed_income_formula"),
+        SPI_HMRC_EMPLOYED_INCOME_FORMULA,
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.current_candidate_missing_all_normalized_constituents",
+        frs_crosswalk.get("current_candidate_missing_all_normalized_constituents"),
+        True,
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.forbid_proxy_substitution",
+        tuple(frs_crosswalk.get("forbid_proxy_substitution", ())),
+        ("employment_income", "miscellaneous_income"),
+    )
+    _expect(
+        failures,
+        "frs_crosswalk.fail_on_missing_constituent",
+        frs_crosswalk.get("fail_on_missing_constituent"),
+        True,
+    )
 
     prior = operations.get("replace_zero_weight_spi_support", {})
     _expect(failures, "prior.existing_channel", prior.get("existing_channel"), "spi")
@@ -337,8 +423,28 @@ def assert_uk_hmrc_income_source_contract_current(
             stage1.get("source_columns"), "stage1.source_columns", failures
         ).items()
     }
+    _expect(failures, "stage1.source_columns", stage1_sources, SPI_QRF_SOURCE_COLUMNS)
+    derived_policyengine = _mapping(
+        stage1.get("derived_policyengine_outputs"),
+        "stage1.derived_policyengine_outputs",
+        failures,
+    )
+    employment_derivation = _mapping(
+        derived_policyengine.get("employment_income"),
+        "stage1.derived_policyengine_outputs.employment_income",
+        failures,
+    )
     _expect(
-        failures, "stage1.source_columns", stage1_sources, SPI_INCOME_SOURCE_COLUMNS
+        failures,
+        "stage1.derived_policyengine_outputs.employment_income.source_columns",
+        tuple(employment_derivation.get("source_columns", ())),
+        SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS["employment_income"],
+    )
+    _expect(
+        failures,
+        "stage1.derived_policyengine_outputs.employment_income.derive_after_draw",
+        employment_derivation.get("derive_after_draw"),
+        True,
     )
     _expect(
         failures,
@@ -351,6 +457,18 @@ def assert_uk_hmrc_income_source_contract_current(
         "stage1.ti_identity_absolute_tolerance_gbp",
         stage1.get("ti_identity_absolute_tolerance_gbp"),
         SPI_TI_IDENTITY_ABS_TOLERANCE_GBP,
+    )
+    _expect(
+        failures,
+        "stage1.source_ti_identity_fields",
+        tuple(stage1.get("source_ti_identity_fields", ())),
+        ("TI", "TEI", "TII"),
+    )
+    _expect(
+        failures,
+        "stage1.stochastic_aggregates_forbidden",
+        tuple(stage1.get("stochastic_aggregates_forbidden", ())),
+        SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
     )
     for flag in ("joint_draw", "require_all_predictors", "require_all_outputs"):
         _expect(failures, f"stage1.{flag}", stage1.get(flag), True)
@@ -514,6 +632,18 @@ def assert_uk_hmrc_income_source_contract_current(
     )
     _expect(
         failures,
+        "calibration.employment_measure",
+        calibration.get("employment_measure"),
+        SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    )
+    _expect(
+        failures,
+        "calibration.require_identical_crosswalk_all_channels",
+        calibration.get("require_identical_crosswalk_all_channels"),
+        True,
+    )
+    _expect(
+        failures,
         "calibration.savings_interest_measure",
         calibration.get("savings_interest_measure"),
         "savings_interest_income - tax_free_savings_income; fail if tax-free "
@@ -624,7 +754,7 @@ def assert_uk_hmrc_income_source_contract_current(
         (
             *HMRC_SPI_INCOME_COMPONENTS,
             *HMRC_DISTRIBUTIONAL_INPUTS,
-            HMRC_ASSESSABLE_INCOME_COLUMN,
+            *SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
         ),
     )
 

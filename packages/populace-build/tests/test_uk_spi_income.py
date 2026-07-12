@@ -7,6 +7,9 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime import spi_income
+from populace.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+)
 from populace.build.uk_runtime.spi_income import (
     SPI_DONOR_FILENAME,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
@@ -15,6 +18,20 @@ from populace.build.uk_runtime.spi_income import (
 from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+    SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
+    SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN,
+    SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+    SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+    SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+    SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
     SPI_INCOME_IMPUTATION_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     create_uk_spi_support_tables,
@@ -43,6 +60,8 @@ class _FakeFittedQRF:
                 value = 2.0
             elif target == "tax_free_savings_income":
                 value = 5.0
+            elif target == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
+                value = -3.0
             values[target] = np.full(len(predictors), value, dtype=float)
         return pd.DataFrame(values, index=predictors.index)
 
@@ -72,7 +91,11 @@ class _FakeQRF:
         return _FakeFittedQRF(tuple(targets), resolved.kind.value)
 
 
-def _dead_support(*, drop_stage2: str | None = None):
+def _dead_support(
+    *,
+    drop_stage2: str | None = None,
+    drop_hmrc_leaf: str | None = None,
+):
     household = pd.DataFrame(
         {
             "household_id": np.arange(1, 5, dtype="int64"),
@@ -95,6 +118,24 @@ def _dead_support(*, drop_stage2: str | None = None):
             position + 4,
             dtype=float,
         )
+    for position, column in enumerate(
+        (
+            *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+            SPI_HMRC_OTHER_INCOME_COLUMN,
+            SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+        ),
+        start=1,
+    ):
+        if column == drop_hmrc_leaf:
+            continue
+        if column == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
+            person_columns[column] = [-3.0, -1.0, 1.0, 3.0]
+        else:
+            person_columns[column] = np.arange(
+                position,
+                position + 4,
+                dtype=float,
+            )
     for position, column in enumerate(FRS_ONLY_SPI_FILL_PERSON_COLUMNS, start=1):
         if column in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS or column == drop_stage2:
             continue
@@ -103,6 +144,7 @@ def _dead_support(*, drop_stage2: str | None = None):
             position + 4,
             dtype=float,
         )
+    person_columns["tax_free_savings_income"] = np.zeros(4, dtype=float)
     person = pd.DataFrame(person_columns)
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})
     dead = create_uk_spi_support_tables(
@@ -135,7 +177,7 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             "INCPBEN": [0.0, 0.0, 0.0, 0.0],
             "OSSBEN": [0.0, 0.0, 0.0, 0.0],
             "UBISJA": [0.0, 0.0, 0.0, 0.0],
-            "MOTHINC": [0.0, 0.0, 0.0, 0.0],
+            "MOTHINC": [-25.0, 0.0, 75.0, -50.0],
             "OTHERINC": [0.0, 0.0, 0.0, 0.0],
             "PROFITS": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
             "CAPALL": [0.0, 100.0, 200.0, 300.0],
@@ -161,20 +203,26 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
     self_employment = (donor["PROFITS"] - donor["CAPALL"] - donor["LOSSBF"]).clip(
         lower=0.0
     )
-    donor["TI"] = (
+    donor["TEI"] = (
         employment
         + donor["OTHERINC"]
         + donor["SRP"]
         + donor["PENSION"]
         + self_employment
-        + donor["OTHERINV"]
-        + donor["DIVIDENDS"]
-        + donor["INCPROP"]
-        + donor["INCBBS"]
     )
+    donor["TII"] = (
+        donor["OTHERINV"] + donor["DIVIDENDS"] + donor["INCPROP"] + donor["INCBBS"]
+    )
+    donor["TI"] = donor["TEI"] + donor["TII"]
     if drop is not None:
         donor = donor.drop(columns=[drop])
     donor.to_csv(path, sep="\t", index=False)
+
+
+def _bypass_reviewed_donor_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the synthetic donor's non-production identity explicit in tests."""
+
+    monkeypatch.setattr(spi_income, "_verify_spi_donor_identity", lambda _: None)
 
 
 def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
@@ -187,6 +235,7 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     _FakeQRF.fit_weight_kinds = []
     _FakeQRF.fit_weight_values = []
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
 
     before = support.person.copy()
     result = impute_uk_spi_income_support(
@@ -205,7 +254,7 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     assert result.reviewed_absent_stage2_outputs == (SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS)
     assert result.donor_rows == 4
     assert len(result.donor_sha256) == 64
-    assert SPI_INCOME_QRF_OUTPUT_COLUMNS[-1] == "hmrc_spi_assessable_income"
+    assert HMRC_SPI_ASSESSABLE_INCOME_COLUMN not in SPI_INCOME_QRF_OUTPUT_COLUMNS
 
     channel = support_channel_column("person")
     spi_people = result.person[channel] == "spi"
@@ -214,6 +263,14 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
     assert result.person.loc[spi_people, "gift_aid"].eq(10.0).all()
     assert result.person.loc[spi_people, "charitable_investment_gifts"].eq(2.0).all()
+    assert (
+        result.person.loc[
+            spi_people,
+            SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+        ]
+        .eq(-3.0)
+        .all()
+    )
     assert result.person.loc[spi_people, "is_disabled_for_benefits"].all()
     assert {
         "aa_category",
@@ -226,6 +283,34 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         result.person.loc[base_people, before.columns],
         before.loc[base_people],
     )
+
+    expected_employed = (
+        np.maximum(
+            result.person[SPI_HMRC_PAY_COLUMN]
+            + result.person[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
+            - result.person[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
+            0.0,
+        )
+        + result.person[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
+        + result.person[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
+        + result.person[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
+        + result.person[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
+        + result.person[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
+    )
+    np.testing.assert_array_equal(
+        result.person[SPI_HMRC_EMPLOYED_INCOME_COLUMN],
+        expected_employed,
+    )
+    np.testing.assert_array_equal(
+        result.person[HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
+        result.person[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN]
+        + result.person[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+    )
+    signed_miscellaneous = result.person[
+        SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
+    ]
+    assert signed_miscellaneous.lt(0.0).any()
+    assert signed_miscellaneous.gt(0.0).any()
 
     spi_households = support.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
     assert support.household.loc[spi_households, "household_weight"].gt(0).all()
@@ -242,6 +327,7 @@ def test_spi_weighted_bootstrap_does_not_apply_fact_twice(
     _FakeQRF.fit_weight_kinds = []
     _FakeQRF.fit_weight_values = []
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
 
     result = impute_uk_spi_income_support(
         support,
@@ -259,6 +345,7 @@ def test_spi_qrf_fails_closed_on_missing_donor_component(monkeypatch, tmp_path) 
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path, drop="OTHERINV")
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
 
     with pytest.raises(ValueError, match="OTHERINV"):
         impute_uk_spi_income_support(
@@ -280,6 +367,48 @@ def test_spi_donor_preserves_documented_unattributed_sex_code(tmp_path) -> None:
     assert set(donor["gender"]) == {"UNKNOWN", "MALE", "FEMALE"}
 
 
+def test_spi_donor_keeps_narrow_pe_employment_and_broad_hmrc_measure(
+    tmp_path,
+) -> None:
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+
+    donor = spi_income._prepare_spi_donor(raw, seed=7)
+    expected_pe_employment = raw["PAY"] + raw["EPB"] + raw["TAXTERM"]
+    np.testing.assert_array_equal(
+        donor["employment_income"],
+        expected_pe_employment,
+    )
+    np.testing.assert_array_equal(
+        donor[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN],
+        raw["MOTHINC"],
+    )
+    assert donor[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN].lt(0.0).any()
+    assert donor[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN].gt(0.0).any()
+
+    derived = spi_income.derive_hmrc_income_auxiliaries(
+        donor.assign(tax_free_savings_income=0.0)
+    )
+    expected_hmrc_employed = (
+        (raw["PAY"] + raw["EPB"] - raw["EXPS"]).clip(lower=0.0)
+        + raw["INCPBEN"]
+        + raw["OSSBEN"]
+        + raw["TAXTERM"]
+        + raw["UBISJA"]
+        + raw["MOTHINC"]
+    )
+    np.testing.assert_array_equal(
+        derived[SPI_HMRC_EMPLOYED_INCOME_COLUMN],
+        expected_hmrc_employed,
+    )
+    np.testing.assert_array_equal(
+        derived[HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
+        derived[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN]
+        + derived[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+    )
+
+
 def test_spi_donor_rejects_undocumented_sex_code(tmp_path) -> None:
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -295,8 +424,27 @@ def test_spi_qrf_fails_closed_on_unreviewed_stage2_gap(monkeypatch, tmp_path) ->
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
 
     with pytest.raises(ValueError, match="universal_credit_reported"):
+        impute_uk_spi_income_support(
+            support,
+            donor_path,
+            donor_sample_size=None,
+        )
+
+
+def test_spi_qrf_fails_closed_on_missing_normalized_frs_hmrc_leaf(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    support = _dead_support(drop_hmrc_leaf=SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN)
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    with pytest.raises(ValueError, match=SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN):
         impute_uk_spi_income_support(
             support,
             donor_path,

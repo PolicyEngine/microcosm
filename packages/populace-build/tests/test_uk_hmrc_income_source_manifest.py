@@ -23,6 +23,12 @@ _COLLATED_ODS_URL = (
     "https://assets.publishing.service.gov.uk/media/"
     "69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods"
 )
+_COLLATED_ODS_SHA256 = (
+    "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e"
+)
+_COLLATED_ODS_SIZE_BYTES = 166_693
+_SPI_DONOR_SHA256 = "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66"
+_SPI_DONOR_SIZE_BYTES = 141_323_762
 _OFFICIAL_COMPONENTS = [
     "employment_income",
     "self_employment_income",
@@ -34,7 +40,6 @@ _OFFICIAL_COMPONENTS = [
     "other_investment_income",
 ]
 _STAGE1_OUTPUTS = [
-    "employment_income",
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
@@ -43,6 +48,33 @@ _STAGE1_OUTPUTS = [
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits",
+    "hmrc_spi_employment_expenses",
+    "hmrc_spi_incapacity_benefit_income",
+    "hmrc_spi_other_social_security_income",
+    "hmrc_spi_taxable_termination_pay",
+    "hmrc_spi_unemployment_benefit_income",
+    "hmrc_spi_miscellaneous_employment_income",
+    "hmrc_spi_other_income",
+    "hmrc_spi_state_pension_income",
+]
+_FRS_HMRC_NORMALIZED_CONSTITUENTS = [
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits",
+    "hmrc_spi_employment_expenses",
+    "hmrc_spi_incapacity_benefit_income",
+    "hmrc_spi_other_social_security_income",
+    "hmrc_spi_taxable_termination_pay",
+    "hmrc_spi_unemployment_benefit_income",
+    "hmrc_spi_miscellaneous_employment_income",
+    "hmrc_spi_other_income",
+    "hmrc_spi_state_pension_income",
+]
+_DERIVED_AUXILIARIES = [
+    "hmrc_spi_employed_income",
+    "hmrc_spi_total_earned_income",
+    "hmrc_spi_total_investment_income",
     "hmrc_spi_assessable_income",
 ]
 _COMPONENT_COLUMNS = {
@@ -101,10 +133,11 @@ def test__given_uk_hmrc_manifest__then_one_scoped_stage_is_declared() -> None:
         *_OFFICIAL_COMPONENTS,
         "gift_aid",
         "charitable_investment_gifts",
-        "hmrc_spi_assessable_income",
+        *_DERIVED_AUXILIARIES,
     ]
     assert [operation["kind"] for operation in stage["operations"]] == [
         "verify_certified_candidate",
+        "require_frs_hmrc_employment_crosswalk",
         "replace_zero_weight_spi_support",
         "strict_read_private_table",
         "fit_weighted_qrf_stage1",
@@ -130,12 +163,18 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     assert donor["ukds_study_number"] == "SN 9422"
     assert donor["doi"] == "10.5255/UKDA-SN-9422-1"
     assert donor["filename"] == "put2223uk.tab"
+    assert donor["sha256"] == _SPI_DONOR_SHA256
+    assert donor["size_bytes"] == _SPI_DONOR_SIZE_BYTES
     assert donor["access"] == "private_local_input"
+    assert donor["locator"] == "caller-supplied local input"
     assert donor["runtime_sha256_required"] is True
 
     surface = artifacts["calibration_surface"]
     assert surface["vintage"] == "2023-24"
     assert surface["locator"] == _COLLATED_ODS_URL
+    assert surface["sha256"] == _COLLATED_ODS_SHA256
+    assert surface["size_bytes"] == _COLLATED_ODS_SIZE_BYTES
+    assert surface["mime_type"] == ("application/vnd.oasis.opendocument.spreadsheet")
     assert surface["sheets"] == ["Table_3_6", "Table_3_7"]
     assert surface["mapped_build_period"] == 2023
     assert surface["period_mapping"] == "tax_year_start"
@@ -148,6 +187,28 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     )
     assert base["size_bytes"] == 1_315_880_118
     assert base["runtime_sha256_required"] is True
+
+
+def test__given_frs_channel__then_hmrc_crosswalk_fails_closed_without_leaves() -> None:
+    operations = _by_kind(_stage(_manifest()))
+    crosswalk = operations["require_frs_hmrc_employment_crosswalk"]
+
+    assert crosswalk["normalized_constituents"] == _FRS_HMRC_NORMALIZED_CONSTITUENTS
+    assert crosswalk["status"] == "blocked_pending_reviewed_frs_decomposition"
+    assert crosswalk["current_candidate_missing_all_normalized_constituents"] is True
+    assert crosswalk["forbid_proxy_substitution"] == [
+        "employment_income",
+        "miscellaneous_income",
+    ]
+    assert crosswalk["fail_on_missing_constituent"] is True
+    assert crosswalk["employed_income_formula"] == (
+        "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
+        "hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + "
+        "hmrc_spi_other_social_security_income + "
+        "hmrc_spi_taxable_termination_pay + "
+        "hmrc_spi_unemployment_benefit_income + "
+        "hmrc_spi_miscellaneous_employment_income"
+    )
 
 
 def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> None:
@@ -182,12 +243,34 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     assert stage1["fit_weight_kind"] == "design"
     assert stage1["double_apply_source_weight"] is False
     assert stage1["outputs"] == _STAGE1_OUTPUTS
+    employment_derivation = stage1["derived_policyengine_outputs"]["employment_income"]
+    assert employment_derivation["source_columns"] == [
+        "PAY",
+        "EPB",
+        "TAXTERM",
+    ]
+    assert employment_derivation["formula"] == (
+        "hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay"
+    )
+    assert employment_derivation["derive_after_draw"] is True
+    assert "employment_income" not in stage1["source_columns"]
+    assert "employment_income" not in stage1["outputs"]
     assert stage1["source_columns"]["other_investment_income"] == ["OTHERINV"]
-    assert stage1["source_columns"]["hmrc_spi_assessable_income"] == ["TI"]
-    assert stage1["ti_identity_absolute_tolerance_gbp"] == 100
+    assert stage1["source_columns"]["hmrc_spi_other_income"] == ["OTHERINC"]
+    assert stage1["source_columns"]["hmrc_spi_state_pension_income"] == ["SRP"]
+    assert stage1["ti_identity_absolute_tolerance_gbp"] == 5
+    assert stage1["source_ti_identity_fields"] == ["TI", "TEI", "TII"]
+    assert stage1["stochastic_aggregates_forbidden"] == _DERIVED_AUXILIARIES
+    assert all(
+        column not in stage1["source_columns"] for column in _DERIVED_AUXILIARIES
+    )
+    assert all(column not in stage1["outputs"] for column in _DERIVED_AUXILIARIES)
+    assert "TEI + TII" in stage1["assessable_income_source_semantics"]
+    assert "deterministic post-draw" in stage1["assessable_income_source_semantics"]
     assert stage1["source_columns"]["gift_aid"] == ["GIFTAID"]
     assert stage1["source_columns"]["charitable_investment_gifts"] == ["GIFTINV"]
     assert "state_pension" not in stage1["outputs"]
+    assert stage1["joint_draw"] is True
     assert stage1["require_all_predictors"] is True
     assert stage1["require_all_outputs"] is True
 
@@ -304,13 +387,13 @@ def test__given_materialized_hmrc_targets__then_taxpayer_calibration_is_guarded(
     assert effective["fail_below_floor"] is True
 
 
-def test__given_standalone_contract__then_no_incumbent_data_package_is_required() -> (
-    None
-):
-    serialized = json.dumps(_manifest(), sort_keys=True).lower()
+def test__given_standalone_contract__then_sources_are_explicit_artifacts() -> None:
+    artifacts = _by_role(_stage(_manifest()))
 
-    assert "policyengine-" + "uk-data" not in serialized
-    assert "policyengine_" + "uk_data" not in serialized
+    assert artifacts["qrf_donor"]["access"] == "private_local_input"
+    assert artifacts["qrf_donor"]["locator"] == "caller-supplied local input"
+    assert artifacts["calibration_surface"]["locator"] == _COLLATED_ODS_URL
+    assert all(artifact["runtime_sha256_required"] for artifact in artifacts.values())
 
 
 def test_runtime_source_contract_matches_committed_manifest() -> None:
@@ -331,28 +414,48 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             "calibration_surface.vintage",
         ),
         (
+            ("stages", 0, "artifacts", 0, "sha256"),
+            "0" * 64,
+            "qrf_donor.sha256",
+        ),
+        (
+            ("stages", 0, "artifacts", 1, "size_bytes"),
+            1,
+            "calibration_surface.size_bytes",
+        ),
+        (
+            ("stages", 0, "operations", 1, "status"),
+            "ready",
+            "frs_crosswalk.status",
+        ),
+        (
             (
                 "stages",
                 0,
                 "operations",
-                1,
+                2,
                 "spi_prior_national_household_mass_share",
             ),
             0.25,
             "prior.mass_share",
         ),
         (
-            ("stages", 0, "operations", 3, "sample_size"),
+            ("stages", 0, "operations", 4, "sample_size"),
             50_000,
             "stage1.sample_size",
         ),
         (
-            ("stages", 0, "operations", 3, "outputs"),
+            ("stages", 0, "operations", 4, "outputs"),
             ["employment_income"],
             "stage1.outputs",
         ),
         (
-            ("stages", 0, "operations", 4, "reviewed_absent_outputs"),
+            ("stages", 0, "operations", 4, "source_ti_identity_fields"),
+            ["TI"],
+            "stage1.source_ti_identity_fields",
+        ),
+        (
+            ("stages", 0, "operations", 5, "reviewed_absent_outputs"),
             {"maternity_allowance_reported": "changed"},
             "stage2.reviewed_absent_outputs",
         ),
@@ -361,7 +464,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
                 "stages",
                 0,
                 "operations",
-                5,
+                6,
                 "component_columns",
                 "savings_interest_income",
                 "amount_column_index",
@@ -370,22 +473,22 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             "materialize.component_columns",
         ),
         (
-            ("stages", 0, "operations", 7, "max_weight_ratio"),
+            ("stages", 0, "operations", 8, "max_weight_ratio"),
             10,
             "calibration.max_weight_ratio",
         ),
         (
-            ("stages", 0, "operations", 7, "maximum_abs_relative_error"),
+            ("stages", 0, "operations", 8, "maximum_abs_relative_error"),
             0.10,
             "calibration.maximum_abs_relative_error",
         ),
         (
-            ("stages", 0, "operations", 8, "required_support_channel"),
+            ("stages", 0, "operations", 9, "required_support_channel"),
             "frs",
             "effective.required_support_channel",
         ),
         (
-            ("stages", 0, "operations", 8, "minimum_nondefault_mass_share"),
+            ("stages", 0, "operations", 9, "minimum_nondefault_mass_share"),
             0.01,
             "effective.minimum_nondefault_mass_share",
         ),

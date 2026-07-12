@@ -26,6 +26,9 @@
           "ukds_study_number": "SN 9422",
           "doi": "10.5255/UKDA-SN-9422-1",
           "filename": "put2223uk.tab",
+          "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+          "size_bytes": 141323762,
+          "reviewed_source": "PolicyEngine licensed copy from policyengine/policyengine-uk-data-private on Hugging Face, spi_2022_23.zip",
           "access": "private_local_input",
           "locator": "caller-supplied local input",
           "runtime_sha256_required": true
@@ -39,6 +42,9 @@
           "vintage": "2023-24",
           "tax_year_start": 2023,
           "locator": "https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods",
+          "sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+          "size_bytes": 166693,
+          "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
           "sheets": [
             "Table_3_6",
             "Table_3_7"
@@ -54,6 +60,30 @@
           "artifact": "base_candidate",
           "runtime_sha256_required": true,
           "fail_on_mismatch": true
+        },
+        {
+          "kind": "require_frs_hmrc_employment_crosswalk",
+          "population": "certified_populace_uk_candidate_base_channel",
+          "normalized_constituents": [
+            "hmrc_spi_pay",
+            "hmrc_spi_employment_benefits",
+            "hmrc_spi_employment_expenses",
+            "hmrc_spi_incapacity_benefit_income",
+            "hmrc_spi_other_social_security_income",
+            "hmrc_spi_taxable_termination_pay",
+            "hmrc_spi_unemployment_benefit_income",
+            "hmrc_spi_miscellaneous_employment_income",
+            "hmrc_spi_other_income",
+            "hmrc_spi_state_pension_income"
+          ],
+          "employed_income_formula": "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + hmrc_spi_other_social_security_income + hmrc_spi_taxable_termination_pay + hmrc_spi_unemployment_benefit_income + hmrc_spi_miscellaneous_employment_income",
+          "status": "blocked_pending_reviewed_frs_decomposition",
+          "current_candidate_missing_all_normalized_constituents": true,
+          "forbid_proxy_substitution": [
+            "employment_income",
+            "miscellaneous_income"
+          ],
+          "fail_on_missing_constituent": true
         },
         {
           "kind": "replace_zero_weight_spi_support",
@@ -102,6 +132,8 @@
             "OTHERINV",
             "GIFTAID",
             "GIFTINV",
+            "TEI",
+            "TII",
             "TI"
           ],
           "runtime_sha256_required": true,
@@ -128,16 +160,6 @@
           "fit_weight_kind": "design",
           "double_apply_source_weight": false,
           "source_columns": {
-            "employment_income": [
-              "PAY",
-              "EPB",
-              "EXPS",
-              "INCPBEN",
-              "OSSBEN",
-              "TAXTERM",
-              "UBISJA",
-              "MOTHINC"
-            ],
             "self_employment_income": [
               "PROFITS",
               "CAPALL",
@@ -164,12 +186,49 @@
             "charitable_investment_gifts": [
               "GIFTINV"
             ],
-            "hmrc_spi_assessable_income": [
-              "TI"
+            "hmrc_spi_pay": [
+              "PAY"
+            ],
+            "hmrc_spi_employment_benefits": [
+              "EPB"
+            ],
+            "hmrc_spi_employment_expenses": [
+              "EXPS"
+            ],
+            "hmrc_spi_incapacity_benefit_income": [
+              "INCPBEN"
+            ],
+            "hmrc_spi_other_social_security_income": [
+              "OSSBEN"
+            ],
+            "hmrc_spi_taxable_termination_pay": [
+              "TAXTERM"
+            ],
+            "hmrc_spi_unemployment_benefit_income": [
+              "UBISJA"
+            ],
+            "hmrc_spi_miscellaneous_employment_income": [
+              "MOTHINC"
+            ],
+            "hmrc_spi_other_income": [
+              "OTHERINC"
+            ],
+            "hmrc_spi_state_pension_income": [
+              "SRP"
             ]
           },
+          "derived_policyengine_outputs": {
+            "employment_income": {
+              "source_columns": [
+                "PAY",
+                "EPB",
+                "TAXTERM"
+              ],
+              "formula": "hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay",
+              "derive_after_draw": true
+            }
+          },
           "outputs": [
-            "employment_income",
             "self_employment_income",
             "savings_interest_income",
             "dividend_income",
@@ -178,14 +237,35 @@
             "other_investment_income",
             "gift_aid",
             "charitable_investment_gifts",
-            "hmrc_spi_assessable_income"
+            "hmrc_spi_pay",
+            "hmrc_spi_employment_benefits",
+            "hmrc_spi_employment_expenses",
+            "hmrc_spi_incapacity_benefit_income",
+            "hmrc_spi_other_social_security_income",
+            "hmrc_spi_taxable_termination_pay",
+            "hmrc_spi_unemployment_benefit_income",
+            "hmrc_spi_miscellaneous_employment_income",
+            "hmrc_spi_other_income",
+            "hmrc_spi_state_pension_income"
           ],
           "joint_draw": true,
           "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
-          "employment_income_source_semantics": "max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC",
+          "employment_income_source_semantics": "PolicyEngine input = PAY + EPB + TAXTERM, matching the pinned enhanced-FRS pipeline; it is not the Table 3.6 measure",
+          "hmrc_employed_income_source_semantics": "Derived after each draw as max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC, using normalized leaves identically on FRS and SPI channels",
           "self_employment_income_source_semantics": "max(0, PROFITS - CAPALL - LOSSBF)",
-          "assessable_income_source_semantics": "TI = TEI + TII using the 2022-23 Public Use Tape documented identity",
-          "ti_identity_absolute_tolerance_gbp": 100,
+          "assessable_income_source_semantics": "QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly",
+          "source_ti_identity_fields": [
+            "TI",
+            "TEI",
+            "TII"
+          ],
+          "ti_identity_absolute_tolerance_gbp": 5,
+          "stochastic_aggregates_forbidden": [
+            "hmrc_spi_employed_income",
+            "hmrc_spi_total_earned_income",
+            "hmrc_spi_total_investment_income",
+            "hmrc_spi_assessable_income"
+          ],
           "require_all_predictors": true,
           "require_all_outputs": true
         },
@@ -366,7 +446,10 @@
             "other_investment_income"
           ],
           "breakdown_variable": "hmrc_spi_assessable_income",
-          "breakdown_definition": "authoritative SPI TI draw on rebuilt SPI rows; PolicyEngine total_income + other_investment_income - tax_free_savings_income on base rows",
+          "breakdown_definition": "deterministic TEI + TII from the same normalized post-source leaves on every FRS and SPI row",
+          "employment_measure": "hmrc_spi_employed_income",
+          "employment_measure_definition": "the require_frs_hmrc_employment_crosswalk formula, applied identically on every FRS and SPI row",
+          "require_identical_crosswalk_all_channels": true,
           "savings_interest_measure": "savings_interest_income - tax_free_savings_income; fail if tax-free exceeds gross",
           "taxpayer_mask": "hmrc_spi_taxpayer",
           "count_condition": "component > 0",
@@ -427,9 +510,12 @@
         "other_investment_income",
         "gift_aid",
         "charitable_investment_gifts",
+        "hmrc_spi_employed_income",
+        "hmrc_spi_total_earned_income",
+        "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Current-source contract: the private 2022-23 SPI donor trains the two guarded QRF stages; the public 2023-24 HMRC Tables 3.6/3.7 surface maps to build period 2023 by tax-year start. The certified base's dead SPI rows are replaced once and receive a reviewed 50% importance-weight prior with national household mass conserved. Savings interest and other investment income are explicit published components. SPI TI is carried as an auxiliary joint draw for correct band placement, while PolicyEngine's gross savings input remains intact and only taxable savings enters HMRC measures. State pension is target-only, while Gift Aid and charitable investment gifts are donor outputs and are not HMRC income-band components. The two reviewed stage-2 absences are declared explicitly; every other source/output/target fails closed."
+      "notes": "Current-source contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates, with TI exactly equal to TEI + TII. PolicyEngine employment_income stays PAY + EPB + TAXTERM. Table 3.6 uses a separate broad HMRC auxiliary built from one normalized constituent crosswalk on both channels. The certified candidate does not retain those normalized FRS constituents, so the family fails closed before source I/O pending a reviewed FRS decomposition stage. No employment_income or miscellaneous_income proxy is permitted."
     }
   ]
 }

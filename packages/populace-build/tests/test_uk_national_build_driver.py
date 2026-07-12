@@ -56,7 +56,7 @@ def test_national_build_driver_uses_standalone_national_seam(
             input_coverage=SimpleNamespace(
                 passed=True,
                 failures=(),
-                details={"required_columns": 132},
+                details={"required_columns": 145},
             ),
         )
 
@@ -125,10 +125,7 @@ def test_national_driver_requires_every_input_output_path_to_be_distinct(
     right,
 ) -> None:
     builder = _load_builder_module()
-    paths = {
-        name: tmp_path / f"{name}.artifact"
-        for name in _PATH_ARGUMENTS
-    }
+    paths = {name: tmp_path / f"{name}.artifact" for name in _PATH_ARGUMENTS}
     collision = tmp_path / "collision.artifact"
     paths[left] = collision
     paths[right] = collision
@@ -144,10 +141,7 @@ def test_national_driver_rejects_case_only_path_aliases(tmp_path) -> None:
     builder = _load_builder_module()
     candidate = tmp_path / "Candidate.H5"
     candidate.write_bytes(b"certified base")
-    paths = {
-        name: tmp_path / f"{name}.artifact"
-        for name in _PATH_ARGUMENTS
-    }
+    paths = {name: tmp_path / f"{name}.artifact" for name in _PATH_ARGUMENTS}
     paths["input_h5"] = candidate
     paths["coverage_path"] = tmp_path / "candidate.h5"
 
@@ -163,10 +157,7 @@ def test_national_driver_rejects_existing_hardlink_aliases(tmp_path) -> None:
     alias = tmp_path / "coverage.json"
     candidate.write_bytes(b"certified base")
     alias.hardlink_to(candidate)
-    paths = {
-        name: tmp_path / f"{name}.artifact"
-        for name in _PATH_ARGUMENTS
-    }
+    paths = {name: tmp_path / f"{name}.artifact" for name in _PATH_ARGUMENTS}
     paths["input_h5"] = candidate
     paths["coverage_path"] = alias
 

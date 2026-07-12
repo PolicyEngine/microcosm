@@ -287,9 +287,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
         value_columns = set().union(*(set(v) for v in columns_by_entity.values()))
         value_columns -= structural
         formula_owned_overrides = sorted(
-            (value_columns & all_engine_names)
-            - input_names
-            - set(LOADER_INPUT_ALIASES)
+            (value_columns & all_engine_names) - input_names - set(LOADER_INPUT_ALIASES)
         )
         unknown = sorted(value_columns - all_engine_names)
 
@@ -346,7 +344,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
                 "all engine-known columns, including formula-owned overrides"
             ),
             "input_variable_count": len(input_names),
-            "engine_known_loader_variable_count": len(effective_input_names),
+            "engine_known_persisted_variable_count": len(effective_input_names),
             "h5_input_aliases": dict(sorted(LOADER_INPUT_ALIASES.items())),
             "structural_columns_excluded": list(STRUCTURAL_COLUMNS),
             "formula_owned_persisted_overrides_included": formula_owned_overrides,

@@ -1,7 +1,7 @@
 {
- "description": "Frozen enhanced-FRS parity reference for the UK release input-coverage contract. Every PolicyEngine-UK input leaf the pinned artifact populates is recorded as its unweighted owning-entity nonzero share. This includes formula-owned persisted overrides because the UK Simulation loader passes every engine-known H5 column to set_input; pipeline scratch columns, structural IDs, and all-zero loader layers are not requirements.",
+ "description": "Frozen enhanced-FRS parity reference for the UK release input-coverage contract. Every PolicyEngine-UK loader variable the pinned artifact populates is recorded as its unweighted owning-entity nonzero share. This includes formula-owned persisted overrides because the UK Simulation loader passes every engine-known H5 column to set_input; pipeline scratch columns, structural IDs, and all-zero loader layers are not requirements.",
  "engine": {
-  "engine_known_loader_variable_count": 866,
+  "engine_known_persisted_variable_count": 866,
   "formula_owned_persisted_overrides_included": [
    "current_education",
    "is_benunit_head",

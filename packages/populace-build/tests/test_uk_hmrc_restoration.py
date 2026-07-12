@@ -26,6 +26,9 @@ from populace.build.uk_runtime.hmrc_restoration import (
 from populace.build.uk_runtime.national_build import UKNationalDataset
 from populace.build.uk_runtime.spi_income import UKSPIIncomeImputationResult
 from populace.build.uk_runtime.spi_support import (
+    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     UKSPISupportResult,
     support_channel_column,
 )
@@ -39,16 +42,21 @@ from populace.frame import (
 
 
 def _dataset() -> UKNationalDataset:
+    person = {
+        "person_id": [1],
+        "person_household_id": [1],
+        "person_benunit_id": [1],
+        "gift_aid": [0.0],
+        "charitable_investment_gifts": [0.0],
+    }
+    for column in (
+        *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
+        SPI_HMRC_OTHER_INCOME_COLUMN,
+        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    ):
+        person[column] = [0.0]
     return UKNationalDataset(
-        person=pd.DataFrame(
-            {
-                "person_id": [1],
-                "person_household_id": [1],
-                "person_benunit_id": [1],
-                "gift_aid": [0.0],
-                "charitable_investment_gifts": [0.0],
-            }
-        ),
+        person=pd.DataFrame(person),
         benunit=pd.DataFrame({"benunit_id": [1]}),
         household=pd.DataFrame(
             {
@@ -136,6 +144,7 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
         ),
         donor_path=donor_path,
         donor_sha256=hashlib.sha256(b"donor").hexdigest(),
+        donor_size_bytes=len(b"donor"),
         donor_rows=1,
         stage2_training_rows=1,
         spi_prediction_rows=1,
@@ -250,6 +259,35 @@ def test_stage_transform_retains_last_restoration_evidence(
 
     assert transform(dataset) is dataset
     assert transform.last_result is expected
+
+
+def test_restoration_blocks_before_source_io_when_frs_crosswalk_is_missing(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    dataset = _dataset()
+    missing = SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS[0]
+    dataset = dataset.with_tables(person=dataset.person.drop(columns=[missing]))
+    source_called = False
+
+    def should_not_read_sources(*_args, **_kwargs):
+        nonlocal source_called
+        source_called = True
+        raise AssertionError("FRS crosswalk preflight must run before source I/O")
+
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "materialize_hmrc_spi_income_band_targets",
+        should_not_read_sources,
+    )
+    with pytest.raises(ValueError, match="employment_income is not a like-for-like"):
+        restore_uk_hmrc_income_family(
+            dataset,
+            spi_tab_path=tmp_path / "put2223uk.tab",
+            hmrc_ods_path=tmp_path / "hmrc.ods",
+            certified_candidate=_candidate_identity(tmp_path),
+        )
+    assert not source_called
 
 
 @pytest.mark.parametrize(

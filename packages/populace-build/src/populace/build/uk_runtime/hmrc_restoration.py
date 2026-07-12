@@ -39,6 +39,7 @@ from populace.build.uk_runtime.release_input_coverage import (
 from populace.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     UKSPIIncomeImputationResult,
+    assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
 )
 from populace.build.uk_runtime.spi_support import (
@@ -110,11 +111,14 @@ class UKHMRCIncomeRestorationResult:
                 "spi_donor": {
                     "path": str(self.imputation.donor_path),
                     "sha256": self.imputation.donor_sha256,
+                    "size_bytes": self.imputation.donor_size_bytes,
                     "rows_used": self.imputation.donor_rows,
                 },
                 "hmrc_surface": {
                     "path": str(self.source_targets.source.local_path),
                     "sha256": self.source_targets.source.sha256,
+                    "size_bytes": self.source_targets.source.size_bytes,
+                    "mime_type": self.source_targets.source.mime_type,
                     "publication_url": self.source_targets.source.publication_url,
                     "ods_url": self.source_targets.source.ods_url,
                     "tables": list(self.source_targets.source.table_names),
@@ -263,6 +267,10 @@ def restore_uk_hmrc_income_family(
         maximum_abs_relative_error=maximum_abs_relative_error,
     )
     validate_uk_national_dataset(dataset)
+    # Q2 is a cheap, fail-closed preflight. Do not hash private sources,
+    # rebuild support, fit QRFs, or emit staging artifacts until the FRS
+    # channel exposes the same normalized HMRC leaves used by the SPI donor.
+    assert_frs_hmrc_auxiliary_crosswalk_available(dataset.person)
     source_targets = materialize_hmrc_spi_income_band_targets(
         hmrc_ods_path,
         build_period=dataset.time_period,

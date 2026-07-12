@@ -51,9 +51,7 @@ HMRC_SPI_COLLATED_ODS_SHA256 = (
     "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e"
 )
 HMRC_SPI_COLLATED_ODS_SIZE_BYTES = 166_693
-HMRC_SPI_COLLATED_ODS_MIME_TYPE = (
-    "application/vnd.oasis.opendocument.spreadsheet"
-)
+HMRC_SPI_COLLATED_ODS_MIME_TYPE = "application/vnd.oasis.opendocument.spreadsheet"
 HMRC_SPI_SOURCE_VINTAGE = "2023-24"
 HMRC_SPI_SOURCE_TAX_YEAR = HMRC_SPI_SOURCE_VINTAGE
 HMRC_SPI_SOURCE_TAX_YEAR_START = 2023
@@ -106,6 +104,8 @@ class HMRCIncomeSourceProvenance:
     source_tax_year_start: int
     build_period: str
     table_names: tuple[str, ...]
+    size_bytes: int | None = None
+    mime_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -255,10 +255,7 @@ _TABLE_LAYOUTS = (
                     "Interest from building societies and banks "
                     "(Number of individuals) [Note 3, 4]"
                 ),
-                (
-                    "Interest from building societies and banks "
-                    "(Amount) [Note 3, 4]"
-                ),
+                ("Interest from building societies and banks (Amount) [Note 3, 4]"),
             ),
             _ComponentColumns(
                 "dividend_income",
@@ -375,6 +372,8 @@ def materialize_hmrc_spi_income_band_targets(
         source_tax_year_start=HMRC_SPI_SOURCE_TAX_YEAR_START,
         build_period=period,
         table_names=tuple(layout.sheet_name for layout in _TABLE_LAYOUTS),
+        size_bytes=size_bytes,
+        mime_type=HMRC_SPI_COLLATED_ODS_MIME_TYPE,
     )
 
     records: list[HMRCIncomeBandTargetRecord] = []
@@ -457,9 +456,7 @@ def _ods_table_from_element(
     rows: list[_ODSRowRun] = []
     logical_row_position = 0
     significant_column_count = 0
-    for physical_row_position, row_element in enumerate(
-        element.iter(_ODF_ROW_TAG)
-    ):
+    for physical_row_position, row_element in enumerate(element.iter(_ODF_ROW_TAG)):
         repeat = _positive_repeat(
             row_element.attrib.get(_ODF_ROW_REPEAT_ATTRIBUTE),
             label=f"{sheet_name} row {physical_row_position} repeat",
@@ -540,7 +537,9 @@ def _ods_cell_value(
         try:
             return float(raw_value) if raw_value is not None else math.nan
         except ValueError as exc:
-            raise ValueError(f"{label} has invalid numeric ODS value {raw_value!r}.") from exc
+            raise ValueError(
+                f"{label} has invalid numeric ODS value {raw_value!r}."
+            ) from exc
     if value_type == "boolean":
         raw_value = cell.attrib.get(_ODF_BOOLEAN_VALUE_ATTRIBUTE)
         if raw_value not in {"true", "false"}:
@@ -566,7 +565,9 @@ def _positive_repeat(raw_value: str | None, *, label: str) -> int:
     try:
         repeat = int(raw_value)
     except ValueError as exc:
-        raise ValueError(f"{label} must be a positive integer, got {raw_value!r}.") from exc
+        raise ValueError(
+            f"{label} must be a positive integer, got {raw_value!r}."
+        ) from exc
     if repeat <= 0:
         raise ValueError(f"{label} must be a positive integer, got {raw_value!r}.")
     return repeat

@@ -132,16 +132,6 @@ def _hf_token() -> str | None:
     return None
 
 
-def _cached_candidate_blob() -> Path | None:
-    try:
-        from huggingface_hub.constants import HF_HUB_CACHE
-    except ImportError:
-        return None
-    repo_folder = f"datasets--{CANDIDATE_REPO_ID.replace('/', '--')}"
-    candidate = Path(HF_HUB_CACHE) / repo_folder / "blobs" / CANDIDATE_SHA256
-    return candidate if candidate.is_file() else None
-
-
 def resolve_candidate_h5(explicit: Path | None = None) -> Path:
     if explicit is not None:
         candidate = explicit.expanduser().resolve()
@@ -162,17 +152,15 @@ def resolve_candidate_h5(explicit: Path | None = None) -> Path:
     if isinstance(cached, str):
         candidate = Path(cached)
     else:
-        candidate = _cached_candidate_blob()
-        if candidate is None:
-            candidate = Path(
-                hf_hub_download(
-                    repo_id=CANDIDATE_REPO_ID,
-                    filename=CANDIDATE_FILENAME,
-                    revision=CANDIDATE_REVISION,
-                    repo_type=CANDIDATE_REPO_TYPE,
-                    token=_hf_token(),
-                )
+        candidate = Path(
+            hf_hub_download(
+                repo_id=CANDIDATE_REPO_ID,
+                filename=CANDIDATE_FILENAME,
+                revision=CANDIDATE_REVISION,
+                repo_type=CANDIDATE_REPO_TYPE,
+                token=_hf_token(),
             )
+        )
     _verify_candidate(candidate)
     return candidate
 
@@ -464,7 +452,9 @@ def _validate_known_gaps(
                 "reference": reference_entities[name],
                 "candidate": normalized_evidence_entities[name],
             }
-            for name in sorted(set(reference_entities) & set(normalized_evidence_entities))
+            for name in sorted(
+                set(reference_entities) & set(normalized_evidence_entities)
+            )
             if reference_entities[name] != normalized_evidence_entities[name]
         }
         raise ValueError(
@@ -597,6 +587,7 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
     required_artifacts = {"qrf_donor", "calibration_surface"}
     missing_artifacts = sorted(required_artifacts - set(artifacts))
     required_operations = {
+        "require_frs_hmrc_employment_crosswalk",
         "replace_zero_weight_spi_support",
         "derive_taxpayer_mask",
         "calibrate_weighted_income_bands",
@@ -610,6 +601,7 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             f"missing_operations={missing_operations}."
         )
     calibration = operations["calibrate_weighted_income_bands"]
+    frs_crosswalk = operations["require_frs_hmrc_employment_crosswalk"]
     prior = operations["replace_zero_weight_spi_support"]
     effective = operations["gate_distributional_effective_mass"]
     floor = float(effective["minimum_nondefault_mass_share"])
@@ -636,6 +628,7 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
         )
     return {
         "status": "required_at_build",
+        "restoration_status": str(frs_crosswalk["status"]),
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),

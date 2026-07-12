@@ -239,10 +239,14 @@ from populace.build.uk_runtime.rowwise_geography import (
 from populace.build.uk_runtime.spi_income import (
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
+    SPI_DONOR_SHA256,
+    SPI_DONOR_SIZE_BYTES,
     SPI_DONOR_UKDS_STUDY,
     SPI_DONOR_VINTAGE,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
+    assert_frs_hmrc_auxiliary_crosswalk_available,
+    derive_hmrc_income_auxiliaries,
     impute_uk_spi_income_support,
 )
 from populace.build.uk_runtime.spi_support import (
@@ -342,6 +346,8 @@ __all__ = [
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_DONOR_DOI",
     "SPI_DONOR_FILENAME",
+    "SPI_DONOR_SHA256",
+    "SPI_DONOR_SIZE_BYTES",
     "SPI_DONOR_UKDS_STUDY",
     "SPI_DONOR_VINTAGE",
     "SPI_PRIOR_MASS_CHANGE_REASON",
@@ -398,6 +404,8 @@ __all__ = [
     "assert_uk_release_input_coverage_manifest_current",
     "assign_employment",
     "assign_household_geography",
+    "assert_frs_hmrc_auxiliary_crosswalk_available",
+    "derive_hmrc_income_auxiliaries",
     "assign_uk_geography_ladder",
     "assign_vat_flags",
     "build_firm_target_matrix",
