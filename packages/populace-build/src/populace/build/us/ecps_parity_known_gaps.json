@@ -422,8 +422,103 @@
       }
     },
     "takes_up_dc_ptc": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 565-599 does not carry an observed DC property-tax-credit claim; it loads a scalar rate and assigns takes_up_dc_ptc by an independent seeded Bernoulli draw. parameters/take_up/dc_ptc.yaml lines 1-11 divides an aggregate 37,133-claim count by a 131,791,388 PolicyEngine value estimate, which is neither dimensionally a participation denominator nor mathematically 0.32; utils/randomness.py lines 5-28 confirms the output is generated from a variable-name-seeded random stream. Archived census_cps.py lines 251-262 exposes only generic state-tax liability amounts, not a Schedule H claim; archived puf.py lines 704-719 maps other_credits from federal P08000, and the locked PUF has no state geography. All three SHA-recorded 2022-2024 ASEC H5 inputs and the SHA-recorded processed PUF 1.8.0 input consumed by the hermetic build omit takes_up_dc_ptc and any DC Schedule H claim indicator. The aggregate claim count cannot identify claiming tax units, so replaying the retired draw or selecting modeled-eligible units would synthesize claimant identities absent from every locked source.",
+      "issue": "PolicyEngine/populace#312",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "565-599",
+          "method": "seeded Bernoulli draw below a scalar dc_ptc_rate"
+        },
+        "retired_rate_parameter": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "parameters", "take_up", "dc_ptc.yaml"],
+          "lines": "1-11",
+          "value": 0.32,
+          "administrative_claim_count": 37133,
+          "comment_model_estimate": 131791388,
+          "denominator_description": "PolicyEngine DC PTC value estimate",
+          "external_eligible_population_denominator": false,
+          "dimensionally_consistent_participation_rate": false,
+          "arithmetically_consistent_with_value": false
+        },
+        "retired_randomness": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "utils", "randomness.py"],
+          "lines": "5-28",
+          "key": "takes_up_dc_ptc"
+        },
+        "required_tax_unit_observation": "takes_up_dc_ptc or an observed DC Schedule H claim indicator",
+        "missing_claim_column_patterns": ["takes_up_dc_ptc", "dc_ptc", "schedule_h", "property_tax_credit"],
+        "archived_asec_tax_columns": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "lines": "251-262",
+          "generic_state_tax_columns": ["STATETAX_A", "STATETAX_B"]
+        },
+        "archived_puf_credit_mapping": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "puf", "puf.py"],
+          "lines": "704-719",
+          "other_credits_source": "P08000",
+          "scope": "federal PUF credit amount, not a DC Schedule H claim indicator"
+        },
+        "official_census_variable_dictionary": {
+          "url": "https://api.census.gov/data/2025/cps/asec/mar/variables.html",
+          "STATETAX_A": "State income tax liability, after credits",
+          "STATETAX_B": "State income tax liability, before credits",
+          "SPM_STTAX": "SPM unit's state tax"
+        },
+        "policyengine_variable": {
+          "version": "1.764.6",
+          "entity": "tax_unit",
+          "definition_period": "year",
+          "value_type": "bool",
+          "default": true
+        },
+        "hermetic_asec_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "missing_columns": ["takes_up_dc_ptc"],
+            "present_generic_tax_amount_columns": ["STATETAX_A", "STATETAX_B", "SPM_STTAX"]
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "missing_columns": ["takes_up_dc_ptc"],
+            "present_generic_tax_amount_columns": ["STATETAX_A", "STATETAX_B", "SPM_STTAX"]
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "missing_columns": ["takes_up_dc_ptc"],
+            "present_generic_tax_amount_columns": ["STATETAX_A", "STATETAX_B", "SPM_STTAX"]
+          }
+        ],
+        "processed_puf": {
+          "filename": "puf_2024.h5",
+          "release": "policyengine/irs-soi-puf/1.8.0",
+          "sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df",
+          "missing_arrays": ["takes_up_dc_ptc", "state_fips", "state_code", "state_code_str"]
+        },
+        "current_take_up_contract": {
+          "path": "packages/populace-build/src/populace/build/us/take_up_contract.json",
+          "treatment": "rate_unsourced",
+          "rate_status": "model_relative"
+        },
+        "semantic_non_substitutes": {
+          "STATETAX_A_STATETAX_B": "Generic state income-tax liabilities before/after credits do not identify which credit changed the liability or whether Schedule H was claimed.",
+          "SPM_STTAX": "An SPM-unit aggregate state-tax amount is neither tax-unit claimant identity nor a DC Schedule H claim indicator.",
+          "PUF_other_credits": "Archived puf.py maps federal P08000 to other_credits; the locked PUF lacks state geography and cannot identify a DC credit claimant.",
+          "rejection": "A published aggregate number of claims supplies no tax-unit claimant identity. Replaying a seeded draw, sorting eligible DC units, or otherwise allocating the count would synthesize the boolean values the locked microdata do not report."
+        },
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 70-81 and 103-108 passes only the three prebuilt ASEC artifacts and processed PUF via --asec-h5/--puf-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 and 317-318 records their SHA-256 digests."
+      }
     },
     "takes_up_early_head_start_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",

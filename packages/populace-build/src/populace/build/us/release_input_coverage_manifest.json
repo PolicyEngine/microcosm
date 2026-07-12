@@ -404,7 +404,7 @@
   },
   "takes_up_dc_ptc": {
    "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 565-599 does not carry an observed DC property-tax-credit claim; it loads a scalar rate and assigns takes_up_dc_ptc by an independent seeded Bernoulli draw. parameters/take_up/dc_ptc.yaml lines 1-11 divides an aggregate 37,133-claim count by a 131,791,388 PolicyEngine value estimate, which is neither dimensionally a participation denominator nor mathematically 0.32; utils/randomness.py lines 5-28 confirms the output is generated from a variable-name-seeded random stream. Archived census_cps.py lines 251-262 exposes only generic state-tax liability amounts, not a Schedule H claim; archived puf.py lines 704-719 maps other_credits from federal P08000, and the locked PUF has no state geography. All three SHA-recorded 2022-2024 ASEC H5 inputs and the SHA-recorded processed PUF 1.8.0 input consumed by the hermetic build omit takes_up_dc_ptc and any DC Schedule H claim indicator. The aggregate claim count cannot identify claiming tax units, so replaying the retired draw or selecting modeled-eligible units would synthesize claimant identities absent from every locked source.",
    "status": "reviewed_exclusion"
   },
   "takes_up_early_head_start_if_eligible": {
