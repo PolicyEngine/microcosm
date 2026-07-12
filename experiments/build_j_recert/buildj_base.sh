@@ -37,6 +37,7 @@ required = {
         "previous_year_income_available",
         "salt_refund_income",
         "takes_up_medicare_if_eligible",
+        "workers_compensation",
     ),
     "spm_unit": (
         "receives_housing_assistance",

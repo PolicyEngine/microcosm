@@ -703,6 +703,23 @@ from populace.build.us_runtime.validation_input_coverage import (
     us_source_stage_outputs,
     us_validation_input_coverage_gate,
 )
+from populace.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
+    US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
+    US_WORKERS_COMPENSATION_REQUIRED_SOURCE_COLUMNS,
+    US_WORKERS_COMPENSATION_STAGE_NAME,
+    WORKERS_COMPENSATION_ARCHIVED_DERIVATION_URL,
+    WORKERS_COMPENSATION_ARCHIVED_PUF_IMPUTATION_URL,
+    WORKERS_COMPENSATION_ARCHIVED_PUF_OUTPUTS_URL,
+    WORKERS_COMPENSATION_ARCHIVED_SOURCE_COLUMNS_URL,
+    derive_us_workers_compensation_from_asec,
+    derive_us_workers_compensation_from_manifest,
+    impute_us_workers_compensation_to_puf_support_from_manifest,
+    us_workers_compensation_signal_gate,
+    us_workers_compensation_stage_spec,
+    us_workers_compensation_summary,
+    with_us_workers_compensation,
+)
 from populace.frame import Frame
 
 __all__ = [
@@ -933,6 +950,21 @@ __all__ = [
     "us_disability_benefits_stage_spec",
     "us_disability_benefits_summary",
     "with_us_disability_benefits",
+    "US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS",
+    "US_WORKERS_COMPENSATION_OUTPUT_COLUMNS",
+    "US_WORKERS_COMPENSATION_REQUIRED_SOURCE_COLUMNS",
+    "US_WORKERS_COMPENSATION_STAGE_NAME",
+    "WORKERS_COMPENSATION_ARCHIVED_DERIVATION_URL",
+    "WORKERS_COMPENSATION_ARCHIVED_PUF_IMPUTATION_URL",
+    "WORKERS_COMPENSATION_ARCHIVED_PUF_OUTPUTS_URL",
+    "WORKERS_COMPENSATION_ARCHIVED_SOURCE_COLUMNS_URL",
+    "derive_us_workers_compensation_from_asec",
+    "derive_us_workers_compensation_from_manifest",
+    "impute_us_workers_compensation_to_puf_support_from_manifest",
+    "us_workers_compensation_signal_gate",
+    "us_workers_compensation_stage_spec",
+    "us_workers_compensation_summary",
+    "with_us_workers_compensation",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -1533,6 +1565,15 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "CPS-only person leaf on the PUF support half."
         ),
     ),
+    US_WORKERS_COMPENSATION_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured annual WC_VAL is carried directly. After PUF tax-detail "
+            "imputation, an ASEC-trained weighted QRF replaces the CPS-only "
+            "person leaf on the PUF support half."
+        ),
+    ),
     "puf_tax_detail": DonorSpec(
         survey="IRS PUF 2015 (uprated)",
         source="https://www.irs.gov/statistics/soi-tax-stats-individual-public-use-microdata-files",
@@ -1624,6 +1665,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "puf_tax_detail",
     US_CHILD_SUPPORT_STAGE_NAME,
     US_DISABILITY_BENEFITS_STAGE_NAME,
+    US_WORKERS_COMPENSATION_STAGE_NAME,
     US_EDUCATION_INPUTS_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",

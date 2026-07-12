@@ -115,6 +115,9 @@ from populace.build.us_runtime.sipp_vehicles import (
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -140,6 +143,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS,
     *US_CHILD_SUPPORT_NONCONSTANT_PERSON_COLUMNS,
     *US_DISABILITY_BENEFITS_NONCONSTANT_PERSON_COLUMNS,
+    *US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
     *US_EDUCATOR_EXPENSE_NONCONSTANT_PERSON_COLUMNS,
     *US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS,
     *US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,

@@ -1965,6 +1965,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_disability_benefits_signal_gate",
         fake_disability_benefits_signal_gate,
     )
+    monkeypatch.setattr(
+        builder,
+        "us_workers_compensation_signal_gate",
+        lambda frame: builder.GateResult(
+            name="workers_compensation_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
 
     def fake_educator_expense_signal_gate(frame):
         captured["educator_expense_gate_called"] = True

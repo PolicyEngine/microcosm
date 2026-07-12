@@ -599,6 +599,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_workers_compensation",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_childcare_inputs",
         lambda frame, *, seed, time_period: frame,
     )
@@ -721,6 +726,13 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
                 ),
                 "details": {},
             },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_workers_compensation_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
         )(),
     )
 

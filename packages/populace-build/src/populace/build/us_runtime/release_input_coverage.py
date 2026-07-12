@@ -87,6 +87,9 @@ from populace.build.us_runtime.salt_refund_income import (
 )
 from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from populace.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
+)
 
 __all__ = [
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
@@ -133,6 +136,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "casualty_loss",
         *US_CHILD_SUPPORT_OUTPUT_COLUMNS,
         *US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
+        *US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,

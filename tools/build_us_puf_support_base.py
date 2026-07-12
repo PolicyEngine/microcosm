@@ -70,6 +70,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
+    us_workers_compensation_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_child_support_inputs,
@@ -85,6 +86,7 @@ from populace.build.us_runtime import (
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
+    with_us_workers_compensation,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
@@ -296,6 +298,11 @@ def main() -> None:
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_workers_compensation(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_childcare_inputs(
         base,
         seed=args.seed,
@@ -404,6 +411,17 @@ def main() -> None:
         raise SystemExit(
             "Disability-benefits signal gate failed:\n  "
             + "\n  ".join(disability_benefits_gate.failures)
+        )
+    imputed = with_us_workers_compensation(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    workers_compensation_gate = us_workers_compensation_signal_gate(imputed)
+    if not workers_compensation_gate.passed:
+        raise SystemExit(
+            "Workers-compensation signal gate failed:\n  "
+            + "\n  ".join(workers_compensation_gate.failures)
         )
     educator_expense_gate = us_educator_expense_signal_gate(imputed)
     if not educator_expense_gate.passed:
@@ -651,6 +669,11 @@ def main() -> None:
             "passed": disability_benefits_gate.passed,
             "failures": list(disability_benefits_gate.failures),
             "details": dict(disability_benefits_gate.details),
+        },
+        "workers_compensation_signal": {
+            "passed": workers_compensation_gate.passed,
+            "failures": list(workers_compensation_gate.failures),
+            "details": dict(workers_compensation_gate.details),
         },
         "educator_expense_signal": {
             "passed": educator_expense_gate.passed,

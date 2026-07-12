@@ -512,9 +512,7 @@
    "status": "reviewed_exclusion"
   },
   "workers_compensation": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "Workers' compensation benefit SPM input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "would_claim_wic": {
    "issue": "PolicyEngine/populace#312",
@@ -528,8 +526,8 @@
   }
  },
  "counts": {
-  "required": 151,
-  "reviewed_exclusion": 14,
+  "required": 152,
+  "reviewed_exclusion": 13,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -988,6 +986,43 @@
    },
    "period": 2024,
    "reason": "Removing only disability_benefits from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF non-workers-compensation benefit leaf, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "workers_compensation"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "reform_minus_baseline",
+   "expected_sign": "positive",
+   "id": "workers_compensation_snap_exclusion",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 10000000.0,
+   "name": "Exclude workers' compensation from SNAP unearned income",
+   "parameter_changes": {
+    "gov.usda.snap.income.sources.unearned": {
+     "2024-01-01.2024-12-31": [
+      "ssi",
+      "tanf",
+      "general_assistance",
+      "pension_income",
+      "veterans_benefits",
+      "unemployment_compensation",
+      "disability_benefits",
+      "social_security",
+      "retirement_distributions",
+      "rental_income",
+      "child_support_received",
+      "alimony_income",
+      "financial_assistance",
+      "survivor_benefits",
+      "dividend_income",
+      "interest_income",
+      "miscellaneous_income"
+     ]
+    }
+   },
+   "period": 2024,
+   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. A production-ingredient 30,000-household smoke scored +$28.26M reform-minus-baseline; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero."
   },
   {
    "binding_inputs": [

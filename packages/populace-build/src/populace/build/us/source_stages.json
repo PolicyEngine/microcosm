@@ -573,6 +573,71 @@
       "notes": "The retired ASEC derivation sums annual DIS_VAL1 and DIS_VAL2 only when the corresponding DIS_SC source code is not 1 (workers' compensation), keeping Social Security disability and workers' compensation in their separate leaves (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1561-1571). After PUF tax-detail imputation, the CPS-only output is replaced on the PUF support half using the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1076). The archive did not explicitly pin the QRF tree count; Populace pins 100 trees and typed person weights as reproducibility hardening."
     },
     {
+      "stage": "workers_compensation_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "2022-2024 pooled",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person annual workers' compensation amount WC_VAL"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1559-1571",
+          "source_declaration_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_declaration_lines": "306-381",
+          "puf_output_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "puf_output_lines": "135-194",
+          "puf_predictor_lines": "234-248",
+          "puf_imputation_lines": "639-745,1014-1073"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_workers_compensation",
+          "source": "WC_VAL",
+          "output": "workers_compensation"
+        },
+        {
+          "kind": "impute_workers_compensation_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
+        }
+      ],
+      "outputs": [
+        "workers_compensation"
+      ],
+      "nonnegative_outputs": [
+        "workers_compensation"
+      ],
+      "notes": "Exact annual person-level WC_VAL carry from archived cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Populace pins 100 trees and typed person weights as reproducibility hardening."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",

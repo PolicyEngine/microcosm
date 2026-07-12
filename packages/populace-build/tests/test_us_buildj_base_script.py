@@ -35,3 +35,4 @@ def test_cache_rejects_bases_predating_measured_medicare_take_up() -> None:
     required = _cache_required_columns()
 
     assert "takes_up_medicare_if_eligible" in required["person"]
+    assert "workers_compensation" in required["person"]

@@ -116,6 +116,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    us_workers_compensation_signal_gate,
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_eligibility_inputs,
@@ -5946,6 +5947,23 @@ def main() -> None:
             + "; ".join(
                 "Disability-benefits input signal failed: " + failure
                 for failure in disability_benefits_gate.failures
+            )
+        )
+    workers_compensation_gate = us_workers_compensation_signal_gate(base_frame)
+    if not workers_compensation_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "workers_compensation_input_gate",
+                status="failed",
+                message="Workers-compensation input signal gate failed.",
+                failures=list(workers_compensation_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Workers-compensation input signal failed: " + failure
+                for failure in workers_compensation_gate.failures
             )
         )
     educator_expense_gate = us_educator_expense_signal_gate(base_frame)

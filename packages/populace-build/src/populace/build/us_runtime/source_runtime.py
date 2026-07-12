@@ -81,6 +81,10 @@ from populace.build.us_runtime.snap_discretionary_exemption import (
 from populace.build.us_runtime.snap_take_up import (
     derive_us_snap_take_up_from_manifest,
 )
+from populace.build.us_runtime.workers_compensation import (
+    derive_us_workers_compensation_from_manifest,
+    impute_us_workers_compensation_to_puf_support_from_manifest,
+)
 
 __all__ = [
     "aggregate_us_person_to_tax_unit_from_manifest",
@@ -97,6 +101,7 @@ __all__ = [
     "derive_us_prior_year_income_from_manifest",
     "derive_us_relationship_inputs_from_manifest",
     "derive_us_retirement_distributions_from_manifest",
+    "derive_us_workers_compensation_from_manifest",
     "impute_us_retirement_distributions_to_puf_support_from_manifest",
     "derive_us_puf_policyengine_variables_from_manifest",
     "derive_us_retirement_contributions_from_manifest",
@@ -108,6 +113,7 @@ __all__ = [
     "impute_us_other_health_insurance_to_puf_support_from_manifest",
     "impute_us_prior_year_income_to_puf_support_from_manifest",
     "impute_us_retirement_contributions_to_puf_support_from_manifest",
+    "impute_us_workers_compensation_to_puf_support_from_manifest",
     "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
 ]
@@ -300,6 +306,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "derive_retirement_contributions": (
             derive_us_retirement_contributions_from_manifest
         ),
+        "derive_workers_compensation": derive_us_workers_compensation_from_manifest,
         "impute_childcare_to_puf_support": (
             impute_us_childcare_to_puf_support_from_manifest
         ),
@@ -323,6 +330,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "impute_retirement_contributions_to_puf_support": (
             impute_us_retirement_contributions_to_puf_support_from_manifest
+        ),
+        "impute_workers_compensation_to_puf_support": (
+            impute_us_workers_compensation_to_puf_support_from_manifest
         ),
         "derive_snap_abawd_discretionary_exemption": derive_us_snap_discretionary_exemption_from_manifest,
         "derive_immigration_status": derive_us_immigration_status_from_manifest,

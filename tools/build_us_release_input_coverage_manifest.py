@@ -99,6 +99,8 @@ CHILD_SUPPORT_INPUTS = (
 
 DISABILITY_BENEFITS_INPUTS = ("disability_benefits",)
 
+WORKERS_COMPENSATION_INPUTS = ("workers_compensation",)
+
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
@@ -163,6 +165,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "casualty_loss",
     *CHILD_SUPPORT_INPUTS,
     *DISABILITY_BENEFITS_INPUTS,
+    *WORKERS_COMPENSATION_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
@@ -736,6 +739,47 @@ REFORM_COVERAGE_PROBES = [
             "benefit leaf, the source-list reform is a structural zero."
         ),
         "issue": "PolicyEngine/populace#38",
+    },
+    {
+        "id": "workers_compensation_snap_exclusion",
+        "name": "Exclude workers' compensation from SNAP unearned income",
+        "parameter_changes": {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "disability_benefits",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "child_support_received",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        },
+        "budget_measure": "snap",
+        "period": 2024,
+        "effect_direction": "reform_minus_baseline",
+        "expected_sign": "positive",
+        "binding_inputs": ["workers_compensation"],
+        "min_abs_effect": 10_000_000.0,
+        "reason": (
+            "Removing only workers_compensation from SNAP unearned-income "
+            "sources lowers countable income and must increase SNAP for some "
+            "recipients. A production-ingredient 30,000-household smoke scored "
+            "+$28.26M reform-minus-baseline; without the measured WC_VAL carry "
+            "and PUF-half QRF, the source-list reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#32",
     },
     {
         "id": "educator_expense_ald_abolition",
