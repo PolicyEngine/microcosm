@@ -14,7 +14,7 @@ baseline exposes a real gap.
 | Launch contract baseline | 132 required; 0 exclusions | SHA-pinned eFRS and certified Populace UK H5 surfaces | Complete |
 | National orchestration seam | No coverage-status change | Ordered stage protocol, preflight + final gate, atomic staging-H5 tests | Complete |
 | Effective-mass coverage | No raw status change; `gift_aid` and `charitable_investment_gifts` remain distributional/effective-weight gaps | Required signal must carry at least 0.000001 of its owning entity's effective population mass | Complete |
-| HMRC/SPI income family | No raw-column status change; adds one `required_at_build` distributional family, including effective-mass requirements for both charitable-giving inputs | Certified-base hash gate; 2022–23 SPI QRF code; complete 2023–24 Tables 3.6/3.7 contract (208 facts); positive-prior, calibration, and source-manifest tests | Implementation wired and covered by synthetic contract tests; **not counted restored** pending the licensed donor, an exact HMRC ODS identity, and a real replay |
+| HMRC/SPI income family | No raw-column status change; adds one `required_at_build` distributional family, including effective-mass requirements for both charitable-giving inputs | Certified-base hash gate; 2022–23 SPI QRF code; complete 2023–24 Tables 3.6/3.7 contract (208 facts); positive-prior, path-isolation, provenance-roundtrip, calibration, and source-manifest tests | Implementation wired and covered by synthetic contract tests; **not counted restored** pending the semantic questions and real-source replay below |
 
 ## Restoration diagnosis
 
@@ -90,8 +90,14 @@ support spine while preserving the national total exactly. The build manifest
 pins the share; the driver exposes no unreviewed override. Replacement samples
 the exact incumbent SPI row quota within
 `clone_index × household_is_capital_gains_clone × region`, refuses to discard
-any live incumbent SPI mass, advances `DESIGN → IMPORTANCE`, and writes the
-factor-one mass-change reason into staging-H5 metadata.
+any live incumbent SPI mass, and writes the factor-one mass-change reason into
+staging-H5 metadata. The allocation creates a new two-channel `IMPORTANCE` pool
+from `DESIGN`, `IMPORTANCE`, or explicitly `CALIBRATED` incoming provenance;
+prior audit records are preserved, floating residue is corrected to exact
+national mass, and downstream HMRC calibration owns the new
+`IMPORTANCE → CALIBRATED` transition. This mirrors the US ACS multispine reset
+semantics without treating pool assembly as an in-place backward weight-kind
+transition.
 
 The go-forward source pair is the 2022–23 private SPI donor and the published
 [2023–24 HMRC Personal Incomes Tables 3.6 and 3.7](https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024),
@@ -119,14 +125,17 @@ category and flag inputs are recomputed from the newly drawn reported amounts.
 
 The HMRC calibration compiles **8 components × 13 bands × 2 measures = 208**
 facts. It uses `income_tax > 0` from a PolicyEngine-UK person-mapped simulation
-as the published taxpayer universe. Band assignment uses the authoritative
+as the published taxpayer universe. The intended SPI-row band concept is the
+authoritative
 [SPI-documented](https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf)
-joint draw `TI = TEI + TII` on rebuilt SPI rows. On base rows it bridges the
-live model with `PolicyEngine total_income + other_investment_income -
-tax_free_savings_income`. SPI `TI` also includes `OTHERINC`, so it is not the
-sum of the eight target measures. A successful release run must give every
-fact positive-mass support, compile every fact, conserve household mass, keep
-the per-record weight-ratio cap at 5, and miss no target by more than 5%. The
+identity `TI = TEI + TII`; donor preprocessing checks that identity before the
+fit. On base rows the declared bridge is `PolicyEngine total_income +
+other_investment_income - tax_free_savings_income`. SPI `TI` also includes
+`OTHERINC`, so it is not the sum of the eight target measures. The post-fit
+identity is not yet established, as recorded below. A successful release run
+must give every fact positive-mass support, compile every fact, conserve
+household mass, keep the per-record weight-ratio cap at 5, and miss no target by
+more than 5%. The
 100,000-row donor sample, 50% SPI prior, ratio cap, and error ceiling are bound
 to the executable source manifest and cannot be overridden by the release
 driver. After success, runtime SHA-256 values for the supplied donor and ODS,
@@ -155,12 +164,36 @@ to call them restored unless SPI-channel signal clears the same floor, and the
 final release input gate repeats that check immediately before the staging
 write.
 
+The national driver now validates all input, staging, and sidecar paths as one
+pairwise-distinct set—including hard-link and case-only aliases—before hashing
+or unlinking anything, so a coverage path cannot delete its SPI donor or HMRC
+ODS. The downstream rowwise geography path
+also round-trips `household_weight_kind` and the `MassChangeRecord` log through
+H5 metadata. A real rowwise clone of a synthetic calibrated national artifact
+passes the shipped family build-state gate without monkeypatching it; geography
+cloning itself remains otherwise unchanged.
+
 ## Open source/replay blockers
 
 These block an honest “restored” ledger entry and a production artifact:
 
 - Licensed `put2223uk.tab` is unavailable here. No real donor SHA-256/size, QRF
   fit, or joint-draw replay exists.
+- The fitted QRF currently predicts `hmrc_spi_assessable_income` as a stochastic
+  output. Although every donor row is checked against `TI = TEI + TII`, a
+  real-QRF synthetic audit found the predicted TI differed from its jointly
+  predicted constituents on all 200 tested draws (median absolute difference
+  £1,294; maximum £19,333). Band assignment therefore cannot yet be called the
+  authoritative joint draw. Resolving this requires a reviewed decision to draw
+  the missing `SRP`/`OTHERINC` constituents and derive TI deterministically.
+- The current SPI transform writes HMRC's broader published “Employed Income”
+  measure—including taxable benefits and miscellaneous income—into
+  PolicyEngine's wage-like `employment_income` input. The pinned enhanced-FRS
+  pipeline instead maps `PAY + EPB + TAXTERM`; neither that narrower mapping nor
+  the current broader one supplies a reviewed, like-for-like Table 3.6 measure
+  on both FRS and SPI channels. A separate HMRC measure auxiliary plus an
+  explicit PolicyEngine constituent crosswalk needs conductor review before
+  this family can run semantically.
 - The source contract records the official HMRC ODS URL and hashes whatever
   local artifact a caller supplies, but no reviewed expected ODS SHA-256 and
   size are available to pin its identity. The parser now enforces sheets,
@@ -173,4 +206,5 @@ These block an honest “restored” ledger entry and a production artifact:
 
 Per the adjudication, no replacement source or relaxed gate is substituted.
 The family remains not restored, and real-source work stops at this boundary
-until the conductor supplies/reviews the licensed donor and exact ODS identity.
+until the conductor resolves the two source-semantic questions and
+supplies/reviews the licensed donor and exact ODS identity.

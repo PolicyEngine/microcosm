@@ -3,10 +3,20 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+_PATH_ARGUMENTS = (
+    "evidence_path",
+    "coverage_path",
+    "input_h5",
+    "staging_h5",
+    "spi_tab",
+    "hmrc_ods",
+)
 
 
 def _load_builder_module():
@@ -102,6 +112,121 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert evidence["base_candidate"]["revision"] == "test-revision"
     assert evidence["family"]["stage"] == "hmrc_spi_income"
     assert payload["artifacts"]["hmrc_evidence"]["sha256"]
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    list(combinations(_PATH_ARGUMENTS, 2)),
+    ids=lambda value: value,
+)
+def test_national_driver_requires_every_input_output_path_to_be_distinct(
+    tmp_path,
+    left,
+    right,
+) -> None:
+    builder = _load_builder_module()
+    paths = {
+        name: tmp_path / f"{name}.artifact"
+        for name in _PATH_ARGUMENTS
+    }
+    collision = tmp_path / "collision.artifact"
+    paths[left] = collision
+    paths[right] = collision
+
+    with pytest.raises(ValueError, match="pairwise distinct") as error:
+        builder._validate_distinct_paths(**paths)
+
+    message = str(error.value)
+    assert collision.as_posix() in message
+
+
+def test_national_driver_rejects_case_only_path_aliases(tmp_path) -> None:
+    builder = _load_builder_module()
+    candidate = tmp_path / "Candidate.H5"
+    candidate.write_bytes(b"certified base")
+    paths = {
+        name: tmp_path / f"{name}.artifact"
+        for name in _PATH_ARGUMENTS
+    }
+    paths["input_h5"] = candidate
+    paths["coverage_path"] = tmp_path / "candidate.h5"
+
+    with pytest.raises(ValueError, match="pairwise distinct"):
+        builder._validate_distinct_paths(**paths)
+
+    assert candidate.read_bytes() == b"certified base"
+
+
+def test_national_driver_rejects_existing_hardlink_aliases(tmp_path) -> None:
+    builder = _load_builder_module()
+    candidate = tmp_path / "candidate.h5"
+    alias = tmp_path / "coverage.json"
+    candidate.write_bytes(b"certified base")
+    alias.hardlink_to(candidate)
+    paths = {
+        name: tmp_path / f"{name}.artifact"
+        for name in _PATH_ARGUMENTS
+    }
+    paths["input_h5"] = candidate
+    paths["coverage_path"] = alias
+
+    with pytest.raises(ValueError, match="pairwise distinct"):
+        builder._validate_distinct_paths(**paths)
+
+
+def test_national_driver_rejects_source_sidecar_collision_before_unlink(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "hmrc.ods"
+    evidence = tmp_path / "evidence.json"
+    input_h5.write_bytes(b"certified base")
+    staging_h5.write_bytes(b"previous staging")
+    spi_tab.write_bytes(b"licensed donor")
+    hmrc_ods.write_bytes(b"official surface")
+    evidence.write_bytes(b"previous evidence")
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda _path: pytest.fail("path validation must precede candidate hashing"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "build_uk_national_dataset",
+        lambda **_kwargs: pytest.fail("a colliding path must not start the build"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--staging-h5",
+            str(staging_h5),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+            "--input-coverage-json",
+            str(spi_tab),
+            "--hmrc-evidence-json",
+            str(evidence),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="pairwise distinct"):
+        builder.main()
+
+    assert input_h5.read_bytes() == b"certified base"
+    assert staging_h5.read_bytes() == b"previous staging"
+    assert spi_tab.read_bytes() == b"licensed donor"
+    assert hmrc_ods.read_bytes() == b"official surface"
+    assert evidence.read_bytes() == b"previous evidence"
 
 
 @pytest.mark.parametrize(

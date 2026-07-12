@@ -13,6 +13,11 @@ from typing import Any
 
 import pandas as pd
 
+from populace.build.uk_runtime.national_build import (
+    UKNationalDataset,
+    load_uk_national_dataset,
+    write_uk_national_dataset,
+)
 from populace.build.uk_runtime.rowwise_geography import (
     ROWWISE_GEOGRAPHY_COLUMNS,
     RowwiseGeographyAssignment,
@@ -20,6 +25,7 @@ from populace.build.uk_runtime.rowwise_geography import (
     clone_entity_frame,
     id_multiplier_for_values,
 )
+from populace.frame import MassChangeRecord, WeightKind
 
 PERSON_ID_COLUMNS = (
     "person_id",
@@ -40,7 +46,17 @@ class UKRowwiseDatasetResult:
     household: pd.DataFrame
     assignment: RowwiseGeographyAssignment
     time_period: str
+    household_weight_kind: WeightKind = WeightKind.DESIGN
+    mass_log: tuple[MassChangeRecord, ...] = ()
     output_path: Path | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.household_weight_kind, WeightKind):
+            raise TypeError("household_weight_kind must be a WeightKind.")
+        if not isinstance(self.mass_log, tuple) or any(
+            not isinstance(record, MassChangeRecord) for record in self.mass_log
+        ):
+            raise TypeError("mass_log must be a tuple of MassChangeRecord.")
 
     @property
     def id_multiplier(self) -> int:
@@ -64,6 +80,8 @@ def clone_uk_dataset_tables_with_rowwise_geography(
     id_multiplier: int | None = None,
     household_id_column: str = "household_id",
     household_weight_column: str = "household_weight",
+    household_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
     country_column: str | None = None,
     region_column: str = "region",
     clone_index_column: str | None = "clone_index",
@@ -132,6 +150,8 @@ def clone_uk_dataset_tables_with_rowwise_geography(
         household=assignment.household.reset_index(drop=True),
         assignment=assignment,
         time_period=_normalise_time_period(time_period, source_year=source_year),
+        household_weight_kind=household_weight_kind,
+        mass_log=tuple(mass_log),
     )
     validate_uk_rowwise_dataset_tables(result.person, result.benunit, result.household)
     return result
@@ -168,6 +188,8 @@ def clone_uk_dataset_with_rowwise_geography(
         time_period=tables["time_period"],
         source_year=source_year,
         id_multiplier=id_multiplier,
+        household_weight_kind=tables["household_weight_kind"],
+        mass_log=tables["mass_log"],
         country_column=country_column,
         region_column=region_column,
         clone_index_column=clone_index_column,
@@ -186,6 +208,8 @@ def clone_uk_dataset_with_rowwise_geography(
         household=result.household,
         assignment=result.assignment,
         time_period=result.time_period,
+        household_weight_kind=result.household_weight_kind,
+        mass_log=result.mass_log,
         output_path=path,
     )
 
@@ -194,22 +218,19 @@ def write_uk_rowwise_dataset(
     result: UKRowwiseDatasetResult,
     output_path: str | Path,
 ) -> Path:
-    """Write cloned UK row-wise tables as a valid single-year H5 dataset."""
+    """Write row-wise tables and their reviewed population-mass provenance."""
 
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.unlink(missing_ok=True)
-    with pd.HDFStore(path) as store:
-        store.put("person", result.person, format="table", data_columns=True)
-        store.put("benunit", result.benunit, format="table", data_columns=True)
-        store.put("household", result.household, format="table", data_columns=True)
-        store.put(
-            "time_period",
-            pd.Series([result.time_period]),
-            format="table",
-            data_columns=True,
-        )
-    return path
+    return write_uk_national_dataset(
+        UKNationalDataset(
+            person=result.person,
+            benunit=result.benunit,
+            household=result.household,
+            time_period=result.time_period,
+            household_weight_kind=result.household_weight_kind,
+            mass_log=result.mass_log,
+        ),
+        output_path,
+    )
 
 
 def validate_uk_rowwise_dataset_tables(
@@ -249,7 +270,7 @@ def _dataset_tables(
     dataset: Any | str | Path,
     *,
     source_year: int | None,
-) -> dict[str, pd.DataFrame | str]:
+) -> dict[str, Any]:
     if isinstance(dataset, str | Path):
         return _read_uk_single_year_h5(dataset)
     missing = [
@@ -260,32 +281,32 @@ def _dataset_tables(
     if missing:
         raise ValueError(f"dataset is missing table attribute(s): {missing}.")
     time_period = getattr(dataset, "time_period", None)
+    household_weight_kind = getattr(
+        dataset,
+        "household_weight_kind",
+        WeightKind.DESIGN,
+    )
+    mass_log = tuple(getattr(dataset, "mass_log", ()))
     return {
         "person": dataset.person.copy(),
         "benunit": dataset.benunit.copy(),
         "household": dataset.household.copy(),
         "time_period": _normalise_time_period(time_period, source_year=source_year),
+        "household_weight_kind": household_weight_kind,
+        "mass_log": mass_log,
     }
 
 
-def _read_uk_single_year_h5(path: str | Path) -> dict[str, pd.DataFrame | str]:
-    dataset_path = Path(path)
-    if dataset_path.suffix != ".h5":
-        raise ValueError("UK single-year dataset path must end with '.h5'.")
-    if not dataset_path.exists():
-        raise FileNotFoundError(f"UK single-year dataset not found: {dataset_path}.")
-    with pd.HDFStore(dataset_path, mode="r") as store:
-        keys = {key.lstrip("/") for key in store.keys()}
-        missing = sorted(set(UK_SINGLE_YEAR_TABLES) - keys)
-        if missing:
-            raise ValueError(f"UK single-year dataset is missing table(s): {missing}.")
-        time_period = str(store["time_period"].iloc[0])
-        return {
-            "person": store["person"],
-            "benunit": store["benunit"],
-            "household": store["household"],
-            "time_period": time_period,
-        }
+def _read_uk_single_year_h5(path: str | Path) -> dict[str, Any]:
+    dataset = load_uk_national_dataset(path)
+    return {
+        "person": dataset.person,
+        "benunit": dataset.benunit,
+        "household": dataset.household,
+        "time_period": dataset.time_period,
+        "household_weight_kind": dataset.household_weight_kind,
+        "mass_log": dataset.mass_log,
+    }
 
 
 def _validate_input_tables(

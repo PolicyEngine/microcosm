@@ -18,12 +18,13 @@ from populace.build.uk_runtime import (
     create_uk_spi_support_tables,
     fill_support_channel_from_source,
     replace_uk_spi_support_tables,
+    spi_support,
     stacked_weights_to_long,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
-from populace.frame import WeightKind
+from populace.frame import MassChangeRecord, WeightKind
 
 
 def household_frame() -> pd.DataFrame:
@@ -283,7 +284,7 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
     assert len(result.household) == len(dead.household)
     assert result.spi_prior_mass_share == DEFAULT_SPI_PRIOR_MASS_SHARE == 0.5
     assert result.household_weight_kind is WeightKind.IMPORTANCE
-    assert result.household["household_weight"].sum() == pytest.approx(original_total)
+    assert result.household["household_weight"].sum() == original_total
 
     channel = result.household[support_channel_column("household")]
     base = result.household[channel == BASE_FRS_SUPPORT_CHANNEL]
@@ -302,10 +303,78 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
     assert len(result.mass_log) == 1
     record = result.mass_log[-1]
     assert record.entity == "household"
-    assert record.old_total == pytest.approx(original_total)
-    assert record.new_total == pytest.approx(original_total)
+    assert record.old_total == original_total
+    assert record.new_total == original_total
     assert record.declared_factor == 1.0
     assert record.reason == SPI_PRIOR_MASS_CHANGE_REASON
+
+
+def test_replace_spi_support_builds_importance_pool_from_calibrated_base() -> None:
+    dead = _certified_like_dead_spi_support()
+    original_total = float(dead.household["household_weight"].sum())
+    prior_record = MassChangeRecord(
+        entity="household",
+        old_total=original_total / 2.0,
+        new_total=original_total,
+        declared_factor=2.0,
+        reason="prior certified-base calibration",
+    )
+
+    result = replace_uk_spi_support_tables(
+        person=dead.person,
+        benunit=dead.benunit,
+        household=dead.household,
+        seed=7,
+        source_year=2023,
+        input_weight_kind=WeightKind.CALIBRATED,
+        mass_log=(prior_record,),
+    )
+
+    assert result.household_weight_kind is WeightKind.IMPORTANCE
+    assert result.household["household_weight"].sum() == original_total
+    assert result.mass_log[:-1] == (prior_record,)
+    assert result.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
+    assert result.mass_log[-1].old_total == original_total
+    assert result.mass_log[-1].new_total == original_total
+
+
+def test_replace_spi_support_corrects_rounding_residue_to_exact_mass() -> None:
+    dead = _certified_like_dead_spi_support()
+    household = dead.household.copy()
+    synthetic = household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
+    household.loc[~synthetic, "household_weight"] = np.asarray(
+        [
+            float.fromhex("0x1.1b6fc8a1fb5d7p+16"),
+            float.fromhex("0x1.5fd6d9b527953p+13"),
+            float.fromhex("0x1.d3e48ce1ae317p+15"),
+            float.fromhex("0x1.8a6db6475255fp+14"),
+            1.0,
+            3.0,
+            7.0,
+            11.0,
+        ]
+    )
+    original_total = float(household["household_weight"].sum())
+
+    result = replace_uk_spi_support_tables(
+        person=dead.person,
+        benunit=dead.benunit,
+        household=household,
+        seed=7,
+        source_year=2023,
+    )
+
+    assert result.household["household_weight"].sum() == original_total
+    assert result.mass_log[-1].new_total == original_total
+
+
+def test_exact_mass_correction_handles_one_ulp_bounce() -> None:
+    weights = spi_support._importance_weights_with_exact_total(
+        np.asarray([0.05, 0.1, 0.15, 0.3]),
+        0.6,
+    )
+
+    assert weights.total == 0.6
 
 
 def test_replace_spi_support_refuses_to_discard_positive_spi_mass() -> None:

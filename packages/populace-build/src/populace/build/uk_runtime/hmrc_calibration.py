@@ -486,8 +486,9 @@ def _target_spec(
         ),
         family="hmrc_spi_income",
         notes=(
-            "Taxpayers with income_tax > 0; band total is the sum of the eight "
-            "published SPI income components."
+            "Taxpayers with income_tax > 0; band assignment uses the reviewed "
+            "SPI TI draw on rebuilt support and the declared PolicyEngine "
+            "bridge on base rows."
         ),
         metadata={
             "component": target.component,

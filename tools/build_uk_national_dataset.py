@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import uuid
+from itertools import combinations
 from pathlib import Path
 
 from populace.build.uk_runtime.hmrc_restoration import (
@@ -69,7 +70,6 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    candidate = verify_certified_uk_candidate(args.input_h5)
     coverage_path = args.input_coverage_json or args.staging_h5.with_suffix(
         ".input_coverage.json"
     )
@@ -84,6 +84,7 @@ def main() -> int:
         spi_tab=args.spi_tab,
         hmrc_ods=args.hmrc_ods,
     )
+    candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
@@ -173,16 +174,50 @@ def _validate_distinct_paths(
     spi_tab: Path,
     hmrc_ods: Path,
 ) -> None:
-    evidence = evidence_path.resolve()
-    reserved = {
-        path.resolve()
-        for path in (coverage_path, input_h5, staging_h5, spi_tab, hmrc_ods)
+    paths = {
+        "--input-h5": input_h5.resolve(),
+        "--staging-h5": staging_h5.resolve(),
+        "--spi-tab": spi_tab.resolve(),
+        "--hmrc-ods": hmrc_ods.resolve(),
+        "--input-coverage-json": coverage_path.resolve(),
+        "--hmrc-evidence-json": evidence_path.resolve(),
     }
-    if evidence in reserved:
-        raise ValueError(
-            "--hmrc-evidence-json must differ from every input, staging, and "
-            "coverage path."
+    collisions = [
+        (left_label, right_label, left_path, right_path)
+        for (left_label, left_path), (right_label, right_path) in combinations(
+            paths.items(),
+            2,
         )
+        if _paths_alias(left_path, right_path)
+    ]
+    if collisions:
+        details = "; ".join(
+            f"{left_label}, {right_label} -> {left_path} == {right_path}"
+            for left_label, right_label, left_path, right_path in collisions
+        )
+        raise ValueError(
+            "UK national build input, staging, and sidecar paths must be "
+            f"pairwise distinct: {details}."
+        )
+
+
+def _paths_alias(left: Path, right: Path) -> bool:
+    """Conservatively identify aliases before any build path is unlinked."""
+
+    if left == right:
+        return True
+    try:
+        if left.exists() and right.exists() and left.samefile(right):
+            return True
+    except OSError:
+        # The case-folded resolved identity below remains a safe fallback for
+        # a path that changes between the existence and samefile checks.
+        pass
+    # macOS volumes are commonly case-insensitive even though Path.resolve()
+    # preserves caller casing. Reject case-only distinctions everywhere: a
+    # destructive build tool has no legitimate need for them, and doing so
+    # also protects outputs that do not exist yet.
+    return str(left).casefold() == str(right).casefold()
 
 
 if __name__ == "__main__":

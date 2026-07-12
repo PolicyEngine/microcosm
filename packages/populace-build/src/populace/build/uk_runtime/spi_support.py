@@ -21,9 +21,6 @@ from populace.build.uk_runtime.hmrc_income import (
 )
 from populace.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from populace.frame import (
-    EntitySchema,
-    Frame,
-    MassChange,
     MassChangeRecord,
     WeightKind,
     Weights,
@@ -673,37 +670,28 @@ def _allocate_spi_prior_mass(
         old_total * spi_prior_mass_share / float(spi_raw.sum())
     )
 
-    schema = EntitySchema(group_entities=("benunit", "household"))
-    audit_frame = Frame(
-        {
-            "person": result.person[
-                ["person_id", "person_benunit_id", "person_household_id"]
-            ].copy(),
-            "benunit": result.benunit[["benunit_id"]].copy(),
-            "household": result.household[["household_id"]].copy(),
-        },
-        schema,
-        {"household": Weights(pre_weights, input_weight_kind)},
-        mass_log=mass_log,
-    )
-    allocated_frame = audit_frame.with_weights(
-        "household",
-        Weights(final_weights, WeightKind.IMPORTANCE),
-        mass=MassChange(
-            factor=1.0,
-            reason=_spi_prior_mass_change_reason(spi_prior_mass_share),
-        ),
-    )
-    household["household_weight"] = allocated_frame.weights_for("household").values
-    if not np.isclose(
-        float(household["household_weight"].sum()),
+    # This is a newly assembled two-channel population, not an in-place
+    # replacement of the incoming weight vector. Like the US ACS multispine
+    # pool, its explicitly uncalibrated allocation is therefore IMPORTANCE
+    # weighted even when the certified base arrived with CALIBRATED weights.
+    # Calling Frame.with_weights here would incorrectly treat that legitimate
+    # pool construction as a forbidden backward transition.
+    allocated_weights = _importance_weights_with_exact_total(
+        final_weights,
         old_total,
-        rtol=1e-9,
-        atol=0.0,
-    ):
+    )
+    household["household_weight"] = allocated_weights.values
+    if allocated_weights.total != old_total:
         raise ValueError("UK SPI prior allocation failed to conserve national mass.")
     if not (household.loc[spi_mask, "household_weight"] > 0.0).all():
         raise ValueError("Rebuilt UK SPI channel contains dead zero-weight rows.")
+    allocation_record = MassChangeRecord(
+        entity="household",
+        old_total=old_total,
+        new_total=allocated_weights.total,
+        declared_factor=1.0,
+        reason=_spi_prior_mass_change_reason(spi_prior_mass_share),
+    )
     return UKSPISupportResult(
         person=result.person,
         benunit=result.benunit,
@@ -711,9 +699,132 @@ def _allocate_spi_prior_mass(
         id_multiplier=result.id_multiplier,
         spi_household_ids=result.spi_household_ids,
         household_weight_kind=WeightKind.IMPORTANCE,
-        mass_log=allocated_frame.mass_log,
+        mass_log=(*mass_log, allocation_record),
         spi_prior_mass_share=spi_prior_mass_share,
     )
+
+
+def _importance_weights_with_exact_total(
+    values: np.ndarray,
+    target: float,
+) -> Weights:
+    """Return importance weights whose NumPy reduction is exactly ``target``."""
+
+    weights = Weights(values, WeightKind.IMPORTANCE)
+    if weights.total == target:
+        return weights
+    positive_indices = np.flatnonzero(weights.values > 0.0)
+    correction_indices = dict.fromkeys(
+        (
+            int(np.argmax(weights.values)),
+            int(positive_indices[-1]),
+            int(positive_indices[0]),
+            int(positive_indices[np.argmin(weights.values[positive_indices])]),
+            int(positive_indices[len(positive_indices) // 2]),
+        )
+    )
+    for correction_index in correction_indices:
+        corrected = _exact_total_correction(
+            weights.values,
+            target=target,
+            correction_index=correction_index,
+        )
+        if corrected is not None:
+            return Weights(corrected, WeightKind.IMPORTANCE)
+    raise ValueError("UK SPI allocation has no representable exact-total correction.")
+
+
+def _exact_total_correction(
+    values: np.ndarray,
+    *,
+    target: float,
+    correction_index: int,
+) -> np.ndarray | None:
+    corrected = np.array(values, dtype=np.float64, copy=True)
+    initial_value = float(corrected[correction_index])
+    initial_total = float(corrected.sum())
+    candidate_value = initial_value + (target - initial_total)
+    if not np.isfinite(candidate_value) or candidate_value <= 0.0:
+        return None
+
+    def total_at(value: float) -> float:
+        corrected[correction_index] = value
+        return float(corrected.sum())
+
+    candidate_total = total_at(candidate_value)
+    if candidate_total == target:
+        return corrected
+
+    initial_total = total_at(initial_value)
+    bracket = _target_bracket(
+        target=target,
+        left=(initial_value, initial_total),
+        right=(candidate_value, candidate_total),
+    )
+    if bracket is None:
+        origin_value = candidate_value
+        origin_total = candidate_total
+        origin_bits = _positive_float_bits(origin_value)
+        direction = 1 if origin_total < target else -1
+        step = 1
+        for _ in range(64):
+            trial_bits = origin_bits + direction * step
+            if trial_bits <= 0 or trial_bits >= 0x7FF0000000000000:
+                break
+            trial_value = _positive_float_from_bits(trial_bits)
+            trial_total = total_at(trial_value)
+            if trial_total == target:
+                return corrected
+            bracket = _target_bracket(
+                target=target,
+                left=(origin_value, origin_total),
+                right=(trial_value, trial_total),
+            )
+            if bracket is not None:
+                break
+            step *= 2
+    if bracket is None:
+        return None
+
+    low, high = bracket
+    low_bits = _positive_float_bits(low[0])
+    high_bits = _positive_float_bits(high[0])
+    while high_bits - low_bits > 1:
+        middle_bits = (low_bits + high_bits) // 2
+        middle_value = _positive_float_from_bits(middle_bits)
+        middle_total = total_at(middle_value)
+        if middle_total == target:
+            return corrected
+        if middle_total < target:
+            low_bits = middle_bits
+        else:
+            high_bits = middle_bits
+
+    for bits in (low_bits, high_bits):
+        value = _positive_float_from_bits(bits)
+        if total_at(value) == target:
+            return corrected
+    return None
+
+
+def _target_bracket(
+    *,
+    target: float,
+    left: tuple[float, float],
+    right: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    low, high = sorted((left, right), key=lambda item: item[0])
+    if low[1] <= target <= high[1]:
+        return low, high
+    return None
+
+
+def _positive_float_bits(value: float) -> int:
+    return int(np.asarray(value, dtype=np.float64).view(np.uint64))
+
+
+def _positive_float_from_bits(bits: int) -> float:
+    return float(np.asarray(bits, dtype=np.uint64).view(np.float64))
 
 
 def _spi_prior_mass_change_reason(share: float) -> str:

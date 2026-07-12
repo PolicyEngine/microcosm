@@ -344,8 +344,10 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
     if not (numeric["FACT"] > 0.0).all():
         raise ValueError("SPI 2022-23 FACT weights must be strictly positive.")
     sex = numeric["SEX"]
-    if not sex.isin([1, 2]).all():
-        raise ValueError("SPI 2022-23 SEX must contain only documented codes 1/2.")
+    if not sex.isin([0, 1, 2]).all():
+        raise ValueError(
+            "SPI 2022-23 SEX must contain only documented codes 0/1/2."
+        )
     age_codes = numeric["AGERANGE"].astype(int)
     unknown_age = sorted(set(age_codes) - set(_SPI_AGE_RANGES))
     if unknown_age:
@@ -355,7 +357,11 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
     donor = pd.DataFrame(
         {
             "age": bounds[:, 0] + rng.random(len(raw)) * (bounds[:, 1] - bounds[:, 0]),
-            "gender": np.where(sex == 1, "MALE", "FEMALE"),
+            "gender": np.select(
+                (sex == 1, sex == 2),
+                ("MALE", "FEMALE"),
+                default="UNKNOWN",
+            ),
             "region": numeric["GORCODE"]
             .astype(int)
             .map(_SPI_REGION_MAP)

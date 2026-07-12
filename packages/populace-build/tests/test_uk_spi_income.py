@@ -268,6 +268,28 @@ def test_spi_qrf_fails_closed_on_missing_donor_component(monkeypatch, tmp_path) 
         )
 
 
+def test_spi_donor_preserves_documented_unattributed_sex_code(tmp_path) -> None:
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    raw.loc[0, "SEX"] = 0
+
+    donor = spi_income._prepare_spi_donor(raw, seed=7)
+
+    assert donor.loc[0, "gender"] == "UNKNOWN"
+    assert set(donor["gender"]) == {"UNKNOWN", "MALE", "FEMALE"}
+
+
+def test_spi_donor_rejects_undocumented_sex_code(tmp_path) -> None:
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    raw.loc[0, "SEX"] = 3
+
+    with pytest.raises(ValueError, match="documented codes 0/1/2"):
+        spi_income._prepare_spi_donor(raw, seed=7)
+
+
 def test_spi_qrf_fails_closed_on_unreviewed_stage2_gap(monkeypatch, tmp_path) -> None:
     support = _dead_support(drop_stage2="universal_credit_reported")
     donor_path = tmp_path / SPI_DONOR_FILENAME
