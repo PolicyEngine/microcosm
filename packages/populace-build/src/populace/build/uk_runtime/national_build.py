@@ -172,9 +172,14 @@ class UKNationalBuildResult:
 def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
     """Load and validate a compact UK single-year H5."""
 
-    input_path = Path(path).expanduser().resolve()
-    if input_path.suffix != ".h5":
+    requested_path = Path(path).expanduser()
+    if requested_path.suffix != ".h5":
         raise ValueError("UK national dataset path must end with '.h5'.")
+    # Hugging Face cache entries retain the requested ``.h5`` name as a
+    # symlink whose content-addressed blob target has no suffix. Validate the
+    # caller-facing artifact name before resolving it, while binding all
+    # provenance and stable-byte checks to the actual opened file.
+    input_path = requested_path.resolve()
     if not input_path.is_file():
         raise FileNotFoundError(f"UK national dataset not found: {input_path}.")
 
@@ -332,7 +337,8 @@ def build_uk_national_dataset(
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5."""
 
-    input_path = Path(input_h5).resolve()
+    requested_input_path = Path(input_h5).expanduser()
+    input_path = requested_input_path.resolve()
     staging_path = Path(staging_h5).resolve()
     if input_path == staging_path:
         raise ValueError("input_h5 and staging_h5 must differ.")
@@ -364,7 +370,7 @@ def build_uk_national_dataset(
     assert_uk_release_input_coverage_build_stages(
         tuple(stage.name for stage in materialized_stages)
     )
-    dataset = load_uk_national_dataset(input_path)
+    dataset = load_uk_national_dataset(requested_input_path)
     for stage in materialized_stages:
         dataset = stage.run(dataset)
         validate_uk_national_dataset(dataset)

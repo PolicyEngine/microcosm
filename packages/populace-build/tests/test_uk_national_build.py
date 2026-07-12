@@ -373,6 +373,39 @@ def test_national_build_refuses_to_overwrite_its_input(monkeypatch, tmp_path) ->
         )
 
 
+def test_national_build_accepts_hugging_face_style_h5_symlink(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    from populace.build.uk_runtime import national_build
+
+    cached_blob = tmp_path / "content-addressed-blob"
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    _write_toy_h5(cached_blob, employment_income=40_000.0)
+    input_h5.symlink_to(cached_blob)
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _dataset, _engine: _passing_gate(),
+    )
+
+    result = build_uk_national_dataset(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        coverage_engine=object(),
+    )
+
+    assert result.input_h5 == cached_blob.resolve()
+    assert result.dataset.source_h5 == cached_blob.resolve()
+    assert staging_h5.is_file()
+
+
 def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     pytest.importorskip("tables")
     policyengine_data = pytest.importorskip("policyengine_uk.data")
