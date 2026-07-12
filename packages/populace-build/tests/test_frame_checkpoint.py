@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +34,9 @@ def _checkpoint_frame() -> Frame:
             "person_firm_id": np.asarray([100, 200, 200], dtype=np.int64),
             "small_integer": np.asarray([1, -2, 3], dtype=np.int8),
             "unsigned_code": np.asarray([4, 5, 6], dtype=np.uint32),
-            "float_measure": np.asarray([1.25, np.nan, -3.5], dtype=np.float32),
+            "float_measure": np.asarray(
+                [0x3FA00000, 0x7FC01234, 0xC0600000], dtype=np.uint32
+            ).view(np.float32),
             "observed": np.asarray([True, False, True], dtype=np.bool_),
             "nullable_flag": pd.Series(
                 [True, np.nan, False],
@@ -42,6 +45,11 @@ def _checkpoint_frame() -> Frame:
             ),
             "nullable_label": pd.Series(
                 ["first", np.nan, "third"],
+                index=person_index,
+                dtype=object,
+            ),
+            "missing_sentinels": pd.Series(
+                [None, pd.NA, pd.NaT],
                 index=person_index,
                 dtype=object,
             ),
@@ -145,6 +153,10 @@ def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
 
     write_frame_checkpoint(first_path, frame, metadata=external_metadata)
     loaded = load_frame_checkpoint(first_path)
+    # HDF object timestamps have one-second resolution on common platforms.
+    # Crossing that boundary ensures determinism is real, not a same-second
+    # false positive from the serializer.
+    time.sleep(1.1)
     write_frame_checkpoint(second_path, loaded.frame, metadata=loaded.metadata)
 
     assert first_path.read_bytes() == second_path.read_bytes()
@@ -184,6 +196,45 @@ def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
         check_exact=True,
     )
     assert loaded.frame.mass_log == frame.mass_log
+    sentinels = loaded.frame.person["missing_sentinels"].tolist()
+    assert sentinels[0] is None
+    assert sentinels[1] is pd.NA
+    assert sentinels[2] is pd.NaT
+    np.testing.assert_array_equal(
+        loaded.frame.person["float_measure"].to_numpy().view(np.uint32),
+        frame.person["float_measure"].to_numpy().view(np.uint32),
+    )
+
+
+def test_frame_checkpoint_preserves_range_indexes_and_column_axis_name(
+    tmp_path: Path,
+) -> None:
+    original = _checkpoint_frame()
+    tables = {
+        entity: original.table(entity).reset_index(drop=True)
+        for entity in original.entities
+    }
+    tables.update(
+        {link: original.link(link).reset_index(drop=True) for link in original.links}
+    )
+    tables["person"].columns.name = ("person", "variables")
+    frame = Frame(
+        tables,
+        original.schema,
+        {entity: original.weights_for(entity) for entity in original.weighted_entities},
+        original.strata.reset_index(drop=True),
+        mass_log=original.mass_log,
+    )
+
+    path = tmp_path / "range-index.h5"
+    write_frame_checkpoint(path, frame)
+    loaded = load_frame_checkpoint(path).frame
+
+    for entity in frame.entities:
+        assert isinstance(loaded.table(entity).index, pd.RangeIndex)
+    for link in frame.links:
+        assert isinstance(loaded.link(link).index, pd.RangeIndex)
+    assert loaded.person.columns.name == ("person", "variables")
 
 
 @pytest.mark.parametrize(
