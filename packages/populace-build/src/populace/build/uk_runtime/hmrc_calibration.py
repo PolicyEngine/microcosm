@@ -62,7 +62,6 @@ DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR = 0.05
 _SIMULATED_PERSON_COLUMNS = (
     "person_id",
     "income_tax",
-    "state_pension",
 )
 
 
@@ -95,11 +94,12 @@ def materialize_uk_hmrc_calibration_frame(
 ) -> UKHMRCTargetMaterialization:
     """Build all 208 HMRC rows using the official taxpayer/band semantics.
 
-    PolicyEngine-UK supplies the person-level ``income_tax`` taxpayer mask and
-    calculated state pension. Income-band placement derives ``TI = TEI + TII``
-    from the same post-source leaves on every FRS and SPI row. Table 3.6's
-    published employment measure likewise uses the explicit HMRC auxiliary on
-    both channels; the narrower PolicyEngine employment input is never widened.
+    PolicyEngine-UK supplies the person-level ``income_tax`` taxpayer mask.
+    Income-band placement derives ``TI = TEI + TII`` from the same post-source
+    leaves on every FRS and SPI row. Table 3.6's published employment and state
+    pension measures likewise use the explicit HMRC auxiliaries on both
+    channels; PolicyEngine's narrower employment input and state-pension inputs
+    remain unchanged.
     ``calculate_dataframe(..., map_to="person")`` retains PolicyEngine's entity
     mapping and MicroSeries weights while values align back to stable IDs.
     """
@@ -123,9 +123,6 @@ def materialize_uk_hmrc_calibration_frame(
     simulated_by_id = simulated.set_index("person_id")
     person_ids = person["person_id"]
     person["income_tax"] = person_ids.map(simulated_by_id["income_tax"]).to_numpy()
-    person["state_pension"] = person_ids.map(
-        simulated_by_id["state_pension"]
-    ).to_numpy()
     person[HMRC_TAXPAYER_COLUMN] = person["income_tax"] > 0.0
     # Recompute every HMRC aggregate from normalized leaves at the target
     # boundary. A caller cannot smuggle a channel-specific precomputed proxy
@@ -135,11 +132,12 @@ def materialize_uk_hmrc_calibration_frame(
     component_values: dict[str, np.ndarray] = {}
     tax_free_values: np.ndarray | None = None
     for component in HMRC_SPI_INCOME_COMPONENTS:
-        source_column = (
-            SPI_HMRC_EMPLOYED_INCOME_COLUMN
-            if component == "employment_income"
-            else component
-        )
+        if component == "employment_income":
+            source_column = SPI_HMRC_EMPLOYED_INCOME_COLUMN
+        elif component == "state_pension":
+            source_column = SPI_HMRC_STATE_PENSION_INCOME_COLUMN
+        else:
+            source_column = component
         if source_column not in person:
             raise ValueError(
                 "HMRC target materialization cannot silently narrow missing "
@@ -465,7 +463,7 @@ def _strict_simulated_person_values(
             f"missing={list(expected_ids - actual_ids)[:5]}, "
             f"unexpected={list(actual_ids - expected_ids)[:5]}."
         )
-    for column in ("income_tax", "state_pension"):
+    for column in ("income_tax",):
         values = pd.to_numeric(simulated[column], errors="coerce").to_numpy(
             dtype=float,
             na_value=np.nan,

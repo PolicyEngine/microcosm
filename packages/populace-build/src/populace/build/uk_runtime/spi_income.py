@@ -46,6 +46,10 @@ SPI_DONOR_FILENAME = "put2223uk.tab"
 SPI_DONOR_VINTAGE = "2022-23"
 SPI_DONOR_UKDS_STUDY = "SN 9422"
 SPI_DONOR_DOI = "10.5255/UKDA-SN-9422-1"
+SPI_DONOR_DOCUMENTATION_URL = (
+    "https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/"
+    "9422_put_2223_full_documentation.pdf"
+)
 SPI_DONOR_FIT_NAME = "uk_spi_2022_23_income"
 FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
@@ -55,8 +59,29 @@ SPI_DONOR_SIZE_BYTES = 141_323_762
 # because the public-use fields are rounded. Synthetic draws never inherit
 # that discrepancy: their accounting aggregates are derived after the draw.
 SPI_TI_IDENTITY_ABS_TOLERANCE_GBP = 5.0
+# Annex A gives the exact leaf formulas. The pinned PUT first rounds source
+# fields, then averages composite records, then rounds remaining income fields
+# to £5. The two max() operations do not commute with composite averaging, so
+# source-leaf reconciliation has separate observed envelopes for the exact
+# sha-pinned ordinary and composite records. Synthetic identities remain exact.
+SPI_SOURCE_TEI_FORMULA = (
+    "max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + "
+    "MOTHINC + OTHERINC + SRP + PENSION + "
+    "max(0, PROFITS - CAPALL - LOSSBF)"
+)
+SPI_SOURCE_TII_FORMULA = "OTHERINV + DIVIDENDS + INCPROP + INCBBS"
+SPI_SOURCE_TI_FORMULA = "TEI + TII"
+SPI_SOURCE_COMPOSITE_INDICATOR = "AGERANGE == -1"
+SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP = {
+    "ordinary": {"TEI": 15.0, "TII": 10.0, "TI": 20.0},
+    "composite": {"TEI": 180.0, "TII": 10.0, "TI": 180.0},
+}
 
 SPI_POLICYENGINE_EMPLOYMENT_SOURCE_COLUMNS = ("PAY", "EPB", "TAXTERM")
+SPI_POLICYENGINE_EMPLOYMENT_FORMULA = (
+    "hmrc_spi_pay + hmrc_spi_employment_benefits + "
+    "hmrc_spi_taxable_termination_pay"
+)
 SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP = {
     SPI_HMRC_PAY_COLUMN: ("PAY",),
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN: ("EPB",),
@@ -488,6 +513,7 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
     # TI, TEI and TII remain source-validation fields only. The QRF draws the
     # documented leaves, and the synthetic aggregates are derived after every
     # draw so the accounting identity holds by construction.
+    _validate_spi_source_leaf_reconciliation(numeric)
     ti_error = np.abs(numeric["TI"] - (numeric["TEI"] + numeric["TII"]))
     if (ti_error > SPI_TI_IDENTITY_ABS_TOLERANCE_GBP).any():
         worst = float(ti_error.max())
@@ -500,6 +526,53 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
         if (donor[column] < 0.0).any():
             raise ValueError(f"SPI donor {column} must be non-negative.")
     return donor
+
+
+def _validate_spi_source_leaf_reconciliation(numeric: pd.DataFrame) -> None:
+    """Check Annex A leaf formulas within the pinned PUT anonymization envelope."""
+
+    source_tei = (
+        np.maximum(0.0, numeric["PAY"] + numeric["EPB"] - numeric["EXPS"])
+        + numeric["INCPBEN"]
+        + numeric["OSSBEN"]
+        + numeric["TAXTERM"]
+        + numeric["UBISJA"]
+        + numeric["MOTHINC"]
+        + numeric["OTHERINC"]
+        + numeric["SRP"]
+        + numeric["PENSION"]
+        + np.maximum(
+            0.0,
+            numeric["PROFITS"] - numeric["CAPALL"] - numeric["LOSSBF"],
+        )
+    )
+    source_tii = (
+        numeric["OTHERINV"]
+        + numeric["DIVIDENDS"]
+        + numeric["INCPROP"]
+        + numeric["INCBBS"]
+    )
+    derived = {"TEI": source_tei, "TII": source_tii, "TI": source_tei + source_tii}
+    composite = numeric["AGERANGE"].eq(-1).to_numpy(dtype=bool)
+    groups = {"ordinary": ~composite, "composite": composite}
+    for group, mask in groups.items():
+        if not mask.any():
+            continue
+        for field, tolerance in (
+            SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP[group].items()
+        ):
+            error = np.abs(
+                numeric.loc[mask, field].to_numpy(dtype=float)
+                - derived[field].loc[mask].to_numpy(dtype=float)
+            )
+            if (error > tolerance).any():
+                worst = float(error.max())
+                raise ValueError(
+                    "SPI 2022-23 source-leaf reconciliation failed for "
+                    f"{group} {field}; worst absolute difference {worst:.6g} "
+                    f"exceeds the reviewed £{tolerance:.0f} PUT anonymization "
+                    "envelope."
+                )
 
 
 def _seed_frs_hmrc_auxiliary_leaves(
@@ -997,10 +1070,17 @@ __all__ = [
     "SPI_DONOR_REQUIRED_COLUMNS",
     "SPI_INCOME_SOURCE_COLUMNS",
     "SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS",
+    "SPI_DONOR_DOCUMENTATION_URL",
     "SPI_HMRC_EMPLOYED_INCOME_FORMULA",
     "SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP",
+    "SPI_POLICYENGINE_EMPLOYMENT_FORMULA",
     "SPI_POLICYENGINE_EMPLOYMENT_SOURCE_COLUMNS",
     "SPI_QRF_SOURCE_COLUMNS",
+    "SPI_SOURCE_COMPOSITE_INDICATOR",
+    "SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP",
+    "SPI_SOURCE_TEI_FORMULA",
+    "SPI_SOURCE_TII_FORMULA",
+    "SPI_SOURCE_TI_FORMULA",
     "SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS",
     "SPI_TI_IDENTITY_ABS_TOLERANCE_GBP",
     "UKSPIIncomeImputationResult",

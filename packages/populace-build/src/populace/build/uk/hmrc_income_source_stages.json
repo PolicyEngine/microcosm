@@ -259,6 +259,28 @@
             "TEI",
             "TII"
           ],
+          "source_leaf_reconciliation": {
+            "documentation_url": "https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf",
+            "composite_indicator": "AGERANGE == -1",
+            "formulas": {
+              "TEI": "max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC + OTHERINC + SRP + PENSION + max(0, PROFITS - CAPALL - LOSSBF)",
+              "TII": "OTHERINV + DIVIDENDS + INCPROP + INCBBS",
+              "TI": "TEI + TII"
+            },
+            "maximum_absolute_difference_gbp": {
+              "ordinary": {
+                "TEI": 15,
+                "TII": 10,
+                "TI": 20
+              },
+              "composite": {
+                "TEI": 180,
+                "TII": 10,
+                "TI": 180
+              }
+            },
+            "rationale": "The official PUT rounds source fields, averages documented composite records, then rounds remaining income fields to GBP 5. These are the observed envelopes in the exact sha-pinned donor; post-draw synthetic identities remain exact."
+          },
           "ti_identity_absolute_tolerance_gbp": 5,
           "stochastic_aggregates_forbidden": [
             "hmrc_spi_employed_income",
@@ -449,6 +471,8 @@
           "breakdown_definition": "deterministic TEI + TII from the same normalized post-source leaves on every FRS and SPI row",
           "employment_measure": "hmrc_spi_employed_income",
           "employment_measure_definition": "the require_frs_hmrc_employment_crosswalk formula, applied identically on every FRS and SPI row",
+          "state_pension_measure": "hmrc_spi_state_pension_income",
+          "state_pension_measure_definition": "the direct SRP leaf also used in deterministic TEI and band assignment on every FRS and SPI row",
           "require_identical_crosswalk_all_channels": true,
           "savings_interest_measure": "savings_interest_income - tax_free_savings_income; fail if tax-free exceeds gross",
           "taxpayer_mask": "hmrc_spi_taxpayer",
@@ -515,7 +539,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Current-source contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates, with TI exactly equal to TEI + TII. PolicyEngine employment_income stays PAY + EPB + TAXTERM. Table 3.6 uses a separate broad HMRC auxiliary built from one normalized constituent crosswalk on both channels. The certified candidate does not retain those normalized FRS constituents, so the family fails closed before source I/O pending a reviewed FRS decomposition stage. No employment_income or miscellaneous_income proxy is permitted."
+      "notes": "Current-source contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates, with TI exactly equal to TEI + TII. Raw donor leaves reconcile to published aggregates within separately pinned ordinary/composite PUT anonymization envelopes while the published TI identity retains its independent GBP 5 check. PolicyEngine employment_income stays PAY + EPB + TAXTERM. Table 3.6 employment uses a separate broad HMRC auxiliary built from one normalized constituent crosswalk on both channels, and state pension uses the same SRP auxiliary included in TEI and band assignment. The certified candidate does not retain those normalized FRS constituents, so the family fails closed before source I/O pending a reviewed FRS decomposition stage. No employment_income or miscellaneous_income proxy is permitted."
     }
   ]
 }

@@ -493,7 +493,7 @@
    "required_target_count": 208,
    "restoration_status": "blocked_pending_reviewed_frs_decomposition",
    "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "545a27176d2fdb732c3b85aa88d31677cfbd781532b02f9bdd144e39bcd2f335",
+   "source_manifest_sha256": "b7ae759c6b970118fe2a8e15406afa6f326f5fabe4ae7600a740212a578d160d",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",

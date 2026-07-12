@@ -30,6 +30,7 @@ from populace.build.uk_runtime.hmrc_income import (
 from populace.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
+    SPI_DONOR_DOCUMENTATION_URL,
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
     SPI_DONOR_REQUIRED_COLUMNS,
@@ -38,7 +39,13 @@ from populace.build.uk_runtime.spi_income import (
     SPI_DONOR_UKDS_STUDY,
     SPI_DONOR_VINTAGE,
     SPI_HMRC_EMPLOYED_INCOME_FORMULA,
+    SPI_POLICYENGINE_EMPLOYMENT_FORMULA,
     SPI_QRF_SOURCE_COLUMNS,
+    SPI_SOURCE_COMPOSITE_INDICATOR,
+    SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP,
+    SPI_SOURCE_TEI_FORMULA,
+    SPI_SOURCE_TI_FORMULA,
+    SPI_SOURCE_TII_FORMULA,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     SPI_TI_IDENTITY_ABS_TOLERANCE_GBP,
 )
@@ -442,6 +449,12 @@ def assert_uk_hmrc_income_source_contract_current(
     )
     _expect(
         failures,
+        "stage1.derived_policyengine_outputs.employment_income.formula",
+        employment_derivation.get("formula"),
+        SPI_POLICYENGINE_EMPLOYMENT_FORMULA,
+    )
+    _expect(
+        failures,
         "stage1.derived_policyengine_outputs.employment_income.derive_after_draw",
         employment_derivation.get("derive_after_draw"),
         True,
@@ -463,6 +476,39 @@ def assert_uk_hmrc_income_source_contract_current(
         "stage1.source_ti_identity_fields",
         tuple(stage1.get("source_ti_identity_fields", ())),
         ("TI", "TEI", "TII"),
+    )
+    reconciliation = _mapping(
+        stage1.get("source_leaf_reconciliation"),
+        "stage1.source_leaf_reconciliation",
+        failures,
+    )
+    _expect(
+        failures,
+        "stage1.source_leaf_reconciliation.documentation_url",
+        reconciliation.get("documentation_url"),
+        SPI_DONOR_DOCUMENTATION_URL,
+    )
+    _expect(
+        failures,
+        "stage1.source_leaf_reconciliation.composite_indicator",
+        reconciliation.get("composite_indicator"),
+        SPI_SOURCE_COMPOSITE_INDICATOR,
+    )
+    _expect(
+        failures,
+        "stage1.source_leaf_reconciliation.formulas",
+        dict(reconciliation.get("formulas", {})),
+        {
+            "TEI": SPI_SOURCE_TEI_FORMULA,
+            "TII": SPI_SOURCE_TII_FORMULA,
+            "TI": SPI_SOURCE_TI_FORMULA,
+        },
+    )
+    _expect(
+        failures,
+        "stage1.source_leaf_reconciliation.maximum_absolute_difference_gbp",
+        dict(reconciliation.get("maximum_absolute_difference_gbp", {})),
+        SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP,
     )
     _expect(
         failures,
@@ -635,6 +681,12 @@ def assert_uk_hmrc_income_source_contract_current(
         "calibration.employment_measure",
         calibration.get("employment_measure"),
         SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    )
+    _expect(
+        failures,
+        "calibration.state_pension_measure",
+        calibration.get("state_pension_measure"),
+        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     )
     _expect(
         failures,

@@ -69,7 +69,6 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
                 if income_component != "state_pension":
                     row[income_component] = 0.0
             if component == "state_pension":
-                row["state_pension_reported"] = value
                 row[SPI_HMRC_STATE_PENSION_INCOME_COLUMN] = value
             elif component == "employment_income":
                 row[SPI_HMRC_PAY_COLUMN] = value
@@ -158,7 +157,6 @@ class _FakeSimulation:
             {
                 "person_id": person["person_id"],
                 "income_tax": np.ones(len(person)),
-                "state_pension": person["state_pension_reported"],
             }
         )
 
@@ -188,7 +186,6 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
             "variables": [
                 "person_id",
                 "income_tax",
-                "state_pension",
             ],
             "period": "2023",
             "map_to": "person",
@@ -203,6 +200,29 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
     }
     problem = materialized.registry.to_target_set()
     assert len(problem) == 208
+
+
+def test_state_pension_targets_use_the_same_srp_auxiliary_as_band_income() -> None:
+    dataset, targets = _feasible_dataset_and_targets()
+    person = dataset.person.copy()
+    person["state_pension_reported"] = 9_999_999.0
+    dataset = dataset.with_tables(person=person)
+
+    materialized = materialize_uk_hmrc_calibration_frame(
+        dataset,
+        targets,
+        simulation_factory=_simulation_factory,
+    )
+
+    target = next(
+        spec
+        for spec in materialized.registry.specs
+        if spec.metadata["component"] == "state_pension"
+        and spec.metadata["measure"] == "amount"
+        and spec.metadata["income_lower_bound"] == "12570"
+    )
+    measure = materialized.frame.table("person")[target.measure]
+    assert float(measure.sum()) == 12_571.0
 
 
 def test_exact_surface_calibrates_with_conserved_positive_weights() -> None:

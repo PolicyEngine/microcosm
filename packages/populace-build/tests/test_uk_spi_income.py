@@ -40,6 +40,9 @@ from populace.build.uk_runtime.spi_support import (
 )
 from populace.frame import WeightKind
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PINNED_SPI_DONOR_PATH = _REPO_ROOT / "inputs" / "spi" / "put2223uk.tab"
+
 
 class _FakeFittedQRF:
     def __init__(self, targets: tuple[str, ...], weight_kind: str) -> None:
@@ -301,10 +304,40 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         result.person[SPI_HMRC_EMPLOYED_INCOME_COLUMN],
         expected_employed,
     )
+    expected_pe_employment = (
+        result.person.loc[spi_people, SPI_HMRC_PAY_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
+    )
+    np.testing.assert_array_equal(
+        result.person.loc[spi_people, "employment_income"],
+        expected_pe_employment,
+    )
+    expected_total_earned = (
+        expected_employed
+        + result.person[SPI_HMRC_OTHER_INCOME_COLUMN]
+        + result.person[SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
+        + result.person["self_employment_income"]
+        + result.person["private_pension_income"]
+    )
+    expected_total_investment = (
+        result.person["savings_interest_income"]
+        - result.person["tax_free_savings_income"]
+        + result.person["dividend_income"]
+        + result.person["property_income"]
+        + result.person["other_investment_income"]
+    )
+    np.testing.assert_array_equal(
+        result.person[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN],
+        expected_total_earned,
+    )
+    np.testing.assert_array_equal(
+        result.person[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+        expected_total_investment,
+    )
     np.testing.assert_array_equal(
         result.person[HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
-        result.person[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN]
-        + result.person[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+        expected_total_earned + expected_total_investment,
     )
     signed_miscellaneous = result.person[
         SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
@@ -407,6 +440,48 @@ def test_spi_donor_keeps_narrow_pe_employment_and_broad_hmrc_measure(
         derived[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN]
         + derived[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
     )
+
+
+def test_spi_donor_rejects_leaf_reconciliation_drift(tmp_path) -> None:
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    # Preserve the published TI = TEI + TII identity while breaking Annex A's
+    # source-leaf formula, proving the two source diagnostics are independent.
+    raw["TEI"] += 1_000.0
+    raw["TI"] += 1_000.0
+
+    with pytest.raises(ValueError, match="source-leaf reconciliation"):
+        spi_income._prepare_spi_donor(raw, seed=7)
+
+
+def test_spi_donor_accepts_reviewed_composite_reconciliation_envelope(
+    tmp_path,
+) -> None:
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    raw.loc[0, "AGERANGE"] = -1
+    raw.loc[0, ["TEI", "TI"]] += 180.0
+
+    spi_income._prepare_spi_donor(raw, seed=7)
+
+    raw.loc[0, ["TEI", "TI"]] += 5.0
+    with pytest.raises(ValueError, match="composite TEI"):
+        spi_income._prepare_spi_donor(raw, seed=7)
+
+
+@pytest.mark.skipif(
+    not _PINNED_SPI_DONOR_PATH.is_file(),
+    reason="licensed pinned SPI donor is not staged locally",
+)
+def test_real_pinned_spi_donor_reconciles_documented_source_leaves() -> None:
+    spi_income._verify_spi_donor_identity(_PINNED_SPI_DONOR_PATH)
+    raw = pd.read_csv(_PINNED_SPI_DONOR_PATH, delimiter="\t")
+
+    donor = spi_income._prepare_spi_donor(raw, seed=42)
+
+    assert len(donor) == 836_850
 
 
 def test_spi_donor_rejects_undocumented_sex_code(tmp_path) -> None:

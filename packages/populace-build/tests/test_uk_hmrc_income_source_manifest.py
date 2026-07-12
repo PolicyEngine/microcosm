@@ -260,6 +260,17 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     assert stage1["source_columns"]["hmrc_spi_state_pension_income"] == ["SRP"]
     assert stage1["ti_identity_absolute_tolerance_gbp"] == 5
     assert stage1["source_ti_identity_fields"] == ["TI", "TEI", "TII"]
+    reconciliation = stage1["source_leaf_reconciliation"]
+    assert reconciliation["composite_indicator"] == "AGERANGE == -1"
+    assert reconciliation["formulas"]["TEI"].startswith("max(0, PAY + EPB - EXPS)")
+    assert reconciliation["formulas"]["TII"] == (
+        "OTHERINV + DIVIDENDS + INCPROP + INCBBS"
+    )
+    assert reconciliation["formulas"]["TI"] == "TEI + TII"
+    assert reconciliation["maximum_absolute_difference_gbp"] == {
+        "ordinary": {"TEI": 15, "TII": 10, "TI": 20},
+        "composite": {"TEI": 180, "TII": 10, "TI": 180},
+    }
     assert stage1["stochastic_aggregates_forbidden"] == _DERIVED_AUXILIARIES
     assert all(
         column not in stage1["source_columns"] for column in _DERIVED_AUXILIARIES
@@ -455,6 +466,33 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             "stage1.source_ti_identity_fields",
         ),
         (
+            (
+                "stages",
+                0,
+                "operations",
+                4,
+                "derived_policyengine_outputs",
+                "employment_income",
+                "formula",
+            ),
+            "hmrc_spi_pay",
+            "stage1.derived_policyengine_outputs.employment_income.formula",
+        ),
+        (
+            (
+                "stages",
+                0,
+                "operations",
+                4,
+                "source_leaf_reconciliation",
+                "maximum_absolute_difference_gbp",
+                "ordinary",
+                "TEI",
+            ),
+            1_000,
+            "stage1.source_leaf_reconciliation.maximum_absolute_difference_gbp",
+        ),
+        (
             ("stages", 0, "operations", 5, "reviewed_absent_outputs"),
             {"maternity_allowance_reported": "changed"},
             "stage2.reviewed_absent_outputs",
@@ -476,6 +514,11 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             ("stages", 0, "operations", 8, "max_weight_ratio"),
             10,
             "calibration.max_weight_ratio",
+        ),
+        (
+            ("stages", 0, "operations", 8, "state_pension_measure"),
+            "state_pension",
+            "calibration.state_pension_measure",
         ),
         (
             ("stages", 0, "operations", 8, "maximum_abs_relative_error"),
