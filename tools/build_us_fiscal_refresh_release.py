@@ -127,6 +127,7 @@ from populace.build.us_runtime import (
     us_sipp_tips_signal_gate,
     us_sipp_vehicles_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
+    us_snap_state_take_up_gate,
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
@@ -162,6 +163,7 @@ from populace.build.us_runtime import (
     with_us_sipp_tip_inputs,
     with_us_sipp_vehicle_inputs,
     with_us_snap_discretionary_exemption_inputs,
+    with_us_snap_state_take_up,
     with_us_snap_take_up_inputs,
     with_us_ssi_disability_criteria,
     with_us_ssi_take_up,
@@ -170,6 +172,7 @@ from populace.build.us_runtime import (
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
     write_us_medicaid_take_up_diagnostics,
+    write_us_snap_state_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
     write_us_ssi_take_up_diagnostics,
     write_us_take_up_participation_diagnostics,
@@ -623,6 +626,7 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
     }
 )
 US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
+US_SNAP_HOUSEHOLDS_TARGET_ROLE = "snap_households"
 
 FILING_STATUS_MAP = {
     "All": None,
@@ -2645,6 +2649,150 @@ def _medicaid_diagnostics_for_existing_output(
         target_table,
         substitutions=substitutions,
         weights_basis="final_release_weights",
+    )
+
+
+def _snap_state_target_table(target_specs: tuple) -> pd.DataFrame:
+    """FNS state household caseload counts as the take-up calibration table.
+
+    Mirrors :func:`_medicaid_source_target_table` for the ``snap_households``
+    target role: FY2024 state average-monthly household facts
+    (``usda_snap.fy2024.state_average_monthly_households.*``), fiscal-year
+    average-monthly stock semantics — the same rows the ``snap_households``
+    weight-calibration targets compile from, so the take-up seed and the
+    calibration objective agree.
+    """
+    rows: list[dict[str, object]] = []
+    for spec in target_specs:
+        if spec.metadata.get("ledger_geography_level") != "state":
+            continue
+        groupby_dimension = spec.metadata.get("ledger_layout_groupby_dimension")
+        if (
+            isinstance(groupby_dimension, str)
+            and "congressional_district" in groupby_dimension
+        ):
+            continue
+        state_fips = spec.metadata.get("state_fips")
+        if not state_fips:
+            continue
+        if spec.metadata.get("target_role") != US_SNAP_HOUSEHOLDS_TARGET_ROLE:
+            continue
+        rows.append(
+            {
+                "state_fips": str(state_fips).zfill(2),
+                "target": float(spec.value),
+                "source_record_id": spec.name,
+            }
+        )
+    table = pd.DataFrame(rows, columns=["state_fips", "target", "source_record_id"])
+    duplicated = table["state_fips"][table["state_fips"].duplicated()].unique()
+    if len(duplicated):
+        # The calibrate operation applies duplicate state rows sequentially
+        # (last row wins) while the rate prior, diagnostics, and gate SUM
+        # them — divergent semantics that must never reach the stage.
+        raise RuntimeError(
+            "SNAP household caseload targets carry duplicate state rows for "
+            f"state_fips {sorted(duplicated)}; the ledger feed must supply "
+            "exactly one snap_households count per state."
+        )
+    return table
+
+
+def _spm_unit_state_fips(frame: Frame) -> np.ndarray:
+    """SPM-unit-aligned state FIPS text codes via the frame's linkage."""
+    return np.asarray(
+        _state_fips_text(frame.broadcast("state_fips", to="spm_unit").to_numpy())
+    )
+
+
+def _snap_spm_unit_eligibility(
+    frame: Frame,
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> np.ndarray:
+    """Engine-computed SPM-unit ``is_snap_eligible``, batched like Medicaid."""
+    if simulation is not None:
+        return _calculate_array(simulation, "is_snap_eligible", map_to="spm_unit") > 0
+    from policyengine_us import Microsimulation
+
+    spm_unit_ids = frame.table("spm_unit")["spm_unit_id"].to_numpy()
+    eligibility = np.zeros(len(spm_unit_ids), dtype=bool)
+    unit_positions = pd.Series(
+        np.arange(len(spm_unit_ids), dtype=np.int64), index=spm_unit_ids
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing SNAP eligibility in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = Microsimulation(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_eligible = (
+                _calculate_array(
+                    batch_simulation, "is_snap_eligible", map_to="spm_unit"
+                )
+                > 0
+            )
+            positions = unit_positions.reindex(
+                batch_frame.table("spm_unit")["spm_unit_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(positions).any():
+                raise RuntimeError(
+                    "SNAP eligibility batch produced spm_unit_id values not "
+                    "present in the full spm_unit table."
+                )
+            eligibility[positions.astype(np.int64)] = batch_eligible
+            batch_simulation._invalidate_all_caches()
+            del batch_frame, batch_simulation
+        _collect_batch_garbage()
+    return eligibility
+
+
+def _with_snap_state_take_up_outputs(
+    frame: Frame,
+    target_specs: tuple,
+    *,
+    seed: int,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> tuple[Frame, dict[str, object]]:
+    """Assign state-calibrated SNAP take-up (populace #372): frame + diagnostics."""
+    target_table = _snap_state_target_table(target_specs)
+    if target_table.empty:
+        raise RuntimeError(
+            "SNAP state take-up requires FNS state household caseload targets "
+            "(snap_households); none were compiled from the ledger facts."
+        )
+    eligibility = _snap_spm_unit_eligibility(
+        frame,
+        simulation=simulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+    return with_us_snap_state_take_up(
+        frame,
+        is_snap_eligible=eligibility,
+        state_fips=_spm_unit_state_fips(frame),
+        state_targets=target_table,
+        seed=seed,
     )
 
 
@@ -7517,6 +7665,34 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "snap_state_take_up",
+            message=("Recalibrating SNAP take-up to FNS state household caseloads."),
+        )
+    base_frame, snap_state_take_up_diagnostics = _with_snap_state_take_up_outputs(
+        base_frame,
+        target_specs,
+        seed=args.seed,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    snap_state_take_up_gate = us_snap_state_take_up_gate(snap_state_take_up_diagnostics)
+    if not snap_state_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "snap_state_take_up_gate",
+                status="failed",
+                message="SNAP state take-up gate failed.",
+                failures=list(snap_state_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SNAP state take-up failed: {failure}"
+                for failure in snap_state_take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "other_health_insurance_inputs",
             message=(
                 "Deriving the ASEC non-Medicare premium residual after ACA, "
@@ -8256,6 +8432,10 @@ def main() -> None:
         ssi_take_up_diagnostics,
         release_dir / "us_ssi_take_up.json",
     )
+    write_us_snap_state_take_up_diagnostics(
+        snap_state_take_up_diagnostics,
+        release_dir / "us_snap_state_take_up.json",
+    )
     # The stage gate ran on the stage output; this re-checks the EXPORT frame
     # so a downstream transform that drops or flattens a count-calibrated
     # column cannot ship the engine-default landmine with only an
@@ -8284,6 +8464,10 @@ def main() -> None:
         telemetry.attach_artifact(
             "us_ssi_take_up",
             release_dir / "us_ssi_take_up.json",
+        )
+        telemetry.attach_artifact(
+            "us_snap_state_take_up",
+            release_dir / "us_snap_state_take_up.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started

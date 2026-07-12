@@ -228,6 +228,7 @@ class TargetCoverageRequirement:
     accepted_families: tuple[str, ...] = ()
     required_measures: tuple[str, ...] = ()
     required_metadata: tuple[tuple[str, str], ...] = ()
+    required_metadata_keys: tuple[str, ...] = ()
     min_matches: int = 1
     notes: str = ""
 
@@ -263,6 +264,12 @@ class TargetCoverageRequirement:
             raise ValueError(
                 f"TargetCoverageRequirement {self.requirement_id!r}: "
                 f"metadata requirements need non-empty keys and values: {bad_metadata}."
+            )
+        bad_metadata_keys = [key for key in self.required_metadata_keys if not key]
+        if bad_metadata_keys:
+            raise ValueError(
+                f"TargetCoverageRequirement {self.requirement_id!r}: "
+                "metadata key requirements need non-empty keys."
             )
 
 
@@ -354,9 +361,11 @@ def _matches_target_requirement(
         and entry.measure not in requirement.required_measures
     ):
         return False
-    return all(
+    if not all(
         entry.metadata.get(key) == value for key, value in requirement.required_metadata
-    )
+    ):
+        return False
+    return all(key in entry.metadata for key in requirement.required_metadata_keys)
 
 
 def target_profile_coverage_gate(

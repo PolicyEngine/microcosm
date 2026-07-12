@@ -91,6 +91,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional latest.json timestamp override for reproducible tests.",
     )
     parser.add_argument(
+        "--no-latest",
+        action="store_true",
+        help=(
+            "Publish as a non-default release: upload files and create the "
+            "immutable tag, but never touch latest.json (the default pointer)."
+        ),
+    )
+    parser.add_argument(
         "--allow-incomplete-reform-validation",
         action="store_true",
         help=(
@@ -131,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),
         updated_at=args.updated_at,
+        update_latest=not args.no_latest,
     )
     print(json.dumps(pointer, indent=2))
 

@@ -697,6 +697,49 @@ def test_extra_support_exclusions_reject_empty_reason() -> None:
             pass
 
 
+def test_state_level_snap_benefits_fact_compiles_to_state_hard_target() -> None:
+    california_source_record_id = (
+        "usda_snap.fy2024.state_benefits.wro.ca.total_benefits"
+    )
+    guam_source_record_id = "usda_snap.fy2024.state_benefits.wro.gu.total_benefits"
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=california_source_record_id,
+            source_name="usda_snap",
+            measure_id="total_benefits",
+            value=12_000_000_000,
+            geography_level="state",
+            geography_id="0400000US06",
+            groupby_value_id="ca",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=guam_source_record_id,
+            source_name="usda_snap",
+            measure_id="total_benefits",
+            value=250_000_000,
+            geography_level="state",
+            geography_id="0400000US66",
+            groupby_value_id="gu",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(facts)
+
+    by_source_record_id = {
+        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    }
+    assert california_source_record_id in by_source_record_id
+    california = by_source_record_id[california_source_record_id]
+    assert california.family == "usda_snap"
+    assert california.metadata["target_role"] == "snap_total"
+    assert california.metadata["base_variable"] == "snap"
+    assert california.metadata["state_fips"] == "06"
+    assert california.value == 12_000_000_000
+    # Guam has no PolicyEngine state FIPS, so the row must not become a target.
+    assert guam_source_record_id not in by_source_record_id
+
+
 def test_weight_dependent_medicaid_spending_is_validation_only() -> None:
     source_record_id = (
         "cms_nhe.cy2024.medicaid_title_xix_expenditures."
@@ -3119,6 +3162,7 @@ def test_structured_income_tax_positive_does_not_satisfy_total_tax() -> None:
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3143,6 +3187,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3190,6 +3235,7 @@ def test_jct_target_name_without_simple_reform_metadata_fails() -> None:
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *(spec.target_name for spec in US_JCT_TAX_EXPENDITURE_REFORMS),
     ]
@@ -3212,6 +3258,7 @@ def test_jct_revenue_loss_targets_do_not_satisfy_deduction_amount_controls() -> 
         *complete_income_source_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3257,6 +3304,7 @@ def test_medicaid_chip_requirement_needs_combined_enrollment_role() -> None:
             if row["metadata"]["target_role"] != "medicaid_chip_enrollment"
         ],
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3277,6 +3325,7 @@ def test_medicaid_requirement_needs_enrollment_role() -> None:
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3312,6 +3361,7 @@ def test_chip_requirement_needs_direct_chip_role() -> None:
             if row["metadata"]["target_role"] != "chip_enrollment"
         ],
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -3991,6 +4041,7 @@ def complete_coverage_targets() -> list[dict[str, object]]:
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
         *complete_state_income_tax_rows(45),
+        *complete_snap_state_rows(),
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
@@ -4096,6 +4147,22 @@ def complete_state_income_tax_rows(count: int) -> list[dict[str, object]]:
             "measure": f"census_stc.cy2024.state_{i:02d}.individual_income_tax.collections",
             "family": "state_income_tax",
             "metadata": {"target_role": "state_income_tax"},
+        }
+        for i in range(count)
+    ]
+
+
+def complete_snap_state_rows(count: int = 51) -> list[dict[str, object]]:
+    # 50 states + DC; state_fips presence is what the snap_state_benefits
+    # requirement demands (populace #255/#256).
+    return [
+        {
+            "name": f"usda_snap.fy2024.state_benefits.state_{i:02d}.total_benefits",
+            "measure": (
+                f"usda_snap.fy2024.state_benefits.state_{i:02d}.total_benefits"
+            ),
+            "family": "usda_snap",
+            "metadata": {"target_role": "snap_total", "state_fips": f"{i + 1:02d}"},
         }
         for i in range(count)
     ]

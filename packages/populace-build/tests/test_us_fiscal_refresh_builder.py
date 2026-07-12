@@ -3227,6 +3227,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_other_health_insurance_signal_gate",
         fake_other_health_insurance_signal_gate,
     )
+    monkeypatch.setattr(
+        builder,
+        "_with_snap_state_take_up_outputs",
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: (frame, {}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_state_take_up_gate",
+        lambda diagnostics: builder.GateResult(
+            name="snap_state_take_up",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
         captured["materialize_kwargs"] = kwargs

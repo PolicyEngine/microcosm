@@ -474,6 +474,25 @@ from populace.build.us_runtime.puf_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from populace.build.us_runtime.puma_ladder import (
+    PUMA_LADDER_ARTIFACT_SHA256_ATTR,
+    PUMA_LADDER_VINTAGES_ATTR,
+    US_PUMA_LADDER_COLUMNS,
+    US_PUMA_LADDER_DERIVED_LAYERS,
+    US_PUMA_LADDER_KIND,
+    US_PUMA_LADDER_SCHEMA_VERSION,
+    US_PUMA_LADDER_TRACT_COLUMN,
+    UsPumaLadder,
+    assign_us_puma_ladder,
+    load_us_puma_ladder,
+    us_puma_ladder_assignment_summary,
+    us_puma_ladder_gate,
+    with_household_us_puma_ladder,
+)
+from populace.build.us_runtime.puma_ladder_sources import (
+    assemble_us_puma_ladder,
+    parse_tract_to_puma_relationship,
+)
 from populace.build.us_runtime.qbi_inputs import (
     QBI_ARCHIVED_ASSUMPTIONS_URL,
     QBI_ARCHIVED_CLONE_URL,
@@ -676,6 +695,16 @@ from populace.build.us_runtime.snap_discretionary_exemption import (
     us_snap_discretionary_exemption_stage_spec,
     us_snap_discretionary_exemption_summary,
     with_us_snap_discretionary_exemption_inputs,
+)
+from populace.build.us_runtime.snap_state_take_up import (
+    US_SNAP_CASELOAD_TOLERANCE,
+    US_SNAP_HOUSEHOLDS_TARGET_TABLE,
+    US_SNAP_STATE_TAKE_UP_ANCHOR,
+    US_SNAP_STATE_TAKE_UP_STAGE,
+    us_snap_state_take_up_diagnostics,
+    us_snap_state_take_up_gate,
+    with_us_snap_state_take_up,
+    write_us_snap_state_take_up_diagnostics,
 )
 from populace.build.us_runtime.snap_take_up import (
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
@@ -963,6 +992,14 @@ __all__ = [
     "us_snap_take_up_stage_spec",
     "us_snap_take_up_summary",
     "with_us_snap_take_up_inputs",
+    "US_SNAP_CASELOAD_TOLERANCE",
+    "US_SNAP_HOUSEHOLDS_TARGET_TABLE",
+    "US_SNAP_STATE_TAKE_UP_ANCHOR",
+    "US_SNAP_STATE_TAKE_UP_STAGE",
+    "us_snap_state_take_up_diagnostics",
+    "us_snap_state_take_up_gate",
+    "with_us_snap_state_take_up",
+    "write_us_snap_state_take_up_diagnostics",
     "US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS",
     "US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN",
     "US_SNAP_DISCRETIONARY_EXEMPTION_REQUIRED_SOURCE_COLUMNS",
@@ -1575,6 +1612,21 @@ __all__ = [
     "validation_only_family_ids",
     "translate_congressional_district_facts_to_current_vintage",
     "with_household_congressional_districts",
+    "PUMA_LADDER_ARTIFACT_SHA256_ATTR",
+    "PUMA_LADDER_VINTAGES_ATTR",
+    "US_PUMA_LADDER_COLUMNS",
+    "US_PUMA_LADDER_DERIVED_LAYERS",
+    "US_PUMA_LADDER_KIND",
+    "US_PUMA_LADDER_SCHEMA_VERSION",
+    "US_PUMA_LADDER_TRACT_COLUMN",
+    "UsPumaLadder",
+    "assemble_us_puma_ladder",
+    "assign_us_puma_ladder",
+    "load_us_puma_ladder",
+    "parse_tract_to_puma_relationship",
+    "us_puma_ladder_assignment_summary",
+    "us_puma_ladder_gate",
+    "with_household_us_puma_ladder",
 ]
 
 
@@ -1710,6 +1762,21 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "calibrated to CMS December 2024 state enrollment snapshots. "
             "Point-in-time semantics per #332; heals the #170 "
             "enrollment==eligibility degeneracy."
+        ),
+    ),
+    US_SNAP_STATE_TAKE_UP_STAGE: DonorSpec(
+        survey=(
+            "Census CPS ASEC reported receipt + USDA FNS state "
+            "average-monthly household caseloads"
+        ),
+        source="https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+        notes=(
+            "SNAP take-up by anchored count-calibration (contract treatment "
+            "count_calibrated, populace #372): reported ASEC receipt anchors "
+            "the flag; the fill is calibrated per state to FNS FY2024 "
+            "average-monthly household counts among eligible non-anchored "
+            "units, replacing the national snap_take_up fill that bakes in "
+            "state-dependent CPS underreporting."
         ),
     ),
     US_OTHER_HEALTH_INSURANCE_STAGE_NAME: DonorSpec(
@@ -2012,6 +2079,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "entity_placement",
     "aca_marketplace_inputs",
     "medicaid_take_up",
+    US_SNAP_STATE_TAKE_UP_STAGE,
     US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
     "export",
 )

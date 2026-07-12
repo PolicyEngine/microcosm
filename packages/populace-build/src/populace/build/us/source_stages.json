@@ -1729,7 +1729,58 @@
       "outputs": [
         "takes_up_snap_if_eligible"
       ],
-      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243)."
+      "notes": "Reported recipients (SPM_SNAPSUB > 0) always take up \u2014 survey measurement first. Non-reporting units receive seeded draws at exactly the rate needed for the overall weighted take-up share to land on the cited FNS participation rate; when reporters alone exceed the rate the share is emergent. The flag is assigned across all SPM units and the engine intersects it with modeled eligibility, matching the retired enhanced-CPS pipeline. Draws are keyed by stable source identity so support-channel clones of one source unit always agree. Without this stage the engine defaults every unit to take-up (100% participation), overstating the reach of eligibility-side reforms (populace #243). The national fill is an assignment prior: the snap_state_take_up stage recalibrates it per state to FNS caseloads (populace #372)."
+    },
+    {
+      "stage": "snap_state_take_up",
+      "survey": "Census CPS ASEC reported receipt + USDA FNS state average-monthly household caseloads",
+      "source": "https://www.fns.usda.gov/pd/supplemental-nutrition-assistance-program-snap",
+      "grain": "spm_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "Census CPS ASEC SPM unit reported SNAP subsidy (SPM_SNAPSUB)"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "fiscal_year_2024",
+          "locator": "USDA FNS SNAP average monthly households by state (usda_snap.fy2024.state_average_monthly_households.*)"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "spm_unit",
+          "weight": "spm_unit_weight"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_snap_if_eligible",
+          "draw": "stable_spm_unit_draw",
+          "rate_key": "snap",
+          "rate_column": "snap_take_up_rate",
+          "reported_true_anchor": "snap_reported_receipt"
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "takes_up_snap_if_eligible",
+          "targets": [
+            "usda_snap_households_by_state"
+          ],
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "snap_reported_receipt",
+          "domain": "is_snap_eligible",
+          "weight": "spm_unit_weight",
+          "draw": "stable_spm_unit_draw"
+        }
+      ],
+      "outputs": [
+        "takes_up_snap_if_eligible"
+      ],
+      "notes": "Anchored count-calibration to FNS state caseloads (populace #372), following the medicaid_take_up pattern at SPM-unit grain. Reported recipients always take up; the fill draws at an in-build state rate (FNS average-monthly household count over weighted modeled-eligible units, an assignment prior, never cited as provenance) and is greedily calibrated to the FNS FY2024 state counts among eligible non-anchored units. Caseload semantics are fiscal-year average-monthly stocks - the same rows the snap_households weight-calibration targets compile from, so the seed and the calibration objective agree. CPS receipt underreporting is strongly state-dependent, so the national snap_take_up fill leaves the worst-underreporting states short of taker households no reweighting can recover. The assign operation deliberately carries no eligibility mask: off-domain units keep a draw-based propensity so eligibility-expanding reforms do not inherit a hard-coded zero response. States whose FNS count meets or exceeds modeled eligible weight saturate (all eligible units take up) and are recorded as saturated in diagnostics, not failed. Persons caseloads are deliberately untargeted: the SNAP assistance unit is often a subset of the SPM unit, so member counts overcount FNS participants by roughly half."
     },
     {
       "stage": "relationship_inputs",

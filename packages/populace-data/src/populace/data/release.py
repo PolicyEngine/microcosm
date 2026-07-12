@@ -116,6 +116,7 @@ def publish_release(
     tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
     updated_at: str | None = None,
+    update_latest: bool = True,
 ) -> dict:
     """Upload a release directory and point ``latest.json`` at it.
 
@@ -228,6 +229,7 @@ def publish_release(
         root_artifacts=root_artifacts,
         payload=payload,
         create_tag=create_tag,
+        update_latest=update_latest,
     )
     return payload
 
@@ -305,6 +307,7 @@ def _publish_atomic(
     root_artifacts: Mapping[str, str],
     payload: dict,
     create_tag: bool,
+    update_latest: bool = True,
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
@@ -345,10 +348,16 @@ def _publish_atomic(
         branch=staging_branch,
         repo_type="dataset",
     )
+    if update_latest:
+        message = f"Update latest release to {release_id}"
+        pointer = json.dumps(payload, indent=1).encode()
+    else:
+        message = f"Publish non-default release {release_id}"
+        pointer = None
     api.create_commit(
         repo_id=repo_id,
         repo_type="dataset",
-        commit_message=f"Update latest release to {release_id}",
+        commit_message=message,
         parent_commit=main_revision,
         operations=_commit_operations(
             release_dir=release_dir,
@@ -356,7 +365,7 @@ def _publish_atomic(
             release_id=release_id,
             filenames=filenames,
             root_artifacts=root_artifacts,
-            pointer=json.dumps(payload, indent=1).encode(),
+            pointer=pointer,
         ),
     )
 
