@@ -53,6 +53,7 @@ def _feasible_dataset_and_targets() -> tuple[UKNationalDataset, HMRCIncomeTarget
                 "person_household_id": row_id,
                 "person_benunit_id": row_id,
                 "state_pension_reported": 0.0,
+                "tax_free_savings_income": 0.0,
             }
             for income_component in HMRC_SPI_INCOME_COMPONENTS:
                 if income_component != "state_pension":
@@ -145,6 +146,17 @@ class _FakeSimulation:
                 "person_id": person["person_id"],
                 "income_tax": np.ones(len(person)),
                 "state_pension": person["state_pension_reported"],
+                "total_income": (
+                    person[
+                        [
+                            component
+                            for component in HMRC_SPI_INCOME_COMPONENTS
+                            if component
+                            not in {"state_pension", "other_investment_income"}
+                        ]
+                    ].sum(axis=1)
+                    + person["state_pension_reported"]
+                ),
             }
         )
 
@@ -171,7 +183,12 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
     assert materialized.minimum_positive_support_rows == 1
     assert _FakeSimulation.calls == [
         {
-            "variables": ["person_id", "income_tax", "state_pension"],
+            "variables": [
+                "person_id",
+                "income_tax",
+                "state_pension",
+                "total_income",
+            ],
             "period": "2023",
             "map_to": "person",
             "use_weights": True,
@@ -179,9 +196,7 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
     ]
 
     specs = materialized.registry.specs
-    assert {spec.metadata["taxpayer_mask"] for spec in specs} == {
-        HMRC_TAXPAYER_COLUMN
-    }
+    assert {spec.metadata["taxpayer_mask"] for spec in specs} == {HMRC_TAXPAYER_COLUMN}
     assert {spec.metadata["band_measure"] for spec in specs} == {
         HMRC_ASSESSABLE_INCOME_COLUMN
     }
@@ -251,6 +266,20 @@ def test_materialization_rejects_wrong_mapped_period() -> None:
     broken = dataset.with_tables(time_period="2024")
 
     with pytest.raises(ValueError, match="does not match"):
+        materialize_uk_hmrc_calibration_frame(
+            broken,
+            targets,
+            simulation_factory=_simulation_factory,
+        )
+
+
+def test_materialization_rejects_tax_free_interest_above_gross() -> None:
+    dataset, targets = _feasible_dataset_and_targets()
+    person = dataset.person.copy()
+    person.loc[0, "tax_free_savings_income"] = 1.0
+    broken = dataset.with_tables(person=person)
+
+    with pytest.raises(ValueError, match="gross savings_interest_income"):
         materialize_uk_hmrc_calibration_frame(
             broken,
             targets,

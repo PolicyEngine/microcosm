@@ -100,6 +100,7 @@ from populace.build.uk_runtime.hmrc_calibration import (
     DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR,
     DEFAULT_HMRC_MAX_WEIGHT_RATIO,
     HMRC_ASSESSABLE_INCOME_COLUMN,
+    HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN,
     HMRC_TAXPAYER_COLUMN,
     UKHMRCIncomeCalibration,
     UKHMRCTargetMaterialization,
@@ -126,6 +127,10 @@ from populace.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     restore_uk_hmrc_income_family,
     verify_certified_uk_candidate,
+)
+from populace.build.uk_runtime.hmrc_source_contract import (
+    UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE,
+    assert_uk_hmrc_income_source_contract_current,
 )
 from populace.build.uk_runtime.local_geography import (
     LONG_GEOGRAPHY_COLUMNS,
@@ -199,6 +204,7 @@ from populace.build.uk_runtime.release_input_coverage import (
     UKEffectiveMassCoveragePolicy,
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
+    assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
     load_uk_release_input_coverage_manifest,
     uk_release_input_coverage_gate,
@@ -302,6 +308,7 @@ __all__ = [
     "HMRC_BAND_COLUMNS",
     "HMRC_ASSESSABLE_INCOME_COLUMN",
     "HMRC_DISTRIBUTIONAL_INPUTS",
+    "HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN",
     "HMRC_SPI_BUILD_PERIOD",
     "HMRC_SPI_COLLATED_ODS_URL",
     "HMRC_SPI_INCOME_COMPONENTS",
@@ -345,6 +352,7 @@ __all__ = [
     "StackedLocalSolveResult",
     "UK_ENGLAND_WALES_REGION_CODES",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
+    "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
     "UK_LONDON_REGION_CODE",
     "UK_LOADER_INPUT_ALIASES",
     "UK_OA_LADDER_DERIVED_LAYERS",
@@ -385,6 +393,8 @@ __all__ = [
     "area_support_summary",
     "area_groups_from_codes",
     "assemble_uk_oa_ladder",
+    "assert_uk_hmrc_income_source_contract_current",
+    "assert_uk_release_input_coverage_build_stages",
     "assert_uk_release_input_coverage_manifest_current",
     "assign_employment",
     "assign_household_geography",

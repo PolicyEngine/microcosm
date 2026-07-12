@@ -16,6 +16,19 @@ from populace.build.uk_runtime.national_build import (
 from populace.frame import MassChangeRecord, WeightKind
 
 
+@pytest.fixture(autouse=True)
+def _isolate_generic_seam_from_shipped_family_contract(monkeypatch) -> None:
+    """These seam tests use toy stages; family enforcement has its own tests."""
+
+    from populace.build.uk_runtime import national_build
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_build_stages",
+        lambda _stage_names: None,
+    )
+
+
 def _write_toy_h5(path: Path, *, employment_income: float = 0.0) -> None:
     with pd.HDFStore(path) as store:
         store.put(

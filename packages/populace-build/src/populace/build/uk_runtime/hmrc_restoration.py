@@ -25,6 +25,10 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
     materialize_hmrc_spi_income_band_targets,
 )
+from populace.build.uk_runtime.hmrc_source_contract import (
+    HMRC_DISTRIBUTIONAL_INPUTS,
+    assert_uk_hmrc_income_source_contract_current,
+)
 from populace.build.uk_runtime.national_build import (
     UKNationalDataset,
     validate_uk_national_dataset,
@@ -39,8 +43,10 @@ from populace.build.uk_runtime.spi_income import (
 )
 from populace.build.uk_runtime.spi_support import (
     DEFAULT_SPI_PRIOR_MASS_SHARE,
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     replace_uk_spi_support_tables,
+    support_channel_column,
 )
 from populace.frame import WeightKind
 
@@ -53,22 +59,17 @@ __all__ = [
     "UKCertifiedCandidateIdentity",
     "UKHMRCIncomeRestorationResult",
     "UKHMRCIncomeStageTransform",
+    "assert_uk_hmrc_income_source_contract_current",
     "restore_uk_hmrc_income_family",
     "verify_certified_uk_candidate",
 ]
 
 CERTIFIED_UK_CANDIDATE_FILENAME = "populace_uk_2023.h5"
-CERTIFIED_UK_CANDIDATE_REVISION = (
-    "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
-)
+CERTIFIED_UK_CANDIDATE_REVISION = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 CERTIFIED_UK_CANDIDATE_SHA256 = (
     "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 )
 CERTIFIED_UK_CANDIDATE_SIZE_BYTES = 1_315_880_118
-HMRC_DISTRIBUTIONAL_INPUTS = (
-    "gift_aid",
-    "charitable_investment_gifts",
-)
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,7 @@ class UKHMRCIncomeStageTransform:
 
     spi_tab_path: Path
     hmrc_ods_path: Path
+    certified_candidate: UKCertifiedCandidateIdentity
     seed: int = 42
     qrf_estimators: int = 100
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE
@@ -191,6 +193,7 @@ class UKHMRCIncomeStageTransform:
             dataset,
             spi_tab_path=self.spi_tab_path,
             hmrc_ods_path=self.hmrc_ods_path,
+            certified_candidate=self.certified_candidate,
             seed=self.seed,
             qrf_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
@@ -209,7 +212,9 @@ def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdent
 
     candidate = Path(path).expanduser().resolve()
     if not candidate.is_file():
-        raise FileNotFoundError(f"Certified Populace UK candidate not found: {candidate}.")
+        raise FileNotFoundError(
+            f"Certified Populace UK candidate not found: {candidate}."
+        )
     size = candidate.stat().st_size
     if size != CERTIFIED_UK_CANDIDATE_SIZE_BYTES:
         raise ValueError(
@@ -236,6 +241,7 @@ def restore_uk_hmrc_income_family(
     *,
     spi_tab_path: str | Path,
     hmrc_ods_path: str | Path,
+    certified_candidate: UKCertifiedCandidateIdentity,
     seed: int = 42,
     qrf_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
@@ -248,17 +254,15 @@ def restore_uk_hmrc_income_family(
 ) -> UKHMRCIncomeRestorationResult:
     """Replace dead SPI rows, run both QRFs, and fit all HMRC targets."""
 
+    assert_uk_hmrc_income_source_contract_current()
+    _validate_certified_candidate_identity(certified_candidate)
+    _assert_reviewed_release_parameters(
+        donor_sample_size=donor_sample_size,
+        spi_prior_mass_share=spi_prior_mass_share,
+        max_weight_ratio=max_weight_ratio,
+        maximum_abs_relative_error=maximum_abs_relative_error,
+    )
     validate_uk_national_dataset(dataset)
-    if not np.isclose(
-        spi_prior_mass_share,
-        DEFAULT_SPI_PRIOR_MASS_SHARE,
-        rtol=0.0,
-        atol=0.0,
-    ):
-        raise ValueError(
-            "The HMRC source manifest reviews exactly a 50% SPI prior mass "
-            "share; update/review the manifest before changing it."
-        )
     source_targets = materialize_hmrc_spi_income_band_targets(
         hmrc_ods_path,
         build_period=dataset.time_period,
@@ -340,9 +344,18 @@ def restore_uk_hmrc_income_family(
 
 def _distributional_mass_shares(dataset: UKNationalDataset) -> dict[str, float]:
     person = dataset.person
-    household_weights = dataset.household.set_index("household_id")[
-        "household_weight"
-    ]
+    person_channel = support_channel_column("person")
+    if person_channel not in person:
+        raise RuntimeError(
+            "Cannot audit HMRC distributional inputs without person support "
+            "channel provenance."
+        )
+    spi_people = (
+        person[person_channel].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
+    )
+    if not spi_people.any():
+        raise RuntimeError("Rebuilt HMRC family contains no SPI support people.")
+    household_weights = dataset.household.set_index("household_id")["household_weight"]
     mapped = person["person_household_id"].map(household_weights)
     if mapped.isna().any() or not mapped.gt(0.0).all():
         raise RuntimeError(
@@ -360,7 +373,7 @@ def _distributional_mass_shares(dataset: UKNationalDataset) -> dict[str, float]:
         )
         if not np.isfinite(values).all():
             raise RuntimeError(f"HMRC distributional input {column!r} is non-finite.")
-        shares[column] = float(weights[values != 0.0].sum()) / total
+        shares[column] = float(weights[spi_people & (values != 0.0)].sum()) / total
     return shares
 
 
@@ -370,3 +383,67 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _validate_certified_candidate_identity(
+    identity: UKCertifiedCandidateIdentity,
+) -> None:
+    if not isinstance(identity, UKCertifiedCandidateIdentity):
+        raise TypeError(
+            "HMRC restoration requires a verified UKCertifiedCandidateIdentity."
+        )
+    expected = (
+        CERTIFIED_UK_CANDIDATE_FILENAME,
+        CERTIFIED_UK_CANDIDATE_REVISION,
+        CERTIFIED_UK_CANDIDATE_SHA256,
+        CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+    )
+    actual = (
+        identity.filename,
+        identity.revision,
+        identity.sha256,
+        identity.size_bytes,
+    )
+    if actual != expected:
+        raise ValueError(
+            "HMRC restoration base identity does not match the certified "
+            "Populace UK candidate contract."
+        )
+
+
+def _assert_reviewed_release_parameters(
+    *,
+    donor_sample_size: int | None,
+    spi_prior_mass_share: float,
+    max_weight_ratio: float,
+    maximum_abs_relative_error: float,
+) -> None:
+    reviewed = {
+        "donor_sample_size": (
+            donor_sample_size,
+            DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+        ),
+        "spi_prior_mass_share": (
+            spi_prior_mass_share,
+            DEFAULT_SPI_PRIOR_MASS_SHARE,
+        ),
+        "max_weight_ratio": (
+            max_weight_ratio,
+            DEFAULT_HMRC_MAX_WEIGHT_RATIO,
+        ),
+        "maximum_abs_relative_error": (
+            maximum_abs_relative_error,
+            DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR,
+        ),
+    }
+    drifted = {
+        name: {"actual": actual, "reviewed": expected}
+        for name, (actual, expected) in reviewed.items()
+        if actual != expected
+    }
+    if drifted:
+        raise ValueError(
+            "HMRC release parameters disagree with the reviewed source "
+            f"manifest: {drifted}. Update and review the manifest and runtime "
+            "together; callers cannot weaken this gate."
+        )

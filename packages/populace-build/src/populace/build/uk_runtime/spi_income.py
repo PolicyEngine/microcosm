@@ -18,6 +18,7 @@ from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_INCOME_IMPUTATION_COLUMNS,
+    SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     support_channel_column,
@@ -34,6 +35,7 @@ SPI_DONOR_DOI = "10.5255/UKDA-SN-9422-1"
 SPI_DONOR_FIT_NAME = "uk_spi_2022_23_income"
 FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
+SPI_TI_IDENTITY_ABS_TOLERANCE_GBP = 100.0
 
 SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS = {
     "incapacity_benefit_reported": (
@@ -46,15 +48,24 @@ SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS = {
     ),
 }
 
-_SPI_RAW_COLUMNS = (
+SPI_DONOR_REQUIRED_COLUMNS = (
     "SEX",
     "FACT",
     "GORCODE",
     "AGERANGE",
     "PAY",
     "EPB",
+    "EXPS",
     "TAXTERM",
+    "INCPBEN",
+    "OSSBEN",
+    "UBISJA",
+    "MOTHINC",
+    "OTHERINC",
     "PROFITS",
+    "CAPALL",
+    "LOSSBF",
+    "SRP",
     "INCBBS",
     "DIVIDENDS",
     "PENSION",
@@ -62,9 +73,20 @@ _SPI_RAW_COLUMNS = (
     "OTHERINV",
     "GIFTAID",
     "GIFTINV",
+    "TI",
 )
-_SPI_OUTPUT_SOURCES = {
-    "self_employment_income": ("PROFITS",),
+SPI_INCOME_SOURCE_COLUMNS = {
+    "employment_income": (
+        "PAY",
+        "EPB",
+        "EXPS",
+        "INCPBEN",
+        "OSSBEN",
+        "TAXTERM",
+        "UBISJA",
+        "MOTHINC",
+    ),
+    "self_employment_income": ("PROFITS", "CAPALL", "LOSSBF"),
     "savings_interest_income": ("INCBBS",),
     "dividend_income": ("DIVIDENDS",),
     "private_pension_income": ("PENSION",),
@@ -72,6 +94,12 @@ _SPI_OUTPUT_SOURCES = {
     "other_investment_income": ("OTHERINV",),
     "gift_aid": ("GIFTAID",),
     "charitable_investment_gifts": ("GIFTINV",),
+    "hmrc_spi_assessable_income": ("TI",),
+}
+_DIRECT_SPI_OUTPUT_SOURCE_COLUMNS = {
+    output: sources
+    for output, sources in SPI_INCOME_SOURCE_COLUMNS.items()
+    if output not in {"employment_income", "self_employment_income"}
 }
 _SPI_AGE_RANGES = {
     -1: (16, 70),
@@ -177,9 +205,10 @@ def impute_uk_spi_income_support(
         label="household support",
     )
     spi_household = household[household_channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL
-    if not spi_household.any() or not household.loc[
-        spi_household, "household_weight"
-    ].gt(0.0).all():
+    if (
+        not spi_household.any()
+        or not household.loc[spi_household, "household_weight"].gt(0.0).all()
+    ):
         raise ValueError("SPI support rows must all carry positive effective mass.")
     spi_people = person[person_channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL
     if not spi_people.any():
@@ -196,7 +225,7 @@ def impute_uk_spi_income_support(
     )
     donor_frame = _person_fit_frame(
         predictors=donor_predictors,
-        targets=donor[list(SPI_INCOME_IMPUTATION_COLUMNS)],
+        targets=donor[list(SPI_INCOME_QRF_OUTPUT_COLUMNS)],
         weights=donor_fit_weights,
         weight_kind=WeightKind.DESIGN,
     )
@@ -204,32 +233,31 @@ def impute_uk_spi_income_support(
     stage1 = qrf_cls(n_estimators=n_estimators, seed=seed).fit(
         donor_frame,
         list(donor_predictors.columns),
-        list(SPI_INCOME_IMPUTATION_COLUMNS),
+        list(SPI_INCOME_QRF_OUTPUT_COLUMNS),
         weights="design",
     )
     stage1_draws = stage1.predict(encoded_recipient)
     _validate_predictions(
         stage1_draws,
-        expected=SPI_INCOME_IMPUTATION_COLUMNS,
+        expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
         label="SPI stage-1",
     )
-    for column in SPI_INCOME_IMPUTATION_COLUMNS:
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
         if column not in person:
             person[column] = 0.0
         person.loc[spi_people, column] = stage1_draws[column].to_numpy()
 
-    taxable_interest_draw = person.loc[
-        spi_people, "savings_interest_income"
-    ].to_numpy(dtype=np.float64, copy=True)
+    taxable_interest_draw = person.loc[spi_people, "savings_interest_income"].to_numpy(
+        dtype=np.float64, copy=True
+    )
     stage2_outputs, reviewed_absent = _stage2_outputs(person)
     base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
     if "clone_index" in household:
         base_household &= household["clone_index"] == 0
     training_household_ids = set(household.loc[base_household, "household_id"])
-    training_people = (
-        (person[person_channel] == BASE_FRS_SUPPORT_CHANNEL)
-        & person["person_household_id"].isin(training_household_ids)
-    )
+    training_people = (person[person_channel] == BASE_FRS_SUPPORT_CHANNEL) & person[
+        "person_household_id"
+    ].isin(training_household_ids)
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
 
@@ -283,9 +311,7 @@ def impute_uk_spi_income_support(
     tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
         dtype=np.float64
     )
-    person.loc[spi_people, "savings_interest_income"] = (
-        taxable_interest_draw + tax_free
-    )
+    person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
     person = _refresh_disability_derived_inputs(
         person,
         spi_people=spi_people,
@@ -307,9 +333,12 @@ def impute_uk_spi_income_support(
 
 
 def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
-    _require_columns(raw, _SPI_RAW_COLUMNS, label="SPI 2022-23 donor")
+    _require_columns(raw, SPI_DONOR_REQUIRED_COLUMNS, label="SPI 2022-23 donor")
     numeric = pd.DataFrame(
-        {column: pd.to_numeric(raw[column], errors="coerce") for column in _SPI_RAW_COLUMNS}
+        {
+            column: pd.to_numeric(raw[column], errors="coerce")
+            for column in SPI_DONOR_REQUIRED_COLUMNS
+        }
     )
     _require_finite_numeric(numeric, label="SPI 2022-23 donor")
     if not (numeric["FACT"] > 0.0).all():
@@ -327,19 +356,53 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
         {
             "age": bounds[:, 0] + rng.random(len(raw)) * (bounds[:, 1] - bounds[:, 0]),
             "gender": np.where(sex == 1, "MALE", "FEMALE"),
-            "region": numeric["GORCODE"].astype(int).map(_SPI_REGION_MAP).fillna(
-                "UNKNOWN"
-            ),
+            "region": numeric["GORCODE"]
+            .astype(int)
+            .map(_SPI_REGION_MAP)
+            .fillna("UNKNOWN"),
             "FACT": numeric["FACT"],
-            "employment_income": numeric[["PAY", "EPB", "TAXTERM"]].sum(axis=1),
+            "employment_income": (
+                np.maximum(
+                    numeric["PAY"] + numeric["EPB"] - numeric["EXPS"],
+                    0.0,
+                )
+                + numeric["INCPBEN"]
+                + numeric["OSSBEN"]
+                + numeric["TAXTERM"]
+                + numeric["UBISJA"]
+                + numeric["MOTHINC"]
+            ),
+            "self_employment_income": np.maximum(
+                numeric["PROFITS"] - numeric["CAPALL"] - numeric["LOSSBF"],
+                0.0,
+            ),
         }
     )
-    for output, sources in _SPI_OUTPUT_SOURCES.items():
+    for output, sources in _DIRECT_SPI_OUTPUT_SOURCE_COLUMNS.items():
         donor[output] = numeric[list(sources)].sum(axis=1)
     _require_finite_numeric(
-        donor[["age", "FACT", *SPI_INCOME_IMPUTATION_COLUMNS]],
+        donor[["age", "FACT", *SPI_INCOME_QRF_OUTPUT_COLUMNS]],
         label="SPI 2022-23 derived donor",
     )
+    derived_ti = (
+        donor["employment_income"]
+        + numeric["OTHERINC"]
+        + numeric["SRP"]
+        + numeric["PENSION"]
+        + donor["self_employment_income"]
+        + numeric["OTHERINV"]
+        + numeric["DIVIDENDS"]
+        + numeric["INCPROP"]
+        + numeric["INCBBS"]
+    )
+    ti_error = np.abs(donor["hmrc_spi_assessable_income"] - derived_ti)
+    if (ti_error > SPI_TI_IDENTITY_ABS_TOLERANCE_GBP).any():
+        worst = float(ti_error.max())
+        raise ValueError(
+            "SPI 2022-23 TI disagrees with the published TEI + TII identity; "
+            f"worst absolute difference {worst:.6g} exceeds the reviewed "
+            f"£{SPI_TI_IDENTITY_ABS_TOLERANCE_GBP:.0f} rounding tolerance."
+        )
     for column in ("gift_aid", "charitable_investment_gifts"):
         if (donor[column] < 0.0).any():
             raise ValueError(f"SPI donor {column} must be non-negative.")
@@ -424,10 +487,26 @@ def _stage2_outputs(person: pd.DataFrame) -> tuple[tuple[str, ...], dict[str, st
     reviewed: dict[str, str] = {}
     missing_unreviewed: list[str] = []
     for column in FRS_ONLY_SPI_FILL_PERSON_COLUMNS:
-        if column in person:
-            outputs.append(column)
-        elif column in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS:
+        if column in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS:
+            if column in person:
+                values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+                    dtype=float,
+                    na_value=np.nan,
+                )
+                if not np.isfinite(values).all():
+                    raise ValueError(
+                        f"Reviewed-absent FRS-only output {column!r} contains "
+                        "non-finite values."
+                    )
+                if (values != 0.0).any():
+                    raise ValueError(
+                        f"Reviewed-absent FRS-only output {column!r} now carries "
+                        "non-default source signal; update and review the source "
+                        "manifest before adding it to the QRF surface."
+                    )
             reviewed[column] = SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS[column]
+        elif column in person:
+            outputs.append(column)
         else:
             missing_unreviewed.append(column)
     if missing_unreviewed:
@@ -662,7 +741,10 @@ __all__ = [
     "SPI_DONOR_RELEASE",
     "SPI_DONOR_UKDS_STUDY",
     "SPI_DONOR_VINTAGE",
+    "SPI_DONOR_REQUIRED_COLUMNS",
+    "SPI_INCOME_SOURCE_COLUMNS",
     "SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS",
+    "SPI_TI_IDENTITY_ABS_TOLERANCE_GBP",
     "UKSPIIncomeImputationResult",
     "impute_uk_spi_income_support",
 ]

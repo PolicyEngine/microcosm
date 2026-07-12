@@ -16,6 +16,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+)
 from populace.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from populace.frame import (
     EntitySchema,
@@ -58,6 +61,11 @@ SPI_INCOME_COMPONENT_COLUMNS = (
 SPI_INCOME_IMPUTATION_COLUMNS = SPI_INCOME_COMPONENT_COLUMNS + (
     "gift_aid",
     "charitable_investment_gifts",
+)
+SPI_HMRC_AUXILIARY_COLUMNS = (HMRC_SPI_ASSESSABLE_INCOME_COLUMN,)
+SPI_INCOME_QRF_OUTPUT_COLUMNS = (
+    *SPI_INCOME_IMPUTATION_COLUMNS,
+    *SPI_HMRC_AUXILIARY_COLUMNS,
 )
 
 FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS = (
@@ -308,7 +316,9 @@ def replace_uk_spi_support_tables(
         label=HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     )
     if not synthetic.any():
-        raise ValueError("Certified UK base has no SPI-synthetic households to replace.")
+        raise ValueError(
+            "Certified UK base has no SPI-synthetic households to replace."
+        )
     incoming_weights = pd.to_numeric(
         household_frame["household_weight"], errors="coerce"
     ).to_numpy(dtype=float, na_value=np.nan)
@@ -635,7 +645,9 @@ def _allocate_spi_prior_mass(
     base_mask = channels.eq(BASE_FRS_SUPPORT_CHANNEL).to_numpy()
     spi_mask = channels.eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy()
     if not base_mask.any() or not spi_mask.any() or np.any(~(base_mask | spi_mask)):
-        raise ValueError("Rebuilt UK support must contain exactly FRS and SPI channels.")
+        raise ValueError(
+            "Rebuilt UK support must contain exactly FRS and SPI channels."
+        )
 
     pre_weights = pd.to_numeric(
         household["household_weight"], errors="coerce"
@@ -656,9 +668,7 @@ def _allocate_spi_prior_mass(
             "source-household prior."
         )
     final_weights = np.zeros_like(pre_weights)
-    final_weights[base_mask] = pre_weights[base_mask] * (
-        1.0 - spi_prior_mass_share
-    )
+    final_weights[base_mask] = pre_weights[base_mask] * (1.0 - spi_prior_mass_share)
     final_weights[spi_mask] = spi_raw * (
         old_total * spi_prior_mass_share / float(spi_raw.sum())
     )
@@ -684,9 +694,7 @@ def _allocate_spi_prior_mass(
             reason=_spi_prior_mass_change_reason(spi_prior_mass_share),
         ),
     )
-    household["household_weight"] = allocated_frame.weights_for(
-        "household"
-    ).values
+    household["household_weight"] = allocated_frame.weights_for("household").values
     if not np.isclose(
         float(household["household_weight"].sum()),
         old_total,
@@ -870,7 +878,9 @@ __all__ = [
     "HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN",
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
     "SPI_INCOME_COMPONENT_COLUMNS",
+    "SPI_HMRC_AUXILIARY_COLUMNS",
     "SPI_INCOME_IMPUTATION_COLUMNS",
+    "SPI_INCOME_QRF_OUTPUT_COLUMNS",
     "SPI_PRIOR_MASS_CHANGE_REASON",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",

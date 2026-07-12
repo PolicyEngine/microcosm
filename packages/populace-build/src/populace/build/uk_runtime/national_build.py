@@ -21,6 +21,7 @@ import pandas as pd
 from populace.build.gates import GateResult
 from populace.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
+    assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
     uk_release_input_coverage_gate,
 )
@@ -298,6 +299,9 @@ def build_uk_national_dataset(
     # Mirrors the US cheap preflight: graph or reference drift aborts before
     # source stages and, once added, before national target-registry compilation.
     assert_uk_release_input_coverage_manifest_current(engine=engine)
+    assert_uk_release_input_coverage_build_stages(
+        tuple(stage.name for stage in materialized_stages)
+    )
     dataset = load_uk_national_dataset(input_path)
     for stage in materialized_stages:
         dataset = stage.run(dataset)
@@ -386,9 +390,7 @@ def _weight_kind_from_stored(value: object) -> WeightKind:
     try:
         return WeightKind(str(value))
     except ValueError as exc:
-        raise ValueError(
-            f"Unknown stored UK household weight kind {value!r}."
-        ) from exc
+        raise ValueError(f"Unknown stored UK household weight kind {value!r}.") from exc
 
 
 def _read_weight_metadata(path: Path) -> tuple[object, object]:
@@ -412,9 +414,7 @@ def _write_weight_metadata(path: Path, dataset: UKNationalDataset) -> None:
     except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
         raise RuntimeError("h5py is required to write UK national metadata.") from exc
     with h5py.File(path, mode="r+") as file:
-        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = (
-            dataset.household_weight_kind.value
-        )
+        file.attrs[UK_HOUSEHOLD_WEIGHT_KIND_ATTR] = dataset.household_weight_kind.value
         file.attrs[UK_MASS_LOG_ATTR] = json.dumps(
             [_mass_change_record_payload(record) for record in dataset.mass_log],
             sort_keys=True,

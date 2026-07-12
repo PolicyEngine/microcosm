@@ -189,13 +189,47 @@ def _nonzero_share(column: pd.Series) -> float:
     return float((values.notna() & values.ne("")).fillna(False).mean())
 
 
+class _StoredEnumDefault:
+    __slots__ = ("name", "index", "value")
+
+    def __init__(self, *, name: str, index: int, value: str) -> None:
+        self.name = name
+        self.index = index
+        self.value = value
+
+
 def _stored_default(variable: Any) -> object:
     default = variable.default_value
     name = getattr(default, "name", None)
-    return name if isinstance(name, str) else default
+    index = getattr(default, "index", None)
+    if isinstance(name, str) and isinstance(index, int):
+        stored_value = getattr(default, "value", None)
+        return _StoredEnumDefault(
+            name=name,
+            index=index,
+            value=str(stored_value) if stored_value is not None else name,
+        )
+    return default
 
 
 def _nondefault_share(column: pd.Series, default: object) -> float:
+    if isinstance(default, _StoredEnumDefault):
+        numeric = pd.to_numeric(column, errors="coerce").to_numpy(
+            dtype=float,
+            na_value=np.nan,
+        )
+        numeric_values = np.isfinite(numeric)
+        signal = numeric_values & (numeric != float(default.index))
+        if (~numeric_values).any():
+            normalized = column.astype("string").str.strip()
+            valid = normalized.notna() & normalized.ne("")
+            string_signal = (
+                valid
+                & ~normalized.isin({default.name, default.value})
+                & ~numeric_values
+            ).fillna(False)
+            signal |= string_signal.to_numpy(dtype=bool)
+        return float(signal.mean())
     if isinstance(default, bool | np.bool_):
         if pd.api.types.is_numeric_dtype(column):
             values = pd.to_numeric(column, errors="coerce").to_numpy(
@@ -477,9 +511,7 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
         )
     stage = stages[0]
     if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage."
-        )
+        raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
     artifacts = {
         artifact["role"]: artifact
         for artifact in stage.get("artifacts", [])
@@ -514,10 +546,27 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             "HMRC source-stage effective-mass floor disagrees with the release "
             "input-coverage policy."
         )
+    support_channel_column = str(effective.get("support_channel_column", ""))
+    required_support_channel = str(effective.get("required_support_channel", ""))
+    if support_channel_column != "person_support_channel":
+        raise ValueError(
+            "HMRC source-stage effective-mass gate must use person_support_channel."
+        )
+    if required_support_channel != "spi":
+        raise ValueError(
+            "HMRC source-stage effective-mass gate must require the rebuilt "
+            "SPI channel."
+        )
+    if effective.get("mass_share_denominator") != "all_person_effective_mass":
+        raise ValueError(
+            "HMRC source-stage effective-mass gate must measure its signal "
+            "against all person effective mass."
+        )
     return {
         "status": "required_at_build",
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
         "base_candidate_sha256": str(stage["base_candidate"]["sha256"]),
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
@@ -529,6 +578,7 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
         "spi_prior_national_household_mass_share": float(
             prior["spi_prior_national_household_mass_share"]
         ),
+        "required_mass_change_reason": str(prior["mass_change_reason"]),
         "input_weight_kind": str(calibration["input_weight_kind"]),
         "output_weight_kind": str(calibration["output_weight_kind"]),
         "required_components": list(calibration["components"]),
@@ -539,6 +589,9 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             str(column): {
                 "status": "distributional_required",
                 "minimum_nondefault_mass_share": floor,
+                "support_channel_column": support_channel_column,
+                "required_support_channel": required_support_channel,
+                "mass_share_denominator": str(effective["mass_share_denominator"]),
             }
             for column in effective["columns"]
         },

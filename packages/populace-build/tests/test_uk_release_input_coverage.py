@@ -12,17 +12,18 @@ import pytest
 
 from populace.build.uk_runtime import (
     UK_LOADER_INPUT_ALIASES,
-    UKEffectiveMassCoveragePolicy,
     PolicyEngineUKCoverageEngine,
+    UKEffectiveMassCoveragePolicy,
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
+    assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
     load_uk_release_input_coverage_manifest,
     uk_release_input_coverage_gate,
 )
-from populace.frame import EntitySchema, Frame, WeightKind, Weights
+from populace.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -49,6 +50,9 @@ def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
 def _weighted_person_frame(
     columns: dict[str, np.ndarray],
     household_weights: np.ndarray,
+    *,
+    weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
 ) -> Frame:
     weights = np.asarray(household_weights, dtype=float)
     n = len(weights)
@@ -68,8 +72,11 @@ def _weighted_person_frame(
             "household": pd.DataFrame({"household_id": ids}),
         },
         EntitySchema(group_entities=("benunit", "household")),
-        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+        {"household": Weights(values=weights, kind=weight_kind)},
+        mass_log=mass_log,
     )
+
+
 class _StubEngine:
     def __init__(
         self,
@@ -88,11 +95,14 @@ class _StubEngine:
 
 def _manifest(
     columns: tuple[UKReleaseInputColumn, ...],
+    *,
+    family_coverage: dict[str, dict[str, object]] | None = None,
 ) -> UKReleaseInputCoverageManifest:
     return UKReleaseInputCoverageManifest(
         reference={"source": "test"},
         candidate_evidence={"source": "test"},
         columns=columns,
+        family_coverage=family_coverage or {},
     )
 
 
@@ -113,6 +123,24 @@ _DEFAULTS = {
     "dividend_income": 0.0,
     "property_income": 0.0,
 }
+
+
+def _hmrc_family_coverage() -> dict[str, dict[str, object]]:
+    return {
+        "hmrc_spi_income": {
+            "status": "required_at_build",
+            "stage": "hmrc_spi_income",
+            "effective_mass_requirements": {
+                "gift_aid": {
+                    "status": "distributional_required",
+                    "minimum_nondefault_mass_share": 1e-6,
+                    "support_channel_column": "person_support_channel",
+                    "required_support_channel": "spi",
+                    "mass_share_denominator": "all_person_effective_mass",
+                }
+            },
+        }
+    }
 
 
 class TestUKReleaseInputCoverageGate:
@@ -275,6 +303,185 @@ class TestUKReleaseInputCoverageGate:
             "effective_signal_mass_share"
         ] == pytest.approx(2e-6)
 
+    def test_explicit_person_weights_cannot_override_household_mass(self) -> None:
+        ids = np.asarray([1, 2], dtype="int64")
+        frame = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": ids,
+                        "person_benunit_id": ids,
+                        "person_household_id": ids,
+                        "gift_aid": [100.0, 0.0],
+                    }
+                ),
+                "benunit": pd.DataFrame({"benunit_id": ids}),
+                "household": pd.DataFrame({"household_id": ids}),
+            },
+            EntitySchema(group_entities=("benunit", "household")),
+            {
+                "person": Weights(
+                    np.asarray([1_000.0, 0.0]),
+                    WeightKind.IMPORTANCE,
+                ),
+                "household": Weights(
+                    np.asarray([0.0, 1_000.0]),
+                    WeightKind.CALIBRATED,
+                ),
+            },
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=_manifest((UKReleaseInputColumn("gift_aid", "required"),)),
+        )
+
+        assert not result.passed
+        assert (
+            result.details["effective_mass_by_column"]["gift_aid"][
+                "effective_signal_mass_share"
+            ]
+            == 0.0
+        )
+
+    def test_base_signal_cannot_satisfy_spi_distributional_family(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([100.0, 0.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert any("base-channel signal does not restore" in f for f in result.failures)
+
+    def test_positive_spi_signal_satisfies_distributional_family(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["family_effective_mass"]["hmrc_spi_income"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(0.5)
+
+    def test_family_requires_reviewed_weight_kind_and_mass_record(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "output_weight_kind": "calibrated",
+                "required_mass_change_reason": "reviewed SPI allocation",
+            }
+        )
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert any("expected reviewed kind" in failure for failure in result.failures)
+        assert any("MassChangeRecord" in failure for failure in result.failures)
+
+    def test_family_accepts_reviewed_calibrated_mass_state(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "output_weight_kind": "calibrated",
+                "required_mass_change_reason": "reviewed SPI allocation",
+            }
+        )
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+            weight_kind=WeightKind.CALIBRATED,
+            mass_log=(
+                MassChangeRecord(
+                    entity="household",
+                    old_total=2_000.0,
+                    new_total=2_000.0,
+                    declared_factor=1.0,
+                    reason="reviewed SPI allocation",
+                ),
+            ),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert (
+            result.details["family_build_state"]["hmrc_spi_income"][
+                "valid_mass_change_records"
+            ]
+            == 1
+        )
+
+    def test_integer_encoded_enum_default_is_not_signal(self) -> None:
+        pytest.importorskip("policyengine_uk")
+        contract = _manifest((UKReleaseInputColumn("gender", "required"),))
+        frame = _weighted_person_frame(
+            {"gender": np.asarray([0, 0], dtype=np.int16)},
+            np.asarray([1.0, 1.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            PolicyEngineUKCoverageEngine(),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["gender"]
+
     def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
         contract = _manifest(
             (
@@ -333,6 +540,43 @@ class TestUKManifest:
         with pytest.raises(ValueError, match="vacuous"):
             load_uk_release_input_coverage_manifest(str(bad))
 
+    def test_distributional_family_requires_channel_denominator(self, tmp_path) -> None:
+        source = (
+            _REPO_ROOT
+            / "packages"
+            / "populace-build"
+            / "src"
+            / "populace"
+            / "build"
+            / "uk"
+            / "release_input_coverage_manifest.json"
+        )
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        requirement = payload["family_coverage"]["hmrc_spi_income"][
+            "effective_mass_requirements"
+        ]["gift_aid"]
+        requirement.pop("mass_share_denominator", None)
+        bad = tmp_path / "missing_family_denominator.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="mass_share_denominator"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_required_family_stage_cannot_be_omitted(self) -> None:
+        manifest = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+
+        with pytest.raises(ValueError, match="hmrc_spi_income"):
+            assert_uk_release_input_coverage_build_stages((), manifest=manifest)
+
+        result = assert_uk_release_input_coverage_build_stages(
+            ("hmrc_spi_income",),
+            manifest=manifest,
+        )
+        assert result is None
+
     def test_effective_mass_policy_rejects_zero_floor(self) -> None:
         with pytest.raises(ValueError, match=r"in \(0, 1\]"):
             UKEffectiveMassCoveragePolicy(minimum_nondefault_mass_share=0.0)
@@ -371,6 +615,20 @@ class TestUKManifest:
             assert_uk_release_input_coverage_manifest_current(
                 engine=_StubEngine({}, set(manifest.declared_columns)),
                 manifest=demoted,
+            )
+
+    def test_manifest_pins_hmrc_source_contract_hash(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["source_manifest_sha256"] = "0" * 64
+        drifted = replace(manifest, family_coverage=families)
+
+        with pytest.raises(ValueError, match="changed without regenerating"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=drifted,
             )
 
     def test_loader_aliases_are_hard_covered(self) -> None:

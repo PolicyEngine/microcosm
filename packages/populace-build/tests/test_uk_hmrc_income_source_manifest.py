@@ -5,6 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from populace.build.uk_runtime.hmrc_source_contract import (
+    assert_uk_hmrc_income_source_contract_current,
+)
+
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[1]
     / "src"
@@ -37,6 +43,7 @@ _STAGE1_OUTPUTS = [
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "hmrc_spi_assessable_income",
 ]
 _COMPONENT_COLUMNS = {
     "employment_income": ("Table_3_6", 4, 5),
@@ -94,6 +101,7 @@ def test__given_uk_hmrc_manifest__then_one_scoped_stage_is_declared() -> None:
         *_OFFICIAL_COMPONENTS,
         "gift_aid",
         "charitable_investment_gifts",
+        "hmrc_spi_assessable_income",
     ]
     assert [operation["kind"] for operation in stage["operations"]] == [
         "verify_certified_candidate",
@@ -153,6 +161,18 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     assert strict_read["fail_on_missing_file"] is True
     assert strict_read["fail_on_missing_columns"] is True
     assert strict_read["fail_on_invalid_weight"] is True
+    assert {
+        "EXPS",
+        "INCPBEN",
+        "OSSBEN",
+        "UBISJA",
+        "MOTHINC",
+        "OTHERINC",
+        "CAPALL",
+        "LOSSBF",
+        "SRP",
+        "TI",
+    } <= set(strict_read["required_columns"])
 
     stage1 = operations["fit_weighted_qrf_stage1"]
     assert stage1["source_sampling_weight"] == "FACT"
@@ -163,6 +183,8 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     assert stage1["double_apply_source_weight"] is False
     assert stage1["outputs"] == _STAGE1_OUTPUTS
     assert stage1["source_columns"]["other_investment_income"] == ["OTHERINV"]
+    assert stage1["source_columns"]["hmrc_spi_assessable_income"] == ["TI"]
+    assert stage1["ti_identity_absolute_tolerance_gbp"] == 100
     assert stage1["source_columns"]["gift_aid"] == ["GIFTAID"]
     assert stage1["source_columns"]["charitable_investment_gifts"] == ["GIFTINV"]
     assert "state_pension" not in stage1["outputs"]
@@ -188,12 +210,10 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     assert stage2["postprocess"]["gross_savings_interest_income"] == (
         "stage1 INCBBS draw + stage2 tax_free_savings_income"
     )
-    assert "pip_dl_category" in stage2["postprocess"][
-        "refresh_disability_categories"
-    ]
-    assert "is_disabled_for_benefits" in stage2["postprocess"][
-        "refresh_disability_flags"
-    ]
+    assert "pip_dl_category" in stage2["postprocess"]["refresh_disability_categories"]
+    assert (
+        "is_disabled_for_benefits" in stage2["postprocess"]["refresh_disability_flags"]
+    )
 
 
 def test__given_official_tables__then_all_eight_components_fail_closed() -> None:
@@ -289,5 +309,119 @@ def test__given_standalone_contract__then_no_incumbent_data_package_is_required(
 ):
     serialized = json.dumps(_manifest(), sort_keys=True).lower()
 
-    assert "policyengine-uk-data" not in serialized
-    assert "policyengine_uk_data" not in serialized
+    assert "policyengine-" + "uk-data" not in serialized
+    assert "policyengine_" + "uk_data" not in serialized
+
+
+def test_runtime_source_contract_matches_committed_manifest() -> None:
+    assert_uk_hmrc_income_source_contract_current()
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement", "match"),
+    [
+        (
+            ("stages", 0, "base_candidate", "sha256"),
+            "0" * 64,
+            "base_candidate.sha256",
+        ),
+        (
+            ("stages", 0, "artifacts", 1, "vintage"),
+            "2022-23",
+            "calibration_surface.vintage",
+        ),
+        (
+            (
+                "stages",
+                0,
+                "operations",
+                1,
+                "spi_prior_national_household_mass_share",
+            ),
+            0.25,
+            "prior.mass_share",
+        ),
+        (
+            ("stages", 0, "operations", 3, "sample_size"),
+            50_000,
+            "stage1.sample_size",
+        ),
+        (
+            ("stages", 0, "operations", 3, "outputs"),
+            ["employment_income"],
+            "stage1.outputs",
+        ),
+        (
+            ("stages", 0, "operations", 4, "reviewed_absent_outputs"),
+            {"maternity_allowance_reported": "changed"},
+            "stage2.reviewed_absent_outputs",
+        ),
+        (
+            (
+                "stages",
+                0,
+                "operations",
+                5,
+                "component_columns",
+                "savings_interest_income",
+                "amount_column_index",
+            ),
+            6,
+            "materialize.component_columns",
+        ),
+        (
+            ("stages", 0, "operations", 7, "max_weight_ratio"),
+            10,
+            "calibration.max_weight_ratio",
+        ),
+        (
+            ("stages", 0, "operations", 7, "maximum_abs_relative_error"),
+            0.10,
+            "calibration.maximum_abs_relative_error",
+        ),
+        (
+            ("stages", 0, "operations", 8, "required_support_channel"),
+            "frs",
+            "effective.required_support_channel",
+        ),
+        (
+            ("stages", 0, "operations", 8, "minimum_nondefault_mass_share"),
+            0.01,
+            "effective.minimum_nondefault_mass_share",
+        ),
+    ],
+)
+def test_runtime_source_contract_rejects_manifest_drift(
+    tmp_path,
+    path,
+    replacement,
+    match,
+) -> None:
+    payload = _manifest()
+    cursor = payload
+    for segment in path[:-1]:
+        cursor = cursor[segment]
+    cursor[path[-1]] = replacement
+    tampered = tmp_path / "hmrc_income_source_stages.json"
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        assert_uk_hmrc_income_source_contract_current(tampered)
+
+
+@pytest.mark.parametrize(
+    ("collection", "key"), [("artifacts", "role"), ("operations", "kind")]
+)
+def test_runtime_source_contract_rejects_duplicate_keys(
+    tmp_path,
+    collection,
+    key,
+) -> None:
+    payload = _manifest()
+    values = payload["stages"][0][collection]
+    values.append(dict(values[0]))
+    tampered = tmp_path / f"duplicate_{key}.json"
+    tampered.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=f"duplicate {key}"):
+        assert_uk_hmrc_income_source_contract_current(tampered)

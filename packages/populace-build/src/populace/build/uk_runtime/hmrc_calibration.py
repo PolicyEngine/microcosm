@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
     HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
     HMRC_SPI_INCOME_COMPONENTS,
     HMRC_SPI_PUBLICATION_URL,
@@ -19,6 +20,10 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
 )
 from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.spi_support import (
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    support_channel_column,
+)
 from populace.calibrate import (
     CONSERVE_MASS,
     CalibrationResult,
@@ -34,6 +39,7 @@ __all__ = [
     "DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR",
     "DEFAULT_HMRC_MAX_WEIGHT_RATIO",
     "HMRC_ASSESSABLE_INCOME_COLUMN",
+    "HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN",
     "HMRC_TAXPAYER_COLUMN",
     "UKHMRCIncomeCalibration",
     "UKHMRCTargetMaterialization",
@@ -42,13 +48,19 @@ __all__ = [
 ]
 
 HMRC_TAXPAYER_COLUMN = "hmrc_spi_taxpayer"
-HMRC_ASSESSABLE_INCOME_COLUMN = "hmrc_spi_assessable_income"
+HMRC_ASSESSABLE_INCOME_COLUMN = HMRC_SPI_ASSESSABLE_INCOME_COLUMN
+HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN = "hmrc_spi_taxable_savings_interest_income"
 DEFAULT_HMRC_CALIBRATION_EPOCHS = 256
 DEFAULT_HMRC_CALIBRATION_LEARNING_RATE = 0.02
 DEFAULT_HMRC_MAX_WEIGHT_RATIO = 5.0
 DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR = 0.05
 
-_SIMULATED_PERSON_COLUMNS = ("person_id", "income_tax", "state_pension")
+_SIMULATED_PERSON_COLUMNS = (
+    "person_id",
+    "income_tax",
+    "state_pension",
+    "total_income",
+)
 
 
 @dataclass(frozen=True)
@@ -81,12 +93,14 @@ def materialize_uk_hmrc_calibration_frame(
     """Build all 208 HMRC rows using the official taxpayer/band semantics.
 
     PolicyEngine-UK supplies the person-level ``income_tax`` taxpayer mask and
-    calculated state pension. The income-band total is deliberately the sum of
-    the eight published SPI components, not PolicyEngine's broader
-    ``total_income`` formula. ``calculate_dataframe(..., map_to="person")``
+    calculated state pension. Income-band placement uses the donor's documented
+    ``TI = TEI + TII`` draw on rebuilt SPI rows. Base rows bridge the live
+    PolicyEngine total to the same source concept with ``total_income +
+    other_investment_income - tax_free_savings_income``. The eight published
+    component columns remain the target measures; they are not themselves a
+    substitute definition of TI. ``calculate_dataframe(..., map_to="person")``
     retains PolicyEngine's entity mapping and MicroSeries weights while the
-    returned row values are aligned back to stable ``person_id`` values for the
-    Populace constraint frame.
+    returned row values are aligned back to stable ``person_id`` values.
     """
 
     _validate_materialization_inputs(dataset, source_targets)
@@ -111,9 +125,11 @@ def materialize_uk_hmrc_calibration_frame(
     person["state_pension"] = person_ids.map(
         simulated_by_id["state_pension"]
     ).to_numpy()
+    person["total_income"] = person_ids.map(simulated_by_id["total_income"]).to_numpy()
     person[HMRC_TAXPAYER_COLUMN] = person["income_tax"] > 0.0
 
     component_values: dict[str, np.ndarray] = {}
+    tax_free_values: np.ndarray | None = None
     for component in HMRC_SPI_INCOME_COMPONENTS:
         if component not in person:
             raise ValueError(
@@ -126,19 +142,77 @@ def materialize_uk_hmrc_calibration_frame(
         )
         if not np.isfinite(values).all():
             raise ValueError(f"HMRC component {component!r} must be finite.")
+        if component == "savings_interest_income":
+            if "tax_free_savings_income" not in person:
+                raise ValueError(
+                    "HMRC savings-interest materialization requires "
+                    "tax_free_savings_income so Table 3.7 excludes tax-exempt "
+                    "interest."
+                )
+            tax_free = pd.to_numeric(
+                person["tax_free_savings_income"], errors="coerce"
+            ).to_numpy(dtype=float, na_value=np.nan)
+            if not np.isfinite(tax_free).all() or (tax_free < 0.0).any():
+                raise ValueError(
+                    "HMRC tax-free savings interest must be finite and non-negative."
+                )
+            if (values < tax_free).any():
+                raise ValueError(
+                    "HMRC taxable-savings bridge requires PolicyEngine gross "
+                    "savings_interest_income to be at least "
+                    "tax_free_savings_income on every person row."
+                )
+            # PolicyEngine's persisted input is gross savings interest, while
+            # HMRC Table 3.7 and its total-income bands exclude tax-exempt
+            # interest. Keep the PE input intact and derive the taxable source
+            # component explicitly for both the measure and band assignment.
+            values = values - tax_free
+            tax_free_values = tax_free
+            person[HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN] = values
         component_values[component] = values
 
-    assessable_income = np.sum(
-        np.vstack([component_values[name] for name in HMRC_SPI_INCOME_COMPONENTS]),
-        axis=0,
+    if tax_free_values is None:  # pragma: no cover - fixed component contract
+        raise RuntimeError("HMRC savings-interest bridge was not materialized.")
+    policyengine_total = pd.to_numeric(
+        person["total_income"], errors="coerce"
+    ).to_numpy(dtype=float, na_value=np.nan)
+    assessable_income = np.maximum(
+        policyengine_total
+        + component_values["other_investment_income"]
+        - tax_free_values,
+        0.0,
     )
+    person_channel = support_channel_column("person")
+    if person_channel in person:
+        if HMRC_ASSESSABLE_INCOME_COLUMN not in person:
+            raise ValueError(
+                "HMRC SPI support rows are missing their authoritative SPI TI "
+                "draw for income-band assignment."
+            )
+        spi_people = (
+            person[person_channel]
+            .eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+            .to_numpy(dtype=bool)
+        )
+        if not spi_people.any():
+            raise ValueError("HMRC calibration has no rebuilt SPI support people.")
+        spi_ti = pd.to_numeric(
+            person[HMRC_ASSESSABLE_INCOME_COLUMN], errors="coerce"
+        ).to_numpy(dtype=float, na_value=np.nan)
+        if (
+            not np.isfinite(spi_ti[spi_people]).all()
+            or (spi_ti[spi_people] < 0.0).any()
+        ):
+            raise ValueError(
+                "HMRC SPI TI draws must be finite and non-negative on the "
+                "rebuilt support channel."
+            )
+        assessable_income[spi_people] = spi_ti[spi_people]
     if not np.isfinite(assessable_income).all():
         raise ValueError("HMRC assessable component income must be finite.")
     person[HMRC_ASSESSABLE_INCOME_COLUMN] = assessable_income
 
-    positive_household_mass = household.set_index("household_id")[
-        "household_weight"
-    ]
+    positive_household_mass = household.set_index("household_id")["household_weight"]
     mapped_mass = person["person_household_id"].map(positive_household_mass)
     if mapped_mass.isna().any() or not mapped_mass.gt(0.0).all():
         raise ValueError(
@@ -182,7 +256,15 @@ def materialize_uk_hmrc_calibration_frame(
 
     calibration_person = pd.concat(
         [
-            person[["person_id", "person_household_id"]].reset_index(drop=True),
+            person[
+                [
+                    "person_id",
+                    "person_household_id",
+                    HMRC_TAXPAYER_COLUMN,
+                    HMRC_ASSESSABLE_INCOME_COLUMN,
+                    HMRC_TAXABLE_SAVINGS_INTEREST_COLUMN,
+                ]
+            ].reset_index(drop=True),
             pd.DataFrame(measure_payload),
         ],
         axis=1,
@@ -368,7 +450,7 @@ def _strict_simulated_person_values(
             f"missing={list(expected_ids - actual_ids)[:5]}, "
             f"unexpected={list(actual_ids - expected_ids)[:5]}."
         )
-    for column in ("income_tax", "state_pension"):
+    for column in ("income_tax", "state_pension", "total_income"):
         values = pd.to_numeric(simulated[column], errors="coerce").to_numpy(
             dtype=float,
             na_value=np.nan,
@@ -400,8 +482,7 @@ def _target_spec(
         measure=measure_column,
         period=target.period,
         source=(
-            f"HMRC Personal Incomes 2023-24 Tables 3.6/3.7; "
-            f"{HMRC_SPI_PUBLICATION_URL}"
+            f"HMRC Personal Incomes 2023-24 Tables 3.6/3.7; {HMRC_SPI_PUBLICATION_URL}"
         ),
         family="hmrc_spi_income",
         notes=(

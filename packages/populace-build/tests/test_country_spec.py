@@ -239,6 +239,7 @@ class TestExistingPackagesGeneralize:
         assert spec.resources == (
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
+            "hmrc_income_source_stages.json",
             "release_input_coverage_manifest.json",
         )
 

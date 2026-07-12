@@ -189,6 +189,43 @@ def test_rejects_duplicate_published_band(monkeypatch, tmp_path) -> None:
         _materialize(monkeypatch, tmp_path, tables)
 
 
+@pytest.mark.parametrize("sentinel_count", [0, 2])
+def test_rejects_missing_or_duplicate_all_ranges_sentinel(
+    monkeypatch,
+    tmp_path,
+    sentinel_count,
+) -> None:
+    tables = {
+        sheet_name: _source_table(sheet_name)
+        for sheet_name in TABLE_COMPONENT_POSITIONS
+    }
+    tables["Table_3_7"].iat[18, 0] = np.nan
+    if sentinel_count == 2:
+        extra = pd.DataFrame(np.full((2, 12), np.nan, dtype=object))
+        extra.iat[0, 0] = "All ranges"
+        extra.iat[1, 0] = "All ranges"
+        tables["Table_3_7"] = pd.concat(
+            [tables["Table_3_7"], extra],
+            ignore_index=True,
+        )
+
+    with pytest.raises(ValueError, match="exactly one 'All ranges' sentinel"):
+        _materialize(monkeypatch, tmp_path, tables)
+
+
+def test_rejects_all_ranges_sentinel_before_last_band(monkeypatch, tmp_path) -> None:
+    tables = {
+        sheet_name: _source_table(sheet_name)
+        for sheet_name in TABLE_COMPONENT_POSITIONS
+    }
+    last_band_row = 5 + len(HMRC_SPI_INCOME_BAND_LOWER_BOUNDS) - 1
+    tables["Table_3_7"].iat[last_band_row - 1, 0] = "All ranges"
+    tables["Table_3_7"].iat[18, 0] = np.nan
+
+    with pytest.raises(ValueError, match="sentinel must follow"):
+        _materialize(monkeypatch, tmp_path, tables)
+
+
 def test_rejects_missing_component_column(monkeypatch, tmp_path) -> None:
     tables = {
         sheet_name: _source_table(sheet_name)

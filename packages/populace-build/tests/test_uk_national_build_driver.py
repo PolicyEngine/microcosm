@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 def _load_builder_module():
     root = Path(__file__).resolve().parents[3]
@@ -86,6 +88,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     transform = calls[0]["stages"][0].transform
     assert transform.spi_tab_path == spi_tab
     assert transform.hmrc_ods_path == hmrc_ods
+    assert transform.certified_candidate.revision == "test-revision"
     assert calls[0]["input_coverage_path"] == staging_h5.with_suffix(
         ".input_coverage.json"
     )
@@ -99,3 +102,38 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert evidence["base_candidate"]["revision"] == "test-revision"
     assert evidence["family"]["stage"] == "hmrc_spi_income"
     assert payload["artifacts"]["hmrc_evidence"]["sha256"]
+
+
+@pytest.mark.parametrize(
+    "removed_flag",
+    [
+        "--spi-donor-sample-size",
+        "--max-weight-ratio",
+        "--maximum-abs-relative-error",
+    ],
+)
+def test_national_driver_rejects_unreviewed_release_overrides(
+    monkeypatch,
+    removed_flag,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            removed_flag,
+            "10",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()

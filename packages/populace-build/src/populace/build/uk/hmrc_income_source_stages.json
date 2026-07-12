@@ -68,6 +68,7 @@
           "output_weight_kind": "importance",
           "preserve_total_household_mass": true,
           "require_mass_change_record": true,
+          "mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
           "fail_on_live_existing_spi_mass": true
         },
         {
@@ -83,15 +84,25 @@
             "FACT",
             "PAY",
             "EPB",
+            "EXPS",
             "TAXTERM",
+            "INCPBEN",
+            "OSSBEN",
+            "UBISJA",
+            "MOTHINC",
+            "OTHERINC",
             "PROFITS",
+            "CAPALL",
+            "LOSSBF",
+            "SRP",
             "INCBBS",
             "DIVIDENDS",
             "PENSION",
             "INCPROP",
             "OTHERINV",
             "GIFTAID",
-            "GIFTINV"
+            "GIFTINV",
+            "TI"
           ],
           "runtime_sha256_required": true,
           "fail_on_missing_file": true,
@@ -120,10 +131,17 @@
             "employment_income": [
               "PAY",
               "EPB",
-              "TAXTERM"
+              "EXPS",
+              "INCPBEN",
+              "OSSBEN",
+              "TAXTERM",
+              "UBISJA",
+              "MOTHINC"
             ],
             "self_employment_income": [
-              "PROFITS"
+              "PROFITS",
+              "CAPALL",
+              "LOSSBF"
             ],
             "savings_interest_income": [
               "INCBBS"
@@ -145,6 +163,9 @@
             ],
             "charitable_investment_gifts": [
               "GIFTINV"
+            ],
+            "hmrc_spi_assessable_income": [
+              "TI"
             ]
           },
           "outputs": [
@@ -156,10 +177,15 @@
             "property_income",
             "other_investment_income",
             "gift_aid",
-            "charitable_investment_gifts"
+            "charitable_investment_gifts",
+            "hmrc_spi_assessable_income"
           ],
           "joint_draw": true,
           "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
+          "employment_income_source_semantics": "max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC",
+          "self_employment_income_source_semantics": "max(0, PROFITS - CAPALL - LOSSBF)",
+          "assessable_income_source_semantics": "TI = TEI + TII using the 2022-23 Public Use Tape documented identity",
+          "ti_identity_absolute_tolerance_gbp": 100,
           "require_all_predictors": true,
           "require_all_outputs": true
         },
@@ -340,7 +366,8 @@
             "other_investment_income"
           ],
           "breakdown_variable": "hmrc_spi_assessable_income",
-          "breakdown_definition": "sum of the eight published SPI income components",
+          "breakdown_definition": "authoritative SPI TI draw on rebuilt SPI rows; PolicyEngine total_income + other_investment_income - tax_free_savings_income on base rows",
+          "savings_interest_measure": "savings_interest_income - tax_free_savings_income; fail if tax-free exceeds gross",
           "taxpayer_mask": "hmrc_spi_taxpayer",
           "count_condition": "component > 0",
           "measures": [
@@ -368,6 +395,9 @@
           ],
           "weight": "household_weight",
           "weight_mapping": "household_to_person",
+          "support_channel_column": "person_support_channel",
+          "required_support_channel": "spi",
+          "mass_share_denominator": "all_person_effective_mass",
           "minimum_nondefault_mass_share": 0.000001,
           "fail_below_floor": true
         }
@@ -396,9 +426,10 @@
         "dividend_income",
         "other_investment_income",
         "gift_aid",
-        "charitable_investment_gifts"
+        "charitable_investment_gifts",
+        "hmrc_spi_assessable_income"
       ],
-      "notes": "Current-source contract: the private 2022-23 SPI donor trains the two guarded QRF stages; the public 2023-24 HMRC Tables 3.6/3.7 surface maps to build period 2023 by tax-year start. The certified base's dead SPI rows are replaced once and receive a reviewed 50% importance-weight prior with national household mass conserved. Savings interest and other investment income are explicit published components. State pension is target-only, while Gift Aid and charitable investment gifts are donor outputs and are not HMRC income-band components. The two reviewed stage-2 absences are declared explicitly; every other source/output/target fails closed."
+      "notes": "Current-source contract: the private 2022-23 SPI donor trains the two guarded QRF stages; the public 2023-24 HMRC Tables 3.6/3.7 surface maps to build period 2023 by tax-year start. The certified base's dead SPI rows are replaced once and receive a reviewed 50% importance-weight prior with national household mass conserved. Savings interest and other investment income are explicit published components. SPI TI is carried as an auxiliary joint draw for correct band placement, while PolicyEngine's gross savings input remains intact and only taxable savings enters HMRC measures. State pension is target-only, while Gift Aid and charitable investment gifts are donor outputs and are not HMRC income-band components. The two reviewed stage-2 absences are declared explicitly; every other source/output/target fails closed."
     }
   ]
 }

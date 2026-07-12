@@ -423,12 +423,18 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "effective_mass_requirements": {
     "charitable_investment_gifts": {
+     "mass_share_denominator": "all_person_effective_mass",
      "minimum_nondefault_mass_share": 1e-06,
-     "status": "distributional_required"
+     "required_support_channel": "spi",
+     "status": "distributional_required",
+     "support_channel_column": "person_support_channel"
     },
     "gift_aid": {
+     "mass_share_denominator": "all_person_effective_mass",
      "minimum_nondefault_mass_share": 1e-06,
-     "status": "distributional_required"
+     "required_support_channel": "spi",
+     "status": "distributional_required",
+     "support_channel_column": "person_support_channel"
     }
    },
    "input_weight_kind": "importance",
@@ -444,8 +450,10 @@
     "dividend_income",
     "other_investment_income"
    ],
+   "required_mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
    "required_target_count": 208,
    "source_manifest": "hmrc_income_source_stages.json",
+   "source_manifest_sha256": "0706836e2fae9662986da6320d1df1d5847c9c0fd950f12a5a2a835475ac10bd",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",

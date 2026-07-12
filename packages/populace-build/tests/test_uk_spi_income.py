@@ -16,6 +16,7 @@ from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_INCOME_IMPUTATION_COLUMNS,
+    SPI_INCOME_QRF_OUTPUT_COLUMNS,
     create_uk_spi_support_tables,
     replace_uk_spi_support_tables,
     support_channel_column,
@@ -103,9 +104,7 @@ def _dead_support(*, drop_stage2: str | None = None):
             dtype=float,
         )
     person = pd.DataFrame(person_columns)
-    benunit = pd.DataFrame(
-        {"benunit_id": np.arange(201, 205, dtype="int64")}
-    )
+    benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})
     dead = create_uk_spi_support_tables(
         person=person,
         benunit=benunit,
@@ -131,8 +130,17 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             "AGERANGE": [2, 3, 4, 5],
             "PAY": [20_000.0, 30_000.0, 40_000.0, 50_000.0],
             "EPB": [0.0, 100.0, 0.0, 100.0],
+            "EXPS": [0.0, 50.0, 100.0, 150.0],
             "TAXTERM": [0.0, 0.0, 200.0, 200.0],
+            "INCPBEN": [0.0, 0.0, 0.0, 0.0],
+            "OSSBEN": [0.0, 0.0, 0.0, 0.0],
+            "UBISJA": [0.0, 0.0, 0.0, 0.0],
+            "MOTHINC": [0.0, 0.0, 0.0, 0.0],
+            "OTHERINC": [0.0, 0.0, 0.0, 0.0],
             "PROFITS": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+            "CAPALL": [0.0, 100.0, 200.0, 300.0],
+            "LOSSBF": [0.0, 0.0, 100.0, 100.0],
+            "SRP": [0.0, 0.0, 500.0, 1_000.0],
             "INCBBS": [100.0, 200.0, 300.0, 400.0],
             "DIVIDENDS": [10.0, 20.0, 30.0, 40.0],
             "PENSION": [0.0, 0.0, 500.0, 1_000.0],
@@ -141,6 +149,28 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             "GIFTAID": [10.0, 20.0, 30.0, 40.0],
             "GIFTINV": [1.0, 2.0, 3.0, 4.0],
         }
+    )
+    employment = (
+        (donor["PAY"] + donor["EPB"] - donor["EXPS"]).clip(lower=0.0)
+        + donor["INCPBEN"]
+        + donor["OSSBEN"]
+        + donor["TAXTERM"]
+        + donor["UBISJA"]
+        + donor["MOTHINC"]
+    )
+    self_employment = (donor["PROFITS"] - donor["CAPALL"] - donor["LOSSBF"]).clip(
+        lower=0.0
+    )
+    donor["TI"] = (
+        employment
+        + donor["OTHERINC"]
+        + donor["SRP"]
+        + donor["PENSION"]
+        + self_employment
+        + donor["OTHERINV"]
+        + donor["DIVIDENDS"]
+        + donor["INCPROP"]
+        + donor["INCBBS"]
     )
     if drop is not None:
         donor = donor.drop(columns=[drop])
@@ -172,11 +202,10 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         "design",
         "importance",
     ]
-    assert result.reviewed_absent_stage2_outputs == (
-        SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS
-    )
+    assert result.reviewed_absent_stage2_outputs == (SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS)
     assert result.donor_rows == 4
     assert len(result.donor_sha256) == 64
+    assert SPI_INCOME_QRF_OUTPUT_COLUMNS[-1] == "hmrc_spi_assessable_income"
 
     channel = support_channel_column("person")
     spi_people = result.person[channel] == "spi"

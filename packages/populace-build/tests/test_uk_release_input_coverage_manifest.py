@@ -96,12 +96,17 @@ def test_hmrc_family_is_required_with_distributional_mass_accounting() -> None:
 
     assert family["status"] == "required_at_build"
     assert family["source_manifest"] == "hmrc_income_source_stages.json"
+    assert len(family["source_manifest_sha256"]) == 64
     assert family["source_vintages"] == {
         "spi_donor": "2022-23",
         "hmrc_surface": "2023-24",
         "mapped_build_period": "2023",
     }
     assert family["spi_prior_national_household_mass_share"] == 0.5
+    assert family["required_mass_change_reason"] == (
+        "Allocate 50% of certified UK national household prior mass to the "
+        "rebuilt 2022-23 SPI support channel; total national mass is conserved."
+    )
     assert family["input_weight_kind"] == "importance"
     assert family["output_weight_kind"] == "calibrated"
     assert family["required_target_count"] == 208
@@ -110,10 +115,16 @@ def test_hmrc_family_is_required_with_distributional_mass_accounting() -> None:
         "gift_aid": {
             "status": "distributional_required",
             "minimum_nondefault_mass_share": 1e-6,
+            "support_channel_column": "person_support_channel",
+            "required_support_channel": "spi",
+            "mass_share_denominator": "all_person_effective_mass",
         },
         "charitable_investment_gifts": {
             "status": "distributional_required",
             "minimum_nondefault_mass_share": 1e-6,
+            "support_channel_column": "person_support_channel",
+            "required_support_channel": "spi",
+            "mass_share_denominator": "all_person_effective_mass",
         },
     }
 

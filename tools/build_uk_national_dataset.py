@@ -62,11 +62,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
-    parser.add_argument("--spi-donor-sample-size", type=int, default=100_000)
     parser.add_argument("--calibration-epochs", type=int, default=256)
     parser.add_argument("--calibration-learning-rate", type=float, default=0.02)
-    parser.add_argument("--max-weight-ratio", type=float, default=5.0)
-    parser.add_argument("--maximum-abs-relative-error", type=float, default=0.05)
     return parser.parse_args()
 
 
@@ -91,13 +88,11 @@ def main() -> int:
     transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
         hmrc_ods_path=args.hmrc_ods,
+        certified_candidate=candidate,
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
-        donor_sample_size=args.spi_donor_sample_size,
         calibration_epochs=args.calibration_epochs,
         calibration_learning_rate=args.calibration_learning_rate,
-        max_weight_ratio=args.max_weight_ratio,
-        maximum_abs_relative_error=args.maximum_abs_relative_error,
     )
     result = build_uk_national_dataset(
         input_h5=args.input_h5,

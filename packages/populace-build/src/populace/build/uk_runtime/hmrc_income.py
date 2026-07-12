@@ -3,8 +3,8 @@
 The official 2023-24 collated ODS publishes counts in thousands of people and
 amounts in GBP millions.  This module converts those source units to people
 and GBP while retaining the exact 13-band source surface.  It deliberately
-has no network or ``policyengine-uk-data`` dependency: callers must supply the
-local ODS artifact whose runtime hash is recorded in the returned provenance.
+has no network or incumbent UK data-package dependency: callers must supply
+the local ODS artifact whose runtime hash is recorded in the returned provenance.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ __all__ = [
     "HMRCIncomeSourceProvenance",
     "HMRCIncomeTargetSet",
     "HMRC_SPI_BUILD_PERIOD",
+    "HMRC_SPI_ASSESSABLE_INCOME_COLUMN",
     "HMRC_SPI_COLLATED_ODS_URL",
     "HMRC_SPI_INCOME_BAND_LOWER_BOUNDS",
     "HMRC_SPI_INCOME_COMPONENTS",
@@ -31,6 +32,7 @@ __all__ = [
     "HMRC_SPI_SOURCE_TAX_YEAR_START",
     "HMRC_SPI_SOURCE_VINTAGE",
     "HMRC_SPI_TARGET_RECORD_COUNT",
+    "hmrc_spi_component_source_columns",
     "materialize_hmrc_spi_income_band_targets",
 ]
 
@@ -46,6 +48,7 @@ HMRC_SPI_SOURCE_VINTAGE = "2023-24"
 HMRC_SPI_SOURCE_TAX_YEAR = HMRC_SPI_SOURCE_VINTAGE
 HMRC_SPI_SOURCE_TAX_YEAR_START = 2023
 HMRC_SPI_BUILD_PERIOD = "2023"
+HMRC_SPI_ASSESSABLE_INCOME_COLUMN = "hmrc_spi_assessable_income"
 
 HMRC_SPI_INCOME_BAND_LOWER_BOUNDS = (
     12_570,
@@ -155,6 +158,7 @@ _TABLE_LAYOUTS = (
 )
 
 _FIRST_DATA_ROW = 5
+_STOP_LABEL = "All ranges"
 _SOURCE_SCALE: dict[HMRCIncomeMeasure, float] = {
     "count": 1_000.0,
     "amount": 1_000_000.0,
@@ -163,6 +167,20 @@ _UNIT_BY_MEASURE: dict[HMRCIncomeMeasure, HMRCIncomeUnit] = {
     "count": "people",
     "amount": "GBP",
 }
+
+
+def hmrc_spi_component_source_columns() -> dict[str, tuple[str, int, int]]:
+    """Return the exact published sheet/count/amount layout used at runtime."""
+
+    return {
+        component.component: (
+            layout.sheet_name,
+            component.count_position,
+            component.amount_position,
+        )
+        for layout in _TABLE_LAYOUTS
+        for component in layout.components
+    }
 
 
 def materialize_hmrc_spi_income_band_targets(
@@ -299,10 +317,25 @@ def _strict_band_rows(frame: pd.DataFrame, *, sheet_name: str) -> dict[int, int]
         raise ValueError(f"{sheet_name} has no income-band rows.")
 
     parsed: list[tuple[int, int]] = []
+    stop_positions: list[int] = []
     for row_position in range(_FIRST_DATA_ROW, len(frame)):
-        lower_bound = _integer_or_none(frame.iat[row_position, 0])
+        raw_label = frame.iat[row_position, 0]
+        if isinstance(raw_label, str) and raw_label.strip() == _STOP_LABEL:
+            stop_positions.append(row_position)
+        lower_bound = _integer_or_none(raw_label)
         if lower_bound is not None:
             parsed.append((lower_bound, row_position))
+
+    if len(stop_positions) != 1:
+        raise ValueError(
+            f"{sheet_name} must contain exactly one {_STOP_LABEL!r} sentinel; "
+            f"found {len(stop_positions)}."
+        )
+    if parsed and stop_positions[0] <= parsed[-1][1]:
+        raise ValueError(
+            f"{sheet_name} {_STOP_LABEL!r} sentinel must follow all published "
+            "income-band rows."
+        )
 
     actual = tuple(lower_bound for lower_bound, _ in parsed)
     counts = Counter(actual)

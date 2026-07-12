@@ -14,13 +14,21 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
 )
 from populace.build.uk_runtime.hmrc_restoration import (
+    CERTIFIED_UK_CANDIDATE_FILENAME,
+    CERTIFIED_UK_CANDIDATE_REVISION,
+    CERTIFIED_UK_CANDIDATE_SHA256,
+    CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+    UKCertifiedCandidateIdentity,
     UKHMRCIncomeStageTransform,
     restore_uk_hmrc_income_family,
     verify_certified_uk_candidate,
 )
 from populace.build.uk_runtime.national_build import UKNationalDataset
 from populace.build.uk_runtime.spi_income import UKSPIIncomeImputationResult
-from populace.build.uk_runtime.spi_support import UKSPISupportResult
+from populace.build.uk_runtime.spi_support import (
+    UKSPISupportResult,
+    support_channel_column,
+)
 from populace.frame import (
     EntitySchema,
     Frame,
@@ -52,11 +60,21 @@ def _dataset() -> UKNationalDataset:
     )
 
 
+def _candidate_identity(tmp_path) -> UKCertifiedCandidateIdentity:
+    return UKCertifiedCandidateIdentity(
+        path=(tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME).resolve(),
+        filename=CERTIFIED_UK_CANDIDATE_FILENAME,
+        revision=CERTIFIED_UK_CANDIDATE_REVISION,
+        sha256=CERTIFIED_UK_CANDIDATE_SHA256,
+        size_bytes=CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
+    )
+
+
 def test_certified_candidate_verification_checks_size_and_sha(
     monkeypatch,
     tmp_path,
 ) -> None:
-    candidate = tmp_path / "candidate.h5"
+    candidate = tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME
     contents = b"certified candidate"
     candidate.write_bytes(contents)
     monkeypatch.setattr(
@@ -96,6 +114,7 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
     support_person = dataset.person.copy()
     support_person["gift_aid"] = 5.0
     support_person["charitable_investment_gifts"] = 2.0
+    support_person[support_channel_column("person")] = "spi"
     support = UKSPISupportResult(
         person=support_person,
         benunit=dataset.benunit.copy(),
@@ -136,9 +155,7 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
     source_targets = HMRCIncomeTargetSet(source=source, targets=())
     calibration_frame = Frame(
         {
-            "person": pd.DataFrame(
-                {"person_id": [1], "person_household_id": [1]}
-            ),
+            "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
             "household": pd.DataFrame({"household_id": [1]}),
         },
         EntitySchema(group_entities=("household",)),
@@ -203,6 +220,7 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
         dataset,
         spi_tab_path=donor_path,
         hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
     )
 
     assert calls == ["targets", "replace", "impute", "materialize", "calibrate"]
@@ -214,7 +232,9 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
     }
 
 
-def test_stage_transform_retains_last_restoration_evidence(monkeypatch, tmp_path) -> None:
+def test_stage_transform_retains_last_restoration_evidence(
+    monkeypatch, tmp_path
+) -> None:
     dataset = _dataset()
     expected = SimpleNamespace(dataset=dataset)
     monkeypatch.setattr(
@@ -225,7 +245,33 @@ def test_stage_transform_retains_last_restoration_evidence(monkeypatch, tmp_path
     transform = UKHMRCIncomeStageTransform(
         spi_tab_path=tmp_path / "put2223uk.tab",
         hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
     )
 
     assert transform(dataset) is dataset
     assert transform.last_result is expected
+
+
+@pytest.mark.parametrize(
+    ("override", "value"),
+    [
+        ("donor_sample_size", None),
+        ("spi_prior_mass_share", 0.25),
+        ("max_weight_ratio", 10.0),
+        ("maximum_abs_relative_error", 0.10),
+    ],
+)
+def test_restoration_rejects_unreviewed_release_parameter_overrides(
+    tmp_path,
+    override,
+    value,
+) -> None:
+    kwargs = {
+        "spi_tab_path": tmp_path / "put2223uk.tab",
+        "hmrc_ods_path": tmp_path / "hmrc.ods",
+        "certified_candidate": _candidate_identity(tmp_path),
+        override: value,
+    }
+
+    with pytest.raises(ValueError, match="reviewed source manifest"):
+        restore_uk_hmrc_income_family(_dataset(), **kwargs)

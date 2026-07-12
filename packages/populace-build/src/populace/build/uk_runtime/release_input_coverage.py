@@ -18,6 +18,7 @@ contributions from the coverage boundary.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ __all__ = [
     "PolicyEngineUKCoverageEngine",
     "UKReleaseInputColumn",
     "UKReleaseInputCoverageManifest",
+    "assert_uk_release_input_coverage_build_stages",
     "assert_uk_release_input_coverage_manifest_current",
     "load_uk_release_input_coverage_manifest",
     "uk_release_input_coverage_gate",
@@ -55,6 +57,8 @@ UK_LOADER_INPUT_ALIASES: Mapping[str, str] = {
 REQUIRED_STATUS = "required"
 REVIEWED_EXCLUSION_STATUS = "reviewed_exclusion"
 _VALID_STATUSES = frozenset({REQUIRED_STATUS, REVIEWED_EXCLUSION_STATUS})
+_REQUIRED_AT_BUILD_STATUS = "required_at_build"
+_DISTRIBUTIONAL_REQUIRED_STATUS = "distributional_required"
 _UK_PACKAGE = "populace.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
 
@@ -126,6 +130,7 @@ class UKReleaseInputCoverageManifest:
     reference: Mapping[str, str]
     candidate_evidence: Mapping[str, str]
     columns: tuple[UKReleaseInputColumn, ...]
+    family_coverage: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     effective_mass_coverage: UKEffectiveMassCoveragePolicy = field(
         default_factory=UKEffectiveMassCoveragePolicy
     )
@@ -160,6 +165,16 @@ class UKReleaseInputCoverageManifest:
             if column.status == REVIEWED_EXCLUSION_STATUS
         }
 
+    @property
+    def required_build_stages(self) -> frozenset[str]:
+        """National stages that the checked-in family contract makes mandatory."""
+
+        return frozenset(
+            str(family["stage"])
+            for family in self.family_coverage.values()
+            if family.get("status") == _REQUIRED_AT_BUILD_STATUS
+        )
+
 
 def _resource_text(resource: str) -> str:
     candidate = Path(resource)
@@ -173,6 +188,132 @@ def _resource_payload(resource: str) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise ValueError(f"{resource}: expected a JSON object.")
     return payload
+
+
+def _parse_family_coverage(
+    raw: object,
+    *,
+    resource: str,
+) -> dict[str, dict[str, Any]]:
+    """Validate the executable subset of release-family coverage metadata."""
+
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"{resource}: 'family_coverage' must be a JSON object.")
+
+    families: dict[str, dict[str, Any]] = {}
+    seen_stages: set[str] = set()
+    for raw_name, raw_family in sorted(raw.items()):
+        name = str(raw_name)
+        if not name or not isinstance(raw_family, Mapping):
+            raise ValueError(
+                f"{resource}: family coverage entry {raw_name!r} must be an object."
+            )
+        status = str(raw_family.get("status", ""))
+        if status != _REQUIRED_AT_BUILD_STATUS:
+            raise ValueError(
+                f"{resource}: family {name!r} must currently use status "
+                f"{_REQUIRED_AT_BUILD_STATUS!r}, got {status!r}."
+            )
+        stage = str(raw_family.get("stage", "")).strip()
+        if not stage:
+            raise ValueError(f"{resource}: family {name!r} needs a build stage.")
+        if stage in seen_stages:
+            raise ValueError(
+                f"{resource}: required build stage {stage!r} is declared twice."
+            )
+        seen_stages.add(stage)
+        source_manifest = str(raw_family.get("source_manifest", "")).strip()
+        source_manifest_sha256 = str(
+            raw_family.get("source_manifest_sha256", "")
+        ).strip()
+        if not source_manifest:
+            raise ValueError(f"{resource}: family {name!r} needs a source_manifest.")
+        if len(source_manifest_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in source_manifest_sha256
+        ):
+            raise ValueError(
+                f"{resource}: family {name!r} needs a lowercase SHA-256 "
+                "for source_manifest_sha256."
+            )
+        output_weight_kind = str(raw_family.get("output_weight_kind", "")).strip()
+        if not output_weight_kind:
+            raise ValueError(
+                f"{resource}: family {name!r} needs an output_weight_kind."
+            )
+        required_mass_change_reason = str(
+            raw_family.get("required_mass_change_reason", "")
+        ).strip()
+        if not required_mass_change_reason:
+            raise ValueError(
+                f"{resource}: family {name!r} needs a reviewed "
+                "required_mass_change_reason."
+            )
+
+        raw_requirements = raw_family.get("effective_mass_requirements", {})
+        if not isinstance(raw_requirements, Mapping):
+            raise ValueError(
+                f"{resource}: family {name!r} effective_mass_requirements must "
+                "be an object."
+            )
+        requirements: dict[str, dict[str, Any]] = {}
+        for raw_column, raw_requirement in sorted(raw_requirements.items()):
+            column = str(raw_column)
+            if not column or not isinstance(raw_requirement, Mapping):
+                raise ValueError(
+                    f"{resource}: family {name!r} effective-mass requirement "
+                    f"{raw_column!r} must be an object."
+                )
+            requirement_status = str(raw_requirement.get("status", ""))
+            if requirement_status != _DISTRIBUTIONAL_REQUIRED_STATUS:
+                raise ValueError(
+                    f"{resource}: family {name!r} column {column!r} must use "
+                    f"status {_DISTRIBUTIONAL_REQUIRED_STATUS!r}."
+                )
+            floor = float(raw_requirement.get("minimum_nondefault_mass_share", 0.0))
+            if not np.isfinite(floor) or not 0.0 < floor <= 1.0:
+                raise ValueError(
+                    f"{resource}: family {name!r} column {column!r} has invalid "
+                    "minimum_nondefault_mass_share."
+                )
+            support_column = str(
+                raw_requirement.get("support_channel_column", "")
+            ).strip()
+            required_channel = str(
+                raw_requirement.get("required_support_channel", "")
+            ).strip()
+            denominator = str(raw_requirement.get("mass_share_denominator", "")).strip()
+            if not support_column or not required_channel:
+                raise ValueError(
+                    f"{resource}: family {name!r} column {column!r} must declare "
+                    "both support_channel_column and required_support_channel."
+                )
+            if denominator != "all_person_effective_mass":
+                raise ValueError(
+                    f"{resource}: family {name!r} column {column!r} must use "
+                    "mass_share_denominator='all_person_effective_mass'."
+                )
+            requirements[column] = {
+                **dict(raw_requirement),
+                "status": requirement_status,
+                "minimum_nondefault_mass_share": floor,
+                "support_channel_column": support_column,
+                "required_support_channel": required_channel,
+                "mass_share_denominator": denominator,
+            }
+
+        families[name] = {
+            **dict(raw_family),
+            "status": status,
+            "stage": stage,
+            "source_manifest": source_manifest,
+            "source_manifest_sha256": source_manifest_sha256,
+            "output_weight_kind": output_weight_kind,
+            "required_mass_change_reason": required_mass_change_reason,
+            "effective_mass_requirements": requirements,
+        }
+    return families
 
 
 def load_uk_release_input_coverage_manifest(
@@ -229,6 +370,10 @@ def load_uk_release_input_coverage_manifest(
             str(key): str(value) for key, value in raw_candidate.items()
         },
         columns=tuple(columns),
+        family_coverage=_parse_family_coverage(
+            payload.get("family_coverage"),
+            resource=resource,
+        ),
         effective_mass_coverage=effective_mass_coverage,
         schema_version=schema_version,
     )
@@ -242,11 +387,28 @@ def uk_release_input_coverage_reviewed_exclusions() -> dict[str, str]:
     return load_uk_release_input_coverage_manifest().reviewed_exclusions
 
 
-def _stored_enum_name(value: object) -> str | None:
+@dataclass(frozen=True)
+class _UKEnumDefault:
+    """One PolicyEngine enum default in both H5 name and integer encodings."""
+
+    name: str
+    index: int
+    value: str
+
+
+def _stored_enum_default(value: object) -> _UKEnumDefault | None:
     if value is None:
         return None
     name = getattr(value, "name", None)
-    return name if isinstance(name, str) else str(value)
+    index = getattr(value, "index", None)
+    stored_value = getattr(value, "value", None)
+    if not isinstance(name, str) or not isinstance(index, int):
+        return None
+    return _UKEnumDefault(
+        name=name,
+        index=index,
+        value=str(stored_value) if stored_value is not None else name,
+    )
 
 
 class PolicyEngineUKCoverageEngine:
@@ -295,7 +457,7 @@ class PolicyEngineUKCoverageEngine:
             if value_type in {bool, int, float, str}:
                 defaults[name] = default
             else:
-                stored = _stored_enum_name(default)
+                stored = _stored_enum_default(default)
                 if stored is not None:
                     defaults[name] = stored
         return defaults
@@ -327,6 +489,24 @@ def _nondefault_signal_mask(values: Any, default: object) -> np.ndarray:
         observed = observed.reshape(1)
     else:
         observed = observed.reshape(-1)
+
+    if isinstance(default, _UKEnumDefault):
+        series = pd.Series(observed)
+        numeric = pd.to_numeric(series, errors="coerce").to_numpy(
+            dtype=float,
+            na_value=np.nan,
+        )
+        numeric_values = np.isfinite(numeric)
+        signal = numeric_values & (numeric != float(default.index))
+        if (~numeric_values).any():
+            normalized = series.astype("string").str.strip()
+            valid = normalized.notna() & normalized.ne("")
+            default_names = {default.name, default.value}
+            string_signal = (
+                valid & ~normalized.isin(default_names) & ~numeric_values
+            ).fillna(False)
+            signal |= string_signal.to_numpy(dtype=bool)
+        return signal
 
     if isinstance(default, bool | np.bool_):
         if observed.dtype.kind in {"b", "i", "u", "f"}:
@@ -376,22 +556,46 @@ def _effective_weights_by_entity(
     tables: Mapping[str, pd.DataFrame],
 ) -> dict[str, np.ndarray]:
     """Resolve row-aligned effective population mass for all UK entities."""
-    resolve_weights = getattr(frame, "resolve_weights", None)
-    if callable(resolve_weights):
-        return {
-            entity: np.asarray(resolve_weights(entity).values, dtype=np.float64)
-            for entity in tables
-        }
 
     household = tables["household"]
     person = tables["person"]
-    if "household_weight" not in household:
-        raise ValueError(
-            "UK effective-mass coverage requires household.household_weight."
+    resolve_weights = getattr(frame, "resolve_weights", None)
+    if callable(resolve_weights):
+        # The reviewed UK policy has exactly one mass source. A Frame may also
+        # carry explicit person or benunit weights for a different purpose;
+        # resolving those entities independently would let such vectors count
+        # signal on a zero-household-mass SPI row.
+        household_weights = np.asarray(
+            resolve_weights("household").values,
+            dtype=np.float64,
         )
-    household_weights = pd.to_numeric(
-        household["household_weight"], errors="coerce"
-    ).to_numpy(dtype=float, na_value=np.nan)
+        if "household_weight" in household:
+            stored_weights = pd.to_numeric(
+                household["household_weight"], errors="coerce"
+            ).to_numpy(dtype=float, na_value=np.nan)
+            if not np.allclose(
+                household_weights,
+                stored_weights,
+                rtol=1e-12,
+                atol=0.0,
+            ):
+                raise ValueError(
+                    "UK effective-mass coverage found conflicting typed and "
+                    "stored household_weight values."
+                )
+    else:
+        if "household_weight" not in household:
+            raise ValueError(
+                "UK effective-mass coverage requires household.household_weight."
+            )
+        household_weights = pd.to_numeric(
+            household["household_weight"], errors="coerce"
+        ).to_numpy(dtype=float, na_value=np.nan)
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "UK effective-mass coverage household weights do not align to the "
+            "household table."
+        )
     if (
         not np.isfinite(household_weights).all()
         or (household_weights < 0.0).any()
@@ -476,6 +680,181 @@ def _effective_mass_diagnostics(
     return diagnostics
 
 
+def _family_effective_mass_diagnostics(
+    manifest: UKReleaseInputCoverageManifest,
+    *,
+    tables: Mapping[str, pd.DataFrame],
+    column_values: Mapping[str, tuple[str, Any]],
+    defaults: Mapping[str, object],
+    effective_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, object]], list[str]]:
+    """Enforce distributional families on their declared support channels."""
+
+    diagnostics: dict[str, dict[str, object]] = {}
+    failures: list[str] = []
+    for family_name, family in sorted(manifest.family_coverage.items()):
+        if family.get("status") != _REQUIRED_AT_BUILD_STATUS:
+            continue
+        family_details: dict[str, object] = {}
+        requirements = family.get("effective_mass_requirements", {})
+        for column, requirement in sorted(requirements.items()):
+            if column not in column_values:
+                failures.append(
+                    f"{family_name}: distributional input {column!r} is absent "
+                    "after its required build stage."
+                )
+                continue
+            entity, values = column_values[column]
+            support_column = str(requirement.get("support_channel_column", ""))
+            required_channel = str(requirement.get("required_support_channel", ""))
+            if not support_column or not required_channel:
+                failures.append(
+                    f"{family_name}: {column!r} has no executable support-"
+                    "channel requirement."
+                )
+                continue
+            if requirement.get("mass_share_denominator") != "all_person_effective_mass":
+                failures.append(
+                    f"{family_name}: {column!r} must use all person effective "
+                    "mass as its distributional denominator."
+                )
+                continue
+            table = tables[entity]
+            if support_column not in table:
+                failures.append(
+                    f"{family_name}: required stage {family['stage']!r} did not "
+                    f"persist support metadata {support_column!r} for {column!r}."
+                )
+                continue
+            weights = np.asarray(effective_weights[entity], dtype=np.float64)
+            signal = _nondefault_signal_mask(values, defaults[column])
+            channels = table[support_column].astype("string").str.strip()
+            in_channel = (
+                channels.eq(required_channel).fillna(False).to_numpy(dtype=bool)
+            )
+            positive = weights > 0.0
+            total_mass = float(weights[positive].sum())
+            channel_mass = float(weights[positive & in_channel].sum())
+            signal_mass = float(weights[positive & in_channel & signal].sum())
+            share = signal_mass / total_mass if total_mass > 0.0 else 0.0
+            floor = float(requirement["minimum_nondefault_mass_share"])
+            family_details[column] = {
+                "entity": entity,
+                "support_channel_column": support_column,
+                "required_support_channel": required_channel,
+                "channel_rows": int(in_channel.sum()),
+                "positive_mass_channel_rows": int((positive & in_channel).sum()),
+                "channel_effective_mass": channel_mass,
+                "effective_signal_mass": signal_mass,
+                "total_effective_mass": total_mass,
+                "effective_signal_mass_share": share,
+                "minimum_nondefault_mass_share": floor,
+            }
+            if share < floor:
+                failures.append(
+                    f"{family_name}: {column!r} carries non-default signal on "
+                    f"required support channel {required_channel!r} at effective "
+                    f"population mass share {share:.12g}, below the reviewed "
+                    f"floor {floor:.12g}; base-channel signal does not restore "
+                    "the rebuilt SPI family."
+                )
+        diagnostics[family_name] = family_details
+    return diagnostics, failures
+
+
+def _family_build_state_diagnostics(
+    frame: Any,
+    manifest: UKReleaseInputCoverageManifest,
+) -> tuple[dict[str, dict[str, object]], list[str]]:
+    """Enforce reviewed family weight state, period, and mass-change evidence."""
+
+    diagnostics: dict[str, dict[str, object]] = {}
+    failures: list[str] = []
+    for family_name, family in sorted(manifest.family_coverage.items()):
+        if family.get("status") != _REQUIRED_AT_BUILD_STATUS:
+            continue
+        details: dict[str, object] = {}
+
+        expected_kind = str(family.get("output_weight_kind", "")).strip()
+        if expected_kind:
+            actual_kind = getattr(frame, "household_weight_kind", None)
+            if actual_kind is None:
+                resolve_weights = getattr(frame, "resolve_weights", None)
+                if callable(resolve_weights):
+                    actual_kind = resolve_weights("household").kind
+            actual_kind_name = str(getattr(actual_kind, "value", actual_kind or ""))
+            details["expected_output_weight_kind"] = expected_kind
+            details["actual_output_weight_kind"] = actual_kind_name
+            if actual_kind_name != expected_kind:
+                failures.append(
+                    f"{family_name}: final household weights have kind "
+                    f"{actual_kind_name!r}, expected reviewed kind "
+                    f"{expected_kind!r}."
+                )
+
+        source_vintages = family.get("source_vintages")
+        if isinstance(source_vintages, Mapping) and (
+            "mapped_build_period" in source_vintages
+        ):
+            expected_period = str(source_vintages["mapped_build_period"])
+            actual_period = str(getattr(frame, "time_period", ""))
+            details["expected_build_period"] = expected_period
+            details["actual_build_period"] = actual_period
+            if actual_period != expected_period:
+                failures.append(
+                    f"{family_name}: final dataset period {actual_period!r} does "
+                    f"not match the reviewed source mapping {expected_period!r}."
+                )
+
+        required_reason = str(family.get("required_mass_change_reason", "")).strip()
+        if required_reason:
+            records = tuple(getattr(frame, "mass_log", ()))
+            matches = [
+                record
+                for record in records
+                if _mass_record_field(record, "reason") == required_reason
+            ]
+            valid_matches = [record for record in matches if _valid_mass_record(record)]
+            details["required_mass_change_reason"] = required_reason
+            details["matching_mass_change_records"] = len(matches)
+            details["valid_mass_change_records"] = len(valid_matches)
+            if not valid_matches:
+                failures.append(
+                    f"{family_name}: final dataset lacks the reviewed, "
+                    "mass-conserving household MassChangeRecord for its SPI "
+                    "prior allocation."
+                )
+
+        diagnostics[family_name] = details
+    return diagnostics, failures
+
+
+def _mass_record_field(record: object, name: str) -> object:
+    if isinstance(record, Mapping):
+        return record.get(name)
+    return getattr(record, name, None)
+
+
+def _valid_mass_record(record: object) -> bool:
+    old_total = _mass_record_field(record, "old_total")
+    new_total = _mass_record_field(record, "new_total")
+    declared_factor = _mass_record_field(record, "declared_factor")
+    try:
+        old = float(old_total)
+        new = float(new_total)
+        factor = float(declared_factor)
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        _mass_record_field(record, "entity") == "household"
+        and np.isfinite(old)
+        and old > 0.0
+        and np.isfinite(new)
+        and np.isclose(old, new, rtol=1e-9, atol=0.0)
+        and factor == 1.0
+    )
+
+
 def uk_release_input_coverage_gate(
     frame: Any,
     engine: Any,
@@ -548,6 +927,19 @@ def uk_release_input_coverage_gate(
             "dust is not release coverage. Rebuild the source channel with a "
             "reviewed positive population-mass allocation."
         )
+    family_diagnostics, family_failures = _family_effective_mass_diagnostics(
+        manifest,
+        tables=tables,
+        column_values=present_values,
+        defaults=defaults,
+        effective_weights=effective_weights,
+    )
+    failures.extend(family_failures)
+    family_build_state, family_build_failures = _family_build_state_diagnostics(
+        frame,
+        manifest,
+    )
+    failures.extend(family_build_failures)
     details = {
         **dict(base.details),
         "effective_mass_policy": {
@@ -558,6 +950,8 @@ def uk_release_input_coverage_gate(
         },
         "insufficient_effective_mass": sorted(insufficient_effective_mass),
         "effective_mass_by_column": diagnostics,
+        "family_effective_mass": family_diagnostics,
+        "family_build_state": family_build_state,
     }
     return GateResult(
         name=base.name,
@@ -619,6 +1013,32 @@ def assert_uk_release_input_coverage_manifest_current(
             "manifest declares column(s) outside the enhanced-FRS populated "
             f"loader-input surface: {extra}."
         )
+
+    for family_name, family in sorted(manifest.family_coverage.items()):
+        source_manifest = str(family["source_manifest"])
+        actual_source_sha256 = hashlib.sha256(
+            _resource_text(source_manifest).encode("utf-8")
+        ).hexdigest()
+        if actual_source_sha256 != family["source_manifest_sha256"]:
+            failures.append(
+                f"{family_name}: {source_manifest} changed without regenerating "
+                "release_input_coverage_manifest.json."
+            )
+        requirements = family.get("effective_mass_requirements", {})
+        for column, requirement in sorted(requirements.items()):
+            if column not in manifest.required_columns:
+                failures.append(
+                    f"{family_name}: distributional requirement {column!r} must "
+                    "also remain a required release input column."
+                )
+            requirement_floor = float(requirement["minimum_nondefault_mass_share"])
+            if requirement_floor != (
+                manifest.effective_mass_coverage.minimum_nondefault_mass_share
+            ):
+                failures.append(
+                    f"{family_name}: {column!r} effective-mass floor disagrees "
+                    "with the reviewed UK release policy."
+                )
 
     known_gaps = {gap.variable: gap for gap in load_efrs_parity_known_gaps()}
     gaps_outside_surface = sorted(set(known_gaps) - surface)
@@ -682,4 +1102,22 @@ def assert_uk_release_input_coverage_manifest_current(
         raise ValueError(
             "UK release input-column coverage manifest has drifted:\n"
             + "\n".join(f"  - {line}" for line in failures)
+        )
+
+
+def assert_uk_release_input_coverage_build_stages(
+    stage_names: Sequence[str],
+    *,
+    manifest: UKReleaseInputCoverageManifest | None = None,
+) -> None:
+    """Require every ``required_at_build`` family in the national stage plan."""
+
+    manifest = manifest or load_uk_release_input_coverage_manifest()
+    actual = {str(name) for name in stage_names}
+    missing = sorted(manifest.required_build_stages - actual)
+    if missing:
+        raise ValueError(
+            "UK national build omits required release family stage(s) "
+            f"{missing}; family_coverage status='required_at_build' is an "
+            "executable contract, not documentation."
         )
