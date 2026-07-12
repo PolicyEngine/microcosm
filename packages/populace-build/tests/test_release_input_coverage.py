@@ -528,6 +528,28 @@ class TestShippedManifest:
         assert probe.binding_inputs == (column,)
         assert probe.min_abs_effect == 100_000_000.0
 
+    def test_restored_ssi_take_up_has_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "takes_up_ssi_if_eligible"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        matches = [
+            probe
+            for probe in manifest.probes
+            if probe.id == "ssi_take_up_neutralization"
+        ]
+        assert len(matches) == 1
+        probe = matches[0]
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "ssi"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 10_000_000_000.0
+
     def test_post_reference_obbba_inputs_are_hard_requirements(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in (

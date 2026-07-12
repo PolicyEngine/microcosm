@@ -436,9 +436,7 @@
    "status": "required"
   },
   "takes_up_ssi_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_tanf_if_eligible": {
    "status": "required"
@@ -525,8 +523,8 @@
   }
  },
  "counts": {
-  "required": 155,
-  "reviewed_exclusion": 11,
+  "required": 156,
+  "reviewed_exclusion": 10,
   "total": 166
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, and meets_ssi_disability_criteria required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -661,6 +659,22 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US requires the person-level disability criterion for non-aged SSI eligibility. Neutralizing only the restored SIPP-imputed criterion must therefore remove SSI from otherwise eligible disabled or blind people, so baseline-minus-neutralized SSI is positive. If the post-reference exported input is absent or degenerate, this isolated eligibility channel scores exactly $0. A deterministic 6,000-source-household Build-J smoke with the pinned SIPP and SCF donors scored +$586.393 million baseline-minus-neutralized SSI; the $100 million floor retains ample sampling margin while rejecting a materially weakened criterion channel."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_ssi_if_eligible"
+   ],
+   "budget_measure": "ssi",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "ssi_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 10000000000.0,
+   "name": "SSI take-up neutralization",
+   "neutralized_variable": "takes_up_ssi_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US gates SSI benefits on the restored person-level take-up leaf after eligibility. Neutralizing only that leaf must therefore remove SSI from source-reported and SSA-count-calibrated recipients, so baseline-minus-neutralized SSI is positive. If the restored exported input is absent, all false, or not persisted, this isolated channel scores exactly $0. A production-ingredient sparse smoke (staged artifact sha256 c5939dad81153da51b2cc57081ddb3e729700366144868df742b3ad86eafcd7c; restored artifact sha256 9269360d3409fdc15c90c43dda394ada6c91eff5bb64c12ccd9def7d670dd077) measured +$57,114,569,526.38 of baseline-minus-neutralized 2024 SSI. The $10 billion floor retains over 5.7x observed margin while rejecting a materially degenerate persisted flag."
   },
   {
    "binding_inputs": [

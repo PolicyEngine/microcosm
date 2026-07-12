@@ -751,6 +751,39 @@ def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     )
 
 
+def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    diagnostics_path = release_dir / "us_ssi_take_up.json"
+    diagnostics_path.write_text('{"schema_version": 1}')
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"]["us_ssi_take_up"] = {
+        "kind": "diagnostics",
+        "path": diagnostics_path.name,
+        "repo_id": "policyengine/populace-us",
+        "revision": RELEASE_ID,
+        "sha256": _sha256(diagnostics_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+
+    uploaded_paths = [path for path, _ in hub.uploads]
+    release_path = f"releases/{RELEASE_ID}/{diagnostics_path.name}"
+    assert diagnostics_path.name not in uploaded_paths
+    assert release_path in uploaded_paths
+    assert uploaded_paths.index(release_path) < uploaded_paths.index(
+        LATEST_POINTER_PATH
+    )
+
+
 def test_publish_requires_artifact_root_for_root_artifacts(
     hub: FakeHub, release_dir: Path
 ) -> None:

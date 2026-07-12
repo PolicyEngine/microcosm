@@ -52,6 +52,7 @@ class TestUsSourceStageOutputs:
         assert "traditional_ira_contributions_desired" in outputs
         assert "roth_ira_contributions_desired" in outputs
         assert "self_employed_pension_contributions_desired" in outputs
+        assert "takes_up_ssi_if_eligible" in outputs
         assert "casualty_loss" in outputs
         assert "domestic_production_ald" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs

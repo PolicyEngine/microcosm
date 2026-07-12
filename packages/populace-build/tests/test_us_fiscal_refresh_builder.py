@@ -115,7 +115,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         target_registry_version="registry-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    assert identity["materializer_version"] == 3
+    assert identity["materializer_version"] == 4
     path = tmp_path / "target_frame_checkpoint.h5"
 
     payload = builder._write_target_frame_checkpoint(
@@ -160,6 +160,381 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ]
         == 1
     )
+
+
+def test_ssi_candidate_amount_uses_december_person_values() -> None:
+    builder = _load_builder_module()
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to):
+            assert variable == "uncapped_ssi"
+            assert period == "2024-12"
+            assert map_to == "person"
+            return np.asarray([0.0, 125.0, -2.0])
+
+    values = builder._ssi_person_uncapped_amount(
+        SimpleNamespace(),
+        simulation=FakeSimulation(),
+    )
+
+    np.testing.assert_array_equal(values, np.asarray([0.0, 125.0, -2.0]))
+
+
+def test_ssi_reconciliation_replays_dependencies_before_refit_and_only_diagnoses_final(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    reporter_ids = frozenset({"asec-reporter"})
+    initial_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+    )
+    first_reconciled_result = SimpleNamespace(
+        weights=np.asarray([1_200.0, 1_800.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=0.5,
+    )
+    reconciled_result = SimpleNamespace(
+        weights=np.asarray([1_250.0, 1_750.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=0.25,
+    )
+
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        lambda frame: reporter_ids,
+    )
+
+    uncapped_calls = 0
+
+    def fake_uncapped(frame, *, maximum_microsim_batch_size):
+        nonlocal uncapped_calls
+        uncapped_calls += 1
+        calls.append(f"uncapped_{uncapped_calls}")
+        return np.zeros(frame.n("person"), dtype=np.float64)
+
+    monkeypatch.setattr(builder, "_ssi_person_uncapped_amount", fake_uncapped)
+
+    assignment_calls = 0
+
+    def fake_assign(frame, *, uncapped_ssi, seed, reporter_source_ids):
+        nonlocal assignment_calls
+        assignment_calls += 1
+        calls.append("ssi_assign")
+        assert reporter_source_ids == reporter_ids
+        return frame, {"phase": "assigned"}
+
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
+
+    def fake_aca(frame, target_specs, *, seed, maximum_microsim_batch_size):
+        calls.append("aca")
+        return frame
+
+    monkeypatch.setattr(builder, "_with_aca_marketplace_source_outputs", fake_aca)
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        lambda frame: builder.GateResult(name="health", passed=True),
+    )
+
+    def fake_medicaid(
+        frame,
+        target_specs,
+        *,
+        seed,
+        substitutions,
+        maximum_microsim_batch_size,
+    ):
+        calls.append("medicaid")
+        return frame, {"phase": "medicaid"}
+
+    monkeypatch.setattr(builder, "_with_medicaid_take_up_outputs", fake_medicaid)
+
+    def fake_final_medicaid(*args, **kwargs):
+        calls.append("medicaid_diagnose")
+        return {"phase": f"final_medicaid_{calibrate_calls}"}
+
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        fake_final_medicaid,
+    )
+
+    def fake_medicaid_gate(diagnostics):
+        passed = diagnostics.get("phase") != "final_medicaid_1"
+        return builder.GateResult(
+            name="medicaid",
+            passed=passed,
+            failures=() if passed else ("first returned weights drifted",),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        fake_medicaid_gate,
+    )
+
+    def fake_other_health(
+        frame,
+        *,
+        seed,
+        time_period,
+        maximum_microsim_batch_size,
+    ):
+        calls.append("other_health")
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        fake_other_health,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        lambda frame: builder.GateResult(name="other_health", passed=True),
+    )
+
+    class FakeRegistry:
+        specs = (SimpleNamespace(),)
+
+        def to_target_set(self):
+            return "targets"
+
+    registry = FakeRegistry()
+
+    def fake_materialize(frame, target_specs, **kwargs):
+        calls.append("materialize")
+        np.testing.assert_array_equal(
+            frame.weights_for("household").values,
+            initial_result.initial_weights,
+        )
+        return frame, registry, {"declared_targets": 1}
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fake_materialize)
+    monkeypatch.setattr(
+        builder,
+        "_fiscal_target_loss_weights",
+        lambda active_registry: np.ones(1),
+    )
+
+    calibrate_calls = 0
+
+    def fake_calibrate(frame, targets, **kwargs):
+        nonlocal calibrate_calls
+        calibrate_calls += 1
+        calls.append("calibrate")
+        np.testing.assert_array_equal(
+            kwargs["warm_start_weights"],
+            (
+                initial_result.weights
+                if calibrate_calls == 1
+                else first_reconciled_result.weights
+            ),
+        )
+        return first_reconciled_result if calibrate_calls == 1 else reconciled_result
+
+    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
+
+    def fake_final_diagnostics(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        reporter_source_ids,
+    ):
+        calls.append("ssi_diagnose")
+        assert reporter_source_ids == reporter_ids
+        return {"phase": f"final_{calibrate_calls}"}
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_diagnostics",
+        fake_final_diagnostics,
+    )
+
+    def fake_ssi_gate(diagnostics):
+        return builder.GateResult(name="ssi", passed=True, details=diagnostics)
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_gate)
+
+    reconciliation = builder._reconcile_ssi_take_up_and_refit(
+        small_frame,
+        initial_result,
+        (),
+        dense_default_dataset=True,
+        seed=3,
+        epochs=5,
+        learning_rate=0.01,
+        max_weight_ratio=10.0,
+        l2_lambda=0.0,
+        target_loss_cap=1.0,
+    )
+
+    assert assignment_calls == 2
+    assert calls == [
+        "uncapped_1",
+        "ssi_assign",
+        "aca",
+        "medicaid",
+        "other_health",
+        "materialize",
+        "calibrate",
+        "uncapped_2",
+        "ssi_diagnose",
+        "medicaid_diagnose",
+        "uncapped_3",
+        "ssi_assign",
+        "aca",
+        "medicaid",
+        "other_health",
+        "materialize",
+        "calibrate",
+        "uncapped_4",
+        "ssi_diagnose",
+        "medicaid_diagnose",
+    ]
+    np.testing.assert_array_equal(
+        reconciliation.export_frame.weights_for("household").values,
+        reconciled_result.weights,
+    )
+    assert reconciliation.ssi_diagnostics == {"phase": "final_2"}
+    assert reconciliation.compilation["ssi_take_up_reconciliation"]["passes"] == 2
+
+
+def test_ssi_reconciliation_fails_closed_after_bounded_weight_drift(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    counts = {"assign": 0, "calibrate": 0, "diagnose": 0}
+    initial_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+    )
+    returned_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=1.0,
+    )
+
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        lambda frame: frozenset({"reporter"}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_ssi_person_uncapped_amount",
+        lambda frame, **kwargs: np.zeros(frame.n("person")),
+    )
+
+    def fake_assign(frame, **kwargs):
+        counts["assign"] += 1
+        return frame, {"stage": True}
+
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
+    monkeypatch.setattr(
+        builder,
+        "_with_aca_marketplace_source_outputs",
+        lambda frame, *args, **kwargs: frame,
+    )
+
+    def passing_gate(name):
+        return builder.GateResult(name=name, passed=True)
+
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        lambda frame: passing_gate("health"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_medicaid_take_up_outputs",
+        lambda frame, *args, **kwargs: (frame, {"stage": True}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        lambda *args, **kwargs: {"final": True},
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        lambda diagnostics: passing_gate("medicaid"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        lambda frame, **kwargs: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        lambda frame: passing_gate("other_health"),
+    )
+
+    class FakeRegistry:
+        specs = (SimpleNamespace(),)
+
+        def to_target_set(self):
+            return "targets"
+
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        lambda frame, *args, **kwargs: (frame, FakeRegistry(), {}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_fiscal_target_loss_weights",
+        lambda registry: np.ones(1),
+    )
+
+    def fake_calibrate(*args, **kwargs):
+        counts["calibrate"] += 1
+        return returned_result
+
+    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
+
+    def fake_diagnostics(*args, **kwargs):
+        counts["diagnose"] += 1
+        return {"final": True}
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_diagnostics", fake_diagnostics)
+
+    def fake_ssi_gate(diagnostics):
+        if diagnostics.get("stage"):
+            return passing_gate("ssi")
+        return builder.GateResult(
+            name="ssi",
+            passed=False,
+            failures=("returned weights drifted",),
+        )
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_gate)
+
+    with pytest.raises(RuntimeError, match="after 2 pass"):
+        builder._reconcile_ssi_take_up_and_refit(
+            small_frame,
+            initial_result,
+            (),
+            dense_default_dataset=True,
+            seed=0,
+            epochs=1,
+            learning_rate=0.01,
+            max_weight_ratio=10.0,
+            l2_lambda=0.0,
+            target_loss_cap=1.0,
+            max_passes=2,
+        )
+
+    assert counts == {"assign": 2, "calibrate": 2, "diagnose": 2}
 
 
 def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
@@ -1873,6 +2248,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        lambda frame: frozenset({"asec-reporter"}),
+    )
     repair_payload = {
         "method": "rescale_household_weights_to_census_person_population",
         "applied": True,
@@ -2450,6 +2830,46 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_ssi_disability_signal_gate,
     )
 
+    def fake_ssi_uncapped_amount(
+        frame,
+        *,
+        simulation=None,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["ssi_uncapped_stage_called"] = True
+        captured["ssi_uncapped_batch_size"] = maximum_microsim_batch_size
+        return np.zeros(4, dtype=np.float64)
+
+    def fake_with_ssi_take_up(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        reporter_source_ids,
+    ):
+        captured["ssi_take_up_stage_called"] = True
+        captured["ssi_take_up_seed"] = seed
+        captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
+        captured["ssi_reporter_source_ids"] = reporter_source_ids
+        return frame, {"checked": True}
+
+    def fake_ssi_take_up_gate(diagnostics):
+        captured["ssi_take_up_gate_called"] = True
+        captured["ssi_take_up_gate_diagnostics"] = diagnostics
+        return builder.GateResult(
+            name="ssi_take_up",
+            passed=True,
+            details=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_ssi_person_uncapped_amount",
+        fake_ssi_uncapped_amount,
+    )
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
+
     def fake_load_voluntary_filing_donor(
         path,
         *,
@@ -2684,6 +3104,37 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return release_dir / "calibration_diagnostics.json"
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+
+    def fake_reconcile(frame, initial_result, specs, **kwargs):
+        captured["ssi_reconciliation_called"] = True
+        captured["ssi_reconciliation_reporter_source_ids"] = kwargs[
+            "reporter_source_ids"
+        ]
+        return builder._SSITakeUpReconciliationResult(
+            export_frame=frame,
+            calibration_result=initial_result,
+            registry=registry,
+            compilation={"dropped_target_names": []},
+            ssi_diagnostics={"checked": True},
+            medicaid_diagnostics={},
+            health_input_gate=builder.GateResult(
+                name="health_input_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+            other_health_insurance_gate=builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+            passes=1,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_reconcile_ssi_take_up_and_refit",
+        fake_reconcile,
+    )
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
@@ -2727,6 +3178,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "selection_final_loss": 1.5,
         "refit_initial_loss": 2.0,
         "refit_final_loss": 1.0,
+        "pre_ssi_reconciliation_final_loss": 1.0,
+        "ssi_take_up_reconciliation_passes": 1,
+        "final_loss": 1.0,
     }
     assert captured["l0_kwargs"]["l0_lambda"] == 0.2
     assert captured["l0_kwargs"]["l2_lambda"] == 0.0
@@ -2769,6 +3223,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_disability_stage_called"] is True
     assert captured["ssi_disability_seed"] == 42
     assert captured["ssi_disability_gate_called"] is True
+    assert captured["ssi_uncapped_stage_called"] is True
+    assert (
+        captured["ssi_uncapped_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["ssi_take_up_stage_called"] is True
+    assert captured["ssi_take_up_seed"] == 0
+    assert captured["ssi_take_up_uncapped"].shape == (4,)
+    assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
+    assert captured["ssi_reconciliation_reporter_source_ids"] == frozenset(
+        {"asec-reporter"}
+    )
+    assert captured["ssi_take_up_gate_called"] is True
+    assert captured["ssi_take_up_gate_diagnostics"] == {"checked": True}
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
         captured["voluntary_filing_donor_sha256"]
@@ -4774,6 +5242,8 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    ssi_diagnostics_path = release_dir / "us_ssi_take_up.json"
+    ssi_diagnostics_path.write_text('{"variable":"takes_up_ssi_if_eligible"}')
 
     monkeypatch.setattr(
         builder,
@@ -4940,6 +5410,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     assert not any(
         key.startswith(("states/", "districts/")) for key in manifest["artifacts"]
     )
+    assert manifest["artifacts"]["us_ssi_take_up"] == {
+        "kind": "diagnostics",
+        "path": "us_ssi_take_up.json",
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": builder._sha256(ssi_diagnostics_path),
+    }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id
@@ -4999,6 +5476,7 @@ def test_build_manifests_records_selection_source_provenance(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
     monkeypatch.setattr(
         builder,
         "_runtime_versions",
@@ -5072,6 +5550,7 @@ def test_build_manifests_selection_source_absent_by_default(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
     monkeypatch.setattr(
         builder,
         "_runtime_versions",
@@ -5121,6 +5600,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
 
     monkeypatch.setattr(
         builder,

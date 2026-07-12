@@ -90,6 +90,7 @@ from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUM
 from populace.build.us_runtime.ssi_disability_criteria import (
     US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
 from populace.build.us_runtime.voluntary_filing import (
     US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
 )
@@ -158,6 +159,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         *US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+        *US_SSI_TAKE_UP_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
         *US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
         *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,

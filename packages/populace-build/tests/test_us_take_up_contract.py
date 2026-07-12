@@ -18,6 +18,7 @@ from populace.build.us_runtime.take_up_contract import (
     TAKE_UP_CONTRACT_ENGINE_FACT_KEYS,
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
+    count_calibrated_take_up_programs,
     load_take_up_contract,
     seeded_take_up_programs,
 )
@@ -49,6 +50,43 @@ class TestContractLoads:
                 "out_of_scope",
                 "near_universal",
             }
+
+    def test_ssi_uses_reporter_anchored_ssa_age_count_calibration(self) -> None:
+        program = load_take_up_contract().program_map()["takes_up_ssi_if_eligible"]
+        calibration = program.raw["calibration"]
+
+        assert program in count_calibrated_take_up_programs()
+        assert calibration == {
+            "anchor": "SSI_VAL",
+            "targets": ["ssa_ssi_federal_payment_recipients_by_age"],
+            "target_table": "ssa_ssi_federal_payment_recipients_by_age",
+            "target_source": (
+                "https://www.ssa.gov/policy/docs/statcomps/"
+                "ssi_monthly/2024-12/table01.html"
+            ),
+            "target_period": "2024-12",
+            "target_measure": "Total with—Federal payment",
+            "target_values": {
+                "under_18": 1_001_922,
+                "18_64": 3_905_779,
+                "65_plus": 2_382_142,
+            },
+            "aggregate_target": 7_289_843,
+            "age_bands": {
+                "under_18": "age < 18",
+                "18_64": "18 <= age < 65",
+                "65_plus": "age >= 65",
+            },
+            "semantics": (
+                "SSA SSI Monthly Statistics December 2024 Table 1 recipients "
+                "in the Total with—Federal payment row, calibrated within "
+                "uncapped_ssi > 0 by source-person identity; unreachable age "
+                "bands saturate without assigning outside modeled eligibility"
+            ),
+        }
+        assert program.raw["scope_owner"] == (
+            "ssi_take_up source stage (eCPS exported-input coverage)"
+        )
 
 
 class TestEngineAssertion:

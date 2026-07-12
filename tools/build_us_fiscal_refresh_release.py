@@ -22,8 +22,9 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,7 @@ from populace.build.us_runtime import (
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
+    US_MEDICAID_TAKE_UP_VARIABLE,
     US_SOURCE_MANIFEST,
     apply_us_medicaid_enrollment_substitutions,
     assert_release_input_coverage_manifest_current,
@@ -96,6 +98,8 @@ from populace.build.us_runtime import (
     us_hours_worked_signal_gate,
     us_housing_inputs_signal_gate,
     us_immigration_composition_gate,
+    us_medicaid_source_person_table,
+    us_medicaid_take_up_diagnostics,
     us_medicaid_take_up_gate,
     us_medicare_take_up_signal_gate,
     us_misc_itemized_signal_gate,
@@ -120,6 +124,9 @@ from populace.build.us_runtime import (
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
     us_ssi_disability_criteria_signal_gate,
+    us_ssi_take_up_diagnostics,
+    us_ssi_take_up_gate,
+    us_ssi_take_up_reporter_source_ids,
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
@@ -148,11 +155,13 @@ from populace.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_ssi_disability_criteria,
+    with_us_ssi_take_up,
     with_us_take_up_inputs,
     with_us_voluntary_filing_input,
     with_us_wic_claim_input,
     write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
+    write_us_ssi_take_up_diagnostics,
     write_us_take_up_participation_diagnostics,
 )
 from populace.build.us_runtime.demographics import (
@@ -235,10 +244,14 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 3: the post-base SIPP SSI-disability stage restores
 # meets_ssi_disability_criteria after SCF assets, changing SSI eligibility and
 # target vectors without changing that on-disk base hash.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 3
+# 4: reporter-anchored SSI take-up now replaces the engine-default universal
+# flag after the disability stage, changing SSI and its target vectors while
+# the on-disk base hash remains unchanged.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 4
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
+SSI_TAKE_UP_RECONCILIATION_MAX_PASSES = 3
 
 
 def _collect_batch_garbage() -> None:
@@ -492,9 +505,6 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 # degenerate column, or one of these becoming non-degenerate, fails the
 # default-valued-columns gate so this list cannot rot.
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
-    "takes_up_ssi_if_eligible": (
-        "SSI take-up imputation backlog; constant True forces 100% take-up."
-    ),
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "second_home_mortgage_balance": (
         "Second-home mortgage decomposition not imputed; constant at the"
@@ -2449,6 +2459,87 @@ def _medicaid_person_eligibility(
     return eligibility
 
 
+def _ssi_person_uncapped_amount(
+    frame: Frame,
+    *,
+    simulation=None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> np.ndarray:
+    """December person-level potential federal SSI, batched like Medicaid.
+
+    SSA's age-band recipient counts are December 2024 point-in-time stocks.
+    ``uncapped_ssi > 0`` is the PolicyEngine-US 1.764.6 current-benefit
+    candidate mask and does not depend on the take-up input being assigned.
+    """
+
+    period = f"{PERIOD}-12"
+
+    def calculate(active_simulation) -> np.ndarray:
+        values = np.asarray(
+            active_simulation.calculate(
+                "uncapped_ssi",
+                period=period,
+                map_to="person",
+            ),
+            dtype=np.float64,
+        )
+        if not np.isfinite(values).all():
+            raise RuntimeError(
+                "SSI take-up materialization produced nonfinite uncapped_ssi values."
+            )
+        return values
+
+    if simulation is not None:
+        return calculate(simulation)
+
+    from policyengine_us import Microsimulation
+
+    person_ids = frame.table("person")["person_id"].to_numpy()
+    uncapped = np.zeros(len(person_ids), dtype=np.float64)
+    person_positions = pd.Series(
+        np.arange(len(person_ids), dtype=np.int64), index=person_ids
+    )
+    n_households = frame.n("household")
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if len(batches) > 1:
+        print(
+            "Materializing December SSI candidate amounts in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+    for household_positions in batches:
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                frame
+                if full_batch
+                else _select_households_by_position(frame, household_positions)
+            )
+            batch_simulation = Microsimulation(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            batch_uncapped = calculate(batch_simulation)
+            positions = person_positions.reindex(
+                batch_frame.table("person")["person_id"].to_numpy()
+            ).to_numpy()
+            if np.isnan(positions).any():
+                raise RuntimeError(
+                    "SSI candidate batch produced person_id values not present "
+                    "in the full person table."
+                )
+            uncapped[positions.astype(np.int64)] = batch_uncapped
+            batch_simulation._invalidate_all_caches()
+            del batch_frame, batch_simulation
+        _collect_batch_garbage()
+    return uncapped
+
+
 def _with_medicaid_take_up_outputs(
     frame: Frame,
     target_specs: tuple,
@@ -2485,6 +2576,48 @@ def _with_medicaid_take_up_outputs(
         state_targets=target_table,
         seed=seed,
         substitutions=substitutions,
+    )
+
+
+def _medicaid_diagnostics_for_existing_output(
+    frame: Frame,
+    target_specs: tuple,
+    *,
+    seed: int,
+    substitutions: Sequence[dict[str, object]] = (),
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> dict[str, object]:
+    """Diagnose persisted Medicaid flags on actual release weights."""
+
+    target_table = _medicaid_source_target_table(target_specs)
+    if target_table.empty:
+        raise RuntimeError(
+            "Final Medicaid take-up diagnostics require CMS state targets."
+        )
+    eligibility = _medicaid_person_eligibility(
+        frame,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
+    assigned = us_medicaid_source_person_table(
+        frame,
+        is_medicaid_eligible=eligibility,
+        state_fips=_person_state_fips(frame),
+        seed=seed,
+    )
+    person = frame.table("person")
+    if US_MEDICAID_TAKE_UP_VARIABLE not in person:
+        raise RuntimeError(
+            f"Final release is missing person.{US_MEDICAID_TAKE_UP_VARIABLE}."
+        )
+    takes_up = person[US_MEDICAID_TAKE_UP_VARIABLE]
+    if not pd.api.types.is_bool_dtype(takes_up.dtype) or takes_up.isna().any():
+        raise RuntimeError("Final Medicaid take-up output must be complete boolean.")
+    assigned[US_MEDICAID_TAKE_UP_VARIABLE] = takes_up.to_numpy(dtype=bool)
+    return us_medicaid_take_up_diagnostics(
+        assigned,
+        target_table,
+        substitutions=substitutions,
+        weights_basis="final_release_weights",
     )
 
 
@@ -4277,6 +4410,321 @@ def _fiscal_target_loss_weights(registry: TargetRegistry) -> np.ndarray:
     return weights / weights.mean()
 
 
+class _SSITakeUpReconciliationResult:
+    """Fixed assignments and calibration state after SSI dependency replay."""
+
+    __slots__ = (
+        "export_frame",
+        "calibration_result",
+        "registry",
+        "compilation",
+        "ssi_diagnostics",
+        "medicaid_diagnostics",
+        "health_input_gate",
+        "other_health_insurance_gate",
+        "passes",
+    )
+
+    def __init__(
+        self,
+        *,
+        export_frame: Frame,
+        calibration_result: Any,
+        registry: TargetRegistry,
+        compilation: Mapping[str, object],
+        ssi_diagnostics: Mapping[str, object],
+        medicaid_diagnostics: Mapping[str, object],
+        health_input_gate: GateResult,
+        other_health_insurance_gate: GateResult,
+        passes: int,
+    ) -> None:
+        self.export_frame = export_frame
+        self.calibration_result = calibration_result
+        self.registry = registry
+        self.compilation = compilation
+        self.ssi_diagnostics = ssi_diagnostics
+        self.medicaid_diagnostics = medicaid_diagnostics
+        self.health_input_gate = health_input_gate
+        self.other_health_insurance_gate = other_health_insurance_gate
+        self.passes = passes
+
+
+def _frame_with_reconciliation_weight_basis(
+    frame: Frame,
+    household_weights: np.ndarray,
+) -> Frame:
+    """Copy input tables onto the fixed pre-refit household weight basis."""
+
+    values = np.asarray(household_weights, dtype=np.float64)
+    if values.shape != (frame.n("household"),):
+        raise ValueError(
+            "SSI take-up reconciliation weight basis must align to households: "
+            f"{values.shape} != {(frame.n('household'),)}."
+        )
+    if not np.isfinite(values).all() or (values <= 0).any():
+        raise ValueError(
+            "SSI take-up reconciliation requires finite strictly positive "
+            "prior weights."
+        )
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    weights["household"] = Weights(values, WeightKind.CALIBRATED)
+    return Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        weights,
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
+def _assert_reconciliation_support_unchanged(
+    reference: Frame,
+    candidate: Frame,
+) -> None:
+    """Fail if a dependency replay changes selected entity IDs or order."""
+
+    if reference.schema != candidate.schema or reference.entities != candidate.entities:
+        raise RuntimeError("SSI take-up reconciliation changed the support schema.")
+    for entity in reference.entities:
+        id_column = (
+            reference.schema.person_id_column
+            if entity == reference.schema.person_entity
+            else reference.schema.id_column(entity)
+        )
+        expected = reference.table(entity)[id_column].to_numpy()
+        actual = candidate.table(entity)[id_column].to_numpy()
+        if not np.array_equal(expected, actual):
+            raise RuntimeError(
+                "SSI take-up reconciliation changed selected support IDs or "
+                f"order for {entity!r}."
+            )
+
+
+def _reconcile_ssi_take_up_and_refit(
+    base_frame: Frame,
+    initial_result,
+    target_specs: tuple,
+    *,
+    dense_default_dataset: bool,
+    seed: int,
+    epochs: int,
+    learning_rate: float,
+    max_weight_ratio: float | None,
+    l2_lambda: float,
+    target_loss_cap: float,
+    reporter_source_ids: Collection[str] | None = None,
+    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    gate_congressional_district_targets: bool = True,
+    progress_callback=None,
+    max_passes: int = SSI_TAKE_UP_RECONCILIATION_MAX_PASSES,
+) -> _SSITakeUpReconciliationResult:
+    """Reconcile SSI on final weights before replaying dependent target inputs.
+
+    The initial dense/L0 fit supplies an actual release-weight surface. Each
+    bounded pass then fixes SSI on those weights, replays ACA, Medicaid, and
+    other-health inputs that can depend on SSI, rematerializes every fiscal
+    target from those exact fixed inputs, and performs an ordinary refit on the
+    already-selected support. The returned-weight check diagnoses the persisted
+    SSI flags without rewriting them; a rewrite after optimization would make
+    both SSI and Medicaid target vectors stale.
+    """
+
+    if max_passes <= 0:
+        raise ValueError("SSI take-up reconciliation requires at least one pass.")
+    reporter_source_ids = (
+        us_ssi_take_up_reporter_source_ids(base_frame)
+        if reporter_source_ids is None
+        else frozenset(str(value) for value in reporter_source_ids)
+    )
+    if dense_default_dataset:
+        current_support = _with_calibrated_weights(
+            base_frame,
+            np.asarray(initial_result.weights, dtype=np.float64),
+        )
+    else:
+        current_support = _with_l0_refit_weights(base_frame, initial_result)
+    prior_weights = np.asarray(initial_result.initial_weights, dtype=np.float64)
+    if prior_weights.shape != (current_support.n("household"),):
+        raise RuntimeError(
+            "SSI take-up reconciliation prior weights do not align to the "
+            "selected release support."
+        )
+    selected_support = current_support
+
+    last_failures: tuple[str, ...] = ()
+    for pass_number in range(1, max_passes + 1):
+        uncapped_ssi = _ssi_person_uncapped_amount(
+            current_support,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        assigned_support, stage_diagnostics = with_us_ssi_take_up(
+            current_support,
+            uncapped_ssi=uncapped_ssi,
+            seed=seed,
+            reporter_source_ids=reporter_source_ids,
+        )
+        stage_gate = us_ssi_take_up_gate(stage_diagnostics)
+        if not stage_gate.passed:
+            raise RuntimeError(
+                "SSI take-up reconciliation assignment failed: "
+                + "; ".join(stage_gate.failures)
+            )
+
+        # SSI recipient status can alter Marketplace eligibility, Medicaid
+        # eligibility/take-up, and the ASEC private-premium residual. Replay
+        # that full dependency tail before any target vector is materialized.
+        assigned_support = _with_aca_marketplace_source_outputs(
+            assigned_support,
+            target_specs,
+            seed=seed,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        health_gate = _health_input_signal_gate(assigned_support)
+        if not health_gate.passed:
+            raise RuntimeError(
+                "SSI take-up reconciliation ACA input gate failed: "
+                + "; ".join(health_gate.failures)
+            )
+        assigned_support, medicaid_diagnostics = _with_medicaid_take_up_outputs(
+            assigned_support,
+            target_specs,
+            seed=seed,
+            substitutions=medicaid_enrollment_substitutions,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        medicaid_gate = us_medicaid_take_up_gate(dict(medicaid_diagnostics))
+        if not medicaid_gate.passed:
+            raise RuntimeError(
+                "SSI take-up reconciliation Medicaid gate failed: "
+                + "; ".join(medicaid_gate.failures)
+            )
+        assigned_support = with_us_other_health_insurance_inputs(
+            assigned_support,
+            seed=seed,
+            time_period=PERIOD,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        other_health_gate = us_other_health_insurance_signal_gate(assigned_support)
+        if not other_health_gate.passed:
+            raise RuntimeError(
+                "SSI take-up reconciliation other-health gate failed: "
+                + "; ".join(other_health_gate.failures)
+            )
+        _assert_reconciliation_support_unchanged(selected_support, assigned_support)
+
+        calibration_input = _frame_with_reconciliation_weight_basis(
+            assigned_support,
+            prior_weights,
+        )
+        target_frame, registry, compilation = _materialize_target_frame(
+            calibration_input,
+            target_specs,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            gate_congressional_district_targets=gate_congressional_district_targets,
+        )
+        current_weights = np.asarray(
+            assigned_support.weights_for("household").values,
+            dtype=np.float64,
+        )
+        reconciled_result = calibrate(
+            target_frame,
+            registry.to_target_set(),
+            epochs=epochs,
+            learning_rate=learning_rate,
+            max_weight_ratio=max_weight_ratio,
+            seed=seed,
+            mass="conserve",
+            l2_lambda=l2_lambda,
+            target_loss_weights=_fiscal_target_loss_weights(registry),
+            target_loss_cap=target_loss_cap,
+            warm_start_weights=current_weights,
+            progress_callback=progress_callback,
+        )
+        export_frame = _with_calibrated_weights(
+            calibration_input,
+            np.asarray(reconciled_result.weights, dtype=np.float64),
+        )
+        _assert_reconciliation_support_unchanged(selected_support, export_frame)
+        final_uncapped_ssi = _ssi_person_uncapped_amount(
+            export_frame,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        final_diagnostics = us_ssi_take_up_diagnostics(
+            export_frame,
+            uncapped_ssi=final_uncapped_ssi,
+            seed=seed,
+            reporter_source_ids=reporter_source_ids,
+        )
+        final_gate = us_ssi_take_up_gate(final_diagnostics)
+        final_health_gate = _health_input_signal_gate(export_frame)
+        final_medicaid_diagnostics = _medicaid_diagnostics_for_existing_output(
+            export_frame,
+            target_specs,
+            seed=seed,
+            substitutions=medicaid_enrollment_substitutions,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        final_medicaid_gate = us_medicaid_take_up_gate(final_medicaid_diagnostics)
+        final_other_health_gate = us_other_health_insurance_signal_gate(export_frame)
+        if (
+            final_gate.passed
+            and final_health_gate.passed
+            and final_medicaid_gate.passed
+            and final_other_health_gate.passed
+        ):
+            reconciliation_compilation = {
+                **dict(compilation),
+                "target_frame_checkpoint": {
+                    "enabled": False,
+                    "status": "recomputed_after_ssi_take_up_reconciliation",
+                },
+                "ssi_take_up_reconciliation": {
+                    "passes": pass_number,
+                    "max_passes": max_passes,
+                    "reporter_source_identity_count": len(reporter_source_ids),
+                    "dependency_replay": [
+                        "aca_marketplace",
+                        "medicaid_take_up",
+                        "other_health_insurance",
+                        "fiscal_target_materialization",
+                        "ordinary_refit",
+                    ],
+                },
+            }
+            calibration_result = (
+                reconciled_result
+                if dense_default_dataset
+                else replace(initial_result, refit=reconciled_result)
+            )
+            return _SSITakeUpReconciliationResult(
+                export_frame=export_frame,
+                calibration_result=calibration_result,
+                registry=registry,
+                compilation=reconciliation_compilation,
+                ssi_diagnostics=final_diagnostics,
+                medicaid_diagnostics=final_medicaid_diagnostics,
+                health_input_gate=final_health_gate,
+                other_health_insurance_gate=final_other_health_gate,
+                passes=pass_number,
+            )
+        last_failures = tuple(
+            [f"SSI: {failure}" for failure in final_gate.failures]
+            + [f"ACA: {failure}" for failure in final_health_gate.failures]
+            + [f"Medicaid: {failure}" for failure in final_medicaid_gate.failures]
+            + [
+                f"Other health: {failure}"
+                for failure in final_other_health_gate.failures
+            ]
+        )
+        current_support = export_frame
+
+    raise RuntimeError(
+        "SSI take-up reconciliation did not remain count-faithful on returned "
+        f"weights after {max_passes} pass(es): " + "; ".join(last_failures)
+    )
+
+
 def _fiscal_target_concept_budget_weights(registry: TargetRegistry) -> np.ndarray:
     weights = _fiscal_target_value_basis_weights(registry)
     group_indices: dict[tuple[object, ...], list[int]] = {}
@@ -5474,6 +5922,12 @@ def _build_manifests(
                 kind="diagnostics",
                 revision=release_id,
             ),
+            "us_ssi_take_up": _artifact_entry(
+                "us_ssi_take_up.json",
+                _sha256(release_dir / "us_ssi_take_up.json"),
+                kind="diagnostics",
+                revision=release_id,
+            ),
             **(
                 {
                     "reform_validation": _artifact_entry(
@@ -5804,6 +6258,10 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    # Capture direct ASEC reporter lineage on the FULL clone-aware support.
+    # Frozen-support recovery may retain only a PUF clone; deriving anchors
+    # after that prune would erase the underlying measured ASEC reporter.
+    ssi_reporter_source_ids = us_ssi_take_up_reporter_source_ids(base_frame)
 
     # Frozen-support recovery (populace#328): if a selection source is supplied,
     # reduce the base pool to exactly that support by stable source identity,
@@ -6641,6 +7099,41 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "ssi_take_up",
+            message=(
+                "Assigning SSI take-up from ASEC reporter anchors and SSA "
+                "December 2024 federal-payment recipient counts by age."
+            ),
+        )
+    ssi_uncapped_amount = _ssi_person_uncapped_amount(
+        base_frame,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+    )
+    base_frame, ssi_take_up_stage_diagnostics = with_us_ssi_take_up(
+        base_frame,
+        uncapped_ssi=ssi_uncapped_amount,
+        seed=args.seed,
+        reporter_source_ids=ssi_reporter_source_ids,
+    )
+    ssi_take_up_gate = us_ssi_take_up_gate(ssi_take_up_stage_diagnostics)
+    if not ssi_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_take_up_gate",
+                status="failed",
+                message="SSI take-up count-calibration gate failed.",
+                failures=list(ssi_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SSI take-up failed: {failure}"
+                for failure in ssi_take_up_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "scf_auto_loan_inputs",
             message=(
                 "Imputing household auto-loan balance and interest from the "
@@ -7159,6 +7652,64 @@ def main() -> None:
             "refit_initial_loss": float(result.initial_loss),
             "refit_final_loss": float(result.final_loss),
         }
+    if telemetry is not None:
+        telemetry.stage(
+            "ssi_take_up_reconciliation",
+            message=(
+                "Reconciling SSI on release weights, replaying dependent health "
+                "inputs, and rematerializing fiscal targets before final refit."
+            ),
+            max_passes=SSI_TAKE_UP_RECONCILIATION_MAX_PASSES,
+        )
+    pre_reconciliation_final_loss = float(result.final_loss)
+    reconciliation_l2_lambda = float(
+        args.l2_lambda
+        if args.dense_default_dataset or args.refit_l2_lambda is None
+        else args.refit_l2_lambda
+    )
+    reconciliation = _reconcile_ssi_take_up_and_refit(
+        base_frame,
+        result,
+        target_specs,
+        dense_default_dataset=bool(args.dense_default_dataset),
+        seed=args.seed,
+        epochs=args.epochs,
+        learning_rate=args.learning_rate,
+        max_weight_ratio=args.max_weight_ratio,
+        l2_lambda=reconciliation_l2_lambda,
+        target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+        reporter_source_ids=ssi_reporter_source_ids,
+        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        gate_congressional_district_targets=args.gate_congressional_district_targets,
+        progress_callback=(
+            telemetry.calibration_progress if telemetry is not None else None
+        ),
+    )
+    export_frame = reconciliation.export_frame
+    result = reconciliation.calibration_result
+    registry = reconciliation.registry
+    compilation = dict(reconciliation.compilation)
+    ssi_take_up_diagnostics = dict(reconciliation.ssi_diagnostics)
+    medicaid_take_up_diagnostics = dict(reconciliation.medicaid_diagnostics)
+    health_input_gate = reconciliation.health_input_gate
+    other_health_insurance_gate = reconciliation.other_health_insurance_gate
+    if congressional_district_vintage_crosswalk_metadata is not None:
+        compilation = {
+            **compilation,
+            "congressional_district_vintage_crosswalk": (
+                congressional_district_vintage_crosswalk_metadata
+            ),
+        }
+    default_dataset = {
+        **default_dataset,
+        "pre_ssi_reconciliation_final_loss": pre_reconciliation_final_loss,
+        "ssi_take_up_reconciliation_passes": reconciliation.passes,
+        "final_loss": float(result.final_loss),
+    }
+    if default_dataset["sparse"]:
+        default_dataset["refit_initial_loss"] = float(result.initial_loss)
+        default_dataset["refit_final_loss"] = float(result.final_loss)
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
     if telemetry is not None:
@@ -7264,11 +7815,6 @@ def main() -> None:
 
     if telemetry is not None:
         telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
-    export_frame = (
-        _with_calibrated_weights(base_frame, result.weights)
-        if args.dense_default_dataset
-        else _with_l0_refit_weights(base_frame, result)
-    )
     release_engine = PolicyEngineUSEngine()
     # populace#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
@@ -7574,6 +8120,10 @@ def main() -> None:
         medicaid_take_up_diagnostics,
         release_dir / "us_medicaid_take_up.json",
     )
+    write_us_ssi_take_up_diagnostics(
+        ssi_take_up_diagnostics,
+        release_dir / "us_ssi_take_up.json",
+    )
     # The stage gate ran on the stage output; this re-checks the EXPORT frame
     # so a downstream transform that drops or flattens a count-calibrated
     # column cannot ship the engine-default landmine with only an
@@ -7598,6 +8148,10 @@ def main() -> None:
         telemetry.attach_artifact(
             "us_medicaid_take_up",
             release_dir / "us_medicaid_take_up.json",
+        )
+        telemetry.attach_artifact(
+            "us_ssi_take_up",
+            release_dir / "us_ssi_take_up.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started

@@ -126,6 +126,8 @@ SIPP_VEHICLE_INPUTS = (
 
 VOLUNTARY_FILING_INPUTS = ("would_file_taxes_voluntarily",)
 
+SSI_TAKE_UP_INPUTS = ("takes_up_ssi_if_eligible",)
+
 SCF_NET_WORTH_INPUTS = ("net_worth",)
 
 FORM_4952_INPUTS = ("investment_income_elected_form_4952",)
@@ -179,6 +181,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
     *VOLUNTARY_FILING_INPUTS,
+    *SSI_TAKE_UP_INPUTS,
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *SALT_REFUND_INPUTS,
@@ -384,6 +387,33 @@ REFORM_COVERAGE_PROBES = [
             "baseline-minus-neutralized SSI; the $100 million floor retains "
             "ample sampling margin while rejecting a materially weakened "
             "criterion channel."
+        ),
+        "issue": "PolicyEngine/populace#312",
+    },
+    {
+        "id": "ssi_take_up_neutralization",
+        "name": "SSI take-up neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "takes_up_ssi_if_eligible",
+        "budget_measure": "ssi",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["takes_up_ssi_if_eligible"],
+        "min_abs_effect": 10_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US gates SSI benefits on the restored person-level "
+            "take-up leaf after eligibility. Neutralizing only that leaf must "
+            "therefore remove SSI from source-reported and SSA-count-calibrated "
+            "recipients, so baseline-minus-neutralized SSI is positive. If the "
+            "restored exported input is absent, all false, or not persisted, "
+            "this isolated channel scores exactly $0. A production-ingredient "
+            "sparse smoke (staged artifact sha256 c5939dad81153da51b2cc57081"
+            "ddb3e729700366144868df742b3ad86eafcd7c; restored artifact sha256 "
+            "9269360d3409fdc15c90c43dda394ada6c91eff5bb64c12ccd9def7d670dd077) "
+            "measured +$57,114,569,526.38 of baseline-minus-neutralized 2024 "
+            "SSI. The $10 billion floor retains over 5.7x observed margin while "
+            "rejecting a materially degenerate persisted flag."
         ),
         "issue": "PolicyEngine/populace#312",
     },

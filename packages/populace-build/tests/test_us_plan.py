@@ -15,6 +15,7 @@ from populace.build.source_manifest import (
 from populace.build.us_runtime import (
     SIPP_SSI_DISABILITY_FIT_PARAMETERS,
     SIPP_SSI_DISABILITY_READ_PARAMETERS,
+    SSI_TAKE_UP_SSA_SOURCE_URL,
     US_CHILD_SUPPORT_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
     US_DISABILITY_BENEFITS_STAGE_NAME,
@@ -29,6 +30,9 @@ from populace.build.us_runtime import (
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
+    US_SSI_TAKE_UP_ANCHOR,
+    US_SSI_TAKE_UP_STAGE_NAME,
+    US_SSI_TAKE_UP_TARGET_TABLE_NAME,
     US_STAGE_NAMES,
     US_SUPPORT_SPINE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
@@ -239,7 +243,10 @@ class TestUsSources:
         )
         assert US_STAGE_NAMES.index(
             US_SSI_DISABILITY_CRITERIA_STAGE_NAME
-        ) < US_STAGE_NAMES.index("sipp_tips")
+        ) < US_STAGE_NAMES.index(US_SSI_TAKE_UP_STAGE_NAME)
+        assert US_STAGE_NAMES.index(US_SSI_TAKE_UP_STAGE_NAME) < US_STAGE_NAMES.index(
+            "sipp_tips"
+        )
 
     def test_ssi_disability_criteria_stage_pins_sipp_model_contract(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_SSI_DISABILITY_CRITERIA_STAGE_NAME]
@@ -267,6 +274,84 @@ class TestUsSources:
         assert stage.operations[1].parameters["seed_from_build_config"] is False
         assert "separately predict PUF-support people" in stage.notes
         assert "ASEC reporter anchor is never copied" in stage.notes
+
+    def test_ssi_take_up_stage_pins_reporter_and_ssa_count_contract(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_SSI_TAKE_UP_STAGE_NAME]
+        donor = US_DONORS[US_SSI_TAKE_UP_STAGE_NAME]
+
+        assert (
+            stage.survey
+            == donor.survey
+            == ("CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024")
+        )
+        assert stage.source == donor.source == SSI_TAKE_UP_SSA_SOURCE_URL
+        assert stage.grain == "person"
+        assert stage.outputs == ("takes_up_ssi_if_eligible",)
+        assert stage.nonnegative_outputs == ()
+        assert [operation.kind for operation in stage.operations] == [
+            "read_table",
+            "assign_binary_from_rate",
+            "calibrate_binary_assignment",
+        ]
+        assert dict(stage.operations[0].parameters) == {
+            "table": "person",
+            "weight": "person_weight",
+        }
+        assert dict(stage.operations[1].parameters) == {
+            "output": "takes_up_ssi_if_eligible",
+            "draw": "stable_source_person_draw",
+            "rate_key": "ssi_age_band_count_prior",
+            "rate_column": "ssi_take_up_assignment_prior",
+            "reported_true_anchor": f"{US_SSI_TAKE_UP_ANCHOR} > 0",
+            "assignment_unit": "person_source_id",
+            "fan_to_support_clones": True,
+        }
+        assert dict(stage.operations[2].parameters) == {
+            "variable": "takes_up_ssi_if_eligible",
+            "targets": [US_SSI_TAKE_UP_TARGET_TABLE_NAME],
+            "preserve_true_anchors": True,
+            "preserve_true_anchor": f"{US_SSI_TAKE_UP_ANCHOR} > 0",
+            "domain": "uncapped_ssi > 0",
+            "weight": "person_weight",
+            "draw": "stable_source_person_draw",
+            "calibration_unit": "person_source_id",
+            "age_bands": {
+                "under_18": "age < 18",
+                "18_64": "18 <= age < 65",
+                "65_plus": "age >= 65",
+            },
+            "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,
+            "target_period": "2024-12",
+            "target_measure": "Total with—Federal payment",
+            "target_values": {
+                "under_18": 1_001_922,
+                "18_64": 3_905_779,
+                "65_plus": 2_382_142,
+            },
+            "aggregate_target": 7_289_843,
+        }
+        ssa_artifacts = [
+            artifact
+            for artifact in stage.artifacts
+            if artifact.get("source") == SSI_TAKE_UP_SSA_SOURCE_URL
+        ]
+        assert len(ssa_artifacts) == 1
+        evidence = next(
+            artifact
+            for artifact in stage.artifacts
+            if artifact.get("kind") == "archived_derivation_evidence"
+        )
+        assert evidence["commit"] == ("42ed5d45c56df80d754fbe24cce21cfeb8d05cbe")
+        assert evidence["lines"] == "584,650-657,1497-1499"
+        assert evidence["randomness_path_parts"] == [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "takeup.py",
+        ]
+        assert evidence["randomness_lines"] == "10-35"
+        assert evidence["targets_lines"] == "41-74"
 
     def test_other_health_insurance_donor_matches_manifest(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]

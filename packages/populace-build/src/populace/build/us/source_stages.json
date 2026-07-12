@@ -998,6 +998,114 @@
       "notes": "Exact final retired eCPS SSI disability-criterion method at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 63-105 and 404-428 define the output, nineteen predictors, source columns, and allocation flags; lines 541-562 require observed receipt and, for recipients, observed benefit reason; lines 565-630 apply the source-time SSI resource, countable-income, and SGA candidate screen; lines 633-703 construct December labels and predictors; lines 724-795 require a measured difficulty, SSDI, or disability-income signal after prediction; and lines 892-949 perform the fixed weighted bootstrap and QRF fit. The immutable donor yields 9,346 candidates (577 positive, 8,769 negative), 88,690,359.47893329 of total source weight, and a 0.05566746987074994 weighted true share. Its archived fixed WPFINWGT bootstrap seed 8386123572872638692 resamples 9,346 rows with replacement (5,314 unique source rows; 524 positive) before an unweighted 100-tree MicroImpute QRF with model seed 42. datasets/cps/cps.py lines 2853-2886 and calibration/source_impute.py lines 869-990 predict the ASEC receiver and preserve direct under-65 ASEC SSI reporters. datasets/cps/extended_cps.py lines 140-170, 392-424, and 981-992 separately predict PUF-support people from their imputed income, asset, and disability-signal inputs; the ASEC reporter anchor is never copied to PUF support."
     },
     {
+      "stage": "ssi_take_up",
+      "survey": "CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024",
+      "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "locator": "CPS ASEC annual SSI amount SSI_VAL, used only as the reported-recipient true anchor"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "html_table",
+          "vintage": "2024-12",
+          "locator": "SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by age",
+          "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+          "measure": "Total with—Federal payment",
+          "target_values": {
+            "under_18": 1001922,
+            "18_64": 3905779,
+            "65_plus": 2382142,
+            "total": 7289843
+          }
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": [
+            "policyengine-",
+            "us-data"
+          ],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "cps.py"
+          ],
+          "lines": "584,650-657,1497-1499",
+          "randomness_path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "takeup.py"
+          ],
+          "randomness_lines": "10-35",
+          "targets_path_parts": [
+            "policyengine_",
+            "us_data",
+            "utils",
+            "ssi_targets.py"
+          ],
+          "targets_lines": "41-74"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "output": "takes_up_ssi_if_eligible",
+          "draw": "stable_source_person_draw",
+          "rate_key": "ssi_age_band_count_prior",
+          "rate_column": "ssi_take_up_assignment_prior",
+          "reported_true_anchor": "SSI_VAL > 0",
+          "assignment_unit": "person_source_id",
+          "fan_to_support_clones": true
+        },
+        {
+          "kind": "calibrate_binary_assignment",
+          "variable": "takes_up_ssi_if_eligible",
+          "targets": [
+            "ssa_ssi_federal_payment_recipients_by_age"
+          ],
+          "preserve_true_anchors": true,
+          "preserve_true_anchor": "SSI_VAL > 0",
+          "domain": "uncapped_ssi > 0",
+          "weight": "person_weight",
+          "draw": "stable_source_person_draw",
+          "calibration_unit": "person_source_id",
+          "age_bands": {
+            "under_18": "age < 18",
+            "18_64": "18 <= age < 65",
+            "65_plus": "age >= 65"
+          },
+          "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+          "target_period": "2024-12",
+          "target_measure": "Total with—Federal payment",
+          "target_values": {
+            "under_18": 1001922,
+            "18_64": 3905779,
+            "65_plus": 2382142
+          },
+          "aggregate_target": 7289843
+        }
+      ],
+      "outputs": [
+        "takes_up_ssi_if_eligible"
+      ],
+      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. Instead, utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment: 1,001,922 recipients under 18, 3,905,779 ages 18-64, and 2,382,142 ages 65+, totaling 7,289,843. Direct SSI_VAL reporters remain true. Remaining source-person identities are assigned deterministically within the uncapped_ssi > 0 domain and fanned identically to both support clones; an age band whose modeled eligible support cannot reach its SSA count saturates without assigning outside the eligibility domain, and the diagnostic records the irreducible shortfall."
+    },
+    {
       "stage": "sipp_tips",
       "survey": "Census SIPP",
       "source": "https://www.census.gov/programs-surveys/sipp.html",

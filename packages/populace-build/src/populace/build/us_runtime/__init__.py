@@ -346,6 +346,7 @@ from populace.build.us_runtime.medicaid_take_up import (
     US_MEDICAID_TAKE_UP_VARIABLE,
     MedicaidEnrollmentSubstitution,
     apply_us_medicaid_enrollment_substitutions,
+    us_medicaid_source_person_table,
     us_medicaid_take_up_diagnostics,
     us_medicaid_take_up_gate,
     with_us_medicaid_take_up,
@@ -703,6 +704,25 @@ from populace.build.us_runtime.ssi_disability_criteria import (
     us_ssi_disability_criteria_stage_spec,
     us_ssi_disability_criteria_summary,
     with_us_ssi_disability_criteria,
+)
+from populace.build.us_runtime.ssi_take_up import (
+    SSI_TAKE_UP_ARCHIVED_DERIVATION_URL,
+    SSI_TAKE_UP_ARCHIVED_EXPORT_URL,
+    SSI_TAKE_UP_ARCHIVED_RANDOMNESS_URL,
+    SSI_TAKE_UP_ARCHIVED_REPORTER_URL,
+    SSI_TAKE_UP_ARCHIVED_TARGETS_URL,
+    SSI_TAKE_UP_SSA_SOURCE_URL,
+    US_SSI_TAKE_UP_ANCHOR,
+    US_SSI_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+    US_SSI_TAKE_UP_OUTPUT_COLUMNS,
+    US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS,
+    US_SSI_TAKE_UP_STAGE_NAME,
+    US_SSI_TAKE_UP_TARGET_TABLE_NAME,
+    us_ssi_take_up_diagnostics,
+    us_ssi_take_up_gate,
+    us_ssi_take_up_reporter_source_ids,
+    with_us_ssi_take_up,
+    write_us_ssi_take_up_diagnostics,
 )
 from populace.build.us_runtime.take_up import (
     US_TAKE_UP_SHARE_BAND,
@@ -1200,6 +1220,23 @@ __all__ = [
     "us_ssi_disability_criteria_stage_spec",
     "us_ssi_disability_criteria_summary",
     "with_us_ssi_disability_criteria",
+    "SSI_TAKE_UP_ARCHIVED_DERIVATION_URL",
+    "SSI_TAKE_UP_ARCHIVED_EXPORT_URL",
+    "SSI_TAKE_UP_ARCHIVED_RANDOMNESS_URL",
+    "SSI_TAKE_UP_ARCHIVED_REPORTER_URL",
+    "SSI_TAKE_UP_ARCHIVED_TARGETS_URL",
+    "SSI_TAKE_UP_SSA_SOURCE_URL",
+    "US_SSI_TAKE_UP_ANCHOR",
+    "US_SSI_TAKE_UP_NONCONSTANT_PERSON_COLUMNS",
+    "US_SSI_TAKE_UP_OUTPUT_COLUMNS",
+    "US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS",
+    "US_SSI_TAKE_UP_STAGE_NAME",
+    "US_SSI_TAKE_UP_TARGET_TABLE_NAME",
+    "us_ssi_take_up_diagnostics",
+    "us_ssi_take_up_gate",
+    "us_ssi_take_up_reporter_source_ids",
+    "with_us_ssi_take_up",
+    "write_us_ssi_take_up_diagnostics",
     "CENSUS_OCCUPATION_CODE_TO_TTOC",
     "SIPP_2023_TIP_DONOR_REVISION",
     "SIPP_2023_TIP_DONOR_SHA256",
@@ -1321,6 +1358,7 @@ __all__ = [
     "apply_us_medicaid_enrollment_substitutions",
     "count_calibrated_take_up_programs",
     "us_medicaid_take_up_diagnostics",
+    "us_medicaid_source_person_table",
     "us_medicaid_take_up_gate",
     "us_take_up_participation_diagnostics",
     "us_take_up_signal_gate",
@@ -1499,6 +1537,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "pinned full 2023 public-use donor. ASEC and PUF-support people "
             "are predicted separately, and only direct under-65 ASEC SSI "
             "reporters receive the observed-reporter anchor."
+        ),
+    ),
+    US_SSI_TAKE_UP_STAGE_NAME: DonorSpec(
+        survey="CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024",
+        source=SSI_TAKE_UP_SSA_SOURCE_URL,
+        notes=(
+            "Direct ASEC SSI_VAL reporters anchor person-level take-up; "
+            "eligible source-person identities are count-calibrated by age to "
+            "SSA December 2024 Federal-payment recipient counts and fanned to "
+            "both support clones."
         ),
     ),
     "sipp_tips": DonorSpec(
@@ -1819,6 +1867,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "capital_gain_distributions",
     "scf_wealth",
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
+    US_SSI_TAKE_UP_STAGE_NAME,
     "sipp_tips",
     "org_wages",
     "meps_esi_premiums",

@@ -123,11 +123,31 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "count_calibrated",
       "consumed_via": "ssi",
-      "rate": {"status": "scope_mismatch", "us_data_value": 0.50, "verified_source_value": {"value": 0.49, "scope": "adults 65+ only", "citation": "Urban Institute Giannarelli et al. 2024 (ATTIS, 2018), 49.0% aged SSI participation"}},
-      "followup": "Source an SSI participation rate that covers the full eligible population (aged + blind + disabled), ideally split, as a Ledger fact; SSA disability-recipient take-up is not covered by the Urban aged-only estimate.",
-      "notes": "us-data's 0.50 was applied to ALL SSI eligibles, but the cited Urban estimate (49%) is explicitly adults 65+ only, while the majority of the SSI caseload is blind/disabled. Applying an aged-only rate to the whole caseload is unsupported. Left unseeded until a full-scope rate is sourced."
+      "calibration": {
+        "anchor": "SSI_VAL",
+        "targets": ["ssa_ssi_federal_payment_recipients_by_age"],
+        "target_table": "ssa_ssi_federal_payment_recipients_by_age",
+        "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
+        "target_period": "2024-12",
+        "target_measure": "Total with—Federal payment",
+        "target_values": {
+          "under_18": 1001922,
+          "18_64": 3905779,
+          "65_plus": 2382142
+        },
+        "aggregate_target": 7289843,
+        "age_bands": {
+          "under_18": "age < 18",
+          "18_64": "18 <= age < 65",
+          "65_plus": "age >= 65"
+        },
+        "semantics": "SSA SSI Monthly Statistics December 2024 Table 1 recipients in the Total with—Federal payment row, calibrated within uncapped_ssi > 0 by source-person identity; unreachable age bands saturate without assigning outside modeled eligibility"
+      },
+      "rate": {"status": "rejected_scope_mismatch", "retired_value": 0.50, "verified_source_value": {"value": 0.49, "scope": "adults 65+ only", "citation": "Urban Institute Giannarelli et al. 2024 (ATTIS, 2018), 49.0% aged SSI participation"}},
+      "scope_owner": "ssi_take_up source stage (eCPS exported-input coverage)",
+      "notes": "The retired 0.50 rate was applied to all SSI eligibles even though its cited 49% estimate covers adults 65+ only; it is rejected, not copied. The ssi_take_up stage instead preserves every direct ASEC SSI_VAL reporter and calibrates eligible source-person identities to SSA SSI Monthly Statistics December 2024 Table 1 counts in the Total with—Federal payment row (under 18: 1,001,922; ages 18-64: 3,905,779; ages 65+: 2,382,142; total: 7,289,843). This is administrative count calibration, not a participation-rate claim. If modeled eligible support cannot reach a band target, the stage saturates that band and reports the shortfall rather than assigning an ineligible person."
     },
     {
       "variable": "takes_up_dc_ptc",

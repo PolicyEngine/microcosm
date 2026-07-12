@@ -344,6 +344,7 @@ def us_medicaid_take_up_diagnostics(
     state_targets: pd.DataFrame,
     *,
     substitutions: Sequence[dict[str, object]] = (),
+    weights_basis: str = "pre_calibration_design_weights",
 ) -> dict[str, object]:
     """The #170 eligibility-to-enrollment surface, by state and nationally.
 
@@ -416,11 +417,7 @@ def us_medicaid_take_up_diagnostics(
         "anchor": US_MEDICAID_TAKE_UP_ANCHOR,
         "enrollment_semantics": "point_in_time_monthly_snapshot",
         "target_table": US_MEDICAID_ENROLLMENT_TARGET_TABLE,
-        # Stage-time surface: weights are the pre-calibration design weights.
-        # Post-calibration weighted enrollment is pulled to the same CMS
-        # counts by the medicaid_enrollment weight-calibration targets, but
-        # eligible/anchored weights here have no post-calibration counterpart.
-        "weights_basis": "pre_calibration_design_weights",
+        "weights_basis": str(weights_basis),
         "national": {
             "eligible_weight": total_eligible,
             "enrolled_weight": total_enrolled,
