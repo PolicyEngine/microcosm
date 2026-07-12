@@ -54,6 +54,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "child_support_expense": [0.0, 2_400.0, 600.0],
             "disability_benefits": [0.0, 5_000.0, 1_500.0],
             "workers_compensation": [0.0, 6_000.0, 1_000.0],
+            "would_claim_wic": [True, False, True],
             "educator_expense": [0.0, 300.0, 150.0],
             "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
             # Keep both signs without making the fixture's signed weighted

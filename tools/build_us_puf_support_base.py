@@ -54,6 +54,7 @@ from populace.build.us_runtime import (
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
+    us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
@@ -63,6 +64,7 @@ from populace.build.us_runtime import (
     us_immigration_composition_summary,
     us_medicare_take_up_signal_gate,
     us_misc_itemized_signal_gate,
+    us_pregnancy_signal_gate,
     us_prior_year_income_signal_gate,
     us_prior_year_income_source_reconciliation_gate,
     us_qbi_inputs_signal_gate,
@@ -70,6 +72,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
+    us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
@@ -77,15 +80,18 @@ from populace.build.us_runtime import (
     with_us_childcare_inputs,
     with_us_disability_benefits,
     with_us_education_inputs,
+    with_us_eligibility_inputs,
     with_us_energy_subsidy_input,
     with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_medicare_take_up_input,
+    with_us_pregnancy_inputs,
     with_us_prior_year_income_inputs,
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
+    with_us_wic_claim_input,
     with_us_workers_compensation,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
@@ -288,6 +294,39 @@ def main() -> None:
             "Housing-input signal gate failed before support cloning:\n  "
             + "\n  ".join(housing_inputs_gate.failures)
         )
+    base = with_us_eligibility_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base)
+    if not eligibility_inputs_gate.passed:
+        raise SystemExit(
+            "Eligibility-input signal gate failed before support cloning:\n  "
+            + "\n  ".join(eligibility_inputs_gate.failures)
+        )
+    base = with_us_pregnancy_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    pregnancy_gate = us_pregnancy_signal_gate(base)
+    if not pregnancy_gate.passed:
+        raise SystemExit(
+            "Pregnancy signal gate failed before support cloning:\n  "
+            + "\n  ".join(pregnancy_gate.failures)
+        )
+    base = with_us_wic_claim_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    wic_claim_gate = us_wic_claim_signal_gate(base)
+    if not wic_claim_gate.passed:
+        raise SystemExit(
+            "WIC-claim signal gate failed before support cloning:\n  "
+            + "\n  ".join(wic_claim_gate.failures)
+        )
     base = with_us_child_support_inputs(
         base,
         seed=args.seed,
@@ -338,6 +377,17 @@ def main() -> None:
         n_estimators=args.n_estimators,
     )
     imputed = with_us_qbi_input_reconciliation(imputed)
+    imputed = with_us_wic_claim_input(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    wic_claim_gate = us_wic_claim_signal_gate(imputed)
+    if not wic_claim_gate.passed:
+        raise SystemExit(
+            "WIC-claim signal gate failed after support cloning:\n  "
+            + "\n  ".join(wic_claim_gate.failures)
+        )
     medicare_take_up_gate = us_medicare_take_up_signal_gate(imputed)
     if not medicare_take_up_gate.passed:
         raise SystemExit(
@@ -674,6 +724,21 @@ def main() -> None:
             "passed": workers_compensation_gate.passed,
             "failures": list(workers_compensation_gate.failures),
             "details": dict(workers_compensation_gate.details),
+        },
+        "eligibility_inputs_signal": {
+            "passed": eligibility_inputs_gate.passed,
+            "failures": list(eligibility_inputs_gate.failures),
+            "details": dict(eligibility_inputs_gate.details),
+        },
+        "pregnancy_signal": {
+            "passed": pregnancy_gate.passed,
+            "failures": list(pregnancy_gate.failures),
+            "details": dict(pregnancy_gate.details),
+        },
+        "wic_claim_signal": {
+            "passed": wic_claim_gate.passed,
+            "failures": list(wic_claim_gate.failures),
+            "details": dict(wic_claim_gate.details),
         },
         "educator_expense_signal": {
             "passed": educator_expense_gate.passed,

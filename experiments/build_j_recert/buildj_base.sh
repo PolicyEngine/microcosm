@@ -38,6 +38,7 @@ required = {
         "salt_refund_income",
         "takes_up_medicare_if_eligible",
         "workers_compensation",
+        "would_claim_wic",
     ),
     "spm_unit": (
         "receives_housing_assistance",

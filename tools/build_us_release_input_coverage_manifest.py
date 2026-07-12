@@ -101,6 +101,8 @@ DISABILITY_BENEFITS_INPUTS = ("disability_benefits",)
 
 WORKERS_COMPENSATION_INPUTS = ("workers_compensation",)
 
+WIC_CLAIM_INPUTS = ("would_claim_wic",)
+
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
@@ -166,6 +168,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *CHILD_SUPPORT_INPUTS,
     *DISABILITY_BENEFITS_INPUTS,
     *WORKERS_COMPENSATION_INPUTS,
+    *WIC_CLAIM_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
@@ -780,6 +783,26 @@ REFORM_COVERAGE_PROBES = [
             "and PUF-half QRF, the source-list reform is a structural zero."
         ),
         "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "wic_claim_neutralization",
+        "name": "WIC claim neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "would_claim_wic",
+        "budget_measure": "wic",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["would_claim_wic"],
+        "min_abs_effect": 25_000_000.0,
+        "reason": (
+            "PolicyEngine-US multiplies each eligible person's monthly WIC "
+            "food package by would_claim_wic. A 6,000-household production-"
+            "ingredient smoke with the FNS category-rate stage scored "
+            "+$57.19M baseline-minus-neutralized; without the restored claim "
+            "surface the probe is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#312",
     },
     {
         "id": "educator_expense_ald_abolition",

@@ -81,6 +81,7 @@ from populace.build.us_runtime.snap_discretionary_exemption import (
 from populace.build.us_runtime.snap_take_up import (
     derive_us_snap_take_up_from_manifest,
 )
+from populace.build.us_runtime.wic_claim import derive_us_wic_claim_from_manifest
 from populace.build.us_runtime.workers_compensation import (
     derive_us_workers_compensation_from_manifest,
     impute_us_workers_compensation_to_puf_support_from_manifest,
@@ -102,6 +103,7 @@ __all__ = [
     "derive_us_relationship_inputs_from_manifest",
     "derive_us_retirement_distributions_from_manifest",
     "derive_us_workers_compensation_from_manifest",
+    "derive_us_wic_claim_from_manifest",
     "impute_us_retirement_distributions_to_puf_support_from_manifest",
     "derive_us_puf_policyengine_variables_from_manifest",
     "derive_us_retirement_contributions_from_manifest",
@@ -307,6 +309,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             derive_us_retirement_contributions_from_manifest
         ),
         "derive_workers_compensation": derive_us_workers_compensation_from_manifest,
+        "derive_wic_claim": derive_us_wic_claim_from_manifest,
         "impute_childcare_to_puf_support": (
             impute_us_childcare_to_puf_support_from_manifest
         ),

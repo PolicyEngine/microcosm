@@ -515,9 +515,7 @@
    "status": "required"
   },
   "would_claim_wic": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "WIC take-up / eligibility-screen input the incumbent seeds; not yet produced by Populace (take-up family).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "would_file_taxes_voluntarily": {
    "issue": "PolicyEngine/populace#312",
@@ -526,8 +524,8 @@
   }
  },
  "counts": {
-  "required": 152,
-  "reviewed_exclusion": 13,
+  "required": 153,
+  "reviewed_exclusion": 12,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -1023,6 +1021,22 @@
    },
    "period": 2024,
    "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. A production-ingredient 30,000-household smoke scored +$28.26M reform-minus-baseline; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "would_claim_wic"
+   ],
+   "budget_measure": "wic",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "wic_claim_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 25000000.0,
+   "name": "WIC claim neutralization",
+   "neutralized_variable": "would_claim_wic",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US multiplies each eligible person's monthly WIC food package by would_claim_wic. A 6,000-household production-ingredient smoke with the FNS category-rate stage scored +$57.19M baseline-minus-neutralized; without the restored claim surface the probe is a structural zero."
   },
   {
    "binding_inputs": [

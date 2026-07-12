@@ -1460,6 +1460,60 @@
       "notes": "The CPS ASEC does not ask about pregnancy, so is_pregnant is seeded rather than mapped, matching the retired enhanced-CPS pipeline: women aged 15-44 receive stable blake2b draws against the pregnancy rate (point-in-time rate = annual births x 39/52 over the female 15-44 population; 4.1% nationally, the retired pipeline's national rate). The retired pipeline varied the rate by state using live CDC VSRR + Census ACS fetches; populace builds are hermetic, so the national rate applies uniformly and state-level variation is follow-up work under populace #351. Without this stage is_pregnant defaults to False for everyone and the SNAP ABAWD pregnancy exemption (7 U.S.C. 2015(o)(3)(E)) never fires."
     },
     {
+      "stage": "wic_claim_input",
+      "survey": "USDA FNS WIC Eligibility and Enrollment Estimates + Census CPS ASEC",
+      "source": "https://www.fns.usda.gov/research/wic/eligibility-and-coverage-rates-2022",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "administrative_table",
+          "format": "published_estimate",
+          "vintage": "CY2022",
+          "source": "https://fns-prod.azureedge.us/sites/default/files/resource-files/wic-eer-2022-summary.pdf",
+          "locator": "USDA FNS WIC coverage rates by participant category, Summary Table 1"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "684-691",
+          "parameter_path_parts": ["policyengine_", "us_data", "parameters", "take_up", "wic_takeup.yaml"],
+          "parameter_lines": "1-33",
+          "randomness_path_parts": ["policyengine_", "us_data", "utils", "randomness.py"],
+          "randomness_lines": "5-28"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_wic_claim",
+          "seed_from_build_config": true,
+          "category_rates": {
+            "source": "https://fns-prod.azureedge.us/sites/default/files/resource-files/wic-eer-2022-summary.pdf",
+            "vintage": "CY2022",
+            "values": {
+              "pregnant": 0.456,
+              "postpartum": 0.689,
+              "breastfeeding": 0.663,
+              "infant": 0.784,
+              "child": 0.46,
+              "none": 0.0
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "would_claim_wic"
+      ],
+      "notes": "The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli at category-specific rates (archived cps.py lines 684-691, wic_takeup.yaml lines 1-33, and randomness.py lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%, all postpartum 68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Populace deliberately runs this stage after pregnancy; the retired file computed WIC categories before its later pregnancy seed, which accidentally made the pregnant rate unreachable. The hermetic sources carry no breastfeeding assessment, so breastfeeding remains unavailable and mothers of infants use FNS's all-postpartum rate rather than an invented breastfeeding status. Stable source-identity hashes preserve paired support-clone outcomes. The separate is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion."
+    },
+    {
       "stage": "snap_abawd_discretionary_exemption",
       "survey": "Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
       "source": "https://www.law.cornell.edu/uscode/text/7/2015#o_6",

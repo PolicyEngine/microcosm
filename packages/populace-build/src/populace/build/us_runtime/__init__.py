@@ -703,6 +703,21 @@ from populace.build.us_runtime.validation_input_coverage import (
     us_source_stage_outputs,
     us_validation_input_coverage_gate,
 )
+from populace.build.us_runtime.wic_claim import (
+    US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS,
+    US_WIC_CLAIM_OUTPUT_COLUMNS,
+    US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS,
+    US_WIC_CLAIM_STAGE_NAME,
+    WIC_CLAIM_ARCHIVED_DERIVATION_URL,
+    WIC_CLAIM_ARCHIVED_PARAMETERS_URL,
+    WIC_CLAIM_ARCHIVED_RANDOMNESS_URL,
+    WIC_CLAIM_FNS_SOURCE_URL,
+    derive_us_wic_claim_from_manifest,
+    us_wic_claim_signal_gate,
+    us_wic_claim_stage_spec,
+    us_wic_claim_summary,
+    with_us_wic_claim_input,
+)
 from populace.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
@@ -965,6 +980,19 @@ __all__ = [
     "us_workers_compensation_stage_spec",
     "us_workers_compensation_summary",
     "with_us_workers_compensation",
+    "US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS",
+    "US_WIC_CLAIM_OUTPUT_COLUMNS",
+    "US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS",
+    "US_WIC_CLAIM_STAGE_NAME",
+    "WIC_CLAIM_ARCHIVED_DERIVATION_URL",
+    "WIC_CLAIM_ARCHIVED_PARAMETERS_URL",
+    "WIC_CLAIM_ARCHIVED_RANDOMNESS_URL",
+    "WIC_CLAIM_FNS_SOURCE_URL",
+    "derive_us_wic_claim_from_manifest",
+    "us_wic_claim_signal_gate",
+    "us_wic_claim_stage_spec",
+    "us_wic_claim_summary",
+    "with_us_wic_claim_input",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -1515,6 +1543,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "The ASEC does not measure pregnancy."
         ),
     ),
+    US_WIC_CLAIM_STAGE_NAME: DonorSpec(
+        survey="USDA FNS WIC Eligibility and Enrollment Estimates + Census CPS ASEC",
+        source="https://www.fns.usda.gov/research/wic/eligibility-and-coverage-rates-2022",
+        notes=(
+            "Stable person-level claim draws use official CY2022 FNS category "
+            "coverage rates after the pregnancy and parent-input stages. The "
+            "all-postpartum rate is used because no hermetic source identifies "
+            "breastfeeding; nutritional risk remains separately excluded."
+        ),
+    ),
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))",
         source="https://www.law.cornell.edu/uscode/text/7/2015#o_6",
@@ -1657,6 +1695,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_RETIREMENT_DISTRIBUTION_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     US_PREGNANCY_STAGE_NAME,
+    US_WIC_CLAIM_STAGE_NAME,
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,

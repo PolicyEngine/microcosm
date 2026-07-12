@@ -461,6 +461,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
     [
         ("child_support", "PUF child-support channel is default-only"),
         ("disability_benefits", "PUF disability-benefits channel is default-only"),
+        ("wic_claim", "PUF WIC-claim channel is default-only"),
         ("educator_expense", "PUF educator-expense channel is default-only"),
         ("form_4952", "PUF Form 4952 channel is default-only"),
         ("salt_refund", "PUF SALT-refund channel is default-only"),
@@ -576,6 +577,51 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder,
         "with_us_housing_inputs",
         lambda frame, *, seed, time_period, acs_rent_donor: "housing-direct",
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_eligibility_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_wic_claim_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    for gate_name in (
+        "us_eligibility_inputs_signal_gate",
+        "us_pregnancy_signal_gate",
+    ):
+        monkeypatch.setattr(
+            builder,
+            gate_name,
+            lambda frame: type(
+                "Gate", (), {"passed": True, "failures": (), "details": {}}
+            )(),
+        )
+    monkeypatch.setattr(
+        builder,
+        "us_wic_claim_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": not (
+                    failing_gate == "wic_claim" and frame == "qbi-reconciled"
+                ),
+                "failures": (
+                    ("PUF WIC-claim channel is default-only",)
+                    if failing_gate == "wic_claim" and frame == "qbi-reconciled"
+                    else ()
+                ),
+                "details": {},
+            },
+        )(),
     )
 
     def fake_child_support(frame, *, seed, time_period):
@@ -875,23 +921,30 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
-    assert child_support_calls == [
-        ("housing-direct", 7, 2024),
-        ("prior-year-puf", 7, 2024),
-    ]
-    assert prior_year_income_calls == [
-        ("cps", 7, 2024),
-        ("housing-puf", 7, 2024),
-    ]
-    assert prior_year_income_gate_frames == ["prior-year-puf"]
-    assert prior_year_income_reconciliation_frames == ["prior-year-puf"]
-    assert housing_gate_frames == [
-        "relationship-inputs",
-        "housing-direct",
-        "prior-year-puf",
-    ]
+    if failing_gate == "wic_claim":
+        assert child_support_calls == [("housing-direct", 7, 2024)]
+        assert prior_year_income_calls == [("cps", 7, 2024)]
+        assert prior_year_income_gate_frames == []
+        assert prior_year_income_reconciliation_frames == []
+        assert housing_gate_frames == ["relationship-inputs", "housing-direct"]
+    else:
+        assert child_support_calls == [
+            ("housing-direct", 7, 2024),
+            ("prior-year-puf", 7, 2024),
+        ]
+        assert prior_year_income_calls == [
+            ("cps", 7, 2024),
+            ("housing-puf", 7, 2024),
+        ]
+        assert prior_year_income_gate_frames == ["prior-year-puf"]
+        assert prior_year_income_reconciliation_frames == ["prior-year-puf"]
+        assert housing_gate_frames == [
+            "relationship-inputs",
+            "housing-direct",
+            "prior-year-puf",
+        ]
     expected_disability_calls = [("child-support-direct", 7, 2024)]
-    if failing_gate != "child_support":
+    if failing_gate not in {"child_support", "wic_claim"}:
         expected_disability_calls.append(("child-support-puf", 7, 2024))
     assert disability_benefits_calls == expected_disability_calls
     assert educator_expense_gate_frames == (

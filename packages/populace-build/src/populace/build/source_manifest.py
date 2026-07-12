@@ -71,6 +71,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_retirement_distributions",
         "derive_retirement_contributions",
         "derive_workers_compensation",
+        "derive_wic_claim",
         "disaggregate_aggregate_records",
         "fit_labor_market_models",
         "fit_tip_income_model",

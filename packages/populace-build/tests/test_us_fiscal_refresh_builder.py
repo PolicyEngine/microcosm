@@ -2166,6 +2166,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_wic_claim_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_snap_discretionary_exemption_inputs",
         lambda frame, *, seed, time_period: frame,
     )
@@ -2274,6 +2279,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_pregnancy_signal_gate",
         lambda frame: builder.GateResult(
             name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_wic_claim_signal_gate",
+        lambda frame: builder.GateResult(
+            name="wic_claim_signal",
             passed=True,
             details={"checked": True},
         ),

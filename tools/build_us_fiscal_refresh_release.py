@@ -116,6 +116,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
     with_us_childcare_inputs,
     with_us_education_inputs,
@@ -139,6 +140,7 @@ from populace.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
+    with_us_wic_claim_input,
     write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
     write_us_take_up_participation_diagnostics,
@@ -503,10 +505,9 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
     # still constant at CITIZEN skipped that stage and should fail this gate.
     "is_wic_at_nutritional_risk": (
-        "WIC inputs not yet carried through (PolicyEngine/populace#32)."
-    ),
-    "would_claim_wic": (
-        "WIC take-up inputs not yet carried through (PolicyEngine/populace#32)."
+        "Person-level nutritional-risk assessments are absent from all locked "
+        "sources; see the archived-derivation evidence in the parity gap "
+        "register (PolicyEngine/populace#312)."
     ),
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
@@ -6476,6 +6477,33 @@ def main() -> None:
             + "; ".join(
                 f"Pregnancy signal failed: {failure}"
                 for failure in pregnancy_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "wic_claim_input",
+            message="Assigning WIC claims from USDA FNS category coverage rates.",
+        )
+    base_frame = with_us_wic_claim_input(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    wic_claim_gate = us_wic_claim_signal_gate(base_frame)
+    if not wic_claim_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "wic_claim_input_gate",
+                status="failed",
+                message="WIC-claim input signal gate failed.",
+                failures=list(wic_claim_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"WIC-claim input signal failed: {failure}"
+                for failure in wic_claim_gate.failures
             )
         )
     if telemetry is not None:
