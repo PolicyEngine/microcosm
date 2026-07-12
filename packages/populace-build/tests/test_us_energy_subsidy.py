@@ -310,7 +310,7 @@ def test_puf_half_uses_weighted_qrf_and_first_person_spm_reduction(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test"] = test.copy()
             return pd.DataFrame(
                 {_OUTPUT: np.arange(100.0, 100.0 + len(test))},
@@ -381,7 +381,7 @@ def test_puf_qrf_caps_training_at_5000_and_keeps_aligned_weights(
     calls: dict[str, object] = {}
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             calls["test_rows"] = len(test)
             return pd.DataFrame({_OUTPUT: np.zeros(len(test))}, index=test.index)
 

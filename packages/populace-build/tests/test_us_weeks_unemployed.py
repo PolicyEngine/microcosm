@@ -505,7 +505,7 @@ class _CapturingQRF:
         self.weights = weights.copy()
         return self
 
-    def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
         assert list(test.columns) == self.predictors
         return self.prediction.copy()
 

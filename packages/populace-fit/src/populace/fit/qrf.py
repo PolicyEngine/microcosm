@@ -441,6 +441,11 @@ def _fit_forest(
     return _Forest(model=model, columns=columns)
 
 
+#: Sentinel marking a target whose fitted forests were freed by
+#: ``predict(release_models=True)``.
+_RELEASED = object()
+
+
 @dataclass(frozen=True)
 class _TargetModel:
     """The fitted pipeline for one numeric target: its regime, gate, forests.
@@ -748,9 +753,26 @@ class FittedRegimeGatedQRF:
         """The detected :class:`Regime` label per target."""
         return {name: model.regime for name, model in self._target_models.items()}
 
-    def predict(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:
+    def predict(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        *,
+        release_models: bool = False,
+    ) -> pd.DataFrame:
         """Draw imputed targets. See
         :meth:`~populace.fit.model.FittedModel.predict`.
+
+        Args:
+            frame_or_df: Input carrying the predictor columns.
+            release_models: Free each target's fitted forests as soon as its
+                draws complete. The chain conditions on the DRAWN VALUES, not
+                the fitted models, so draws are bit-identical either way; the
+                only change is model lifetime. With ``max_samples_leaf=None``
+                every forest retains its full leaf-sample store, so a chained
+                stage's resident peak drops from the sum of all targets'
+                forests to the largest single one. A released model cannot
+                predict again — single-pass pipelines (the build stages)
+                should pass ``True``; reusable fits keep the default.
 
         Raises:
             ValueError: If a required predictor column is absent from the input.
@@ -764,6 +786,8 @@ class FittedRegimeGatedQRF:
             drawn = self._draw_target(augmented, self._target_models[target])
             out[target] = drawn
             augmented[target] = np.asarray(drawn, dtype=np.float64)
+            if release_models:
+                self._target_models[target] = _RELEASED
         return out
 
     def _predictor_frame(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:
@@ -789,6 +813,12 @@ class FittedRegimeGatedQRF:
 
     def _draw_target(self, features: pd.DataFrame, model: _TargetModel) -> np.ndarray:
         """Draw one value per row for a single target via its regime pipeline."""
+        if model is _RELEASED:
+            raise RuntimeError(
+                "This target's fitted forests were released by a prior "
+                "predict(release_models=True) call; refit or predict without "
+                "releasing to draw again."
+            )
         n = len(features)
         if model.regime == Regime.DEGENERATE_ZERO:
             return np.zeros(n, dtype=np.float64)

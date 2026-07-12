@@ -101,7 +101,7 @@ def _imputed_frame(monkeypatch: pytest.MonkeyPatch) -> Frame:
     }
 
     class FakeFitted:
-        def predict(self, test: pd.DataFrame) -> pd.DataFrame:
+        def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
             return pd.DataFrame(predictions, index=test.index)
 
     class FakeQRF:
