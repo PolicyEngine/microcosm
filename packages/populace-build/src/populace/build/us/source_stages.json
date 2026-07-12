@@ -1517,6 +1517,11 @@
           "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
           "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
           "lines": "417-535,1612-1635",
+          "take_up_lines": "585,664-682",
+          "take_up_parameter_path_parts": ["policyengine_", "us_data", "parameters", "take_up", "housing_assistance.yaml"],
+          "take_up_parameter_lines": "1-15",
+          "hud_etl_path_parts": ["policyengine_", "us_data", "db", "etl_housing_assistance.py"],
+          "hud_etl_lines": "35-169",
           "acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "acs.py"],
           "acs_lines": "82-135",
           "census_acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "census_acs.py"],
@@ -1536,6 +1541,8 @@
             "3": "NONE"
           },
           "housing_assistance_source": "SPM_CAPHOUSESUB",
+          "housing_take_up_output": "takes_up_housing_assistance_if_eligible",
+          "housing_take_up_assignment": "equal_to_measured_receipt",
           "spm_tenure_source": "SPM_TENMORTSTATUS",
           "spm_tenure_map": {
             "1": "OWNER_WITH_MORTGAGE",
@@ -1597,6 +1604,8 @@
             "social_security"
           ],
           "target": "receives_housing_assistance",
+          "take_up_output": "takes_up_housing_assistance_if_eligible",
+          "take_up_assignment": "equal_to_imputed_receipt",
           "weight": "person_weight",
           "max_train_samples": 5000,
           "n_estimators": 100,
@@ -1607,13 +1616,14 @@
       "outputs": [
         "pre_subsidy_rent",
         "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
         "spm_unit_tenure_type",
         "tenure_type"
       ],
       "nonnegative_outputs": [
         "pre_subsidy_rent"
       ],
-      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. Only receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF; rent and both tenure enums are cloned unchanged."
+      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF, and takes_up_housing_assistance_if_eligible is kept exactly equal to that measured/imputed receipt anchor. Archived cps.py lines 664-682 preserved reporters before adding eligible nonreporters from a 0.50 draw; parameters/take_up/housing_assistance.yaml lines 12-15 say 0.50 was an ad hoc eCPS benchmark adjustment pending fuller calibration. Archived db/etl_housing_assistance.py lines 35-169 use a live HUD workbook to produce household-grain state counts, not SPM-unit recipient identities; that workbook is not pinned in the hermetic build and allocating its counts to SPM units would synthesize recipients. Populace never turns a reporter off and does not add unobserved take-up. Rent and both tenure enums are cloned unchanged."
     },
     {
       "stage": "vehicle_assets",

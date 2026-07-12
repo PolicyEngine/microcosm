@@ -140,6 +140,7 @@ RELATIONSHIP_INPUTS = (
 HOUSING_INPUTS = (
     "pre_subsidy_rent",
     "receives_housing_assistance",
+    "takes_up_housing_assistance_if_eligible",
     "spm_unit_tenure_type",
     "tenure_type",
 )
@@ -988,11 +989,35 @@ REFORM_COVERAGE_PROBES = [
             "PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is "
             "+$11.731 billion. Without nondefault ACS rent, that effect is a "
             "structural zero. The "
-            "other three restored housing leaves are enforced by their exact "
+            "other source-mapped housing leaves are enforced by their exact "
             "ASEC mappings and signal gate; household tenure_type has no "
             "standalone PolicyEngine-US 1.764.6 formula consumer."
         ),
         "issue": "PolicyEngine/populace#32",
+    },
+    {
+        "id": "housing_assistance_take_up_neutralization",
+        "name": "Measured housing-assistance take-up neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "takes_up_housing_assistance_if_eligible",
+        "budget_measure": "housing_assistance",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["takes_up_housing_assistance_if_eligible"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US multiplies HUD HAP by the restored SPM-unit "
+            "take-up leaf after eligibility. Populace keeps that leaf exactly "
+            "equal to source-backed housing-assistance receipt, so neutralizing "
+            "it must remove the assistance paid to measured/imputed recipients. "
+            "A 6,000-household production-ingredient smoke scored $202.795 "
+            "million baseline-minus-neutralized; the $100 million floor is "
+            "below that observed subset effect but far above numerical noise. "
+            "A default-only or absent carry makes the source reconciliation "
+            "or this uniquely isolating probe fail."
+        ),
+        "issue": "PolicyEngine/populace#312",
     },
 ]
 

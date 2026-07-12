@@ -40,6 +40,7 @@ required = {
     ),
     "spm_unit": (
         "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
         "spm_unit_tenure_type",
         "spm_unit_energy_subsidy",
     ),

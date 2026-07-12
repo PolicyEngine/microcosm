@@ -17,6 +17,9 @@ from populace.build.us_runtime.housing_inputs import (
     HOUSING_INPUTS_ARCHIVED_CPS_RENT_URL,
     HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL,
     HOUSING_INPUTS_ARCHIVED_PUF_IMPUTATION_URL,
+    HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL,
+    HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL,
+    HOUSING_TAKE_UP_ARCHIVED_PARAMETER_URL,
     US_HOUSING_INPUTS_OUTPUT_COLUMNS,
     US_HOUSING_NONCONSTANT_HOUSEHOLD_COLUMNS,
     US_HOUSING_NONCONSTANT_PERSON_COLUMNS,
@@ -44,6 +47,7 @@ from populace.build.us_runtime.release_input_coverage import (
     load_release_input_coverage_manifest,
     us_release_reform_coverage_probes,
 )
+from populace.build.us_runtime.take_up_contract import load_take_up_contract
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
@@ -178,6 +182,13 @@ def test_stage_manifest_pins_exact_archived_sources_and_two_qrfs() -> None:
     puf_fit = spec.operations[3]
     assert puf_fit.parameters["max_train_samples"] == 5_000
     assert puf_fit.parameters["reduction"] == "value_from_first_person"
+    assert puf_fit.parameters["take_up_output"] == (
+        "takes_up_housing_assistance_if_eligible"
+    )
+    direct = spec.operations[0]
+    assert direct.parameters["housing_take_up_assignment"] == (
+        "equal_to_measured_receipt"
+    )
     assert all(
         url.startswith(
             "https://github.com/PolicyEngine/" + "policyengine-" + "us-data/blob/"
@@ -188,10 +199,22 @@ def test_stage_manifest_pins_exact_archived_sources_and_two_qrfs() -> None:
             HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL,
             HOUSING_INPUTS_ARCHIVED_ACS_DERIVATION_URL,
             HOUSING_INPUTS_ARCHIVED_PUF_IMPUTATION_URL,
+            HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL,
+            HOUSING_TAKE_UP_ARCHIVED_PARAMETER_URL,
+            HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL,
         )
     )
     artifact = next(artifact for artifact in spec.artifacts if artifact.get("sha256"))
     assert artifact["sha256"] == ACS_2022_RENT_ARTIFACT_SHA256
+    assert HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL.endswith(
+        "/datasets/cps/cps.py#L664-L682"
+    )
+    assert HOUSING_TAKE_UP_ARCHIVED_PARAMETER_URL.endswith(
+        "/parameters/take_up/housing_assistance.yaml#L1-L15"
+    )
+    assert HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL.endswith(
+        "/db/etl_housing_assistance.py#L35-L169"
+    )
 
 
 def test_direct_asec_mappings_are_exact() -> None:
@@ -208,6 +231,11 @@ def test_direct_asec_mappings_are_exact() -> None:
     ]
     spm = result.table("spm_unit")
     assert spm["receives_housing_assistance"].tolist().count(True) == 1
+    pd.testing.assert_series_equal(
+        spm["takes_up_housing_assistance_if_eligible"],
+        spm["receives_housing_assistance"],
+        check_names=False,
+    )
     assert spm["spm_unit_tenure_type"].tolist()[:3] == [
         "RENTER",
         "OWNER_WITH_MORTGAGE",
@@ -316,7 +344,7 @@ def test_puf_half_reimputes_only_housing_assistance(
     class Fitted:
         def predict(self, test: pd.DataFrame) -> pd.DataFrame:
             values = np.zeros(len(test), dtype=np.float64)
-            values[0] = 1.0
+            values[1] = 1.0
             return pd.DataFrame(
                 {"receives_housing_assistance": values}, index=test.index
             )
@@ -347,6 +375,15 @@ def test_puf_half_reimputes_only_housing_assistance(
     puf = channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     assert spm.loc[asec, "receives_housing_assistance"].sum() == 1
     assert spm.loc[puf, "receives_housing_assistance"].sum() == 1
+    assert not np.array_equal(
+        spm.loc[asec, "receives_housing_assistance"].to_numpy(),
+        spm.loc[puf, "receives_housing_assistance"].to_numpy(),
+    )
+    pd.testing.assert_series_equal(
+        spm["takes_up_housing_assistance_if_eligible"],
+        spm["receives_housing_assistance"],
+        check_names=False,
+    )
     assert calls["targets"] == ["receives_housing_assistance"]
     assert len(calls["predictors"]) == 8
     assert "pre_subsidy_rent" not in calls["targets"]
@@ -363,6 +400,27 @@ def test_puf_half_reimputes_only_housing_assistance(
     collapsed_gate = us_housing_inputs_signal_gate(result)
     assert not collapsed_gate.passed
     assert any("PUF-tax-detail" in failure for failure in collapsed_gate.failures)
+
+
+@pytest.mark.parametrize("bad_value", [None, np.nan, 2, -1, "true"])
+def test_signal_gate_rejects_missing_or_invalid_take_up(bad_value: object) -> None:
+    result = derive_us_housing_inputs(_frame())
+    result.table("spm_unit")["takes_up_housing_assistance_if_eligible"] = result.table(
+        "spm_unit"
+    )["takes_up_housing_assistance_if_eligible"].astype(object)
+    result.table("spm_unit").loc[0, "takes_up_housing_assistance_if_eligible"] = (
+        bad_value
+    )
+    result.table("person")["pre_subsidy_rent"] = np.where(
+        result.table("person")["is_household_head"],
+        1.0,
+        0.0,
+    )
+
+    gate = us_housing_inputs_signal_gate(result)
+
+    assert not gate.passed
+    assert any("takes_up_housing_assistance" in failure for failure in gate.failures)
 
 
 def _write_tiny_acs(path: Path) -> None:
@@ -435,7 +493,7 @@ def test_acs_loader_retains_zero_weight_heads_for_archived_sampling(
     assert donor["household_weight"].tolist() == [100.0, 0.0, 300.0]
 
 
-def test_release_wiring_promotes_all_four_inputs_and_probe() -> None:
+def test_release_wiring_promotes_all_five_inputs_and_probes() -> None:
     manifest = load_release_input_coverage_manifest()
     for column in US_HOUSING_INPUTS_OUTPUT_COLUMNS:
         assert column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS
@@ -460,6 +518,22 @@ def test_release_wiring_promotes_all_four_inputs_and_probe() -> None:
     assert probe.budget_measure == "snap"
     assert probe.effect_direction == "baseline_minus_reform"
     assert probe.expected_sign == "positive"
+    take_up_probe = next(
+        probe
+        for probe in us_release_reform_coverage_probes()
+        if probe.id == "housing_assistance_take_up_neutralization"
+    )
+    assert take_up_probe.neutralized_variable == (
+        "takes_up_housing_assistance_if_eligible"
+    )
+    assert take_up_probe.binding_inputs == ("takes_up_housing_assistance_if_eligible",)
+    assert take_up_probe.budget_measure == "housing_assistance"
+    assert take_up_probe.min_abs_effect == 100_000_000.0
+    contract = load_take_up_contract().program_map()[
+        "takes_up_housing_assistance_if_eligible"
+    ]
+    assert contract.populace_treatment == "out_of_scope"
+    assert contract.rate == {"status": "not_used_measured_source"}
 
 
 @requires_us
@@ -470,6 +544,7 @@ def test_policyengine_us_input_contracts_and_rent_consumer() -> None:
     expected_entities = {
         "pre_subsidy_rent": "person",
         "receives_housing_assistance": "spm_unit",
+        "takes_up_housing_assistance_if_eligible": "spm_unit",
         "spm_unit_tenure_type": "spm_unit",
         "tenure_type": "household",
     }
@@ -478,3 +553,54 @@ def test_policyengine_us_input_contracts_and_rent_consumer() -> None:
         assert variable.is_input_variable()
         assert variable.entity.key == entity
     assert "pre_subsidy_rent" in system.variables["hud_gross_rent"].adds
+
+
+@requires_us
+def test_policyengine_us_live_housing_take_up_neutralization() -> None:
+    from importlib.metadata import version
+
+    from policyengine_us import Simulation
+
+    from populace.build.us_runtime.reform_coverage_smoke import _build_reform
+
+    assert version("policyengine-us") == "1.764.6"
+    situation = {
+        "people": {
+            "adult": {
+                "age": {"2024": 40},
+                "employment_income": {"2024": 0},
+                "pre_subsidy_rent": {"2024": 12_000},
+            }
+        },
+        "tax_units": {"tu": {"members": ["adult"]}},
+        "families": {"fam": {"members": ["adult"]}},
+        "spm_units": {
+            "spm": {
+                "members": ["adult"],
+                "receives_housing_assistance": {"2024": True},
+                "takes_up_housing_assistance_if_eligible": {"2024": True},
+                "spm_unit_tenure_type": {"2024": "RENTER"},
+            }
+        },
+        "households": {
+            "hh": {
+                "members": ["adult"],
+                "state_code": {"2024": "CA"},
+                "county_fips": {"2024": "06037"},
+                "bedrooms": {"2024": 1},
+            }
+        },
+        "marital_units": {"mu": {"members": ["adult"]}},
+    }
+    probe = next(
+        probe
+        for probe in us_release_reform_coverage_probes()
+        if probe.id == "housing_assistance_take_up_neutralization"
+    )
+
+    baseline = Simulation(situation=situation)
+    neutralized = Simulation(situation=situation, reform=_build_reform(probe))
+
+    assert baseline.calculate("is_eligible_for_housing_assistance", 2024)[0]
+    assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(11_975)
+    assert neutralized.calculate("housing_assistance", 2024)[0] == 0

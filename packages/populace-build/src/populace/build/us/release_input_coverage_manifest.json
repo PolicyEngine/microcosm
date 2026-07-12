@@ -421,9 +421,7 @@
    "status": "reviewed_exclusion"
   },
   "takes_up_housing_assistance_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_medicaid_if_eligible": {
    "status": "required"
@@ -530,8 +528,8 @@
   }
  },
  "counts": {
-  "required": 150,
-  "reviewed_exclusion": 15,
+  "required": 151,
+  "reviewed_exclusion": 14,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -1210,7 +1208,23 @@
    "neutralized_variable": "pre_subsidy_rent",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other three restored housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 1.764.6 formula consumer."
+   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other source-mapped housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 1.764.6 formula consumer."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_housing_assistance_if_eligible"
+   ],
+   "budget_measure": "housing_assistance",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "housing_assistance_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Measured housing-assistance take-up neutralization",
+   "neutralized_variable": "takes_up_housing_assistance_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US multiplies HUD HAP by the restored SPM-unit take-up leaf after eligibility. Populace keeps that leaf exactly equal to source-backed housing-assistance receipt, so neutralizing it must remove the assistance paid to measured/imputed recipients. A 6,000-household production-ingredient smoke scored $202.795 million baseline-minus-neutralized; the $100 million floor is below that observed subset effect but far above numerical noise. A default-only or absent carry makes the source reconciliation or this uniquely isolating probe fail."
   }
  ],
  "schema_version": 1,

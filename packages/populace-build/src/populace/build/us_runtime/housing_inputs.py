@@ -5,7 +5,9 @@ The archived pipeline used two primary sources for this family:
 * CPS ASEC household ``H_TENURE`` mapped directly to household
   ``tenure_type``.  ASEC SPM ``SPM_CAPHOUSESUB`` and
   ``SPM_TENMORTSTATUS`` mapped directly to ``receives_housing_assistance``
-  and ``spm_unit_tenure_type``; and
+  and ``spm_unit_tenure_type``.  Measured assistance receipt also anchors
+  ``takes_up_housing_assistance_if_eligible`` without adding unobserved
+  recipients; and
 * the processed 2022 ACS public-use artifact supplied a 10-predictor rent
   donor.  The archived QRF selected household heads, built a shared 10,000-row
   sample for rent and real-estate taxes with target-specific allocation masks,
@@ -39,6 +41,9 @@ __all__ = [
     "HOUSING_INPUTS_ARCHIVED_CPS_RENT_URL",
     "HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL",
     "HOUSING_INPUTS_ARCHIVED_PUF_IMPUTATION_URL",
+    "HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL",
+    "HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL",
+    "HOUSING_TAKE_UP_ARCHIVED_PARAMETER_URL",
     "US_HOUSING_HOUSEHOLD_OUTPUT_COLUMNS",
     "US_HOUSING_INPUTS_OUTPUT_COLUMNS",
     "US_HOUSING_INPUTS_STAGE_NAME",
@@ -78,12 +83,24 @@ HOUSING_INPUTS_ARCHIVED_ACS_DERIVATION_URL = (
 HOUSING_INPUTS_ARCHIVED_PUF_IMPUTATION_URL = (
     _ARCHIVED_ROOT + "/policyengine_" + "us_data/datasets/cps/extended_cps.py#L135-L194"
 )
+HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL = (
+    _ARCHIVED_ROOT + "/policyengine_" + "us_data/datasets/cps/cps.py#L664-L682"
+)
+HOUSING_TAKE_UP_ARCHIVED_PARAMETER_URL = (
+    _ARCHIVED_ROOT
+    + "/policyengine_"
+    + "us_data/parameters/take_up/housing_assistance.yaml#L1-L15"
+)
+HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL = (
+    _ARCHIVED_ROOT + "/policyengine_" + "us_data/db/etl_housing_assistance.py#L35-L169"
+)
 
 US_HOUSING_INPUTS_STAGE_NAME = "acs_rent"
 US_HOUSING_PERSON_OUTPUT_COLUMNS: tuple[str, ...] = ("pre_subsidy_rent",)
 US_HOUSING_HOUSEHOLD_OUTPUT_COLUMNS: tuple[str, ...] = ("tenure_type",)
 US_HOUSING_SPM_UNIT_OUTPUT_COLUMNS: tuple[str, ...] = (
     "receives_housing_assistance",
+    "takes_up_housing_assistance_if_eligible",
     "spm_unit_tenure_type",
 )
 US_HOUSING_INPUTS_OUTPUT_COLUMNS: tuple[str, ...] = (
@@ -500,6 +517,7 @@ def derive_us_housing_inputs(frame: Frame) -> Frame:
         [_HOUSEHOLD_TENURE_MAP[code] for code in raw_household_codes], dtype=object
     )
     tables["spm_unit"]["receives_housing_assistance"] = subsidy > 0.0
+    tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = subsidy > 0.0
     tables["spm_unit"]["spm_unit_tenure_type"] = np.asarray(
         [_SPM_TENURE_MAP[code] for code in raw_spm_codes], dtype=object
     )
@@ -538,6 +556,31 @@ def _person_sum(person: pd.DataFrame, columns: tuple[str, ...]) -> np.ndarray:
     for column in present:
         values += _person_numeric(person, column)
     return values
+
+
+def _strict_boolean_signal(
+    values: pd.Series,
+) -> tuple[np.ndarray, int, int]:
+    """Normalize boolean/0/1 values while retaining missing/invalid counts."""
+
+    raw = values.to_numpy(dtype=object)
+    normalized = np.zeros(len(raw), dtype=bool)
+    missing = 0
+    invalid = 0
+    for index, value in enumerate(raw):
+        if pd.isna(value):
+            missing += 1
+            continue
+        if isinstance(value, (bool, np.bool_)):
+            normalized[index] = bool(value)
+            continue
+        if isinstance(value, (int, np.integer, float, np.floating)):
+            numeric = float(value)
+            if np.isfinite(numeric) and numeric in (0.0, 1.0):
+                normalized[index] = numeric == 1.0
+                continue
+        invalid += 1
+    return normalized, missing, invalid
 
 
 def _recipient_head_features(frame: Frame) -> tuple[pd.DataFrame, np.ndarray]:
@@ -966,12 +1009,32 @@ def impute_us_housing_assistance_to_puf_support(
             spm_channel_column,
             "spm_unit_id",
             "receives_housing_assistance",
+            "takes_up_housing_assistance_if_eligible",
         ),
         "spm_unit",
     )
     predictors = _person_puf_predictors(frame)
+    receipt_values, receipt_missing, receipt_invalid = _strict_boolean_signal(
+        spm_unit["receives_housing_assistance"]
+    )
+    take_up_values, take_up_missing, take_up_invalid = _strict_boolean_signal(
+        spm_unit["takes_up_housing_assistance_if_eligible"]
+    )
+    if receipt_missing or receipt_invalid or take_up_missing or take_up_invalid:
+        raise ValueError(
+            "US housing PUF imputation requires complete boolean receipt/take-up "
+            "anchors; "
+            f"receipt_missing={receipt_missing}, receipt_invalid={receipt_invalid}, "
+            f"take_up_missing={take_up_missing}, take_up_invalid={take_up_invalid}."
+        )
+    mismatches = int(np.count_nonzero(receipt_values != take_up_values))
+    if mismatches:
+        raise ValueError(
+            "US housing PUF imputation requires take-up to equal measured receipt "
+            f"before fitting; mismatches={mismatches}."
+        )
     receipt_by_unit = pd.Series(
-        spm_unit["receives_housing_assistance"].astype(bool).to_numpy(),
+        receipt_values,
         index=spm_unit["spm_unit_id"].to_numpy(),
     )
     person_target = person["person_spm_unit_id"].map(receipt_by_unit)
@@ -1063,6 +1126,9 @@ def impute_us_housing_assistance_to_puf_support(
     tables["spm_unit"].loc[puf_units, "receives_housing_assistance"] = aligned.to_numpy(
         dtype=bool
     )[puf_units.to_numpy()]
+    tables["spm_unit"].loc[puf_units, "takes_up_housing_assistance_if_eligible"] = (
+        aligned.to_numpy(dtype=bool)[puf_units.to_numpy()]
+    )
     return Frame(
         tables,
         frame.schema,
@@ -1134,8 +1200,11 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
     person_tenure = person["person_household_id"].map(tenure_by_household).astype(str)
     nonrenter_positive = positive_rent & person_tenure.ne("RENTED").to_numpy()
 
-    receives = (
-        spm_unit["receives_housing_assistance"].fillna(False).astype(bool).to_numpy()
+    receives, receives_missing, receives_invalid = _strict_boolean_signal(
+        spm_unit["receives_housing_assistance"]
+    )
+    takes_up, takes_up_missing, takes_up_invalid = _strict_boolean_signal(
+        spm_unit["takes_up_housing_assistance_if_eligible"]
     )
     spm_weights = np.asarray(frame.resolve_weights("spm_unit").values, dtype=np.float64)
     total_spm_weight = float(spm_weights.sum())
@@ -1180,6 +1249,13 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
         "pre_subsidy_rent_unweighted_total": float(np.nansum(rent)),
         "housing_assistance_share": receives_share,
         "housing_assistance_share_band": list(_HOUSING_ASSISTANCE_SHARE_BAND),
+        "housing_assistance_receipt_missing_count": receives_missing,
+        "housing_assistance_receipt_invalid_count": receives_invalid,
+        "housing_assistance_take_up_missing_count": takes_up_missing,
+        "housing_assistance_take_up_invalid_count": takes_up_invalid,
+        "housing_assistance_take_up_source_mismatch_count": int(
+            np.count_nonzero(takes_up != receives)
+        ),
         "housing_assistance_share_by_support_channel": assistance_share_by_channel,
         "housing_assistance_positive_by_support_channel": (
             assistance_positive_by_channel
@@ -1199,7 +1275,7 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
 
 
 def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
-    """Require plausible non-default signal for all four restored inputs."""
+    """Require plausible non-default signal for all five restored inputs."""
 
     missing: list[str] = []
     for entity, columns in (
@@ -1231,6 +1307,35 @@ def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
 
     summary = us_housing_inputs_summary(frame)
     failures: list[str] = []
+    for key, label in (
+        (
+            "housing_assistance_receipt_missing_count",
+            "receives_housing_assistance missing values",
+        ),
+        (
+            "housing_assistance_receipt_invalid_count",
+            "receives_housing_assistance invalid non-boolean values",
+        ),
+        (
+            "housing_assistance_take_up_missing_count",
+            "takes_up_housing_assistance_if_eligible missing values",
+        ),
+        (
+            "housing_assistance_take_up_invalid_count",
+            "takes_up_housing_assistance_if_eligible invalid non-boolean values",
+        ),
+    ):
+        count = int(summary[key])
+        if count:
+            failures.append(f"{label}: {count}.")
+    take_up_mismatches = int(
+        summary["housing_assistance_take_up_source_mismatch_count"]
+    )
+    if take_up_mismatches:
+        failures.append(
+            "takes_up_housing_assistance_if_eligible differs from measured "
+            f"receives_housing_assistance on {take_up_mismatches} SPM unit(s)."
+        )
     for key, label in (
         ("nonfinite_rent", "nonfinite pre_subsidy_rent"),
         ("negative_rent", "negative pre_subsidy_rent"),

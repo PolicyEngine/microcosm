@@ -129,6 +129,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "is_paid_hourly": [False, True, False],
             "is_union_member_or_covered": [False, True, False],
             "fsla_overtime_premium": [0.0, 1_000.0, 0.0],
+            "takes_up_medicare_if_eligible": [False, True, False],
             "pre_subsidy_rent": [0.0, 12_000.0, 0.0],
             "self_employment_income_last_year": [0.0, 8_000.0, -1_000.0],
             "previous_year_income_available": [False, True, False],
@@ -180,6 +181,7 @@ def _us_frame(**person_extra: object) -> Frame:
                     "spm_unit_pre_subsidy_childcare_expenses": [0.0, 1_200.0],
                     "spm_unit_energy_subsidy": [0.0, 600.0],
                     "receives_housing_assistance": [False, True],
+                    "takes_up_housing_assistance_if_eligible": [False, True],
                     "spm_unit_tenure_type": [
                         "OWNER_WITH_MORTGAGE",
                         "RENTER",
@@ -958,6 +960,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "spm_unit_pre_subsidy_childcare_expenses",
         "spm_unit_energy_subsidy",
         "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
         "spm_unit_tenure_type",
     ]
     assert summary["required_household_nonconstant_source_columns"] == [

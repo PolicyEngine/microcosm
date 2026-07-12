@@ -528,10 +528,6 @@
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
     },
-    "takes_up_housing_assistance_if_eligible": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
-    },
     "takes_up_ssi_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"

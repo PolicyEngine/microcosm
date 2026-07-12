@@ -171,11 +171,11 @@
       "entity": "spm_unit",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "acs_rent source stage (measured/imputed housing-assistance receipt anchor)",
       "consumed_via": "housing_assistance",
-      "rate": {"status": "no_source", "detail": "No housing-assistance take-up rate parameter has ever existed in us-data. Housing assistance is rationed (waitlists, funding caps), so 'take-up among eligibles' is not the right model - assistance is capped by appropriation, not declined by eligibles."},
-      "followup": "Housing assistance is supply-constrained; a HUD-sourced coverage rate (assisted households over eligible/waitlisted households) would be the Ledger fact, and the semantics differ from voluntary take-up.",
-      "notes": "No sourced rate and the take-up abstraction is a poor fit for a rationed program. Left unseeded; flagged for guardian review of the right modeling abstraction."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The source stage preserves every ASEC SPM_CAPHOUSESUB reporter and sets take-up exactly equal to receipt on both support channels. The retired 0.50 parameter was an ad hoc benchmark adjustment. The archived HUD ETL instead reads household-grain state counts from a live workbook, which cannot identify SPM-unit recipients in the hermetic build; Populace therefore does not allocate extra recipients. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_aca_if_eligible",
