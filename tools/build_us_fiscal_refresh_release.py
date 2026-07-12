@@ -4238,6 +4238,21 @@ def _ecps_parity_gate(
 #   first_home_mortgage_interest follows home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per populace#38).
 US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
+    "miscellaneous_income": (
+        "Source concept mismatch, established by populace#393's remedy "
+        "experiments: the PUF pipeline maps miscellaneous_income = E01200, "
+        "but E01200 is Form 4797 / 1040 line 14 (business-property gains/"
+        "losses), not the SOI Table 1.4 line-21 concept the reference "
+        "carries. The pool holds ~4.6x SOI's loss-return prevalence, so at "
+        "design weights misc is net -$8.15B and the ratio-5 ceiling caps "
+        "the dense solve at ~$21.3-22.8B against the $23.70B band floor - "
+        "mathematically unreachable (loss-leg multipliers inert through "
+        "10x; income-leg plateaus at -52% through 20x). The sparse arm "
+        "holds the band via selection and stays gated. Remedy = remap "
+        "E01200 to other_net_gain and rebuild the processed PUF "
+        "(populace#393 final determination); this exclusion lifts with "
+        "that rebuild."
+    ),
     "estate_income": (
         "Identified by SOI Table 1.4 estate/trust net income (income leg "
         "$47.892B + loss leg $4.899B, TY2023; CBO-aged net ~$46.74B@2024). "
