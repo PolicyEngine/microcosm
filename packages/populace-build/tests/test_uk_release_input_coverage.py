@@ -82,15 +82,24 @@ class _StubEngine:
         self,
         defaults: dict[str, object],
         variables: set[str] | None = None,
+        entities: dict[str, str] | None = None,
     ) -> None:
         self._defaults = dict(defaults)
         self._variables = set(variables or defaults)
+        reference_entities = dict(load_efrs_parity_reference().input_entities)
+        self._entities = {
+            name: reference_entities.get(name, "person") for name in self._variables
+        }
+        self._entities.update(entities or {})
 
     def default_values(self, names) -> dict[str, object]:
         return {name: self._defaults[name] for name in names if name in self._defaults}
 
     def variables(self) -> list[str]:
         return sorted(self._variables)
+
+    def variable_entities(self, names) -> dict[str, str]:
+        return {name: self._entities[name] for name in names if name in self._entities}
 
 
 def _manifest(
@@ -184,6 +193,25 @@ class TestUKReleaseInputCoverageGate:
         assert not result.passed
         assert result.details["degenerate_required"] == ["dividend_income"]
         assert any("every value equals" in failure for failure in result.failures)
+
+    def test_required_column_on_wrong_entity_fails(self) -> None:
+        frame = _person_frame({"dividend_income": np.asarray([500.0])})
+        frame.table("household")["employment_income"] = np.asarray([52_000.0])
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine(_DEFAULTS),
+            manifest=_CONTRACT,
+        )
+
+        assert not result.passed
+        assert result.details["wrong_entity_columns"] == {
+            "employment_income": {"actual": "household", "expected": "person"}
+        }
+        assert any(
+            "same-named column on the wrong table" in failure
+            for failure in result.failures
+        )
 
     @pytest.mark.parametrize(
         "values",
@@ -597,6 +625,18 @@ class TestUKManifest:
                 engine=_StubEngine({}, graph)
             )
 
+    def test_engine_entity_drift_is_rejected(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        graph = set(manifest.declared_columns)
+        with pytest.raises(ValueError, match="owning entities disagree"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine(
+                    {},
+                    graph,
+                    entities={"employment_income": "household"},
+                )
+            )
+
     def test_manifest_cannot_demote_a_column_absent_from_known_gaps(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
         columns = tuple(
@@ -641,6 +681,9 @@ class TestUKManifest:
         assert set(UK_LOADER_INPUT_ALIASES) <= set(engine.variables())
         defaults = engine.default_values(UK_LOADER_INPUT_ALIASES)
         assert defaults == {name: 0 for name in UK_LOADER_INPUT_ALIASES}
+        assert engine.variable_entities(UK_LOADER_INPUT_ALIASES) == {
+            name: "person" for name in UK_LOADER_INPUT_ALIASES
+        }
 
 
 def test_default_us_coverage_path_is_unchanged() -> None:

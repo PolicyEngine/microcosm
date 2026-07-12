@@ -30,7 +30,10 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import GateResult, input_column_coverage_gate
-from populace.build.uk_runtime.parity_reference import load_efrs_parity_known_gaps
+from populace.build.uk_runtime.parity_reference import (
+    load_efrs_parity_known_gaps,
+    load_efrs_parity_reference,
+)
 
 __all__ = [
     "UKEffectiveMassCoveragePolicy",
@@ -437,8 +440,31 @@ class PolicyEngineUKCoverageEngine:
                 raise ValueError(
                     f"UK loader alias target {target!r} is no longer an input leaf."
                 )
+            source_entity = str(variables[source].entity.key)
+            target_entity = str(variables[target].entity.key)
+            if source_entity != target_entity:
+                raise ValueError(
+                    f"UK loader alias {source!r} is owned by {source_entity!r}, "
+                    f"but {target!r} is owned by {target_entity!r}."
+                )
             aliases.add(source)
         return sorted(pure_inputs | aliases)
+
+    def variable_entities(self, names: Sequence[str]) -> dict[str, str]:
+        """Return each effective loader input's owning persisted entity."""
+
+        variables = self._tax_benefit_system().variables
+        effective = set(self.variables())
+        entities: dict[str, str] = {}
+        for name in names:
+            if name not in effective:
+                continue
+            variable = variables.get(name)
+            entity = getattr(getattr(variable, "entity", None), "key", None)
+            if not isinstance(entity, str) or not entity:
+                continue
+            entities[name] = entity
+        return entities
 
     def default_values(self, names: Sequence[str]) -> dict[str, object]:
         variables = self._tax_benefit_system().variables
@@ -480,6 +506,37 @@ def _entity_tables(frame: Any) -> tuple[tuple[str, Any], ...]:
             "or an object with person/benunit/household tables."
         )
     return tables
+
+
+def _engine_variable_entities(
+    engine: Any,
+    names: Sequence[str] | set[str] | frozenset[str],
+) -> dict[str, str]:
+    """Resolve and validate live owning entities for a coverage surface."""
+
+    resolver = getattr(engine, "variable_entities", None)
+    if not callable(resolver):
+        raise ValueError(
+            "Cannot enforce UK input coverage without live engine owning-entity "
+            "metadata (variable_entities)."
+        )
+    requested = {str(name) for name in names}
+    raw = resolver(sorted(requested))
+    if not isinstance(raw, Mapping):
+        raise ValueError("UK coverage engine variable_entities must return a mapping.")
+    entities = {str(name): str(entity) for name, entity in raw.items()}
+    missing = sorted(requested - set(entities))
+    invalid = {
+        name: entity
+        for name, entity in entities.items()
+        if name in requested and entity not in {"person", "benunit", "household"}
+    }
+    if missing or invalid:
+        raise ValueError(
+            "Cannot enforce UK input coverage with incomplete owning-entity "
+            f"metadata: missing={missing}, invalid={invalid}."
+        )
+    return {name: entities[name] for name in sorted(requested)}
 
 
 def _nondefault_signal_mask(values: Any, default: object) -> np.ndarray:
@@ -866,6 +923,7 @@ def uk_release_input_coverage_gate(
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
     relevant = required | set(reviewed)
+    expected_entities = _engine_variable_entities(engine, relevant)
     table_items = _entity_tables(frame)
     tables = {entity: table for entity, table in table_items}
     effective_weights = _effective_weights_by_entity(frame, tables)
@@ -881,6 +939,12 @@ def uk_release_input_coverage_gate(
                     f"{prior_entity!r} and {entity!r} tables."
                 )
             present_values[column] = (entity, table[column].to_numpy())
+
+    wrong_entities = {
+        name: {"actual": entity, "expected": expected_entities[name]}
+        for name, (entity, _values) in sorted(present_values.items())
+        if entity != expected_entities[name]
+    }
 
     defaults = engine.default_values(sorted(present_values))
     missing_defaults = sorted(set(present_values) - set(defaults))
@@ -915,6 +979,13 @@ def uk_release_input_coverage_gate(
         reference_label="enhanced-FRS",
     )
     failures = list(base.failures)
+    for name, mismatch in wrong_entities.items():
+        failures.append(
+            f"{name}: enhanced-FRS input column is stored on "
+            f"{mismatch['actual']!r}, but PolicyEngine-UK owns it on "
+            f"{mismatch['expected']!r}; a same-named column on the wrong table "
+            "does not satisfy loader coverage."
+        )
     for name in sorted((insufficient_effective_mass - raw_degenerate) & required):
         prefix = f"{name}: required enhanced-FRS input column is present but every "
         failures = [failure for failure in failures if not failure.startswith(prefix)]
@@ -950,6 +1021,7 @@ def uk_release_input_coverage_gate(
         },
         "insufficient_effective_mass": sorted(insufficient_effective_mass),
         "effective_mass_by_column": diagnostics,
+        "wrong_entity_columns": wrong_entities,
         "family_effective_mass": family_diagnostics,
         "family_build_state": family_build_state,
     }
@@ -984,6 +1056,11 @@ def _efrs_populated_layers() -> frozenset[str]:
     return frozenset(str(name) for name, share in shares.items() if float(share) > 0.0)
 
 
+def _efrs_input_entities() -> dict[str, str]:
+    reference = load_efrs_parity_reference()
+    return dict(reference.input_entities)
+
+
 def assert_uk_release_input_coverage_manifest_current(
     *,
     engine: Any | None = None,
@@ -1000,6 +1077,7 @@ def assert_uk_release_input_coverage_manifest_current(
         )
     declared = set(manifest.declared_columns)
     surface = set(_efrs_populated_layers())
+    reference_entities = _efrs_input_entities()
     missing = sorted(surface - declared)
     extra = sorted(declared - surface)
     if missing:
@@ -1097,6 +1175,25 @@ def assert_uk_release_input_coverage_manifest_current(
                 "manifest declares column(s) that are not live PolicyEngine-UK "
                 f"input leaves or loader aliases: {non_inputs}."
             )
+        if not non_inputs:
+            try:
+                live_entities = _engine_variable_entities(engine, declared)
+            except ValueError as exc:
+                failures.append(str(exc))
+            else:
+                entity_drift = {
+                    name: {
+                        "reference": reference_entities[name],
+                        "live": live_entities[name],
+                    }
+                    for name in sorted(surface & declared)
+                    if reference_entities[name] != live_entities[name]
+                }
+                if entity_drift:
+                    failures.append(
+                        "enhanced-FRS input owning entities disagree with the "
+                        f"live PolicyEngine-UK graph: {entity_drift}."
+                    )
 
     if failures:
         raise ValueError(

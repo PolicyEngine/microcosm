@@ -133,25 +133,15 @@ def _hf_token() -> str | None:
     return None
 
 
-def _cached_blob_path() -> Path | None:
-    """Return the expected HF cache blob when already present.
-
-    The immutable commit may not have its own local ``refs`` entry when the
-    exact same LFS object was downloaded through a release tag.  Looking up the
-    content-addressed blob preserves the SHA boundary while keeping offline
-    regeneration possible.
-    """
-    try:
-        from huggingface_hub.constants import HF_HUB_CACHE
-    except ImportError:
-        return None
-    repo_folder = f"models--{SOURCE_REPO_ID.replace('/', '--')}"
-    candidate = Path(HF_HUB_CACHE) / repo_folder / "blobs" / SOURCE_SHA256
-    return candidate if candidate.is_file() else None
-
-
 def resolve_source_h5(explicit: Path | None = None) -> Path:
-    """Resolve the pinned licensed artifact without weakening its SHA check."""
+    """Resolve the pinned revision and then verify its licensed artifact bytes.
+
+    A content-addressed blob by itself proves only the bytes, not that
+    ``SOURCE_REVISION`` names those bytes in ``SOURCE_REPO_ID``.  Offline callers
+    with only a raw blob must pass it explicitly; the implicit resolver accepts
+    only Hugging Face's exact revision/filename cache mapping or a download made
+    against that immutable revision.
+    """
     if explicit is not None:
         source = explicit.expanduser().resolve()
         _verify_source(source)
@@ -171,17 +161,15 @@ def resolve_source_h5(explicit: Path | None = None) -> Path:
     if isinstance(cached, str):
         source = Path(cached)
     else:
-        source = _cached_blob_path()
-        if source is None:
-            source = Path(
-                hf_hub_download(
-                    repo_id=SOURCE_REPO_ID,
-                    filename=SOURCE_FILENAME,
-                    revision=SOURCE_REVISION,
-                    repo_type=SOURCE_REPO_TYPE,
-                    token=_hf_token(),
-                )
+        source = Path(
+            hf_hub_download(
+                repo_id=SOURCE_REPO_ID,
+                filename=SOURCE_FILENAME,
+                revision=SOURCE_REVISION,
+                repo_type=SOURCE_REPO_TYPE,
+                token=_hf_token(),
             )
+        )
     _verify_source(source)
     return source
 
@@ -204,6 +192,33 @@ def _input_variable_names(system: Any) -> set[str]:
     }
 
 
+def _effective_input_entities(
+    system: Any,
+    input_names: set[str],
+) -> dict[str, str]:
+    """Return the owning H5 entity for every pure input and loader alias."""
+
+    entities = {
+        name: str(system.variables[name].entity.key) for name in sorted(input_names)
+    }
+    for source, target in LOADER_INPUT_ALIASES.items():
+        if source not in system.variables:
+            raise ValueError(f"UK loader alias source {source!r} is unknown.")
+        if target not in input_names:
+            raise ValueError(
+                f"UK loader alias target {target!r} is not a current input leaf."
+            )
+        source_entity = str(system.variables[source].entity.key)
+        target_entity = entities[target]
+        if source_entity != target_entity:
+            raise ValueError(
+                f"UK loader alias {source!r} is owned by {source_entity!r}, but "
+                f"its canonical input leaf {target!r} is owned by {target_entity!r}."
+            )
+        entities[source] = source_entity
+    return entities
+
+
 def build_reference(source_h5: Path) -> dict[str, Any]:
     """Extract the pinned eFRS populated input surface into JSON-ready facts."""
     _verify_source(source_h5)
@@ -216,13 +231,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
 
     system = CountryTaxBenefitSystem()
     input_names = _input_variable_names(system)
-    for source, target in LOADER_INPUT_ALIASES.items():
-        if source not in system.variables:
-            raise ValueError(f"UK loader alias source {source!r} is unknown.")
-        if target not in input_names:
-            raise ValueError(
-                f"UK loader alias target {target!r} is not a current input leaf."
-            )
+    effective_input_entities = _effective_input_entities(system, input_names)
     effective_input_names = input_names | set(LOADER_INPUT_ALIASES)
     all_engine_names = set(system.variables)
     structural = set(STRUCTURAL_COLUMNS)
@@ -247,6 +256,26 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
             storer = store.get_storer(entity)
             columns = [str(name) for name in storer.non_index_axes[0][1]]
             columns_by_entity[entity] = columns
+
+        locations: dict[str, str] = {}
+        for entity, columns in columns_by_entity.items():
+            for name in set(columns) & effective_input_names:
+                if name in locations:
+                    raise ValueError(
+                        f"{source_h5}: effective input {name!r} occurs on both "
+                        f"{locations[name]!r} and {entity!r} tables."
+                    )
+                locations[name] = entity
+        wrong_entities = {
+            name: {"actual": entity, "expected": effective_input_entities[name]}
+            for name, entity in sorted(locations.items())
+            if entity != effective_input_entities[name]
+        }
+        if wrong_entities:
+            raise ValueError(
+                f"{source_h5}: effective input columns are stored on the wrong "
+                f"owning entity: {wrong_entities}."
+            )
 
         value_columns = set().union(*(set(v) for v in columns_by_entity.values()))
         value_columns -= structural
@@ -278,7 +307,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
         (value_columns & effective_input_names) - set(nonzero_shares)
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "description": (
             "Frozen enhanced-FRS parity reference for the UK release input-"
             "coverage contract. Every PolicyEngine-UK input leaf the pinned "
@@ -314,6 +343,9 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
             "zero_share_input_columns_excluded": zero_share_inputs,
         },
         "entity_stats": entity_stats,
+        "input_entities": {
+            name: effective_input_entities[name] for name in sorted(nonzero_shares)
+        },
         "nonzero_shares": dict(sorted(nonzero_shares.items())),
     }
 

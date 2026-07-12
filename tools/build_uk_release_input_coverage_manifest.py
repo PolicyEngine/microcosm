@@ -258,6 +258,29 @@ def _batches(names: list[str]) -> list[list[str]]:
     ]
 
 
+def _reference_input_entities(
+    reference: dict[str, Any],
+    surface: set[str],
+) -> dict[str, str]:
+    raw = reference.get("input_entities")
+    if not isinstance(raw, dict):
+        raise ValueError("Reference input_entities must be an object.")
+    entities = {str(name): str(entity) for name, entity in raw.items()}
+    missing = sorted(surface - set(entities))
+    extra = sorted(set(entities) - surface)
+    invalid = {
+        name: entity
+        for name, entity in entities.items()
+        if entity not in set(ENTITY_TABLES)
+    }
+    if missing or extra or invalid:
+        raise ValueError(
+            "Reference input_entities must exactly describe the populated "
+            f"surface: missing={missing}, extra={extra}, invalid={invalid}."
+        )
+    return entities
+
+
 def build_candidate_evidence(
     candidate_h5: Path,
     *,
@@ -267,6 +290,7 @@ def build_candidate_evidence(
     _verify_candidate(candidate_h5)
     reference = reference or _load(REFERENCE_PATH)
     surface = set(reference["nonzero_shares"])
+    expected_entities = _reference_input_entities(reference, surface)
     try:
         from policyengine_uk import CountryTaxBenefitSystem
     except ImportError as exc:  # pragma: no cover - CLI dependency diagnostic
@@ -279,6 +303,19 @@ def build_candidate_evidence(
         raise ValueError(
             f"Reference surface contains unknown PolicyEngine-UK variables: {unknown}."
         )
+    live_entities = {
+        name: str(system.variables[name].entity.key) for name in sorted(surface)
+    }
+    entity_drift = {
+        name: {"reference": expected_entities[name], "live": live_entities[name]}
+        for name in sorted(surface)
+        if expected_entities[name] != live_entities[name]
+    }
+    if entity_drift:
+        raise ValueError(
+            "Reference input owning entities disagree with PolicyEngine-UK: "
+            f"{entity_drift}."
+        )
     defaults = {
         name: _stored_default(system.variables[name]) for name in sorted(surface)
     }
@@ -286,6 +323,7 @@ def build_candidate_evidence(
     nonzero_shares: dict[str, float] = {}
     nondefault_shares: dict[str, float] = {}
     present: set[str] = set()
+    column_entities: dict[str, str] = {}
     entity_rows: dict[str, int] = {}
     with pd.HDFStore(candidate_h5, mode="r") as store:
         available = {key.lstrip("/") for key in store.keys()}
@@ -310,7 +348,18 @@ def build_candidate_evidence(
                 raise ValueError(
                     f"Candidate columns occur on multiple entity tables: {overlap}."
                 )
+            wrong_entities = {
+                name: expected_entities[name]
+                for name in selected
+                if expected_entities[name] != entity
+            }
+            if wrong_entities:
+                raise ValueError(
+                    f"Candidate {entity!r} table contains input column(s) owned "
+                    f"by another entity: {wrong_entities}."
+                )
             present.update(selected)
+            column_entities.update(dict.fromkeys(selected, entity))
             for batch in _batches(selected):
                 frame = store.select(entity, columns=batch)
                 for name in batch:
@@ -342,6 +391,7 @@ def build_candidate_evidence(
             "h5_input_aliases": reference["engine"]["h5_input_aliases"],
         },
         "entity_records": entity_rows,
+        "column_entities": dict(sorted(column_entities.items())),
         "reference_columns_evaluated": len(surface),
         "signal_columns": len(signal),
         "missing_columns": missing,
@@ -399,6 +449,28 @@ def _validate_known_gaps(
     nondefault = evidence.get("nondefault_shares")
     if not isinstance(nondefault, dict):
         raise ValueError("candidate_evidence.nondefault_shares must be an object.")
+    reference_entities = _reference_input_entities(reference, surface)
+    evidence_entities = evidence.get("column_entities")
+    if not isinstance(evidence_entities, dict):
+        raise ValueError("candidate_evidence.column_entities must be an object.")
+    normalized_evidence_entities = {
+        str(name): str(entity) for name, entity in evidence_entities.items()
+    }
+    if normalized_evidence_entities != reference_entities:
+        missing = sorted(set(reference_entities) - set(normalized_evidence_entities))
+        extra = sorted(set(normalized_evidence_entities) - set(reference_entities))
+        mismatched = {
+            name: {
+                "reference": reference_entities[name],
+                "candidate": normalized_evidence_entities[name],
+            }
+            for name in sorted(set(reference_entities) & set(normalized_evidence_entities))
+            if reference_entities[name] != normalized_evidence_entities[name]
+        }
+        raise ValueError(
+            "Candidate owning-entity evidence disagrees with the reference: "
+            f"missing={missing}, extra={extra}, mismatched={mismatched}."
+        )
     expected = {name for name in surface if float(nondefault.get(name, 0.0)) <= 0.0}
     actual = set(raw_gaps)
     if actual != expected:

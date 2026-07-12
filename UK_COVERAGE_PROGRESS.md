@@ -12,6 +12,7 @@ baseline exposes a real gap.
 | Milestone | Coverage change | Evidence | Status |
 | --- | ---: | --- | --- |
 | Launch contract baseline | 132 required; 0 exclusions | SHA-pinned eFRS and certified Populace UK H5 surfaces | Complete |
+| Contract entity/pin integrity | No coverage-status change | All 132 reference and candidate columns carry owning-entity evidence; runtime rejects same-named wrong-table columns; implicit HF resolution requires the exact revision/filename mapping before the SHA check | Complete |
 | National orchestration seam | No coverage-status change | Ordered stage protocol, preflight + final gate, atomic staging-H5 tests | Complete |
 | Effective-mass coverage | No raw status change; `gift_aid` and `charitable_investment_gifts` remain distributional/effective-weight gaps | Required signal must carry at least 0.000001 of its owning entity's effective population mass | Complete |
 | HMRC/SPI income family | No raw-column status change; adds one `required_at_build` distributional family, including effective-mass requirements for both charitable-giving inputs | Certified-base hash gate; 2022–23 SPI QRF code; complete 2023–24 Tables 3.6/3.7 contract (208 facts); positive-prior, path-isolation, provenance-roundtrip, calibration, and source-manifest tests | Implementation wired and covered by synthetic contract tests; **not counted restored** pending the semantic questions and real-source replay below |
@@ -76,6 +77,15 @@ rows, but all 200,000 SPI-synthetic household rows have zero calibrated weight.
 Populace calibration cannot lift a zero initial weight because it optimizes its
 log and caps the result relative to that zero. Porting the QRF draws alone would
 therefore be fiscally inert; a reviewed positive-prior stage is required first.
+
+`policyengine-uk-data` is the producing package/repository identity named by the
+campaign. Its UKDS-licensed enhanced-FRS payload is served from the certified
+private Hugging Face artifact repository
+`policyengine/policyengine-uk-data-private`; the reference records that actual
+artifact coordinate. A cached content-addressed blob can verify bytes only, so
+the implicit resolver no longer treats a raw blob as proof that the recorded HF
+revision names those bytes. Offline regeneration remains available by passing
+the SHA-verified artifact explicitly.
 
 The national base is the certified Populace UK candidate. At runtime, its
 existing zero-weight SPI rows are dropped and replaced once with a new SPI

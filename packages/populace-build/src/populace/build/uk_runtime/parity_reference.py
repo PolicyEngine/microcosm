@@ -52,7 +52,8 @@ class EfrsParityReference:
 
     source: EfrsParitySource
     nonzero_shares: Mapping[str, float]
-    schema_version: int = 1
+    input_entities: Mapping[str, str]
+    schema_version: int = 2
 
     @property
     def populated_layers(self) -> tuple[str, ...]:
@@ -165,12 +166,41 @@ def load_efrs_parity_reference(
             )
         shares[str(name)] = share
 
+    raw_entities = payload.get("input_entities")
+    if not isinstance(raw_entities, Mapping):
+        raise ValueError(f"{resource}: 'input_entities' must be a JSON object.")
+    entities = {
+        str(name): _require_str(
+            entity,
+            field_name=f"input_entities[{name}]",
+            resource=resource,
+        )
+        for name, entity in raw_entities.items()
+    }
+    expected_entities = {"person", "benunit", "household"}
+    invalid_entities = {
+        name: entity for name, entity in entities.items() if entity not in expected_entities
+    }
+    if invalid_entities:
+        raise ValueError(
+            f"{resource}: input entity values must be one of "
+            f"{sorted(expected_entities)}, got {invalid_entities}."
+        )
+    missing_entities = sorted(set(shares) - set(entities))
+    extra_entities = sorted(set(entities) - set(shares))
+    if missing_entities or extra_entities:
+        raise ValueError(
+            f"{resource}: input_entities must exactly cover nonzero_shares; "
+            f"missing={missing_entities}, extra={extra_entities}."
+        )
+
     schema_version = payload.get("schema_version", 1)
     if not isinstance(schema_version, int):
         raise ValueError(f"{resource}: 'schema_version' must be an integer.")
     return EfrsParityReference(
         source=source,
         nonzero_shares=shares,
+        input_entities=entities,
         schema_version=schema_version,
     )
 

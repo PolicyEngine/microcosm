@@ -53,6 +53,9 @@ class _StubCoverageEngine:
     def default_values(self, names) -> dict[str, float]:
         return {str(name): 0.0 for name in names}
 
+    def variable_entities(self, names) -> dict[str, str]:
+        return {str(name): "person" for name in names}
+
 
 def household_frame() -> pd.DataFrame:
     return pd.DataFrame(

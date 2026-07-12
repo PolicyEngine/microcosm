@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_release_input_coverage_manifest.py"
@@ -39,6 +40,7 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
         "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
     )
     assert set(evidence["nondefault_shares"]) == set(reference["nonzero_shares"])
+    assert evidence["column_entities"] == reference["input_entities"]
     assert all(float(share) > 0 for share in evidence["nondefault_shares"].values())
     # Nonzero is not the gate criterion for default-True flags or zero-weight
     # support rows. These pin the default-aware extraction rather than a naive
@@ -141,6 +143,16 @@ def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> Non
         "not yet ported from enhanced FRS pipeline — pending review"
     )
     assert entry["tracking_note"].strip()
+
+
+def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    gaps = _resource("efrs_parity_known_gaps.json")
+    gaps["candidate_evidence"]["column_entities"]["employment_income"] = "household"
+
+    with pytest.raises(ValueError, match="owning-entity evidence disagrees"):
+        generator.build_manifest(reference=reference, known_gaps_payload=gaps)
 
 
 def test_candidate_signal_helpers_reject_null_and_blank_only_columns() -> None:

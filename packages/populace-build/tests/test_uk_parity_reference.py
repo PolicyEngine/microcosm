@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from importlib.resources import files
 from pathlib import Path
@@ -15,16 +16,27 @@ from populace.build.uk_runtime.parity_reference import (
 )
 
 _UK_PACKAGE = "populace.build.uk"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_GENERATOR = _REPO_ROOT / "tools" / "build_uk_efrs_parity_reference.py"
 
 
 def _resource(name: str) -> Path:
     return Path(str(files(_UK_PACKAGE).joinpath(name)))
 
 
+def _load_generator():
+    spec = importlib.util.spec_from_file_location(
+        "build_uk_efrs_parity_reference",
+        _GENERATOR,
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _cached_incumbent_path(source) -> Path | None:
     try:
         from huggingface_hub import try_to_load_from_cache
-        from huggingface_hub.constants import HF_HUB_CACHE
     except ImportError:
         return None
     resolved = try_to_load_from_cache(
@@ -35,17 +47,22 @@ def _cached_incumbent_path(source) -> Path | None:
     )
     if isinstance(resolved, str):
         return Path(resolved)
-    repo_folder = f"models--{source.repo_id.replace('/', '--')}"
-    blob = Path(HF_HUB_CACHE) / repo_folder / "blobs" / source.sha256
-    return blob if blob.is_file() else None
+    return None
 
 
 class TestEfrsParityReference:
     def test_reference_loads_with_populated_layers(self) -> None:
         reference = load_efrs_parity_reference()
+        assert reference.schema_version == 2
         assert len(reference.nonzero_shares) == 132
         assert len(reference.populated_layers) == 132
         assert all(share > 0.0 for share in reference.nonzero_shares.values())
+        assert set(reference.input_entities) == set(reference.nonzero_shares)
+        assert set(reference.input_entities.values()) == {
+            "person",
+            "benunit",
+            "household",
+        }
 
     def test_source_provenance_is_complete_and_immutable(self) -> None:
         source = load_efrs_parity_reference().source
@@ -71,7 +88,17 @@ class TestEfrsParityReference:
         raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
         reference = load_efrs_parity_reference()
         assert set(raw["nonzero_shares"]) == set(reference.nonzero_shares)
+        assert raw["input_entities"] == dict(reference.input_entities)
         assert raw["source"]["sha256"] == reference.source.sha256
+
+    def test_reference_requires_exact_entity_surface(self, tmp_path) -> None:
+        payload = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
+        payload["input_entities"].pop("employment_income")
+        bad = tmp_path / "bad_reference.json"
+        bad.write_text(json.dumps(payload))
+
+        with pytest.raises(ValueError, match="must exactly cover"):
+            load_efrs_parity_reference(str(bad))
 
     def test_all_zero_reference_inputs_are_documented_not_required(self) -> None:
         raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
@@ -121,3 +148,27 @@ class TestEfrsParityReference:
         digest = hashlib.sha256(cached.read_bytes()).hexdigest()
         assert cached.stat().st_size == source.size_bytes
         assert digest == source.sha256
+
+    def test_implicit_resolution_requires_revision_mapping(
+        self,
+        monkeypatch,
+    ) -> None:
+        import huggingface_hub
+
+        generator = _load_generator()
+
+        class DownloadAttemptedError(RuntimeError):
+            pass
+
+        monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda **_: None)
+
+        def fail_download(**kwargs):
+            assert kwargs["repo_id"] == generator.SOURCE_REPO_ID
+            assert kwargs["filename"] == generator.SOURCE_FILENAME
+            assert kwargs["revision"] == generator.SOURCE_REVISION
+            raise DownloadAttemptedError
+
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", fail_download)
+
+        with pytest.raises(DownloadAttemptedError):
+            generator.resolve_source_h5()
