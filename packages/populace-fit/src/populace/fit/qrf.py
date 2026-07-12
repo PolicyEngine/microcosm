@@ -47,6 +47,8 @@ Past that resolution the two paths are the same model.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -280,7 +282,17 @@ class _Forest:
 
         The predict is chunked over rows (:data:`_PREDICT_CHUNK_ROWS`) so the
         ``(n_rows x n_grid)`` prediction matrix never has to materialize whole —
-        at 3M+ rows that matrix alone would be tens of GB.
+        at 3M+ rows that matrix alone would be tens of GB — and the chunks run
+        **in parallel** across a thread pool (:func:`_predict_workers`).
+        ``quantile_forest``'s Cython ``predict`` releases the GIL over its
+        per-sample aggregation, so the threads run that aggregation — the serial
+        bottleneck when ``max_samples_leaf`` keeps full leaf populations — truly
+        concurrently, without serializing the fitted forest to any worker.
+
+        The parallel draw is **bit-identical** to a serial one: each row's value
+        depends only on that row (the forest predict is pure per row), so the
+        chunk boundaries never change a result. The tests pin this exact
+        equality rather than an approximate match.
 
         Args:
             frame: Feature rows (must carry the fitted columns).
@@ -294,13 +306,42 @@ class _Forest:
         grid = _QUANTILE_GRID
         n = len(features)
         out = np.empty(n, dtype=np.float64)
-        for start in range(0, n, _PREDICT_CHUNK_ROWS):
-            stop = min(start + _PREDICT_CHUNK_ROWS, n)
-            block = features[start:stop]
+        if n == 0:
+            return out
+
+        workers = _predict_workers()
+        # Bound the (rows x grid) matrix per chunk (memory) while cutting enough
+        # chunks to balance across workers. Boundaries are draw-invariant, so
+        # this only changes *when* each row is computed, never *what* it is.
+        chunk = max(1, min(_PREDICT_CHUNK_ROWS, -(-n // (4 * workers))))
+        bounds = [(start, min(start + chunk, n)) for start in range(0, n, chunk)]
+
+        def _draw_chunk(bound: tuple[int, int]) -> None:
+            start, stop = bound
             predictions = np.asarray(
-                self.model.predict(block, quantiles=list(grid))
-            ).reshape(len(block), len(grid))
+                self.model.predict(features[start:stop], quantiles=list(grid))
+            ).reshape(stop - start, len(grid))
+            # Disjoint output slices: each row is written by exactly one worker,
+            # so the shared ``out`` needs no lock.
             out[start:stop] = _interp_rows(quantiles[start:stop], grid, predictions)
+
+        if workers <= 1 or len(bounds) <= 1:
+            for bound in bounds:
+                _draw_chunk(bound)
+            return out
+
+        # Force the forest's own ``apply`` to run serially inside each worker:
+        # the outer pool already saturates the cores, so leaving it at the fit's
+        # ``n_jobs=-1`` would fan a thread pool under every worker and thrash.
+        # This synchronous draw owns the model, so the swap-and-restore is safe.
+        saved_n_jobs = self.model.n_jobs
+        self.model.n_jobs = 1
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for _ in pool.map(_draw_chunk, bounds):
+                    pass
+        finally:
+            self.model.n_jobs = saved_n_jobs
         return out
 
 
@@ -323,8 +364,48 @@ _QUANTILE_GRID = np.concatenate(
 
 #: Row-batch size for the draw predict. Bounds the ``(rows x grid)`` matrix and
 #: the quantile-forest workspace so large support frames stream in fixed-memory
-#: blocks instead of allocating the whole draw at once.
+#: blocks instead of allocating the whole draw at once. Also the per-chunk cap
+#: for the parallel draw, so a chunk's prediction matrix stays bounded no matter
+#: how few workers split how many rows.
 _PREDICT_CHUNK_ROWS = 10_000
+
+#: Environment override for the parallel draw's worker count. A build tool sets
+#: it to leave cores for concurrent work or to pin timing; unset defaults to
+#: :func:`os.cpu_count`.
+_PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
+
+
+def _predict_workers() -> int:
+    """Resolve the draw's thread-pool width.
+
+    Threads, not processes: ``quantile_forest``'s Cython ``predict`` runs its
+    per-sample aggregation under ``with nogil`` (a serial loop, no internal
+    ``prange``), so it releases the GIL and a *shared* fitted forest is queried
+    concurrently across row chunks with no per-worker serialization. A process
+    pool would instead pickle the whole forest into every worker — hundreds of
+    MB to gigabytes each, re-paid on every fit in the fit-then-predict-per-
+    pattern transfer path — for no speed gain over the GIL-free threads.
+
+    Defaults to :func:`os.cpu_count`; ``POPULACE_FIT_PREDICT_WORKERS`` overrides
+    it with a positive integer.
+
+    Raises:
+        ValueError: If the override is set but not a positive integer.
+    """
+    override = os.environ.get(_PREDICT_WORKERS_ENV)
+    if override is None or not override.strip():
+        return os.cpu_count() or 1
+    try:
+        workers = int(override)
+    except ValueError:
+        raise ValueError(
+            f"{_PREDICT_WORKERS_ENV} must be a positive integer, got {override!r}."
+        ) from None
+    if workers < 1:
+        raise ValueError(
+            f"{_PREDICT_WORKERS_ENV} must be a positive integer, got {workers}."
+        )
+    return workers
 
 
 def _fit_forest(
@@ -351,6 +432,10 @@ def _fit_forest(
         n_estimators=n_estimators,
         max_samples_leaf=max_samples_leaf,
         random_state=seed,
+        # Tree fitting and prediction parallelize without affecting the
+        # seed-determined draws; forests are deterministic per random_state
+        # regardless of worker count.
+        n_jobs=-1,
     )
     model.fit(x_fit, y_fit)
     return _Forest(model=model, columns=columns)
