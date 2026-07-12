@@ -216,6 +216,70 @@ def test_weeks_unemployed_source_override_parses() -> None:
     assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
 
 
+def test_stage_cli_defaults_to_legacy_all_without_checkpoints() -> None:
+    builder = _load_support_builder_module()
+
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "base.h5",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    assert args.stage == "all"
+    assert args.checkpoint_dir is None
+
+
+@pytest.mark.parametrize("stage", ["a", "b", "c", "d", "all"])
+def test_stage_cli_accepts_declared_stage_names(stage: str) -> None:
+    builder = _load_support_builder_module()
+
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "base.h5",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+            "--stage",
+            stage,
+            "--checkpoint-dir",
+            "checkpoints",
+        ]
+    )
+
+    assert args.stage == stage
+    assert args.checkpoint_dir == Path("checkpoints")
+
+
+def test_stage_cli_rejects_unknown_stage() -> None:
+    builder = _load_support_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._parse_args(
+            [
+                "--base-h5",
+                "base.h5",
+                "--puf-h5",
+                "puf.h5",
+                "--out",
+                "out",
+                "--without-block-ladder",
+                "--stage",
+                "not-a-stage",
+            ]
+        )
+
+    assert exc.value.code == 2
+
+
 def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

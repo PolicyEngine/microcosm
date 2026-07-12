@@ -107,6 +107,11 @@ from populace.frame.units import US_SCHEMA
 PERIOD = 2024
 DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
+STAGE_NAMES = ("a", "b", "c", "d")
+# Phase 2 populates this only after the conductor supplies empirical cut points.
+# Each entry is ``(stage_name, ordered_function_boundaries)`` so changing the
+# process topology cannot silently change the transformation order.
+STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -153,6 +158,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--stage",
+        choices=(*STAGE_NAMES, "all"),
+        default="all",
+        help=(
+            "Run one checkpointed stage, or all stages in order. Stage cut "
+            "points remain unconfigured until the empirical profile is approved."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        help="Directory for durable frame checkpoints and stage_profile.json.",
+    )
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
     parser.add_argument(
@@ -251,6 +270,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+
+    if getattr(args, "stage", "all") != "all":
+        _run_configured_stage(args)
+        return
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -884,6 +907,20 @@ def main() -> None:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+
+
+def _run_configured_stage(args: argparse.Namespace) -> None:
+    """Dispatch a separately executed stage once empirical cuts are configured."""
+
+    configured = dict(STAGE_BOUNDARIES)
+    if args.stage not in configured:
+        raise SystemExit(
+            f"Stage {args.stage!r} has no configured cut points yet; "
+            "wait for the conductor's empirical boundary decision."
+        )
+    raise NotImplementedError(
+        "Stage execution is enabled in Phase 2 after function boundaries are set."
+    )
 
 
 def impute_and_audit_us_puf_support(
