@@ -13,11 +13,42 @@ from typing import Any
 import numpy as np
 
 from populace.build.gates import input_mass_parity_gate
+from populace.build.us_runtime.alimony import US_ALIMONY_NONCONSTANT_PERSON_COLUMNS
+from populace.build.us_runtime.capital_gain_details import (
+    US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,
+    US_CAPITAL_GAIN_DETAILS_NONCONSTANT_TAX_UNIT_COLUMNS,
+)
+from populace.build.us_runtime.casualty_losses import (
+    US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.child_support import (
+    US_CHILD_SUPPORT_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.childcare import US_CHILDCARE_OUTPUT_COLUMNS
 from populace.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from populace.build.us_runtime.disability_benefits import (
+    US_DISABILITY_BENEFITS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.domestic_production import (
+    US_DOMESTIC_PRODUCTION_ALD_NONCONSTANT_TAX_UNIT_COLUMNS,
+)
+from populace.build.us_runtime.education_inputs import (
+    US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.educator_expenses import (
+    US_EDUCATOR_EXPENSE_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from populace.build.us_runtime.farm_business_income import (
+    US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.form_4952 import (
+    US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.geography_ladder import (
     US_GEOGRAPHY_LADDER_COLUMNS,
@@ -26,18 +57,84 @@ from populace.build.us_runtime.geography_ladder import (
 from populace.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.housing_inputs import (
+    US_HOUSING_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    US_HOUSING_NONCONSTANT_PERSON_COLUMNS,
+    US_HOUSING_NONCONSTANT_SPM_UNIT_COLUMNS,
+)
 from populace.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.build.us_runtime.input_mass import us_input_mass_totals
+from populace.build.us_runtime.medicare_take_up import (
+    US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.misc_itemized import (
+    US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.org_wages import (
+    US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.other_health_insurance import (
+    US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.pregnancy import (
     US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.qbi_inputs import (
+    US_QBI_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.relationship_inputs import (
+    US_RELATIONSHIP_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.retirement_distributions import (
+    US_RETIREMENT_DISTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.salt_refund_income import (
+    US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.scf_auto_loans import (
+    US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+)
 from populace.build.us_runtime.scf_wealth import (
+    US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
     US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.sipp_head_start import (
+    US_SIPP_HEAD_START_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.sipp_tips import (
+    US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.sipp_vehicles import (
+    US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.ssi_disability_criteria import (
+    US_SSI_DISABILITY_CRITERIA_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.ssi_take_up import (
+    US_SSI_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.voluntary_filing import (
+    US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS,
+)
+from populace.build.us_runtime.weeks_unemployed import (
+    US_WEEKS_UNEMPLOYED_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.wic_claim import (
+    US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS,
+)
+from populace.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from populace.frame import US_SCHEMA, Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -45,15 +142,51 @@ from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "takes_up_aca_if_eligible",
     "selected_marketplace_plan_benchmark_ratio",
+    *US_DOMESTIC_PRODUCTION_ALD_NONCONSTANT_TAX_UNIT_COLUMNS,
+    *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_TAX_UNIT_COLUMNS,
+    *US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS,
 )
 
 US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
     *US_HOURS_WORKED_NONCONSTANT_PERSON_COLUMNS,
     *US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_RELATIONSHIP_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
     *US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
+    *US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
     *US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
     *US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS,
+    *US_SSI_DISABILITY_CRITERIA_NONCONSTANT_PERSON_COLUMNS,
+    *US_SIPP_HEAD_START_NONCONSTANT_PERSON_COLUMNS,
+    *US_SSI_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+    *US_SIPP_TIPS_NONCONSTANT_PERSON_COLUMNS,
+    *US_ALIMONY_NONCONSTANT_PERSON_COLUMNS,
+    *US_CASUALTY_LOSS_NONCONSTANT_PERSON_COLUMNS,
+    *US_CHILD_SUPPORT_NONCONSTANT_PERSON_COLUMNS,
+    *US_DISABILITY_BENEFITS_NONCONSTANT_PERSON_COLUMNS,
+    *US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
+    *US_WEEKS_UNEMPLOYED_NONCONSTANT_PERSON_COLUMNS,
+    *US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS,
+    *US_EDUCATOR_EXPENSE_NONCONSTANT_PERSON_COLUMNS,
+    *US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS,
+    *US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
+    *US_RETIREMENT_CONTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+    *US_RETIREMENT_DISTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
+    *US_QBI_NONCONSTANT_PERSON_COLUMNS,
+    *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
+    *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+    *US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
+    *US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
+    *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,
+    *US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS,
+    *US_HOUSING_NONCONSTANT_PERSON_COLUMNS,
+)
+
+US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS = (
+    *US_CHILDCARE_OUTPUT_COLUMNS,
+    *US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
+    *US_HOUSING_NONCONSTANT_SPM_UNIT_COLUMNS,
 )
 
 #: The geography spine a US release carries by default: state and district,
@@ -64,6 +197,17 @@ US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS = (
     "state_fips",
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
     *US_GEOGRAPHY_LADDER_COLUMNS,
+)
+
+# Unlike the geography spine above, these household inputs must carry signal.
+# Presence-only would accept broadcast-zero engine defaults, silently zeroing
+# the OBBBA auto-loan provision and erasing the restored vehicle/net-worth
+# distributions while still satisfying a key-only export check.
+US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS = (
+    *US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    *US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    *US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS,
+    *US_HOUSING_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
 
 
@@ -268,12 +412,16 @@ def assert_required_us_release_source_columns(
     *,
     columns: tuple[str, ...] = US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
     person_columns: tuple[str, ...] = US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
+    spm_unit_columns: tuple[str, ...] = US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS,
     household_columns: tuple[str, ...] = (US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS),
+    household_nonconstant_columns: tuple[str, ...] = (
+        US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
+    ),
 ) -> None:
     """Require source-stage columns needed by US release gates.
 
-    Tax-unit columns come from the ACA Marketplace source stage; person
-    columns are the SSN/immigration surface (a missing or constant
+    Tax-unit columns come from the ACA Marketplace and PUF tax-detail stages;
+    person columns are the SSN/immigration surface (a missing or constant
     ``ssn_card_type`` reproduces the everyone-is-a-citizen failure of
     populace issue #225); household columns are the geography spine (a
     release without the block-anchored ladder of populace #275 cannot be
@@ -286,7 +434,9 @@ def assert_required_us_release_source_columns(
     for entity, required, check_nonconstant in (
         ("tax_unit", columns, True),
         ("person", person_columns, True),
+        ("spm_unit", spm_unit_columns, True),
         ("household", household_columns, False),
+        ("household", household_nonconstant_columns, True),
     ):
         table = frame.table(entity)
         for column in required:
@@ -296,7 +446,27 @@ def assert_required_us_release_source_columns(
             if not check_nonconstant:
                 continue
             unique = table[column].dropna().unique()
-            if len(unique) < 2:
+            # A one-household test/export can still carry real (non-default)
+            # auto-loan signal even though two distinct values are impossible.
+            # For normal multi-household releases these columns must be truly
+            # nonconstant; an all-zero broadcast always fails.
+            single_nondefault_auto_value = (
+                entity == "household"
+                and column in household_nonconstant_columns
+                and len(table) == 1
+                and len(unique) == 1
+                and bool(unique[0])
+            )
+            single_nondefault_spm_value = (
+                entity == "spm_unit"
+                and column in spm_unit_columns
+                and len(table) == 1
+                and len(unique) == 1
+                and bool(unique[0])
+            )
+            if len(unique) < 2 and not (
+                single_nondefault_auto_value or single_nondefault_spm_value
+            ):
                 failures.append(f"{entity}.{column}: not nonconstant")
     if failures:
         raise ValueError(
@@ -434,8 +604,14 @@ def export_us_l0_refit_h5(
         "required_person_source_columns": list(
             US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
         ),
+        "required_spm_unit_source_columns": list(
+            US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS
+        ),
         "required_household_source_columns": list(
             US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS
+        ),
+        "required_household_nonconstant_source_columns": list(
+            US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
         ),
         "required_source_columns_checked": bool(require_source_columns),
         "geography_ladder_gate_enforced": bool(require_geography_ladder),
@@ -582,7 +758,9 @@ def main(argv: list[str] | None = None) -> None:
 __all__ = [
     "L0RefitWeights",
     "US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS",
+    "US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS",
+    "US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS",
     "US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS",
     "attach_l0_refit_entity_weights",
     "attach_l0_refit_weights",

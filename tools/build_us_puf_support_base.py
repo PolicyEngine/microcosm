@@ -21,6 +21,7 @@ from populace.build import FitWeightRecord, weights_audit_gate
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.us_runtime import (
+    ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -37,18 +38,66 @@ from populace.build.us_runtime import (
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
+    fetch_asec_2023_weeks_unemployed_source,
+    impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
+    load_acs_2022_rent_donor,
+    load_asec_2023_weeks_unemployed_source,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_alimony_signal_gate,
+    us_capital_gain_details_signal_gate,
+    us_casualty_loss_signal_gate,
+    us_child_support_signal_gate,
+    us_childcare_signal_gate,
+    us_disability_benefits_signal_gate,
+    us_domestic_production_ald_signal_gate,
+    us_education_inputs_signal_gate,
+    us_educator_expense_signal_gate,
+    us_eligibility_inputs_signal_gate,
+    us_energy_subsidy_signal_gate,
+    us_farm_business_income_signal_gate,
+    us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
+    us_housing_inputs_signal_gate,
     us_immigration_composition_summary,
+    us_medicare_take_up_signal_gate,
+    us_misc_itemized_signal_gate,
+    us_pregnancy_signal_gate,
+    us_prior_year_income_signal_gate,
+    us_prior_year_income_source_reconciliation_gate,
+    us_qbi_inputs_signal_gate,
+    us_relationship_inputs_signal_gate,
+    us_retirement_contributions_signal_gate,
+    us_retirement_distributions_signal_gate,
+    us_salt_refund_income_signal_gate,
+    us_weeks_unemployed_signal_gate,
+    us_wic_claim_signal_gate,
+    us_workers_compensation_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
+    with_us_child_support_inputs,
+    with_us_childcare_inputs,
+    with_us_disability_benefits,
+    with_us_education_inputs,
+    with_us_eligibility_inputs,
+    with_us_energy_subsidy_input,
+    with_us_housing_inputs,
     with_us_immigration_inputs,
+    with_us_medicare_take_up_input,
+    with_us_pregnancy_inputs,
+    with_us_prior_year_income_inputs,
+    with_us_qbi_input_reconciliation,
+    with_us_relationship_inputs,
+    with_us_retirement_contribution_inputs,
+    with_us_retirement_distribution_inputs,
+    with_us_weeks_unemployed,
+    with_us_wic_claim_input,
+    with_us_workers_compensation,
 )
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
@@ -85,6 +134,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--asec-2023-weeks-unemployed-source",
+        type=Path,
+        help=(
+            "Optional local path to the SHA-pinned official 2023 ASEC CSV ZIP "
+            "used to restore income-year-2022 LKWEEKS. When omitted the "
+            "official Census archive is fetched and verified."
+        ),
+    )
+    parser.add_argument(
+        "--acs-h5",
+        type=Path,
+        help=(
+            "SHA-pinned processed ACS 2022 ARRAYS artifact used by the "
+            "housing/rent stage. Required unless --base-h5 already carries "
+            "a green housing-input surface."
+        ),
+    )
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
@@ -191,7 +258,138 @@ def main() -> None:
     summary_path = out_dir / _summary_filename(args.target_year)
 
     raw_base, base_source = _load_base_frame_from_args(args)
+    weeks_unemployed_source_path = (
+        args.asec_2023_weeks_unemployed_source
+        if args.asec_2023_weeks_unemployed_source is not None
+        else fetch_asec_2023_weeks_unemployed_source()
+    )
+    weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
+        weeks_unemployed_source_path
+    )
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_prior_year_income_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_relationship_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    relationship_inputs_gate = us_relationship_inputs_signal_gate(base)
+    if not relationship_inputs_gate.passed:
+        raise SystemExit(
+            "Relationship-input signal gate failed:\n  "
+            + "\n  ".join(relationship_inputs_gate.failures)
+        )
+    base = with_us_medicare_take_up_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    medicare_take_up_gate = us_medicare_take_up_signal_gate(base)
+    if not medicare_take_up_gate.passed:
+        raise SystemExit(
+            "Medicare take-up input signal gate failed before support cloning:\n  "
+            + "\n  ".join(medicare_take_up_gate.failures)
+        )
+    housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    acs_rent_donor: pd.DataFrame | None = None
+    if not housing_inputs_gate.passed:
+        if args.acs_h5 is None:
+            raise SystemExit(
+                "Housing-input signal gate is not already green and --acs-h5 "
+                "was not provided; exact pre_subsidy_rent restoration requires "
+                "the pinned ACS 2022 donor."
+            )
+        acs_rent_donor = load_acs_2022_rent_donor(args.acs_h5)
+        base = with_us_housing_inputs(
+            base,
+            seed=args.seed,
+            time_period=args.target_year,
+            acs_rent_donor=acs_rent_donor,
+        )
+        housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    if not housing_inputs_gate.passed:
+        raise SystemExit(
+            "Housing-input signal gate failed before support cloning:\n  "
+            + "\n  ".join(housing_inputs_gate.failures)
+        )
+    base = with_us_eligibility_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base)
+    if not eligibility_inputs_gate.passed:
+        raise SystemExit(
+            "Eligibility-input signal gate failed before support cloning:\n  "
+            + "\n  ".join(eligibility_inputs_gate.failures)
+        )
+    base = with_us_pregnancy_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    pregnancy_gate = us_pregnancy_signal_gate(base)
+    if not pregnancy_gate.passed:
+        raise SystemExit(
+            "Pregnancy signal gate failed before support cloning:\n  "
+            + "\n  ".join(pregnancy_gate.failures)
+        )
+    base = with_us_wic_claim_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    wic_claim_gate = us_wic_claim_signal_gate(base)
+    if not wic_claim_gate.passed:
+        raise SystemExit(
+            "WIC-claim signal gate failed before support cloning:\n  "
+            + "\n  ".join(wic_claim_gate.failures)
+        )
+    base = with_us_child_support_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_disability_benefits(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_workers_compensation(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_weeks_unemployed(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_2023_source=weeks_unemployed_source,
+    )
+    base = with_us_childcare_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_energy_subsidy_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_retirement_contribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_retirement_distribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -206,6 +404,211 @@ def main() -> None:
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
+    imputed = with_us_qbi_input_reconciliation(imputed)
+    imputed = with_us_wic_claim_input(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    wic_claim_gate = us_wic_claim_signal_gate(imputed)
+    if not wic_claim_gate.passed:
+        raise SystemExit(
+            "WIC-claim signal gate failed after support cloning:\n  "
+            + "\n  ".join(wic_claim_gate.failures)
+        )
+    medicare_take_up_gate = us_medicare_take_up_signal_gate(imputed)
+    if not medicare_take_up_gate.passed:
+        raise SystemExit(
+            "Medicare take-up input signal gate failed after support cloning:\n  "
+            + "\n  ".join(medicare_take_up_gate.failures)
+        )
+    imputed = impute_us_housing_assistance_to_puf_support(
+        imputed,
+        seed=args.seed,
+    )
+    imputed = with_us_prior_year_income_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    prior_year_income_gate = us_prior_year_income_signal_gate(imputed)
+    if not prior_year_income_gate.passed:
+        raise SystemExit(
+            "Prior-year-income signal gate failed:\n  "
+            + "\n  ".join(prior_year_income_gate.failures)
+        )
+    prior_year_income_reconciliation_gate = (
+        us_prior_year_income_source_reconciliation_gate(imputed)
+    )
+    if not prior_year_income_reconciliation_gate.passed:
+        raise SystemExit(
+            "Prior-year-income source reconciliation failed:\n  "
+            + "\n  ".join(prior_year_income_reconciliation_gate.failures)
+        )
+    housing_inputs_gate = us_housing_inputs_signal_gate(imputed)
+    if not housing_inputs_gate.passed:
+        raise SystemExit(
+            "Housing-input signal gate failed after PUF-support imputation:\n  "
+            + "\n  ".join(housing_inputs_gate.failures)
+        )
+    qbi_inputs_gate = us_qbi_inputs_signal_gate(imputed)
+    if not qbi_inputs_gate.passed:
+        raise SystemExit(
+            "QBI-input signal gate failed:\n  " + "\n  ".join(qbi_inputs_gate.failures)
+        )
+    farm_business_income_gate = us_farm_business_income_signal_gate(imputed)
+    if not farm_business_income_gate.passed:
+        raise SystemExit(
+            "Farm-business-income signal gate failed:\n  "
+            + "\n  ".join(farm_business_income_gate.failures)
+        )
+    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(imputed)
+    if not domestic_production_ald_gate.passed:
+        raise SystemExit(
+            "Domestic-production-ALD signal gate failed:\n  "
+            + "\n  ".join(domestic_production_ald_gate.failures)
+        )
+    imputed = with_us_child_support_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    child_support_gate = us_child_support_signal_gate(imputed)
+    if not child_support_gate.passed:
+        raise SystemExit(
+            "Child-support signal gate failed:\n  "
+            + "\n  ".join(child_support_gate.failures)
+        )
+    imputed = with_us_disability_benefits(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    disability_benefits_gate = us_disability_benefits_signal_gate(imputed)
+    if not disability_benefits_gate.passed:
+        raise SystemExit(
+            "Disability-benefits signal gate failed:\n  "
+            + "\n  ".join(disability_benefits_gate.failures)
+        )
+    imputed = with_us_workers_compensation(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    workers_compensation_gate = us_workers_compensation_signal_gate(imputed)
+    if not workers_compensation_gate.passed:
+        raise SystemExit(
+            "Workers-compensation signal gate failed:\n  "
+            + "\n  ".join(workers_compensation_gate.failures)
+        )
+    imputed = with_us_weeks_unemployed(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_2023_source=weeks_unemployed_source,
+    )
+    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(imputed)
+    if not weeks_unemployed_gate.passed:
+        raise SystemExit(
+            "Weeks-unemployed signal gate failed:\n  "
+            + "\n  ".join(weeks_unemployed_gate.failures)
+        )
+    educator_expense_gate = us_educator_expense_signal_gate(imputed)
+    if not educator_expense_gate.passed:
+        raise SystemExit(
+            "Educator-expense signal gate failed:\n  "
+            + "\n  ".join(educator_expense_gate.failures)
+        )
+    form_4952_election_gate = us_form_4952_election_signal_gate(imputed)
+    if not form_4952_election_gate.passed:
+        raise SystemExit(
+            "Form 4952 election signal gate failed:\n  "
+            + "\n  ".join(form_4952_election_gate.failures)
+        )
+    salt_refund_income_gate = us_salt_refund_income_signal_gate(imputed)
+    if not salt_refund_income_gate.passed:
+        raise SystemExit(
+            "SALT-refund-income signal gate failed:\n  "
+            + "\n  ".join(salt_refund_income_gate.failures)
+        )
+    capital_gain_details_gate = us_capital_gain_details_signal_gate(imputed)
+    if not capital_gain_details_gate.passed:
+        raise SystemExit(
+            "Capital-gain details signal gate failed:\n  "
+            + "\n  ".join(capital_gain_details_gate.failures)
+        )
+    imputed = with_us_childcare_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    childcare_gate = us_childcare_signal_gate(imputed)
+    if not childcare_gate.passed:
+        raise SystemExit(
+            "Childcare-input signal gate failed:\n  "
+            + "\n  ".join(childcare_gate.failures)
+        )
+    imputed = with_us_energy_subsidy_input(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    energy_subsidy_gate = us_energy_subsidy_signal_gate(imputed)
+    if not energy_subsidy_gate.passed:
+        raise SystemExit(
+            "Energy-subsidy signal gate failed:\n  "
+            + "\n  ".join(energy_subsidy_gate.failures)
+        )
+    alimony_gate = us_alimony_signal_gate(imputed)
+    if not alimony_gate.passed:
+        raise SystemExit(
+            "Alimony-input signal gate failed:\n  " + "\n  ".join(alimony_gate.failures)
+        )
+    casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
+    if not casualty_loss_gate.passed:
+        raise SystemExit(
+            "Casualty-loss signal gate failed:\n  "
+            + "\n  ".join(casualty_loss_gate.failures)
+        )
+    misc_itemized_gate = us_misc_itemized_signal_gate(imputed)
+    if not misc_itemized_gate.passed:
+        raise SystemExit(
+            "Miscellaneous-itemized signal gate failed:\n  "
+            + "\n  ".join(misc_itemized_gate.failures)
+        )
+    imputed = with_us_retirement_contribution_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    retirement_contributions_gate = us_retirement_contributions_signal_gate(imputed)
+    if not retirement_contributions_gate.passed:
+        raise SystemExit(
+            "Retirement-contribution signal gate failed:\n  "
+            + "\n  ".join(retirement_contributions_gate.failures)
+        )
+    imputed = with_us_retirement_distribution_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
+    if not retirement_distributions_gate.passed:
+        raise SystemExit(
+            "Retirement-distribution signal gate failed:\n  "
+            + "\n  ".join(retirement_distributions_gate.failures)
+        )
+    imputed = with_us_education_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    education_inputs_gate = us_education_inputs_signal_gate(imputed)
+    if not education_inputs_gate.passed:
+        raise SystemExit(
+            "Education-input signal gate failed:\n  "
+            + "\n  ".join(education_inputs_gate.failures)
+        )
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
         ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
@@ -313,6 +716,18 @@ def main() -> None:
         "base_sha256": _sha256(args.base_h5) if args.base_h5 is not None else None,
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
+        "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
+        "acs_rent_donor_rows": (
+            int(len(acs_rent_donor)) if acs_rent_donor is not None else None
+        ),
+        "weeks_unemployed_source": {
+            "path": str(Path(weeks_unemployed_source_path).resolve()),
+            "sha256": _sha256(weeks_unemployed_source_path),
+            "upstream_archive_sha256": (ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256),
+            "rows": int(len(weeks_unemployed_source)),
+            "audit": dict(weeks_unemployed_source.attrs.get("source_audit", {})),
+        },
         "output_h5": str(output_h5),
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
@@ -327,6 +742,141 @@ def main() -> None:
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "qbi_inputs_signal": {
+            "passed": qbi_inputs_gate.passed,
+            "failures": list(qbi_inputs_gate.failures),
+            "details": dict(qbi_inputs_gate.details),
+        },
+        "farm_business_income_signal": {
+            "passed": farm_business_income_gate.passed,
+            "failures": list(farm_business_income_gate.failures),
+            "details": dict(farm_business_income_gate.details),
+        },
+        "domestic_production_ald_signal": {
+            "passed": domestic_production_ald_gate.passed,
+            "failures": list(domestic_production_ald_gate.failures),
+            "details": dict(domestic_production_ald_gate.details),
+        },
+        "child_support_signal": {
+            "passed": child_support_gate.passed,
+            "failures": list(child_support_gate.failures),
+            "details": dict(child_support_gate.details),
+        },
+        "disability_benefits_signal": {
+            "passed": disability_benefits_gate.passed,
+            "failures": list(disability_benefits_gate.failures),
+            "details": dict(disability_benefits_gate.details),
+        },
+        "workers_compensation_signal": {
+            "passed": workers_compensation_gate.passed,
+            "failures": list(workers_compensation_gate.failures),
+            "details": dict(workers_compensation_gate.details),
+        },
+        "weeks_unemployed_signal": {
+            "passed": weeks_unemployed_gate.passed,
+            "failures": list(weeks_unemployed_gate.failures),
+            "details": dict(weeks_unemployed_gate.details),
+        },
+        "eligibility_inputs_signal": {
+            "passed": eligibility_inputs_gate.passed,
+            "failures": list(eligibility_inputs_gate.failures),
+            "details": dict(eligibility_inputs_gate.details),
+        },
+        "pregnancy_signal": {
+            "passed": pregnancy_gate.passed,
+            "failures": list(pregnancy_gate.failures),
+            "details": dict(pregnancy_gate.details),
+        },
+        "wic_claim_signal": {
+            "passed": wic_claim_gate.passed,
+            "failures": list(wic_claim_gate.failures),
+            "details": dict(wic_claim_gate.details),
+        },
+        "educator_expense_signal": {
+            "passed": educator_expense_gate.passed,
+            "failures": list(educator_expense_gate.failures),
+            "details": dict(educator_expense_gate.details),
+        },
+        "form_4952_election_signal": {
+            "passed": form_4952_election_gate.passed,
+            "failures": list(form_4952_election_gate.failures),
+            "details": dict(form_4952_election_gate.details),
+        },
+        "salt_refund_income_signal": {
+            "passed": salt_refund_income_gate.passed,
+            "failures": list(salt_refund_income_gate.failures),
+            "details": dict(salt_refund_income_gate.details),
+        },
+        "capital_gain_details_signal": {
+            "passed": capital_gain_details_gate.passed,
+            "failures": list(capital_gain_details_gate.failures),
+            "details": dict(capital_gain_details_gate.details),
+        },
+        "childcare_inputs_signal": {
+            "passed": childcare_gate.passed,
+            "failures": list(childcare_gate.failures),
+            "details": dict(childcare_gate.details),
+        },
+        "energy_subsidy_signal": {
+            "passed": energy_subsidy_gate.passed,
+            "failures": list(energy_subsidy_gate.failures),
+            "details": dict(energy_subsidy_gate.details),
+        },
+        "alimony_inputs_signal": {
+            "passed": alimony_gate.passed,
+            "failures": list(alimony_gate.failures),
+            "details": dict(alimony_gate.details),
+        },
+        "casualty_loss_signal": {
+            "passed": casualty_loss_gate.passed,
+            "failures": list(casualty_loss_gate.failures),
+            "details": dict(casualty_loss_gate.details),
+        },
+        "misc_itemized_signal": {
+            "passed": misc_itemized_gate.passed,
+            "failures": list(misc_itemized_gate.failures),
+            "details": dict(misc_itemized_gate.details),
+        },
+        "education_inputs_signal": {
+            "passed": education_inputs_gate.passed,
+            "failures": list(education_inputs_gate.failures),
+            "details": dict(education_inputs_gate.details),
+        },
+        "retirement_contributions_signal": {
+            "passed": retirement_contributions_gate.passed,
+            "failures": list(retirement_contributions_gate.failures),
+            "details": dict(retirement_contributions_gate.details),
+        },
+        "retirement_distributions_signal": {
+            "passed": retirement_distributions_gate.passed,
+            "failures": list(retirement_distributions_gate.failures),
+            "details": dict(retirement_distributions_gate.details),
+        },
+        "relationship_inputs_signal": {
+            "passed": relationship_inputs_gate.passed,
+            "failures": list(relationship_inputs_gate.failures),
+            "details": dict(relationship_inputs_gate.details),
+        },
+        "medicare_take_up_input_signal": {
+            "passed": medicare_take_up_gate.passed,
+            "failures": list(medicare_take_up_gate.failures),
+            "details": dict(medicare_take_up_gate.details),
+        },
+        "housing_inputs_signal": {
+            "passed": housing_inputs_gate.passed,
+            "failures": list(housing_inputs_gate.failures),
+            "details": dict(housing_inputs_gate.details),
+        },
+        "prior_year_income_signal": {
+            "passed": prior_year_income_gate.passed,
+            "failures": list(prior_year_income_gate.failures),
+            "details": dict(prior_year_income_gate.details),
+        },
+        "prior_year_income_source_reconciliation": {
+            "passed": prior_year_income_reconciliation_gate.passed,
+            "failures": list(prior_year_income_reconciliation_gate.failures),
+            "details": dict(prior_year_income_reconciliation_gate.details),
+        },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,
         "channel_output_totals": _channel_output_totals(imputed),
@@ -395,9 +945,7 @@ def impute_and_audit_us_puf_support(
     )
     report = weights_audit_gate(fit_records)
     if not report.passed:
-        raise SystemExit(
-            "Weights audit failed:\n  " + "\n  ".join(report.failures)
-        )
+        raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     weights_audit = {
         "passed": report.passed,
         "failures": list(report.failures),

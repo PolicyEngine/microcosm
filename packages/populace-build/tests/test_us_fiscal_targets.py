@@ -3423,11 +3423,14 @@ def test_macro_realism_bands_cover_issue_40_backstops() -> None:
 
 
 def test_scf_nonnegative_targets_gate_negative_interest() -> None:
-    assert "auto_loan_interest" in US_NONNEGATIVE_SOURCE_OUTPUTS
-    result = nonnegative_columns_gate(
-        {"auto_loan_interest": [120.0, -9.0]},
-        US_NONNEGATIVE_SOURCE_OUTPUTS,
-    )
+    assert {
+        "auto_loan_balance",
+        "auto_loan_interest",
+        "qualified_passenger_vehicle_loan_interest",
+    } <= US_NONNEGATIVE_SOURCE_OUTPUTS
+    columns = {name: [0.0, 0.0] for name in US_NONNEGATIVE_SOURCE_OUTPUTS}
+    columns["auto_loan_interest"] = [120.0, -9.0]
+    result = nonnegative_columns_gate(columns, US_NONNEGATIVE_SOURCE_OUTPUTS)
     assert not result.passed
     assert "auto_loan_interest" in result.failures[0]
 

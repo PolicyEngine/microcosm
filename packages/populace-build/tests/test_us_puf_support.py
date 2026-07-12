@@ -115,6 +115,7 @@ def _raw_asec_predictor_frame() -> Frame:
                 "RNT_VAL": [20.0, 0.0, 0.0],
                 "FRSE_VAL": [5.0, 0.0, 0.0],
                 "UC_VAL": [0.0, 70.0, 0.0],
+                "OI_OFF": [19, 0, 0],
                 "OI_VAL": [3.0, 0.0, 0.0],
                 "PHIP_VAL": [400.0, 0.0, 50.0],
                 "PEMCPREM": [100.0, 0.0, 25.0],
@@ -236,6 +237,7 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "non_qualified_dividend_income": [1.0, 2.0, 3.0],
             "qualified_dividend_income": [4.0, 5.0, 6.0],
             "home_mortgage_interest": [10.0, 20.0, 30.0],
+            "educator_expense": [100.0, 200.0, 300.0],
             "social_security": [100.0, 200.0, 300.0],
             "taxable_unemployment_compensation": [13.0, 17.0, 19.0],
             "state_and_local_sales_or_income_tax": [40.0, 50.0],
@@ -245,6 +247,7 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
             "qualified_dividend_income",
             "non_qualified_dividend_income",
             "home_mortgage_interest",
+            "educator_expense",
             "social_security_retirement",
             "social_security_disability",
             "social_security_dependents",
@@ -266,6 +269,7 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert "social_security" not in donor
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
     assert donor["home_mortgage_interest"].tolist() == [30.0, 30.0]
+    assert donor["educator_expense"].tolist() == [300.0, 300.0]
     assert "interest_deduction" not in donor
     assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
@@ -295,8 +299,16 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "qualified_tuition_expenses" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "educator_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "casualty_loss" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "unreimbursed_business_employee_expenses"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
     assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "domestic_production_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     assert "first_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
@@ -333,6 +345,90 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
         not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
     )
     assert "health_savings_account_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+
+
+def test_puf_tax_unit_donor_derives_qualified_tuition_from_raw_fields() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "E03230": [500.0, 2_000.0, -10.0],
+            "E87530": [1_000.0, 1_500.0, 4_000.0],
+        },
+        person_outputs=("qualified_tuition_expenses",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["qualified_tuition_expenses"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_educator_expense() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "educator_expense": [250.0, 50.0, 0.0],
+        },
+        person_outputs=("educator_expense",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["educator_expense"].tolist() == [300.0, 0.0]
+
+
+def test_puf_tax_unit_donor_carries_person_casualty_losses() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "casualty_loss": [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=("casualty_loss",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["casualty_loss"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_both_person_alimony_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "alimony_income": [1_000.0, 2_000.0, 4_000.0],
+            "alimony_expense": [500.0, 700.0, 3_000.0],
+        },
+        person_outputs=("alimony_income", "alimony_expense"),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["alimony_income"].tolist() == [3_000.0, 4_000.0]
+    assert donor["alimony_expense"].tolist() == [1_200.0, 3_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_misc_itemized_expenses() -> None:
+    output = "unreimbursed_business_employee_expenses"
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            output: [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=(output,),
+        tax_unit_outputs=(),
+    )
+
+    assert donor[output].tolist() == [3_000.0, 4_000.0]
 
 
 def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:
@@ -597,8 +693,10 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert person["taxable_private_pension_income"].tolist() == [649.0, 0.0, 0.0]
     assert person["taxable_ira_distributions"].tolist() == [500.0, 0.0, 0.0]
     assert person["rental_income"].tolist() == [20.0, 0.0, 0.0]
-    assert person["farm_income"].tolist() == [5.0, 0.0, 0.0]
+    assert person["farm_operations_income"].tolist() == [5.0, 0.0, 0.0]
+    assert "farm_income" not in person
     assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
+    assert person["alimony_income"].tolist() == [0.0, 0.0, 0.0]
     assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
     assert person["health_insurance_premiums_without_medicare_part_b"].tolist() == [
         400.0,
@@ -801,6 +899,97 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
     assert puf_people["qualified_dividend_income"].tolist() == [0.25, 0.0, 9.6]
 
 
+def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EducatorExpenseQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(
+            self,
+            frame,
+            predictors,
+            outputs,
+            *,
+            weights,
+        ) -> "EducatorExpenseQRF":
+            assert outputs == ["educator_expense"]
+            assert weights == "design"
+            return self
+
+        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {"educator_expense": [300.0, 200.0]},
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", EducatorExpenseQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0],
+            "educator_expense": [300.0, 200.0, 0.0],
+            # Weighted donor positive rate = (0.5 + 0.5) / 4 = 25%.
+            "weight": [0.5, 0.5, 3.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=("educator_expense",),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    person = imputed.table("person")
+    asec_people = person[
+        person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ].sort_values(support_source_id_column("person"))
+    assert asec_people["educator_expense"].tolist() == [0.0, 0.0, 0.0]
+
+    puf_totals = puf_people.groupby("person_tax_unit_id", sort=False)[
+        "educator_expense"
+    ].sum()
+    np.testing.assert_allclose(puf_totals.to_numpy(), [900.0, 0.0])
+    np.testing.assert_allclose(
+        puf_people.iloc[:2]["educator_expense"].to_numpy(),
+        [900.0 * 50_000.0 / 70_000.0, 900.0 * 20_000.0 / 70_000.0],
+    )
+
+    household = imputed.table("household")
+    puf_household_mask = (
+        household[support_channel_column("household")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    puf_household_weights = pd.Series(
+        imputed.weights_for("household").values[puf_household_mask],
+        index=household.loc[puf_household_mask, "household_id"],
+    )
+    tax_unit_household = puf_people.groupby("person_tax_unit_id", sort=False)[
+        "person_household_id"
+    ].first()
+    tax_unit_weights = tax_unit_household.map(puf_household_weights)
+    puf_positive_rate = float(
+        tax_unit_weights[puf_totals > 0.0].sum() / tax_unit_weights.sum()
+    )
+    donor_positive_rate = float(
+        donor.loc[donor["educator_expense"] > 0.0, "weight"].sum()
+        / donor["weight"].sum()
+    )
+    assert donor_positive_rate == pytest.approx(0.25)
+    assert puf_positive_rate == pytest.approx(donor_positive_rate)
+
+
 def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
     None
 ):
@@ -855,12 +1044,16 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
             "first_home_mortgage_origination_year": [2018, 2016],
             "second_home_mortgage_origination_year": [0, 2020],
             "health_savings_account_ald": [1_500.0, 0.0],
+            "domestic_production_ald": [7_500.0, 0.0],
+            "unrecaptured_section_1250_gain": [500.0, 0.0],
         },
         person_outputs=(),
         tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
 
     assert donor["health_savings_account_ald"].tolist() == [1_500.0, 0.0]
+    assert donor["domestic_production_ald"].tolist() == [7_500.0, 0.0]
+    assert donor["unrecaptured_section_1250_gain"].tolist() == [500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
     assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]

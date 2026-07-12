@@ -196,6 +196,26 @@ def test_pooled_asec_mode_rejects_base_h5_at_parse_time() -> None:
     assert exc.value.code == 2
 
 
+def test_weeks_unemployed_source_override_parses() -> None:
+    builder = _load_support_builder_module()
+
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "base.h5",
+            "--puf-h5",
+            "puf.h5",
+            "--asec-2023-weeks-unemployed-source",
+            "asecpub23csv.zip",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
 def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -454,3 +474,651 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         )
 
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("failing_gate", "failure_message"),
+    [
+        ("child_support", "PUF child-support channel is default-only"),
+        ("disability_benefits", "PUF disability-benefits channel is default-only"),
+        ("wic_claim", "PUF WIC-claim channel is default-only"),
+        ("educator_expense", "PUF educator-expense channel is default-only"),
+        ("form_4952", "PUF Form 4952 channel is default-only"),
+        ("salt_refund", "PUF SALT-refund channel is default-only"),
+        ("energy_subsidy", "PUF energy-subsidy channel is default-only"),
+        ("weeks_unemployed", "PUF weeks-unemployed channel is default-only"),
+        (
+            "retirement_distributions",
+            "PUF retirement-distribution channel is default-only",
+        ),
+    ],
+)
+def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failing_gate: str,
+    failure_message: str,
+) -> None:
+    builder = _load_support_builder_module()
+    child_support_calls: list[tuple[object, int, int]] = []
+    disability_benefits_calls: list[tuple[object, int, int]] = []
+    weeks_unemployed_calls: list[tuple[object, int, int, object]] = []
+    weeks_unemployed_gate_frames: list[object] = []
+    weeks_unemployed_source_loads: list[Path] = []
+    educator_expense_gate_frames: list[object] = []
+    form_4952_gate_frames: list[object] = []
+    salt_refund_gate_frames: list[object] = []
+    energy_subsidy_gate_frames: list[object] = []
+    retirement_distribution_calls: list[tuple[object, int, int]] = []
+    retirement_distribution_gate_frames: list[object] = []
+    prior_year_income_calls: list[tuple[object, int, int]] = []
+    prior_year_income_gate_frames: list[object] = []
+    prior_year_income_reconciliation_frames: list[object] = []
+
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda: type(
+            "Args",
+            (),
+            {
+                "out": tmp_path,
+                "target_year": 2024,
+                "seed": 7,
+                "n_estimators": 4,
+                "puf_h5": tmp_path / "puf.h5",
+                "acs_h5": tmp_path / "acs.h5",
+                "asec_2023_weeks_unemployed_source": (tmp_path / "asecpub23csv.zip"),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame_from_args",
+        lambda args: ("raw", {"kind": "fixture"}),
+    )
+    monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+
+    def fake_prior_year_income(frame, *, seed, time_period):
+        prior_year_income_calls.append((frame, seed, time_period))
+        return "prior-year-direct" if frame == "cps" else "prior-year-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_prior_year_income_inputs",
+        fake_prior_year_income,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_relationship_inputs",
+        lambda frame, *, seed, time_period: "relationship-inputs",
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_relationship_inputs_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_medicare_take_up_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicare_take_up_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
+    housing_gate_frames: list[object] = []
+
+    def fake_housing_inputs_signal_gate(frame):
+        housing_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": frame != "relationship-inputs",
+                "failures": (
+                    ("housing inputs absent",) if frame == "relationship-inputs" else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_housing_inputs_signal_gate",
+        fake_housing_inputs_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_acs_2022_rent_donor",
+        lambda path: "acs-rent-donor",
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_housing_inputs",
+        lambda frame, *, seed, time_period, acs_rent_donor: "housing-direct",
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_eligibility_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_wic_claim_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    for gate_name in (
+        "us_eligibility_inputs_signal_gate",
+        "us_pregnancy_signal_gate",
+    ):
+        monkeypatch.setattr(
+            builder,
+            gate_name,
+            lambda frame: type(
+                "Gate", (), {"passed": True, "failures": (), "details": {}}
+            )(),
+        )
+    monkeypatch.setattr(
+        builder,
+        "us_wic_claim_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": not (
+                    failing_gate == "wic_claim" and frame == "qbi-reconciled"
+                ),
+                "failures": (
+                    ("PUF WIC-claim channel is default-only",)
+                    if failing_gate == "wic_claim" and frame == "qbi-reconciled"
+                    else ()
+                ),
+                "details": {},
+            },
+        )(),
+    )
+
+    def fake_child_support(frame, *, seed, time_period):
+        child_support_calls.append((frame, seed, time_period))
+        return (
+            "child-support-direct" if frame == "housing-direct" else "child-support-puf"
+        )
+
+    monkeypatch.setattr(builder, "with_us_child_support_inputs", fake_child_support)
+
+    def fake_disability_benefits(frame, *, seed, time_period):
+        disability_benefits_calls.append((frame, seed, time_period))
+        if frame == "child-support-direct":
+            return "disability-benefits-direct"
+        return "disability-benefits-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_disability_benefits",
+        fake_disability_benefits,
+    )
+
+    def fake_load_weeks_unemployed_source(path, **_kwargs):
+        weeks_unemployed_source_loads.append(Path(path))
+        return "weeks-source"
+
+    def fake_with_weeks_unemployed(
+        frame,
+        *,
+        seed,
+        time_period,
+        asec_2023_source,
+    ):
+        weeks_unemployed_calls.append((frame, seed, time_period, asec_2023_source))
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        fake_load_weeks_unemployed_source,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_weeks_unemployed",
+        fake_with_weeks_unemployed,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_workers_compensation",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_childcare_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_energy_subsidy_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_contribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+
+    def fake_retirement_distributions(frame, *, seed, time_period):
+        retirement_distribution_calls.append((frame, seed, time_period))
+        if frame == "disability-benefits-direct":
+            return "retirement-distributions-direct"
+        return "retirement-distributions-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_distribution_inputs",
+        fake_retirement_distributions,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_immigration_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "clone_us_frame_for_puf_support",
+        lambda frame: "expanded",
+    )
+    monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
+    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "impute_and_audit_us_puf_support",
+        lambda expanded, donor, **kwargs: ("puf-imputed", {"passed": True}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_input_reconciliation",
+        lambda frame: "qbi-reconciled",
+    )
+    monkeypatch.setattr(
+        builder,
+        "impute_us_housing_assistance_to_puf_support",
+        lambda frame, *, seed: "housing-puf",
+    )
+    passing_gate = type(
+        "Gate",
+        (),
+        {"passed": True, "failures": (), "details": {}},
+    )()
+
+    def fake_prior_year_income_gate(frame):
+        prior_year_income_gate_frames.append(frame)
+        return passing_gate
+
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_signal_gate",
+        fake_prior_year_income_gate,
+    )
+
+    def fake_prior_year_income_reconciliation_gate(frame):
+        prior_year_income_reconciliation_frames.append(frame)
+        return passing_gate
+
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_source_reconciliation_gate",
+        fake_prior_year_income_reconciliation_gate,
+    )
+    monkeypatch.setattr(
+        builder, "us_qbi_inputs_signal_gate", lambda frame: passing_gate
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_farm_business_income_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_domestic_production_ald_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_child_support_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "child_support",
+                "failures": (
+                    ("PUF child-support channel is default-only",)
+                    if failing_gate == "child_support"
+                    else ()
+                ),
+                "details": {},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_disability_benefits_signal_gate",
+        lambda frame: type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "disability_benefits",
+                "failures": (
+                    ("PUF disability-benefits channel is default-only",)
+                    if failing_gate == "disability_benefits"
+                    else ()
+                ),
+                "details": {},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_workers_compensation_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
+
+    def fake_weeks_unemployed_signal_gate(frame):
+        weeks_unemployed_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "weeks_unemployed",
+                "failures": (
+                    ("PUF weeks-unemployed channel is default-only",)
+                    if failing_gate == "weeks_unemployed"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_weeks_unemployed_signal_gate",
+        fake_weeks_unemployed_signal_gate,
+    )
+
+    def fake_educator_expense_signal_gate(frame):
+        educator_expense_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "educator_expense",
+                "failures": (
+                    ("PUF educator-expense channel is default-only",)
+                    if failing_gate == "educator_expense"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_educator_expense_signal_gate",
+        fake_educator_expense_signal_gate,
+    )
+
+    def fake_form_4952_election_signal_gate(frame):
+        form_4952_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "form_4952",
+                "failures": (
+                    ("PUF Form 4952 channel is default-only",)
+                    if failing_gate == "form_4952"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_form_4952_election_signal_gate",
+        fake_form_4952_election_signal_gate,
+    )
+
+    def fake_salt_refund_income_signal_gate(frame):
+        salt_refund_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "salt_refund",
+                "failures": (
+                    ("PUF SALT-refund channel is default-only",)
+                    if failing_gate == "salt_refund"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_salt_refund_income_signal_gate",
+        fake_salt_refund_income_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_capital_gain_details_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_childcare_signal_gate",
+        lambda frame: passing_gate,
+    )
+
+    def fake_energy_subsidy_signal_gate(frame):
+        energy_subsidy_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "energy_subsidy",
+                "failures": (
+                    ("PUF energy-subsidy channel is default-only",)
+                    if failing_gate == "energy_subsidy"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_energy_subsidy_signal_gate",
+        fake_energy_subsidy_signal_gate,
+    )
+    monkeypatch.setattr(builder, "us_alimony_signal_gate", lambda frame: passing_gate)
+    monkeypatch.setattr(
+        builder,
+        "us_casualty_loss_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_misc_itemized_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_contributions_signal_gate",
+        lambda frame: passing_gate,
+    )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        retirement_distribution_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "retirement_distributions",
+                "failures": (
+                    ("PUF retirement-distribution channel is default-only",)
+                    if failing_gate == "retirement_distributions"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_distributions_signal_gate",
+        fake_retirement_distributions_signal_gate,
+    )
+
+    with pytest.raises(SystemExit, match=failure_message):
+        builder.main()
+
+    if failing_gate == "wic_claim":
+        assert child_support_calls == [("housing-direct", 7, 2024)]
+        assert prior_year_income_calls == [("cps", 7, 2024)]
+        assert prior_year_income_gate_frames == []
+        assert prior_year_income_reconciliation_frames == []
+        assert housing_gate_frames == ["relationship-inputs", "housing-direct"]
+    else:
+        assert child_support_calls == [
+            ("housing-direct", 7, 2024),
+            ("prior-year-puf", 7, 2024),
+        ]
+        assert prior_year_income_calls == [
+            ("cps", 7, 2024),
+            ("housing-puf", 7, 2024),
+        ]
+        assert prior_year_income_gate_frames == ["prior-year-puf"]
+        assert prior_year_income_reconciliation_frames == ["prior-year-puf"]
+        assert housing_gate_frames == [
+            "relationship-inputs",
+            "housing-direct",
+            "prior-year-puf",
+        ]
+    expected_disability_calls = [("child-support-direct", 7, 2024)]
+    if failing_gate not in {"child_support", "wic_claim"}:
+        expected_disability_calls.append(("child-support-puf", 7, 2024))
+    assert disability_benefits_calls == expected_disability_calls
+    expected_weeks_calls = [("disability-benefits-direct", 7, 2024, "weeks-source")]
+    if failing_gate not in {"wic_claim", "child_support", "disability_benefits"}:
+        expected_weeks_calls.append(
+            ("disability-benefits-puf", 7, 2024, "weeks-source")
+        )
+    assert weeks_unemployed_calls == expected_weeks_calls
+    assert weeks_unemployed_source_loads == [tmp_path / "asecpub23csv.zip"]
+    assert weeks_unemployed_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate not in {"wic_claim", "child_support", "disability_benefits"}
+        else []
+    )
+    assert educator_expense_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate
+        in {
+            "educator_expense",
+            "form_4952",
+            "salt_refund",
+            "energy_subsidy",
+            "retirement_distributions",
+        }
+        else []
+    )
+    assert form_4952_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate
+        in {"form_4952", "salt_refund", "energy_subsidy", "retirement_distributions"}
+        else []
+    )
+    assert salt_refund_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate in {"salt_refund", "energy_subsidy", "retirement_distributions"}
+        else []
+    )
+    assert energy_subsidy_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate in {"energy_subsidy", "retirement_distributions"}
+        else []
+    )
+    expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
+    if failing_gate == "retirement_distributions":
+        expected_retirement_distribution_calls.append(
+            ("disability-benefits-puf", 7, 2024)
+        )
+    assert retirement_distribution_calls == expected_retirement_distribution_calls
+    assert retirement_distribution_gate_frames == (
+        ["retirement-distributions-puf"]
+        if failing_gate == "retirement_distributions"
+        else []
+    )
+
+
+def test_main_summary_records_retirement_distribution_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"retirement_distributions_signal": {' in source
+    assert '"passed": retirement_distributions_gate.passed' in source
+    assert '"failures": list(retirement_distributions_gate.failures)' in source
+    assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_weeks_unemployed_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"weeks_unemployed_signal": {' in source
+    assert '"passed": weeks_unemployed_gate.passed' in source
+    assert '"failures": list(weeks_unemployed_gate.failures)' in source
+    assert '"details": dict(weeks_unemployed_gate.details)' in source
+
+
+def test_main_summary_records_salt_refund_income_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"salt_refund_income_signal": {' in source
+    assert '"passed": salt_refund_income_gate.passed' in source
+    assert '"failures": list(salt_refund_income_gate.failures)' in source
+    assert '"details": dict(salt_refund_income_gate.details)' in source
+
+
+def test_main_summary_records_energy_subsidy_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"energy_subsidy_signal": {' in source
+    assert '"passed": energy_subsidy_gate.passed' in source
+    assert '"failures": list(energy_subsidy_gate.failures)' in source
+    assert '"details": dict(energy_subsidy_gate.details)' in source
+
+
+def test_main_summary_records_prior_year_income_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"prior_year_income_signal": {' in source
+    assert '"passed": prior_year_income_gate.passed' in source
+    assert '"failures": list(prior_year_income_gate.failures)' in source
+    assert '"details": dict(prior_year_income_gate.details)' in source
+    assert '"prior_year_income_source_reconciliation": {' in source
+    assert '"passed": prior_year_income_reconciliation_gate.passed' in source

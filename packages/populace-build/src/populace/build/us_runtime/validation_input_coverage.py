@@ -10,13 +10,13 @@ produced by no stage, the provision is a structural zero on the dataset and its
 validation row reads as a silent zero until an external benchmark exposes it.
 Two shipped instances:
 
-- education credits (``soi_baseline_levels`` row ``soi_education_credits``,
-  ``tax_expenditure_reforms`` has no education row) depend on
-  ``qualified_tuition_expenses``, populated on 641 of 160,858 person records —
-  education credits validate ~40% low (populace#253); and
+- education credits (``soi_baseline_levels`` row ``soi_education_credits``)
+  depend on ``qualified_tuition_expenses``; the PUF education stage now
+  produces that leaf and its five AOTC factual inputs (populace#253); and
 - the OBBBA auto-loan-interest deduction depends on
-  ``qualified_passenger_vehicle_loan_interest``, never imputed, so the
-  provision is structurally $0 in reform validation (populace#252).
+  ``qualified_passenger_vehicle_loan_interest``; the SCF auto-loan stage now
+  derives a documented qualifying-share proxy so the provision binds
+  (populace#252).
 
 Both were invisible because nothing checked that a validation row's inputs are
 actually produced. :func:`us_validation_input_coverage_gate` is that check.
@@ -105,31 +105,69 @@ class ValidationInputLeaf:
 #: :func:`assert_validation_leaf_registry_current`.
 US_VALIDATION_PROVISION_INPUT_LEAVES: tuple[ValidationInputLeaf, ...] = (
     ValidationInputLeaf(
+        leaf="tip_income",
+        provision_variables=("tip_income_deduction",),
+        validation_rows=("obbba_no_tax_on_tips",),
+    ),
+    ValidationInputLeaf(
+        leaf="treasury_tipped_occupation_code",
+        provision_variables=("tip_income_deduction",),
+        validation_rows=("obbba_no_tax_on_tips",),
+    ),
+    ValidationInputLeaf(
+        leaf="fsla_overtime_premium",
+        provision_variables=("overtime_income_deduction",),
+        validation_rows=("obbba_no_tax_on_overtime",),
+    ),
+    ValidationInputLeaf(
         leaf="qualified_tuition_expenses",
         provision_variables=("education_tax_credits",),
         validation_rows=("soi_education_credits",),
-        # #253: populated on 641/160,858 person records; education credits
-        # validate ~40% below the IRS SOI actual. A reviewed exclusion until
-        # the leaf is imputed from enrollment + published tuition
-        # distributions (NCES/IPEDS) or education claims are calibrated.
-        reason=(
-            "Qualifying tuition input essentially unimputed — 641/160,858 person "
-            "records (PolicyEngine/populace#253); education credits validate ~40% "
-            "low until it is imputed or education claims are calibrated."
-        ),
+    ),
+    ValidationInputLeaf(
+        leaf="traditional_401k_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="roth_401k_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="traditional_ira_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="roth_ira_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="self_employed_pension_contributions_desired",
+        provision_variables=("savers_credit",),
+        validation_rows=("soi_savers_credit",),
+    ),
+    ValidationInputLeaf(
+        leaf="casualty_loss",
+        provision_variables=("casualty_loss_deduction",),
+        validation_rows=("obbba_casualty_loss_limit",),
+    ),
+    ValidationInputLeaf(
+        leaf="unreimbursed_business_employee_expenses",
+        provision_variables=("total_misc_deductions",),
+        validation_rows=("obbba_misc_itemized_deductions",),
+    ),
+    ValidationInputLeaf(
+        leaf="spm_unit_pre_subsidy_childcare_expenses",
+        provision_variables=("cdcc",),
+        validation_rows=("te_cdcc", "obbba_cdcc", "soi_cdcc"),
     ),
     ValidationInputLeaf(
         leaf="qualified_passenger_vehicle_loan_interest",
         provision_variables=("auto_loan_interest_deduction",),
         validation_rows=("obbba_auto_loan_interest",),
-        # #252: never imputed, so the OBBBA auto-loan deduction is structurally
-        # $0. A reviewed exclusion until the qualifying share of the existing
-        # auto_loan_interest is imputed or the deduction is calibrated.
-        reason=(
-            "OBBBA qualifying auto-loan interest never imputed — the auto-loan "
-            "deduction is structurally $0 (PolicyEngine/populace#252); reviewed "
-            "until the qualifying share of auto_loan_interest is imputed."
-        ),
     ),
 )
 

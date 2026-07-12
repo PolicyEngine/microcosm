@@ -17,8 +17,27 @@ from populace.build.source_runtime import (
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
+from populace.build.us_runtime.child_support import (
+    derive_us_child_support_from_manifest,
+    impute_us_child_support_to_puf_support_from_manifest,
+)
+from populace.build.us_runtime.childcare import (
+    derive_us_childcare_from_manifest,
+    impute_us_childcare_to_puf_support_from_manifest,
+)
+from populace.build.us_runtime.disability_benefits import (
+    derive_us_disability_benefits_from_manifest,
+    impute_us_disability_benefits_to_puf_support_from_manifest,
+)
+from populace.build.us_runtime.education_inputs import (
+    derive_us_education_inputs_from_manifest,
+)
 from populace.build.us_runtime.eligibility_inputs import (
     derive_us_eligibility_inputs_from_manifest,
+)
+from populace.build.us_runtime.energy_subsidy import (
+    derive_us_energy_subsidy_from_manifest,
+    impute_us_energy_subsidy_to_puf_support_from_manifest,
 )
 from populace.build.us_runtime.hours_worked import (
     derive_us_hours_worked_from_manifest,
@@ -26,19 +45,50 @@ from populace.build.us_runtime.hours_worked import (
 from populace.build.us_runtime.immigration import (
     derive_us_immigration_status_from_manifest,
 )
+from populace.build.us_runtime.medicare_take_up import (
+    derive_us_medicare_take_up_from_manifest,
+)
+from populace.build.us_runtime.other_health_insurance import (
+    derive_us_other_health_insurance_from_manifest,
+    impute_us_other_health_insurance_to_puf_support_from_manifest,
+)
 from populace.build.us_runtime.pregnancy import (
     derive_us_pregnancy_from_manifest,
+)
+from populace.build.us_runtime.prior_year_income import (
+    derive_us_prior_year_income_from_manifest,
+    impute_us_prior_year_income_to_puf_support_from_manifest,
 )
 from populace.build.us_runtime.puf_aggregate_records import (
     derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
     load_default_puf_aggregate_disaggregation_spec,
 )
+from populace.build.us_runtime.relationship_inputs import (
+    derive_us_relationship_inputs_from_manifest,
+)
+from populace.build.us_runtime.retirement_contributions import (
+    derive_us_retirement_contributions_from_manifest,
+    impute_us_retirement_contributions_to_puf_support_from_manifest,
+)
+from populace.build.us_runtime.retirement_distributions import (
+    derive_us_retirement_distributions_from_manifest,
+    impute_us_retirement_distributions_to_puf_support_from_manifest,
+)
 from populace.build.us_runtime.snap_discretionary_exemption import (
     derive_us_snap_discretionary_exemption_from_manifest,
 )
 from populace.build.us_runtime.snap_take_up import (
     derive_us_snap_take_up_from_manifest,
+)
+from populace.build.us_runtime.weeks_unemployed import (
+    derive_us_weeks_unemployed_from_manifest,
+    impute_us_weeks_unemployed_to_puf_support_from_manifest,
+)
+from populace.build.us_runtime.wic_claim import derive_us_wic_claim_from_manifest
+from populace.build.us_runtime.workers_compensation import (
+    derive_us_workers_compensation_from_manifest,
+    impute_us_workers_compensation_to_puf_support_from_manifest,
 )
 
 __all__ = [
@@ -47,8 +97,31 @@ __all__ = [
     "calibrate_us_binary_assignment_from_manifest",
     "calibrate_us_binary_assignment_joint_targets_from_manifest",
     "compute_us_ratio_from_manifest",
+    "derive_us_childcare_from_manifest",
+    "derive_us_child_support_from_manifest",
+    "derive_us_disability_benefits_from_manifest",
+    "derive_us_energy_subsidy_from_manifest",
+    "derive_us_medicare_take_up_from_manifest",
+    "derive_us_other_health_insurance_from_manifest",
+    "derive_us_prior_year_income_from_manifest",
+    "derive_us_relationship_inputs_from_manifest",
+    "derive_us_retirement_distributions_from_manifest",
+    "derive_us_workers_compensation_from_manifest",
+    "derive_us_weeks_unemployed_from_manifest",
+    "derive_us_wic_claim_from_manifest",
+    "impute_us_retirement_distributions_to_puf_support_from_manifest",
     "derive_us_puf_policyengine_variables_from_manifest",
+    "derive_us_retirement_contributions_from_manifest",
     "disaggregate_us_puf_aggregate_records_from_manifest",
+    "impute_us_childcare_to_puf_support_from_manifest",
+    "impute_us_child_support_to_puf_support_from_manifest",
+    "impute_us_disability_benefits_to_puf_support_from_manifest",
+    "impute_us_energy_subsidy_to_puf_support_from_manifest",
+    "impute_us_other_health_insurance_to_puf_support_from_manifest",
+    "impute_us_prior_year_income_to_puf_support_from_manifest",
+    "impute_us_retirement_contributions_to_puf_support_from_manifest",
+    "impute_us_workers_compensation_to_puf_support_from_manifest",
+    "impute_us_weeks_unemployed_to_puf_support_from_manifest",
     "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
 ]
@@ -70,6 +143,33 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "qualified_dividend_source",
         "qualified_dividend_output",
         "non_qualified_dividend_output",
+        "qualified_tuition_primary_source",
+        "qualified_tuition_optional_source",
+        "qualified_tuition_output",
+        "alimony_income_source",
+        "alimony_income_output",
+        "alimony_expense_source",
+        "alimony_expense_output",
+        "casualty_loss_source",
+        "casualty_loss_output",
+        "domestic_production_ald_source",
+        "domestic_production_ald_output",
+        "educator_expense_source",
+        "educator_expense_output",
+        "unreimbursed_business_employee_expenses_source",
+        "unreimbursed_business_employee_expenses_output",
+        "farm_operations_income_source",
+        "farm_operations_income_output",
+        "farm_rent_income_source",
+        "farm_rent_income_output",
+        "investment_income_elected_form_4952_source",
+        "investment_income_elected_form_4952_output",
+        "salt_refund_income_source",
+        "salt_refund_income_output",
+        "collectibles_capital_gain_source",
+        "collectibles_capital_gain_output",
+        "unrecaptured_section_1250_gain_source",
+        "unrecaptured_section_1250_gain_output",
     }
 )
 
@@ -194,9 +294,59 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             calibrate_us_binary_assignment_joint_targets_from_manifest
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_childcare_inputs": derive_us_childcare_from_manifest,
+        "derive_child_support_inputs": derive_us_child_support_from_manifest,
+        "derive_disability_benefits": derive_us_disability_benefits_from_manifest,
+        "derive_energy_subsidy": derive_us_energy_subsidy_from_manifest,
+        "derive_other_health_insurance_premiums": (
+            derive_us_other_health_insurance_from_manifest
+        ),
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
+        "derive_medicare_take_up": derive_us_medicare_take_up_from_manifest,
         "derive_pregnancy": derive_us_pregnancy_from_manifest,
+        "derive_prior_year_income": derive_us_prior_year_income_from_manifest,
+        "derive_relationship_inputs": derive_us_relationship_inputs_from_manifest,
+        "derive_retirement_distributions": (
+            derive_us_retirement_distributions_from_manifest
+        ),
+        "derive_retirement_contributions": (
+            derive_us_retirement_contributions_from_manifest
+        ),
+        "derive_workers_compensation": derive_us_workers_compensation_from_manifest,
+        "derive_weeks_unemployed": derive_us_weeks_unemployed_from_manifest,
+        "derive_wic_claim": derive_us_wic_claim_from_manifest,
+        "impute_childcare_to_puf_support": (
+            impute_us_childcare_to_puf_support_from_manifest
+        ),
+        "impute_child_support_to_puf_support": (
+            impute_us_child_support_to_puf_support_from_manifest
+        ),
+        "impute_disability_benefits_to_puf_support": (
+            impute_us_disability_benefits_to_puf_support_from_manifest
+        ),
+        "impute_energy_subsidy_to_puf_support": (
+            impute_us_energy_subsidy_to_puf_support_from_manifest
+        ),
+        "impute_other_health_insurance_premiums_to_puf_support": (
+            impute_us_other_health_insurance_to_puf_support_from_manifest
+        ),
+        "impute_prior_year_income_to_puf_support": (
+            impute_us_prior_year_income_to_puf_support_from_manifest
+        ),
+        "impute_retirement_distributions_to_puf_support": (
+            impute_us_retirement_distributions_to_puf_support_from_manifest
+        ),
+        "impute_retirement_contributions_to_puf_support": (
+            impute_us_retirement_contributions_to_puf_support_from_manifest
+        ),
+        "impute_workers_compensation_to_puf_support": (
+            impute_us_workers_compensation_to_puf_support_from_manifest
+        ),
+        "impute_weeks_unemployed_to_puf_support": (
+            impute_us_weeks_unemployed_to_puf_support_from_manifest
+        ),
         "derive_snap_abawd_discretionary_exemption": derive_us_snap_discretionary_exemption_from_manifest,
         "derive_immigration_status": derive_us_immigration_status_from_manifest,
         "derive_snap_take_up": derive_us_snap_take_up_from_manifest,
@@ -740,6 +890,156 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "non_qualified_dividend_output",
                 default="non_qualified_dividend_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_primary_source=_optional_string_param(
+                params,
+                "qualified_tuition_primary_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_optional_source=_optional_string_param(
+                params,
+                "qualified_tuition_optional_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            qualified_tuition_output=_string_param_with_default(
+                params,
+                "qualified_tuition_output",
+                default="qualified_tuition_expenses",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            alimony_income_source=_optional_string_param(
+                params,
+                "alimony_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            alimony_income_output=_string_param_with_default(
+                params,
+                "alimony_income_output",
+                default="alimony_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            alimony_expense_source=_optional_string_param(
+                params,
+                "alimony_expense_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            alimony_expense_output=_string_param_with_default(
+                params,
+                "alimony_expense_output",
+                default="alimony_expense",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            casualty_loss_source=_optional_string_param(
+                params,
+                "casualty_loss_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            casualty_loss_output=_string_param_with_default(
+                params,
+                "casualty_loss_output",
+                default="casualty_loss",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            domestic_production_ald_source=_optional_string_param(
+                params,
+                "domestic_production_ald_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            domestic_production_ald_output=_string_param_with_default(
+                params,
+                "domestic_production_ald_output",
+                default="domestic_production_ald",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            educator_expense_source=_optional_string_param(
+                params,
+                "educator_expense_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            educator_expense_output=_string_param_with_default(
+                params,
+                "educator_expense_output",
+                default="educator_expense",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unreimbursed_business_employee_expenses_source=_optional_string_param(
+                params,
+                "unreimbursed_business_employee_expenses_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unreimbursed_business_employee_expenses_output=(
+                _string_param_with_default(
+                    params,
+                    "unreimbursed_business_employee_expenses_output",
+                    default="unreimbursed_business_employee_expenses",
+                    label="PUF PolicyEngine-variable derivation",
+                )
+            ),
+            farm_operations_income_source=_optional_string_param(
+                params,
+                "farm_operations_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_operations_income_output=_string_param_with_default(
+                params,
+                "farm_operations_income_output",
+                default="farm_operations_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_rent_income_source=_optional_string_param(
+                params,
+                "farm_rent_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            farm_rent_income_output=_string_param_with_default(
+                params,
+                "farm_rent_income_output",
+                default="farm_rent_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            investment_income_elected_form_4952_source=_optional_string_param(
+                params,
+                "investment_income_elected_form_4952_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            investment_income_elected_form_4952_output=_string_param_with_default(
+                params,
+                "investment_income_elected_form_4952_output",
+                default="investment_income_elected_form_4952",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            salt_refund_income_source=_optional_string_param(
+                params,
+                "salt_refund_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            salt_refund_income_output=_string_param_with_default(
+                params,
+                "salt_refund_income_output",
+                default="salt_refund_income",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            collectibles_capital_gain_source=_optional_string_param(
+                params,
+                "collectibles_capital_gain_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            collectibles_capital_gain_output=_string_param_with_default(
+                params,
+                "collectibles_capital_gain_output",
+                default="long_term_capital_gains_on_collectibles",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unrecaptured_section_1250_gain_source=_optional_string_param(
+                params,
+                "unrecaptured_section_1250_gain_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            unrecaptured_section_1250_gain_output=_string_param_with_default(
+                params,
+                "unrecaptured_section_1250_gain_output",
+                default="unrecaptured_section_1250_gain",
                 label="PUF PolicyEngine-variable derivation",
             ),
         )

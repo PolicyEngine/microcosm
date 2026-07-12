@@ -113,8 +113,11 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
+    assert identity["materializer_version"] == 6
+    assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
     path = tmp_path / "target_frame_checkpoint.h5"
 
     payload = builder._write_target_frame_checkpoint(
@@ -161,6 +164,381 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     )
 
 
+def test_ssi_candidate_amount_uses_december_person_values() -> None:
+    builder = _load_builder_module()
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to):
+            assert variable == "uncapped_ssi"
+            assert period == "2024-12"
+            assert map_to == "person"
+            return np.asarray([0.0, 125.0, -2.0])
+
+    values = builder._ssi_person_uncapped_amount(
+        SimpleNamespace(),
+        simulation=FakeSimulation(),
+    )
+
+    np.testing.assert_array_equal(values, np.asarray([0.0, 125.0, -2.0]))
+
+
+def test_ssi_reconciliation_replays_dependencies_before_refit_and_only_diagnoses_final(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    reporter_ids = frozenset({"asec-reporter"})
+    initial_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+    )
+    first_reconciled_result = SimpleNamespace(
+        weights=np.asarray([1_200.0, 1_800.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=0.5,
+    )
+    reconciled_result = SimpleNamespace(
+        weights=np.asarray([1_250.0, 1_750.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=0.25,
+    )
+
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        lambda frame: reporter_ids,
+    )
+
+    uncapped_calls = 0
+
+    def fake_uncapped(frame, *, maximum_microsim_batch_size):
+        nonlocal uncapped_calls
+        uncapped_calls += 1
+        calls.append(f"uncapped_{uncapped_calls}")
+        return np.zeros(frame.n("person"), dtype=np.float64)
+
+    monkeypatch.setattr(builder, "_ssi_person_uncapped_amount", fake_uncapped)
+
+    assignment_calls = 0
+
+    def fake_assign(frame, *, uncapped_ssi, seed, reporter_source_ids):
+        nonlocal assignment_calls
+        assignment_calls += 1
+        calls.append("ssi_assign")
+        assert reporter_source_ids == reporter_ids
+        return frame, {"phase": "assigned"}
+
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
+
+    def fake_aca(frame, target_specs, *, seed, maximum_microsim_batch_size):
+        calls.append("aca")
+        return frame
+
+    monkeypatch.setattr(builder, "_with_aca_marketplace_source_outputs", fake_aca)
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        lambda frame: builder.GateResult(name="health", passed=True),
+    )
+
+    def fake_medicaid(
+        frame,
+        target_specs,
+        *,
+        seed,
+        substitutions,
+        maximum_microsim_batch_size,
+    ):
+        calls.append("medicaid")
+        return frame, {"phase": "medicaid"}
+
+    monkeypatch.setattr(builder, "_with_medicaid_take_up_outputs", fake_medicaid)
+
+    def fake_final_medicaid(*args, **kwargs):
+        calls.append("medicaid_diagnose")
+        return {"phase": f"final_medicaid_{calibrate_calls}"}
+
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        fake_final_medicaid,
+    )
+
+    def fake_medicaid_gate(diagnostics):
+        passed = diagnostics.get("phase") != "final_medicaid_1"
+        return builder.GateResult(
+            name="medicaid",
+            passed=passed,
+            failures=() if passed else ("first returned weights drifted",),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        fake_medicaid_gate,
+    )
+
+    def fake_other_health(
+        frame,
+        *,
+        seed,
+        time_period,
+        maximum_microsim_batch_size,
+    ):
+        calls.append("other_health")
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        fake_other_health,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        lambda frame: builder.GateResult(name="other_health", passed=True),
+    )
+
+    class FakeRegistry:
+        specs = (SimpleNamespace(),)
+
+        def to_target_set(self):
+            return "targets"
+
+    registry = FakeRegistry()
+
+    def fake_materialize(frame, target_specs, **kwargs):
+        calls.append("materialize")
+        np.testing.assert_array_equal(
+            frame.weights_for("household").values,
+            initial_result.initial_weights,
+        )
+        return frame, registry, {"declared_targets": 1}
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fake_materialize)
+    monkeypatch.setattr(
+        builder,
+        "_fiscal_target_loss_weights",
+        lambda active_registry: np.ones(1),
+    )
+
+    calibrate_calls = 0
+
+    def fake_calibrate(frame, targets, **kwargs):
+        nonlocal calibrate_calls
+        calibrate_calls += 1
+        calls.append("calibrate")
+        np.testing.assert_array_equal(
+            kwargs["warm_start_weights"],
+            (
+                initial_result.weights
+                if calibrate_calls == 1
+                else first_reconciled_result.weights
+            ),
+        )
+        return first_reconciled_result if calibrate_calls == 1 else reconciled_result
+
+    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
+
+    def fake_final_diagnostics(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        reporter_source_ids,
+    ):
+        calls.append("ssi_diagnose")
+        assert reporter_source_ids == reporter_ids
+        return {"phase": f"final_{calibrate_calls}"}
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_diagnostics",
+        fake_final_diagnostics,
+    )
+
+    def fake_ssi_gate(diagnostics):
+        return builder.GateResult(name="ssi", passed=True, details=diagnostics)
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_gate)
+
+    reconciliation = builder._reconcile_ssi_take_up_and_refit(
+        small_frame,
+        initial_result,
+        (),
+        dense_default_dataset=True,
+        seed=3,
+        epochs=5,
+        learning_rate=0.01,
+        max_weight_ratio=10.0,
+        l2_lambda=0.0,
+        target_loss_cap=1.0,
+    )
+
+    assert assignment_calls == 2
+    assert calls == [
+        "uncapped_1",
+        "ssi_assign",
+        "aca",
+        "medicaid",
+        "other_health",
+        "materialize",
+        "calibrate",
+        "uncapped_2",
+        "ssi_diagnose",
+        "medicaid_diagnose",
+        "uncapped_3",
+        "ssi_assign",
+        "aca",
+        "medicaid",
+        "other_health",
+        "materialize",
+        "calibrate",
+        "uncapped_4",
+        "ssi_diagnose",
+        "medicaid_diagnose",
+    ]
+    np.testing.assert_array_equal(
+        reconciliation.export_frame.weights_for("household").values,
+        reconciled_result.weights,
+    )
+    assert reconciliation.ssi_diagnostics == {"phase": "final_2"}
+    assert reconciliation.compilation["ssi_take_up_reconciliation"]["passes"] == 2
+
+
+def test_ssi_reconciliation_fails_closed_after_bounded_weight_drift(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    counts = {"assign": 0, "calibrate": 0, "diagnose": 0}
+    initial_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+    )
+    returned_result = SimpleNamespace(
+        weights=np.asarray([1_100.0, 1_900.0]),
+        initial_weights=np.asarray([1_000.0, 2_000.0]),
+        final_loss=1.0,
+    )
+
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        lambda frame: frozenset({"reporter"}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_ssi_person_uncapped_amount",
+        lambda frame, **kwargs: np.zeros(frame.n("person")),
+    )
+
+    def fake_assign(frame, **kwargs):
+        counts["assign"] += 1
+        return frame, {"stage": True}
+
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
+    monkeypatch.setattr(
+        builder,
+        "_with_aca_marketplace_source_outputs",
+        lambda frame, *args, **kwargs: frame,
+    )
+
+    def passing_gate(name):
+        return builder.GateResult(name=name, passed=True)
+
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        lambda frame: passing_gate("health"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_medicaid_take_up_outputs",
+        lambda frame, *args, **kwargs: (frame, {"stage": True}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        lambda *args, **kwargs: {"final": True},
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        lambda diagnostics: passing_gate("medicaid"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        lambda frame, **kwargs: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        lambda frame: passing_gate("other_health"),
+    )
+
+    class FakeRegistry:
+        specs = (SimpleNamespace(),)
+
+        def to_target_set(self):
+            return "targets"
+
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        lambda frame, *args, **kwargs: (frame, FakeRegistry(), {}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_fiscal_target_loss_weights",
+        lambda registry: np.ones(1),
+    )
+
+    def fake_calibrate(*args, **kwargs):
+        counts["calibrate"] += 1
+        return returned_result
+
+    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
+
+    def fake_diagnostics(*args, **kwargs):
+        counts["diagnose"] += 1
+        return {"final": True}
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_diagnostics", fake_diagnostics)
+
+    def fake_ssi_gate(diagnostics):
+        if diagnostics.get("stage"):
+            return passing_gate("ssi")
+        return builder.GateResult(
+            name="ssi",
+            passed=False,
+            failures=("returned weights drifted",),
+        )
+
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_gate)
+
+    with pytest.raises(RuntimeError, match="after 2 pass"):
+        builder._reconcile_ssi_take_up_and_refit(
+            small_frame,
+            initial_result,
+            (),
+            dense_default_dataset=True,
+            seed=0,
+            epochs=1,
+            learning_rate=0.01,
+            max_weight_ratio=10.0,
+            l2_lambda=0.0,
+            target_loss_cap=1.0,
+            max_passes=2,
+        )
+
+    assert counts == {"assign": 2, "calibrate": 2, "diagnose": 2}
+
+
 def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
     tmp_path,
     small_frame,
@@ -172,11 +550,12 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
     stale_identity = {
         **fresh_identity,
-        "target_registry_version": "old-registry-sha",
+        "weeks_unemployed_source_sha256": "old-weeks-source-sha",
     }
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
@@ -215,6 +594,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version=registry.version,
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256=None,
     )
 
@@ -524,6 +904,127 @@ def test_export_target_audit_is_opt_in(monkeypatch) -> None:
     )
     args = builder._parse_args()
     assert args.audit_export_targets
+
+
+def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-tip-donor",
+            "pu2023_slim.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_tip_donor == Path("pu2023_slim.csv")
+
+
+def test_weeks_unemployed_source_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--asec-2023-weeks-unemployed-source",
+            "asecpub23csv.zip",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
+def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    selection = source.index("base_frame, selection_report = select_frozen_support(")
+    regate = source.index(
+        "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
+    )
+    mass_repair = source.index(
+        "base_frame, base_population_repair = _with_base_population_mass_repair("
+    )
+
+    assert selection < regate < mass_repair
+    assert "Post-selection weeks-unemployed input signal failed" in source
+
+
+def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-vehicle-donor",
+            "pu2023.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_vehicle_donor == Path("pu2023.csv")
+
+
+def test_scf_full_extract_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--scf-full-extract",
+            "p22i6.dta",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.scf_full_extract == Path("p22i6.dta")
+
+
+def test_org_wages_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--org-wages-donor",
+            "census_cps_org_2024_wages.csv.gz",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.org_wages_donor == Path("census_cps_org_2024_wages.csv.gz")
 
 
 def test_cd_targets_require_vintage_crosswalk(monkeypatch) -> None:
@@ -1698,6 +2199,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     builder = _load_builder_module()
     release_id = "populace-us-2024-gate-failure-test"
     base_h5 = tmp_path / "base.h5"
+    weeks_source = tmp_path / "asecpub23csv.zip"
     facts = tmp_path / "facts.jsonl"
     out = tmp_path / "out"
     base_h5.write_bytes(b"h5")
@@ -1722,7 +2224,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         weight_entity="household",
         selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
-    captured: dict[str, object] = {}
+    captured: dict[str, object] = {
+        "health_stage_events": [],
+        "source_stage_events": [],
+    }
 
     class FakeFrame:
         def n(self, entity):
@@ -1742,15 +2247,27 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             str(out),
             "--release-id",
             release_id,
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_source),
             "--no-target-frame-checkpoint",
             "--no-staging",
         ],
     )
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
+    monkeypatch.setattr(
+        builder,
+        "_sha256",
+        lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
+    )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(
+        builder, "assert_validation_leaf_registry_current", lambda: None
+    )
+    monkeypatch.setattr(
+        builder, "assert_release_input_coverage_manifest_current", lambda: None
+    )
     monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
     monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
     monkeypatch.setattr(
@@ -1781,16 +2298,80 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
-    monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+
+    def fake_load_frame(path):
+        captured["source_stage_events"].append("load_frame")
+        return FakeFrame()
+
+    monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+
+    def fake_load_weeks_unemployed_source(path, **kwargs):
+        captured["source_stage_events"].append("load_weeks_source")
+        captured["weeks_unemployed_source_path"] = Path(path)
+        captured["weeks_unemployed_source_load_kwargs"] = kwargs
+        return pd.DataFrame({"LKWEEKS": [0, 12]})
+
+    def fake_with_weeks_unemployed(
+        frame,
+        *,
+        seed,
+        time_period,
+        asec_2023_source,
+    ):
+        captured["source_stage_events"].append("weeks_stage")
+        captured["weeks_unemployed_stage_seed"] = seed
+        captured["weeks_unemployed_stage_period"] = time_period
+        captured["weeks_unemployed_stage_source"] = asec_2023_source
+        return frame
+
+    def fake_weeks_unemployed_signal_gate(frame):
+        captured["source_stage_events"].append("weeks_gate")
+        captured["weeks_unemployed_gate_called"] = True
+        return builder.GateResult(
+            name="weeks_unemployed_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        fake_load_weeks_unemployed_source,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_weeks_unemployed",
+        fake_with_weeks_unemployed,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_weeks_unemployed_signal_gate",
+        fake_weeks_unemployed_signal_gate,
+    )
+
+    def fake_ssi_reporter_source_ids(frame):
+        captured["source_stage_events"].append("ssi_reporters")
+        return frozenset({"asec-reporter"})
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        fake_ssi_reporter_source_ids,
+    )
     repair_payload = {
         "method": "rescale_household_weights_to_census_person_population",
         "applied": True,
         "factor": 2.0,
     }
+
+    def fake_base_population_mass_repair(frame):
+        captured["source_stage_events"].append("population_repair")
+        return frame, repair_payload
+
     monkeypatch.setattr(
         builder,
         "_with_base_population_mass_repair",
-        lambda frame: (frame, repair_payload),
+        fake_base_population_mass_repair,
     )
     ss_repair_payload = {
         "method": "rescale_social_security_component_leaves_to_ssa_targets",
@@ -1808,6 +2389,211 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             name="base_population_scale",
             passed=True,
             details={"checked": True, "mass_repair": mass_repair},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_input_reconciliation",
+        lambda frame: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_qbi_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="qbi_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_farm_business_income_signal_gate(frame):
+        captured["farm_business_income_gate_called"] = True
+        return builder.GateResult(
+            name="farm_business_income_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_farm_business_income_signal_gate",
+        fake_farm_business_income_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_domestic_production_ald_signal_gate",
+        lambda frame: builder.GateResult(
+            name="domestic_production_ald_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_child_support_signal_gate(frame):
+        captured["child_support_gate_called"] = True
+        return builder.GateResult(
+            name="child_support_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_child_support_signal_gate",
+        fake_child_support_signal_gate,
+    )
+
+    def fake_disability_benefits_signal_gate(frame):
+        captured["disability_benefits_gate_called"] = True
+        return builder.GateResult(
+            name="disability_benefits_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_disability_benefits_signal_gate",
+        fake_disability_benefits_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_workers_compensation_signal_gate",
+        lambda frame: builder.GateResult(
+            name="workers_compensation_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_educator_expense_signal_gate(frame):
+        captured["educator_expense_gate_called"] = True
+        return builder.GateResult(
+            name="educator_expense_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_educator_expense_signal_gate",
+        fake_educator_expense_signal_gate,
+    )
+
+    def fake_form_4952_election_signal_gate(frame):
+        captured["form_4952_election_gate_called"] = True
+        return builder.GateResult(
+            name="form_4952_election_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_form_4952_election_signal_gate",
+        fake_form_4952_election_signal_gate,
+    )
+
+    def fake_salt_refund_income_signal_gate(frame):
+        captured["salt_refund_income_gate_called"] = True
+        return builder.GateResult(
+            name="salt_refund_income_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_salt_refund_income_signal_gate",
+        fake_salt_refund_income_signal_gate,
+    )
+
+    def fake_capital_gain_details_signal_gate(frame):
+        captured["capital_gain_details_gate_called"] = True
+        return builder.GateResult(
+            name="capital_gain_details_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_capital_gain_details_signal_gate",
+        fake_capital_gain_details_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_childcare_inputs",
+        lambda frame, *, seed, time_period, allow_existing_without_source: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_childcare_signal_gate",
+        lambda frame: builder.GateResult(
+            name="childcare_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_energy_subsidy_input",
+        lambda frame, *, seed, time_period, allow_existing_without_source: frame,
+    )
+
+    def fake_energy_subsidy_signal_gate(frame):
+        captured["energy_subsidy_gate_called"] = True
+        return builder.GateResult(
+            name="energy_subsidy_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_energy_subsidy_signal_gate",
+        fake_energy_subsidy_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_alimony_signal_gate",
+        lambda frame: builder.GateResult(
+            name="alimony_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_casualty_loss_signal_gate",
+        lambda frame: builder.GateResult(
+            name="casualty_loss_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_misc_itemized_signal_gate",
+        lambda frame: builder.GateResult(
+            name="misc_itemized_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_contribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_contributions_signal_gate",
+        lambda frame: builder.GateResult(
+            name="retirement_contributions_signal",
+            passed=True,
+            details={"checked": True},
         ),
     )
     monkeypatch.setattr(
@@ -1846,7 +2632,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_relationship_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_medicare_take_up_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_distribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_education_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_wic_claim_input",
         lambda frame, *, seed, time_period: frame,
     )
     monkeypatch.setattr(
@@ -1902,9 +2713,72 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "us_relationship_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="relationship_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicare_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="medicare_take_up_input_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_signal_gate",
+        lambda frame: builder.GateResult(
+            name="prior_year_income_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_housing_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="housing_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_distributions_signal_gate",
+        lambda frame: builder.GateResult(
+            name="retirement_distributions_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_education_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="education_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "us_pregnancy_signal_gate",
         lambda frame: builder.GateResult(
             name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_wic_claim_signal_gate",
+        lambda frame: builder.GateResult(
+            name="wic_claim_signal",
             passed=True,
             details={"checked": True},
         ),
@@ -1944,6 +2818,319 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "fetch_scf_2022_full_extract",
+        lambda *args, **kwargs: Path("p22i6.dta"),
+    )
+
+    def fake_load_scf_auto_loan_donor(summary_path, full_path):
+        captured["scf_auto_summary_path"] = summary_path
+        captured["scf_auto_full_path"] = full_path
+        return pd.DataFrame()
+
+    def fake_with_scf_auto_loan_inputs(
+        frame, *, seed, time_period, scf_auto_loan_donor
+    ):
+        captured["scf_auto_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_auto_loan_donor",
+        fake_load_scf_auto_loan_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_auto_loan_inputs",
+        fake_with_scf_auto_loan_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_auto_loans_signal_gate",
+        lambda frame: builder.GateResult(
+            name="scf_auto_loans_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_vehicle_donor",
+        lambda *args, **kwargs: Path("pu2023.csv"),
+    )
+
+    def fake_load_sipp_vehicle_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_vehicle_donor_path"] = path
+        captured["sipp_vehicle_donor_sha256"] = expected_sha256
+        captured["sipp_vehicle_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_vehicle_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_vehicle_stage_called"] = True
+        captured["sipp_vehicle_seed"] = seed
+        return frame
+
+    def fake_sipp_vehicles_signal_gate(frame):
+        captured["sipp_vehicle_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_vehicles_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_vehicle_donor",
+        fake_load_sipp_vehicle_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_vehicle_inputs",
+        fake_with_sipp_vehicle_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_vehicles_signal_gate",
+        fake_sipp_vehicles_signal_gate,
+    )
+
+    def fake_load_ssi_disability_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+        time_period=2024,
+    ):
+        captured["ssi_disability_donor_path"] = path
+        captured["ssi_disability_donor_sha256"] = expected_sha256
+        captured["ssi_disability_donor_size_bytes"] = expected_size_bytes
+        captured["ssi_disability_donor_period"] = time_period
+        return pd.DataFrame()
+
+    def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
+        captured["ssi_disability_stage_called"] = True
+        captured["ssi_disability_seed"] = seed
+        return frame
+
+    def fake_ssi_disability_signal_gate(frame):
+        captured["ssi_disability_gate_called"] = True
+        return builder.GateResult(
+            name="ssi_disability_criteria_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_ssi_disability_donor",
+        fake_load_ssi_disability_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_ssi_disability_criteria",
+        fake_with_ssi_disability_criteria,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_disability_criteria_signal_gate",
+        fake_ssi_disability_signal_gate,
+    )
+
+    def fake_load_sipp_head_start_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_head_start_donor_path"] = path
+        captured["sipp_head_start_donor_sha256"] = expected_sha256
+        captured["sipp_head_start_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_head_start_input(
+        frame,
+        *,
+        seed,
+        time_period,
+        sipp_donor,
+    ):
+        captured["sipp_head_start_stage_called"] = True
+        captured["sipp_head_start_seed"] = seed
+        captured["sipp_head_start_period"] = time_period
+        captured["sipp_head_start_donor"] = sipp_donor
+        return frame
+
+    def fake_sipp_head_start_signal_gate(frame):
+        captured["sipp_head_start_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_head_start_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_head_start_donor",
+        fake_load_sipp_head_start_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_head_start_input",
+        fake_with_sipp_head_start_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_head_start_signal_gate",
+        fake_sipp_head_start_signal_gate,
+    )
+
+    def fake_ssi_uncapped_amount(
+        frame,
+        *,
+        simulation=None,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["ssi_uncapped_stage_called"] = True
+        captured["ssi_uncapped_batch_size"] = maximum_microsim_batch_size
+        return np.zeros(4, dtype=np.float64)
+
+    def fake_with_ssi_take_up(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        reporter_source_ids,
+    ):
+        captured["ssi_take_up_stage_called"] = True
+        captured["ssi_take_up_seed"] = seed
+        captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
+        captured["ssi_reporter_source_ids"] = reporter_source_ids
+        return frame, {"checked": True}
+
+    def fake_ssi_take_up_gate(diagnostics):
+        captured["ssi_take_up_gate_called"] = True
+        captured["ssi_take_up_gate_diagnostics"] = diagnostics
+        return builder.GateResult(
+            name="ssi_take_up",
+            passed=True,
+            details=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_ssi_person_uncapped_amount",
+        fake_ssi_uncapped_amount,
+    )
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
+
+    def fake_load_voluntary_filing_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["voluntary_filing_donor_path"] = path
+        captured["voluntary_filing_donor_sha256"] = expected_sha256
+        captured["voluntary_filing_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_voluntary_filing_input(frame, *, seed, time_period, sipp_donor):
+        captured["voluntary_filing_stage_called"] = True
+        captured["voluntary_filing_seed"] = seed
+        return frame
+
+    def fake_voluntary_filing_signal_gate(frame):
+        captured["voluntary_filing_gate_called"] = True
+        return builder.GateResult(
+            name="voluntary_filing_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_voluntary_filing_donor",
+        fake_load_voluntary_filing_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_voluntary_filing_input",
+        fake_with_voluntary_filing_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_voluntary_filing_signal_gate",
+        fake_voluntary_filing_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_tip_donor",
+        lambda *args, **kwargs: Path("pu2023_slim.csv"),
+    )
+
+    def fake_load_sipp_tip_donor(path, *, expected_sha256=None):
+        captured["sipp_tip_donor_path"] = path
+        captured["sipp_tip_donor_sha256"] = expected_sha256
+        return pd.DataFrame()
+
+    def fake_with_sipp_tip_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_tip_stage_called"] = True
+        return frame
+
+    def fake_sipp_tips_signal_gate(frame):
+        captured["sipp_tip_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_tips_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_tip_donor",
+        fake_load_sipp_tip_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_tip_inputs",
+        fake_with_sipp_tip_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_tips_signal_gate",
+        fake_sipp_tips_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_org_2024_donor",
+        lambda *args, **kwargs: Path("census_cps_org_2024_wages.csv.gz"),
+    )
+
+    def fake_load_org_donor(path, *, expected_content_sha256=None):
+        captured["org_donor_path"] = path
+        captured["org_donor_sha256"] = expected_content_sha256
+        return pd.DataFrame()
+
+    def fake_with_org_inputs(frame, *, seed, time_period, org_donor):
+        captured["org_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(builder, "load_org_2024_donor", fake_load_org_donor)
+    monkeypatch.setattr(builder, "with_us_org_wages_inputs", fake_with_org_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_org_wages_signal_gate",
+        lambda frame: builder.GateResult(
+            name="org_wages_signal", passed=True, details={"checked": True}
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "_ecps_parity_gate",
         lambda frame: builder.GateResult(
             name="ecps_parity",
@@ -1951,10 +3138,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_with_aca_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("aca")
+        return frame
+
     monkeypatch.setattr(
         builder,
         "_with_aca_marketplace_source_outputs",
-        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: frame,
+        fake_with_aca_outputs,
     )
     monkeypatch.setattr(
         builder,
@@ -1965,22 +3163,69 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    def fake_with_medicaid_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        substitutions=(),
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("medicaid")
+        return frame, {}
+
+    def fake_medicaid_gate(diagnostics):
+        captured["health_stage_events"].append("medicaid_gate")
+        return builder.GateResult(
+            name="medicaid_take_up",
+            passed=True,
+            details={"checked": True},
+        )
+
     monkeypatch.setattr(
         builder,
         "_with_medicaid_take_up_outputs",
-        lambda frame, specs, *, seed, substitutions=(), maximum_microsim_batch_size=None: (
-            frame,
-            {},
-        ),
+        fake_with_medicaid_outputs,
     )
     monkeypatch.setattr(
         builder,
         "us_medicaid_take_up_gate",
-        lambda diagnostics: builder.GateResult(
-            name="medicaid_take_up",
+        fake_medicaid_gate,
+    )
+
+    def fake_with_other_health_insurance_inputs(
+        frame,
+        *,
+        seed,
+        time_period,
+        maximum_microsim_batch_size,
+    ):
+        captured["health_stage_events"].append("other_health")
+        captured["other_health_insurance_stage_called"] = True
+        captured["other_health_insurance_seed"] = seed
+        captured["other_health_insurance_period"] = time_period
+        captured["other_health_insurance_batch_size"] = maximum_microsim_batch_size
+        return frame
+
+    def fake_other_health_insurance_signal_gate(frame):
+        captured["health_stage_events"].append("other_health_gate")
+        captured["other_health_insurance_gate_called"] = True
+        return builder.GateResult(
+            name="other_health_insurance_premiums_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        fake_with_other_health_insurance_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        fake_other_health_insurance_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -2031,6 +3276,37 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return release_dir / "calibration_diagnostics.json"
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+
+    def fake_reconcile(frame, initial_result, specs, **kwargs):
+        captured["ssi_reconciliation_called"] = True
+        captured["ssi_reconciliation_reporter_source_ids"] = kwargs[
+            "reporter_source_ids"
+        ]
+        return builder._SSITakeUpReconciliationResult(
+            export_frame=frame,
+            calibration_result=initial_result,
+            registry=registry,
+            compilation={"dropped_target_names": []},
+            ssi_diagnostics={"checked": True},
+            medicaid_diagnostics={},
+            health_input_gate=builder.GateResult(
+                name="health_input_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+            other_health_insurance_gate=builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+            passes=1,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_reconcile_ssi_take_up_and_refit",
+        fake_reconcile,
+    )
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
@@ -2074,6 +3350,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "selection_final_loss": 1.5,
         "refit_initial_loss": 2.0,
         "refit_final_loss": 1.0,
+        "pre_ssi_reconciliation_final_loss": 1.0,
+        "ssi_take_up_reconciliation_passes": 1,
+        "final_loss": 1.0,
     }
     assert captured["l0_kwargs"]["l0_lambda"] == 0.2
     assert captured["l0_kwargs"]["l2_lambda"] == 0.0
@@ -2088,6 +3367,120 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         == out / "artifacts" / "target_materialization_cache"
     )
     assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
+    assert captured["sipp_tip_donor_path"] == Path("pu2023_slim.csv")
+    assert captured["weeks_unemployed_source_path"] == weeks_source
+    assert captured["weeks_unemployed_stage_seed"] == 0
+    assert captured["weeks_unemployed_stage_period"] == builder.PERIOD
+    assert isinstance(captured["weeks_unemployed_stage_source"], pd.DataFrame)
+    assert captured["weeks_unemployed_gate_called"] is True
+    assert captured["source_stage_events"].index("weeks_stage") < captured[
+        "source_stage_events"
+    ].index("ssi_reporters")
+    assert captured["source_stage_events"].index("weeks_gate") < captured[
+        "source_stage_events"
+    ].index("population_repair")
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_context"][
+            "weeks_unemployed_source_sha256"
+        ]
+        == builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256
+    )
+    assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
+    assert captured["sipp_tip_stage_called"] is True
+    assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_vehicle_donor_size_bytes"]
+        == builder.SIPP_2023_VEHICLE_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_vehicle_stage_called"] is True
+    assert captured["sipp_vehicle_seed"] == 42
+    assert captured["sipp_vehicle_gate_called"] is True
+    assert captured["ssi_disability_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["ssi_disability_donor_sha256"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+    )
+    assert (
+        captured["ssi_disability_donor_size_bytes"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
+    )
+    assert captured["ssi_disability_donor_period"] == builder.PERIOD
+    assert captured["ssi_disability_stage_called"] is True
+    assert captured["ssi_disability_seed"] == 42
+    assert captured["ssi_disability_gate_called"] is True
+    assert captured["sipp_head_start_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_head_start_donor_sha256"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_head_start_donor_size_bytes"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_head_start_stage_called"] is True
+    assert captured["sipp_head_start_seed"] == 0
+    assert captured["sipp_head_start_period"] == builder.PERIOD
+    assert isinstance(captured["sipp_head_start_donor"], pd.DataFrame)
+    assert captured["sipp_head_start_gate_called"] is True
+    assert captured["ssi_uncapped_stage_called"] is True
+    assert (
+        captured["ssi_uncapped_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["ssi_take_up_stage_called"] is True
+    assert captured["ssi_take_up_seed"] == 0
+    assert captured["ssi_take_up_uncapped"].shape == (4,)
+    assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
+    assert captured["ssi_reconciliation_reporter_source_ids"] == frozenset(
+        {"asec-reporter"}
+    )
+    assert captured["ssi_take_up_gate_called"] is True
+    assert captured["ssi_take_up_gate_diagnostics"] == {"checked": True}
+    assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["voluntary_filing_donor_sha256"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256
+    )
+    assert (
+        captured["voluntary_filing_donor_size_bytes"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES
+    )
+    assert captured["voluntary_filing_stage_called"] is True
+    assert captured["voluntary_filing_seed"] == 0
+    assert captured["voluntary_filing_gate_called"] is True
+    assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
+    assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
+    assert captured["org_stage_called"] is True
+    assert captured["scf_auto_summary_path"] == Path("rscfp2022.dta")
+    assert captured["scf_auto_full_path"] == Path("p22i6.dta")
+    assert captured["scf_auto_stage_called"] is True
+    assert captured["child_support_gate_called"] is True
+    assert captured["disability_benefits_gate_called"] is True
+    assert captured["educator_expense_gate_called"] is True
+    assert captured["form_4952_election_gate_called"] is True
+    assert captured["salt_refund_income_gate_called"] is True
+    assert captured["capital_gain_details_gate_called"] is True
+    assert captured["energy_subsidy_gate_called"] is True
+    assert captured["farm_business_income_gate_called"] is True
+    assert captured["other_health_insurance_stage_called"] is True
+    assert captured["other_health_insurance_gate_called"] is True
+    assert captured["other_health_insurance_seed"] == 0
+    assert captured["other_health_insurance_period"] == builder.PERIOD
+    assert (
+        captured["other_health_insurance_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["health_stage_events"] == [
+        "aca",
+        "medicaid",
+        "medicaid_gate",
+        "other_health",
+        "other_health_gate",
+    ]
 
 
 def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
@@ -4052,6 +5445,8 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    ssi_diagnostics_path = release_dir / "us_ssi_take_up.json"
+    ssi_diagnostics_path.write_text('{"variable":"takes_up_ssi_if_eligible"}')
 
     monkeypatch.setattr(
         builder,
@@ -4218,6 +5613,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     assert not any(
         key.startswith(("states/", "districts/")) for key in manifest["artifacts"]
     )
+    assert manifest["artifacts"]["us_ssi_take_up"] == {
+        "kind": "diagnostics",
+        "path": "us_ssi_take_up.json",
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": builder._sha256(ssi_diagnostics_path),
+    }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
         assert artifact["revision"] == release_id
@@ -4277,6 +5679,7 @@ def test_build_manifests_records_selection_source_provenance(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
     monkeypatch.setattr(
         builder,
         "_runtime_versions",
@@ -4350,6 +5753,7 @@ def test_build_manifests_selection_source_absent_by_default(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
     monkeypatch.setattr(
         builder,
         "_runtime_versions",
@@ -4399,6 +5803,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
     (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
 
     monkeypatch.setattr(
         builder,
@@ -4990,6 +6395,7 @@ def _install_multi_reform_fakes(
 def _base_cache_context(builder):
     return {
         "base_dataset_sha256": "base-sha-A",
+        "weeks_unemployed_source_sha256": "weeks-source-sha-A",
         "build_commit": "commit-A",
         "policyengine_us_version": "pe-us-A",
         "seed": 0,
@@ -5139,9 +6545,18 @@ def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
     np.testing.assert_allclose(household["jct_reform_a"], [-115.0, -69.0])
 
 
+@pytest.mark.parametrize(
+    ("identity_key", "new_value"),
+    [
+        ("base_dataset_sha256", "base-sha-B"),
+        ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+    ],
+)
 def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     monkeypatch,
     tmp_path,
+    identity_key,
+    new_value,
 ) -> None:
     builder = _load_builder_module()
     frame = _multi_reform_frame(builder)
@@ -5168,10 +6583,10 @@ def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # A DIFFERENT base H5 (incumbent vs candidate) must not share per-household
-    # vectors even at the same record count (#217 acceptance criterion 3).
+    # A different base H5 or measured LKWEEKS source must not share
+    # per-household vectors even at the same record count.
     context_b = _base_cache_context(builder)
-    context_b["base_dataset_sha256"] = "base-sha-B"
+    context_b[identity_key] = new_value
     calls_b: list[str] = []
     _install_multi_reform_fakes(
         builder,
