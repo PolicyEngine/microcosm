@@ -103,6 +103,11 @@ EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
 
+PRIOR_YEAR_INCOME_INPUTS = (
+    "self_employment_income_last_year",
+    "previous_year_income_available",
+)
+
 FARM_BUSINESS_INCOME_INPUTS = (
     "farm_operations_income",
     "farm_rent_income",
@@ -162,6 +167,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *RELATIONSHIP_INPUTS,
     *HOUSING_INPUTS,
+    *PRIOR_YEAR_INCOME_INPUTS,
     *RETIREMENT_DISTRIBUTION_INPUTS,
     "domestic_production_ald",
     "household_weight",
@@ -195,6 +201,33 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "prior_year_self_employment_neutralization",
+        "name": "Prior-year self-employment support neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "self_employment_income_last_year",
+        "budget_measure": "tax_unit_earned_income_last_year",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["self_employment_income_last_year"],
+        "min_abs_effect": 1_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US adds self_employment_income_last_year to "
+            "earned_income_last_year and then aggregates it over tax-unit "
+            "nondependents. The Wyden-Smith ACTC lookback is the downstream "
+            "policy consumer, but its parameter also reads formula-owned "
+            "prior-year wages, so neutralizing this one leaf is the unique "
+            "coverage probe. The SHA-locked strict equal-share 2022-2024 ASEC "
+            "pool carries $357.24 billion of weighted net source amount; "
+            "without the adjacent-year carry the neutralization is a "
+            "structural zero. The distinct "
+            "previous_year_income_available flag has no formula consumer in "
+            "PolicyEngine-US 1.764.6 and remains protected by the hard "
+            "non-default column gate."
+        ),
+        "issue": "PolicyEngine/populace#38",
+    },
     {
         "id": "keogh_distribution_neutralization",
         "name": "Keogh distribution neutralization",

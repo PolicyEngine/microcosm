@@ -949,32 +949,52 @@
         {
           "kind": "public_microdata",
           "format": "census_asec",
-          "vintage": "build_year_minus_one",
-          "locator": "Census CPS ASEC person file"
+          "vintage": "pooled_adjacent_years",
+          "locator": "Census CPS ASEC person files identified by source_year and PERIDNUM"
         }
       ],
       "operations": [
         {
           "kind": "read_table",
-          "table": "asec_person",
-          "columns": [
-            "PERIDNUM",
-            "WSAL_VAL",
-            "SEMP_VAL"
-          ]
+          "table": "person"
         },
         {
-          "kind": "join",
-          "left": "current_person.PERIDNUM",
-          "right": "prior_person.PERIDNUM"
-        },
-        {
-          "kind": "replace_sentinels",
+          "kind": "derive_prior_year_income",
+          "person_id": "PERIDNUM",
+          "source_year": "source_year",
+          "prior_year_offset": -1,
+          "employment_source": "WSAL_VAL",
+          "self_employment_source": "SEMP_VAL",
+          "employment_allocation_flag": "I_ERNVAL",
+          "self_employment_allocation_flag": "I_SEVAL",
+          "unallocated_flag": 0,
           "sentinels": [
             -1,
             -9999
           ],
-          "value": null
+          "fallback_to_current": true,
+          "no_prior_artifact": "leave_defaults"
+        },
+        {
+          "kind": "impute_prior_year_income_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "outputs": [
+            "employment_income_last_year",
+            "self_employment_income_last_year"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight"
         }
       ],
       "outputs": [
@@ -983,9 +1003,9 @@
         "previous_year_income_available"
       ],
       "nonnegative_outputs": [
-        "employment_income_last_year",
-        "self_employment_income_last_year"
-      ]
+        "employment_income_last_year"
+      ],
+      "notes": "Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1680-1783 returns without creating values when no prior-year artifact exists; otherwise it joins adjacent ASEC files on PERIDNUM, requires I_ERNVAL == I_SEVAL == 0 on the prior record, treats only -1/-9999 as unavailable, records availability before falling back to current WSAL_VAL/SEMP_VAL, and preserves signed self-employment losses. After support cloning, datasets/cps/extended_cps.py lines 140-194, 639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the exact eight predictors with a 5,000-person cap. Populace adds typed design weights. The archived finalizer drops formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist."
     },
     {
       "stage": "immigration_status",

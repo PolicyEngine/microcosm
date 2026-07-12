@@ -1,8 +1,9 @@
 #!/bin/bash
 # Build J STEP 1 — rebuild the current source-staged base pool.
 # The branch now restores CPS/ACS housing inputs in the reusable base builder,
-# so Build F's pre-housing base and SHA are intentionally stale. Cache reuse is
-# allowed only when all four persisted housing leaves still carry signal.
+# so Build F's pre-housing base and any pre-prior-year-income base are stale.
+# Cache reuse is allowed only when every newly restored persisted leaf carries
+# signal.
 #
 # Compute discipline: ~12 min (Build F was 12m14s), one chunk (<30 min). Detached via
 # setsid+caffeinate; pidfile + real rc + append log + memory-pressure sampler.
@@ -24,20 +25,33 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
 PLOG="$LOGDIR/pressure_base_$TS.log"
 mkdir -p "$LOGDIR" "$OUTDIR"
 say() { echo "[$(date -u +%FT%TZ)] $1" | tee -a "$LOG"; }
-base_has_housing_signal() {
+base_has_restored_signal() {
   .venv/bin/python -c '
 import sys
-import h5py
-import numpy as np
+import pandas as pd
 
-required = (
-    "pre_subsidy_rent",
-    "receives_housing_assistance",
-    "spm_unit_tenure_type",
-    "tenure_type",
+required = {
+    "person": (
+        "pre_subsidy_rent",
+        "self_employment_income_last_year",
+        "previous_year_income_available",
+    ),
+    "spm_unit": ("receives_housing_assistance", "spm_unit_tenure_type"),
+    "household": ("tenure_type",),
+}
+try:
+    with pd.HDFStore(sys.argv[1], mode="r") as store:
+        tables = {
+            entity: store.select(entity, columns=list(names))
+            for entity, names in required.items()
+        }
+except (KeyError, TypeError, ValueError):
+    raise SystemExit(1)
+ok = all(
+    name in tables[entity] and tables[entity][name].nunique(dropna=False) > 1
+    for entity, names in required.items()
+    for name in names
 )
-with h5py.File(sys.argv[1], "r") as h5:
-    ok = all(name in h5 and np.unique(h5[name][:]).size > 1 for name in required)
 raise SystemExit(0 if ok else 1)
 ' "$1"
 }
@@ -61,11 +75,11 @@ PEUS=$(.venv/bin/python -c "from importlib.metadata import version; print(versio
 say "BUILD J BASE START commit=$SHORT pe-us=$PEUS pid=$$ pressure_log=$PLOG"
 say "  inputs: asec 2024/2023/2022 + puf_2024 + acs_2022; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
 
-if [ -f "$BASE" ] && base_has_housing_signal "$BASE"; then
-  say "BASE: already present with nondefault housing surface at $BASE — reusing"
+if [ -f "$BASE" ] && base_has_restored_signal "$BASE"; then
+  say "BASE: already present with nondefault restored input surface at $BASE — reusing"
 else
   if [ -f "$BASE" ]; then
-    say "BASE: cached artifact is stale or housing-default-only — rebuilding in place"
+    say "BASE: cached artifact is stale or restored-input-default-only — rebuilding in place"
   fi
   # ---- memory-pressure sampler (self-terminates on python exit; SAMPLE ONLY, no kill) ----
   ( echo "ts_utc,free_pct,swap_used_mb,py_rss_mb,py_pid"
@@ -102,9 +116,9 @@ else
   if [ $rc -ne 0 ]; then echo "$rc" > "$LOGDIR/base.rc"; say "BASE FAILED rc=$rc — diagnose in base_j.log"; exit "$rc"; fi
 fi
 
-if ! base_has_housing_signal "$BASE"; then
+if ! base_has_restored_signal "$BASE"; then
   echo 2 > "$LOGDIR/base.rc"
-  say "BASE FAILED: output does not persist all four nondefault housing inputs"
+  say "BASE FAILED: output does not persist all restored nondefault inputs"
   exit 2
 fi
 

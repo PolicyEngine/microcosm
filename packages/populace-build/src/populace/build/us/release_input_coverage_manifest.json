@@ -292,9 +292,7 @@
    "status": "required"
   },
   "previous_year_income_available": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "qualified_bdc_income": {
    "status": "required"
@@ -344,9 +342,7 @@
    "status": "required"
   },
   "self_employment_income_last_year": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "self_employment_income_would_be_qualified": {
    "status": "required"
@@ -540,8 +536,8 @@
   }
  },
  "counts": {
-  "required": 145,
-  "reviewed_exclusion": 20,
+  "required": 147,
+  "reviewed_exclusion": 18,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -557,6 +553,22 @@
   "vintage": "2024"
  },
  "reform_coverage_probes": [
+  {
+   "binding_inputs": [
+    "self_employment_income_last_year"
+   ],
+   "budget_measure": "tax_unit_earned_income_last_year",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "prior_year_self_employment_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000000.0,
+   "name": "Prior-year self-employment support neutralization",
+   "neutralized_variable": "self_employment_income_last_year",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US adds self_employment_income_last_year to earned_income_last_year and then aggregates it over tax-unit nondependents. The Wyden-Smith ACTC lookback is the downstream policy consumer, but its parameter also reads formula-owned prior-year wages, so neutralizing this one leaf is the unique coverage probe. The SHA-locked strict equal-share 2022-2024 ASEC pool carries $357.24 billion of weighted net source amount; without the adjacent-year carry the neutralization is a structural zero. The distinct previous_year_income_available flag has no formula consumer in PolicyEngine-US 1.764.6 and remains protected by the hard non-default column gate."
+  },
   {
    "binding_inputs": [
     "keogh_distributions"

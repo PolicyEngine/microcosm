@@ -48,6 +48,10 @@ from populace.build.us_runtime.other_health_insurance import (
 from populace.build.us_runtime.pregnancy import (
     derive_us_pregnancy_from_manifest,
 )
+from populace.build.us_runtime.prior_year_income import (
+    derive_us_prior_year_income_from_manifest,
+    impute_us_prior_year_income_to_puf_support_from_manifest,
+)
 from populace.build.us_runtime.puf_aggregate_records import (
     derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
@@ -81,6 +85,7 @@ __all__ = [
     "derive_us_child_support_from_manifest",
     "derive_us_disability_benefits_from_manifest",
     "derive_us_other_health_insurance_from_manifest",
+    "derive_us_prior_year_income_from_manifest",
     "derive_us_relationship_inputs_from_manifest",
     "derive_us_retirement_distributions_from_manifest",
     "impute_us_retirement_distributions_to_puf_support_from_manifest",
@@ -91,6 +96,7 @@ __all__ = [
     "impute_us_child_support_to_puf_support_from_manifest",
     "impute_us_disability_benefits_to_puf_support_from_manifest",
     "impute_us_other_health_insurance_to_puf_support_from_manifest",
+    "impute_us_prior_year_income_to_puf_support_from_manifest",
     "impute_us_retirement_contributions_to_puf_support_from_manifest",
     "support_clip_us_source_output_from_manifest",
     "us_source_operation_handlers",
@@ -272,6 +278,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_pregnancy": derive_us_pregnancy_from_manifest,
+        "derive_prior_year_income": derive_us_prior_year_income_from_manifest,
         "derive_relationship_inputs": derive_us_relationship_inputs_from_manifest,
         "derive_retirement_distributions": (
             derive_us_retirement_distributions_from_manifest
@@ -290,6 +297,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "impute_other_health_insurance_premiums_to_puf_support": (
             impute_us_other_health_insurance_to_puf_support_from_manifest
+        ),
+        "impute_prior_year_income_to_puf_support": (
+            impute_us_prior_year_income_to_puf_support_from_manifest
         ),
         "impute_retirement_distributions_to_puf_support": (
             impute_us_retirement_distributions_to_puf_support_from_manifest

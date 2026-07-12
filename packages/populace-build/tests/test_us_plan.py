@@ -19,6 +19,7 @@ from populace.build.us_runtime import (
     US_DONORS,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
+    US_PRIOR_YEAR_INCOME_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     US_QBI_OUTPUT_COLUMNS,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
@@ -193,6 +194,9 @@ class TestUsSources:
 
     def test_puf_support_channel_precedes_puf_detail_donor_stage(self) -> None:
         assert US_STAGE_NAMES.index(
+            US_PRIOR_YEAR_INCOME_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME)
+        assert US_STAGE_NAMES.index(
             US_RETIREMENT_CONTRIBUTION_STAGE_NAME
         ) < US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME)
         assert US_STAGE_NAMES.index(US_CHILDCARE_STAGE_NAME) < US_STAGE_NAMES.index(
@@ -225,6 +229,39 @@ class TestUsSources:
         assert donor.source == stage.source
         assert "PHIP_VAL" in donor.notes
         assert "PUF support half" in donor.notes
+
+    def test_prior_year_income_stage_pins_join_fallback_and_joint_qrf(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_PRIOR_YEAR_INCOME_STAGE_NAME]
+
+        assert stage.outputs == (
+            "employment_income_last_year",
+            "self_employment_income_last_year",
+            "previous_year_income_available",
+        )
+        assert stage.nonnegative_outputs == ("employment_income_last_year",)
+        operations = {operation.kind: operation for operation in stage.operations}
+        assert tuple(operations) == (
+            "read_table",
+            "derive_prior_year_income",
+            "impute_prior_year_income_to_puf_support",
+        )
+        derive = operations["derive_prior_year_income"].parameters
+        assert derive["employment_allocation_flag"] == "I_ERNVAL"
+        assert derive["self_employment_allocation_flag"] == "I_SEVAL"
+        assert derive["sentinels"] == [-1, -9999]
+        assert derive["no_prior_artifact"] == "leave_defaults"
+        qrf = operations["impute_prior_year_income_to_puf_support"].parameters
+        assert qrf["max_train_samples"] == 5_000
+        assert qrf["weight"] == "person_weight"
+        assert qrf["outputs"] == [
+            "employment_income_last_year",
+            "self_employment_income_last_year",
+        ]
+        assert "self_employment_income_last_year" not in US_NONNEGATIVE_SOURCE_OUTPUTS
+
+        donor = US_DONORS[US_PRIOR_YEAR_INCOME_STAGE_NAME]
+        assert donor.survey == stage.survey
+        assert donor.source == stage.source
 
     def test_disability_benefits_stage_pins_direct_formula_and_puf_imputation(
         self,

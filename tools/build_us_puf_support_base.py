@@ -61,6 +61,8 @@ from populace.build.us_runtime import (
     us_housing_inputs_signal_gate,
     us_immigration_composition_summary,
     us_misc_itemized_signal_gate,
+    us_prior_year_income_signal_gate,
+    us_prior_year_income_source_reconciliation_gate,
     us_qbi_inputs_signal_gate,
     us_relationship_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
@@ -73,6 +75,7 @@ from populace.build.us_runtime import (
     with_us_education_inputs,
     with_us_housing_inputs,
     with_us_immigration_inputs,
+    with_us_prior_year_income_inputs,
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
@@ -229,6 +232,11 @@ def main() -> None:
 
     raw_base, base_source = _load_base_frame_from_args(args)
     base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_prior_year_income_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_relationship_inputs(
         base,
         seed=args.seed,
@@ -306,6 +314,25 @@ def main() -> None:
         imputed,
         seed=args.seed,
     )
+    imputed = with_us_prior_year_income_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    prior_year_income_gate = us_prior_year_income_signal_gate(imputed)
+    if not prior_year_income_gate.passed:
+        raise SystemExit(
+            "Prior-year-income signal gate failed:\n  "
+            + "\n  ".join(prior_year_income_gate.failures)
+        )
+    prior_year_income_reconciliation_gate = (
+        us_prior_year_income_source_reconciliation_gate(imputed)
+    )
+    if not prior_year_income_reconciliation_gate.passed:
+        raise SystemExit(
+            "Prior-year-income source reconciliation failed:\n  "
+            + "\n  ".join(prior_year_income_reconciliation_gate.failures)
+        )
     housing_inputs_gate = us_housing_inputs_signal_gate(imputed)
     if not housing_inputs_gate.passed:
         raise SystemExit(
@@ -640,6 +667,16 @@ def main() -> None:
             "passed": housing_inputs_gate.passed,
             "failures": list(housing_inputs_gate.failures),
             "details": dict(housing_inputs_gate.details),
+        },
+        "prior_year_income_signal": {
+            "passed": prior_year_income_gate.passed,
+            "failures": list(prior_year_income_gate.failures),
+            "details": dict(prior_year_income_gate.details),
+        },
+        "prior_year_income_source_reconciliation": {
+            "passed": prior_year_income_reconciliation_gate.passed,
+            "failures": list(prior_year_income_reconciliation_gate.failures),
+            "details": dict(prior_year_income_reconciliation_gate.details),
         },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,

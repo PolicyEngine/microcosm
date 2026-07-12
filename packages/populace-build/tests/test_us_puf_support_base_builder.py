@@ -482,6 +482,9 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     form_4952_gate_frames: list[object] = []
     retirement_distribution_calls: list[tuple[object, int, int]] = []
     retirement_distribution_gate_frames: list[object] = []
+    prior_year_income_calls: list[tuple[object, int, int]] = []
+    prior_year_income_gate_frames: list[object] = []
+    prior_year_income_reconciliation_frames: list[object] = []
 
     monkeypatch.setattr(
         builder,
@@ -505,6 +508,16 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda args: ("raw", {"kind": "fixture"}),
     )
     monkeypatch.setattr(builder, "derive_us_cps_carried_inputs", lambda frame: "cps")
+
+    def fake_prior_year_income(frame, *, seed, time_period):
+        prior_year_income_calls.append((frame, seed, time_period))
+        return "prior-year-direct" if frame == "cps" else "prior-year-puf"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_prior_year_income_inputs",
+        fake_prior_year_income,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_relationship_inputs",
@@ -622,6 +635,26 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         (),
         {"passed": True, "failures": (), "details": {}},
     )()
+
+    def fake_prior_year_income_gate(frame):
+        prior_year_income_gate_frames.append(frame)
+        return passing_gate
+
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_signal_gate",
+        fake_prior_year_income_gate,
+    )
+
+    def fake_prior_year_income_reconciliation_gate(frame):
+        prior_year_income_reconciliation_frames.append(frame)
+        return passing_gate
+
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_source_reconciliation_gate",
+        fake_prior_year_income_reconciliation_gate,
+    )
     monkeypatch.setattr(
         builder, "us_qbi_inputs_signal_gate", lambda frame: passing_gate
     )
@@ -767,12 +800,18 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
 
     assert child_support_calls == [
         ("housing-direct", 7, 2024),
+        ("prior-year-puf", 7, 2024),
+    ]
+    assert prior_year_income_calls == [
+        ("cps", 7, 2024),
         ("housing-puf", 7, 2024),
     ]
+    assert prior_year_income_gate_frames == ["prior-year-puf"]
+    assert prior_year_income_reconciliation_frames == ["prior-year-puf"]
     assert housing_gate_frames == [
         "relationship-inputs",
         "housing-direct",
-        "housing-puf",
+        "prior-year-puf",
     ]
     expected_disability_calls = [("child-support-direct", 7, 2024)]
     if failing_gate != "child_support":
@@ -809,3 +848,15 @@ def test_main_summary_records_retirement_distribution_gate() -> None:
     assert '"passed": retirement_distributions_gate.passed' in source
     assert '"failures": list(retirement_distributions_gate.failures)' in source
     assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_prior_year_income_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"prior_year_income_signal": {' in source
+    assert '"passed": prior_year_income_gate.passed' in source
+    assert '"failures": list(prior_year_income_gate.failures)' in source
+    assert '"details": dict(prior_year_income_gate.details)' in source
+    assert '"prior_year_income_source_reconciliation": {' in source
+    assert '"passed": prior_year_income_reconciliation_gate.passed' in source

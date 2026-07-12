@@ -68,6 +68,9 @@ from populace.build.us_runtime.housing_inputs import US_HOUSING_INPUTS_OUTPUT_CO
 from populace.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from populace.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
@@ -132,6 +135,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
+        *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "household_weight",
         "unreimbursed_business_employee_expenses",

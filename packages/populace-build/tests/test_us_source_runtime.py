@@ -25,11 +25,13 @@ from populace.build.us_runtime.source_runtime import (
     derive_us_child_support_from_manifest,
     derive_us_disability_benefits_from_manifest,
     derive_us_other_health_insurance_from_manifest,
+    derive_us_prior_year_income_from_manifest,
     derive_us_puf_policyengine_variables_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
     impute_us_child_support_to_puf_support_from_manifest,
     impute_us_disability_benefits_to_puf_support_from_manifest,
     impute_us_other_health_insurance_to_puf_support_from_manifest,
+    impute_us_prior_year_income_to_puf_support_from_manifest,
     us_source_operation_handlers,
 )
 
@@ -154,6 +156,19 @@ def test_us_other_health_insurance_handlers_are_in_shared_registry() -> None:
     assert (
         handlers["impute_other_health_insurance_premiums_to_puf_support"]
         is impute_us_other_health_insurance_to_puf_support_from_manifest
+    )
+
+
+def test_us_prior_year_income_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_prior_year_income"]
+        is derive_us_prior_year_income_from_manifest
+    )
+    assert (
+        handlers["impute_prior_year_income_to_puf_support"]
+        is impute_us_prior_year_income_to_puf_support_from_manifest
     )
 
 

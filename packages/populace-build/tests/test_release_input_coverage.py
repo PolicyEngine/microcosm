@@ -609,6 +609,27 @@ class TestShippedManifest:
         assert "other_health_insurance_premiums" in manifest.required_columns
         assert "other_health_insurance_premiums" not in manifest.reviewed_exclusions
 
+    def test_prior_year_income_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "self_employment_income_last_year",
+            "previous_year_income_available",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "prior_year_self_employment_neutralization"
+        )
+        assert probe.period == 2024
+        assert probe.neutralized_variable == "self_employment_income_last_year"
+        assert probe.parameter_changes == {}
+        assert probe.binding_inputs == ("self_employment_income_last_year",)
+        assert probe.budget_measure == "tax_unit_earned_income_last_year"
+        assert probe.effect_direction == "baseline_minus_reform"
+
     def test_signed_farm_business_income_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in ("farm_operations_income", "farm_rent_income"):

@@ -408,6 +408,26 @@ from populace.build.us_runtime.pregnancy import (
     us_pregnancy_summary,
     with_us_pregnancy_inputs,
 )
+from populace.build.us_runtime.prior_year_income import (
+    PRIOR_YEAR_INCOME_ARCHIVED_DERIVATION_URL,
+    PRIOR_YEAR_INCOME_ARCHIVED_FINALIZER_URL,
+    PRIOR_YEAR_INCOME_ARCHIVED_FORMULA_OUTPUT_URL,
+    PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL,
+    PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL,
+    PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL,
+    US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
+    US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+    US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+    US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS,
+    US_PRIOR_YEAR_INCOME_STAGE_NAME,
+    derive_us_prior_year_income_from_manifest,
+    impute_us_prior_year_income_to_puf_support_from_manifest,
+    us_prior_year_income_signal_gate,
+    us_prior_year_income_source_reconciliation_gate,
+    us_prior_year_income_stage_spec,
+    us_prior_year_income_summary,
+    with_us_prior_year_income_inputs,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -1044,6 +1064,24 @@ __all__ = [
     "us_other_health_insurance_stage_spec",
     "us_other_health_insurance_summary",
     "with_us_other_health_insurance_inputs",
+    "PRIOR_YEAR_INCOME_ARCHIVED_DERIVATION_URL",
+    "PRIOR_YEAR_INCOME_ARCHIVED_FINALIZER_URL",
+    "PRIOR_YEAR_INCOME_ARCHIVED_FORMULA_OUTPUT_URL",
+    "PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL",
+    "PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL",
+    "PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL",
+    "US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS",
+    "US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS",
+    "US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS",
+    "US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS",
+    "US_PRIOR_YEAR_INCOME_STAGE_NAME",
+    "derive_us_prior_year_income_from_manifest",
+    "impute_us_prior_year_income_to_puf_support_from_manifest",
+    "us_prior_year_income_signal_gate",
+    "us_prior_year_income_source_reconciliation_gate",
+    "us_prior_year_income_stage_spec",
+    "us_prior_year_income_summary",
+    "with_us_prior_year_income_inputs",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -1270,10 +1308,15 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "PUF support half."
         ),
     ),
-    "prior_year_income": DonorSpec(
+    US_PRIOR_YEAR_INCOME_STAGE_NAME: DonorSpec(
         survey="CPS ASEC (prior year)",
         source="https://www.census.gov/programs-surveys/cps.html",
-        notes="PERIDNUM longitudinal join for prior-year earnings.",
+        notes=(
+            "Adjacent-year PERIDNUM join for measured prior-year earnings, "
+            "with Census allocation flags and sentinels enforced. A joint "
+            "eight-predictor weighted QRF replaces both earnings leaves on "
+            "the PUF support half; signed self-employment losses survive."
+        ),
     ),
     US_IMMIGRATION_STAGE_NAME: DonorSpec(
         survey="CPS ASEC + published unauthorized-population estimates",
@@ -1461,6 +1504,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "asec_load",
     "unit_assignment",
     "derive_cps_carried",
+    US_PRIOR_YEAR_INCOME_STAGE_NAME,
     US_IMMIGRATION_STAGE_NAME,
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
@@ -1482,7 +1526,6 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "sipp_tips",
     "org_wages",
     "meps_esi_premiums",
-    "prior_year_income",
     "mortgage_conversion",
     "vehicle_assets",
     "entity_placement",

@@ -94,6 +94,7 @@ from populace.build.us_runtime import (
     us_org_wages_signal_gate,
     us_other_health_insurance_signal_gate,
     us_pregnancy_signal_gate,
+    us_prior_year_income_signal_gate,
     us_qbi_inputs_signal_gate,
     us_reform_coverage_smoke_gate,
     us_register_consistency_gate,
@@ -6230,6 +6231,29 @@ def main() -> None:
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
             )
+        )
+    prior_year_income_gate = us_prior_year_income_signal_gate(base_frame)
+    if not prior_year_income_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "prior_year_income_gate",
+                status="failed",
+                message="Prior-year-income signal gate failed.",
+                failures=list(prior_year_income_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Prior-year-income signal failed: {failure}"
+                for failure in prior_year_income_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "prior_year_income_gate",
+            message="Verified restored adjacent-ASEC prior-year income inputs.",
+            details=dict(prior_year_income_gate.details),
         )
     housing_inputs_gate = us_housing_inputs_signal_gate(base_frame)
     if not housing_inputs_gate.passed:
