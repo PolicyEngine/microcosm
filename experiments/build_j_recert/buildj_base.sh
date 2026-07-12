@@ -35,8 +35,13 @@ required = {
         "pre_subsidy_rent",
         "self_employment_income_last_year",
         "previous_year_income_available",
+        "salt_refund_income",
     ),
-    "spm_unit": ("receives_housing_assistance", "spm_unit_tenure_type"),
+    "spm_unit": (
+        "receives_housing_assistance",
+        "spm_unit_tenure_type",
+        "spm_unit_energy_subsidy",
+    ),
     "household": ("tenure_type",),
 }
 try:
