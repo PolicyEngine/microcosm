@@ -17,6 +17,7 @@ from populace.build.us_runtime import (
     US_CHILDCARE_STAGE_NAME,
     US_DISABILITY_BENEFITS_STAGE_NAME,
     US_DONORS,
+    US_ENERGY_SUBSIDY_STAGE_NAME,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
     US_PRIOR_YEAR_INCOME_STAGE_NAME,
@@ -202,6 +203,9 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(US_CHILDCARE_STAGE_NAME) < US_STAGE_NAMES.index(
             US_PUF_SUPPORT_STAGE_NAME
         )
+        assert US_STAGE_NAMES.index(
+            US_ENERGY_SUBSIDY_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME)
         assert US_STAGE_NAMES.index(US_PUF_SUPPORT_STAGE_NAME) < US_STAGE_NAMES.index(
             "puf_tax_detail"
         )

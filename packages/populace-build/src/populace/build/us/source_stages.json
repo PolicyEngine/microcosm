@@ -413,6 +413,56 @@
       "notes": "Measured ASEC SPM_CHILDCAREXPNS carries directly to spm_unit_pre_subsidy_childcare_expenses (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces non-person output with value_from_first_person (extended_cps.py lines 234-248, 639-739, and 1014-1069). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
     },
     {
+      "stage": "energy_subsidy",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "build_year",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC replicated SPM-unit SPM_ENGVAL field"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_energy_subsidy"
+        },
+        {
+          "kind": "impute_energy_subsidy_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "reduction": "value_from_first_person"
+        }
+      ],
+      "outputs": [
+        "spm_unit_energy_subsidy"
+      ],
+      "nonnegative_outputs": [
+        "spm_unit_energy_subsidy"
+      ],
+      "notes": "Measured ASEC SPM_ENGVAL carries directly to spm_unit_energy_subsidy (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method includes this leaf in CPS_ONLY_IMPUTED_VARIABLES, uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces this non-person output with value_from_first_person (extended_cps.py lines 135-194, 234-248, 639-739, and 1014-1073). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
+    },
+    {
       "stage": "child_support_inputs",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",

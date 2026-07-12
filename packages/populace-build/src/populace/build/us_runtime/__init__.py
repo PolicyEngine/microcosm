@@ -202,6 +202,19 @@ from populace.build.us_runtime.eligibility_inputs import (
     us_eligibility_inputs_summary,
     with_us_eligibility_inputs,
 )
+from populace.build.us_runtime.energy_subsidy import (
+    ENERGY_SUBSIDY_ARCHIVED_CPS_DERIVATION_URL,
+    ENERGY_SUBSIDY_ARCHIVED_PUF_IMPUTATION_URL,
+    US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
+    US_ENERGY_SUBSIDY_REQUIRED_SOURCE_COLUMNS,
+    US_ENERGY_SUBSIDY_STAGE_NAME,
+    derive_us_energy_subsidy_from_manifest,
+    impute_us_energy_subsidy_to_puf_support_from_manifest,
+    us_energy_subsidy_signal_gate,
+    us_energy_subsidy_stage_spec,
+    us_energy_subsidy_summary,
+    with_us_energy_subsidy_input,
+)
 from populace.build.us_runtime.farm_business_income import (
     FARM_BUSINESS_INCOME_ARCHIVED_CPS_FARM_INCOME_URL,
     FARM_BUSINESS_INCOME_ARCHIVED_DERIVATION_URL,
@@ -858,6 +871,17 @@ __all__ = [
     "us_childcare_stage_spec",
     "us_childcare_summary",
     "with_us_childcare_inputs",
+    "ENERGY_SUBSIDY_ARCHIVED_CPS_DERIVATION_URL",
+    "ENERGY_SUBSIDY_ARCHIVED_PUF_IMPUTATION_URL",
+    "US_ENERGY_SUBSIDY_OUTPUT_COLUMNS",
+    "US_ENERGY_SUBSIDY_REQUIRED_SOURCE_COLUMNS",
+    "US_ENERGY_SUBSIDY_STAGE_NAME",
+    "derive_us_energy_subsidy_from_manifest",
+    "impute_us_energy_subsidy_to_puf_support_from_manifest",
+    "us_energy_subsidy_signal_gate",
+    "us_energy_subsidy_stage_spec",
+    "us_energy_subsidy_summary",
+    "with_us_energy_subsidy_input",
     "CHILD_SUPPORT_ARCHIVED_PUF_IMPUTATION_URL",
     "CHILD_SUPPORT_ARCHIVED_PUF_OUTPUTS_URL",
     "CHILD_SUPPORT_EXPENSE_ARCHIVED_DERIVATION_URL",
@@ -1437,6 +1461,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "archived first-person reduction places predictions on SPM units."
         ),
     ),
+    US_ENERGY_SUBSIDY_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured replicated SPM_ENGVAL is validated and carried to the "
+            "SPM-unit energy-subsidy leaf. After support expansion, an "
+            "ASEC-trained weighted QRF replaces only the PUF half and the "
+            "archived first-person reduction places predictions on SPM units."
+        ),
+    ),
     US_CHILD_SUPPORT_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -1542,6 +1576,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
+    US_ENERGY_SUBSIDY_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",
     US_CHILD_SUPPORT_STAGE_NAME,

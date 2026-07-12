@@ -84,6 +84,7 @@ from populace.build.us_runtime import (
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
+    us_energy_subsidy_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_hours_worked_signal_gate,
@@ -117,6 +118,7 @@ from populace.build.us_runtime import (
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_eligibility_inputs,
+    with_us_energy_subsidy_input,
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
@@ -6036,6 +6038,29 @@ def main() -> None:
             + "; ".join(
                 "Childcare-input signal failed: " + failure
                 for failure in childcare_gate.failures
+            )
+        )
+    base_frame = with_us_energy_subsidy_input(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        allow_existing_without_source=True,
+    )
+    energy_subsidy_gate = us_energy_subsidy_signal_gate(base_frame)
+    if not energy_subsidy_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "energy_subsidy_gate",
+                status="failed",
+                message="Energy-subsidy signal gate failed.",
+                failures=list(energy_subsidy_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Energy-subsidy signal failed: " + failure
+                for failure in energy_subsidy_gate.failures
             )
         )
     alimony_gate = us_alimony_signal_gate(base_frame)

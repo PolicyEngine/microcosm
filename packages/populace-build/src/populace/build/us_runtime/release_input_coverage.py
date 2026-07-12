@@ -60,6 +60,7 @@ from populace.build.us_runtime.domestic_production import (
 from populace.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
 from populace.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
@@ -136,6 +137,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_FORM_4952_OUTPUT_COLUMNS,
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
         *US_SALT_REFUND_OUTPUT_COLUMNS,
+        *US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,

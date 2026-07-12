@@ -361,9 +361,7 @@
    "status": "required"
   },
   "spm_unit_energy_subsidy": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "SPM energy-subsidy (LIHEAP) resource input; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "spm_unit_pre_subsidy_childcare_expenses": {
    "status": "required"
@@ -534,8 +532,8 @@
   }
  },
  "counts": {
-  "required": 148,
-  "reviewed_exclusion": 17,
+  "required": 149,
+  "reviewed_exclusion": 16,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -598,6 +596,22 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US uses is_household_head to identify whose earnings cap SPM work-childcare expenses when an SPM unit contains multiple tax units. Neutralizing only the measured head flag falls back to tax-unit roles and changes the cap. On the 865,046-person staged Build-J artifact, baseline-minus-neutralized capped expenses are -$265.50 million. Without the restored P_SEQ input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "spm_unit_energy_subsidy"
+   ],
+   "budget_measure": "spm_unit_benefits",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "spm_unit_energy_subsidy_neutralization",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 100000000.0,
+   "name": "SPM energy-subsidy neutralization",
+   "neutralized_variable": "spm_unit_energy_subsidy",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar to spm_unit_benefits. Neutralizing the leaf must therefore lower benefits by its weighted source mass; without the restored SPM_ENGVAL carry, the effect is a structural zero. No OBBBA provision consumes this SPM resource, so the direct neutralization is the uniquely isolating policy-engine probe."
   },
   {
    "binding_inputs": [

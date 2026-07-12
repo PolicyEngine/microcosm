@@ -129,6 +129,8 @@ CAPITAL_GAIN_DETAIL_INPUTS = (
 
 SALT_REFUND_INPUTS = ("salt_refund_income",)
 
+ENERGY_SUBSIDY_INPUTS = ("spm_unit_energy_subsidy",)
+
 RELATIONSHIP_INPUTS = (
     "is_household_head",
     "is_separated",
@@ -168,6 +170,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *SALT_REFUND_INPUTS,
+    *ENERGY_SUBSIDY_INPUTS,
     *RELATIONSHIP_INPUTS,
     *HOUSING_INPUTS,
     *PRIOR_YEAR_INCOME_INPUTS,
@@ -275,6 +278,27 @@ REFORM_COVERAGE_PROBES = [
             "neutralization is a structural zero."
         ),
         "issue": "PolicyEngine/populace#38",
+    },
+    {
+        "id": "spm_unit_energy_subsidy_neutralization",
+        "name": "SPM energy-subsidy neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "spm_unit_energy_subsidy",
+        "budget_measure": "spm_unit_benefits",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["spm_unit_energy_subsidy"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar "
+            "to spm_unit_benefits. Neutralizing the leaf must therefore lower "
+            "benefits by its weighted source mass; without the restored "
+            "SPM_ENGVAL carry, the effect is a structural zero. No OBBBA "
+            "provision consumes this SPM resource, so the direct neutralization "
+            "is the uniquely isolating policy-engine probe."
+        ),
+        "issue": "PolicyEngine/populace#32",
     },
     {
         "id": "ssi_asset_limit_10k_20k",

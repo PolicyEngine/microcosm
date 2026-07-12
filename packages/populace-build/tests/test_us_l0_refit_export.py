@@ -178,6 +178,7 @@ def _us_frame(**person_extra: object) -> Frame:
                 {
                     "spm_unit_id": np.asarray([1000, 2000], dtype="int64"),
                     "spm_unit_pre_subsidy_childcare_expenses": [0.0, 1_200.0],
+                    "spm_unit_energy_subsidy": [0.0, 600.0],
                     "receives_housing_assistance": [False, True],
                     "spm_unit_tenure_type": [
                         "OWNER_WITH_MORTGAGE",
@@ -847,6 +848,26 @@ def test_required_us_release_source_columns_enforces_childcare_signal() -> None:
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_energy_subsidy_signal() -> None:
+    frame = _us_frame()
+    raw_spm_units = frame.table("spm_unit").copy()
+    raw_spm_units["spm_unit_energy_subsidy"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "spm_unit": raw_spm_units,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="spm_unit.spm_unit_energy_subsidy: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_export_us_l0_refit_h5_fails_geography_ladder_gate_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -935,6 +956,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     )
     assert summary["required_spm_unit_source_columns"] == [
         "spm_unit_pre_subsidy_childcare_expenses",
+        "spm_unit_energy_subsidy",
         "receives_housing_assistance",
         "spm_unit_tenure_type",
     ]

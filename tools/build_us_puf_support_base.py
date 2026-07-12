@@ -54,6 +54,7 @@ from populace.build.us_runtime import (
     us_domestic_production_ald_signal_gate,
     us_education_inputs_signal_gate,
     us_educator_expense_signal_gate,
+    us_energy_subsidy_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
@@ -74,6 +75,7 @@ from populace.build.us_runtime import (
     with_us_childcare_inputs,
     with_us_disability_benefits,
     with_us_education_inputs,
+    with_us_energy_subsidy_input,
     with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_prior_year_income_inputs,
@@ -286,6 +288,11 @@ def main() -> None:
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_energy_subsidy_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
     base = with_us_retirement_contribution_inputs(
         base,
         seed=args.seed,
@@ -413,6 +420,17 @@ def main() -> None:
         raise SystemExit(
             "Childcare-input signal gate failed:\n  "
             + "\n  ".join(childcare_gate.failures)
+        )
+    imputed = with_us_energy_subsidy_input(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    energy_subsidy_gate = us_energy_subsidy_signal_gate(imputed)
+    if not energy_subsidy_gate.passed:
+        raise SystemExit(
+            "Energy-subsidy signal gate failed:\n  "
+            + "\n  ".join(energy_subsidy_gate.failures)
         )
     alimony_gate = us_alimony_signal_gate(imputed)
     if not alimony_gate.passed:
@@ -639,6 +657,11 @@ def main() -> None:
             "passed": childcare_gate.passed,
             "failures": list(childcare_gate.failures),
             "details": dict(childcare_gate.details),
+        },
+        "energy_subsidy_signal": {
+            "passed": energy_subsidy_gate.passed,
+            "failures": list(energy_subsidy_gate.failures),
+            "details": dict(energy_subsidy_gate.details),
         },
         "alimony_inputs_signal": {
             "passed": alimony_gate.passed,

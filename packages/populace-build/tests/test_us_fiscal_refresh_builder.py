@@ -2035,6 +2035,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_energy_subsidy_input",
+        lambda frame, *, seed, time_period, allow_existing_without_source: frame,
+    )
+
+    def fake_energy_subsidy_signal_gate(frame):
+        captured["energy_subsidy_gate_called"] = True
+        return builder.GateResult(
+            name="energy_subsidy_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_energy_subsidy_signal_gate",
+        fake_energy_subsidy_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "us_alimony_signal_gate",
@@ -2628,6 +2648,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["form_4952_election_gate_called"] is True
     assert captured["salt_refund_income_gate_called"] is True
     assert captured["capital_gain_details_gate_called"] is True
+    assert captured["energy_subsidy_gate_called"] is True
     assert captured["farm_business_income_gate_called"] is True
     assert captured["other_health_insurance_stage_called"] is True
     assert captured["other_health_insurance_gate_called"] is True

@@ -56,6 +56,7 @@ class TestUsSourceStageOutputs:
         assert "domestic_production_ald" in outputs
         assert "unreimbursed_business_employee_expenses" in outputs
         assert "spm_unit_pre_subsidy_childcare_expenses" in outputs
+        assert "spm_unit_energy_subsidy" in outputs
         assert "child_support_received" in outputs
         assert "child_support_expense" in outputs
         assert "disability_benefits" in outputs

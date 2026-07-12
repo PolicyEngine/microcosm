@@ -588,6 +588,26 @@ class TestShippedManifest:
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
 
+    def test_energy_subsidy_is_promoted_with_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "spm_unit_energy_subsidy"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "spm_unit_energy_subsidy_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "spm_unit_benefits"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
     def test_child_support_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in ("child_support_received", "child_support_expense"):

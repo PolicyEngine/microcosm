@@ -35,6 +35,10 @@ from populace.build.us_runtime.education_inputs import (
 from populace.build.us_runtime.eligibility_inputs import (
     derive_us_eligibility_inputs_from_manifest,
 )
+from populace.build.us_runtime.energy_subsidy import (
+    derive_us_energy_subsidy_from_manifest,
+    impute_us_energy_subsidy_to_puf_support_from_manifest,
+)
 from populace.build.us_runtime.hours_worked import (
     derive_us_hours_worked_from_manifest,
 )
@@ -84,6 +88,7 @@ __all__ = [
     "derive_us_childcare_from_manifest",
     "derive_us_child_support_from_manifest",
     "derive_us_disability_benefits_from_manifest",
+    "derive_us_energy_subsidy_from_manifest",
     "derive_us_other_health_insurance_from_manifest",
     "derive_us_prior_year_income_from_manifest",
     "derive_us_relationship_inputs_from_manifest",
@@ -95,6 +100,7 @@ __all__ = [
     "impute_us_childcare_to_puf_support_from_manifest",
     "impute_us_child_support_to_puf_support_from_manifest",
     "impute_us_disability_benefits_to_puf_support_from_manifest",
+    "impute_us_energy_subsidy_to_puf_support_from_manifest",
     "impute_us_other_health_insurance_to_puf_support_from_manifest",
     "impute_us_prior_year_income_to_puf_support_from_manifest",
     "impute_us_retirement_contributions_to_puf_support_from_manifest",
@@ -273,6 +279,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "derive_childcare_inputs": derive_us_childcare_from_manifest,
         "derive_child_support_inputs": derive_us_child_support_from_manifest,
         "derive_disability_benefits": derive_us_disability_benefits_from_manifest,
+        "derive_energy_subsidy": derive_us_energy_subsidy_from_manifest,
         "derive_other_health_insurance_premiums": (
             derive_us_other_health_insurance_from_manifest
         ),
@@ -296,6 +303,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "impute_disability_benefits_to_puf_support": (
             impute_us_disability_benefits_to_puf_support_from_manifest
+        ),
+        "impute_energy_subsidy_to_puf_support": (
+            impute_us_energy_subsidy_to_puf_support_from_manifest
         ),
         "impute_other_health_insurance_premiums_to_puf_support": (
             impute_us_other_health_insurance_to_puf_support_from_manifest

@@ -464,6 +464,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("educator_expense", "PUF educator-expense channel is default-only"),
         ("form_4952", "PUF Form 4952 channel is default-only"),
         ("salt_refund", "PUF SALT-refund channel is default-only"),
+        ("energy_subsidy", "PUF energy-subsidy channel is default-only"),
         (
             "retirement_distributions",
             "PUF retirement-distribution channel is default-only",
@@ -482,6 +483,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     educator_expense_gate_frames: list[object] = []
     form_4952_gate_frames: list[object] = []
     salt_refund_gate_frames: list[object] = []
+    energy_subsidy_gate_frames: list[object] = []
     retirement_distribution_calls: list[tuple[object, int, int]] = []
     retirement_distribution_gate_frames: list[object] = []
     prior_year_income_calls: list[tuple[object, int, int]] = []
@@ -586,6 +588,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(
         builder,
         "with_us_childcare_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_energy_subsidy_input",
         lambda frame, *, seed, time_period: frame,
     )
     monkeypatch.setattr(
@@ -780,6 +787,28 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "us_childcare_signal_gate",
         lambda frame: passing_gate,
     )
+
+    def fake_energy_subsidy_signal_gate(frame):
+        energy_subsidy_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "energy_subsidy",
+                "failures": (
+                    ("PUF energy-subsidy channel is default-only",)
+                    if failing_gate == "energy_subsidy"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_energy_subsidy_signal_gate",
+        fake_energy_subsidy_signal_gate,
+    )
     monkeypatch.setattr(builder, "us_alimony_signal_gate", lambda frame: passing_gate)
     monkeypatch.setattr(
         builder,
@@ -848,18 +877,25 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
             "educator_expense",
             "form_4952",
             "salt_refund",
+            "energy_subsidy",
             "retirement_distributions",
         }
         else []
     )
     assert form_4952_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"form_4952", "salt_refund", "retirement_distributions"}
+        if failing_gate
+        in {"form_4952", "salt_refund", "energy_subsidy", "retirement_distributions"}
         else []
     )
     assert salt_refund_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"salt_refund", "retirement_distributions"}
+        if failing_gate in {"salt_refund", "energy_subsidy", "retirement_distributions"}
+        else []
+    )
+    assert energy_subsidy_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate in {"energy_subsidy", "retirement_distributions"}
         else []
     )
     expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
@@ -893,6 +929,16 @@ def test_main_summary_records_salt_refund_income_gate() -> None:
     assert '"passed": salt_refund_income_gate.passed' in source
     assert '"failures": list(salt_refund_income_gate.failures)' in source
     assert '"details": dict(salt_refund_income_gate.details)' in source
+
+
+def test_main_summary_records_energy_subsidy_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"energy_subsidy_signal": {' in source
+    assert '"passed": energy_subsidy_gate.passed' in source
+    assert '"failures": list(energy_subsidy_gate.failures)' in source
+    assert '"details": dict(energy_subsidy_gate.details)' in source
 
 
 def test_main_summary_records_prior_year_income_gate() -> None:
