@@ -495,6 +495,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
                 "seed": 7,
                 "n_estimators": 4,
                 "puf_h5": tmp_path / "puf.h5",
+                "acs_h5": tmp_path / "acs.h5",
             },
         )(),
     )
@@ -516,13 +517,42 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
             "Gate", (), {"passed": True, "failures": (), "details": {}}
         )(),
     )
+    housing_gate_frames: list[object] = []
+
+    def fake_housing_inputs_signal_gate(frame):
+        housing_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": frame != "relationship-inputs",
+                "failures": (
+                    ("housing inputs absent",) if frame == "relationship-inputs" else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_housing_inputs_signal_gate",
+        fake_housing_inputs_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_acs_2022_rent_donor",
+        lambda path: "acs-rent-donor",
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_housing_inputs",
+        lambda frame, *, seed, time_period, acs_rent_donor: "housing-direct",
+    )
 
     def fake_child_support(frame, *, seed, time_period):
         child_support_calls.append((frame, seed, time_period))
         return (
-            "child-support-direct"
-            if frame == "relationship-inputs"
-            else "child-support-puf"
+            "child-support-direct" if frame == "housing-direct" else "child-support-puf"
         )
 
     monkeypatch.setattr(builder, "with_us_child_support_inputs", fake_child_support)
@@ -581,6 +611,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder,
         "with_us_qbi_input_reconciliation",
         lambda frame: "qbi-reconciled",
+    )
+    monkeypatch.setattr(
+        builder,
+        "impute_us_housing_assistance_to_puf_support",
+        lambda frame, *, seed: "housing-puf",
     )
     passing_gate = type(
         "Gate",
@@ -731,8 +766,13 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder.main()
 
     assert child_support_calls == [
-        ("relationship-inputs", 7, 2024),
-        ("qbi-reconciled", 7, 2024),
+        ("housing-direct", 7, 2024),
+        ("housing-puf", 7, 2024),
+    ]
+    assert housing_gate_frames == [
+        "relationship-inputs",
+        "housing-direct",
+        "housing-puf",
     ]
     expected_disability_calls = [("child-support-direct", 7, 2024)]
     if failing_gate != "child_support":

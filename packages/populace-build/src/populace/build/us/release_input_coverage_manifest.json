@@ -289,9 +289,7 @@
    "status": "required"
   },
   "pre_subsidy_rent": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "previous_year_income_available": {
    "issue": "PolicyEngine/populace#38",
@@ -317,9 +315,7 @@
    "status": "required"
   },
   "receives_housing_assistance": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "rental_income": {
    "status": "required"
@@ -379,9 +375,7 @@
    "status": "required"
   },
   "spm_unit_tenure_type": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "ssn_card_type": {
    "status": "required"
@@ -486,9 +480,7 @@
    "status": "required"
   },
   "tenure_type": {
-   "issue": "PolicyEngine/populace#32",
-   "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "tip_income": {
    "status": "required"
@@ -548,8 +540,8 @@
   }
  },
  "counts": {
-  "required": 141,
-  "reviewed_exclusion": 24,
+  "required": 145,
+  "reviewed_exclusion": 20,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -1149,6 +1141,22 @@
    },
    "period": 2026,
    "reason": "Setting the Texas TANF non-cash additional-vehicle exemption to zero tightens the asset test used by Texas SNAP categorical eligibility, so baseline-minus-reform SNAP must be positive. PolicyEngine-US computes the exemption from both household vehicle count and value; if either restored SIPP vehicle input is absent or degenerate, this vehicle-specific reform loses its intended binding channel. A persisted 30,000-household Populace smoke scored +$3.58 million in 2026 SNAP."
+  },
+  {
+   "binding_inputs": [
+    "pre_subsidy_rent"
+   ],
+   "budget_measure": "snap",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "pre_subsidy_rent_neutralization",
+   "issue": "PolicyEngine/populace#32",
+   "min_abs_effect": 1000000.0,
+   "name": "Pre-subsidy rent neutralization",
+   "neutralized_variable": "pre_subsidy_rent",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other three restored housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 1.764.6 formula consumer."
   }
  ],
  "schema_version": 1,

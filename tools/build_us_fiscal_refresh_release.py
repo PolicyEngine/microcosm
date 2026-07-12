@@ -87,6 +87,7 @@ from populace.build.us_runtime import (
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_hours_worked_signal_gate,
+    us_housing_inputs_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
     us_misc_itemized_signal_gate,
@@ -497,10 +498,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     # ssn_card_type and immigration_status_str are intentionally NOT excluded:
     # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
     # still constant at CITIZEN skipped that stage and should fail this gate.
-    "spm_unit_tenure_type": (
-        "SPM tenure input not yet carried through (PolicyEngine/populace#32); "
-        "constant RENTER misstates SNAP shelter deductions and SPM housing."
-    ),
     "is_wic_at_nutritional_risk": (
         "WIC inputs not yet carried through (PolicyEngine/populace#32)."
     ),
@@ -6233,6 +6230,29 @@ def main() -> None:
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
             )
+        )
+    housing_inputs_gate = us_housing_inputs_signal_gate(base_frame)
+    if not housing_inputs_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "housing_inputs_gate",
+                status="failed",
+                message="Housing/tenure input signal gate failed.",
+                failures=list(housing_inputs_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Housing/tenure input signal failed: {failure}"
+                for failure in housing_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "housing_inputs_gate",
+            message="Verified restored CPS/ACS housing and tenure inputs.",
+            details=dict(housing_inputs_gate.details),
         )
     if telemetry is not None:
         telemetry.stage(

@@ -1,11 +1,8 @@
 #!/bin/bash
-# Build J STEP 1 — base pool rebuild on main's stages (populace#368 re-certification).
-# Replicates Build F's base command EXACTLY on origin/main's base builder
-# (byte-identical to Build F's tools/build_us_puf_support_base.py) to (a) satisfy the
-# #368 "base pool rebuild" step and (b) EMPIRICALLY confirm determinism. The SNAP
-# (#350/#352/#353) and SCF-wealth (#373) enrichments are RELEASE-TIME source stages
-# (us_runtime/*), NOT base-builder stages, so the base sha is expected == Build F's
-# 18833fb6 (documented finding vs the task's "new base sha expected" premise).
+# Build J STEP 1 — rebuild the current source-staged base pool.
+# The branch now restores CPS/ACS housing inputs in the reusable base builder,
+# so Build F's pre-housing base and SHA are intentionally stale. Cache reuse is
+# allowed only when all four persisted housing leaves still carry signal.
 #
 # Compute discipline: ~12 min (Build F was 12m14s), one chunk (<30 min). Detached via
 # setsid+caffeinate; pidfile + real rc + append log + memory-pressure sampler.
@@ -27,6 +24,23 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
 PLOG="$LOGDIR/pressure_base_$TS.log"
 mkdir -p "$LOGDIR" "$OUTDIR"
 say() { echo "[$(date -u +%FT%TZ)] $1" | tee -a "$LOG"; }
+base_has_housing_signal() {
+  .venv/bin/python -c '
+import sys
+import h5py
+import numpy as np
+
+required = (
+    "pre_subsidy_rent",
+    "receives_housing_assistance",
+    "spm_unit_tenure_type",
+    "tenure_type",
+)
+with h5py.File(sys.argv[1], "r") as h5:
+    ok = all(name in h5 and np.unique(h5[name][:]).size > 1 for name in required)
+raise SystemExit(0 if ok else 1)
+' "$1"
+}
 rm -f "$LOGDIR/base.rc"
 
 cd "$WT" || { say "FATAL cannot cd $WT"; echo 2 > "$LOGDIR/base.rc"; exit 2; }
@@ -34,21 +48,25 @@ source .venv/bin/activate 2>/dev/null
 
 # ---- integrity preflight on inputs (reproduce Build F's exact base) ----
 chk() { local got exp; got=$(shasum -a 256 "$1" | cut -c1-16); [ "$got" = "$2" ] || { say "FATAL sha mismatch $1: $got != $2"; echo 2 > "$LOGDIR/base.rc"; exit 2; }; }
-for f in "$USD/census_cps_2024.h5" "$USD/census_cps_2023.h5" "$USD/census_cps_2022.h5" "$USD/puf_2024.h5" "$AGING_FACTS" "$CDX" "$BLADDER"; do
+for f in "$USD/census_cps_2024.h5" "$USD/census_cps_2023.h5" "$USD/census_cps_2022.h5" "$USD/puf_2024.h5" "$USD/acs_2022.h5" "$AGING_FACTS" "$CDX" "$BLADDER"; do
   [ -f "$f" ] || { say "FATAL missing input $f"; echo 2 > "$LOGDIR/base.rc"; exit 2; }
 done
 chk "$AGING_FACTS" a5d34d4aad325d8c
 chk "$CDX" 383a666631aafd4f
 chk "$BLADDER" 7ba39b959068181b
+chk "$USD/acs_2022.h5" 0b319b496f19a691
 
 SHORT=$(git rev-parse --short HEAD)
 PEUS=$(.venv/bin/python -c "from importlib.metadata import version; print(version('policyengine-us'))" 2>/dev/null)
 say "BUILD J BASE START commit=$SHORT pe-us=$PEUS pid=$$ pressure_log=$PLOG"
-say "  inputs: asec 2024/2023/2022 + puf_2024; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
+say "  inputs: asec 2024/2023/2022 + puf_2024 + acs_2022; aging-facts a5d34d4a; cdx 383a6666; bladder 7ba39b95; seed 0 n-est 32"
 
-if [ -f "$BASE" ]; then
-  say "BASE: already present at $BASE — verifying sha only (delete to force rebuild)"
+if [ -f "$BASE" ] && base_has_housing_signal "$BASE"; then
+  say "BASE: already present with nondefault housing surface at $BASE — reusing"
 else
+  if [ -f "$BASE" ]; then
+    say "BASE: cached artifact is stale or housing-default-only — rebuilding in place"
+  fi
   # ---- memory-pressure sampler (self-terminates on python exit; SAMPLE ONLY, no kill) ----
   ( echo "ts_utc,free_pct,swap_used_mb,py_rss_mb,py_pid"
     while :; do
@@ -62,12 +80,13 @@ else
     done ) >> "$PLOG" 2>&1 &
   SAMPLER=$!
 
-  say "BASE: rebuilding (3-year ASEC pool 2024+2023+2022, 2x PUF clone, spec-less equal thirds)"
+  say "BASE: rebuilding (3-year ASEC pool 2024+2023+2022, pinned ACS 2022 rent donor, 2x PUF clone, spec-less equal thirds)"
   .venv/bin/python tools/build_us_puf_support_base.py \
     --asec-h5 2024="$USD/census_cps_2024.h5" \
     --asec-h5 2023="$USD/census_cps_2023.h5" \
     --asec-h5 2022="$USD/census_cps_2022.h5" \
     --puf-h5 "$USD/puf_2024.h5" \
+    --acs-h5 "$USD/acs_2022.h5" \
     --target-year 2024 \
     --seed 0 --n-estimators 32 \
     --ledger-facts "$AGING_FACTS" \
@@ -83,13 +102,21 @@ else
   if [ $rc -ne 0 ]; then echo "$rc" > "$LOGDIR/base.rc"; say "BASE FAILED rc=$rc — diagnose in base_j.log"; exit "$rc"; fi
 fi
 
+if ! base_has_housing_signal "$BASE"; then
+  echo 2 > "$LOGDIR/base.rc"
+  say "BASE FAILED: output does not persist all four nondefault housing inputs"
+  exit 2
+fi
+
 BASE_SHA=$(shasum -a 256 "$BASE" | cut -d' ' -f1)
 echo "$BASE_SHA" > "$LOGDIR/base.sha"
 say "BASE sha: $BASE_SHA"
 if [ "$BASE_SHA" = "18833fb68e60ee74461608d81a5c5ab7d52435e17026d9e3b062d9de18d6871f" ]; then
-  say "BASE sha CONFIRMS Build F 18833fb6 — base pool unchanged (assets/SNAP are release-time source stages, not base-builder stages)"
+  echo 2 > "$LOGDIR/base.rc"
+  say "BASE FAILED: Build F's pre-housing SHA was reused"
+  exit 2
 else
-  say "BASE sha DIFFERS from 18833fb6 — investigate before proceeding (base builder or deps changed the pool)"
+  say "BASE sha differs from pre-housing Build F as required"
 fi
 echo "0" > "$LOGDIR/base.rc"
 say "BUILD J BASE DONE rc=0 sha=$BASE_SHA"

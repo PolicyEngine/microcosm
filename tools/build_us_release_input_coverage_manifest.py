@@ -128,6 +128,13 @@ RELATIONSHIP_INPUTS = (
     "is_surviving_spouse",
 )
 
+HOUSING_INPUTS = (
+    "pre_subsidy_rent",
+    "receives_housing_assistance",
+    "spm_unit_tenure_type",
+    "tenure_type",
+)
+
 RETIREMENT_DISTRIBUTION_INPUTS = (
     "taxable_401k_distributions",
     "taxable_403b_distributions",
@@ -154,6 +161,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *RELATIONSHIP_INPUTS,
+    *HOUSING_INPUTS,
     *RETIREMENT_DISTRIBUTION_INPUTS,
     "domestic_production_ald",
     "household_weight",
@@ -860,6 +868,30 @@ REFORM_COVERAGE_PROBES = [
             "smoke scored +$3.58 million in 2026 SNAP."
         ),
         "issue": "PolicyEngine/populace#49",
+    },
+    {
+        "id": "pre_subsidy_rent_neutralization",
+        "name": "Pre-subsidy rent neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "pre_subsidy_rent",
+        "budget_measure": "snap",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["pre_subsidy_rent"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter "
+            "deduction. Neutralizing only the restored ACS rent leaf therefore "
+            "reduces SNAP; on the pinned retired small eCPS artifact under "
+            "PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is "
+            "+$11.731 billion. Without nondefault ACS rent, that effect is a "
+            "structural zero. The "
+            "other three restored housing leaves are enforced by their exact "
+            "ASEC mappings and signal gate; household tenure_type has no "
+            "standalone PolicyEngine-US 1.764.6 formula consumer."
+        ),
+        "issue": "PolicyEngine/populace#32",
     },
 ]
 

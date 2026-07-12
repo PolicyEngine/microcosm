@@ -2178,6 +2178,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "us_housing_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="housing_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
         "us_retirement_distributions_signal_gate",
         lambda frame: builder.GateResult(
             name="retirement_distributions_signal",

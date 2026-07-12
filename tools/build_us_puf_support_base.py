@@ -37,7 +37,9 @@ from populace.build.us_runtime import (
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
+    impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
+    load_acs_2022_rent_donor,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
@@ -56,6 +58,7 @@ from populace.build.us_runtime import (
     us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
+    us_housing_inputs_signal_gate,
     us_immigration_composition_summary,
     us_misc_itemized_signal_gate,
     us_qbi_inputs_signal_gate,
@@ -68,6 +71,7 @@ from populace.build.us_runtime import (
     with_us_childcare_inputs,
     with_us_disability_benefits,
     with_us_education_inputs,
+    with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
@@ -109,6 +113,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--acs-h5",
+        type=Path,
+        help=(
+            "SHA-pinned processed ACS 2022 ARRAYS artifact used by the "
+            "housing/rent stage. Required unless --base-h5 already carries "
+            "a green housing-input surface."
+        ),
+    )
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
@@ -227,6 +240,28 @@ def main() -> None:
             "Relationship-input signal gate failed:\n  "
             + "\n  ".join(relationship_inputs_gate.failures)
         )
+    housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    acs_rent_donor: pd.DataFrame | None = None
+    if not housing_inputs_gate.passed:
+        if args.acs_h5 is None:
+            raise SystemExit(
+                "Housing-input signal gate is not already green and --acs-h5 "
+                "was not provided; exact pre_subsidy_rent restoration requires "
+                "the pinned ACS 2022 donor."
+            )
+        acs_rent_donor = load_acs_2022_rent_donor(args.acs_h5)
+        base = with_us_housing_inputs(
+            base,
+            seed=args.seed,
+            time_period=args.target_year,
+            acs_rent_donor=acs_rent_donor,
+        )
+        housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    if not housing_inputs_gate.passed:
+        raise SystemExit(
+            "Housing-input signal gate failed before support cloning:\n  "
+            + "\n  ".join(housing_inputs_gate.failures)
+        )
     base = with_us_child_support_inputs(
         base,
         seed=args.seed,
@@ -267,6 +302,16 @@ def main() -> None:
         n_estimators=args.n_estimators,
     )
     imputed = with_us_qbi_input_reconciliation(imputed)
+    imputed = impute_us_housing_assistance_to_puf_support(
+        imputed,
+        seed=args.seed,
+    )
+    housing_inputs_gate = us_housing_inputs_signal_gate(imputed)
+    if not housing_inputs_gate.passed:
+        raise SystemExit(
+            "Housing-input signal gate failed after PUF-support imputation:\n  "
+            + "\n  ".join(housing_inputs_gate.failures)
+        )
     qbi_inputs_gate = us_qbi_inputs_signal_gate(imputed)
     if not qbi_inputs_gate.passed:
         raise SystemExit(
@@ -492,6 +537,11 @@ def main() -> None:
         "base_sha256": _sha256(args.base_h5) if args.base_h5 is not None else None,
         "puf_h5": str(args.puf_h5.resolve()),
         "puf_sha256": _sha256(args.puf_h5),
+        "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
+        "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
+        "acs_rent_donor_rows": (
+            int(len(acs_rent_donor)) if acs_rent_donor is not None else None
+        ),
         "output_h5": str(output_h5),
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
@@ -585,6 +635,11 @@ def main() -> None:
             "passed": relationship_inputs_gate.passed,
             "failures": list(relationship_inputs_gate.failures),
             "details": dict(relationship_inputs_gate.details),
+        },
+        "housing_inputs_signal": {
+            "passed": housing_inputs_gate.passed,
+            "failures": list(housing_inputs_gate.failures),
+            "details": dict(housing_inputs_gate.details),
         },
         "congressional_district_assignment": congressional_district_assignment,
         "geography_ladder_assignment": geography_ladder_assignment,

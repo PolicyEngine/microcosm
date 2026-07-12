@@ -177,7 +177,10 @@ def build_pooled_asec_unit_frame(
         tax_unit_mode=tax_unit_mode,
         strata=strata,
     )
-    frame = _attach_household_attributes(frame, ("state_fips",))
+    # Keep raw household tenure through unit construction.  The archived eCPS
+    # housing stage maps H_TENURE directly; SPM_TENMORTSTATUS is a distinct
+    # concept and cannot reconstruct rent-free occupancy (H_TENURE == 3).
+    frame = _attach_household_attributes(frame, ("state_fips", "H_TENURE"))
     return frame, pooled.metadata
 
 
@@ -292,6 +295,22 @@ def _remap_source_year(
             .astype("int64")
             .to_numpy()
         )
+    if "H_TENURE" in household:
+        tenure_by_household = (
+            household[["H_SEQ", "H_TENURE"]]
+            .drop_duplicates("H_SEQ")
+            .set_index("H_SEQ")["H_TENURE"]
+        )
+        result["H_TENURE"] = result["source_household_id"].map(tenure_by_household)
+        if result["H_TENURE"].isna().any():
+            missing = (
+                result.loc[result["H_TENURE"].isna(), "source_household_id"]
+                .head()
+                .tolist()
+            )
+            raise ValueError(
+                f"ASEC H_TENURE is missing for source household id(s): {missing}."
+            )
     result["PH_SEQ"] = result["PH_SEQ"].map(household_map).astype("int64")
     result["household_id"] = result["PH_SEQ"]
     result[ASEC_PERSON_WEIGHT_COLUMN] = (

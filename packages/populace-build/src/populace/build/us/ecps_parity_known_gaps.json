@@ -350,17 +350,9 @@
         "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-69 passes only the three prebuilt 2022-2024 artifacts via --asec-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 records their SHA-256 digests; packages/populace-build/src/populace/build/us_runtime/asec_pool.py lines 61-75 reads only their person and household tables without refreshing or linking separate WIC certification records."
       }
     },
-    "pre_subsidy_rent": {
-      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
-    },
     "previous_year_income_available": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
       "issue": "PolicyEngine/populace#38"
-    },
-    "receives_housing_assistance": {
-      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
     },
     "salt_refund_income": {
       "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
@@ -372,10 +364,6 @@
     },
     "spm_unit_energy_subsidy": {
       "reason": "SPM energy-subsidy (LIHEAP) resource input; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
-    },
-    "spm_unit_tenure_type": {
-      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
       "issue": "PolicyEngine/populace#32"
     },
     "survivor_benefits": {
@@ -405,10 +393,6 @@
     "takes_up_ssi_if_eligible": {
       "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
       "issue": "PolicyEngine/populace#312"
-    },
-    "tenure_type": {
-      "reason": "HUD housing-assistance / tenure SPM input feeding capped housing subsidy; not yet on the candidate frame.",
-      "issue": "PolicyEngine/populace#32"
     },
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",

@@ -64,6 +64,7 @@ from populace.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.form_4952 import US_FORM_4952_OUTPUT_COLUMNS
+from populace.build.us_runtime.housing_inputs import US_HOUSING_INPUTS_OUTPUT_COLUMNS
 from populace.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -130,6 +131,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
+        *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
         "spm_unit_pre_subsidy_childcare_expenses",
         "household_weight",
         "unreimbursed_business_employee_expenses",

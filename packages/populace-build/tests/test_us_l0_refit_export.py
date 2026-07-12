@@ -128,6 +128,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "is_paid_hourly": [False, True, False],
             "is_union_member_or_covered": [False, True, False],
             "fsla_overtime_premium": [0.0, 1_000.0, 0.0],
+            "pre_subsidy_rent": [0.0, 12_000.0, 0.0],
             **person_extra,
         }
     )
@@ -154,6 +155,7 @@ def _us_frame(**person_extra: object) -> Frame:
                     "net_worth": [-50_000.0, 350_000.0],
                     "household_vehicles_owned": [0, 2],
                     "household_vehicles_value": [0.0, 30_000.0],
+                    "tenure_type": ["OWNED_WITH_MORTGAGE", "RENTED"],
                 }
             ),
             "tax_unit": pd.DataFrame(
@@ -173,6 +175,11 @@ def _us_frame(**person_extra: object) -> Frame:
                 {
                     "spm_unit_id": np.asarray([1000, 2000], dtype="int64"),
                     "spm_unit_pre_subsidy_childcare_expenses": [0.0, 1_200.0],
+                    "receives_housing_assistance": [False, True],
+                    "spm_unit_tenure_type": [
+                        "OWNER_WITH_MORTGAGE",
+                        "RENTER",
+                    ],
                 }
             ),
             "family": pd.DataFrame(
@@ -924,7 +931,9 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         in summary["required_person_source_columns"]
     )
     assert summary["required_spm_unit_source_columns"] == [
-        "spm_unit_pre_subsidy_childcare_expenses"
+        "spm_unit_pre_subsidy_childcare_expenses",
+        "receives_housing_assistance",
+        "spm_unit_tenure_type",
     ]
     assert summary["required_household_nonconstant_source_columns"] == [
         "auto_loan_balance",
@@ -933,4 +942,5 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "net_worth",
         "household_vehicles_owned",
         "household_vehicles_value",
+        "tenure_type",
     ]

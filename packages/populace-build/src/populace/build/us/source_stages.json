@@ -1371,52 +1371,130 @@
       "artifacts": [
         {
           "kind": "public_microdata",
-          "format": "acs_pums",
+          "format": "census_asec_hdf5",
+          "vintage": "2022-2024 pooled",
+          "locator": "SHA-locked Census CPS ASEC person and household tables",
+          "source_columns": [
+            "H_TENURE",
+            "SPM_CAPHOUSESUB",
+            "SPM_TENMORTSTATUS",
+            "SPM_ID"
+          ]
+        },
+        {
+          "kind": "versioned_derived_microdata",
+          "format": "hdf5_arrays",
           "vintage": "2022",
-          "locator": "Census ACS PUMS household and person files"
+          "locator": "Census ACS 2022 PUMS processed person/household arrays (acs_2022.h5)",
+          "sha256": "0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4",
+          "official_person_source": "https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_pus.zip",
+          "official_household_source": "https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_hus.zip",
+          "integrity_note": "The runtime validates the immutable artifact hash, entity alignment, archived head-only annual-rent construction, tenure collapse, both target-allocation flags, nonnegative weights, and positive total household support. Zero-WGTP group-quarters heads remain in the deterministic archived sample and receive zero mass in Populace's weighted fit; the runtime does not import or trust a local generating checkout."
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "417-535,1612-1635",
+          "acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "acs.py"],
+          "acs_lines": "82-135",
+          "census_acs_path_parts": ["policyengine_", "us_data", "datasets", "acs", "census_acs.py"],
+          "census_acs_lines": "13-68,95-125",
+          "puf_imputation_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "puf_imputation_lines": "135-194,234-248,639-745,1014-1073"
         }
       ],
       "operations": [
         {
-          "kind": "read_tables",
-          "tables": [
-            "acs_household",
-            "acs_person"
-          ]
+          "kind": "derive_housing_tenure_inputs",
+          "household_tenure_source": "H_TENURE",
+          "household_tenure_map": {
+            "0": "NONE",
+            "1": "OWNED_WITH_MORTGAGE",
+            "2": "RENTED",
+            "3": "NONE"
+          },
+          "housing_assistance_source": "SPM_CAPHOUSESUB",
+          "spm_tenure_source": "SPM_TENMORTSTATUS",
+          "spm_tenure_map": {
+            "1": "OWNER_WITH_MORTGAGE",
+            "2": "OWNER_WITHOUT_MORTGAGE",
+            "3": "RENTER"
+          }
         },
         {
-          "kind": "aggregate_person_to_household",
-          "aggregates": [
-            "employment_income",
-            "household_size"
-          ]
+          "kind": "read_acs_rent_donor",
+          "table": "acs_2022_arrays",
+          "target": "rent",
+          "allocation_flag": "rent_is_allocated",
+          "source_unit": "annual_usd",
+          "source_already_annualized": true,
+          "household_head_only": true
         },
         {
-          "kind": "fit_weighted_imputer",
+          "kind": "fit_weighted_acs_rent_qrf",
           "predictors": [
-            "state_fips",
-            "household_employment_income",
+            "is_household_head",
+            "age",
+            "is_male",
+            "tenure_type",
+            "employment_income",
+            "self_employment_income",
+            "social_security",
+            "pension_income",
+            "state_code_str",
             "household_size"
           ],
-          "weight": "household_weight"
+          "target": "rent",
+          "shared_sample_targets": [
+            "rent",
+            "real_estate_taxes"
+          ],
+          "target_allocation_flags": {
+            "rent": "rent_is_allocated",
+            "real_estate_taxes": "real_estate_taxes_is_allocated"
+          },
+          "per_target_initial_cap": 5000,
+          "sample_fill_salt": "fill",
+          "weight": "household_weight",
+          "max_train_samples": 10000,
+          "n_estimators": 100,
+          "training_seed_name": "legacy_acs_rent_training_sample",
+          "seed_from_build_config": true,
+          "head_carry_output": "pre_subsidy_rent"
         },
         {
-          "kind": "zero_when_false",
-          "condition": "tenure_type == RENTED"
-        },
-        {
-          "kind": "head_carry",
-          "from_entity": "household",
-          "to_entity": "person",
-          "condition": "is_household_head"
+          "kind": "impute_housing_assistance_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "has_esi",
+            "tax_unit_is_joint",
+            "tax_unit_count_dependents",
+            "employment_income",
+            "self_employment_income",
+            "social_security"
+          ],
+          "target": "receives_housing_assistance",
+          "weight": "person_weight",
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "reduction": "value_from_first_person"
         }
       ],
       "outputs": [
-        "pre_subsidy_rent"
+        "pre_subsidy_rent",
+        "receives_housing_assistance",
+        "spm_unit_tenure_type",
+        "tenure_type"
       ],
       "nonnegative_outputs": [
         "pre_subsidy_rent"
-      ]
+      ],
+      "notes": "Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. Only receives_housing_assistance receives the retired second-stage CPS-to-PUF QRF; rent and both tenure enums are cloned unchanged."
     },
     {
       "stage": "vehicle_assets",
