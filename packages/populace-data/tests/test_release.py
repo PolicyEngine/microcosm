@@ -634,6 +634,33 @@ def test_publish_uploads_pointer_last(
         assert f"releases/{RELEASE_ID}/{filename}" in final_commit["paths"][:-1]
 
 
+def test_publish_no_latest_never_touches_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+        update_latest=False,
+    )
+    # Immutable branch + tag flow is unchanged; the final main commit exists
+    # (release copies + root artifacts) but carries NO pointer operation.
+    assert [event for event, _ in hub.events] == [
+        "create_branch",
+        "create_commit",
+        "create_tag",
+        "delete_branch",
+        "create_commit",
+    ]
+    final_event, final_commit = hub.events[-1]
+    assert final_event == "create_commit"
+    assert final_commit["revision"] == "main"
+    assert LATEST_POINTER_PATH not in final_commit["paths"]
+    assert final_commit["message"] == f"Publish non-default release {RELEASE_ID}"
+
+
 def test_publish_commits_immutable_release_before_root_and_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
