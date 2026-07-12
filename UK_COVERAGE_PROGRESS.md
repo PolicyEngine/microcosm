@@ -12,9 +12,9 @@ yet ported from enhanced FRS pipeline — pending review” plus a tracking note
 | Launch contract baseline | 145 required; 0 exclusions | SHA-pinned enhanced-FRS and certified Populace UK H5 surfaces | Complete |
 | Loader-override correction | +13 formula-owned persisted overrides | UK Simulation passes every engine-known persisted H5 column through `set_input`; exact cached-artifact replay covers all 145 | Complete |
 | Contract entity/pin integrity | No status change | All 145 reference and candidate columns carry owning-entity evidence; wrong-table columns and unproven HF revision mappings fail | Complete |
-| National orchestration seam | No status change | Ordered stage protocol, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
-| Effective-mass coverage | No raw status change | Required signal must carry at least 0.000001 of owning-entity effective population mass | Complete |
-| HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; deterministic TEI/TII/TI synthetic contract | Complete |
+| National orchestration seam | No status change | Ordered stage protocol, stable verified-byte binding, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
+| Effective-mass coverage | No raw status change | Required signal must carry at least 0.000001 of owning-entity effective population mass; this rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference | Complete |
+| HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
 | HMRC/SPI income restoration | Not promoted | Q2 cannot be materialized like-for-like on the certified FRS channel; fail-closed blocker below | Blocked pending conductor review |
 
 ## Restoration diagnosis
@@ -32,9 +32,13 @@ orchestration seam was required before any family restoration could run.
 sequence:
 
 1. validate the checked-in input-coverage manifest and required stage plan;
-2. load the certified compact UK person, benunit, and household tables;
-3. run ordered named national stages, validating IDs and links after each;
-4. run the final input-coverage/effective-mass gate; and
+2. load the certified compact UK person, benunit, and household tables, binding
+   the in-memory stage input to the stable file identity captured around the
+   candidate SHA-256 verification;
+3. run ordered named national stages, validating entity IDs and direct person
+   references to households and benunits after each;
+4. run the final input-coverage/effective-mass gate, which additionally requires
+   every benunit to resolve to exactly one weighted household; and
 5. atomically write a caller-named staging H5 and evidence sidecars.
 
 This seam does not clone households, assign local geography, publish a release,
@@ -67,6 +71,16 @@ no tolerance. In the reviewed seed-42, FACT-weighted 100,000-row bootstrap,
 3,672 rows carry Gift Aid and 9 carry charitable-investment gifts. These counts
 are readiness evidence, not effective-weight restoration.
 
+The official SN 9422 Annex A leaf formulas also reconcile against the pinned
+donor. Among 834,538 ordinary records, the maximum absolute differences from
+published TEI/TII/TI are £15/£10/£20. Among the 2,312 documented composite
+records (`AGERANGE == -1`), they are £180/£10/£180. The larger composite
+envelope is expected because PUT anonymisation averages records across the two
+nonlinear `max(0, ...)` identities before final £5 field rounding. The source
+contract pins the ordinary and composite envelopes separately; it does not
+broaden the independent £5 published `TI = TEI + TII` check or the exact
+post-draw identity.
+
 The official HMRC 2023-24 ODS remains local at
 `inputs/hmrc/Collated_Tables_3_1_to_3_11_2324.ods` with reviewed identity:
 
@@ -92,6 +106,9 @@ draw the runtime:
   leaves;
 - derives TEI and TII from their constituent draws; and
 - assigns `hmrc_spi_assessable_income = TEI + TII` exactly.
+
+The Table 3.6 state-pension measure uses the same drawn SRP auxiliary included
+in TEI and band assignment, rather than an independent stage-2/model draw.
 
 Tests assert the identity on every synthetic row. The official rounded `TI`,
 `TEI`, and `TII` donor fields are validation inputs only and are never stochastic

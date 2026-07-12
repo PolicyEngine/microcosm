@@ -155,8 +155,10 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     ]
     assert result.stage_names == ("income",)
     assert result.input_coverage.passed is True
+    assert result.dataset.source_h5 == input_h5.resolve()
     assert staging_h5.exists()
     staged = load_uk_national_dataset(staging_h5)
+    assert staged.source_h5 == staging_h5.resolve()
     assert staged.person["employment_income"].tolist() == [50_000.0]
     assert staged.household["household_weight"].tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
@@ -380,6 +382,7 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
     dataset = load_uk_national_dataset(input_h5)
+    assert dataset.source_h5 == input_h5.resolve()
     dataset = dataset.with_tables(
         household_weight_kind=WeightKind.IMPORTANCE,
         mass_log=(
@@ -392,6 +395,7 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
             ),
         ),
     )
+    assert dataset.source_h5 == input_h5.resolve()
 
     write_uk_national_dataset(dataset, staging_h5)
 

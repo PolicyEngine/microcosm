@@ -31,6 +31,8 @@ from populace.build.uk_runtime.hmrc_source_contract import (
 )
 from populace.build.uk_runtime.national_build import (
     UKNationalDataset,
+    _uk_source_file_fingerprint,
+    _UKSourceFileFingerprint,
     validate_uk_national_dataset,
 )
 from populace.build.uk_runtime.release_input_coverage import (
@@ -71,6 +73,7 @@ CERTIFIED_UK_CANDIDATE_SHA256 = (
     "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
 )
 CERTIFIED_UK_CANDIDATE_SIZE_BYTES = 1_315_880_118
+_CERTIFIED_CANDIDATE_VERIFICATION_TOKEN = object()
 
 
 @dataclass(frozen=True)
@@ -82,6 +85,18 @@ class UKCertifiedCandidateIdentity:
     revision: str
     sha256: str
     size_bytes: int
+    _verification_token: object | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _source_file_fingerprint: _UKSourceFileFingerprint | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -219,25 +234,39 @@ def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdent
         raise FileNotFoundError(
             f"Certified Populace UK candidate not found: {candidate}."
         )
-    size = candidate.stat().st_size
+    fingerprint_before = _uk_source_file_fingerprint(candidate)
+    size = fingerprint_before.size_bytes
     if size != CERTIFIED_UK_CANDIDATE_SIZE_BYTES:
         raise ValueError(
             f"{candidate}: expected certified candidate size "
             f"{CERTIFIED_UK_CANDIDATE_SIZE_BYTES}, got {size}."
         )
     digest = _sha256(candidate)
+    fingerprint_after = _uk_source_file_fingerprint(candidate)
+    if fingerprint_after != fingerprint_before:
+        raise RuntimeError(
+            "Certified Populace UK candidate changed while its SHA-256 was "
+            "being verified."
+        )
     if digest != CERTIFIED_UK_CANDIDATE_SHA256:
         raise ValueError(
             f"{candidate}: sha256 {digest} does not match certified candidate "
             f"{CERTIFIED_UK_CANDIDATE_SHA256}."
         )
-    return UKCertifiedCandidateIdentity(
+    identity = UKCertifiedCandidateIdentity(
         path=candidate,
         filename=CERTIFIED_UK_CANDIDATE_FILENAME,
         revision=CERTIFIED_UK_CANDIDATE_REVISION,
         sha256=digest,
         size_bytes=size,
     )
+    object.__setattr__(
+        identity,
+        "_verification_token",
+        _CERTIFIED_CANDIDATE_VERIFICATION_TOKEN,
+    )
+    object.__setattr__(identity, "_source_file_fingerprint", fingerprint_after)
+    return identity
 
 
 def restore_uk_hmrc_income_family(
@@ -267,6 +296,7 @@ def restore_uk_hmrc_income_family(
         maximum_abs_relative_error=maximum_abs_relative_error,
     )
     validate_uk_national_dataset(dataset)
+    _assert_dataset_matches_certified_candidate(dataset, certified_candidate)
     # Q2 is a cheap, fail-closed preflight. Do not hash private sources,
     # rebuild support, fit QRFs, or emit staging artifacts until the FRS
     # channel exposes the same normalized HMRC leaves used by the SPI donor.
@@ -400,6 +430,17 @@ def _validate_certified_candidate_identity(
         raise TypeError(
             "HMRC restoration requires a verified UKCertifiedCandidateIdentity."
         )
+    if identity._verification_token is not _CERTIFIED_CANDIDATE_VERIFICATION_TOKEN:
+        raise ValueError(
+            "HMRC restoration candidate identity must come from "
+            "verify_certified_uk_candidate; matching metadata fields alone are "
+            "not verified source evidence."
+        )
+    if identity._source_file_fingerprint is None:
+        raise ValueError(
+            "HMRC restoration candidate identity lacks verified source-file "
+            "provenance."
+        )
     expected = (
         CERTIFIED_UK_CANDIDATE_FILENAME,
         CERTIFIED_UK_CANDIDATE_REVISION,
@@ -416,6 +457,32 @@ def _validate_certified_candidate_identity(
         raise ValueError(
             "HMRC restoration base identity does not match the certified "
             "Populace UK candidate contract."
+        )
+
+
+def _assert_dataset_matches_certified_candidate(
+    dataset: UKNationalDataset,
+    identity: UKCertifiedCandidateIdentity,
+) -> None:
+    """Bind the in-memory tables to the H5 that was verified once by the driver."""
+
+    source_h5 = dataset.source_h5
+    if source_h5 is None:
+        raise ValueError(
+            "HMRC restoration requires a UK national dataset loaded from the "
+            "verified certified-candidate H5; an arbitrary in-memory dataset "
+            "cannot be paired with candidate identity metadata."
+        )
+    if source_h5 != identity.path:
+        raise ValueError(
+            "HMRC restoration dataset source does not match the verified "
+            f"certified candidate: loaded {source_h5}, verified {identity.path}."
+        )
+    if dataset.source_file_fingerprint != identity._source_file_fingerprint:
+        raise ValueError(
+            "HMRC restoration candidate H5 changed after SHA-256 verification; "
+            "the bytes loaded into the national dataset are not the bytes that "
+            "were certified."
         )
 
 

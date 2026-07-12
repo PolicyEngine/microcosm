@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,28 @@ UK_MASS_LOG_ATTR = "populace_mass_log_json"
 
 
 @dataclass(frozen=True)
+class _UKSourceFileFingerprint:
+    """Cheap stable-file identity used to bind a prior hash to an H5 load."""
+
+    device: int
+    inode: int
+    size_bytes: int
+    modified_ns: int
+    changed_ns: int
+
+
+def _uk_source_file_fingerprint(path: Path) -> _UKSourceFileFingerprint:
+    stat = path.stat()
+    return _UKSourceFileFingerprint(
+        device=stat.st_dev,
+        inode=stat.st_ino,
+        size_bytes=stat.st_size,
+        modified_ns=stat.st_mtime_ns,
+        changed_ns=stat.st_ctime_ns,
+    )
+
+
+@dataclass(frozen=True)
 class UKNationalDataset:
     """Explicit entity tables at one point in the national build pipeline."""
 
@@ -52,6 +74,30 @@ class UKNationalDataset:
     time_period: str
     household_weight_kind: WeightKind = WeightKind.DESIGN
     mass_log: tuple[MassChangeRecord, ...] = ()
+    _source_h5: Path | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _source_file_fingerprint: _UKSourceFileFingerprint | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def source_h5(self) -> Path | None:
+        """Resolved source path set by the H5 loader, never by table callers."""
+
+        return self._source_h5
+
+    @property
+    def source_file_fingerprint(self) -> _UKSourceFileFingerprint | None:
+        """Stable identity of the file bytes opened by the H5 loader."""
+
+        return self._source_file_fingerprint
 
     def with_tables(
         self,
@@ -65,7 +111,7 @@ class UKNationalDataset:
     ) -> UKNationalDataset:
         """Return a dataset with selected tables replaced."""
 
-        return UKNationalDataset(
+        result = UKNationalDataset(
             person=self.person if person is None else person,
             benunit=self.benunit if benunit is None else benunit,
             household=self.household if household is None else household,
@@ -77,6 +123,13 @@ class UKNationalDataset:
             ),
             mass_log=self.mass_log if mass_log is None else tuple(mass_log),
         )
+        object.__setattr__(result, "_source_h5", self._source_h5)
+        object.__setattr__(
+            result,
+            "_source_file_fingerprint",
+            self._source_file_fingerprint,
+        )
+        return result
 
 
 @dataclass(frozen=True)
@@ -119,12 +172,13 @@ class UKNationalBuildResult:
 def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
     """Load and validate a compact UK single-year H5."""
 
-    input_path = Path(path)
+    input_path = Path(path).expanduser().resolve()
     if input_path.suffix != ".h5":
         raise ValueError("UK national dataset path must end with '.h5'.")
     if not input_path.is_file():
         raise FileNotFoundError(f"UK national dataset not found: {input_path}.")
 
+    fingerprint_before = _uk_source_file_fingerprint(input_path)
     stored_kind, stored_mass_log = _read_weight_metadata(input_path)
     with pd.HDFStore(input_path, mode="r") as store:
         keys = {key.lstrip("/") for key in store.keys()}
@@ -144,6 +198,14 @@ def load_uk_national_dataset(path: str | Path) -> UKNationalDataset:
             household_weight_kind=_weight_kind_from_stored(stored_kind),
             mass_log=_mass_log_from_stored(stored_mass_log),
         )
+    fingerprint_after = _uk_source_file_fingerprint(input_path)
+    if fingerprint_after != fingerprint_before:
+        raise RuntimeError(
+            "UK national source H5 changed while it was being loaded; refusing "
+            "to bind mixed or stale bytes to build stages."
+        )
+    object.__setattr__(dataset, "_source_h5", input_path)
+    object.__setattr__(dataset, "_source_file_fingerprint", fingerprint_after)
     validate_uk_national_dataset(dataset)
     return dataset
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -23,7 +24,12 @@ from populace.build.uk_runtime.hmrc_restoration import (
     restore_uk_hmrc_income_family,
     verify_certified_uk_candidate,
 )
-from populace.build.uk_runtime.national_build import UKNationalDataset
+from populace.build.uk_runtime.national_build import (
+    UKNationalDataset,
+    _UKSourceFileFingerprint,
+    load_uk_national_dataset,
+    write_uk_national_dataset,
+)
 from populace.build.uk_runtime.spi_income import UKSPIIncomeImputationResult
 from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
@@ -68,14 +74,46 @@ def _dataset() -> UKNationalDataset:
     )
 
 
-def _candidate_identity(tmp_path) -> UKCertifiedCandidateIdentity:
-    return UKCertifiedCandidateIdentity(
+_TEST_SOURCE_FINGERPRINT = _UKSourceFileFingerprint(1, 2, 3, 4, 5)
+
+
+def _dataset_from_source(
+    path: Path,
+    *,
+    fingerprint: _UKSourceFileFingerprint = _TEST_SOURCE_FINGERPRINT,
+) -> UKNationalDataset:
+    """Model the loader-only provenance in focused restoration unit tests."""
+
+    dataset = _dataset()
+    object.__setattr__(dataset, "_source_h5", path.resolve())
+    object.__setattr__(dataset, "_source_file_fingerprint", fingerprint)
+    return dataset
+
+
+def _candidate_identity(
+    tmp_path,
+    *,
+    verified: bool = True,
+) -> UKCertifiedCandidateIdentity:
+    identity = UKCertifiedCandidateIdentity(
         path=(tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME).resolve(),
         filename=CERTIFIED_UK_CANDIDATE_FILENAME,
         revision=CERTIFIED_UK_CANDIDATE_REVISION,
         sha256=CERTIFIED_UK_CANDIDATE_SHA256,
         size_bytes=CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
     )
+    if verified:
+        object.__setattr__(
+            identity,
+            "_verification_token",
+            hmrc_restoration._CERTIFIED_CANDIDATE_VERIFICATION_TOKEN,
+        )
+        object.__setattr__(
+            identity,
+            "_source_file_fingerprint",
+            _TEST_SOURCE_FINGERPRINT,
+        )
+    return identity
 
 
 def test_certified_candidate_verification_checks_size_and_sha(
@@ -111,7 +149,8 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
     monkeypatch,
     tmp_path,
 ) -> None:
-    dataset = _dataset()
+    candidate = _candidate_identity(tmp_path)
+    dataset = _dataset_from_source(candidate.path)
     mass_record = MassChangeRecord(
         entity="household",
         old_total=10.0,
@@ -229,7 +268,7 @@ def test_restoration_wires_replace_qrf_materialization_and_calibration(
         dataset,
         spi_tab_path=donor_path,
         hmrc_ods_path=tmp_path / "hmrc.ods",
-        certified_candidate=_candidate_identity(tmp_path),
+        certified_candidate=candidate,
     )
 
     assert calls == ["targets", "replace", "impute", "materialize", "calibrate"]
@@ -265,7 +304,8 @@ def test_restoration_blocks_before_source_io_when_frs_crosswalk_is_missing(
     monkeypatch,
     tmp_path,
 ) -> None:
-    dataset = _dataset()
+    candidate = _candidate_identity(tmp_path)
+    dataset = _dataset_from_source(candidate.path)
     missing = SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS[0]
     dataset = dataset.with_tables(person=dataset.person.drop(columns=[missing]))
     source_called = False
@@ -285,9 +325,84 @@ def test_restoration_blocks_before_source_io_when_frs_crosswalk_is_missing(
             dataset,
             spi_tab_path=tmp_path / "put2223uk.tab",
             hmrc_ods_path=tmp_path / "hmrc.ods",
-            certified_candidate=_candidate_identity(tmp_path),
+            certified_candidate=candidate,
         )
     assert not source_called
+
+
+def test_restoration_rejects_unbound_in_memory_dataset(tmp_path) -> None:
+    candidate = _candidate_identity(tmp_path)
+
+    with pytest.raises(ValueError, match="arbitrary in-memory dataset"):
+        restore_uk_hmrc_income_family(
+            _dataset(),
+            spi_tab_path=tmp_path / "put2223uk.tab",
+            hmrc_ods_path=tmp_path / "hmrc.ods",
+            certified_candidate=candidate,
+        )
+
+
+def test_restoration_rejects_forged_candidate_identity(tmp_path) -> None:
+    candidate = _candidate_identity(tmp_path, verified=False)
+
+    with pytest.raises(ValueError, match="must come from verify_certified"):
+        restore_uk_hmrc_income_family(
+            _dataset_from_source(candidate.path),
+            spi_tab_path=tmp_path / "put2223uk.tab",
+            hmrc_ods_path=tmp_path / "hmrc.ods",
+            certified_candidate=candidate,
+        )
+
+
+def test_restoration_rejects_dataset_loaded_from_different_h5(tmp_path) -> None:
+    candidate = _candidate_identity(tmp_path)
+    other_source = tmp_path / "different-base.h5"
+
+    with pytest.raises(ValueError, match="dataset source does not match"):
+        restore_uk_hmrc_income_family(
+            _dataset_from_source(other_source),
+            spi_tab_path=tmp_path / "put2223uk.tab",
+            hmrc_ods_path=tmp_path / "hmrc.ods",
+            certified_candidate=candidate,
+        )
+
+
+def test_restoration_rejects_candidate_replaced_between_verify_and_load(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    candidate_path = tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME
+    write_uk_national_dataset(_dataset(), candidate_path)
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "CERTIFIED_UK_CANDIDATE_SIZE_BYTES",
+        candidate_path.stat().st_size,
+    )
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "CERTIFIED_UK_CANDIDATE_SHA256",
+        hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "assert_uk_hmrc_income_source_contract_current",
+        lambda: None,
+    )
+    identity = verify_certified_uk_candidate(candidate_path)
+
+    replacement = _dataset().with_tables(
+        person=_dataset().person.assign(gift_aid=1.0),
+    )
+    write_uk_national_dataset(replacement, candidate_path)
+    loaded_replacement = load_uk_national_dataset(candidate_path)
+
+    with pytest.raises(ValueError, match="changed after SHA-256 verification"):
+        restore_uk_hmrc_income_family(
+            loaded_replacement,
+            spi_tab_path=tmp_path / "put2223uk.tab",
+            hmrc_ods_path=tmp_path / "hmrc.ods",
+            certified_candidate=identity,
+        )
 
 
 @pytest.mark.parametrize(
@@ -304,12 +419,16 @@ def test_restoration_rejects_unreviewed_release_parameter_overrides(
     override,
     value,
 ) -> None:
+    candidate = _candidate_identity(tmp_path)
     kwargs = {
         "spi_tab_path": tmp_path / "put2223uk.tab",
         "hmrc_ods_path": tmp_path / "hmrc.ods",
-        "certified_candidate": _candidate_identity(tmp_path),
+        "certified_candidate": candidate,
         override: value,
     }
 
     with pytest.raises(ValueError, match="reviewed source manifest"):
-        restore_uk_hmrc_income_family(_dataset(), **kwargs)
+        restore_uk_hmrc_income_family(
+            _dataset_from_source(candidate.path),
+            **kwargs,
+        )
