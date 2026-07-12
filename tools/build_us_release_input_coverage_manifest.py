@@ -122,6 +122,8 @@ SIPP_VEHICLE_INPUTS = (
     "household_vehicles_value",
 )
 
+VOLUNTARY_FILING_INPUTS = ("would_file_taxes_voluntarily",)
+
 SCF_NET_WORTH_INPUTS = ("net_worth",)
 
 FORM_4952_INPUTS = ("investment_income_elected_form_4952",)
@@ -174,6 +176,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *FARM_BUSINESS_INCOME_INPUTS,
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
+    *VOLUNTARY_FILING_INPUTS,
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
     *SALT_REFUND_INPUTS,
@@ -1037,6 +1040,28 @@ REFORM_COVERAGE_PROBES = [
             "smoke scored +$3.58 million in 2026 SNAP."
         ),
         "issue": "PolicyEngine/populace#49",
+    },
+    {
+        "id": "voluntary_filing_aca_ptc_neutralization",
+        "name": "Voluntary tax filing ACA PTC neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "would_file_taxes_voluntarily",
+        "budget_measure": "aca_ptc",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": list(VOLUNTARY_FILING_INPUTS),
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US includes would_file_taxes_voluntarily in "
+            "tax_unit_is_filer alongside required and credit filers. "
+            "Neutralizing only the restored SIPP filing-response leaf therefore "
+            "removes ACA premium tax credits from otherwise eligible voluntary "
+            "filers, so baseline-minus-neutralized aca_ptc must be positive. "
+            "With the filing leaf absent or degenerate, this isolated response "
+            "channel scores exactly $0."
+        ),
+        "issue": "PolicyEngine/populace#312",
     },
     {
         "id": "pre_subsidy_rent_neutralization",

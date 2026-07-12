@@ -608,6 +608,26 @@ class TestShippedManifest:
         assert probe.binding_inputs == (column,)
         assert probe.min_abs_effect == 100_000_000.0
 
+    def test_voluntary_filing_is_promoted_with_aca_ptc_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "would_file_taxes_voluntarily"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "voluntary_filing_aca_ptc_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "aca_ptc"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
     def test_child_support_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in ("child_support_received", "child_support_expense"):

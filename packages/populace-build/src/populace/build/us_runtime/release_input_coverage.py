@@ -87,6 +87,9 @@ from populace.build.us_runtime.salt_refund_income import (
 )
 from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from populace.build.us_runtime.voluntary_filing import (
+    US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.wic_claim import US_WIC_CLAIM_OUTPUT_COLUMNS
 from populace.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
@@ -149,6 +152,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
+        *US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
         *US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
         *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,

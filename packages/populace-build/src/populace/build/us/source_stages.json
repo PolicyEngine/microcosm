@@ -1825,6 +1825,73 @@
       "notes": "Restores the retired household-grain SIPP vehicle family from the immutable full 2023 public-use donor at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 430-456 and 953-1059 pin the exact 20 columns, December household transform, target-specific observed-source masks, positive survey weights, and 20,000-row cap; calibration/source_impute.py lines 992-1084 and utils/asset_imputation.py lines 503-603 pin the CPS receiver and output types. Vehicle count is classified first and vehicle value is then drawn conditionally; both are clipped nonnegative, count is rounded int32, and value is float32. The 65.6 MB tip-only slim SIPP file lacks this family. Populace deliberately does not execute the old placeholder fold into net_worth: the retired pipeline blended SIPP/SCF vehicle value before reconciling construction-only balance-sheet components, while Populace now persists the independently source-backed direct SCF networth anchor. Keeping the vehicle leaves and signed SCF anchor as separate policy inputs avoids inventing a partial component formula."
     },
     {
+      "stage": "voluntary_filing_input",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "tax_unit",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EPNSPOUSE",
+            "AFILING",
+            "EFILING",
+            "AWILLFILE",
+            "EWILLFILE",
+            "EDEPCLM",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "employment_income",
+            "reference_age",
+            "reference_is_female",
+            "reference_is_married",
+            "count_under_18"
+          ],
+          "target": "would_file_taxes_voluntarily",
+          "weight": "tax_unit_weight",
+          "response_filter": "AFILING == 1 and (EFILING == 1 or (EFILING == 2 and AWILLFILE == 1))",
+          "dependent_exclusion": "EDEPCLM == 1",
+          "canonical_unit": "SSUID plus the sorted PNUM/EPNSPOUSE pair for reciprocal spouses; otherwise PNUM",
+          "n_estimators": 100,
+          "seed_from_build_config": true
+        }
+      ],
+      "outputs": [
+        "would_file_taxes_voluntarily"
+      ],
+      "notes": "Restores a measured voluntary-filing response from the pinned full 2023 SIPP donor instead of replaying the retired uncited demographic probability table. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 726-747, defines the retired output, predictors, and random draw; parameters/take_up/voluntary_filing.yaml lines 1-43 contains the uncited child-by-wage-by-age rates being replaced. Census SIPP 2023 public-use dictionary fields anchor the observed response: retain December records with AFILING == 1 and, when EFILING == 2, AWILLFILE == 1; set the target when EFILING == 1 or EWILLFILE == 1; and exclude EDEPCLM == 1 people because they report being claimed as another return's dependent. Reciprocal spouses form one canonical unit through EPNSPOUSE; their filing responses agree in the donor. Reference attributes and survey weight come from the complete unit's minimum-PNUM member before response filtering. Annual employment income is the canonical unit sum of December TJB1_MSUM through TJB7_MSUM times 12. count_under_18 is the full December SSUID household count, computed before response filtering and repeated as household composition context for each canonical source unit; it is deliberately not a claimed-dependent count because SIPP does not identify the claimant and separated-parent pointers can double-assign children. The source transformation yields 22,313 observed canonical units: 16,820 positive and 5,493 negative; 22,296 have positive finite reference weights, including 16,817 positive units, at a 0.7603084563 weighted true share. The weighted QRF is fit once per source tax unit and predicted once per unique receiver tax_unit_source_id so support clones remain identical."
+    },
+    {
       "stage": "aca_marketplace_inputs",
       "survey": "CPS ASEC + CMS Marketplace Open Enrollment PUFs",
       "source": "https://www.cms.gov/marketplace/resources/data/public-use-files",

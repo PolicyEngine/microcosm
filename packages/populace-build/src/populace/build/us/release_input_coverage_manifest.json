@@ -518,14 +518,12 @@
    "status": "required"
   },
   "would_file_taxes_voluntarily": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Voluntary-filing take-up flag the incumbent seeds; not yet produced by Populace (take-up family).",
-   "status": "reviewed_exclusion"
+   "status": "required"
   }
  },
  "counts": {
-  "required": 153,
-  "reviewed_exclusion": 12,
+  "required": 154,
+  "reviewed_exclusion": 11,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -1242,6 +1240,22 @@
    },
    "period": 2026,
    "reason": "Setting the Texas TANF non-cash additional-vehicle exemption to zero tightens the asset test used by Texas SNAP categorical eligibility, so baseline-minus-reform SNAP must be positive. PolicyEngine-US computes the exemption from both household vehicle count and value; if either restored SIPP vehicle input is absent or degenerate, this vehicle-specific reform loses its intended binding channel. A persisted 30,000-household Populace smoke scored +$3.58 million in 2026 SNAP."
+  },
+  {
+   "binding_inputs": [
+    "would_file_taxes_voluntarily"
+   ],
+   "budget_measure": "aca_ptc",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "voluntary_filing_aca_ptc_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Voluntary tax filing ACA PTC neutralization",
+   "neutralized_variable": "would_file_taxes_voluntarily",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US includes would_file_taxes_voluntarily in tax_unit_is_filer alongside required and credit filers. Neutralizing only the restored SIPP filing-response leaf therefore removes ACA premium tax credits from otherwise eligible voluntary filers, so baseline-minus-neutralized aca_ptc must be positive. With the filing leaf absent or degenerate, this isolated response channel scores exactly $0."
   },
   {
    "binding_inputs": [

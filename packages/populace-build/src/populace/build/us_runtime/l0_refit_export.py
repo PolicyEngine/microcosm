@@ -115,6 +115,9 @@ from populace.build.us_runtime.sipp_vehicles import (
 from populace.build.us_runtime.snap_discretionary_exemption import (
     US_SNAP_DISCRETIONARY_EXEMPTION_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.voluntary_filing import (
+    US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS,
+)
 from populace.build.us_runtime.wic_claim import (
     US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -129,6 +132,7 @@ US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS = (
     "selected_marketplace_plan_benchmark_ratio",
     *US_DOMESTIC_PRODUCTION_ALD_NONCONSTANT_TAX_UNIT_COLUMNS,
     *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_TAX_UNIT_COLUMNS,
+    *US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS,
 )
 
 US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (

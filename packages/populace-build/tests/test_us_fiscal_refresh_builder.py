@@ -2406,6 +2406,46 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_sipp_vehicles_signal_gate",
         fake_sipp_vehicles_signal_gate,
     )
+
+    def fake_load_voluntary_filing_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["voluntary_filing_donor_path"] = path
+        captured["voluntary_filing_donor_sha256"] = expected_sha256
+        captured["voluntary_filing_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_voluntary_filing_input(frame, *, seed, time_period, sipp_donor):
+        captured["voluntary_filing_stage_called"] = True
+        captured["voluntary_filing_seed"] = seed
+        return frame
+
+    def fake_voluntary_filing_signal_gate(frame):
+        captured["voluntary_filing_gate_called"] = True
+        return builder.GateResult(
+            name="voluntary_filing_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_voluntary_filing_donor",
+        fake_load_voluntary_filing_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_voluntary_filing_input",
+        fake_with_voluntary_filing_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_voluntary_filing_signal_gate",
+        fake_voluntary_filing_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "fetch_sipp_2023_tip_donor",
@@ -2673,6 +2713,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_vehicle_stage_called"] is True
     assert captured["sipp_vehicle_seed"] == 42
     assert captured["sipp_vehicle_gate_called"] is True
+    assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["voluntary_filing_donor_sha256"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256
+    )
+    assert (
+        captured["voluntary_filing_donor_size_bytes"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES
+    )
+    assert captured["voluntary_filing_stage_called"] is True
+    assert captured["voluntary_filing_seed"] == 0
+    assert captured["voluntary_filing_gate_called"] is True
     assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
     assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
     assert captured["org_stage_called"] is True

@@ -29,6 +29,7 @@ from populace.build.us_runtime import (
     US_STAGE_NAMES,
     US_SUPPORT_SPINE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
+    US_VOLUNTARY_FILING_STAGE_NAME,
     BuildConfig,
     us_plan,
 )
@@ -224,6 +225,12 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(
             US_OTHER_HEALTH_INSURANCE_STAGE_NAME
         ) < US_STAGE_NAMES.index("export")
+        assert US_STAGE_NAMES.index("vehicle_assets") < US_STAGE_NAMES.index(
+            US_VOLUNTARY_FILING_STAGE_NAME
+        )
+        assert US_STAGE_NAMES.index(
+            US_VOLUNTARY_FILING_STAGE_NAME
+        ) < US_STAGE_NAMES.index("entity_placement")
 
     def test_other_health_insurance_donor_matches_manifest(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]
@@ -522,6 +529,66 @@ class TestUsSources:
             "household_vehicles_value",
         }
         assert set(spec.outputs) <= set(spec.nonnegative_outputs)
+
+    def test_voluntary_filing_stage_pins_measured_sipp_response(self) -> None:
+        spec = US_SOURCE_MANIFEST.stage_map()[US_VOLUNTARY_FILING_STAGE_NAME]
+        artifact = spec.artifacts[0]
+        assert artifact["vintage"] == "2023"
+        assert artifact["sha256"] == (
+            "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
+        )
+        assert artifact["size_bytes"] == 3_726_010_471
+        assert "21280dca5995e978d706740a8a4b9b7860cfd7b6" in artifact["locator"]
+
+        read, model = spec.operations
+        assert read.kind == "read_table"
+        assert read.parameters["month_column"] == "MONTHCODE"
+        assert read.parameters["month"] == 12
+        assert read.parameters["source_columns"] == [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EPNSPOUSE",
+            "AFILING",
+            "EFILING",
+            "AWILLFILE",
+            "EWILLFILE",
+            "EDEPCLM",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM",
+        ]
+        assert model.kind == "fit_weighted_qrf"
+        assert model.parameters["predictors"] == [
+            "employment_income",
+            "reference_age",
+            "reference_is_female",
+            "reference_is_married",
+            "count_under_18",
+        ]
+        assert model.parameters["target"] == "would_file_taxes_voluntarily"
+        assert model.parameters["weight"] == "tax_unit_weight"
+        assert model.parameters["response_filter"] == (
+            "AFILING == 1 and (EFILING == 1 or (EFILING == 2 and AWILLFILE == 1))"
+        )
+        assert model.parameters["dependent_exclusion"] == "EDEPCLM == 1"
+        assert "reciprocal spouses" in model.parameters["canonical_unit"]
+        assert model.parameters["n_estimators"] == 100
+        assert model.parameters["seed_from_build_config"] is True
+        assert spec.outputs == ("would_file_taxes_voluntarily",)
+        assert spec.nonnegative_outputs == ()
+        assert "datasets/cps/cps.py lines 726-747" in spec.notes
+        assert "parameters/take_up/voluntary_filing.yaml lines 1-43" in spec.notes
+        assert "22,313 observed canonical units" in spec.notes
+        assert "22,296 have positive finite reference weights" in spec.notes
+        assert "0.7603084563 weighted true share" in spec.notes
 
     def test_puf_stage_declares_partnership_s_corp_leaves_not_aggregate(self) -> None:
         outputs = set(US_SOURCE_MANIFEST.stage_map()["puf_tax_detail"].outputs)

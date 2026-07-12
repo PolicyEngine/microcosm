@@ -50,6 +50,8 @@ from populace.build.us_runtime import (
     SIPP_2023_TIP_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
+    SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
+    SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -74,6 +76,7 @@ from populace.build.us_runtime import (
     load_scf_2022_financial_asset_donor,
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
+    load_sipp_2023_voluntary_filing_donor,
     us_alimony_signal_gate,
     us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
@@ -116,6 +119,7 @@ from populace.build.us_runtime import (
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
+    us_voluntary_filing_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
     with_us_childcare_inputs,
@@ -140,6 +144,7 @@ from populace.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
     with_us_take_up_inputs,
+    with_us_voluntary_filing_input,
     with_us_wic_claim_input,
     write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
@@ -922,8 +927,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds household vehicle count and value. When omitted "
-            "the immutable donor revision is fetched and verified."
+            "file that feeds household vehicle count/value and measured "
+            "voluntary tax filing. When omitted the immutable donor revision "
+            "is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -6660,6 +6666,42 @@ def main() -> None:
             + "; ".join(
                 f"SIPP-vehicle signal failed: {failure}"
                 for failure in sipp_vehicles_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "voluntary_filing_input",
+            message=(
+                "Imputing measured voluntary tax-filing responses from the "
+                "same sha-pinned full SIPP 2023 donor."
+            ),
+        )
+    voluntary_filing_donor = load_sipp_2023_voluntary_filing_donor(
+        sipp_vehicle_donor_path,
+        expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    )
+    base_frame = with_us_voluntary_filing_input(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        sipp_donor=voluntary_filing_donor,
+    )
+    voluntary_filing_gate = us_voluntary_filing_signal_gate(base_frame)
+    if not voluntary_filing_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "voluntary_filing_gate",
+                status="failed",
+                message="Voluntary-filing signal gate failed.",
+                failures=list(voluntary_filing_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Voluntary-filing signal failed: {failure}"
+                for failure in voluntary_filing_gate.failures
             )
         )
     if telemetry is not None:

@@ -703,6 +703,27 @@ from populace.build.us_runtime.validation_input_coverage import (
     us_source_stage_outputs,
     us_validation_input_coverage_gate,
 )
+from populace.build.us_runtime.voluntary_filing import (
+    SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
+    SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
+    SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    SIPP_2023_VOLUNTARY_FILING_DONOR_URL,
+    SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS,
+    SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+    US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS,
+    US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+    US_VOLUNTARY_FILING_STAGE_NAME,
+    VOLUNTARY_FILING_ARCHIVED_DERIVATION_URL,
+    VOLUNTARY_FILING_ARCHIVED_PARAMETERS_URL,
+    VOLUNTARY_FILING_SIPP_DICTIONARY_URL,
+    fetch_sipp_2023_voluntary_filing_donor,
+    impute_us_voluntary_filing,
+    load_sipp_2023_voluntary_filing_donor,
+    us_voluntary_filing_signal_gate,
+    us_voluntary_filing_stage_spec,
+    us_voluntary_filing_summary,
+    with_us_voluntary_filing_input,
+)
 from populace.build.us_runtime.wic_claim import (
     US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS,
     US_WIC_CLAIM_OUTPUT_COLUMNS,
@@ -1159,6 +1180,25 @@ __all__ = [
     "us_sipp_vehicles_stage_spec",
     "us_sipp_vehicles_summary",
     "with_us_sipp_vehicle_inputs",
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION",
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256",
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES",
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_URL",
+    "SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS",
+    "SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS",
+    "US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS",
+    "US_VOLUNTARY_FILING_OUTPUT_COLUMNS",
+    "US_VOLUNTARY_FILING_STAGE_NAME",
+    "VOLUNTARY_FILING_ARCHIVED_DERIVATION_URL",
+    "VOLUNTARY_FILING_ARCHIVED_PARAMETERS_URL",
+    "VOLUNTARY_FILING_SIPP_DICTIONARY_URL",
+    "fetch_sipp_2023_voluntary_filing_donor",
+    "impute_us_voluntary_filing",
+    "load_sipp_2023_voluntary_filing_donor",
+    "us_voluntary_filing_signal_gate",
+    "us_voluntary_filing_stage_spec",
+    "us_voluntary_filing_summary",
+    "with_us_voluntary_filing_input",
     "BLS_STATE_UNION_REPRESENTATION_RATE_2024",
     "FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES",
     "FLSA_OVERTIME_OCCUPATION_CODES",
@@ -1677,6 +1717,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "the full mixed-source net-worth reconciliation is restored."
         ),
     ),
+    US_VOLUNTARY_FILING_STAGE_NAME: DonorSpec(
+        survey="Census SIPP",
+        source="https://www.census.gov/programs-surveys/sipp.html",
+        notes=(
+            "Measured 2023 SIPP filing and expected-filing responses replace "
+            "the retired uncited demographic probability table. Reciprocal "
+            "spouses form one source unit, reported dependents are excluded, "
+            "and one weighted-QRF prediction is shared across support clones."
+        ),
+    ),
 }
 
 #: Stage order of the US build. Derivation stages (no donor) interleave with
@@ -1713,6 +1763,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "meps_esi_premiums",
     "mortgage_conversion",
     "vehicle_assets",
+    US_VOLUNTARY_FILING_STAGE_NAME,
     "entity_placement",
     "aca_marketplace_inputs",
     "medicaid_take_up",

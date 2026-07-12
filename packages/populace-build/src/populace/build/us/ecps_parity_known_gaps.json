@@ -535,10 +535,6 @@
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",
       "issue": "PolicyEngine/populace#38"
-    },
-    "would_file_taxes_voluntarily": {
-      "reason": "Voluntary-filing take-up flag the incumbent seeds; not yet produced by Populace (take-up family).",
-      "issue": "PolicyEngine/populace#312"
     }
   }
 }

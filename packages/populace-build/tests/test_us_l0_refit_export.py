@@ -173,6 +173,9 @@ def _us_frame(**person_extra: object) -> Frame:
                     "selected_marketplace_plan_benchmark_ratio": np.asarray(
                         [1.0, 0.8, 1.2], dtype="float64"
                     ),
+                    "would_file_taxes_voluntarily": np.asarray(
+                        [True, False, True], dtype=bool
+                    ),
                     "domestic_production_ald": [0.0, 10_000.0, 5_000.0],
                     "unrecaptured_section_1250_gain": [0.0, 2_000.0, 500.0],
                 }
@@ -684,6 +687,26 @@ def test_required_us_release_source_columns_enforces_domestic_production_signal(
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_voluntary_filing_signal() -> None:
+    frame = _us_frame()
+    raw_tax_units = frame.table("tax_unit").copy()
+    raw_tax_units["would_file_taxes_voluntarily"] = False
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "tax_unit": raw_tax_units,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="tax_unit.would_file_taxes_voluntarily: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 @pytest.mark.parametrize("column", ["alimony_income", "alimony_expense"])
 def test_required_us_release_source_columns_enforces_alimony_signal(
     column: str,
@@ -954,6 +977,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "business_is_sstb" in summary["required_person_source_columns"]
     assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
     assert "domestic_production_ald" in summary["required_source_columns"]
+    assert "would_file_taxes_voluntarily" in summary["required_source_columns"]
     assert (
         "unreimbursed_business_employee_expenses"
         in summary["required_person_source_columns"]
