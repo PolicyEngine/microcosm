@@ -508,6 +508,26 @@ class TestShippedManifest:
             assert asset in manifest.required_columns
             assert asset not in manifest.reviewed_exclusions
 
+    def test_post_reference_ssi_disability_criterion_has_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "meets_ssi_disability_criteria"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "ssi_disability_criteria_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "ssi"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
     def test_post_reference_obbba_inputs_are_hard_requirements(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in (

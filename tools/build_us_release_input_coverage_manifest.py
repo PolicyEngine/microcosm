@@ -61,9 +61,10 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 )
 
 # The pinned reference H5 predates the retired pipeline's FLSA-premium export,
-# OBBBA's distinct qualifying passenger-vehicle interest leaf, and its five
-# final desired retirement-contribution inputs. These later inputs are hard
-# requirements because the shipped validation provisions must bind.
+# OBBBA's distinct qualifying passenger-vehicle interest leaf, its five final
+# desired retirement-contribution inputs, and its final SIPP-imputed SSI
+# disability criterion. These later inputs are hard requirements because the
+# shipped validation provisions must bind.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "fsla_overtime_premium",
     "qualified_passenger_vehicle_loan_interest",
@@ -72,6 +73,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "traditional_ira_contributions_desired",
     "roth_ira_contributions_desired",
     "self_employed_pension_contributions_desired",
+    "meets_ssi_disability_criteria",
 )
 
 QBI_INPUTS = (
@@ -358,6 +360,32 @@ REFORM_COVERAGE_PROBES = [
             "limit (PolicyEngine/populace#356)."
         ),
         "issue": "PolicyEngine/populace#356",
+    },
+    {
+        "id": "ssi_disability_criteria_neutralization",
+        "name": "SSI disability-criteria neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "meets_ssi_disability_criteria",
+        "budget_measure": "ssi",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["meets_ssi_disability_criteria"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US requires the person-level disability criterion "
+            "for non-aged SSI eligibility. Neutralizing only the restored "
+            "SIPP-imputed criterion must therefore remove SSI from otherwise "
+            "eligible disabled or blind people, so baseline-minus-neutralized "
+            "SSI is positive. If the post-reference exported input is absent "
+            "or degenerate, this isolated eligibility channel scores exactly "
+            "$0. A deterministic 6,000-source-household Build-J smoke with "
+            "the pinned SIPP and SCF donors scored +$586.393 million "
+            "baseline-minus-neutralized SSI; the $100 million floor retains "
+            "ample sampling margin while rejecting a materially weakened "
+            "criterion channel."
+        ),
+        "issue": "PolicyEngine/populace#312",
     },
     {
         "id": "aotc_abolition",
@@ -1215,8 +1243,9 @@ def build_manifest() -> dict:
             "Required surface = input columns in the pinned, sha-verified "
             "ecps_parity_reference.json populated layers, plus the documented "
             "post-reference fsla_overtime_premium, "
-            "qualified_passenger_vehicle_loan_interest, and five desired "
-            "retirement-contribution inputs required by shipped validation "
+            "qualified_passenger_vehicle_loan_interest, five desired "
+            "retirement-contribution inputs, and "
+            "meets_ssi_disability_criteria required by shipped validation "
             "probes. "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "

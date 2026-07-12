@@ -678,6 +678,32 @@ from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
     us_source_operation_handlers,
 )
+from populace.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+    SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
+    SIPP_2023_SSI_DISABILITY_DONOR_URL,
+    SIPP_SSI_DISABILITY_DIFFICULTY_PREDICTORS,
+    SIPP_SSI_DISABILITY_FIT_PARAMETERS,
+    SIPP_SSI_DISABILITY_MODEL_PREDICTORS,
+    SIPP_SSI_DISABILITY_READ_PARAMETERS,
+    SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+    SSI_DISABILITY_ARCHIVED_CPS_URL,
+    SSI_DISABILITY_ARCHIVED_EXTENDED_CPS_URL,
+    SSI_DISABILITY_ARCHIVED_SIPP_URL,
+    SSI_DISABILITY_ARCHIVED_SOURCE_IMPUTE_URL,
+    SSI_DISABILITY_SIPP_DICTIONARY_URL,
+    US_SSI_DISABILITY_CRITERIA_NONCONSTANT_PERSON_COLUMNS,
+    US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
+    US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
+    fetch_sipp_2023_ssi_disability_donor,
+    impute_us_ssi_disability_criteria,
+    load_sipp_2023_ssi_disability_donor,
+    us_ssi_disability_criteria_signal_gate,
+    us_ssi_disability_criteria_stage_spec,
+    us_ssi_disability_criteria_summary,
+    with_us_ssi_disability_criteria,
+)
 from populace.build.us_runtime.take_up import (
     US_TAKE_UP_SHARE_BAND,
     SeededTakeUpResult,
@@ -1150,6 +1176,30 @@ __all__ = [
     "us_scf_wealth_stage_spec",
     "us_scf_wealth_summary",
     "with_us_scf_wealth_inputs",
+    "SIPP_2023_SSI_DISABILITY_DONOR_REVISION",
+    "SIPP_2023_SSI_DISABILITY_DONOR_SHA256",
+    "SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES",
+    "SIPP_2023_SSI_DISABILITY_DONOR_URL",
+    "SIPP_SSI_DISABILITY_DIFFICULTY_PREDICTORS",
+    "SIPP_SSI_DISABILITY_FIT_PARAMETERS",
+    "SIPP_SSI_DISABILITY_MODEL_PREDICTORS",
+    "SIPP_SSI_DISABILITY_READ_PARAMETERS",
+    "SIPP_SSI_DISABILITY_SOURCE_COLUMNS",
+    "SSI_DISABILITY_ARCHIVED_CPS_URL",
+    "SSI_DISABILITY_ARCHIVED_EXTENDED_CPS_URL",
+    "SSI_DISABILITY_ARCHIVED_SIPP_URL",
+    "SSI_DISABILITY_ARCHIVED_SOURCE_IMPUTE_URL",
+    "SSI_DISABILITY_SIPP_DICTIONARY_URL",
+    "US_SSI_DISABILITY_CRITERIA_NONCONSTANT_PERSON_COLUMNS",
+    "US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS",
+    "US_SSI_DISABILITY_CRITERIA_STAGE_NAME",
+    "fetch_sipp_2023_ssi_disability_donor",
+    "impute_us_ssi_disability_criteria",
+    "load_sipp_2023_ssi_disability_donor",
+    "us_ssi_disability_criteria_signal_gate",
+    "us_ssi_disability_criteria_stage_spec",
+    "us_ssi_disability_criteria_summary",
+    "with_us_ssi_disability_criteria",
     "CENSUS_OCCUPATION_CODE_TO_TTOC",
     "SIPP_2023_TIP_DONOR_REVISION",
     "SIPP_2023_TIP_DONOR_SHA256",
@@ -1439,6 +1489,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Wealth components and debts; household-grain auto loans use the "
             "full SCF while liquid assets are head-carried to person."
+        ),
+    ),
+    US_SSI_DISABILITY_CRITERIA_STAGE_NAME: DonorSpec(
+        survey="Census SIPP",
+        source="https://www.census.gov/programs-surveys/sipp.html",
+        notes=(
+            "Latent under-65 SSI disability/blindness criterion from the "
+            "pinned full 2023 public-use donor. ASEC and PUF-support people "
+            "are predicted separately, and only direct under-65 ASEC SSI "
+            "reporters receive the observed-reporter anchor."
         ),
     ),
     "sipp_tips": DonorSpec(
@@ -1758,6 +1818,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_EDUCATION_INPUTS_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",
+    US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
     "sipp_tips",
     "org_wages",
     "meps_esi_premiums",

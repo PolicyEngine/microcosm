@@ -135,6 +135,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "pre_subsidy_rent": [0.0, 12_000.0, 0.0],
             "self_employment_income_last_year": [0.0, 8_000.0, -1_000.0],
             "previous_year_income_available": [False, True, False],
+            "meets_ssi_disability_criteria": [False, True, False],
             **person_extra,
         }
     )
@@ -772,6 +773,28 @@ def test_required_us_release_source_columns_enforces_disability_benefits_signal(
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_ssi_disability_criteria_signal() -> (
+    None
+):
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["meets_ssi_disability_criteria"] = False
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.meets_ssi_disability_criteria: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_educator_expense_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -963,6 +986,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "child_support_received" in summary["required_person_source_columns"]
     assert "child_support_expense" in summary["required_person_source_columns"]
     assert "disability_benefits" in summary["required_person_source_columns"]
+    assert "meets_ssi_disability_criteria" in summary["required_person_source_columns"]
     assert "educator_expense" in summary["required_person_source_columns"]
     assert (
         "investment_income_elected_form_4952"

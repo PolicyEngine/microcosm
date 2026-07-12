@@ -115,6 +115,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         target_registry_version="registry-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
+    assert identity["materializer_version"] == 3
     path = tmp_path / "target_frame_checkpoint.h5"
 
     payload = builder._write_target_frame_checkpoint(
@@ -2407,6 +2408,48 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_sipp_vehicles_signal_gate,
     )
 
+    def fake_load_ssi_disability_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+        time_period=2024,
+    ):
+        captured["ssi_disability_donor_path"] = path
+        captured["ssi_disability_donor_sha256"] = expected_sha256
+        captured["ssi_disability_donor_size_bytes"] = expected_size_bytes
+        captured["ssi_disability_donor_period"] = time_period
+        return pd.DataFrame()
+
+    def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
+        captured["ssi_disability_stage_called"] = True
+        captured["ssi_disability_seed"] = seed
+        return frame
+
+    def fake_ssi_disability_signal_gate(frame):
+        captured["ssi_disability_gate_called"] = True
+        return builder.GateResult(
+            name="ssi_disability_criteria_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_ssi_disability_donor",
+        fake_load_ssi_disability_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_ssi_disability_criteria",
+        fake_with_ssi_disability_criteria,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_disability_criteria_signal_gate",
+        fake_ssi_disability_signal_gate,
+    )
+
     def fake_load_voluntary_filing_donor(
         path,
         *,
@@ -2713,6 +2756,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_vehicle_stage_called"] is True
     assert captured["sipp_vehicle_seed"] == 42
     assert captured["sipp_vehicle_gate_called"] is True
+    assert captured["ssi_disability_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["ssi_disability_donor_sha256"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+    )
+    assert (
+        captured["ssi_disability_donor_size_bytes"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
+    )
+    assert captured["ssi_disability_donor_period"] == builder.PERIOD
+    assert captured["ssi_disability_stage_called"] is True
+    assert captured["ssi_disability_seed"] == 42
+    assert captured["ssi_disability_gate_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
         captured["voluntary_filing_donor_sha256"]

@@ -13,6 +13,8 @@ from populace.build.source_manifest import (
     SupportSpineSpec,
 )
 from populace.build.us_runtime import (
+    SIPP_SSI_DISABILITY_FIT_PARAMETERS,
+    SIPP_SSI_DISABILITY_READ_PARAMETERS,
     US_CHILD_SUPPORT_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
     US_DISABILITY_BENEFITS_STAGE_NAME,
@@ -26,6 +28,7 @@ from populace.build.us_runtime import (
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
+    US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
     US_STAGE_NAMES,
     US_SUPPORT_SPINE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
@@ -231,6 +234,39 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(
             US_VOLUNTARY_FILING_STAGE_NAME
         ) < US_STAGE_NAMES.index("entity_placement")
+        assert US_STAGE_NAMES.index("scf_wealth") < US_STAGE_NAMES.index(
+            US_SSI_DISABILITY_CRITERIA_STAGE_NAME
+        )
+        assert US_STAGE_NAMES.index(
+            US_SSI_DISABILITY_CRITERIA_STAGE_NAME
+        ) < US_STAGE_NAMES.index("sipp_tips")
+
+    def test_ssi_disability_criteria_stage_pins_sipp_model_contract(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_SSI_DISABILITY_CRITERIA_STAGE_NAME]
+        donor = US_DONORS[US_SSI_DISABILITY_CRITERIA_STAGE_NAME]
+
+        assert stage.survey == donor.survey == "Census SIPP"
+        assert stage.source == donor.source
+        assert stage.grain == "person"
+        assert stage.outputs == ("meets_ssi_disability_criteria",)
+        assert stage.nonnegative_outputs == ()
+        assert [operation.kind for operation in stage.operations] == [
+            "read_table",
+            "fit_weighted_qrf",
+        ]
+        assert (
+            dict(stage.operations[0].parameters) == SIPP_SSI_DISABILITY_READ_PARAMETERS
+        )
+        assert (
+            dict(stage.operations[1].parameters) == SIPP_SSI_DISABILITY_FIT_PARAMETERS
+        )
+        assert stage.operations[1].parameters["training_sample_seed"] == (
+            8_386_123_572_872_638_692
+        )
+        assert stage.operations[1].parameters["model_seed"] == 42
+        assert stage.operations[1].parameters["seed_from_build_config"] is False
+        assert "separately predict PUF-support people" in stage.notes
+        assert "ASEC reporter anchor is never copied" in stage.notes
 
     def test_other_health_insurance_donor_matches_manifest(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]

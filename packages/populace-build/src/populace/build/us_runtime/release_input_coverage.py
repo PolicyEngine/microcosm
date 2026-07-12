@@ -87,6 +87,9 @@ from populace.build.us_runtime.salt_refund_income import (
 )
 from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from populace.build.us_runtime.ssi_disability_criteria import (
+    US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.voluntary_filing import (
     US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
 )
@@ -115,8 +118,9 @@ US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
 # The frozen reference artifact predates the retired pipeline's export of the
 # pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
 # vehicle interest leaf, and the final pipeline's five desired retirement-
-# contribution inputs. These are hard requirements because their shipped
-# validation rows otherwise become structural zeroes.
+# contribution inputs, and its final SIPP-imputed SSI disability criterion.
+# These are hard requirements because their shipped validation rows otherwise
+# become structural zeroes.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
         "fsla_overtime_premium",
@@ -126,6 +130,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "traditional_ira_contributions_desired",
         "roth_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
+        *US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
     }
 )
 

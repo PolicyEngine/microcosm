@@ -47,6 +47,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+    SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_TIP_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
@@ -74,6 +76,7 @@ from populace.build.us_runtime import (
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
     load_sipp_2023_voluntary_filing_donor,
@@ -116,6 +119,7 @@ from populace.build.us_runtime import (
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_ssi_disability_criteria_signal_gate,
     us_take_up_participation_diagnostics,
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
@@ -143,6 +147,7 @@ from populace.build.us_runtime import (
     with_us_sipp_vehicle_inputs,
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_take_up_inputs,
+    with_us_ssi_disability_criteria,
     with_us_take_up_inputs,
     with_us_voluntary_filing_input,
     with_us_wic_claim_input,
@@ -227,7 +232,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # medicaid_enrolled target columns differ from version-1 checkpoints; the
 # checkpoint identity hashes the on-disk base dataset, not the staged frame,
 # and would otherwise silently reuse pre-stage frames.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 2
+# 3: the post-base SIPP SSI-disability stage restores
+# meets_ssi_disability_criteria after SCF assets, changing SSI eligibility and
+# target vectors without changing that on-disk base hash.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 3
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -927,9 +935,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds household vehicle count/value and measured "
-            "voluntary tax filing. When omitted the immutable donor revision "
-            "is fetched and verified."
+            "file that feeds SSI disability criteria, household vehicle "
+            "count/value, and measured voluntary tax filing. When omitted the "
+            "immutable donor revision is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -6585,6 +6593,52 @@ def main() -> None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    # The SSI criterion and vehicle/filing families share one immutable full
+    # SIPP artifact. Resolve it once here because the criterion's receiver also
+    # needs the SCF asset leaves materialized immediately above.
+    sipp_vehicle_donor_path = (
+        Path(args.sipp_vehicle_donor)
+        if args.sipp_vehicle_donor is not None
+        else fetch_sipp_2023_vehicle_donor()
+    )
+    if telemetry is not None:
+        telemetry.stage(
+            "ssi_disability_criteria",
+            message=(
+                "Imputing SSI-specific disability criteria from the "
+                "sha-pinned full SIPP 2023 donor after SCF assets."
+            ),
+        )
+    ssi_disability_donor = load_sipp_2023_ssi_disability_donor(
+        sipp_vehicle_donor_path,
+        expected_sha256=SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
+        time_period=PERIOD,
+    )
+    base_frame = with_us_ssi_disability_criteria(
+        base_frame,
+        # The retired weighted bootstrap and MicroImpute forest are fixed.
+        seed=42,
+        time_period=PERIOD,
+        sipp_donor=ssi_disability_donor,
+    )
+    ssi_disability_gate = us_ssi_disability_criteria_signal_gate(base_frame)
+    if not ssi_disability_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_disability_criteria_gate",
+                status="failed",
+                message="SSI disability-criteria signal gate failed.",
+                failures=list(ssi_disability_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SSI disability-criteria signal failed: {failure}"
+                for failure in ssi_disability_gate.failures
+            )
+        )
     if telemetry is not None:
         telemetry.stage(
             "scf_auto_loan_inputs",
@@ -6634,11 +6688,6 @@ def main() -> None:
                 "sha-pinned full SIPP 2023 donor."
             ),
         )
-    sipp_vehicle_donor_path = (
-        Path(args.sipp_vehicle_donor)
-        if args.sipp_vehicle_donor is not None
-        else fetch_sipp_2023_vehicle_donor()
-    )
     sipp_vehicle_donor = load_sipp_2023_vehicle_donor(
         sipp_vehicle_donor_path,
         expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,

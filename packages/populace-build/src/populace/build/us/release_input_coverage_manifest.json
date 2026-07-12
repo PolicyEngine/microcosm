@@ -261,6 +261,9 @@
   "long_term_capital_gains_on_collectibles": {
    "status": "required"
   },
+  "meets_ssi_disability_criteria": {
+   "status": "required"
+  },
   "miscellaneous_income": {
    "status": "required"
   },
@@ -522,11 +525,11 @@
   }
  },
  "counts": {
-  "required": 154,
+  "required": 155,
   "reviewed_exclusion": 11,
-  "total": 165
+  "total": 166
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, and meets_ssi_disability_criteria required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {
@@ -642,6 +645,22 @@
    },
    "period": 2024,
    "reason": "Raising the SSI resource limit is a pure relaxation that only changes who passes meets_ssi_resource_test, which compares ssi_countable_resources = bank_account_assets + stock_assets + bond_assets against the limit. With those asset inputs absent, countable resources are 0 for every record, everyone already passes the resource test, and raising the limit scores exactly $0. Dense-native reference: +$1.6B at $10k/$20k, ~+$16.1B with no limit (PolicyEngine/populace#356)."
+  },
+  {
+   "binding_inputs": [
+    "meets_ssi_disability_criteria"
+   ],
+   "budget_measure": "ssi",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "ssi_disability_criteria_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "SSI disability-criteria neutralization",
+   "neutralized_variable": "meets_ssi_disability_criteria",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US requires the person-level disability criterion for non-aged SSI eligibility. Neutralizing only the restored SIPP-imputed criterion must therefore remove SSI from otherwise eligible disabled or blind people, so baseline-minus-neutralized SSI is positive. If the post-reference exported input is absent or degenerate, this isolated eligibility channel scores exactly $0. A deterministic 6,000-source-household Build-J smoke with the pinned SIPP and SCF donors scored +$586.393 million baseline-minus-neutralized SSI; the $100 million floor retains ample sampling margin while rejecting a materially weakened criterion channel."
   },
   {
    "binding_inputs": [
