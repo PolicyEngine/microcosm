@@ -152,6 +152,15 @@ def _hmrc_family_coverage() -> dict[str, dict[str, object]]:
     }
 
 
+def _reviewed_gift_aid_exclusion() -> UKReleaseInputColumn:
+    return UKReleaseInputColumn(
+        "gift_aid",
+        "reviewed_exclusion",
+        reason="not yet ported from enhanced FRS pipeline — pending review",
+        tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+    )
+
+
 class TestUKReleaseInputCoverageGate:
     def test_full_required_set_with_signal_passes(self) -> None:
         frame = _person_frame(
@@ -542,14 +551,7 @@ class TestUKReleaseInputCoverageGate:
 
     def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
         contract = _manifest(
-            (
-                UKReleaseInputColumn(
-                    "gift_aid",
-                    "reviewed_exclusion",
-                    reason="not yet ported from enhanced FRS pipeline — pending review",
-                    tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
-                ),
-            )
+            (_reviewed_gift_aid_exclusion(),)
         )
         frame = _weighted_person_frame(
             {"gift_aid": np.asarray([900.0, 0.0])},
@@ -565,6 +567,33 @@ class TestUKReleaseInputCoverageGate:
         assert result.passed
         assert result.details["stale_exclusions"] == []
 
+    def test_deferred_family_does_not_enforce_future_distributional_gate(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "status": "deferred_until_restored",
+                "restoration_status": "blocked_pending_reviewed_frs_decomposition",
+            }
+        )
+        contract = _manifest(
+            (_reviewed_gift_aid_exclusion(),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["family_effective_mass"] == {}
+        assert result.details["family_build_state"] == {}
+
 
 class TestUKManifest:
     def test_shipped_manifest_is_current(self) -> None:
@@ -572,11 +601,15 @@ class TestUKManifest:
         assert_uk_release_input_coverage_manifest_current(
             engine=_StubEngine({}, set(manifest.declared_columns))
         )
+        effective_gaps = {"charitable_investment_gifts", "gift_aid"}
         assert manifest.required_columns == frozenset(
-            load_efrs_parity_reference().populated_layers
+            set(load_efrs_parity_reference().populated_layers) - effective_gaps
         )
-        assert manifest.reviewed_exclusions == {}
-        assert load_efrs_parity_known_gaps() == ()
+        assert set(manifest.reviewed_exclusions) == effective_gaps
+        assert {
+            gap.variable for gap in load_efrs_parity_known_gaps()
+        } == effective_gaps
+        assert manifest.required_build_stages == frozenset()
 
     def test_manifest_refuses_empty_columns(self, tmp_path) -> None:
         bad = tmp_path / "empty.json"
@@ -620,6 +653,27 @@ class TestUKManifest:
         with pytest.raises(ValueError, match="mass_share_denominator"):
             load_uk_release_input_coverage_manifest(str(bad))
 
+    def test_deferred_family_requires_restoration_status(self, tmp_path) -> None:
+        source = (
+            _REPO_ROOT
+            / "packages"
+            / "populace-build"
+            / "src"
+            / "populace"
+            / "build"
+            / "uk"
+            / "release_input_coverage_manifest.json"
+        )
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["family_coverage"]["hmrc_spi_income"].pop(
+            "restoration_status", None
+        )
+        bad = tmp_path / "deferred_without_blocker.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="needs a restoration_status"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
     def test_required_family_stage_cannot_be_omitted(self) -> None:
         manifest = _manifest(
             (UKReleaseInputColumn("gift_aid", "required"),),
@@ -634,6 +688,22 @@ class TestUKManifest:
             manifest=manifest,
         )
         assert result is None
+
+    def test_deferred_family_stage_is_not_required(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "status": "deferred_until_restored",
+                "restoration_status": "blocked_pending_reviewed_frs_decomposition",
+            }
+        )
+        manifest = _manifest(
+            (_reviewed_gift_aid_exclusion(),),
+            family_coverage=family,
+        )
+
+        assert_uk_release_input_coverage_build_stages((), manifest=manifest)
+        assert manifest.required_build_stages == frozenset()
 
     def test_effective_mass_policy_rejects_zero_floor(self) -> None:
         with pytest.raises(ValueError, match=r"in \(0, 1\]"):
@@ -699,6 +769,39 @@ class TestUKManifest:
             assert_uk_release_input_coverage_manifest_current(
                 engine=_StubEngine({}, set(manifest.declared_columns)),
                 manifest=drifted,
+            )
+
+    def test_deferred_family_columns_must_remain_reviewed_exclusions(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        columns = tuple(
+            replace(column, status="required", reason="", tracking_note="")
+            if column.name == "gift_aid"
+            else column
+            for column in manifest.columns
+        )
+
+        with pytest.raises(ValueError, match="deferred distributional requirement"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=replace(manifest, columns=columns),
+            )
+
+    def test_promoted_family_columns_must_be_required(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"].update(
+            {
+                "status": "required_at_build",
+                "restoration_status": "restored",
+            }
+        )
+
+        with pytest.raises(ValueError, match="required_at_build"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=replace(manifest, family_coverage=families),
             )
 
     def test_loader_aliases_are_hard_covered(self) -> None:

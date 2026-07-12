@@ -2,18 +2,20 @@
 
 The coverage baseline is the 145 populated effective loader overrides extracted
 from the immutable enhanced-FRS 2023-24 artifact (SHA-256 `584ae33d…`). The
-certified `populace_uk_2023` candidate (SHA-256 `f17306cc…`) carries non-default
-signal for all 145. The launch register therefore has **145 required columns
-and no reviewed exclusions**. A future gap must use the campaign reason “not
-yet ported from enhanced FRS pipeline — pending review” plus a tracking note.
+certified `populace_uk_2023` candidate (SHA-256 `f17306cc…`) carries raw
+non-default signal for all 145, but `gift_aid` and
+`charitable_investment_gifts` carry it only on zero-weight SPI rows. The launch
+register therefore honestly has **143 required columns and 2 reviewed
+exclusions**. Both exclusions use the campaign reason “not yet ported from
+enhanced FRS pipeline — pending review” and the required tracking note.
 
 | Milestone | Coverage change | Evidence | Status |
 | --- | ---: | --- | --- |
-| Launch contract baseline | 145 required; 0 exclusions | SHA-pinned enhanced-FRS and certified Populace UK H5 surfaces | Complete |
+| Launch contract baseline | 143 required; 2 reviewed exclusions | SHA-pinned enhanced-FRS surface plus owning-entity effective-mass evidence from the certified Populace UK H5 | Complete |
 | Loader-override correction | +13 formula-owned persisted overrides | UK Simulation passes every engine-known persisted H5 column through `set_input`; exact cached-artifact replay covers all 145 | Complete |
 | Contract entity/pin integrity | No status change | All 145 reference and candidate columns carry owning-entity evidence; wrong-table columns and unproven HF revision mappings fail | Complete |
 | National orchestration seam | No status change | Ordered stage protocol, stable verified-byte binding, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
-| Effective-mass coverage | No raw status change | Required signal must carry at least 0.000001 of owning-entity effective population mass; this rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference | Complete |
+| Effective-mass coverage | −2 required; +2 reviewed exclusions | Candidate evidence and the final gate both require signal on at least 0.000001 of owning-entity effective population mass; zero-weight Gift Aid support is excluded honestly until restoration | Complete |
 | HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
 | HMRC/SPI income restoration | Not promoted | Q2 cannot be materialized like-for-like on the certified FRS channel; fail-closed blocker below | Blocked pending conductor review |
 
@@ -51,6 +53,14 @@ mass to it as `IMPORTANCE` weights, and record the factor-one allocation as a
 deliberate `MassChangeRecord`. A successful calibration would then transition
 `IMPORTANCE` to `CALIBRATED`, conserve national mass, compile all 208 facts,
 respect a 5× record-weight ratio cap, and keep every target within 5%.
+
+While Q2 remains blocked, the manifest records `hmrc_spi_income` as
+`deferred_until_restored`: the stage plan and family-specific gates are not
+executable release requirements yet, and its two effective-mass columns remain
+reviewed exclusions. Promotion is fail-closed and coupled: once source-backed
+FRS constituents make the family runnable, the source contract must record the
+restored state, the family becomes `required_at_build`, and both columns must
+be promoted to required from evidence produced by the restored candidate.
 
 ## Reviewed real-source evidence
 

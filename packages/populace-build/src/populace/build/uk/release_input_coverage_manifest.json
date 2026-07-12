@@ -56,7 +56,9 @@
    "status": "required"
   },
   "charitable_investment_gifts": {
-   "status": "required"
+   "reason": "not yet ported from enhanced FRS pipeline — pending review",
+   "status": "reviewed_exclusion",
+   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
   },
   "child_benefit_opts_out": {
    "status": "required"
@@ -164,7 +166,9 @@
    "status": "required"
   },
   "gift_aid": {
-   "status": "required"
+   "reason": "not yet ported from enhanced FRS pipeline — pending review",
+   "status": "reviewed_exclusion",
+   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
   },
   "gross_financial_wealth": {
    "status": "required"
@@ -444,11 +448,11 @@
   }
  },
  "counts": {
-  "required": 145,
-  "reviewed_exclusion": 0,
+  "required": 143,
+  "reviewed_exclusion": 2,
   "total": 145
  },
- "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. At release time, status additionally requires non-default signal on rows meeting the reviewed effective household-mass floor.",
+ "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal on at least the reviewed owning-entity effective-mass share; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor.",
  "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
  "effective_mass_coverage": {
   "minimum_nondefault_mass_share": 1e-06,
@@ -501,7 +505,7 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income",
-   "status": "required_at_build",
+   "status": "deferred_until_restored",
    "taxpayer_mask": "hmrc_spi_taxpayer"
   }
  },

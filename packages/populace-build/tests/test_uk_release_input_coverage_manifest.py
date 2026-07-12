@@ -40,6 +40,9 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
         "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
     )
     assert set(evidence["nondefault_shares"]) == set(reference["nonzero_shares"])
+    assert set(evidence["effective_nondefault_mass_shares"]) == set(
+        reference["nonzero_shares"]
+    )
     assert evidence["column_entities"] == reference["input_entities"]
     assert all(float(share) > 0 for share in evidence["nondefault_shares"].values())
     # Nonzero is not the gate criterion for default-True flags or zero-weight
@@ -50,17 +53,40 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
     assert evidence["nonzero_shares"]["household_weight"] == 0.626224
     assert evidence["nondefault_shares"]["household_weight"] == 1.0
     assert evidence["nondefault_shares"]["employment_income"] == 0.478282
+    assert evidence["effective_signal_columns"] == 143
+    assert evidence["insufficient_effective_mass_columns"] == [
+        "charitable_investment_gifts",
+        "gift_aid",
+    ]
+    assert evidence["effective_nondefault_mass_shares"]["gift_aid"] == 0.0
+    assert (
+        evidence["effective_nondefault_mass_shares"][
+            "charitable_investment_gifts"
+        ]
+        == 0.0
+    )
+    assert (
+        evidence["effective_nondefault_mass_shares"]["employment_income"]
+        > evidence["effective_mass_coverage"]["minimum_nondefault_mass_share"]
+    )
 
 
-def test_initial_known_gap_register_is_honestly_empty() -> None:
+def test_initial_known_gap_register_records_zero_mass_spi_signal() -> None:
     gaps = _resource("efrs_parity_known_gaps.json")
-    assert gaps["known_gaps"] == {}
+    assert set(gaps["known_gaps"]) == {
+        "charitable_investment_gifts",
+        "gift_aid",
+    }
     assert gaps["candidate_evidence"]["missing_columns"] == []
     assert gaps["candidate_evidence"]["default_only_columns"] == []
+    assert gaps["candidate_evidence"]["signal_columns"] == 145
+    assert gaps["candidate_evidence"]["effective_signal_columns"] == 143
     assert gaps["exclusion_policy"]["reason"] == (
         "not yet ported from enhanced FRS pipeline — pending review"
     )
     assert gaps["exclusion_policy"]["tracking_note"].strip()
+    for entry in gaps["known_gaps"].values():
+        assert entry == gaps["exclusion_policy"]
 
 
 def test_committed_manifest_matches_regeneration() -> None:
@@ -89,16 +115,27 @@ def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
     assert regenerated == committed
 
 
-def test_initial_manifest_requires_every_populated_reference_input() -> None:
+def test_initial_manifest_requires_only_effectively_populated_reference_inputs() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 145,
-        "reviewed_exclusion": 0,
+        "required": 143,
+        "reviewed_exclusion": 2,
         "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    assert {entry["status"] for entry in manifest["columns"].values()} == {"required"}
+    assert {
+        name
+        for name, entry in manifest["columns"].items()
+        if entry["status"] == "reviewed_exclusion"
+    } == {"charitable_investment_gifts", "gift_aid"}
+    assert all(
+        entry["reason"]
+        == "not yet ported from enhanced FRS pipeline — pending review"
+        and entry["tracking_note"].strip()
+        for entry in manifest["columns"].values()
+        if entry["status"] == "reviewed_exclusion"
+    )
     assert manifest["schema_version"] == 3
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
@@ -112,11 +149,11 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
     }
 
 
-def test_hmrc_family_is_required_with_distributional_mass_accounting() -> None:
+def test_hmrc_family_is_deferred_with_future_promotion_contract() -> None:
     manifest = _resource("release_input_coverage_manifest.json")
     family = manifest["family_coverage"]["hmrc_spi_income"]
 
-    assert family["status"] == "required_at_build"
+    assert family["status"] == "deferred_until_restored"
     assert family["restoration_status"] == (
         "blocked_pending_reviewed_frs_decomposition"
     )
@@ -159,7 +196,7 @@ def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> Non
     reference = _resource("efrs_parity_reference.json")
     evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
     tampered = json.loads(json.dumps(evidence))
-    tampered["nondefault_shares"]["dividend_income"] = 0.0
+    tampered["effective_nondefault_mass_shares"]["dividend_income"] = 0.0
     gaps = generator.build_known_gaps(tampered, reference=reference)
     entry = gaps["known_gaps"]["dividend_income"]
     assert entry["reason"] == (
@@ -186,6 +223,21 @@ def test_candidate_signal_helpers_reject_null_and_blank_only_columns() -> None:
         assert generator._nonzero_share(column) == 0.0
         assert generator._nondefault_share(column, 0.0) == 0.0
     assert generator._nondefault_share(pd.Series([0, None], dtype=object), 0.0) == 0.0
+
+
+def test_effective_signal_helper_ignores_zero_mass_rows() -> None:
+    generator = _load_generator()
+    column = pd.Series([500.0, 0.0])
+
+    assert generator._nondefault_share(column, 0.0) == 0.5
+    assert (
+        generator._effective_nondefault_mass_share(
+            column,
+            0.0,
+            np.asarray([0.0, 1_000.0]),
+        )
+        == 0.0
+    )
 
 
 def test_implicit_candidate_resolution_requires_revision_mapping(monkeypatch) -> None:

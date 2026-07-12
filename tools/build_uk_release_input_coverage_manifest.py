@@ -5,8 +5,9 @@ statuses evidence-based:
 
 * surface: every populated effective loader input in the sha-pinned enhanced
   FRS reference;
-* ``required``: the certified Populace UK candidate persists the column with at
-  least one value different from the PolicyEngine-UK default; and
+* ``required``: the certified Populace UK candidate persists the column with
+  PolicyEngine-UK-default-aware signal on rows carrying at least the reviewed
+  share of owning-entity effective population mass; and
 * ``reviewed_exclusion``: every remaining reference layer, carrying the exact
   campaign reason and a non-empty tracking note.
 
@@ -200,7 +201,7 @@ def _stored_default(variable: Any) -> object:
     return default
 
 
-def _nondefault_share(column: pd.Series, default: object) -> float:
+def _nondefault_mask(column: pd.Series, default: object) -> np.ndarray:
     if isinstance(default, _StoredEnumDefault):
         numeric = pd.to_numeric(column, errors="coerce").to_numpy(
             dtype=float,
@@ -217,7 +218,7 @@ def _nondefault_share(column: pd.Series, default: object) -> float:
                 & ~numeric_values
             ).fillna(False)
             signal |= string_signal.to_numpy(dtype=bool)
-        return float(signal.mean())
+        return signal
     if isinstance(default, bool | np.bool_):
         if pd.api.types.is_numeric_dtype(column):
             values = pd.to_numeric(column, errors="coerce").to_numpy(
@@ -228,15 +229,46 @@ def _nondefault_share(column: pd.Series, default: object) -> float:
             values = normalized.map(
                 {"false": 0.0, "0": 0.0, "true": 1.0, "1": 1.0}
             ).to_numpy(dtype=float, na_value=np.nan)
-        return float((np.isfinite(values) & (values != float(bool(default)))).mean())
+        return np.isfinite(values) & (values != float(bool(default)))
     if isinstance(default, int | float | np.integer | np.floating):
         values = pd.to_numeric(column, errors="coerce").to_numpy(
             dtype=float, na_value=np.nan
         )
-        return float((np.isfinite(values) & (values != float(default))).mean())
+        return np.isfinite(values) & (values != float(default))
     values = column.astype("string").str.strip()
     valid = values.notna() & values.ne("")
-    return float((valid & values.ne(str(default).strip())).fillna(False).mean())
+    return (valid & values.ne(str(default).strip())).fillna(False).to_numpy(dtype=bool)
+
+
+def _nondefault_share(column: pd.Series, default: object) -> float:
+    return float(_nondefault_mask(column, default).mean())
+
+
+def _effective_nondefault_mass_share(
+    column: pd.Series,
+    default: object,
+    effective_weights: np.ndarray,
+) -> float:
+    weights = np.asarray(effective_weights, dtype=np.float64)
+    signal = _nondefault_mask(column, default)
+    if len(signal) != len(weights):
+        raise ValueError(
+            "Candidate input column and owning-entity effective weights do not "
+            f"align: {len(signal)} != {len(weights)}."
+        )
+    if (
+        not np.isfinite(weights).all()
+        or (weights < 0.0).any()
+        or not (weights > 0.0).any()
+    ):
+        raise ValueError(
+            "Candidate owning-entity effective weights must be finite, "
+            "non-negative, and retain positive mass."
+        )
+    positive = weights > 0.0
+    total_mass = float(weights[positive].sum())
+    signal_mass = float(weights[positive & signal].sum())
+    return signal_mass / total_mass
 
 
 def _batches(names: list[str]) -> list[list[str]]:
@@ -269,12 +301,84 @@ def _reference_input_entities(
     return entities
 
 
+def _candidate_effective_weights(
+    store: pd.HDFStore,
+) -> dict[str, np.ndarray]:
+    """Map the one reviewed household-mass source to every owning entity."""
+
+    household = store.select(
+        "household",
+        columns=["household_id", "household_weight"],
+    )
+    person_links = store.select(
+        "person",
+        columns=["person_benunit_id", "person_household_id"],
+    )
+    benunit = store.select("benunit", columns=["benunit_id"])
+
+    if household["household_id"].isna().any() or household[
+        "household_id"
+    ].duplicated().any():
+        raise ValueError(
+            "Candidate effective-mass evidence requires unique household_id values."
+        )
+    household_weights = pd.to_numeric(
+        household["household_weight"], errors="coerce"
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    if (
+        not np.isfinite(household_weights).all()
+        or (household_weights < 0.0).any()
+        or not (household_weights > 0.0).any()
+    ):
+        raise ValueError(
+            "Candidate household_weight must be finite, non-negative, and "
+            "retain positive population mass."
+        )
+    weights_by_household = pd.Series(
+        household_weights,
+        index=household["household_id"].to_numpy(),
+    )
+    person_weights = person_links["person_household_id"].map(weights_by_household)
+    if person_weights.isna().any():
+        raise ValueError(
+            "Candidate effective-mass evidence cannot map every person to a "
+            "weighted household."
+        )
+
+    benunit_households = (
+        person_links[["person_benunit_id", "person_household_id"]]
+        .drop_duplicates()
+        .groupby("person_benunit_id", sort=False)["person_household_id"]
+        .agg(list)
+    )
+    ambiguous = benunit_households[benunit_households.map(len) != 1]
+    if len(ambiguous):
+        raise ValueError(
+            "Candidate effective-mass evidence requires each benunit to belong "
+            "to exactly one household."
+        )
+    household_by_benunit = benunit_households.map(lambda values: values[0])
+    benunit_weights = benunit["benunit_id"].map(
+        household_by_benunit.map(weights_by_household)
+    )
+    if benunit_weights.isna().any():
+        raise ValueError(
+            "Candidate effective-mass evidence cannot map every benunit to a "
+            "weighted household."
+        )
+    return {
+        "person": person_weights.to_numpy(dtype=np.float64),
+        "benunit": benunit_weights.to_numpy(dtype=np.float64),
+        "household": household_weights,
+    }
+
+
 def build_candidate_evidence(
     candidate_h5: Path,
     *,
     reference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Extract nonzero/nondefault evidence for the frozen reference surface."""
+    """Extract raw and effective-mass signal for the frozen reference surface."""
     _verify_candidate(candidate_h5)
     reference = reference or _load(REFERENCE_PATH)
     surface = set(reference["nonzero_shares"])
@@ -310,6 +414,7 @@ def build_candidate_evidence(
 
     nonzero_shares: dict[str, float] = {}
     nondefault_shares: dict[str, float] = {}
+    effective_nondefault_mass_shares: dict[str, float] = {}
     present: set[str] = set()
     column_entities: dict[str, str] = {}
     entity_rows: dict[str, int] = {}
@@ -326,6 +431,7 @@ def build_candidate_evidence(
                 f"{candidate_h5}: expected time_period {CANDIDATE_PERIOD!r}, "
                 f"got {period!r}."
             )
+        effective_weights = _candidate_effective_weights(store)
         for entity in ENTITY_TABLES:
             storer = store.get_storer(entity)
             entity_rows[entity] = int(storer.nrows)
@@ -355,12 +461,29 @@ def build_candidate_evidence(
                     nondefault_shares[name] = round(
                         _nondefault_share(frame[name], defaults[name]), 6
                     )
+                    effective_nondefault_mass_shares[name] = round(
+                        _effective_nondefault_mass_share(
+                            frame[name],
+                            defaults[name],
+                            effective_weights[entity],
+                        ),
+                        12,
+                    )
 
     missing = sorted(surface - present)
     default_only = sorted(
         name for name, share in nondefault_shares.items() if share <= 0.0
     )
     signal = sorted(name for name, share in nondefault_shares.items() if share > 0.0)
+    effective_floor = float(
+        EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"]
+    )
+    insufficient_effective_mass = sorted(
+        name
+        for name in surface
+        if float(effective_nondefault_mass_shares.get(name, 0.0)) < effective_floor
+    )
+    effective_signal = sorted(surface - set(insufficient_effective_mass))
     return {
         "source": {
             "repo_id": CANDIDATE_REPO_ID,
@@ -382,10 +505,16 @@ def build_candidate_evidence(
         "column_entities": dict(sorted(column_entities.items())),
         "reference_columns_evaluated": len(surface),
         "signal_columns": len(signal),
+        "effective_signal_columns": len(effective_signal),
         "missing_columns": missing,
         "default_only_columns": default_only,
+        "insufficient_effective_mass_columns": insufficient_effective_mass,
+        "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "nonzero_shares": dict(sorted(nonzero_shares.items())),
         "nondefault_shares": dict(sorted(nondefault_shares.items())),
+        "effective_nondefault_mass_shares": dict(
+            sorted(effective_nondefault_mass_shares.items())
+        ),
     }
 
 
@@ -396,16 +525,20 @@ def build_known_gaps(
 ) -> dict[str, Any]:
     reference = reference or _load(REFERENCE_PATH)
     surface = set(reference["nonzero_shares"])
-    shares = candidate_evidence.get("nondefault_shares", {})
+    shares = candidate_evidence.get("effective_nondefault_mass_shares", {})
     if not isinstance(shares, dict):
-        raise ValueError("candidate_evidence.nondefault_shares must be an object.")
-    gaps = sorted(name for name in surface if float(shares.get(name, 0.0)) <= 0.0)
+        raise ValueError(
+            "candidate_evidence.effective_nondefault_mass_shares must be an object."
+        )
+    floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
+    gaps = sorted(name for name in surface if float(shares.get(name, 0.0)) < floor)
     return {
         "schema_version": 1,
         "description": (
             "Canonical UK enhanced-FRS parity debt ledger. A reference-"
             "populated loader input appears here only when the sha-pinned "
-            "certified Populace UK candidate lacks non-default signal."
+            "certified Populace UK candidate lacks non-default signal on the "
+            "reviewed minimum share of owning-entity effective population mass."
         ),
         "exclusion_policy": {
             "reason": EXCLUSION_REASON,
@@ -434,9 +567,23 @@ def _validate_known_gaps(
         raise ValueError(
             "efrs_parity_known_gaps.json: 'candidate_evidence' must be an object."
         )
-    nondefault = evidence.get("nondefault_shares")
-    if not isinstance(nondefault, dict):
-        raise ValueError("candidate_evidence.nondefault_shares must be an object.")
+    effective_nondefault = evidence.get("effective_nondefault_mass_shares")
+    if not isinstance(effective_nondefault, dict):
+        raise ValueError(
+            "candidate_evidence.effective_nondefault_mass_shares must be an object."
+        )
+    evidence_policy = evidence.get("effective_mass_coverage")
+    if evidence_policy != EFFECTIVE_MASS_COVERAGE:
+        raise ValueError(
+            "Candidate effective-mass evidence disagrees with the reviewed "
+            "manifest policy."
+        )
+    if set(effective_nondefault) != surface:
+        raise ValueError(
+            "Candidate effective-mass evidence must exactly cover the reference "
+            f"surface: missing={sorted(surface - set(effective_nondefault))}, "
+            f"extra={sorted(set(effective_nondefault) - surface)}."
+        )
     reference_entities = _reference_input_entities(reference, surface)
     evidence_entities = evidence.get("column_entities")
     if not isinstance(evidence_entities, dict):
@@ -461,12 +608,15 @@ def _validate_known_gaps(
             "Candidate owning-entity evidence disagrees with the reference: "
             f"missing={missing}, extra={extra}, mismatched={mismatched}."
         )
-    expected = {name for name in surface if float(nondefault.get(name, 0.0)) <= 0.0}
+    floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
+    expected = {
+        name for name in surface if float(effective_nondefault[name]) < floor
+    }
     actual = set(raw_gaps)
     if actual != expected:
         raise ValueError(
             "UK known-gap register disagrees with the checked-in candidate "
-            f"nondefault evidence: missing={sorted(expected - actual)}, "
+            f"effective-mass evidence: missing={sorted(expected - actual)}, "
             f"stale={sorted(actual - expected)}."
         )
     stray = sorted(actual - surface)
@@ -549,11 +699,11 @@ def build_manifest(
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
             "inputs. status='required' exactly when the sha-pinned candidate "
-            "evidence in efrs_parity_known_gaps.json records non-default signal; "
-            "all other surface columns are reviewed_exclusion with reason "
+            "evidence in efrs_parity_known_gaps.json records non-default signal "
+            "on at least the reviewed owning-entity effective-mass share; all "
+            "other surface columns are reviewed_exclusion with reason "
             f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note. "
-            "At release time, status additionally requires non-default signal "
-            "on rows meeting the reviewed effective household-mass floor."
+            "The final release gate applies the same effective-mass floor."
         ),
         "counts": {
             "required": len(required),
@@ -627,7 +777,11 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             "against all person effective mass."
         )
     return {
-        "status": "required_at_build",
+        "status": (
+            "required_at_build"
+            if str(frs_crosswalk["status"]) == "restored"
+            else "deferred_until_restored"
+        ),
         "restoration_status": str(frs_crosswalk["status"]),
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,

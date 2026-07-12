@@ -308,6 +308,10 @@ def test_rowwise_h5_roundtrip_preserves_required_at_build_provenance(
     assert reloaded.household["household_weight"].sum() == pytest.approx(30.0)
 
     shipped = load_uk_release_input_coverage_manifest()
+    required_family_coverage = {
+        name: {**dict(family), "status": "required_at_build"}
+        for name, family in shipped.family_coverage.items()
+    }
     contract = UKReleaseInputCoverageManifest(
         reference={"source": "rowwise provenance test"},
         candidate_evidence={"source": "rowwise provenance test"},
@@ -315,7 +319,7 @@ def test_rowwise_h5_roundtrip_preserves_required_at_build_provenance(
             UKReleaseInputColumn("gift_aid", "required"),
             UKReleaseInputColumn("charitable_investment_gifts", "required"),
         ),
-        family_coverage=shipped.family_coverage,
+        family_coverage=required_family_coverage,
         effective_mass_coverage=shipped.effective_mass_coverage,
     )
     for frame in (cloned, reloaded):

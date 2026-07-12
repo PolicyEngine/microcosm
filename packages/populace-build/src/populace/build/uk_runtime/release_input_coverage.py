@@ -60,6 +60,10 @@ REQUIRED_STATUS = "required"
 REVIEWED_EXCLUSION_STATUS = "reviewed_exclusion"
 _VALID_STATUSES = frozenset({REQUIRED_STATUS, REVIEWED_EXCLUSION_STATUS})
 _REQUIRED_AT_BUILD_STATUS = "required_at_build"
+_DEFERRED_UNTIL_RESTORED_STATUS = "deferred_until_restored"
+_VALID_FAMILY_STATUSES = frozenset(
+    {_REQUIRED_AT_BUILD_STATUS, _DEFERRED_UNTIL_RESTORED_STATUS}
+)
 _DISTRIBUTIONAL_REQUIRED_STATUS = "distributional_required"
 _UK_PACKAGE = "populace.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
@@ -197,7 +201,7 @@ def _parse_family_coverage(
     *,
     resource: str,
 ) -> dict[str, dict[str, Any]]:
-    """Validate the executable subset of release-family coverage metadata."""
+    """Validate executable and explicitly deferred family coverage metadata."""
 
     if raw is None:
         return {}
@@ -213,10 +217,16 @@ def _parse_family_coverage(
                 f"{resource}: family coverage entry {raw_name!r} must be an object."
             )
         status = str(raw_family.get("status", ""))
-        if status != _REQUIRED_AT_BUILD_STATUS:
+        if status not in _VALID_FAMILY_STATUSES:
             raise ValueError(
-                f"{resource}: family {name!r} must currently use status "
-                f"{_REQUIRED_AT_BUILD_STATUS!r}, got {status!r}."
+                f"{resource}: family {name!r} status must be one of "
+                f"{sorted(_VALID_FAMILY_STATUSES)}, got {status!r}."
+            )
+        restoration_status = str(raw_family.get("restoration_status", "")).strip()
+        if status == _DEFERRED_UNTIL_RESTORED_STATUS and not restoration_status:
+            raise ValueError(
+                f"{resource}: deferred family {name!r} needs a "
+                "restoration_status explaining its blocker."
             )
         stage = str(raw_family.get("stage", "")).strip()
         if not stage:
@@ -308,6 +318,7 @@ def _parse_family_coverage(
         families[name] = {
             **dict(raw_family),
             "status": status,
+            "restoration_status": restoration_status,
             "stage": stage,
             "source_manifest": source_manifest,
             "source_manifest_sha256": source_manifest_sha256,
@@ -1104,11 +1115,25 @@ def assert_uk_release_input_coverage_manifest_current(
                 "release_input_coverage_manifest.json."
             )
         requirements = family.get("effective_mass_requirements", {})
+        family_status = str(family["status"])
         for column, requirement in sorted(requirements.items()):
-            if column not in manifest.required_columns:
+            if (
+                family_status == _REQUIRED_AT_BUILD_STATUS
+                and column not in manifest.required_columns
+            ):
                 failures.append(
                     f"{family_name}: distributional requirement {column!r} must "
-                    "also remain a required release input column."
+                    "be a required release input while the family is "
+                    "required_at_build."
+                )
+            if (
+                family_status == _DEFERRED_UNTIL_RESTORED_STATUS
+                and column not in manifest.reviewed_exclusions
+            ):
+                failures.append(
+                    f"{family_name}: deferred distributional requirement "
+                    f"{column!r} must remain a reviewed_exclusion until the "
+                    "family is restored and promoted."
                 )
             requirement_floor = float(requirement["minimum_nondefault_mass_share"])
             if requirement_floor != (
