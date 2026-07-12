@@ -73,9 +73,9 @@ def test_initial_manifest_requires_every_populated_reference_input() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 132,
+        "required": 145,
         "reviewed_exclusion": 0,
-        "total": 132,
+        "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
     assert {entry["status"] for entry in manifest["columns"].values()} == {"required"}

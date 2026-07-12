@@ -5,9 +5,11 @@ enhanced FRS artifact.  The data itself remains licensed and is never copied
 into this repository; this tool commits only the input-leaf export surface and
 unweighted populated-record shares.
 
-The extraction convention mirrors the US eCPS parity reference:
+The extraction convention mirrors the US eCPS parity reference while honoring
+the UK loader's broader override semantics:
 
-* restrict H5 columns to pure PolicyEngine-UK input variables;
+* retain every engine-known H5 column, because the UK loader calls
+  ``set_input`` for formula-owned persisted columns as well as pure leaves;
 * exclude structural entity and membership identifiers;
 * measure the share of rows carrying non-zero/True/non-empty signal; and
 * retain only populated layers (share > 0) in ``nonzero_shares``.
@@ -192,15 +194,20 @@ def _input_variable_names(system: Any) -> set[str]:
     }
 
 
-def _effective_input_entities(
-    system: Any,
-    input_names: set[str],
-) -> dict[str, str]:
-    """Return the owning H5 entity for every pure input and loader alias."""
+def _effective_input_entities(system: Any) -> dict[str, str]:
+    """Return the owning H5 entity for every engine-loadable override.
+
+    ``policyengine_uk.Simulation.build_from_multi_year_dataset`` calls
+    ``set_input`` for every persisted column known to the tax-benefit system,
+    including formula-owned variables.  Those stored arrays therefore belong
+    to the release input contract just as much as pure input leaves do.
+    """
 
     entities = {
-        name: str(system.variables[name].entity.key) for name in sorted(input_names)
+        name: str(variable.entity.key)
+        for name, variable in sorted(system.variables.items())
     }
+    input_names = _input_variable_names(system)
     for source, target in LOADER_INPUT_ALIASES.items():
         if source not in system.variables:
             raise ValueError(f"UK loader alias source {source!r} is unknown.")
@@ -231,9 +238,9 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
 
     system = CountryTaxBenefitSystem()
     input_names = _input_variable_names(system)
-    effective_input_entities = _effective_input_entities(system, input_names)
-    effective_input_names = input_names | set(LOADER_INPUT_ALIASES)
     all_engine_names = set(system.variables)
+    effective_input_entities = _effective_input_entities(system)
+    effective_input_names = all_engine_names
     structural = set(STRUCTURAL_COLUMNS)
     nonzero_shares: dict[str, float] = {}
     entity_stats: dict[str, dict[str, int]] = {}
@@ -279,8 +286,10 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
 
         value_columns = set().union(*(set(v) for v in columns_by_entity.values()))
         value_columns -= structural
-        formula_owned = sorted(
-            (value_columns & all_engine_names) - effective_input_names
+        formula_owned_overrides = sorted(
+            (value_columns & all_engine_names)
+            - input_names
+            - set(LOADER_INPUT_ALIASES)
         )
         unknown = sorted(value_columns - all_engine_names)
 
@@ -307,13 +316,15 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
         (value_columns & effective_input_names) - set(nonzero_shares)
     )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "description": (
             "Frozen enhanced-FRS parity reference for the UK release input-"
-            "coverage contract. Every PolicyEngine-UK input leaf the pinned "
-            "artifact populates is recorded as its unweighted owning-entity "
-            "nonzero share; formula-owned outputs, pipeline scratch columns, "
-            "structural IDs, and all-zero input layers are not requirements."
+            "coverage contract. Every PolicyEngine-UK loader variable the "
+            "pinned artifact populates is recorded as its unweighted owning-entity "
+            "nonzero share. This includes formula-owned persisted overrides "
+            "because the UK Simulation loader passes every engine-known H5 "
+            "column to set_input; pipeline scratch columns, structural IDs, "
+            "and all-zero loader layers are not requirements."
         ),
         "source": {
             "repo_id": SOURCE_REPO_ID,
@@ -330,15 +341,15 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
             "package": "policyengine-uk",
             "version": version("policyengine-uk"),
             "input_variable_scope": (
-                "CountryTaxBenefitSystem variables for which "
-                "variable.is_input_variable() is true, plus the explicit raw "
-                "H5 columns Simulation.__init__ moves onto canonical leaves"
+                "Every CountryTaxBenefitSystem variable persisted in the H5: "
+                "Simulation.build_from_multi_year_dataset calls set_input for "
+                "all engine-known columns, including formula-owned overrides"
             ),
             "input_variable_count": len(input_names),
-            "effective_h5_input_count": len(effective_input_names),
+            "engine_known_loader_variable_count": len(effective_input_names),
             "h5_input_aliases": dict(sorted(LOADER_INPUT_ALIASES.items())),
             "structural_columns_excluded": list(STRUCTURAL_COLUMNS),
-            "formula_owned_export_columns_excluded": formula_owned,
+            "formula_owned_persisted_overrides_included": formula_owned_overrides,
             "unknown_export_columns_excluded": unknown,
             "zero_share_input_columns_excluded": zero_share_inputs,
         },

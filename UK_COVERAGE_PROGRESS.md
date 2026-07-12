@@ -1,9 +1,9 @@
 # UK input-coverage progress
 
-The coverage baseline is the 132 populated effective loader inputs extracted
+The coverage baseline is the 145 populated effective loader overrides extracted
 from the immutable enhanced-FRS 2023-24 artifact (SHA-256 `584ae33d…`). The
 certified `populace_uk_2023` candidate (SHA-256 `f17306cc…`) currently carries
-non-default signal for all 132, so the honest launch register has **132 required
+non-default signal for all 145, so the honest launch register has **145 required
 columns and no reviewed exclusions**. The committed candidate evidence records
 that result per column; exclusions will use the campaign reason “not yet ported
 from enhanced FRS pipeline — pending review” and a tracking note if a future
@@ -11,7 +11,8 @@ baseline exposes a real gap.
 
 | Milestone | Coverage change | Evidence | Status |
 | --- | ---: | --- | --- |
-| Launch contract baseline | 132 required; 0 exclusions | SHA-pinned eFRS and certified Populace UK H5 surfaces | Complete |
+| Launch contract baseline | 145 required; 0 exclusions | SHA-pinned eFRS and certified Populace UK H5 surfaces, including all 13 formula-owned persisted overrides loaded through `set_input` | Complete |
+| Loader-override correction | +13 required formula-owned persisted overrides | UK Simulation loads every engine-known H5 column; cached pinned-artifact replay showed silent recomputation drift or loader failure when these overrides were dropped | Complete |
 | Contract entity/pin integrity | No coverage-status change | All 132 reference and candidate columns carry owning-entity evidence; runtime rejects same-named wrong-table columns; implicit HF resolution requires the exact revision/filename mapping before the SHA check | Complete |
 | National orchestration seam | No coverage-status change | Ordered stage protocol, preflight + final gate, atomic staging-H5 tests | Complete |
 | Effective-mass coverage | No raw status change; `gift_aid` and `charitable_investment_gifts` remain distributional/effective-weight gaps | Required signal must carry at least 0.000001 of its owning entity's effective population mass | Complete |

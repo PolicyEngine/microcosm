@@ -180,6 +180,36 @@ class TestUKReleaseInputCoverageGate:
             for failure in result.failures
         )
 
+    def test_formula_owned_persisted_override_is_a_hard_requirement(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("state_pension_reported", "required"),)
+        )
+        engine = _StubEngine({"state_pension_reported": 0.0})
+
+        absent = uk_release_input_coverage_gate(
+            _person_frame({"age": np.asarray([40, 70])}),
+            engine,
+            manifest=contract,
+        )
+        default_only = uk_release_input_coverage_gate(
+            _person_frame(
+                {"state_pension_reported": np.asarray([0.0, 0.0])}
+            ),
+            engine,
+            manifest=contract,
+        )
+        populated = uk_release_input_coverage_gate(
+            _person_frame(
+                {"state_pension_reported": np.asarray([0.0, 12_000.0])}
+            ),
+            engine,
+            manifest=contract,
+        )
+
+        assert not absent.passed
+        assert not default_only.passed
+        assert populated.passed
+
     def test_default_only_required_column_fails(self) -> None:
         frame = _person_frame(
             {
@@ -675,6 +705,26 @@ class TestUKManifest:
         manifest = load_uk_release_input_coverage_manifest()
         assert set(UK_LOADER_INPUT_ALIASES) <= set(manifest.required_columns)
 
+    def test_formula_owned_persisted_overrides_are_hard_covered(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        reference = json.loads(
+            (
+                _REPO_ROOT
+                / "packages"
+                / "populace-build"
+                / "src"
+                / "populace"
+                / "build"
+                / "uk"
+                / "efrs_parity_reference.json"
+            ).read_text(encoding="utf-8")
+        )
+        overrides = set(
+            reference["engine"]["formula_owned_persisted_overrides_included"]
+        )
+        assert len(overrides) == 13
+        assert overrides <= set(manifest.required_columns)
+
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
         pytest.importorskip("policyengine_uk")
         engine = PolicyEngineUKCoverageEngine()
@@ -683,6 +733,20 @@ class TestUKManifest:
         assert defaults == {name: 0 for name in UK_LOADER_INPUT_ALIASES}
         assert engine.variable_entities(UK_LOADER_INPUT_ALIASES) == {
             name: "person" for name in UK_LOADER_INPUT_ALIASES
+        }
+
+    def test_live_uk_adapter_recognises_formula_owned_overrides(self) -> None:
+        pytest.importorskip("policyengine_uk")
+        engine = PolicyEngineUKCoverageEngine()
+        names = ("state_pension_reported", "student_loan_repayments")
+        assert set(names) <= set(engine.variables())
+        assert engine.variable_entities(names) == {
+            "state_pension_reported": "person",
+            "student_loan_repayments": "person",
+        }
+        assert engine.default_values(names) == {
+            "state_pension_reported": 0,
+            "student_loan_repayments": 0,
         }
 
 

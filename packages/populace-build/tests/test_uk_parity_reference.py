@@ -18,6 +18,21 @@ from populace.build.uk_runtime.parity_reference import (
 _UK_PACKAGE = "populace.build.uk"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_efrs_parity_reference.py"
+_FORMULA_OWNED_PERSISTED_OVERRIDES = {
+    "current_education",
+    "is_benunit_head",
+    "is_enhanced_disabled_for_benefits",
+    "is_household_head",
+    "is_in_non_advanced_education",
+    "is_married",
+    "is_severely_disabled_for_benefits",
+    "marital_status",
+    "property_wealth",
+    "rail_subsidy_spending",
+    "state_pension_reported",
+    "student_loan_repayments",
+    "tax_free_savings_income",
+}
 
 
 def _resource(name: str) -> Path:
@@ -53,9 +68,9 @@ def _cached_incumbent_path(source) -> Path | None:
 class TestEfrsParityReference:
     def test_reference_loads_with_populated_layers(self) -> None:
         reference = load_efrs_parity_reference()
-        assert reference.schema_version == 2
-        assert len(reference.nonzero_shares) == 132
-        assert len(reference.populated_layers) == 132
+        assert reference.schema_version == 3
+        assert len(reference.nonzero_shares) == 145
+        assert len(reference.populated_layers) == 145
         assert all(share > 0.0 for share in reference.nonzero_shares.values())
         assert set(reference.input_entities) == set(reference.nonzero_shares)
         assert set(reference.input_entities.values()) == {
@@ -124,6 +139,15 @@ class TestEfrsParityReference:
         }
         assert set(aliases) <= set(raw["nonzero_shares"])
 
+    def test_formula_owned_persisted_overrides_are_hard_covered(self) -> None:
+        raw = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
+        included = set(
+            raw["engine"]["formula_owned_persisted_overrides_included"]
+        )
+        assert included == _FORMULA_OWNED_PERSISTED_OVERRIDES
+        assert included <= set(raw["nonzero_shares"])
+        assert "formula_owned_export_columns_excluded" not in raw["engine"]
+
     def test_empty_reference_is_refused(self, tmp_path) -> None:
         payload = json.loads(_resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text())
         payload["nonzero_shares"] = {}
@@ -148,6 +172,31 @@ class TestEfrsParityReference:
         digest = hashlib.sha256(cached.read_bytes()).hexdigest()
         assert cached.stat().st_size == source.size_bytes
         assert digest == source.sha256
+
+    def test_cached_reference_regeneration_matches_committed_surface(self) -> None:
+        source = load_efrs_parity_reference().source
+        cached = _cached_incumbent_path(source)
+        if cached is None:
+            # A content-addressed blob can still be supplied explicitly even
+            # when the HF revision-to-filename cache mapping is unavailable.
+            candidate = (
+                Path.home()
+                / ".cache"
+                / "huggingface"
+                / "hub"
+                / "models--policyengine--policyengine-uk-data-private"
+                / "blobs"
+                / source.sha256
+            )
+            cached = candidate if candidate.is_file() else None
+        if cached is None:
+            pytest.skip("pinned licensed eFRS artifact is not in the local HF cache")
+
+        regenerated = _load_generator().build_reference(cached)
+        committed = json.loads(
+            _resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text(encoding="utf-8")
+        )
+        assert regenerated == committed
 
     def test_implicit_resolution_requires_revision_mapping(
         self,

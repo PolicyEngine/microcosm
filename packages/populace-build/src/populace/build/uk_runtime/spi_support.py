@@ -59,10 +59,28 @@ SPI_INCOME_IMPUTATION_COLUMNS = SPI_INCOME_COMPONENT_COLUMNS + (
     "gift_aid",
     "charitable_investment_gifts",
 )
-SPI_HMRC_AUXILIARY_COLUMNS = (HMRC_SPI_ASSESSABLE_INCOME_COLUMN,)
+SPI_HMRC_EMPLOYED_INCOME_COLUMN = "hmrc_spi_employed_income"
+SPI_HMRC_OTHER_INCOME_COLUMN = "hmrc_spi_other_income"
+SPI_HMRC_STATE_PENSION_INCOME_COLUMN = "hmrc_spi_state_pension_income"
+SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN = "hmrc_spi_total_earned_income"
+SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN = "hmrc_spi_total_investment_income"
+
+# These are source leaves drawn jointly by the first-stage QRF.  TI itself is
+# deliberately absent: the documented accounting aggregates below are derived
+# after every draw so the identity cannot drift stochastically.
+SPI_HMRC_QRF_AUXILIARY_COLUMNS = (
+    SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+)
+SPI_HMRC_DERIVED_AUXILIARY_COLUMNS = (
+    SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+    SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+)
 SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     *SPI_INCOME_IMPUTATION_COLUMNS,
-    *SPI_HMRC_AUXILIARY_COLUMNS,
+    *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
 )
 
 FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS = (

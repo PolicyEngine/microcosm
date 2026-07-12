@@ -15,8 +15,8 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
-
-import pandas as pd
+from xml.etree import ElementTree
+from zipfile import ZIP_STORED, BadZipFile, ZipFile
 
 __all__ = [
     "HMRCIncomeBandTargetRecord",
@@ -24,6 +24,9 @@ __all__ = [
     "HMRCIncomeTargetSet",
     "HMRC_SPI_BUILD_PERIOD",
     "HMRC_SPI_ASSESSABLE_INCOME_COLUMN",
+    "HMRC_SPI_COLLATED_ODS_MIME_TYPE",
+    "HMRC_SPI_COLLATED_ODS_SHA256",
+    "HMRC_SPI_COLLATED_ODS_SIZE_BYTES",
     "HMRC_SPI_COLLATED_ODS_URL",
     "HMRC_SPI_INCOME_BAND_LOWER_BOUNDS",
     "HMRC_SPI_INCOME_COMPONENTS",
@@ -43,6 +46,13 @@ HMRC_SPI_PUBLICATION_URL = (
 HMRC_SPI_COLLATED_ODS_URL = (
     "https://assets.publishing.service.gov.uk/media/"
     "69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods"
+)
+HMRC_SPI_COLLATED_ODS_SHA256 = (
+    "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e"
+)
+HMRC_SPI_COLLATED_ODS_SIZE_BYTES = 166_693
+HMRC_SPI_COLLATED_ODS_MIME_TYPE = (
+    "application/vnd.oasis.opendocument.spreadsheet"
 )
 HMRC_SPI_SOURCE_VINTAGE = "2023-24"
 HMRC_SPI_SOURCE_TAX_YEAR = HMRC_SPI_SOURCE_VINTAGE
@@ -125,6 +135,8 @@ class _ComponentColumns:
     component: str
     count_position: int
     amount_position: int
+    count_header: str
+    amount_header: str
 
 
 @dataclass(frozen=True)
@@ -133,32 +145,162 @@ class _TableLayout:
     components: tuple[_ComponentColumns, ...]
 
 
+@dataclass(frozen=True)
+class _ODSRowRun:
+    """One physical ODS row and its logical repetition span."""
+
+    start_position: int
+    repeat: int
+    values: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class _ODSTable:
+    """Small, repeat-aware view of one ODS worksheet."""
+
+    sheet_name: str
+    rows: tuple[_ODSRowRun, ...]
+    significant_column_count: int
+
+    @property
+    def row_count(self) -> int:
+        if not self.rows:
+            return 0
+        last = self.rows[-1]
+        return last.start_position + last.repeat
+
+    def cell(self, row_position: int, column_position: int) -> object:
+        if row_position < 0 or column_position < 0:
+            raise IndexError("ODS row and column positions must be non-negative.")
+        for row in self.rows:
+            if row.start_position <= row_position < row.start_position + row.repeat:
+                if column_position >= len(row.values):
+                    return None
+                return row.values[column_position]
+        return None
+
+    def first_column_runs(
+        self,
+        *,
+        start_position: int,
+    ) -> tuple[tuple[int, object, int], ...]:
+        result: list[tuple[int, object, int]] = []
+        for row in self.rows:
+            end_position = row.start_position + row.repeat
+            if end_position <= start_position:
+                continue
+            effective_start = max(row.start_position, start_position)
+            repeat = end_position - effective_start
+            value = row.values[0] if row.values else None
+            if value not in (None, ""):
+                result.append((effective_start, value, repeat))
+        return tuple(result)
+
+
 _TABLE_LAYOUTS = (
     _TableLayout(
         sheet_name="Table_3_6",
         components=(
-            _ComponentColumns("self_employment_income", 1, 2),
-            _ComponentColumns("employment_income", 4, 5),
-            _ComponentColumns("state_pension", 7, 8),
-            _ComponentColumns("private_pension_income", 10, 11),
+            _ComponentColumns(
+                "self_employment_income",
+                1,
+                2,
+                "Self-employment income (Number of individuals) [Note 1]",
+                "Self-employment income (Amount) [Note 1]",
+            ),
+            _ComponentColumns(
+                "employment_income",
+                4,
+                5,
+                "Employment income (Number of individuals)",
+                "Employment income (Amount)",
+            ),
+            _ComponentColumns(
+                "state_pension",
+                7,
+                8,
+                (
+                    "Pension Income from National Insurance contributions "
+                    "(Number of individuals) [Note 2]"
+                ),
+                (
+                    "Pension Income from National Insurance contributions "
+                    "(Amount) [Note 2]"
+                ),
+            ),
+            _ComponentColumns(
+                "private_pension_income",
+                10,
+                11,
+                "Pension income from other pensions (Number of individuals)",
+                "Pension income from other pensions (Amount)",
+            ),
         ),
     ),
     _TableLayout(
         sheet_name="Table_3_7",
         components=(
-            _ComponentColumns("property_income", 1, 2),
-            _ComponentColumns("savings_interest_income", 4, 5),
-            _ComponentColumns("dividend_income", 7, 8),
+            _ComponentColumns(
+                "property_income",
+                1,
+                2,
+                "Net income from property (Number of individuals) [Note 2]",
+                "Net income from property (Amount) [Note 2]",
+            ),
+            _ComponentColumns(
+                "savings_interest_income",
+                4,
+                5,
+                (
+                    "Interest from building societies and banks "
+                    "(Number of individuals) [Note 3, 4]"
+                ),
+                (
+                    "Interest from building societies and banks "
+                    "(Amount) [Note 3, 4]"
+                ),
+            ),
+            _ComponentColumns(
+                "dividend_income",
+                7,
+                8,
+                "Dividends (Number of individuals) [Note 5]",
+                "Dividends (Amount) [Note 5]",
+            ),
             # Table 3.7's fourth pair is "Other income".  The enhanced-FRS
             # parser previously stopped at dividends, silently omitting these
             # published positions 10/11 from the target family.
-            _ComponentColumns("other_investment_income", 10, 11),
+            _ComponentColumns(
+                "other_investment_income",
+                10,
+                11,
+                "Other income (Number of individuals) [Note 6]",
+                "Other income (Amount) [Note 6]",
+            ),
         ),
     ),
 )
 
+_HEADER_ROW = 4
 _FIRST_DATA_ROW = 5
 _STOP_LABEL = "All ranges"
+_INCOME_RANGE_HEADER = "Range of total income (lower limit) £"
+_ODS_COLUMN_LIMIT = 32
+_ODF_OFFICE_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+_ODF_TABLE_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+_ODF_TEXT_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+_ODF_TABLE_TAG = f"{{{_ODF_TABLE_NAMESPACE}}}table"
+_ODF_ROW_TAG = f"{{{_ODF_TABLE_NAMESPACE}}}table-row"
+_ODF_CELL_TAG = f"{{{_ODF_TABLE_NAMESPACE}}}table-cell"
+_ODF_COVERED_CELL_TAG = f"{{{_ODF_TABLE_NAMESPACE}}}covered-table-cell"
+_ODF_TABLE_NAME_ATTRIBUTE = f"{{{_ODF_TABLE_NAMESPACE}}}name"
+_ODF_ROW_REPEAT_ATTRIBUTE = f"{{{_ODF_TABLE_NAMESPACE}}}number-rows-repeated"
+_ODF_COLUMN_REPEAT_ATTRIBUTE = f"{{{_ODF_TABLE_NAMESPACE}}}number-columns-repeated"
+_ODF_VALUE_TYPE_ATTRIBUTE = f"{{{_ODF_OFFICE_NAMESPACE}}}value-type"
+_ODF_VALUE_ATTRIBUTE = f"{{{_ODF_OFFICE_NAMESPACE}}}value"
+_ODF_BOOLEAN_VALUE_ATTRIBUTE = f"{{{_ODF_OFFICE_NAMESPACE}}}boolean-value"
+_ODF_STRING_VALUE_ATTRIBUTE = f"{{{_ODF_OFFICE_NAMESPACE}}}string-value"
+_ODF_PARAGRAPH_TAG = f"{{{_ODF_TEXT_NAMESPACE}}}p"
 _SOURCE_SCALE: dict[HMRCIncomeMeasure, float] = {
     "count": 1_000.0,
     "amount": 1_000_000.0,
@@ -207,10 +349,25 @@ def materialize_hmrc_spi_income_band_targets(
     path = Path(ods_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f"HMRC SPI collated ODS not found: {path}.")
+    size_bytes = path.stat().st_size
+    if size_bytes != HMRC_SPI_COLLATED_ODS_SIZE_BYTES:
+        raise ValueError(
+            "HMRC SPI collated ODS size does not match the reviewed source "
+            f"identity: expected {HMRC_SPI_COLLATED_ODS_SIZE_BYTES}, got "
+            f"{size_bytes}."
+        )
+    source_sha256 = _sha256(path)
+    if source_sha256 != HMRC_SPI_COLLATED_ODS_SHA256:
+        raise ValueError(
+            "HMRC SPI collated ODS SHA-256 does not match the reviewed source "
+            f"identity: expected {HMRC_SPI_COLLATED_ODS_SHA256}, got "
+            f"{source_sha256}."
+        )
+    tables = _read_ods_tables(path)
 
     source = HMRCIncomeSourceProvenance(
         local_path=path,
-        sha256=_sha256(path),
+        sha256=source_sha256,
         publication_url=HMRC_SPI_PUBLICATION_URL,
         ods_url=HMRC_SPI_COLLATED_ODS_URL,
         source_vintage=HMRC_SPI_SOURCE_VINTAGE,
@@ -222,49 +379,243 @@ def materialize_hmrc_spi_income_band_targets(
 
     records: list[HMRCIncomeBandTargetRecord] = []
     for layout in _TABLE_LAYOUTS:
-        frame = pd.read_excel(
-            path,
-            sheet_name=layout.sheet_name,
-            engine="odf",
-            header=None,
-        )
-        records.extend(_records_from_table(frame, layout=layout, period=period))
+        table = tables[layout.sheet_name]
+        _validate_table_headers(table, layout=layout)
+        records.extend(_records_from_table(table, layout=layout, period=period))
 
     targets = tuple(records)
     _validate_target_surface(targets)
     return HMRCIncomeTargetSet(source=source, targets=targets)
 
 
+def _read_ods_tables(path: Path) -> dict[str, _ODSTable]:
+    """Read the two reviewed worksheets with the Python standard library."""
+
+    try:
+        with ZipFile(path) as archive:
+            names = archive.namelist()
+            if names.count("mimetype") != 1:
+                raise ValueError(
+                    "HMRC SPI collated ODS must contain exactly one mimetype entry."
+                )
+            mimetype_info = archive.getinfo("mimetype")
+            if mimetype_info.compress_type != ZIP_STORED:
+                raise ValueError(
+                    "HMRC SPI collated ODS mimetype entry must be stored "
+                    "without compression."
+                )
+            try:
+                mimetype = archive.read("mimetype").decode("ascii")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "HMRC SPI collated ODS mimetype entry must be ASCII."
+                ) from exc
+            if mimetype != HMRC_SPI_COLLATED_ODS_MIME_TYPE:
+                raise ValueError(
+                    "HMRC SPI collated ODS MIME type does not match the reviewed "
+                    f"source identity: expected {HMRC_SPI_COLLATED_ODS_MIME_TYPE!r}, "
+                    f"got {mimetype!r}."
+                )
+            if names.count("content.xml") != 1:
+                raise ValueError(
+                    "HMRC SPI collated ODS must contain exactly one content.xml entry."
+                )
+            content = archive.read("content.xml")
+    except BadZipFile as exc:
+        raise ValueError("HMRC SPI collated ODS is not a valid ZIP container.") from exc
+
+    try:
+        root = ElementTree.fromstring(content)
+    except ElementTree.ParseError as exc:
+        raise ValueError("HMRC SPI collated ODS content.xml is malformed.") from exc
+
+    required_sheets = {layout.sheet_name for layout in _TABLE_LAYOUTS}
+    table_elements: dict[str, ElementTree.Element] = {}
+    for element in root.iter(_ODF_TABLE_TAG):
+        sheet_name = element.attrib.get(_ODF_TABLE_NAME_ATTRIBUTE)
+        if sheet_name not in required_sheets:
+            continue
+        if sheet_name in table_elements:
+            raise ValueError(
+                f"HMRC SPI collated ODS contains duplicate sheet {sheet_name!r}."
+            )
+        table_elements[sheet_name] = element
+    missing = sorted(required_sheets - set(table_elements))
+    if missing:
+        raise ValueError(f"HMRC SPI collated ODS is missing sheet(s): {missing}.")
+    return {
+        sheet_name: _ods_table_from_element(element, sheet_name=sheet_name)
+        for sheet_name, element in table_elements.items()
+    }
+
+
+def _ods_table_from_element(
+    element: ElementTree.Element,
+    *,
+    sheet_name: str,
+) -> _ODSTable:
+    rows: list[_ODSRowRun] = []
+    logical_row_position = 0
+    significant_column_count = 0
+    for physical_row_position, row_element in enumerate(
+        element.iter(_ODF_ROW_TAG)
+    ):
+        repeat = _positive_repeat(
+            row_element.attrib.get(_ODF_ROW_REPEAT_ATTRIBUTE),
+            label=f"{sheet_name} row {physical_row_position} repeat",
+        )
+        values = _ods_row_values(
+            row_element,
+            sheet_name=sheet_name,
+            logical_row_position=logical_row_position,
+        )
+        significant_column_count = max(significant_column_count, len(values))
+        rows.append(
+            _ODSRowRun(
+                start_position=logical_row_position,
+                repeat=repeat,
+                values=values,
+            )
+        )
+        logical_row_position += repeat
+    return _ODSTable(
+        sheet_name=sheet_name,
+        rows=tuple(rows),
+        significant_column_count=significant_column_count,
+    )
+
+
+def _ods_row_values(
+    row_element: ElementTree.Element,
+    *,
+    sheet_name: str,
+    logical_row_position: int,
+) -> tuple[object, ...]:
+    values: list[object] = []
+    logical_column_position = 0
+    for cell in row_element:
+        if cell.tag not in {_ODF_CELL_TAG, _ODF_COVERED_CELL_TAG}:
+            continue
+        repeat = _positive_repeat(
+            cell.attrib.get(_ODF_COLUMN_REPEAT_ATTRIBUTE),
+            label=(
+                f"{sheet_name} row {logical_row_position} column "
+                f"{logical_column_position} repeat"
+            ),
+        )
+        value = (
+            None
+            if cell.tag == _ODF_COVERED_CELL_TAG
+            else _ods_cell_value(
+                cell,
+                sheet_name=sheet_name,
+                row_position=logical_row_position,
+                column_position=logical_column_position,
+            )
+        )
+        if logical_column_position < _ODS_COLUMN_LIMIT:
+            retained_repeat = min(
+                repeat,
+                _ODS_COLUMN_LIMIT - logical_column_position,
+            )
+            values.extend([value] * retained_repeat)
+        logical_column_position += repeat
+
+    while values and values[-1] in (None, ""):
+        values.pop()
+    return tuple(values)
+
+
+def _ods_cell_value(
+    cell: ElementTree.Element,
+    *,
+    sheet_name: str,
+    row_position: int,
+    column_position: int,
+) -> object:
+    value_type = cell.attrib.get(_ODF_VALUE_TYPE_ATTRIBUTE)
+    label = f"{sheet_name} row {row_position} column {column_position}"
+    if value_type in {"float", "currency", "percentage"}:
+        raw_value = cell.attrib.get(_ODF_VALUE_ATTRIBUTE)
+        try:
+            return float(raw_value) if raw_value is not None else math.nan
+        except ValueError as exc:
+            raise ValueError(f"{label} has invalid numeric ODS value {raw_value!r}.") from exc
+    if value_type == "boolean":
+        raw_value = cell.attrib.get(_ODF_BOOLEAN_VALUE_ATTRIBUTE)
+        if raw_value not in {"true", "false"}:
+            raise ValueError(f"{label} has invalid boolean ODS value {raw_value!r}.")
+        return raw_value == "true"
+    if value_type not in {None, "string"}:
+        raise ValueError(f"{label} has unsupported ODS value type {value_type!r}.")
+
+    paragraphs = [
+        "".join(paragraph.itertext()) for paragraph in cell.iter(_ODF_PARAGRAPH_TAG)
+    ]
+    if paragraphs:
+        return "\n".join(paragraphs)
+    string_value = cell.attrib.get(_ODF_STRING_VALUE_ATTRIBUTE)
+    if string_value is not None:
+        return string_value
+    return None
+
+
+def _positive_repeat(raw_value: str | None, *, label: str) -> int:
+    if raw_value is None:
+        return 1
+    try:
+        repeat = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a positive integer, got {raw_value!r}.") from exc
+    if repeat <= 0:
+        raise ValueError(f"{label} must be a positive integer, got {raw_value!r}.")
+    return repeat
+
+
+def _validate_table_headers(table: _ODSTable, *, layout: _TableLayout) -> None:
+    expected_headers = {0: _INCOME_RANGE_HEADER}
+    for component in layout.components:
+        expected_headers[component.count_position] = component.count_header
+        expected_headers[component.amount_position] = component.amount_header
+    for column_position, expected in sorted(expected_headers.items()):
+        actual = table.cell(_HEADER_ROW, column_position)
+        if actual != expected:
+            raise ValueError(
+                f"{layout.sheet_name} row {_HEADER_ROW} column {column_position} "
+                f"header mismatch: expected {expected!r}, got {actual!r}."
+            )
+
+
 def _records_from_table(
-    frame: pd.DataFrame,
+    table: _ODSTable,
     *,
     layout: _TableLayout,
     period: str,
 ) -> list[HMRCIncomeBandTargetRecord]:
-    if not isinstance(frame, pd.DataFrame):
+    if not isinstance(table, _ODSTable):
         raise TypeError(
-            f"{layout.sheet_name} must load as a pandas DataFrame, "
-            f"got {type(frame).__name__}."
+            f"{layout.sheet_name} must load as an ODS table, "
+            f"got {type(table).__name__}."
         )
-    if frame.shape[1] == 0:
+    if table.significant_column_count == 0:
         raise ValueError(f"{layout.sheet_name} has no columns.")
 
     missing_positions = [
         f"{component.component} count (position {component.count_position})"
         for component in layout.components
-        if component.count_position >= frame.shape[1]
+        if component.count_position >= table.significant_column_count
     ]
     missing_positions.extend(
         f"{component.component} amount (position {component.amount_position})"
         for component in layout.components
-        if component.amount_position >= frame.shape[1]
+        if component.amount_position >= table.significant_column_count
     )
     if missing_positions:
         raise ValueError(
             f"{layout.sheet_name} is missing component column(s): {missing_positions}."
         )
 
-    band_rows = _strict_band_rows(frame, sheet_name=layout.sheet_name)
+    band_rows = _strict_band_rows(table, sheet_name=layout.sheet_name)
     records: list[HMRCIncomeBandTargetRecord] = []
     upper_bounds = (*HMRC_SPI_INCOME_BAND_LOWER_BOUNDS[1:], None)
     for lower_bound, upper_bound in zip(
@@ -279,7 +630,7 @@ def _records_from_table(
                 ("amount", component.amount_position),
             ):
                 source_value = _strict_positive_value(
-                    frame.iat[row_position, column_position],
+                    table.cell(row_position, column_position),
                     sheet_name=layout.sheet_name,
                     component=component.component,
                     measure=measure,
@@ -312,26 +663,33 @@ def _records_from_table(
     return records
 
 
-def _strict_band_rows(frame: pd.DataFrame, *, sheet_name: str) -> dict[int, int]:
-    if len(frame) <= _FIRST_DATA_ROW:
+def _strict_band_rows(table: _ODSTable, *, sheet_name: str) -> dict[int, int]:
+    if table.row_count <= _FIRST_DATA_ROW:
         raise ValueError(f"{sheet_name} has no income-band rows.")
 
     parsed: list[tuple[int, int]] = []
-    stop_positions: list[int] = []
-    for row_position in range(_FIRST_DATA_ROW, len(frame)):
-        raw_label = frame.iat[row_position, 0]
+    stop_count = 0
+    stop_position: int | None = None
+    repeated_band_values: list[int] = []
+    for row_position, raw_label, repeat in table.first_column_runs(
+        start_position=_FIRST_DATA_ROW
+    ):
         if isinstance(raw_label, str) and raw_label.strip() == _STOP_LABEL:
-            stop_positions.append(row_position)
+            stop_count += repeat
+            if stop_position is None:
+                stop_position = row_position
         lower_bound = _integer_or_none(raw_label)
         if lower_bound is not None:
             parsed.append((lower_bound, row_position))
+            if repeat > 1:
+                repeated_band_values.append(lower_bound)
 
-    if len(stop_positions) != 1:
+    if stop_count != 1:
         raise ValueError(
             f"{sheet_name} must contain exactly one {_STOP_LABEL!r} sentinel; "
-            f"found {len(stop_positions)}."
+            f"found {stop_count}."
         )
-    if parsed and stop_positions[0] <= parsed[-1][1]:
+    if parsed and stop_position is not None and stop_position <= parsed[-1][1]:
         raise ValueError(
             f"{sheet_name} {_STOP_LABEL!r} sentinel must follow all published "
             "income-band rows."
@@ -339,7 +697,10 @@ def _strict_band_rows(frame: pd.DataFrame, *, sheet_name: str) -> dict[int, int]
 
     actual = tuple(lower_bound for lower_bound, _ in parsed)
     counts = Counter(actual)
-    duplicates = sorted(value for value, count in counts.items() if count > 1)
+    duplicates = sorted(
+        set(repeated_band_values)
+        | {value for value, count in counts.items() if count > 1}
+    )
     if duplicates:
         raise ValueError(
             f"{sheet_name} contains duplicate income lower band(s): {duplicates}."

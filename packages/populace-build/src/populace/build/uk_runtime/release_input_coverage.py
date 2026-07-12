@@ -8,12 +8,11 @@ population mass to clear the reviewed manifest floor. A reviewed exclusion
 that later carries effective signal is stale and fails, so the debt ledger can
 only shrink deliberately.
 
-Three persisted compatibility columns are real UK loader inputs even though
-their source variables are formula-owned: ``Simulation.__init__`` moves them to
-canonical leaves after loading. They remain in the contract through
-``UK_LOADER_INPUT_ALIASES``; this prevents a mechanically strict formula filter
-from dropping employment income, capital gains, and employee pension
-contributions from the coverage boundary.
+The UK loader calls ``set_input`` for every engine-known persisted H5 column,
+including formula-owned variables. Those persisted overrides are therefore
+part of the input contract alongside pure input leaves. Three compatibility
+columns are additionally moved to canonical leaves by ``Simulation.__init__``;
+``UK_LOADER_INPUT_ALIASES`` keeps that migration seam explicit and checked.
 """
 
 from __future__ import annotations
@@ -415,7 +414,7 @@ def _stored_enum_default(value: object) -> _UKEnumDefault | None:
 
 
 class PolicyEngineUKCoverageEngine:
-    """Small lazy adapter exposing UK effective inputs and stored defaults."""
+    """Small lazy adapter exposing UK loadable overrides and stored defaults."""
 
     def __init__(self) -> None:
         self._system: Any | None = None
@@ -432,7 +431,6 @@ class PolicyEngineUKCoverageEngine:
         pure_inputs = {
             name for name, variable in variables.items() if variable.is_input_variable()
         }
-        aliases: set[str] = set()
         for source, target in UK_LOADER_INPUT_ALIASES.items():
             if source not in variables:
                 raise ValueError(f"UK loader alias source {source!r} is unknown.")
@@ -447,11 +445,14 @@ class PolicyEngineUKCoverageEngine:
                     f"UK loader alias {source!r} is owned by {source_entity!r}, "
                     f"but {target!r} is owned by {target_entity!r}."
                 )
-            aliases.add(source)
-        return sorted(pure_inputs | aliases)
+        # build_from_multi_year_dataset passes every engine-known H5 column to
+        # set_input, so formula-owned persisted arrays are effective loader
+        # inputs too. Keep the pure-input/alias validation above because the
+        # post-load move_values seam must not drift silently.
+        return sorted(variables)
 
     def variable_entities(self, names: Sequence[str]) -> dict[str, str]:
-        """Return each effective loader input's owning persisted entity."""
+        """Return each effective loader override's owning persisted entity."""
 
         variables = self._tax_benefit_system().variables
         effective = set(self.variables())
@@ -1173,7 +1174,7 @@ def assert_uk_release_input_coverage_manifest_current(
         if non_inputs:
             failures.append(
                 "manifest declares column(s) that are not live PolicyEngine-UK "
-                f"input leaves or loader aliases: {non_inputs}."
+                f"loadable variables: {non_inputs}."
             )
         if not non_inputs:
             try:

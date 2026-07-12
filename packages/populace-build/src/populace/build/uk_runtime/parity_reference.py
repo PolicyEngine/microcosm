@@ -53,7 +53,7 @@ class EfrsParityReference:
     source: EfrsParitySource
     nonzero_shares: Mapping[str, float]
     input_entities: Mapping[str, str]
-    schema_version: int = 2
+    schema_version: int = 3
 
     @property
     def populated_layers(self) -> tuple[str, ...]:
