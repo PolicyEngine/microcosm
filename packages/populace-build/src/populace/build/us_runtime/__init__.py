@@ -348,6 +348,21 @@ from populace.build.us_runtime.medicaid_take_up import (
     with_us_medicaid_take_up,
     write_us_medicaid_take_up_diagnostics,
 )
+from populace.build.us_runtime.medicare_take_up import (
+    MEDICARE_TAKE_UP_ARCHIVED_CLONE_URL,
+    MEDICARE_TAKE_UP_ARCHIVED_DERIVATION_URL,
+    MEDICARE_TAKE_UP_ARCHIVED_EXPORT_URL,
+    MEDICARE_TAKE_UP_ARCHIVED_SOURCE_COLUMNS_URL,
+    US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+    US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
+    US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS,
+    US_MEDICARE_TAKE_UP_STAGE_NAME,
+    derive_us_medicare_take_up_from_manifest,
+    us_medicare_take_up_signal_gate,
+    us_medicare_take_up_stage_spec,
+    us_medicare_take_up_summary,
+    with_us_medicare_take_up_input,
+)
 from populace.build.us_runtime.misc_itemized import (
     US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS,
     US_MISC_ITEMIZED_OUTPUT_COLUMNS,
@@ -1158,6 +1173,19 @@ __all__ = [
     "with_us_take_up_inputs",
     "write_us_medicaid_take_up_diagnostics",
     "write_us_take_up_participation_diagnostics",
+    "MEDICARE_TAKE_UP_ARCHIVED_CLONE_URL",
+    "MEDICARE_TAKE_UP_ARCHIVED_DERIVATION_URL",
+    "MEDICARE_TAKE_UP_ARCHIVED_EXPORT_URL",
+    "MEDICARE_TAKE_UP_ARCHIVED_SOURCE_COLUMNS_URL",
+    "US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS",
+    "US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS",
+    "US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS",
+    "US_MEDICARE_TAKE_UP_STAGE_NAME",
+    "derive_us_medicare_take_up_from_manifest",
+    "us_medicare_take_up_signal_gate",
+    "us_medicare_take_up_stage_spec",
+    "us_medicare_take_up_summary",
+    "with_us_medicare_take_up_input",
     "TakeUpContract",
     "TakeUpProgram",
     "assert_take_up_contract_current",
@@ -1420,6 +1448,14 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "from P_SEQ and A_MARITL; nothing is imputed."
         ),
     ),
+    US_MEDICARE_TAKE_UP_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured Medicare enrollment mapped exactly from MCARE == 1 and "
+            "copied onto the PUF support clone; no take-up rate is applied."
+        ),
+    ),
     US_RETIREMENT_DISTRIBUTION_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -1569,6 +1605,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_RELATIONSHIP_INPUTS_STAGE_NAME,
+    US_MEDICARE_TAKE_UP_STAGE_NAME,
     US_HOUSING_INPUTS_STAGE_NAME,
     US_RETIREMENT_DISTRIBUTION_STAGE_NAME,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,

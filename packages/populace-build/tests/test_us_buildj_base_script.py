@@ -28,3 +28,9 @@ def test_cache_rejects_bases_predating_salt_refund_and_energy_subsidy() -> None:
 
     assert "salt_refund_income" in required["person"]
     assert "spm_unit_energy_subsidy" in required["spm_unit"]
+
+
+def test_cache_rejects_bases_predating_measured_medicare_take_up() -> None:
+    required = _cache_required_columns()
+
+    assert "takes_up_medicare_if_eligible" in required["person"]

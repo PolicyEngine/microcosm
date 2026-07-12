@@ -301,6 +301,26 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/populace#32",
     },
     {
+        "id": "medicare_take_up_neutralization",
+        "name": "Measured Medicare enrollment neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "takes_up_medicare_if_eligible",
+        "budget_measure": "medicare_cost",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["takes_up_medicare_if_eligible"],
+        "min_abs_effect": 1_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US computes medicare_enrolled from the measured "
+            "takes_up_medicare_if_eligible leaf and modeled eligibility, then "
+            "gates Medicare costs on enrollment. Neutralizing only the "
+            "restored MCARE == 1 leaf must reduce aggregate Medicare cost; "
+            "without the measured carry the probe is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#312",
+    },
+    {
         "id": "ssi_asset_limit_10k_20k",
         "name": "SSI asset limits raised to $10k individual / $20k couple",
         "parameter_changes": {

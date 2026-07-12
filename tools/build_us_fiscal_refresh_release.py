@@ -91,6 +91,7 @@ from populace.build.us_runtime import (
     us_housing_inputs_signal_gate,
     us_immigration_composition_gate,
     us_medicaid_take_up_gate,
+    us_medicare_take_up_signal_gate,
     us_misc_itemized_signal_gate,
     us_org_wages_signal_gate,
     us_other_health_insurance_signal_gate,
@@ -122,6 +123,7 @@ from populace.build.us_runtime import (
     with_us_hours_worked_inputs,
     with_us_immigration_inputs,
     with_us_medicaid_take_up,
+    with_us_medicare_take_up_input,
     with_us_org_wages_inputs,
     with_us_other_health_insurance_inputs,
     with_us_pregnancy_inputs,
@@ -476,9 +478,6 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_ssi_if_eligible": (
         "SSI take-up imputation backlog; constant True forces 100% take-up."
-    ),
-    "takes_up_medicare_if_eligible": (
-        "Medicare take-up imputation backlog (PolicyEngine/populace#98)."
     ),
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "second_home_mortgage_balance": (
@@ -6273,6 +6272,33 @@ def main() -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "medicare_take_up_input",
+            message="Deriving measured Medicare enrollment from ASEC MCARE.",
+        )
+    base_frame = with_us_medicare_take_up_input(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+    )
+    medicare_take_up_gate = us_medicare_take_up_signal_gate(base_frame)
+    if not medicare_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "medicare_take_up_input_gate",
+                status="failed",
+                message="Medicare take-up input signal gate failed.",
+                failures=list(medicare_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Medicare take-up input signal failed: {failure}"
+                for failure in medicare_take_up_gate.failures
             )
         )
     prior_year_income_gate = us_prior_year_income_signal_gate(base_frame)

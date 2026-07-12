@@ -59,6 +59,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_hours_worked",
         "derive_housing_tenure_inputs",
         "derive_immigration_status",
+        "derive_medicare_take_up",
         "derive_other_health_insurance_premiums",
         "derive_prior_year_income",
         "derive_snap_abawd_discretionary_exemption",

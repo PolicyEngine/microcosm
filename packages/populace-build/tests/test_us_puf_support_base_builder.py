@@ -534,6 +534,18 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
             "Gate", (), {"passed": True, "failures": (), "details": {}}
         )(),
     )
+    monkeypatch.setattr(
+        builder,
+        "with_us_medicare_take_up_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicare_take_up_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
     housing_gate_frames: list[object] = []
 
     def fake_housing_inputs_signal_gate(frame):

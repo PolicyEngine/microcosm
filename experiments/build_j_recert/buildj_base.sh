@@ -36,6 +36,7 @@ required = {
         "self_employment_income_last_year",
         "previous_year_income_available",
         "salt_refund_income",
+        "takes_up_medicare_if_eligible",
     ),
     "spm_unit": (
         "receives_housing_assistance",

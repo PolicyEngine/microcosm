@@ -53,6 +53,10 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
         class _Neutralize(Reform):
             def apply(self) -> None:
                 self.neutralize_variable(variable)
+                neutralized = self.variables[variable]
+                neutralized.default_value = (
+                    False if neutralized.value_type is bool else 0
+                )
 
         return _Neutralize
     return Reform.from_dict(dict(probe.parameter_changes), country_id="us")

@@ -1213,6 +1213,50 @@
       "notes": "Exact measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1069-1075 and 1209-1221: is_household_head <- P_SEQ == 1; is_separated <- A_MARITL == 6; is_surviving_spouse <- A_MARITL == 4. Nothing is imputed. The stage fails unless every frame household has exactly one P_SEQ == 1 record (PH_SEQ before support cloning, person_household_id after cloning)."
     },
     {
+      "stage": "medicare_take_up_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "2022-2024 pooled",
+          "locator": "SHA-locked Census CPS ASEC person Medicare coverage last year (MCARE)"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1579-1585",
+          "source_declaration_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_declaration_lines": "39-58,306-406",
+          "clone_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "clone_lines": "608-629",
+          "export_path_parts": ["policyengine_", "us_data", "datasets", "cps", "extended_cps.py"],
+          "export_lines": "1747-1754"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_medicare_take_up",
+          "source": "MCARE",
+          "enrolled_code": 1,
+          "output": "takes_up_medicare_if_eligible"
+        }
+      ],
+      "outputs": [
+        "takes_up_medicare_if_eligible"
+      ],
+      "notes": "Exact measured ASEC mapping from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py line 1584: medicare_enrolled <- MCARE == 1. Archived calibration/puf_impute.py lines 608-629 duplicates non-imputed CPS variables onto the PUF support half, and datasets/cps/extended_cps.py lines 1747-1754 renames medicare_enrolled to the leaf takes_up_medicare_if_eligible before export. No take-up rate or stochastic draw is used."
+    },
+    {
       "stage": "retirement_distributions",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",

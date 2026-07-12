@@ -61,6 +61,7 @@ from populace.build.us_runtime import (
     us_geography_ladder_gate,
     us_housing_inputs_signal_gate,
     us_immigration_composition_summary,
+    us_medicare_take_up_signal_gate,
     us_misc_itemized_signal_gate,
     us_prior_year_income_signal_gate,
     us_prior_year_income_source_reconciliation_gate,
@@ -78,6 +79,7 @@ from populace.build.us_runtime import (
     with_us_energy_subsidy_input,
     with_us_housing_inputs,
     with_us_immigration_inputs,
+    with_us_medicare_take_up_input,
     with_us_prior_year_income_inputs,
     with_us_qbi_input_reconciliation,
     with_us_relationship_inputs,
@@ -251,6 +253,17 @@ def main() -> None:
             "Relationship-input signal gate failed:\n  "
             + "\n  ".join(relationship_inputs_gate.failures)
         )
+    base = with_us_medicare_take_up_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    medicare_take_up_gate = us_medicare_take_up_signal_gate(base)
+    if not medicare_take_up_gate.passed:
+        raise SystemExit(
+            "Medicare take-up input signal gate failed before support cloning:\n  "
+            + "\n  ".join(medicare_take_up_gate.failures)
+        )
     housing_inputs_gate = us_housing_inputs_signal_gate(base)
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_inputs_gate.passed:
@@ -318,6 +331,12 @@ def main() -> None:
         n_estimators=args.n_estimators,
     )
     imputed = with_us_qbi_input_reconciliation(imputed)
+    medicare_take_up_gate = us_medicare_take_up_signal_gate(imputed)
+    if not medicare_take_up_gate.passed:
+        raise SystemExit(
+            "Medicare take-up input signal gate failed after support cloning:\n  "
+            + "\n  ".join(medicare_take_up_gate.failures)
+        )
     imputed = impute_us_housing_assistance_to_puf_support(
         imputed,
         seed=args.seed,
@@ -697,6 +716,11 @@ def main() -> None:
             "passed": relationship_inputs_gate.passed,
             "failures": list(relationship_inputs_gate.failures),
             "details": dict(relationship_inputs_gate.details),
+        },
+        "medicare_take_up_input_signal": {
+            "passed": medicare_take_up_gate.passed,
+            "failures": list(medicare_take_up_gate.failures),
+            "details": dict(medicare_take_up_gate.details),
         },
         "housing_inputs_signal": {
             "passed": housing_inputs_gate.passed,

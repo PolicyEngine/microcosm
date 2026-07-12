@@ -111,10 +111,11 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "near_universal",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "medicare_take_up_input source stage (measured ASEC MCARE == 1)",
       "consumed_via": "medicare_enrolled (adds), gated by is_medicare_eligible",
-      "rate": {"status": "near_universal_by_design", "source": "https://www.cms.gov/newsroom/fact-sheets", "note": "Part A near-automatic (~99%+ premium-free via 40+ work quarters); Part B ~90-93% among Part-A holders. Auto-enrollment at 65 for SSA claimants makes eligibility approximately equal enrollment."},
-      "notes": "Take-up seeding is not meaningful for Medicare: the administrative reality is ~100% and CMS publishes enrollment counts rather than a take-up-among-eligibles rate. The engine default (True) is approximately correct; forcing sub-100% would be the error. Documented, not seeded."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The dedicated source stage restores the retired measured mapping MCARE == 1 from every locked ASEC year and copies it with source-identity clones onto the PUF support half. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_ssi_if_eligible",

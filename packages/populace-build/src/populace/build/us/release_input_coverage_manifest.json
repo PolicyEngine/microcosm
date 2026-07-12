@@ -429,9 +429,7 @@
    "status": "required"
   },
   "takes_up_medicare_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_snap_if_eligible": {
    "status": "required"
@@ -532,8 +530,8 @@
   }
  },
  "counts": {
-  "required": 149,
-  "reviewed_exclusion": 16,
+  "required": 150,
+  "reviewed_exclusion": 15,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -612,6 +610,22 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar to spm_unit_benefits. Neutralizing the leaf must therefore lower benefits by its weighted source mass; without the restored SPM_ENGVAL carry, the effect is a structural zero. No OBBBA provision consumes this SPM resource, so the direct neutralization is the uniquely isolating policy-engine probe."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_medicare_if_eligible"
+   ],
+   "budget_measure": "medicare_cost",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "medicare_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 1000000000.0,
+   "name": "Measured Medicare enrollment neutralization",
+   "neutralized_variable": "takes_up_medicare_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US computes medicare_enrolled from the measured takes_up_medicare_if_eligible leaf and modeled eligibility, then gates Medicare costs on enrollment. Neutralizing only the restored MCARE == 1 leaf must reduce aggregate Medicare cost; without the measured carry the probe is a structural zero."
   },
   {
    "binding_inputs": [
