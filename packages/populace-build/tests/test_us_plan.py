@@ -13,6 +13,8 @@ from populace.build.source_manifest import (
     SupportSpineSpec,
 )
 from populace.build.us_runtime import (
+    SIPP_HEAD_START_FIT_PARAMETERS,
+    SIPP_HEAD_START_READ_PARAMETERS,
     SIPP_SSI_DISABILITY_FIT_PARAMETERS,
     SIPP_SSI_DISABILITY_READ_PARAMETERS,
     SSI_TAKE_UP_SSA_SOURCE_URL,
@@ -27,6 +29,7 @@ from populace.build.us_runtime import (
     US_PUF_SUPPORT_STAGE_NAME,
     US_QBI_OUTPUT_COLUMNS,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
+    US_SIPP_HEAD_START_STAGE_NAME,
     US_SOURCE_MANIFEST,
     US_SOURCE_STAGE_SPECS,
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
@@ -243,6 +246,9 @@ class TestUsSources:
         )
         assert US_STAGE_NAMES.index(
             US_SSI_DISABILITY_CRITERIA_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_SIPP_HEAD_START_STAGE_NAME)
+        assert US_STAGE_NAMES.index(
+            US_SIPP_HEAD_START_STAGE_NAME
         ) < US_STAGE_NAMES.index(US_SSI_TAKE_UP_STAGE_NAME)
         assert US_STAGE_NAMES.index(US_SSI_TAKE_UP_STAGE_NAME) < US_STAGE_NAMES.index(
             "sipp_tips"
@@ -274,6 +280,37 @@ class TestUsSources:
         assert stage.operations[1].parameters["seed_from_build_config"] is False
         assert "separately predict PUF-support people" in stage.notes
         assert "ASEC reporter anchor is never copied" in stage.notes
+
+    def test_head_start_stage_pins_measured_sipp_response_contract(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_SIPP_HEAD_START_STAGE_NAME]
+        donor = US_DONORS[US_SIPP_HEAD_START_STAGE_NAME]
+
+        assert stage.survey == donor.survey == "Census SIPP"
+        assert stage.source == donor.source
+        assert stage.grain == "person"
+        assert stage.outputs == ("takes_up_head_start_if_eligible",)
+        assert stage.nonnegative_outputs == ()
+        assert [operation.kind for operation in stage.operations] == [
+            "read_table",
+            "fit_weighted_qrf",
+        ]
+        assert dict(stage.operations[0].parameters) == SIPP_HEAD_START_READ_PARAMETERS
+        assert dict(stage.operations[1].parameters) == SIPP_HEAD_START_FIT_PARAMETERS
+        assert stage.operations[1].parameters["target"] == (
+            "takes_up_head_start_if_eligible"
+        )
+        assert stage.operations[1].parameters["direct_response_filter"] == (
+            "AEDHEADST == 1 and EEDHEADST in [1, 2]"
+        )
+        assert stage.operations[1].parameters["assignment_unit"] == ("person_source_id")
+        assert stage.operations[1].parameters["fan_to_support_clones"] is True
+        assert any(
+            artifact.get("sha256") and artifact.get("size_bytes")
+            for artifact in stage.artifacts
+        )
+        assert "EEDHEADST" in stage.notes
+        assert "AEDHEADST" in stage.notes
+        assert "measured" in stage.notes.lower()
 
     def test_ssi_take_up_stage_pins_reporter_and_ssa_count_contract(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_SSI_TAKE_UP_STAGE_NAME]

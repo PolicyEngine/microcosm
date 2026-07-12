@@ -412,16 +412,14 @@
   },
   "takes_up_early_head_start_if_eligible": {
    "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.764.6 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
    "status": "reviewed_exclusion"
   },
   "takes_up_eitc": {
    "status": "required"
   },
   "takes_up_head_start_if_eligible": {
-   "issue": "PolicyEngine/populace#312",
-   "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "takes_up_housing_assistance_if_eligible": {
    "status": "required"
@@ -523,8 +521,8 @@
   }
  },
  "counts": {
-  "required": 156,
-  "reviewed_exclusion": 10,
+  "required": 157,
+  "reviewed_exclusion": 9,
   "total": 166
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, and meets_ssi_disability_criteria required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -675,6 +673,22 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US gates SSI benefits on the restored person-level take-up leaf after eligibility. Neutralizing only that leaf must therefore remove SSI from source-reported and SSA-count-calibrated recipients, so baseline-minus-neutralized SSI is positive. If the restored exported input is absent, all false, or not persisted, this isolated channel scores exactly $0. A production-ingredient sparse smoke (staged artifact sha256 c5939dad81153da51b2cc57081ddb3e729700366144868df742b3ad86eafcd7c; restored artifact sha256 9269360d3409fdc15c90c43dda394ada6c91eff5bb64c12ccd9def7d670dd077) measured +$57,114,569,526.38 of baseline-minus-neutralized 2024 SSI. The $10 billion floor retains over 5.7x observed margin while rejecting a materially degenerate persisted flag."
+  },
+  {
+   "binding_inputs": [
+    "takes_up_head_start_if_eligible"
+   ],
+   "budget_measure": "head_start",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "positive",
+   "id": "head_start_take_up_neutralization",
+   "issue": "PolicyEngine/populace#312",
+   "min_abs_effect": 100000000.0,
+   "name": "Measured Head Start take-up neutralization",
+   "neutralized_variable": "takes_up_head_start_if_eligible",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US gates Head Start benefits on the person-level take-up leaf after modeled age, income, and categorical eligibility. Neutralizing only the restored SIPP response model must therefore remove Head Start from measured-proxy recipients, so baseline-minus-neutralized Head Start is positive. If the restored export is absent, all false, or not persisted, this isolated channel scores exactly $0. A production-ingredient sparse smoke (staged artifact sha256 67ad74b9ad9222ed342a0279dfc8175e872966fa59f86aeecb7fad52021ba500) measured +$4,575,181,976.69 of baseline-minus-neutralized 2024 Head Start. The $100 million floor retains over 45x observed margin while remaining far above numerical noise."
   },
   {
    "binding_inputs": [

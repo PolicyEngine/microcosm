@@ -128,6 +128,8 @@ VOLUNTARY_FILING_INPUTS = ("would_file_taxes_voluntarily",)
 
 SSI_TAKE_UP_INPUTS = ("takes_up_ssi_if_eligible",)
 
+HEAD_START_INPUTS = ("takes_up_head_start_if_eligible",)
+
 SCF_NET_WORTH_INPUTS = ("net_worth",)
 
 FORM_4952_INPUTS = ("investment_income_elected_form_4952",)
@@ -181,6 +183,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
     *VOLUNTARY_FILING_INPUTS,
+    *HEAD_START_INPUTS,
     *SSI_TAKE_UP_INPUTS,
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
@@ -414,6 +417,33 @@ REFORM_COVERAGE_PROBES = [
             "measured +$57,114,569,526.38 of baseline-minus-neutralized 2024 "
             "SSI. The $10 billion floor retains over 5.7x observed margin while "
             "rejecting a materially degenerate persisted flag."
+        ),
+        "issue": "PolicyEngine/populace#312",
+    },
+    {
+        "id": "head_start_take_up_neutralization",
+        "name": "Measured Head Start take-up neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "takes_up_head_start_if_eligible",
+        "budget_measure": "head_start",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": list(HEAD_START_INPUTS),
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US gates Head Start benefits on the person-level "
+            "take-up leaf after modeled age, income, and categorical "
+            "eligibility. Neutralizing only the restored SIPP response model "
+            "must therefore remove Head Start from measured-proxy recipients, "
+            "so baseline-minus-neutralized Head Start is positive. If the "
+            "restored export is absent, all false, or not persisted, this "
+            "isolated channel scores exactly $0. A production-ingredient sparse "
+            "smoke (staged artifact sha256 "
+            "67ad74b9ad9222ed342a0279dfc8175e872966fa59f86aeecb7fad52021ba500) "
+            "measured +$4,575,181,976.69 of baseline-minus-neutralized 2024 "
+            "Head Start. The $100 million floor retains over 45x observed "
+            "margin while remaining far above numerical noise."
         ),
         "issue": "PolicyEngine/populace#312",
     },

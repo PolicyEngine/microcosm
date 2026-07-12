@@ -610,6 +610,28 @@ from populace.build.us_runtime.scf_wealth import (
     us_scf_wealth_summary,
     with_us_scf_wealth_inputs,
 )
+from populace.build.us_runtime.sipp_head_start import (
+    HEAD_START_SIPP_DICTIONARY_URL,
+    SIPP_2023_HEAD_START_DONOR_REVISION,
+    SIPP_2023_HEAD_START_DONOR_SHA256,
+    SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
+    SIPP_2023_HEAD_START_DONOR_URL,
+    SIPP_HEAD_START_FIT_PARAMETERS,
+    SIPP_HEAD_START_MODEL_PREDICTORS,
+    SIPP_HEAD_START_READ_PARAMETERS,
+    SIPP_HEAD_START_SOURCE_COLUMNS,
+    US_SIPP_HEAD_START_NONCONSTANT_PERSON_COLUMNS,
+    US_SIPP_HEAD_START_OUTPUT_COLUMNS,
+    US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS,
+    US_SIPP_HEAD_START_STAGE_NAME,
+    fetch_sipp_2023_head_start_donor,
+    impute_us_sipp_head_start,
+    load_sipp_2023_head_start_donor,
+    us_sipp_head_start_signal_gate,
+    us_sipp_head_start_stage_spec,
+    us_sipp_head_start_summary,
+    with_us_sipp_head_start_input,
+)
 from populace.build.us_runtime.sipp_tips import (
     CENSUS_OCCUPATION_CODE_TO_TTOC,
     SIPP_2023_TIP_DONOR_REVISION,
@@ -1196,6 +1218,26 @@ __all__ = [
     "us_scf_wealth_stage_spec",
     "us_scf_wealth_summary",
     "with_us_scf_wealth_inputs",
+    "HEAD_START_SIPP_DICTIONARY_URL",
+    "SIPP_2023_HEAD_START_DONOR_REVISION",
+    "SIPP_2023_HEAD_START_DONOR_SHA256",
+    "SIPP_2023_HEAD_START_DONOR_SIZE_BYTES",
+    "SIPP_2023_HEAD_START_DONOR_URL",
+    "SIPP_HEAD_START_FIT_PARAMETERS",
+    "SIPP_HEAD_START_MODEL_PREDICTORS",
+    "SIPP_HEAD_START_READ_PARAMETERS",
+    "SIPP_HEAD_START_SOURCE_COLUMNS",
+    "US_SIPP_HEAD_START_NONCONSTANT_PERSON_COLUMNS",
+    "US_SIPP_HEAD_START_OUTPUT_COLUMNS",
+    "US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS",
+    "US_SIPP_HEAD_START_STAGE_NAME",
+    "fetch_sipp_2023_head_start_donor",
+    "impute_us_sipp_head_start",
+    "load_sipp_2023_head_start_donor",
+    "us_sipp_head_start_signal_gate",
+    "us_sipp_head_start_stage_spec",
+    "us_sipp_head_start_summary",
+    "with_us_sipp_head_start_input",
     "SIPP_2023_SSI_DISABILITY_DONOR_REVISION",
     "SIPP_2023_SSI_DISABILITY_DONOR_SHA256",
     "SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES",
@@ -1539,6 +1581,16 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "reporters receive the observed-reporter anchor."
         ),
     ),
+    US_SIPP_HEAD_START_STAGE_NAME: DonorSpec(
+        survey="Census SIPP",
+        source="https://www.census.gov/programs-surveys/sipp.html",
+        notes=(
+            "Direct December nursery/preschool federally sponsored-program "
+            "responses train a weighted Head Start take-up proxy for ages "
+            "3--5; strict reported structural negatives exclude hot-decked "
+            "answers and the prediction is shared by support clones."
+        ),
+    ),
     US_SSI_TAKE_UP_STAGE_NAME: DonorSpec(
         survey="CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024",
         source=SSI_TAKE_UP_SSA_SOURCE_URL,
@@ -1867,6 +1919,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     "capital_gain_distributions",
     "scf_wealth",
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
+    US_SIPP_HEAD_START_STAGE_NAME,
     US_SSI_TAKE_UP_STAGE_NAME,
     "sipp_tips",
     "org_wages",

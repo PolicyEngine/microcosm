@@ -998,6 +998,138 @@
       "notes": "Exact final retired eCPS SSI disability-criterion method at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/sipp/sipp.py lines 63-105 and 404-428 define the output, nineteen predictors, source columns, and allocation flags; lines 541-562 require observed receipt and, for recipients, observed benefit reason; lines 565-630 apply the source-time SSI resource, countable-income, and SGA candidate screen; lines 633-703 construct December labels and predictors; lines 724-795 require a measured difficulty, SSDI, or disability-income signal after prediction; and lines 892-949 perform the fixed weighted bootstrap and QRF fit. The immutable donor yields 9,346 candidates (577 positive, 8,769 negative), 88,690,359.47893329 of total source weight, and a 0.05566746987074994 weighted true share. Its archived fixed WPFINWGT bootstrap seed 8386123572872638692 resamples 9,346 rows with replacement (5,314 unique source rows; 524 positive) before an unweighted 100-tree MicroImpute QRF with model seed 42. datasets/cps/cps.py lines 2853-2886 and calibration/source_impute.py lines 869-990 predict the ASEC receiver and preserve direct under-65 ASEC SSI reporters. datasets/cps/extended_cps.py lines 140-170, 392-424, and 981-992 separately predict PUF-support people from their imputed income, asset, and disability-signal inputs; the ASEC reporter anchor is never copied to PUF support."
     },
     {
+      "stage": "sipp_head_start",
+      "survey": "Census SIPP",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "locator": "Census SIPP 2023 public-use file; immutable mirror revision 21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471
+        },
+        {
+          "kind": "official_data_dictionary",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf",
+          "lines": "pages 7, 1028, and 1031"
+        },
+        {
+          "kind": "official_survey_instrument",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/questionnaires/2023/2023_SIPP_PU_Instrument_Specifications.pdf",
+          "lines": "page 742"
+        },
+        {
+          "kind": "administrative_validation_only",
+          "format": "pdf",
+          "vintage": "2023-2024",
+          "locator": "https://headstart.gov/sites/default/files/pdf/service-snapshot-hs-2023-2024.pdf",
+          "measure": "cumulative enrollment by age; not used for calibration or assignment"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": [
+            "policyengine-",
+            "us-data"
+          ],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": [
+            "policyengine_",
+            "us_data",
+            "datasets",
+            "cps",
+            "cps.py"
+          ],
+          "lines": "582-583,640-648",
+          "rate_path_parts": [
+            "policyengine_",
+            "us_data",
+            "parameters",
+            "take_up",
+            "head_start.yaml"
+          ],
+          "rate_lines": "1-10",
+          "randomness_path_parts": [
+            "policyengine_",
+            "us_data",
+            "utils",
+            "randomness.py"
+          ],
+          "randomness_lines": "5-28"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "EED_SCRNR",
+            "AED_SCRNR",
+            "EEDGRADE",
+            "AEDGRADE",
+            "EEDEMONTH",
+            "AEDMONTH",
+            "EEDHEADST",
+            "AEDHEADST",
+            "TJB1_MSUM",
+            "TJB2_MSUM",
+            "TJB3_MSUM",
+            "TJB4_MSUM",
+            "TJB5_MSUM",
+            "TJB6_MSUM",
+            "TJB7_MSUM"
+          ]
+        },
+        {
+          "kind": "fit_weighted_qrf",
+          "predictors": [
+            "age",
+            "is_female",
+            "household_size",
+            "count_under_18",
+            "count_under_6",
+            "household_employment_income"
+          ],
+          "target": "takes_up_head_start_if_eligible",
+          "weight": "sipp_weight",
+          "age_domain": [
+            3,
+            5
+          ],
+          "direct_response_filter": "AEDHEADST == 1 and EEDHEADST in [1, 2]",
+          "structural_no_filters": [
+            "AEDHEADST == 0 and AED_SCRNR == 1 and EED_SCRNR == 2",
+            "AEDHEADST == 0 and AED_SCRNR == 1 and EED_SCRNR == 1 and AEDGRADE == 1 and EEDGRADE != 21"
+          ],
+          "excluded_statuses": "AEDHEADST == 2 or AED_SCRNR == 4",
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "assignment_unit": "person_source_id",
+          "fan_to_support_clones": true
+        }
+      ],
+      "outputs": [
+        "takes_up_head_start_if_eligible"
+      ],
+      "notes": "Restores the retired Head Start take-up export from a measured person-month response instead of replaying its unsourced NIEER scalar or stochastic draw. The official 2023 SIPP dictionary defines EEDHEADST for nursery/preschool enrollees and records AEDHEADST allocation status; the survey instrument describes a federally sponsored preschool and names Head Start, Even Start, and Fair Start as examples, so this is documented as a measured Head Start proxy rather than a program-only identifier. The immutable December (December 2022 reference-month) donor keeps only direct age-3--5 answers and strict structural negatives whose upstream enrollment or grade screen is also reported, excluding hot-decked target answers and imputed upstream screens. The reviewed transform yields 785 training people (45 positive, 740 negative), 7,978,494.5412483 of total weight, 491,970.1041311 positive weight, and a 0.06166202177461505 weighted true share. The positive weighted count is close to the independent 2023--24 PIR age-matched cumulative count, but cumulative enrollment includes turnover and funded enrollment is capacity, so neither aggregate is used for calibration or person assignment. A weighted QRF predicts once per stable source-person identity on the age-3--5 receiver domain, fans the same decision to both support clones, and leaves every out-of-domain person false; modeled eligibility remains solely in PolicyEngine-US."
+    },
+    {
       "stage": "ssi_take_up",
       "survey": "CPS ASEC reported SSI + SSA SSI Monthly Statistics December 2024",
       "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",

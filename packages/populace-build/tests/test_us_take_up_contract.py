@@ -88,6 +88,39 @@ class TestContractLoads:
             "ssi_take_up source stage (eCPS exported-input coverage)"
         )
 
+    def test_head_start_is_owned_by_measured_sipp_stage(self) -> None:
+        program = load_take_up_contract().program_map()[
+            "takes_up_head_start_if_eligible"
+        ]
+
+        assert program.populace_treatment == "out_of_scope"
+        assert program.raw["scope_owner"] == (
+            "sipp_head_start source stage (measured SIPP enrollment response)"
+        )
+        assert program.rate == {"status": "not_used_measured_source"}
+        notes = program.raw["notes"]
+        assert "EEDHEADST" in notes
+        assert "direct December age-3--5" in notes
+        assert "QRF" in notes
+        assert "retired NIEER scalar" in notes
+
+    def test_early_head_start_records_irreducible_source_unavailability(self) -> None:
+        program = load_take_up_contract().program_map()[
+            "takes_up_early_head_start_if_eligible"
+        ]
+
+        assert program.populace_treatment == "rate_unsourced"
+        assert program.rate["status"] == "source_unavailable"
+        followup = program.raw["followup"].lower()
+        assert "locked individual-level source" in followup
+        assert "infants" in followup
+        assert "toddlers" in followup
+        assert "pregnant" in followup
+        notes = program.raw["notes"].lower()
+        assert "ecps_parity_known_gaps.json" in notes
+        assert "aggregate" in notes
+        assert "synthesize" in notes
+
 
 class TestEngineAssertion:
     def test_checked_in_table_matches_installed_engine(self) -> None:

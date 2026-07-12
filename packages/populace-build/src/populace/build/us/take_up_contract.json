@@ -167,11 +167,11 @@
       "entity": "person",
       "value_type": "bool",
       "default": true,
-      "populace_treatment": "rate_unsourced",
+      "populace_treatment": "out_of_scope",
+      "scope_owner": "sipp_head_start source stage (measured SIPP enrollment response)",
       "consumed_via": "head_start",
-      "rate": {"status": "research_only_not_administrative", "us_data_value": "0.40 (2020), 0.30 (2021)", "detail": "NIEER (Rutgers) State(s) of Head Start chart values; 40% is a pre-pandemic plateau and 30% the single pandemic program-year, so the 2020->2021 annual split is a framing artifact. NIEER is a research institute, not ACF/HHS."},
-      "followup": "Construct a Head Start participation rate from ACF Head Start Program Facts enrollment over a Census poverty-eligible denominator (Ledger fact).",
-      "notes": "The spec requires an administrative (FNS/CMS/IRS/ACF) source; NIEER does not clear that bar and the year split is an artifact. Left unseeded pending an ACF-sourced rate."
+      "rate": {"status": "not_used_measured_source"},
+      "notes": "The sipp_head_start source stage fits a weighted QRF to direct December age-3--5 SIPP EEDHEADST responses and strict reported structural negatives, then predicts once per source-person identity and fans the decision to both support clones. The survey instrument describes a federally sponsored preschool and names Head Start, Even Start, and Fair Start as examples, so the response is documented as a measured Head Start proxy rather than a program-only identifier. The retired NIEER scalar is not reused. ACF cumulative enrollment includes turnover and funded enrollment is capacity; neither aggregate is converted into a participation rate or allocated to people. out_of_scope means out of scope for generic Bernoulli seeding, not unseeded."
     },
     {
       "variable": "takes_up_early_head_start_if_eligible",
@@ -181,9 +181,9 @@
       "default": true,
       "populace_treatment": "rate_unsourced",
       "consumed_via": "early_head_start",
-      "rate": {"status": "research_only_not_administrative", "us_data_value": 0.09, "detail": "NIEER (Rutgers) chart value, ~9% throughout including 2020-2021. Research institute, not ACF/HHS."},
-      "followup": "Construct an Early Head Start participation rate from ACF Program Facts over an eligible-infant/toddler denominator (Ledger fact).",
-      "notes": "Same as Head Start: NIEER is research-only, below the administrative-source bar. Left unseeded pending an ACF-sourced rate."
+      "rate": {"status": "source_unavailable", "retired_value": 0.09, "detail": "The retired NIEER research-chart scalar was not an observed individual-level source and is rejected."},
+      "followup": "Require a locked individual-level source that observes Early Head Start enrollment across infants, toddlers, and pregnant participants before restoring this person flag.",
+      "notes": "SOURCE UNAVAILABILITY WITH EVIDENCE is recorded structurally in ecps_parity_known_gaps.json. The pinned SIPP nursery/preschool item has no reported positives under age 3, its child-care items begin at age 2 and do not distinguish Early Head Start, and it has no pregnancy branch. All locked ASEC and PUF inputs omit an individual enrollment signal. ACF cumulative enrollment includes turnover and funded enrollment is capacity, so allocating either aggregate would synthesize person identities."
     },
     {
       "variable": "takes_up_housing_assistance_if_eligible",

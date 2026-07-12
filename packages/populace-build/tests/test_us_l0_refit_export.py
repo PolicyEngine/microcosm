@@ -136,6 +136,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "self_employment_income_last_year": [0.0, 8_000.0, -1_000.0],
             "previous_year_income_available": [False, True, False],
             "meets_ssi_disability_criteria": [False, True, False],
+            "takes_up_head_start_if_eligible": [False, True, False],
             "takes_up_ssi_if_eligible": [False, True, False],
             **person_extra,
         }
@@ -816,6 +817,28 @@ def test_required_us_release_source_columns_enforces_ssi_take_up_signal() -> Non
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_head_start_take_up_signal() -> (
+    None
+):
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["takes_up_head_start_if_eligible"] = False
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.takes_up_head_start_if_eligible: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_educator_expense_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -1008,6 +1031,9 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "child_support_expense" in summary["required_person_source_columns"]
     assert "disability_benefits" in summary["required_person_source_columns"]
     assert "meets_ssi_disability_criteria" in summary["required_person_source_columns"]
+    assert (
+        "takes_up_head_start_if_eligible" in summary["required_person_source_columns"]
+    )
     assert "takes_up_ssi_if_eligible" in summary["required_person_source_columns"]
     assert "educator_expense" in summary["required_person_source_columns"]
     assert (

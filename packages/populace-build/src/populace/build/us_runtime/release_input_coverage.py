@@ -86,6 +86,9 @@ from populace.build.us_runtime.salt_refund_income import (
     US_SALT_REFUND_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
+from populace.build.us_runtime.sipp_head_start import (
+    US_SIPP_HEAD_START_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
 from populace.build.us_runtime.ssi_disability_criteria import (
     US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
@@ -159,6 +162,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         *US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
+        *US_SIPP_HEAD_START_OUTPUT_COLUMNS,
         *US_SSI_TAKE_UP_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
         *US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,

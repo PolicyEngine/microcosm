@@ -521,12 +521,77 @@
       }
     },
     "takes_up_early_head_start_if_eligible": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
-    },
-    "takes_up_head_start_if_eligible": {
-      "reason": "Stochastic take-up flag the incumbent seeds so take-up-gated programs do not ship at 100% participation; Populace does not yet produce it.",
-      "issue": "PolicyEngine/populace#312"
+      "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.764.6 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
+      "issue": "PolicyEngine/populace#312",
+      "evidence": {
+        "classification": "source_unavailability",
+        "retired_derivation": {
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "582-583,640-648"
+        },
+        "retired_rate": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "parameters", "take_up", "early_head_start.yaml"],
+          "lines": "1-9",
+          "value": 0.09,
+          "citation_scope": "NIEER research chart; no ACF administrative participation fact"
+        },
+        "retired_randomness": {
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "utils", "randomness.py"],
+          "lines": "5-28",
+          "key": "takes_up_early_head_start_if_eligible"
+        },
+        "policyengine_variable": {
+          "version": "1.764.6",
+          "entity": "person",
+          "definition_period": "year",
+          "value_type": "bool",
+          "default": true,
+          "eligibility_domain": "age < 3 or is_pregnant, plus Head Start income or categorical eligibility"
+        },
+        "required_person_observation": "Individual Early Head Start enrollment covering infants, toddlers, and pregnant participants",
+        "hermetic_asec_inputs": [
+          {
+            "filename": "census_cps_2022.h5",
+            "sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            "missing_columns": ["takes_up_early_head_start_if_eligible", "takes_up_head_start_if_eligible", "is_enrolled_in_head_start"]
+          },
+          {
+            "filename": "census_cps_2023.h5",
+            "sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            "missing_columns": ["takes_up_early_head_start_if_eligible", "takes_up_head_start_if_eligible", "is_enrolled_in_head_start"]
+          },
+          {
+            "filename": "census_cps_2024.h5",
+            "sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            "missing_columns": ["takes_up_early_head_start_if_eligible", "takes_up_head_start_if_eligible", "is_enrolled_in_head_start"]
+          }
+        ],
+        "processed_puf": {
+          "filename": "puf_2024.h5",
+          "release": "policyengine/irs-soi-puf/1.8.0",
+          "sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df",
+          "missing_columns": ["takes_up_early_head_start_if_eligible", "takes_up_head_start_if_eligible", "is_enrolled_in_head_start"]
+        },
+        "pinned_sipp": {
+          "revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "direct_education_item": "EEDHEADST is nursery/preschool only and has zero reported positives under age 3",
+          "child_care_scope": "RDAYHS, RHEADST, and RNURHS cover ages 2-7 and do not distinguish Early Head Start",
+          "pregnancy_signal": "none",
+          "census_user_note": "https://www.census.gov/programs-surveys/sipp/tech-documentation/user-notes/2023-usernotes/2023-small-inconsist-child-care.html"
+        },
+        "administrative_non_substitutes": {
+          "cumulative_enrollment": "Counts every participant served at any point in the program year, including turnover replacements; it is not point-in-time take-up and supplies no person identity.",
+          "funded_enrollment": "Capacity or federally supported slots, not observed occupancy or person identity.",
+          "source": "https://headstart.gov/sites/default/files/pdf/service-snapshot-ehs-2023-2024.pdf"
+        },
+        "hermetic_build_contract": "experiments/build_j_recert/buildj_base.sh lines 65-81 passes only the three prebuilt ASEC artifacts and processed PUF via --asec-h5/--puf-h5; experiments/build_j_recert/base_j.summary.json lines 55-75 and 317-318 records their SHA-256 digests. The separately pinned SIPP donor does not observe the required Early Head Start domain."
+      }
     },
     "weeks_unemployed": {
       "reason": "Demographic / occupation / labor-status descriptor input carried by the incumbent but not yet on the candidate frame; remaining input-layer work (#38).",

@@ -115,7 +115,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         target_registry_version="registry-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    assert identity["materializer_version"] == 4
+    assert identity["materializer_version"] == 5
     path = tmp_path / "target_frame_checkpoint.h5"
 
     payload = builder._write_target_frame_checkpoint(
@@ -2830,6 +2830,54 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_ssi_disability_signal_gate,
     )
 
+    def fake_load_sipp_head_start_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_head_start_donor_path"] = path
+        captured["sipp_head_start_donor_sha256"] = expected_sha256
+        captured["sipp_head_start_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_head_start_input(
+        frame,
+        *,
+        seed,
+        time_period,
+        sipp_donor,
+    ):
+        captured["sipp_head_start_stage_called"] = True
+        captured["sipp_head_start_seed"] = seed
+        captured["sipp_head_start_period"] = time_period
+        captured["sipp_head_start_donor"] = sipp_donor
+        return frame
+
+    def fake_sipp_head_start_signal_gate(frame):
+        captured["sipp_head_start_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_head_start_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_head_start_donor",
+        fake_load_sipp_head_start_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_head_start_input",
+        fake_with_sipp_head_start_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_head_start_signal_gate",
+        fake_sipp_head_start_signal_gate,
+    )
+
     def fake_ssi_uncapped_amount(
         frame,
         *,
@@ -3223,6 +3271,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_disability_stage_called"] is True
     assert captured["ssi_disability_seed"] == 42
     assert captured["ssi_disability_gate_called"] is True
+    assert captured["sipp_head_start_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_head_start_donor_sha256"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_head_start_donor_size_bytes"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_head_start_stage_called"] is True
+    assert captured["sipp_head_start_seed"] == 0
+    assert captured["sipp_head_start_period"] == builder.PERIOD
+    assert isinstance(captured["sipp_head_start_donor"], pd.DataFrame)
+    assert captured["sipp_head_start_gate_called"] is True
     assert captured["ssi_uncapped_stage_called"] is True
     assert (
         captured["ssi_uncapped_batch_size"]

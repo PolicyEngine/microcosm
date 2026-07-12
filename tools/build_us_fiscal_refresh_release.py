@@ -48,6 +48,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_HEAD_START_DONOR_SHA256,
+    SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
     SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_TIP_DONOR_SHA256,
@@ -78,6 +80,7 @@ from populace.build.us_runtime import (
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
@@ -117,6 +120,7 @@ from populace.build.us_runtime import (
     us_salt_refund_income_signal_gate,
     us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
+    us_sipp_head_start_signal_gate,
     us_sipp_tips_signal_gate,
     us_sipp_vehicles_signal_gate,
     us_snap_discretionary_exemption_signal_gate,
@@ -150,6 +154,7 @@ from populace.build.us_runtime import (
     with_us_retirement_distribution_inputs,
     with_us_scf_auto_loan_inputs,
     with_us_scf_wealth_inputs,
+    with_us_sipp_head_start_input,
     with_us_sipp_tip_inputs,
     with_us_sipp_vehicle_inputs,
     with_us_snap_discretionary_exemption_inputs,
@@ -247,7 +252,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 4: reporter-anchored SSI take-up now replaces the engine-default universal
 # flag after the disability stage, changing SSI and its target vectors while
 # the on-disk base hash remains unchanged.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 4
+# 5: the measured-SIPP Head Start stage now replaces the engine-default
+# universal take-up flag before target materialization and must be present on
+# every restored checkpoint even though the on-disk base hash is unchanged.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 5
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -518,11 +526,10 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/populace#38)."
     ),
-    "takes_up_head_start_if_eligible": (
-        "Head Start take-up imputation backlog; constant True."
-    ),
     "takes_up_early_head_start_if_eligible": (
-        "Early Head Start take-up imputation backlog; constant True."
+        "Early Head Start person enrollment is absent from every locked source; "
+        "see the archived-derivation and source-domain evidence in the parity "
+        "gap register (PolicyEngine/populace#312)."
     ),
     # ssn_card_type and immigration_status_str are intentionally NOT excluded:
     # PR #266 imputes them from CPS ASEC citizenship, so a base where they are
@@ -7051,9 +7058,9 @@ def main() -> None:
                 for failure in scf_wealth_gate.failures
             )
         )
-    # The SSI criterion and vehicle/filing families share one immutable full
-    # SIPP artifact. Resolve it once here because the criterion's receiver also
-    # needs the SCF asset leaves materialized immediately above.
+    # The SSI criterion, Head Start, vehicle, and filing families share one
+    # immutable full SIPP artifact. Resolve it once here because the criterion's
+    # receiver also needs the SCF asset leaves materialized immediately above.
     sipp_vehicle_donor_path = (
         Path(args.sipp_vehicle_donor)
         if args.sipp_vehicle_donor is not None
@@ -7095,6 +7102,43 @@ def main() -> None:
             + "; ".join(
                 f"SSI disability-criteria signal failed: {failure}"
                 for failure in ssi_disability_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "sipp_head_start",
+            message=(
+                "Imputing age-3--5 Head Start take-up from direct and strict "
+                "structural December responses in the sha-pinned full SIPP "
+                "2023 donor."
+            ),
+        )
+    head_start_donor = load_sipp_2023_head_start_donor(
+        sipp_vehicle_donor_path,
+        expected_sha256=SIPP_2023_HEAD_START_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
+    )
+    base_frame = with_us_sipp_head_start_input(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        sipp_donor=head_start_donor,
+    )
+    head_start_gate = us_sipp_head_start_signal_gate(base_frame)
+    if not head_start_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "sipp_head_start_gate",
+                status="failed",
+                message="SIPP Head Start signal gate failed.",
+                failures=list(head_start_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SIPP Head Start signal failed: {failure}"
+                for failure in head_start_gate.failures
             )
         )
     if telemetry is not None:
