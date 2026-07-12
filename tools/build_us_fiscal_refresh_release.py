@@ -102,6 +102,7 @@ from populace.build.us_runtime import (
     us_release_input_coverage_gate,
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
+    us_salt_refund_income_signal_gate,
     us_scf_auto_loans_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_tips_signal_gate,
@@ -5978,6 +5979,23 @@ def main() -> None:
             + "; ".join(
                 "Form 4952 election signal failed: " + failure
                 for failure in form_4952_election_gate.failures
+            )
+        )
+    salt_refund_income_gate = us_salt_refund_income_signal_gate(base_frame)
+    if not salt_refund_income_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "salt_refund_income_input_gate",
+                status="failed",
+                message="SALT-refund-income signal gate failed.",
+                failures=list(salt_refund_income_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "SALT-refund-income signal failed: " + failure
+                for failure in salt_refund_income_gate.failures
             )
         )
     capital_gain_details_gate = us_capital_gain_details_signal_gate(base_frame)

@@ -35,6 +35,9 @@ from populace.build.us_runtime.farm_business_income import (
 )
 from populace.build.us_runtime.form_4952 import derive_us_form_4952_election_from_puf
 from populace.build.us_runtime.misc_itemized import derive_us_misc_itemized_from_puf
+from populace.build.us_runtime.salt_refund_income import (
+    derive_us_salt_refund_income_from_puf,
+)
 from populace.calibrate import relative_error_loss
 
 __all__ = [
@@ -87,6 +90,7 @@ _SOURCE_FIELD_ATTRIBUTES = {
     "E00400": "tax_exempt_interest_income",
     "E00600": "ordinary_dividends",
     "E00650": "qualified_dividends",
+    "E00700": "state_and_local_tax_refund_income",
     "E00900": "business_net_profits",
     "E01100": "capital_gains_distributions",
     "E01400": "ira_distributions",
@@ -253,6 +257,8 @@ def derive_puf_policyengine_variables(
     investment_income_elected_form_4952_output: str = (
         "investment_income_elected_form_4952"
     ),
+    salt_refund_income_source: str | None = None,
+    salt_refund_income_output: str = "salt_refund_income",
     collectibles_capital_gain_source: str | None = None,
     collectibles_capital_gain_output: str = "long_term_capital_gains_on_collectibles",
     unrecaptured_section_1250_gain_source: str | None = None,
@@ -334,6 +340,12 @@ def derive_puf_policyengine_variables(
             result,
             source_column=investment_income_elected_form_4952_source,
             output_column=investment_income_elected_form_4952_output,
+        )
+    if salt_refund_income_source is not None:
+        result = derive_us_salt_refund_income_from_puf(
+            result,
+            source_column=salt_refund_income_source,
+            output_column=salt_refund_income_output,
         )
     capital_gain_detail_sources = (
         collectibles_capital_gain_source,
@@ -431,6 +443,7 @@ def disaggregate_puf_aggregate_records(
     result = _reconcile_puf_educator_expense_from_source(result)
     result = _reconcile_puf_misc_itemized_from_source(result)
     result = _reconcile_puf_form_4952_election_from_source(result)
+    result = _reconcile_puf_salt_refund_income_from_source(result)
     result = _reconcile_puf_capital_gain_details_from_sources(result)
     return _reconcile_puf_farm_business_income_from_sources(result)
 
@@ -1095,6 +1108,17 @@ def _reconcile_puf_form_4952_election_from_source(
     if output not in puf.columns or "E58990" not in puf.columns:
         return puf
     return derive_us_form_4952_election_from_puf(puf)
+
+
+def _reconcile_puf_salt_refund_income_from_source(
+    puf: pd.DataFrame,
+) -> pd.DataFrame:
+    """Recompute the E00700 carry after aggregate-row amounts are replaced."""
+
+    output = "salt_refund_income"
+    if output not in puf.columns or "E00700" not in puf.columns:
+        return puf
+    return derive_us_salt_refund_income_from_puf(puf)
 
 
 def _reconcile_puf_capital_gain_details_from_sources(

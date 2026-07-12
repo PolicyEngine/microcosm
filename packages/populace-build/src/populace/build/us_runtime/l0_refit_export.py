@@ -92,6 +92,9 @@ from populace.build.us_runtime.retirement_contributions import (
 from populace.build.us_runtime.retirement_distributions import (
     US_RETIREMENT_DISTRIBUTION_NONCONSTANT_PERSON_COLUMNS,
 )
+from populace.build.us_runtime.salt_refund_income import (
+    US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS,
+)
 from populace.build.us_runtime.scf_auto_loans import (
     US_SCF_AUTO_LOAN_NONCONSTANT_HOUSEHOLD_COLUMNS,
 )
@@ -143,6 +146,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
     *US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
     *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,
+    *US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS,
     *US_HOUSING_NONCONSTANT_PERSON_COLUMNS,
 )
 

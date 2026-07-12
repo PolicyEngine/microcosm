@@ -127,6 +127,8 @@ CAPITAL_GAIN_DETAIL_INPUTS = (
     "unrecaptured_section_1250_gain",
 )
 
+SALT_REFUND_INPUTS = ("salt_refund_income",)
+
 RELATIONSHIP_INPUTS = (
     "is_household_head",
     "is_separated",
@@ -165,6 +167,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *SIPP_VEHICLE_INPUTS,
     *FORM_4952_INPUTS,
     *CAPITAL_GAIN_DETAIL_INPUTS,
+    *SALT_REFUND_INPUTS,
     *RELATIONSHIP_INPUTS,
     *HOUSING_INPUTS,
     *PRIOR_YEAR_INCOME_INPUTS,
@@ -517,6 +520,27 @@ REFORM_COVERAGE_PROBES = [
             "neutralization is a structural zero."
         ),
         "issue": "PolicyEngine/populace#274",
+    },
+    {
+        "id": "salt_refund_income_neutralization",
+        "name": "State and local tax refund income neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "salt_refund_income",
+        "budget_measure": "state_income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["salt_refund_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "PolicyEngine-US 1.764.6 includes salt_refund_income in the "
+            "South Carolina, Idaho, and West Virginia subtraction lists. "
+            "Neutralizing only that leaf removes the state subtraction and "
+            "raises state income tax, so baseline-minus-reform state income "
+            "tax must be negative. Without the restored E00700 input the "
+            "neutralization is a structural zero."
+        ),
+        "issue": "PolicyEngine/populace#38",
     },
     {
         "id": "collectibles_gain_neutralization",

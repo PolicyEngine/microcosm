@@ -328,9 +328,7 @@
    "status": "required"
   },
   "salt_refund_income": {
-   "issue": "PolicyEngine/populace#38",
-   "reason": "Residual US tax-input / income-source layer not yet sourced onto the candidate frame; tracked as remaining input-layer work in #38.",
-   "status": "reviewed_exclusion"
+   "status": "required"
   },
   "selected_marketplace_plan_benchmark_ratio": {
    "status": "required"
@@ -536,8 +534,8 @@
   }
  },
  "counts": {
-  "required": 147,
-  "reviewed_exclusion": 18,
+  "required": 148,
+  "reviewed_exclusion": 17,
   "total": 165
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, and five desired retirement-contribution inputs required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
@@ -817,6 +815,22 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US subtracts the tax-unit sum of investment_income_elected_form_4952 from net capital gain. Neutralizing only that leaf increases preferential net capital gain and lowers income tax, so baseline-minus-reform income tax must be positive. Without the restored E58990 input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "salt_refund_income"
+   ],
+   "budget_measure": "state_income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "salt_refund_income_neutralization",
+   "issue": "PolicyEngine/populace#38",
+   "min_abs_effect": 1000000.0,
+   "name": "State and local tax refund income neutralization",
+   "neutralized_variable": "salt_refund_income",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US 1.764.6 includes salt_refund_income in the South Carolina, Idaho, and West Virginia subtraction lists. Neutralizing only that leaf removes the state subtraction and raises state income tax, so baseline-minus-reform state income tax must be negative. Without the restored E00700 input the neutralization is a structural zero."
   },
   {
    "binding_inputs": [

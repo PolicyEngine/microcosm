@@ -62,6 +62,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "casualty_loss": [0.0, 2_500.0, 0.0],
             "unreimbursed_business_employee_expenses": [1_200.0, 0.0, 800.0],
             "investment_income_elected_form_4952": [0.0, 500.0, 250.0],
+            "salt_refund_income": [0.0, 1_200.0, 400.0],
             "long_term_capital_gains_on_collectibles": [0.0, 2_500.0, 1_000.0],
             "qualified_tuition_expenses": [1_000.0, 0.0, 2_500.0],
             "educational_assistance": [0.0, 500.0, 0.0],
@@ -129,6 +130,8 @@ def _us_frame(**person_extra: object) -> Frame:
             "is_union_member_or_covered": [False, True, False],
             "fsla_overtime_premium": [0.0, 1_000.0, 0.0],
             "pre_subsidy_rent": [0.0, 12_000.0, 0.0],
+            "self_employment_income_last_year": [0.0, 8_000.0, -1_000.0],
+            "previous_year_income_available": [False, True, False],
             **person_extra,
         }
     )

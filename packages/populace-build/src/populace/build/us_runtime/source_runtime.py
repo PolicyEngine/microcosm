@@ -140,6 +140,8 @@ _PUF_POLICYENGINE_VARIABLE_PARAMETER_KEYS = frozenset(
         "farm_rent_income_output",
         "investment_income_elected_form_4952_source",
         "investment_income_elected_form_4952_output",
+        "salt_refund_income_source",
+        "salt_refund_income_output",
         "collectibles_capital_gain_source",
         "collectibles_capital_gain_output",
         "unrecaptured_section_1250_gain_source",
@@ -967,6 +969,17 @@ def derive_us_puf_policyengine_variables_from_manifest(
                 params,
                 "investment_income_elected_form_4952_output",
                 default="investment_income_elected_form_4952",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            salt_refund_income_source=_optional_string_param(
+                params,
+                "salt_refund_income_source",
+                label="PUF PolicyEngine-variable derivation",
+            ),
+            salt_refund_income_output=_string_param_with_default(
+                params,
+                "salt_refund_income_output",
+                default="salt_refund_income",
                 label="PUF PolicyEngine-variable derivation",
             ),
             collectibles_capital_gain_source=_optional_string_param(

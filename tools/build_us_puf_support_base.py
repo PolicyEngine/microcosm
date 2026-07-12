@@ -67,6 +67,7 @@ from populace.build.us_runtime import (
     us_relationship_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
+    us_salt_refund_income_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_child_support_inputs,
@@ -390,6 +391,12 @@ def main() -> None:
             "Form 4952 election signal gate failed:\n  "
             + "\n  ".join(form_4952_election_gate.failures)
         )
+    salt_refund_income_gate = us_salt_refund_income_signal_gate(imputed)
+    if not salt_refund_income_gate.passed:
+        raise SystemExit(
+            "SALT-refund-income signal gate failed:\n  "
+            + "\n  ".join(salt_refund_income_gate.failures)
+        )
     capital_gain_details_gate = us_capital_gain_details_signal_gate(imputed)
     if not capital_gain_details_gate.passed:
         raise SystemExit(
@@ -617,6 +624,11 @@ def main() -> None:
             "passed": form_4952_election_gate.passed,
             "failures": list(form_4952_election_gate.failures),
             "details": dict(form_4952_election_gate.details),
+        },
+        "salt_refund_income_signal": {
+            "passed": salt_refund_income_gate.passed,
+            "failures": list(salt_refund_income_gate.failures),
+            "details": dict(salt_refund_income_gate.details),
         },
         "capital_gain_details_signal": {
             "passed": capital_gain_details_gate.passed,

@@ -463,6 +463,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("disability_benefits", "PUF disability-benefits channel is default-only"),
         ("educator_expense", "PUF educator-expense channel is default-only"),
         ("form_4952", "PUF Form 4952 channel is default-only"),
+        ("salt_refund", "PUF SALT-refund channel is default-only"),
         (
             "retirement_distributions",
             "PUF retirement-distribution channel is default-only",
@@ -480,6 +481,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     disability_benefits_calls: list[tuple[object, int, int]] = []
     educator_expense_gate_frames: list[object] = []
     form_4952_gate_frames: list[object] = []
+    salt_refund_gate_frames: list[object] = []
     retirement_distribution_calls: list[tuple[object, int, int]] = []
     retirement_distribution_gate_frames: list[object] = []
     prior_year_income_calls: list[tuple[object, int, int]] = []
@@ -746,6 +748,28 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "us_form_4952_election_signal_gate",
         fake_form_4952_election_signal_gate,
     )
+
+    def fake_salt_refund_income_signal_gate(frame):
+        salt_refund_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "salt_refund",
+                "failures": (
+                    ("PUF SALT-refund channel is default-only",)
+                    if failing_gate == "salt_refund"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_salt_refund_income_signal_gate",
+        fake_salt_refund_income_signal_gate,
+    )
     monkeypatch.setattr(
         builder,
         "us_capital_gain_details_signal_gate",
@@ -819,12 +843,23 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     assert disability_benefits_calls == expected_disability_calls
     assert educator_expense_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"educator_expense", "form_4952", "retirement_distributions"}
+        if failing_gate
+        in {
+            "educator_expense",
+            "form_4952",
+            "salt_refund",
+            "retirement_distributions",
+        }
         else []
     )
     assert form_4952_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"form_4952", "retirement_distributions"}
+        if failing_gate in {"form_4952", "salt_refund", "retirement_distributions"}
+        else []
+    )
+    assert salt_refund_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate in {"salt_refund", "retirement_distributions"}
         else []
     )
     expected_retirement_distribution_calls = [("disability-benefits-direct", 7, 2024)]
@@ -848,6 +883,16 @@ def test_main_summary_records_retirement_distribution_gate() -> None:
     assert '"passed": retirement_distributions_gate.passed' in source
     assert '"failures": list(retirement_distributions_gate.failures)' in source
     assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_salt_refund_income_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"salt_refund_income_signal": {' in source
+    assert '"passed": salt_refund_income_gate.passed' in source
+    assert '"failures": list(salt_refund_income_gate.failures)' in source
+    assert '"details": dict(salt_refund_income_gate.details)' in source
 
 
 def test_main_summary_records_prior_year_income_gate() -> None:

@@ -596,6 +596,8 @@ class TestUsSources:
             "investment_income_elected_form_4952_output": (
                 "investment_income_elected_form_4952"
             ),
+            "salt_refund_income_source": "E00700",
+            "salt_refund_income_output": "salt_refund_income",
             "collectibles_capital_gain_source": "E24518",
             "collectibles_capital_gain_output": (
                 "long_term_capital_gains_on_collectibles"

@@ -116,6 +116,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
     result["E03220"] = np.where(result["RECID"] % 7 == 0, 300.0, 0.0)
     result["E20400"] = np.where(result["RECID"] % 3 == 0, 2_500.0, 0.0)
     result["E58990"] = np.where(result["RECID"] % 19 == 0, 5_000.0, 0.0)
+    result["E00700"] = np.where(result["RECID"] % 5 == 0, 1_200.0, 0.0)
     result["E24518"] = np.where(result["RECID"] % 23 == 0, 4_000.0, 0.0)
     result["E24515"] = np.where(result["RECID"] % 29 == 0, 6_000.0, 0.0)
     return result
@@ -268,6 +269,7 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
             farm_operations_income_source="E02100",
             farm_rent_income_source="E27200",
             investment_income_elected_form_4952_source="E58990",
+            salt_refund_income_source="E00700",
             collectibles_capital_gain_source="E24518",
             unrecaptured_section_1250_gain_source="E24515",
         ),
@@ -305,6 +307,8 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
     assert np.allclose(result["farm_rent_income"], result["E27200"])
     assert np.allclose(result["investment_income_elected_form_4952"], result["E58990"])
     assert (result["investment_income_elected_form_4952"] >= 0.0).all()
+    assert np.allclose(result["salt_refund_income"], result["E00700"])
+    assert (result["salt_refund_income"] >= 0.0).all()
     assert np.allclose(
         result["long_term_capital_gains_on_collectibles"], result["E24518"]
     )

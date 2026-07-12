@@ -86,6 +86,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "social_security_survivors",
     "alimony_income",
     "alimony_expense",
+    "salt_refund_income",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
@@ -156,6 +157,7 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
         "long_term_capital_gains_on_collectibles",
         "alimony_income",
         "alimony_expense",
+        "salt_refund_income",
     }
 )
 
@@ -207,6 +209,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "social_security_survivors",
         "alimony_income",
         "alimony_expense",
+        "salt_refund_income",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",

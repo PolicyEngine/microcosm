@@ -78,6 +78,9 @@ from populace.build.us_runtime.relationship_inputs import (
 from populace.build.us_runtime.retirement_distributions import (
     US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.salt_refund_income import (
+    US_SALT_REFUND_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.scf_wealth import US_SCF_NET_WORTH_OUTPUT_COLUMNS
 from populace.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
 
@@ -132,6 +135,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_FORM_4952_OUTPUT_COLUMNS,
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
+        *US_SALT_REFUND_OUTPUT_COLUMNS,
         *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
         *US_SIPP_VEHICLE_OUTPUT_COLUMNS,
         *US_HOUSING_INPUTS_OUTPUT_COLUMNS,
