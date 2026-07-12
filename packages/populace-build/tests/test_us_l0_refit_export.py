@@ -33,6 +33,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "weekly_hours_worked_before_lsr": [40.0, 20.0, 0.0],
             "hours_worked_last_week": [40.0, 18.0, 0.0],
             "weeks_worked": [52.0, 26.0, 0.0],
+            "weeks_unemployed": [0.0, 12.0, 4.0],
             "is_household_head": [True, True, False],
             "is_separated": [False, False, True],
             "is_surviving_spouse": [False, True, False],
@@ -839,6 +840,26 @@ def test_required_us_release_source_columns_enforces_head_start_take_up_signal()
         assert_required_us_release_source_columns(raw_frame)
 
 
+def test_required_us_release_source_columns_enforces_weeks_unemployed() -> None:
+    frame = _us_frame()
+    raw_people = frame.table("person").copy()
+    raw_people["weeks_unemployed"] = 0.0
+    raw_frame = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.schema.entities},
+            "person": raw_people,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="person.weeks_unemployed: not nonconstant",
+    ):
+        assert_required_us_release_source_columns(raw_frame)
+
+
 def test_required_us_release_source_columns_enforces_educator_expense_signal() -> None:
     frame = _us_frame()
     raw_people = frame.table("person").copy()
@@ -1035,6 +1056,7 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "takes_up_head_start_if_eligible" in summary["required_person_source_columns"]
     )
     assert "takes_up_ssi_if_eligible" in summary["required_person_source_columns"]
+    assert "weeks_unemployed" in summary["required_person_source_columns"]
     assert "educator_expense" in summary["required_person_source_columns"]
     assert (
         "investment_income_elected_form_4952"

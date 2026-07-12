@@ -21,6 +21,7 @@ from populace.build import FitWeightRecord, weights_audit_gate
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
 from populace.build.us_runtime import (
+    ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -37,9 +38,11 @@ from populace.build.us_runtime import (
     congressional_district_assignment_summary,
     congressional_district_distribution_from_ledger_facts,
     derive_us_cps_carried_inputs,
+    fetch_asec_2023_weeks_unemployed_source,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
+    load_asec_2023_weeks_unemployed_source,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
@@ -72,6 +75,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
+    us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
     with_household_congressional_districts,
@@ -91,6 +95,7 @@ from populace.build.us_runtime import (
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
+    with_us_weeks_unemployed,
     with_us_wic_claim_input,
     with_us_workers_compensation,
 )
@@ -129,6 +134,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--asec-2023-weeks-unemployed-source",
+        type=Path,
+        help=(
+            "Optional local path to the SHA-pinned official 2023 ASEC CSV ZIP "
+            "used to restore income-year-2022 LKWEEKS. When omitted the "
+            "official Census archive is fetched and verified."
+        ),
+    )
     parser.add_argument(
         "--acs-h5",
         type=Path,
@@ -244,6 +258,14 @@ def main() -> None:
     summary_path = out_dir / _summary_filename(args.target_year)
 
     raw_base, base_source = _load_base_frame_from_args(args)
+    weeks_unemployed_source_path = (
+        args.asec_2023_weeks_unemployed_source
+        if args.asec_2023_weeks_unemployed_source is not None
+        else fetch_asec_2023_weeks_unemployed_source()
+    )
+    weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
+        weeks_unemployed_source_path
+    )
     base = derive_us_cps_carried_inputs(raw_base)
     base = with_us_prior_year_income_inputs(
         base,
@@ -341,6 +363,12 @@ def main() -> None:
         base,
         seed=args.seed,
         time_period=args.target_year,
+    )
+    base = with_us_weeks_unemployed(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_2023_source=weeks_unemployed_source,
     )
     base = with_us_childcare_inputs(
         base,
@@ -472,6 +500,18 @@ def main() -> None:
         raise SystemExit(
             "Workers-compensation signal gate failed:\n  "
             + "\n  ".join(workers_compensation_gate.failures)
+        )
+    imputed = with_us_weeks_unemployed(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_2023_source=weeks_unemployed_source,
+    )
+    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(imputed)
+    if not weeks_unemployed_gate.passed:
+        raise SystemExit(
+            "Weeks-unemployed signal gate failed:\n  "
+            + "\n  ".join(weeks_unemployed_gate.failures)
         )
     educator_expense_gate = us_educator_expense_signal_gate(imputed)
     if not educator_expense_gate.passed:
@@ -681,6 +721,13 @@ def main() -> None:
         "acs_rent_donor_rows": (
             int(len(acs_rent_donor)) if acs_rent_donor is not None else None
         ),
+        "weeks_unemployed_source": {
+            "path": str(Path(weeks_unemployed_source_path).resolve()),
+            "sha256": _sha256(weeks_unemployed_source_path),
+            "upstream_archive_sha256": (ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256),
+            "rows": int(len(weeks_unemployed_source)),
+            "audit": dict(weeks_unemployed_source.attrs.get("source_audit", {})),
+        },
         "output_h5": str(output_h5),
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
@@ -724,6 +771,11 @@ def main() -> None:
             "passed": workers_compensation_gate.passed,
             "failures": list(workers_compensation_gate.failures),
             "details": dict(workers_compensation_gate.details),
+        },
+        "weeks_unemployed_signal": {
+            "passed": weeks_unemployed_gate.passed,
+            "failures": list(weeks_unemployed_gate.failures),
+            "details": dict(weeks_unemployed_gate.details),
         },
         "eligibility_inputs_signal": {
             "passed": eligibility_inputs_gate.passed,

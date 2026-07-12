@@ -734,6 +734,21 @@ class TestShippedManifest:
         assert probe.budget_measure == "tax_unit_earned_income_last_year"
         assert probe.effect_direction == "baseline_minus_reform"
 
+    def test_weeks_unemployed_is_required_without_a_false_policy_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "weeks_unemployed"
+
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+        # PolicyEngine-US 1.764.6 consumes this leaf only through Pennsylvania
+        # UC, whose other monetary-eligibility inputs remain default-zero. A
+        # direct neutralization would test the column against itself, not a
+        # budget-policy path, so this family deliberately adds no such probe.
+        assert all(
+            column not in probe.binding_inputs and probe.neutralized_variable != column
+            for probe in manifest.probes
+        )
+
     def test_signed_farm_business_income_family_is_promoted(self) -> None:
         manifest = load_release_input_coverage_manifest()
         for column in ("farm_operations_income", "farm_rent_income"):

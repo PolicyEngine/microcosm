@@ -113,9 +113,11 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    assert identity["materializer_version"] == 5
+    assert identity["materializer_version"] == 6
+    assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
     path = tmp_path / "target_frame_checkpoint.h5"
 
     payload = builder._write_target_frame_checkpoint(
@@ -548,11 +550,12 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
     stale_identity = {
         **fresh_identity,
-        "target_registry_version": "old-registry-sha",
+        "weeks_unemployed_source_sha256": "old-weeks-source-sha",
     }
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
@@ -591,6 +594,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         seed=0,
         target_period=builder.PERIOD,
         target_registry_version=registry.version,
+        weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256=None,
     )
 
@@ -921,6 +925,43 @@ def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
     args = builder._parse_args()
 
     assert args.sipp_tip_donor == Path("pu2023_slim.csv")
+
+
+def test_weeks_unemployed_source_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--asec-2023-weeks-unemployed-source",
+            "asecpub23csv.zip",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
+def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    selection = source.index("base_frame, selection_report = select_frozen_support(")
+    regate = source.index(
+        "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
+    )
+    mass_repair = source.index(
+        "base_frame, base_population_repair = _with_base_population_mass_repair("
+    )
+
+    assert selection < regate < mass_repair
+    assert "Post-selection weeks-unemployed input signal failed" in source
 
 
 def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
@@ -2158,6 +2199,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     builder = _load_builder_module()
     release_id = "populace-us-2024-gate-failure-test"
     base_h5 = tmp_path / "base.h5"
+    weeks_source = tmp_path / "asecpub23csv.zip"
     facts = tmp_path / "facts.jsonl"
     out = tmp_path / "out"
     base_h5.write_bytes(b"h5")
@@ -2182,7 +2224,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         weight_entity="household",
         selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
     )
-    captured: dict[str, object] = {"health_stage_events": []}
+    captured: dict[str, object] = {
+        "health_stage_events": [],
+        "source_stage_events": [],
+    }
 
     class FakeFrame:
         def n(self, entity):
@@ -2202,12 +2247,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             str(out),
             "--release-id",
             release_id,
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_source),
             "--no-target-frame-checkpoint",
             "--no-staging",
         ],
     )
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
-    monkeypatch.setattr(builder, "_sha256", lambda path: "base-sha")
+    monkeypatch.setattr(
+        builder,
+        "_sha256",
+        lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
+    )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
@@ -2247,21 +2298,80 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
-    monkeypatch.setattr(builder, "_load_frame", lambda path: FakeFrame())
+
+    def fake_load_frame(path):
+        captured["source_stage_events"].append("load_frame")
+        return FakeFrame()
+
+    monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+
+    def fake_load_weeks_unemployed_source(path, **kwargs):
+        captured["source_stage_events"].append("load_weeks_source")
+        captured["weeks_unemployed_source_path"] = Path(path)
+        captured["weeks_unemployed_source_load_kwargs"] = kwargs
+        return pd.DataFrame({"LKWEEKS": [0, 12]})
+
+    def fake_with_weeks_unemployed(
+        frame,
+        *,
+        seed,
+        time_period,
+        asec_2023_source,
+    ):
+        captured["source_stage_events"].append("weeks_stage")
+        captured["weeks_unemployed_stage_seed"] = seed
+        captured["weeks_unemployed_stage_period"] = time_period
+        captured["weeks_unemployed_stage_source"] = asec_2023_source
+        return frame
+
+    def fake_weeks_unemployed_signal_gate(frame):
+        captured["source_stage_events"].append("weeks_gate")
+        captured["weeks_unemployed_gate_called"] = True
+        return builder.GateResult(
+            name="weeks_unemployed_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        fake_load_weeks_unemployed_source,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_weeks_unemployed",
+        fake_with_weeks_unemployed,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_weeks_unemployed_signal_gate",
+        fake_weeks_unemployed_signal_gate,
+    )
+
+    def fake_ssi_reporter_source_ids(frame):
+        captured["source_stage_events"].append("ssi_reporters")
+        return frozenset({"asec-reporter"})
+
     monkeypatch.setattr(
         builder,
         "us_ssi_take_up_reporter_source_ids",
-        lambda frame: frozenset({"asec-reporter"}),
+        fake_ssi_reporter_source_ids,
     )
     repair_payload = {
         "method": "rescale_household_weights_to_census_person_population",
         "applied": True,
         "factor": 2.0,
     }
+
+    def fake_base_population_mass_repair(frame):
+        captured["source_stage_events"].append("population_repair")
+        return frame, repair_payload
+
     monkeypatch.setattr(
         builder,
         "_with_base_population_mass_repair",
-        lambda frame: (frame, repair_payload),
+        fake_base_population_mass_repair,
     )
     ss_repair_payload = {
         "method": "rescale_social_security_component_leaves_to_ssa_targets",
@@ -3244,6 +3354,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
     assert captured["sipp_tip_donor_path"] == Path("pu2023_slim.csv")
+    assert captured["weeks_unemployed_source_path"] == weeks_source
+    assert captured["weeks_unemployed_stage_seed"] == 0
+    assert captured["weeks_unemployed_stage_period"] == builder.PERIOD
+    assert isinstance(captured["weeks_unemployed_stage_source"], pd.DataFrame)
+    assert captured["weeks_unemployed_gate_called"] is True
+    assert captured["source_stage_events"].index("weeks_stage") < captured[
+        "source_stage_events"
+    ].index("ssi_reporters")
+    assert captured["source_stage_events"].index("weeks_gate") < captured[
+        "source_stage_events"
+    ].index("population_repair")
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_context"][
+            "weeks_unemployed_source_sha256"
+        ]
+        == builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256
+    )
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
@@ -6254,6 +6381,7 @@ def _install_multi_reform_fakes(
 def _base_cache_context(builder):
     return {
         "base_dataset_sha256": "base-sha-A",
+        "weeks_unemployed_source_sha256": "weeks-source-sha-A",
         "build_commit": "commit-A",
         "policyengine_us_version": "pe-us-A",
         "seed": 0,
@@ -6403,9 +6531,18 @@ def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
     np.testing.assert_allclose(household["jct_reform_a"], [-115.0, -69.0])
 
 
+@pytest.mark.parametrize(
+    ("identity_key", "new_value"),
+    [
+        ("base_dataset_sha256", "base-sha-B"),
+        ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+    ],
+)
 def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     monkeypatch,
     tmp_path,
+    identity_key,
+    new_value,
 ) -> None:
     builder = _load_builder_module()
     frame = _multi_reform_frame(builder)
@@ -6432,10 +6569,10 @@ def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
     )
     assert calls_a == ["credit_a"]
 
-    # A DIFFERENT base H5 (incumbent vs candidate) must not share per-household
-    # vectors even at the same record count (#217 acceptance criterion 3).
+    # A different base H5 or measured LKWEEKS source must not share
+    # per-household vectors even at the same record count.
     context_b = _base_cache_context(builder)
-    context_b["base_dataset_sha256"] = "base-sha-B"
+    context_b[identity_key] = new_value
     calls_b: list[str] = []
     _install_multi_reform_fakes(
         builder,

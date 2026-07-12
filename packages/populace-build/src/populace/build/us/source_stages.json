@@ -638,6 +638,88 @@
       "notes": "Exact annual person-level WC_VAL carry from archived cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Populace pins 100 trees and typed person weights as reproducibility hardening."
     },
     {
+      "stage": "weeks_unemployed_input",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "zip_csv",
+          "vintage": "2023 ASEC / 2022 income reference year",
+          "locator": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+          "sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+          "size_bytes": 150165063,
+          "member": "pppub23.csv",
+          "member_size_bytes": 281065733,
+          "member_crc32": "49c09e5f",
+          "member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe"
+        },
+        {
+          "kind": "official_data_dictionary",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "lines": "person LKWEEKS entry, position 305 length 2"
+        },
+        {
+          "kind": "archived_derivation_evidence",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+          "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
+          "lines": "1438-1442",
+          "source_path_parts": ["policyengine_", "us_data", "datasets", "cps", "census_cps.py"],
+          "source_lines": "39-58,89-133,245,306-351",
+          "puf_path_parts": ["policyengine_", "us_data", "calibration", "puf_impute.py"],
+          "puf_lines": "703-785"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_weeks_unemployed",
+          "source": "LKWEEKS",
+          "niu_value": -1,
+          "niu_replacement": 0,
+          "output": "weeks_unemployed"
+        },
+        {
+          "kind": "impute_weeks_unemployed_to_puf_support",
+          "predictors": [
+            "age",
+            "is_male",
+            "tax_unit_is_joint",
+            "is_tax_unit_head",
+            "is_tax_unit_spouse",
+            "is_tax_unit_dependent",
+            "unemployment_compensation"
+          ],
+          "max_train_samples": 5000,
+          "n_estimators": 100,
+          "seed_from_build_config": true,
+          "weight": "person_weight",
+          "clip": [
+            0,
+            52
+          ],
+          "round": "nearest_integer",
+          "zero_unless": "unemployment_compensation > 0"
+        }
+      ],
+      "outputs": [
+        "weeks_unemployed"
+      ],
+      "nonnegative_outputs": [
+        "weeks_unemployed"
+      ],
+      "notes": "Restores the final retired eCPS person-year weeks_unemployed input. Archived cps.py lines 1438-1442 carries Census ASEC LKWEEKS directly, mapping only the historical -1 not-in-universe sentinel to zero; the SHA-pinned 2023 ASEC public-use archive supplies the omitted 2022-income-year source rows exactly. Its 146,133 person records match the locked 2022 H5 one-for-one on PH_SEQ, P_SEQ, A_LINENO, A_AGE, A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS rows, range 0--51, 3.1456094276% A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks; Census allocation flags are retained because the retired direct carry did not filter them. Archived calibration/puf_impute.py lines 703-785 replaces only the PUF support half with a QRF using age, sex, three tax-unit roles, joint filing, and unemployment compensation, caps training at 5,000 ASEC people, clips predictions to 0--52, and forces predictions to zero without positive unemployment compensation. Populace pins 100 trees and typed person weights as reproducibility hardening, and rounds its interpolating QRF draws back to the source's integer-week domain; no 2022 source value is filled statistically."
+    },
+    {
       "stage": "capital_gain_distributions",
       "survey": "IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4",
       "source": "https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns",

@@ -44,6 +44,7 @@ from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.staging import StagingTelemetry
 from populace.build.us_runtime import (
+    ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
@@ -70,12 +71,14 @@ from populace.build.us_runtime import (
     assert_take_up_treatments_consistent,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
+    fetch_asec_2023_weeks_unemployed_source,
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
     fetch_sipp_2023_tip_donor,
     fetch_sipp_2023_vehicle_donor,
     hard_target_package_aliases,
+    load_asec_2023_weeks_unemployed_source,
     load_congressional_district_vintage_crosswalk,
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
@@ -135,6 +138,7 @@ from populace.build.us_runtime import (
     us_take_up_signal_gate,
     us_validation_input_coverage_gate,
     us_voluntary_filing_signal_gate,
+    us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
     with_us_childcare_inputs,
@@ -163,6 +167,7 @@ from populace.build.us_runtime import (
     with_us_ssi_take_up,
     with_us_take_up_inputs,
     with_us_voluntary_filing_input,
+    with_us_weeks_unemployed,
     with_us_wic_claim_input,
     write_us_medicaid_take_up_diagnostics,
     write_us_source_coverage_diagnostics,
@@ -236,6 +241,7 @@ TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION = 2
 # while a change to any of these keys still invalidates the entry (no stale reuse).
 REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     "base_dataset_sha256",
+    "weeks_unemployed_source_sha256",
     "policyengine_us_version",
     "target_period",
     "congressional_district_vintage_crosswalk_sha256",
@@ -255,7 +261,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 5: the measured-SIPP Head Start stage now replaces the engine-default
 # universal take-up flag before target materialization and must be present on
 # every restored checkpoint even though the on-disk base hash is unchanged.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 5
+# 6: the official-ASEC sidecar restores 2022 LKWEEKS before target
+# materialization. The source is external to the on-disk base hash, so old
+# checkpoints must not survive the new measured input.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 6
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -918,6 +927,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--asec-2023-weeks-unemployed-source",
+        type=Path,
+        help=(
+            "Optional local path to the SHA-pinned official 2023 ASEC CSV ZIP "
+            "used to restore income-year-2022 LKWEEKS. When omitted the "
+            "official Census archive is fetched and verified."
+        ),
+    )
+    parser.add_argument(
         "--scf-summary-extract",
         dest="scf_summary_extract",
         default=None,
@@ -1386,6 +1404,7 @@ def _target_frame_checkpoint_identity(
     seed: int,
     target_period: int,
     target_registry_version: str,
+    weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
 ) -> dict[str, object]:
     return {
@@ -1394,6 +1413,7 @@ def _target_frame_checkpoint_identity(
         "kind": "us_fiscal_refresh_target_frame",
         "country": "us",
         "base_dataset_sha256": str(base_dataset_sha256),
+        "weeks_unemployed_source_sha256": str(weeks_unemployed_source_sha256),
         "policyengine_us_version": str(policyengine_us_version),
         "seed": int(seed),
         "target_period": int(target_period),
@@ -6265,6 +6285,48 @@ def main() -> None:
     if telemetry is not None:
         telemetry.stage("load_base_frame", message="Loading base population H5.")
     base_frame = _load_frame(base_h5)
+    weeks_unemployed_source_path = (
+        args.asec_2023_weeks_unemployed_source
+        if args.asec_2023_weeks_unemployed_source is not None
+        else fetch_asec_2023_weeks_unemployed_source()
+    )
+    weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
+        weeks_unemployed_source_path
+    )
+    base_frame = with_us_weeks_unemployed(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        asec_2023_source=weeks_unemployed_source,
+    )
+    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(base_frame)
+    if not weeks_unemployed_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "weeks_unemployed_input_gate",
+                status="failed",
+                message="Weeks-unemployed input signal gate failed.",
+                failures=list(weeks_unemployed_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "Weeks-unemployed input signal failed: " + failure
+                for failure in weeks_unemployed_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "weeks_unemployed_input",
+            message=(
+                "Restored measured ASEC LKWEEKS before frozen-support "
+                "selection and target materialization."
+            ),
+            source_path=str(Path(weeks_unemployed_source_path).resolve()),
+            source_sha256=ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            source_rows=len(weeks_unemployed_source),
+        )
     # Capture direct ASEC reporter lineage on the FULL clone-aware support.
     # Frozen-support recovery may retain only a PUF clone; deriving anchors
     # after that prune would erase the underlying measured ASEC reporter.
@@ -6302,6 +6364,28 @@ def main() -> None:
                 n_selected=selection_report.n_selected,
                 n_base_candidates=selection_report.n_base_candidates,
                 n_unmapped=selection_report.n_unmapped,
+            )
+        post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate(
+            base_frame
+        )
+        if not post_selection_weeks_unemployed_gate.passed:
+            if telemetry is not None:
+                telemetry.stage(
+                    "post_selection_weeks_unemployed_input_gate",
+                    status="failed",
+                    message=(
+                        "Frozen-support selection collapsed weeks-unemployed "
+                        "input signal."
+                    ),
+                    failures=list(post_selection_weeks_unemployed_gate.failures),
+                    force_upload=True,
+                )
+            raise RuntimeError(
+                "Release gates failed: "
+                + "; ".join(
+                    "Post-selection weeks-unemployed input signal failed: " + failure
+                    for failure in post_selection_weeks_unemployed_gate.failures
+                )
             )
 
     base_frame, base_population_repair = _with_base_population_mass_repair(base_frame)
@@ -7544,6 +7628,7 @@ def main() -> None:
         seed=args.seed,
         target_period=PERIOD,
         target_registry_version=active_target_registry.version,
+        weeks_unemployed_source_sha256=(ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256),
         congressional_district_vintage_crosswalk_sha256=(
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
@@ -7557,6 +7642,9 @@ def main() -> None:
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
             "base_dataset_sha256": base_dataset_sha256,
+            "weeks_unemployed_source_sha256": (
+                ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256
+            ),
             "build_commit": full_commit,
             "policyengine_us_version": policyengine_us_version,
             "seed": args.seed,

@@ -196,6 +196,26 @@ def test_pooled_asec_mode_rejects_base_h5_at_parse_time() -> None:
     assert exc.value.code == 2
 
 
+def test_weeks_unemployed_source_override_parses() -> None:
+    builder = _load_support_builder_module()
+
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "base.h5",
+            "--puf-h5",
+            "puf.h5",
+            "--asec-2023-weeks-unemployed-source",
+            "asecpub23csv.zip",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
 def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -466,6 +486,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("form_4952", "PUF Form 4952 channel is default-only"),
         ("salt_refund", "PUF SALT-refund channel is default-only"),
         ("energy_subsidy", "PUF energy-subsidy channel is default-only"),
+        ("weeks_unemployed", "PUF weeks-unemployed channel is default-only"),
         (
             "retirement_distributions",
             "PUF retirement-distribution channel is default-only",
@@ -481,6 +502,9 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     builder = _load_support_builder_module()
     child_support_calls: list[tuple[object, int, int]] = []
     disability_benefits_calls: list[tuple[object, int, int]] = []
+    weeks_unemployed_calls: list[tuple[object, int, int, object]] = []
+    weeks_unemployed_gate_frames: list[object] = []
+    weeks_unemployed_source_loads: list[Path] = []
     educator_expense_gate_frames: list[object] = []
     form_4952_gate_frames: list[object] = []
     salt_refund_gate_frames: list[object] = []
@@ -504,6 +528,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
                 "n_estimators": 4,
                 "puf_h5": tmp_path / "puf.h5",
                 "acs_h5": tmp_path / "acs.h5",
+                "asec_2023_weeks_unemployed_source": (tmp_path / "asecpub23csv.zip"),
             },
         )(),
     )
@@ -643,6 +668,31 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "with_us_disability_benefits",
         fake_disability_benefits,
     )
+
+    def fake_load_weeks_unemployed_source(path, **_kwargs):
+        weeks_unemployed_source_loads.append(Path(path))
+        return "weeks-source"
+
+    def fake_with_weeks_unemployed(
+        frame,
+        *,
+        seed,
+        time_period,
+        asec_2023_source,
+    ):
+        weeks_unemployed_calls.append((frame, seed, time_period, asec_2023_source))
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        fake_load_weeks_unemployed_source,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_weeks_unemployed",
+        fake_with_weeks_unemployed,
+    )
     monkeypatch.setattr(
         builder,
         "with_us_workers_compensation",
@@ -780,6 +830,28 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda frame: type(
             "Gate", (), {"passed": True, "failures": (), "details": {}}
         )(),
+    )
+
+    def fake_weeks_unemployed_signal_gate(frame):
+        weeks_unemployed_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "weeks_unemployed",
+                "failures": (
+                    ("PUF weeks-unemployed channel is default-only",)
+                    if failing_gate == "weeks_unemployed"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "us_weeks_unemployed_signal_gate",
+        fake_weeks_unemployed_signal_gate,
     )
 
     def fake_educator_expense_signal_gate(frame):
@@ -947,6 +1019,18 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     if failing_gate not in {"child_support", "wic_claim"}:
         expected_disability_calls.append(("child-support-puf", 7, 2024))
     assert disability_benefits_calls == expected_disability_calls
+    expected_weeks_calls = [("disability-benefits-direct", 7, 2024, "weeks-source")]
+    if failing_gate not in {"wic_claim", "child_support", "disability_benefits"}:
+        expected_weeks_calls.append(
+            ("disability-benefits-puf", 7, 2024, "weeks-source")
+        )
+    assert weeks_unemployed_calls == expected_weeks_calls
+    assert weeks_unemployed_source_loads == [tmp_path / "asecpub23csv.zip"]
+    assert weeks_unemployed_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate not in {"wic_claim", "child_support", "disability_benefits"}
+        else []
+    )
     assert educator_expense_gate_frames == (
         ["disability-benefits-puf"]
         if failing_gate
@@ -996,6 +1080,16 @@ def test_main_summary_records_retirement_distribution_gate() -> None:
     assert '"passed": retirement_distributions_gate.passed' in source
     assert '"failures": list(retirement_distributions_gate.failures)' in source
     assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_weeks_unemployed_gate() -> None:
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"weeks_unemployed_signal": {' in source
+    assert '"passed": weeks_unemployed_gate.passed' in source
+    assert '"failures": list(weeks_unemployed_gate.failures)' in source
+    assert '"details": dict(weeks_unemployed_gate.details)' in source
 
 
 def test_main_summary_records_salt_refund_income_gate() -> None:

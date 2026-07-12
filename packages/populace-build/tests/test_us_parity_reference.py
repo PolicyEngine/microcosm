@@ -190,6 +190,11 @@ class TestKnownGapsRegister:
         assert "auto_loan_balance" not in gaps
         assert "auto_loan_interest" not in gaps
 
+    def test_weeks_unemployed_gap_is_retired_with_measured_asec_stage(self) -> None:
+        gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
+
+        assert "weeks_unemployed" not in gaps
+
     def test_ssi_take_up_gap_is_retired_with_count_calibrated_stage(self) -> None:
         gaps = {gap.variable for gap in load_ecps_parity_known_gaps()}
         program = load_take_up_contract().program_map()["takes_up_ssi_if_eligible"]

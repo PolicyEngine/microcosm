@@ -13,6 +13,12 @@ from populace.build.source_manifest import (
     SupportSpineSpec,
 )
 from populace.build.us_runtime import (
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_CRC32,
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
+    ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SIZE_BYTES,
+    ASEC_2023_WEEKS_UNEMPLOYED_ZIP_SHA256,
+    ASEC_2023_WEEKS_UNEMPLOYED_ZIP_SIZE_BYTES,
     SIPP_HEAD_START_FIT_PARAMETERS,
     SIPP_HEAD_START_READ_PARAMETERS,
     SIPP_SSI_DISABILITY_FIT_PARAMETERS,
@@ -22,6 +28,7 @@ from populace.build.us_runtime import (
     US_CHILDCARE_STAGE_NAME,
     US_DISABILITY_BENEFITS_STAGE_NAME,
     US_DONORS,
+    US_EDUCATION_INPUTS_STAGE_NAME,
     US_ENERGY_SUBSIDY_STAGE_NAME,
     US_NONNEGATIVE_SOURCE_OUTPUTS,
     US_OTHER_HEALTH_INSURANCE_STAGE_NAME,
@@ -40,6 +47,11 @@ from populace.build.us_runtime import (
     US_SUPPORT_SPINE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
     US_VOLUNTARY_FILING_STAGE_NAME,
+    US_WEEKS_UNEMPLOYED_STAGE_NAME,
+    US_WORKERS_COMPENSATION_STAGE_NAME,
+    WEEKS_UNEMPLOYED_DERIVE_PARAMETERS,
+    WEEKS_UNEMPLOYED_PUF_IMPUTATION_PARAMETERS,
+    WEEKS_UNEMPLOYED_READ_PARAMETERS,
     BuildConfig,
     us_plan,
 )
@@ -229,6 +241,12 @@ class TestUsSources:
         assert US_STAGE_NAMES.index(
             US_DISABILITY_BENEFITS_STAGE_NAME
         ) < US_STAGE_NAMES.index("education_inputs")
+        assert US_STAGE_NAMES.index(
+            US_WORKERS_COMPENSATION_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_WEEKS_UNEMPLOYED_STAGE_NAME)
+        assert US_STAGE_NAMES.index(
+            US_WEEKS_UNEMPLOYED_STAGE_NAME
+        ) < US_STAGE_NAMES.index(US_EDUCATION_INPUTS_STAGE_NAME)
         assert US_STAGE_NAMES.index("medicaid_take_up") < US_STAGE_NAMES.index(
             US_OTHER_HEALTH_INSURANCE_STAGE_NAME
         )
@@ -431,6 +449,49 @@ class TestUsSources:
         donor = US_DONORS[US_PRIOR_YEAR_INCOME_STAGE_NAME]
         assert donor.survey == stage.survey
         assert donor.source == stage.source
+
+    def test_weeks_unemployed_stage_pins_direct_source_and_puf_qrf(self) -> None:
+        stage = US_SOURCE_MANIFEST.stage_map()[US_WEEKS_UNEMPLOYED_STAGE_NAME]
+        donor = US_DONORS[US_WEEKS_UNEMPLOYED_STAGE_NAME]
+
+        assert stage.survey == donor.survey == "Census CPS ASEC"
+        assert stage.source == donor.source
+        assert stage.grain == "person"
+        assert stage.outputs == ("weeks_unemployed",)
+        assert stage.nonnegative_outputs == stage.outputs
+
+        archive = next(
+            artifact
+            for artifact in stage.artifacts
+            if artifact.get("format") == "zip_csv"
+        )
+        assert archive["vintage"] == "2023 ASEC / 2022 income reference year"
+        assert archive["sha256"] == ASEC_2023_WEEKS_UNEMPLOYED_ZIP_SHA256
+        assert archive["size_bytes"] == ASEC_2023_WEEKS_UNEMPLOYED_ZIP_SIZE_BYTES
+        assert archive["member"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER
+        assert (
+            archive["member_size_bytes"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SIZE_BYTES
+        )
+        assert archive["member_crc32"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_CRC32
+        assert archive["member_sha256"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256
+
+        operations = {operation.kind: operation for operation in stage.operations}
+        assert tuple(operations) == (
+            "read_table",
+            "derive_weeks_unemployed",
+            "impute_weeks_unemployed_to_puf_support",
+        )
+        assert dict(operations["read_table"].parameters) == (
+            WEEKS_UNEMPLOYED_READ_PARAMETERS
+        )
+        assert dict(operations["derive_weeks_unemployed"].parameters) == (
+            WEEKS_UNEMPLOYED_DERIVE_PARAMETERS
+        )
+        assert (
+            operations["impute_weeks_unemployed_to_puf_support"].parameters
+            == WEEKS_UNEMPLOYED_PUF_IMPUTATION_PARAMETERS
+        )
+        assert "no 2022 source value is filled statistically" in stage.notes
 
     def test_disability_benefits_stage_pins_direct_formula_and_puf_imputation(
         self,

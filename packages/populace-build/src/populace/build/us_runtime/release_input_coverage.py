@@ -97,6 +97,9 @@ from populace.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
 from populace.build.us_runtime.voluntary_filing import (
     US_VOLUNTARY_FILING_OUTPUT_COLUMNS,
 )
+from populace.build.us_runtime.weeks_unemployed import (
+    US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.wic_claim import US_WIC_CLAIM_OUTPUT_COLUMNS
 from populace.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
@@ -150,6 +153,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_CHILD_SUPPORT_OUTPUT_COLUMNS,
         *US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
         *US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
+        *US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
         *US_WIC_CLAIM_OUTPUT_COLUMNS,
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
