@@ -222,6 +222,7 @@ from populace.build.uk_runtime.parity_reference import (
     load_efrs_parity_reference,
 )
 from populace.build.uk_runtime.release_input_coverage import (
+    RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS,
     UK_LOADER_INPUT_ALIASES,
     UK_RELEASE_INPUT_COVERAGE_RESOURCE,
     PolicyEngineUKCoverageEngine,
@@ -418,6 +419,7 @@ __all__ = [
     "UKFRSHMRCRetainedLeavesResult",
     "UKFRSHMRCRetainedLeavesStageTransform",
     "UKLocalCandidateResult",
+    "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKCertifiedCandidateIdentity",
     "UKHMRCIncomeCalibration",
     "UKHMRCIncomeRestorationResult",

@@ -56,9 +56,7 @@
    "status": "required"
   },
   "charitable_investment_gifts": {
-   "reason": "not yet ported from enhanced FRS pipeline — pending review",
-   "status": "reviewed_exclusion",
-   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
+   "status": "required"
   },
   "child_benefit_opts_out": {
    "status": "required"
@@ -166,9 +164,7 @@
    "status": "required"
   },
   "gift_aid": {
-   "reason": "not yet ported from enhanced FRS pipeline — pending review",
-   "status": "reviewed_exclusion",
-   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
+   "status": "required"
   },
   "gross_financial_wealth": {
    "status": "required"
@@ -448,11 +444,11 @@
   }
  },
  "counts": {
-  "required": 143,
-  "reviewed_exclusion": 2,
+  "required": 145,
+  "reviewed_exclusion": 0,
   "total": 145
  },
- "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' exactly when the sha-pinned candidate evidence in efrs_parity_known_gaps.json records non-default signal on at least the reviewed owning-entity effective-mass share; all other surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor.",
+ "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' when the sha-pinned candidate evidence records non-default signal on at least the reviewed owning-entity effective-mass share OR the column is pinned in restored_required_columns after a source-family restoration; all remaining surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor, and distributional restorations must pass it on their required source channel.",
  "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
  "effective_mass_coverage": {
   "minimum_nondefault_mass_share": 1e-06,
@@ -542,7 +538,7 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income",
-   "status": "deferred_until_restored"
+   "status": "required_at_build"
   }
  },
  "reference": {
@@ -553,6 +549,13 @@
   "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
   "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
   "vintage": "2023_24"
+ },
+ "restoration_evidence": {
+  "derived_from": "efrs_parity_known_gaps.json",
+  "required_columns": [
+   "charitable_investment_gifts",
+   "gift_aid"
+  ]
  },
  "schema_version": 3
 }

@@ -1172,26 +1172,55 @@
         "reviewed_on": "2026-07-11",
         "weight_source": "household_weight"
       },
-      "family_build_state": {},
-      "family_effective_mass": {},
+      "family_build_state": {
+        "hmrc_spi_income": {
+          "actual_build_period": "2023",
+          "actual_output_weight_kind": "importance",
+          "expected_build_period": "2023",
+          "expected_output_weight_kind": "importance",
+          "matching_mass_change_records": 1,
+          "required_mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
+          "valid_mass_change_records": 1
+        }
+      },
+      "family_effective_mass": {
+        "hmrc_spi_income": {
+          "charitable_investment_gifts": {
+            "channel_effective_mass": 34205312.55926528,
+            "channel_rows": 432779,
+            "effective_signal_mass": 19197.151509625182,
+            "effective_signal_mass_share": 0.00028055329260683216,
+            "entity": "person",
+            "minimum_nondefault_mass_share": 1e-06,
+            "positive_mass_channel_rows": 432779,
+            "required_support_channel": "spi",
+            "support_channel_column": "person_support_channel",
+            "total_effective_mass": 68426042.45079419
+          },
+          "gift_aid": {
+            "channel_effective_mass": 34205312.55926528,
+            "channel_rows": 432779,
+            "effective_signal_mass": 910282.3622813676,
+            "effective_signal_mass_share": 0.01330315665904484,
+            "entity": "person",
+            "minimum_nondefault_mass_share": 1e-06,
+            "positive_mass_channel_rows": 432779,
+            "required_support_channel": "spi",
+            "support_channel_column": "person_support_channel",
+            "total_effective_mass": 68426042.45079419
+          }
+        }
+      },
       "insufficient_effective_mass": [],
       "missing": [],
       "present_columns": 145,
-      "required_columns": 143,
-      "reviewed_exclusions": {
-        "charitable_investment_gifts": "not yet ported from enhanced FRS pipeline \u2014 pending review",
-        "gift_aid": "not yet ported from enhanced FRS pipeline \u2014 pending review"
-      },
-      "stale_exclusions": [
-        "charitable_investment_gifts",
-        "gift_aid"
-      ],
+      "required_columns": 145,
+      "reviewed_exclusions": {},
+      "stale_exclusions": [],
       "wrong_entity_columns": {}
     },
-    "failures": [
-      "Stale reviewed exclusions \u2014 the column carries signal now, promote it to a hard requirement: ['charitable_investment_gifts', 'gift_aid']."
-    ],
-    "passed": false
+    "failures": [],
+    "passed": true
   },
   "schema_version": 1
 }

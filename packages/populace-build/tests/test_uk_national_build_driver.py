@@ -19,6 +19,7 @@ _PATH_ARGUMENTS = (
     "hmrc_ods",
     "adult_tab",
     "benefits_tab",
+    "build_record_path",
 )
 
 
@@ -41,6 +42,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
+    build_record_path = tmp_path / "national_staging_build_record.json"
     adult_tab = frs_raw_dir / "adult.tab"
     benefits_tab = frs_raw_dir / "benefits.tab"
     frs_raw_dir.mkdir()
@@ -64,6 +66,22 @@ def test_national_build_driver_uses_standalone_national_seam(
         staging_h5.write_bytes(b"staged")
         kwargs["input_coverage_path"].write_text('{"passed": true}\n')
         return SimpleNamespace(
+            dataset=SimpleNamespace(
+                person=[1, 2],
+                benunit=[1],
+                household={"household_weight": [2.0]},
+                time_period="2023",
+                household_weight_kind=SimpleNamespace(value="importance"),
+                mass_log=(
+                    SimpleNamespace(
+                        entity="household",
+                        old_total=2.0,
+                        new_total=2.0,
+                        declared_factor=1.0,
+                        reason="reviewed test mass allocation",
+                    ),
+                ),
+            ),
             input_h5=input_h5.resolve(),
             staging_h5=staging_h5.resolve(),
             stage_names=(
@@ -112,6 +130,8 @@ def test_national_build_driver_uses_standalone_national_seam(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--build-record-json",
+            str(build_record_path),
         ],
     )
 
@@ -154,6 +174,26 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert payload["artifacts"]["hmrc_replay"]["sha256"]
     assert payload["artifacts"]["frs_adult"]["sha256"]
     assert payload["artifacts"]["frs_benefits"]["sha256"]
+    assert payload["artifacts"]["build_record"]["sha256"]
+    record = json.loads(build_record_path.read_text(encoding="utf-8"))
+    assert record["status"] == "passed"
+    assert record["dataset"] == {
+        "entity_rows": {"benunit": 1, "household": 1, "person": 2},
+        "household_weight_kind": "importance",
+        "household_weight_total": 2.0,
+        "mass_changes": [
+            {
+                "declared_factor": 1.0,
+                "entity": "household",
+                "new_total": 2.0,
+                "old_total": 2.0,
+                "reason": "reviewed test mass allocation",
+            }
+        ],
+        "time_period": "2023",
+    }
+    assert record["artifacts"]["staging_h5"]["retention"] == "local_untracked"
+    assert all("path" not in artifact for artifact in record["artifacts"].values())
 
 
 def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
@@ -242,6 +282,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
         (replay_report, staging_h5.with_suffix(".hmrc_replay.json"))
     ]
     assert not staging_h5.exists()
+    assert not staging_h5.with_suffix(".build.json").exists()
 
 
 def test_national_driver_does_not_write_reports_for_stage_failure(
@@ -310,6 +351,7 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
 
     assert not staging_h5.with_suffix(".hmrc_income.json").exists()
     assert not staging_h5.with_suffix(".hmrc_replay.json").exists()
+    assert not staging_h5.with_suffix(".build.json").exists()
 
 
 @pytest.mark.parametrize(

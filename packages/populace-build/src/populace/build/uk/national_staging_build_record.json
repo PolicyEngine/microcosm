@@ -1,0 +1,157 @@
+{
+  "artifacts": {
+    "frs_adult": {
+      "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
+      "size_bytes": 35323384
+    },
+    "frs_benefits": {
+      "sha256": "ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b",
+      "size_bytes": 4460292
+    },
+    "hmrc_evidence": {
+      "sha256": "1eb168078445300af0b438433bf7ffa892f89e200a61e951566e0bc986455603",
+      "size_bytes": 6822
+    },
+    "hmrc_replay": {
+      "sha256": "32d343abd597fed8113d7c344e989aa26d4970fb7d9453b749ae7b48c3ee4510",
+      "size_bytes": 154219
+    },
+    "hmrc_surface": {
+      "sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+      "size_bytes": 166693
+    },
+    "input_coverage": {
+      "sha256": "a08561687cc38da97cf80b3aab7ff882e7a0792fc705a0b701f652c22ca67811",
+      "size_bytes": 49487
+    },
+    "input_h5": {
+      "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+      "size_bytes": 1315880118
+    },
+    "spi_donor": {
+      "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+      "size_bytes": 141323762
+    },
+    "staging_h5": {
+      "retention": "local_untracked",
+      "sha256": "829e843f5d1577ff4770ed344c2c15eed4f0c1fdc64af2dc7b511c825fde6709",
+      "size_bytes": 1532379785
+    }
+  },
+  "build_kind": "uk_national_staging_dataset",
+  "dataset": {
+    "entity_rows": {
+      "benunit": 618884,
+      "household": 535080,
+      "person": 1157739
+    },
+    "household_weight_kind": "importance",
+    "household_weight_total": 28840551.182180054,
+    "mass_changes": [
+      {
+        "declared_factor": 1.0,
+        "entity": "household",
+        "new_total": 28840551.182180054,
+        "old_total": 28840551.182180054,
+        "reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved."
+      }
+    ],
+    "time_period": "2023"
+  },
+  "hmrc_replay": {
+    "post_draw_identity": {
+      "exact": true,
+      "formula": "TEI + TII",
+      "rows_checked": 432779
+    },
+    "summary": {
+      "all_exclusions_fenced": true,
+      "all_facts_adjudicated": true,
+      "comparison_coverage_count": 0,
+      "comparison_coverage_share": 0.0,
+      "directional_fail": 0,
+      "directional_pass": 0,
+      "exact_fail": 0,
+      "exact_pass": 0,
+      "excluded_with_fence": 208,
+      "release_blocking_comparison_failures": 0,
+      "status": "reviewed_exclusions_only",
+      "total_facts": 208
+    }
+  },
+  "input_coverage": {
+    "degenerate_required": [],
+    "effective_mass_policy": {
+      "minimum_nondefault_mass_share": 1e-06,
+      "rationale": "One part per million rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference.",
+      "reviewed_on": "2026-07-11",
+      "weight_source": "household_weight"
+    },
+    "failures": [],
+    "family_build_state": {
+      "hmrc_spi_income": {
+        "actual_build_period": "2023",
+        "actual_output_weight_kind": "importance",
+        "expected_build_period": "2023",
+        "expected_output_weight_kind": "importance",
+        "matching_mass_change_records": 1,
+        "required_mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
+        "valid_mass_change_records": 1
+      }
+    },
+    "family_effective_mass": {
+      "hmrc_spi_income": {
+        "charitable_investment_gifts": {
+          "channel_effective_mass": 34205312.55926528,
+          "channel_rows": 432779,
+          "effective_signal_mass": 19197.151509625182,
+          "effective_signal_mass_share": 0.00028055329260683216,
+          "entity": "person",
+          "minimum_nondefault_mass_share": 1e-06,
+          "positive_mass_channel_rows": 432779,
+          "required_support_channel": "spi",
+          "support_channel_column": "person_support_channel",
+          "total_effective_mass": 68426042.45079419
+        },
+        "gift_aid": {
+          "channel_effective_mass": 34205312.55926528,
+          "channel_rows": 432779,
+          "effective_signal_mass": 910282.3622813676,
+          "effective_signal_mass_share": 0.01330315665904484,
+          "entity": "person",
+          "minimum_nondefault_mass_share": 1e-06,
+          "positive_mass_channel_rows": 432779,
+          "required_support_channel": "spi",
+          "support_channel_column": "person_support_channel",
+          "total_effective_mass": 68426042.45079419
+        }
+      }
+    },
+    "insufficient_effective_mass": [],
+    "missing": [],
+    "passed": true,
+    "required_columns": 145,
+    "reviewed_exclusion_columns": 0,
+    "stale_exclusions": []
+  },
+  "parameters": {
+    "qrf_estimators": 100,
+    "seed": 42
+  },
+  "schema_version": 1,
+  "source_rows": {
+    "frs_adult": 28590,
+    "frs_benefits": 46636,
+    "spi_donor_used": 100000
+  },
+  "source_vintages": {
+    "hmrc_surface": "2023-24",
+    "mapped_build_period": "2023",
+    "spi_donor": "2022-23"
+  },
+  "stages": [
+    "frs_hmrc_retained_leaves",
+    "hmrc_spi_income"
+  ],
+  "status": "passed"
+}

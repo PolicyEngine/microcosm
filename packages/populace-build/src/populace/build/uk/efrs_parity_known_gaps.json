@@ -629,19 +629,30 @@
    "url": "https://huggingface.co/datasets/policyengine/populace-uk-private/resolve/populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/populace_uk_2023.h5"
   }
  },
- "description": "Canonical UK enhanced-FRS parity debt ledger. A reference-populated loader input appears here only when the sha-pinned certified Populace UK candidate lacks non-default signal on the reviewed minimum share of owning-entity effective population mass.",
+ "description": "Canonical UK enhanced-FRS parity debt ledger. A reference-populated loader input appears in known_gaps when neither the sha-pinned certified Populace UK candidate nor a pinned post-candidate source-family restoration carries non-default signal on the reviewed minimum share of effective population mass.",
  "exclusion_policy": {
   "reason": "not yet ported from enhanced FRS pipeline — pending review",
   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
  },
- "known_gaps": {
+ "known_gaps": {},
+ "restored_required_columns": {
   "charitable_investment_gifts": {
-   "reason": "not yet ported from enhanced FRS pipeline — pending review",
-   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
+   "effective_signal_mass_share": 0.00028055329260683216,
+   "minimum_nondefault_mass_share": 1e-06,
+   "positive_mass_signal_rows": 294,
+   "promotion_basis": "weighted release gate stale-exclusion remediation",
+   "reviewed_on": "2026-07-13",
+   "stage": "hmrc_spi_income",
+   "support_channel": "spi"
   },
   "gift_aid": {
-   "reason": "not yet ported from enhanced FRS pipeline — pending review",
-   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
+   "effective_signal_mass_share": 0.01330315665904484,
+   "minimum_nondefault_mass_share": 1e-06,
+   "positive_mass_signal_rows": 12894,
+   "promotion_basis": "weighted release gate stale-exclusion remediation",
+   "reviewed_on": "2026-07-13",
+   "stage": "hmrc_spi_income",
+   "support_channel": "spi"
   }
  },
  "schema_version": 1

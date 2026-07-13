@@ -69,9 +69,10 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
     )
 
 
-def test_initial_known_gap_register_records_zero_mass_spi_signal() -> None:
+def test_known_gap_register_records_post_candidate_restoration_separately() -> None:
     gaps = _resource("efrs_parity_known_gaps.json")
-    assert set(gaps["known_gaps"]) == {
+    assert gaps["known_gaps"] == {}
+    assert set(gaps["restored_required_columns"]) == {
         "charitable_investment_gifts",
         "gift_aid",
     }
@@ -83,8 +84,12 @@ def test_initial_known_gap_register_records_zero_mass_spi_signal() -> None:
         "not yet ported from enhanced FRS pipeline — pending review"
     )
     assert gaps["exclusion_policy"]["tracking_note"].strip()
-    for entry in gaps["known_gaps"].values():
-        assert entry == gaps["exclusion_policy"]
+    for name, evidence in gaps["restored_required_columns"].items():
+        assert evidence["stage"] == "hmrc_spi_income"
+        assert evidence["support_channel"] == "spi"
+        assert evidence["effective_signal_mass_share"] >= (
+            evidence["minimum_nondefault_mass_share"]
+        ), name
 
 
 def test_committed_manifest_matches_regeneration() -> None:
@@ -113,28 +118,23 @@ def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
     assert regenerated == committed
 
 
-def test_initial_manifest_requires_only_effectively_populated_reference_inputs() -> (
-    None
-):
+def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 143,
-        "reviewed_exclusion": 2,
+        "required": 145,
+        "reviewed_exclusion": 0,
         "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    assert {
-        name
-        for name, entry in manifest["columns"].items()
-        if entry["status"] == "reviewed_exclusion"
-    } == {"charitable_investment_gifts", "gift_aid"}
     assert all(
-        entry["reason"] == "not yet ported from enhanced FRS pipeline — pending review"
-        and entry["tracking_note"].strip()
+        entry == {"status": "required"}
         for entry in manifest["columns"].values()
-        if entry["status"] == "reviewed_exclusion"
     )
+    assert manifest["restoration_evidence"] == {
+        "derived_from": "efrs_parity_known_gaps.json",
+        "required_columns": ["charitable_investment_gifts", "gift_aid"],
+    }
     assert manifest["schema_version"] == 3
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
@@ -148,11 +148,11 @@ def test_initial_manifest_requires_only_effectively_populated_reference_inputs()
     }
 
 
-def test_hmrc_family_is_deferred_with_future_promotion_contract() -> None:
+def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> None:
     manifest = _resource("release_input_coverage_manifest.json")
     family = manifest["family_coverage"]["hmrc_spi_income"]
 
-    assert family["status"] == "deferred_until_restored"
+    assert family["status"] == "required_at_build"
     assert family["restoration_status"] == "adjudicated_partial_replay"
     assert family["source_manifest"] == "hmrc_income_source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
@@ -222,6 +222,20 @@ def test_generator_assigns_exact_reason_and_tracking_note_to_a_real_gap() -> Non
         "not yet ported from enhanced FRS pipeline — pending review"
     )
     assert entry["tracking_note"].strip()
+
+
+def test_generator_never_reintroduces_a_pinned_restoration_as_a_gap() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
+
+    gaps = generator.build_known_gaps(evidence, reference=reference)
+
+    assert gaps["known_gaps"] == {}
+    assert set(gaps["restored_required_columns"]) == {
+        "charitable_investment_gifts",
+        "gift_aid",
+    }
 
 
 def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:

@@ -35,6 +35,7 @@ from populace.build.uk_runtime.parity_reference import (
 )
 
 __all__ = [
+    "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKEffectiveMassCoveragePolicy",
     "UK_LOADER_INPUT_ALIASES",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
@@ -69,6 +70,13 @@ _UK_PACKAGE = "populace.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
 
 DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE = 1e-6
+
+# Reference-populated inputs restored after the certified base candidate. This
+# runtime copy mirrors the generator's reviewed registry so manifest drift can
+# never put a shipped restoration back behind an exclusion.
+RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = frozenset(
+    {"charitable_investment_gifts", "gift_aid"}
+)
 
 
 @dataclass(frozen=True)
@@ -1103,6 +1111,18 @@ def assert_uk_release_input_coverage_manifest_current(
             "manifest declares column(s) outside the enhanced-FRS populated "
             f"loader-input surface: {extra}."
         )
+
+    for name in sorted(RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS):
+        if name in manifest.reviewed_exclusions:
+            failures.append(
+                f"{name}: restored enhanced-FRS reference input cannot return "
+                "to a reviewed exclusion."
+            )
+        elif name not in manifest.required_columns:
+            failures.append(
+                f"{name}: restored enhanced-FRS reference input must remain "
+                "required."
+            )
 
     for family_name, family in sorted(manifest.family_coverage.items()):
         source_manifest = str(family["source_manifest"])

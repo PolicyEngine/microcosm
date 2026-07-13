@@ -7,7 +7,8 @@ statuses evidence-based:
   FRS reference;
 * ``required``: the certified Populace UK candidate persists the column with
   PolicyEngine-UK-default-aware signal on rows carrying at least the reviewed
-  share of owning-entity effective population mass; and
+  share of owning-entity effective population mass, or a pinned post-candidate
+  source-family restoration carries that signal through the release seam; and
 * ``reviewed_exclusion``: every remaining reference layer, carrying the exact
   campaign reason and a non-empty tracking note.
 
@@ -68,6 +69,36 @@ EFFECTIVE_MASS_COVERAGE = {
         "while remaining about 100 times below the rarest populated record "
         "share in the pinned enhanced-FRS reference."
     ),
+}
+
+# Reference-populated inputs whose source-family restoration has shipped after
+# the certified base candidate. Keep the candidate evidence immutable and
+# honest (these two columns have signal only on zero-weight SPI rows there);
+# the national HMRC stage is what promotes them. This mirrors the US campaign's
+# RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS anti-regression list.
+RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = (
+    "charitable_investment_gifts",
+    "gift_aid",
+)
+RESTORED_REQUIRED_COLUMN_EVIDENCE = {
+    "charitable_investment_gifts": {
+        "effective_signal_mass_share": 0.00028055329260683216,
+        "minimum_nondefault_mass_share": 1e-6,
+        "positive_mass_signal_rows": 294,
+        "promotion_basis": "weighted release gate stale-exclusion remediation",
+        "reviewed_on": "2026-07-13",
+        "stage": "hmrc_spi_income",
+        "support_channel": "spi",
+    },
+    "gift_aid": {
+        "effective_signal_mass_share": 0.01330315665904484,
+        "minimum_nondefault_mass_share": 1e-6,
+        "positive_mass_signal_rows": 12_894,
+        "promotion_basis": "weighted release gate stale-exclusion remediation",
+        "reviewed_on": "2026-07-13",
+        "stage": "hmrc_spi_income",
+        "support_channel": "spi",
+    },
 }
 
 
@@ -530,20 +561,33 @@ def build_known_gaps(
             "candidate_evidence.effective_nondefault_mass_shares must be an object."
         )
     floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
-    gaps = sorted(name for name in surface if float(shares.get(name, 0.0)) < floor)
+    restored = set(RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS)
+    missing_restored = sorted(restored - surface)
+    if missing_restored:
+        raise ValueError(
+            "Restored UK reference inputs are absent from the populated eFRS "
+            f"surface: {missing_restored}."
+        )
+    gaps = sorted(
+        name
+        for name in surface - restored
+        if float(shares.get(name, 0.0)) < floor
+    )
     return {
         "schema_version": 1,
         "description": (
             "Canonical UK enhanced-FRS parity debt ledger. A reference-"
-            "populated loader input appears here only when the sha-pinned "
-            "certified Populace UK candidate lacks non-default signal on the "
-            "reviewed minimum share of owning-entity effective population mass."
+            "populated loader input appears in known_gaps when neither the "
+            "sha-pinned certified Populace UK candidate nor a pinned post-"
+            "candidate source-family restoration carries non-default signal "
+            "on the reviewed minimum share of effective population mass."
         ),
         "exclusion_policy": {
             "reason": EXCLUSION_REASON,
             "tracking_note": EXCLUSION_TRACKING_NOTE,
         },
         "candidate_evidence": candidate_evidence,
+        "restored_required_columns": RESTORED_REQUIRED_COLUMN_EVIDENCE,
         "known_gaps": {
             name: {
                 "reason": EXCLUSION_REASON,
@@ -559,12 +603,18 @@ def _validate_known_gaps(
 ) -> None:
     surface = set(reference["nonzero_shares"])
     raw_gaps = known_gaps_payload.get("known_gaps")
+    raw_restored = known_gaps_payload.get("restored_required_columns")
     evidence = known_gaps_payload.get("candidate_evidence")
     if not isinstance(raw_gaps, dict):
         raise ValueError("efrs_parity_known_gaps.json: 'known_gaps' must be an object.")
     if not isinstance(evidence, dict):
         raise ValueError(
             "efrs_parity_known_gaps.json: 'candidate_evidence' must be an object."
+        )
+    if raw_restored != RESTORED_REQUIRED_COLUMN_EVIDENCE:
+        raise ValueError(
+            "efrs_parity_known_gaps.json: restored_required_columns disagrees "
+            "with the pinned post-candidate restoration evidence."
         )
     effective_nondefault = evidence.get("effective_nondefault_mass_shares")
     if not isinstance(effective_nondefault, dict):
@@ -608,7 +658,30 @@ def _validate_known_gaps(
             f"missing={missing}, extra={extra}, mismatched={mismatched}."
         )
     floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
-    expected = {name for name in surface if float(effective_nondefault[name]) < floor}
+    restored = set(RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS)
+    missing_restored = sorted(restored - surface)
+    if missing_restored:
+        raise ValueError(
+            "Restored UK reference inputs are absent from the populated eFRS "
+            f"surface: {missing_restored}."
+        )
+    insufficient_restorations = sorted(
+        name
+        for name, restoration in RESTORED_REQUIRED_COLUMN_EVIDENCE.items()
+        if float(restoration["effective_signal_mass_share"])
+        < float(restoration["minimum_nondefault_mass_share"])
+        or float(restoration["minimum_nondefault_mass_share"]) != floor
+    )
+    if insufficient_restorations:
+        raise ValueError(
+            "Restored UK reference inputs do not clear the reviewed effective-"
+            f"mass floor: {insufficient_restorations}."
+        )
+    expected = {
+        name
+        for name in surface - restored
+        if float(effective_nondefault[name]) < floor
+    }
     actual = set(raw_gaps)
     if actual != expected:
         raise ValueError(
@@ -619,6 +692,12 @@ def _validate_known_gaps(
     stray = sorted(actual - surface)
     if stray:
         raise ValueError(f"UK known-gap register names non-reference layers: {stray}.")
+    stale_restored_gaps = sorted(actual & restored)
+    if stale_restored_gaps:
+        raise ValueError(
+            "Restored UK reference inputs cannot remain in the known-gap "
+            f"register: {stale_restored_gaps}."
+        )
     for name, entry in raw_gaps.items():
         if not isinstance(entry, dict):
             raise ValueError(f"UK known gap {name!r} must be an object.")
@@ -639,6 +718,7 @@ def build_manifest(
     known_gaps_payload = known_gaps_payload or _load(KNOWN_GAPS_PATH)
     _validate_known_gaps(reference, known_gaps_payload)
     known_gaps = known_gaps_payload["known_gaps"]
+    restored_required = set(known_gaps_payload["restored_required_columns"])
     populated_layers = {
         name
         for name, share in reference["nonzero_shares"].items()
@@ -689,18 +769,25 @@ def build_manifest(
             "sha256": str(candidate_source["sha256"]),
             "period": str(candidate_source["period"]),
         },
+        "restoration_evidence": {
+            "derived_from": KNOWN_GAPS_PATH.name,
+            "required_columns": sorted(restored_required),
+        },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
             "hmrc_spi_income": _hmrc_family_coverage_contract(),
         },
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
-            "inputs. status='required' exactly when the sha-pinned candidate "
-            "evidence in efrs_parity_known_gaps.json records non-default signal "
-            "on at least the reviewed owning-entity effective-mass share; all "
-            "other surface columns are reviewed_exclusion with reason "
+            "inputs. status='required' when the sha-pinned candidate evidence "
+            "records non-default signal on at least the reviewed owning-entity "
+            "effective-mass share OR the column is pinned in "
+            "restored_required_columns after a source-family restoration; all "
+            "remaining surface columns are reviewed_exclusion with reason "
             f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note. "
-            "The final release gate applies the same effective-mass floor."
+            "The final release gate applies the same effective-mass floor, and "
+            "distributional restorations must pass it on their required source "
+            "channel."
         ),
         "counts": {
             "required": len(required),
@@ -773,12 +860,20 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             "HMRC source-stage effective-mass gate must measure its signal "
             "against all person effective mass."
         )
+    restored_required = set(RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS)
+    effective_columns = {str(column) for column in effective["columns"]}
+    if effective_columns != restored_required:
+        raise ValueError(
+            "HMRC source-stage distributional columns disagree with the pinned "
+            "restored UK reference inputs: "
+            f"stage_only={sorted(effective_columns - restored_required)}, "
+            f"restoration_only={sorted(restored_required - effective_columns)}."
+        )
     return {
-        "status": (
-            "required_at_build"
-            if str(frs_leaves["status"]) == "restored"
-            else "deferred_until_restored"
-        ),
+        # The stage is executable and mandatory because its two restored input
+        # columns now carry hard release status. The separate restoration_status
+        # truthfully retains the 208-fact adjudicated-partial-replay verdict.
+        "status": "required_at_build",
         "restoration_status": str(frs_leaves["status"]),
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,

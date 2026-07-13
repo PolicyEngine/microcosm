@@ -9,6 +9,8 @@ import uuid
 from itertools import combinations
 from pathlib import Path
 
+import pandas as pd
+
 from populace.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -82,6 +84,14 @@ def _parse_args() -> argparse.Namespace:
             "--staging-h5 with suffix '.hmrc_replay.json'."
         ),
     )
+    parser.add_argument(
+        "--build-record-json",
+        type=Path,
+        help=(
+            "Aggregate, path-free staging build record. Defaults beside "
+            "--staging-h5 with suffix '.build.json'."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
     return parser.parse_args()
@@ -98,6 +108,9 @@ def main() -> int:
     replay_path = args.hmrc_replay_json or args.staging_h5.with_suffix(
         ".hmrc_replay.json"
     )
+    build_record_path = args.build_record_json or args.staging_h5.with_suffix(
+        ".build.json"
+    )
     retained_leaves_transform = (
         UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(args.frs_raw_dir)
     )
@@ -111,10 +124,12 @@ def main() -> int:
         hmrc_ods=args.hmrc_ods,
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
+        build_record_path=build_record_path,
     )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
+    build_record_path.unlink(missing_ok=True)
     hmrc_transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
         hmrc_ods_path=args.hmrc_ods,
@@ -165,6 +180,29 @@ def main() -> int:
         "passed": True,
         "summary": dict(hmrc_transform.last_result.replay_report.summary),
     }
+    artifact_paths = {
+        "input_h5": result.input_h5,
+        "staging_h5": result.staging_h5,
+        "input_coverage": coverage_path,
+        "hmrc_evidence": evidence_path,
+        "hmrc_replay": replay_path,
+        "spi_donor": args.spi_tab,
+        "hmrc_surface": args.hmrc_ods,
+        "frs_adult": retained_leaves_transform.adult_tab_path,
+        "frs_benefits": retained_leaves_transform.benefits_tab_path,
+    }
+    artifacts = {
+        role: _artifact_info(path) for role, path in artifact_paths.items()
+    }
+    build_record = _aggregate_build_record(
+        result=result,
+        artifacts=artifacts,
+        retained_evidence=retained_leaves_transform.last_result.evidence(),
+        family_evidence=hmrc_transform.last_result.evidence(),
+        seed=args.seed,
+        qrf_estimators=args.qrf_estimators,
+    )
+    _write_json(build_record_path, build_record)
     payload = {
         "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
@@ -175,15 +213,8 @@ def main() -> int:
             "details": dict(result.input_coverage.details),
         },
         "artifacts": {
-            "input_h5": _artifact_info(result.input_h5),
-            "staging_h5": _artifact_info(result.staging_h5),
-            "input_coverage": _artifact_info(coverage_path),
-            "hmrc_evidence": _artifact_info(evidence_path),
-            "hmrc_replay": _artifact_info(replay_path),
-            "spi_donor": _artifact_info(args.spi_tab),
-            "hmrc_surface": _artifact_info(args.hmrc_ods),
-            "frs_adult": _artifact_info(retained_leaves_transform.adult_tab_path),
-            "frs_benefits": _artifact_info(retained_leaves_transform.benefits_tab_path),
+            **artifacts,
+            "build_record": _artifact_info(build_record_path),
         },
         "hmrc_replay": hmrc_evidence,
     }
@@ -201,6 +232,112 @@ def _artifact_info(path: str | Path) -> dict[str, str | int]:
         "path": str(artifact),
         "sha256": digest.hexdigest(),
         "size_bytes": artifact.stat().st_size,
+    }
+
+
+def _aggregate_build_record(
+    *,
+    result: object,
+    artifacts: dict[str, dict[str, str | int]],
+    retained_evidence: dict[str, object],
+    family_evidence: dict[str, object],
+    seed: int,
+    qrf_estimators: int,
+) -> dict[str, object]:
+    """Return commit-safe aggregate evidence for one successful staging build."""
+
+    details = dict(result.input_coverage.details)
+    safe_artifacts = {
+        role: {
+            "sha256": str(info["sha256"]),
+            "size_bytes": int(info["size_bytes"]),
+        }
+        for role, info in artifacts.items()
+    }
+    safe_artifacts["staging_h5"]["retention"] = "local_untracked"
+    retained_sources = dict(retained_evidence.get("sources", {}))
+    family_sources = dict(family_evidence.get("sources", {}))
+    mass_changes = [
+        {
+            "entity": record.entity,
+            "old_total": float(record.old_total),
+            "new_total": float(record.new_total),
+            "declared_factor": (
+                None
+                if record.declared_factor is None
+                else float(record.declared_factor)
+            ),
+            "reason": record.reason,
+        }
+        for record in result.dataset.mass_log
+    ]
+    household_weights = pd.to_numeric(
+        result.dataset.household["household_weight"], errors="raise"
+    )
+    return {
+        "schema_version": 1,
+        "build_kind": "uk_national_staging_dataset",
+        "status": "passed",
+        "stages": list(result.stage_names),
+        "parameters": {
+            "seed": int(seed),
+            "qrf_estimators": int(qrf_estimators),
+        },
+        "dataset": {
+            "time_period": str(result.dataset.time_period),
+            "entity_rows": {
+                "person": len(result.dataset.person),
+                "benunit": len(result.dataset.benunit),
+                "household": len(result.dataset.household),
+            },
+            "household_weight_kind": result.dataset.household_weight_kind.value,
+            "household_weight_total": float(household_weights.sum()),
+            "mass_changes": mass_changes,
+        },
+        "source_rows": {
+            "frs_adult": int(
+                dict(retained_sources.get("adult", {})).get("rows", 0)
+            ),
+            "frs_benefits": int(
+                dict(retained_sources.get("benefits", {})).get("rows", 0)
+            ),
+            "spi_donor_used": int(
+                dict(family_sources.get("spi_donor", {})).get("rows_used", 0)
+            ),
+        },
+        "source_vintages": dict(family_evidence.get("source_vintages", {})),
+        "input_coverage": {
+            "passed": bool(result.input_coverage.passed),
+            "failures": list(result.input_coverage.failures),
+            "required_columns": int(details.get("required_columns", 0)),
+            "reviewed_exclusion_columns": len(
+                dict(details.get("reviewed_exclusions", {}))
+            ),
+            "missing": list(details.get("missing", ())),
+            "degenerate_required": list(details.get("degenerate_required", ())),
+            "insufficient_effective_mass": list(
+                details.get("insufficient_effective_mass", ())
+            ),
+            "stale_exclusions": list(details.get("stale_exclusions", ())),
+            "effective_mass_policy": dict(
+                details.get("effective_mass_policy", {})
+            ),
+            "family_effective_mass": dict(
+                details.get("family_effective_mass", {})
+            ),
+            "family_build_state": dict(details.get("family_build_state", {})),
+        },
+        "hmrc_replay": {
+            "summary": dict(
+                dict(family_evidence.get("targets", {})).get(
+                    "classification", {}
+                )
+            ),
+            "post_draw_identity": dict(
+                family_evidence.get("post_draw_identity", {})
+            ),
+        },
+        "artifacts": safe_artifacts,
     }
 
 
@@ -267,6 +404,7 @@ def _validate_distinct_paths(
     hmrc_ods: Path,
     adult_tab: Path,
     benefits_tab: Path,
+    build_record_path: Path,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -275,6 +413,7 @@ def _validate_distinct_paths(
         "--hmrc-ods": hmrc_ods.resolve(),
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
+        "--build-record-json": build_record_path.resolve(),
         "--input-coverage-json": coverage_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),

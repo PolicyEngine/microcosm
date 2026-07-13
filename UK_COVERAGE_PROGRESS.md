@@ -5,9 +5,12 @@ from the immutable enhanced-FRS 2023-24 artifact (SHA-256 `584ae33d…`). The
 certified `populace_uk_2023` candidate (SHA-256 `f17306cc…`) carries raw
 non-default signal for all 145, but `gift_aid` and
 `charitable_investment_gifts` carry it only on zero-weight SPI rows. The launch
-register therefore honestly has **143 required columns and 2 reviewed
-exclusions**. Both exclusions use the campaign reason “not yet ported from
-enhanced FRS pipeline — pending review” and the required tracking note.
+register therefore honestly began with **143 required columns and 2 reviewed
+exclusions**. The rebuilt SPI stage now carries both columns above the reviewed
+1 ppm floor on positive effective mass, so the current contract has **145
+required columns and 0 reviewed exclusions**. The pinned base-candidate
+evidence remains unchanged at 143 effective-signal columns; a separate reviewed
+post-stage restoration record explains the two promotions.
 
 | Milestone | Coverage change | Evidence | Status |
 | --- | ---: | --- | --- |
@@ -18,7 +21,8 @@ enhanced FRS pipeline — pending review” and the required tracking note.
 | Effective-mass coverage | −2 required; +2 reviewed exclusions | Candidate evidence and the final gate both require signal on at least 0.000001 of owning-entity effective population mass; zero-weight Gift Aid support is excluded honestly until restoration | Complete |
 | HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
 | HMRC/SPI adjudicated replay | Not promoted | Full PAY/UBISJA/INCPBEN and the explicitly named OSSBEN/SRP subsets are retained; five source-absent leaves and both subsets carry canonical fences; complete FRS Total Income bands remain unavailable | Complete as a fenced replay; not a restored family |
-| Real-donor replay, 2026-07-13 | No status change | Pinned donor + ODS, 100,000-row reviewed bootstrap, 432,779 SPI predictions, exact post-draw identity, 1ppm Gift Aid checks, and a complete 0 exact / 0 directional / 208 excluded aggregate report | Complete; final 143+2 gate correctly blocks stale exclusions |
+| Real-donor replay, 2026-07-13 | Stale-exclusion remediation identified | Pinned donor + ODS, 100,000-row reviewed bootstrap, 432,779 SPI predictions, exact post-draw identity, 1ppm Gift Aid checks, and a complete 0 exact / 0 directional / 208 excluded aggregate report | Complete; the 143+2 gate correctly demanded promotion |
+| Charitable promotion and staging, 2026-07-13 | +2 required; −2 reviewed exclusions | SPI-channel shares 0.0133031567 and 0.0002805533; 145/0 gate pass; importance weights and one valid mass-conserving record; 1.53 GB ignored staging H5 SHA-256 `829e843f…` | Complete; PR-ready contract milestone |
 
 ## Restoration diagnosis
 
@@ -57,12 +61,13 @@ instrument cannot materialize complete Total Income. The replay therefore
 keeps `IMPORTANCE` weights and emits a fenced report instead of fitting biased
 constraints.
 
-The manifest records `hmrc_spi_income` as `deferred_until_restored`. The two
-charitable columns remain reviewed exclusions under the conductor-frozen
-**143 required + 2 reviewed exclusions** contract even after the real replay
-demonstrates positive-mass signal. This deliberately makes the final anti-rot
-gate fail on those stale exclusions; status promotion is a separate conductor
-decision and was not performed on this branch.
+The manifest now records `hmrc_spi_income` as `required_at_build`, making the
+stage plan, SPI-channel 1 ppm checks, importance-weight state, mapped period,
+and reviewed mass-change record executable release requirements. Its separate
+`restoration_status` remains `adjudicated_partial_replay`: promoting the two
+charitable input columns does not pretend the 208 banded HMRC facts are
+like-for-like. Both inputs are hard requirements under the current **145
+required + 0 reviewed exclusions** contract.
 
 ## Reviewed real-source evidence
 
@@ -214,8 +219,9 @@ This establishes the adjudicated source contract: `EPB`, `EXPS`, `TAXTERM`,
 `MOTHINC`, and `OTHERINC` have no complete raw FRS source, while `OSSBEN` and
 `SRP` are only partial. The retained-leaf stage implements exactly the three
 full and two explicitly named subset findings. It does not impute, combine
-heterogeneous fields, or promote a subset to a full source concept. The release
-contract remains **143 required + 2 reviewed exclusions**.
+heterogeneous fields, or promote a subset to a full source concept. These
+source fences govern the 208-fact replay; they do not weaken the separately
+restored 145-column release-input contract.
 
 ## Real-donor HMRC replay, 2026-07-13
 
@@ -250,14 +256,20 @@ remaining roughly two orders of magnitude below the rarest populated reference
 share. The rebuilt channel exceeds it honestly: `gift_aid` has 12,894
 positive-mass rows and a 0.0133031567 mass share;
 `charitable_investment_gifts` has 294 rows and a 0.0002805533 share. Neither is
-counted restored while its manifest status remains a reviewed exclusion.
+inferred from raw presence: both promotions are pinned to this weighted SPI
+evidence and remain subject to the same floor on every required national build.
 
-The final release gate sees all 143 required columns, no missing or degenerate
-requirement, and no insufficient effective-mass result. It fails only on the
-two charitable columns as stale reviewed exclusions, exactly as the frozen
-143+2 contract requires. No staging H5 was written. The committed aggregate
-artifacts are `hmrc_income_replay_report.json` (SHA-256 `32d343ab…`) and
-`hmrc_income_release_gate_report.json` (SHA-256 `21a87534…`); they contain no
-row-level donor data or local paths. The HMRC family remains **not counted
-restored** pending conductor review of the status promotion and the fenced
-published targets.
+After promotion, the final release gate sees all 145 required columns, no
+reviewed or stale exclusions, no missing or degenerate requirement, and no
+insufficient effective-mass result. The family-specific gate also confirms the
+required SPI channel, `IMPORTANCE` weights, build period 2023, and one valid
+mass-conserving `MassChangeRecord`. It passes and writes the ignored staging H5
+(1,532,379,785 bytes; SHA-256
+`829e843f5d1577ff4770ed344c2c15eed4f0c1fdc64af2dc7b511c825fde6709`).
+
+The committed aggregate artifacts are `hmrc_income_replay_report.json`
+(unchanged SHA-256 `32d343ab…`), `hmrc_income_release_gate_report.json`
+(SHA-256 `a0856168…`), and `national_staging_build_record.json` (SHA-256
+`2bfb4e71…`). They contain no row-level donor data, donor filename, or local
+paths. The 208-fact HMRC comparison remains the adjudicated fenced partial
+replay; the release stage and its two restored input columns are now mandatory.

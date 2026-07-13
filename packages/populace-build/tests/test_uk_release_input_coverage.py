@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime import (
+    RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS,
     UK_LOADER_INPUT_ALIASES,
     PolicyEngineUKCoverageEngine,
     UKEffectiveMassCoveragePolicy,
@@ -601,15 +602,15 @@ class TestUKManifest:
         assert_uk_release_input_coverage_manifest_current(
             engine=_StubEngine({}, set(manifest.declared_columns))
         )
-        effective_gaps = {"charitable_investment_gifts", "gift_aid"}
         assert manifest.required_columns == frozenset(
-            set(load_efrs_parity_reference().populated_layers) - effective_gaps
+            load_efrs_parity_reference().populated_layers
         )
-        assert set(manifest.reviewed_exclusions) == effective_gaps
-        assert {
-            gap.variable for gap in load_efrs_parity_known_gaps()
-        } == effective_gaps
-        assert manifest.required_build_stages == frozenset()
+        assert manifest.reviewed_exclusions == {}
+        assert load_efrs_parity_known_gaps() == ()
+        assert manifest.required_build_stages == frozenset({"hmrc_spi_income"})
+        assert RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS == frozenset(
+            {"charitable_investment_gifts", "gift_aid"}
+        )
 
     def test_manifest_refuses_empty_columns(self, tmp_path) -> None:
         bad = tmp_path / "empty.json"
@@ -665,6 +666,9 @@ class TestUKManifest:
             / "release_input_coverage_manifest.json"
         )
         payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["family_coverage"]["hmrc_spi_income"]["status"] = (
+            "deferred_until_restored"
+        )
         payload["family_coverage"]["hmrc_spi_income"].pop(
             "restoration_status", None
         )
@@ -773,35 +777,35 @@ class TestUKManifest:
 
     def test_deferred_family_columns_must_remain_reviewed_exclusions(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["status"] = "deferred_until_restored"
+
+        with pytest.raises(ValueError, match="deferred distributional requirement"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=replace(manifest, family_coverage=families),
+            )
+
+    def test_promoted_family_columns_must_be_required(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
         columns = tuple(
-            replace(column, status="required", reason="", tracking_note="")
+            replace(
+                column,
+                status="reviewed_exclusion",
+                reason="not yet ported from enhanced FRS pipeline — pending review",
+                tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+            )
             if column.name == "gift_aid"
             else column
             for column in manifest.columns
         )
 
-        with pytest.raises(ValueError, match="deferred distributional requirement"):
-            assert_uk_release_input_coverage_manifest_current(
-                engine=_StubEngine({}, set(manifest.declared_columns)),
-                manifest=replace(manifest, columns=columns),
-            )
-
-    def test_promoted_family_columns_must_be_required(self) -> None:
-        manifest = load_uk_release_input_coverage_manifest()
-        families = {
-            name: dict(family) for name, family in manifest.family_coverage.items()
-        }
-        families["hmrc_spi_income"].update(
-            {
-                "status": "required_at_build",
-                "restoration_status": "restored",
-            }
-        )
-
         with pytest.raises(ValueError, match="required_at_build"):
             assert_uk_release_input_coverage_manifest_current(
                 engine=_StubEngine({}, set(manifest.declared_columns)),
-                manifest=replace(manifest, family_coverage=families),
+                manifest=replace(manifest, columns=columns),
             )
 
     def test_loader_aliases_are_hard_covered(self) -> None:

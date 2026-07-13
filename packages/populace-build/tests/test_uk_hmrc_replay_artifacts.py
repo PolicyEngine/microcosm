@@ -25,6 +25,7 @@ from populace.build.uk_runtime.spi_income import (
 _PACKAGE = "populace.build.uk"
 _REPLAY_RESOURCE = "hmrc_income_replay_report.json"
 _GATE_RESOURCE = "hmrc_income_release_gate_report.json"
+_BUILD_RECORD_RESOURCE = "national_staging_build_record.json"
 _DISTRIBUTIONAL_COLUMNS = frozenset(("gift_aid", "charitable_investment_gifts"))
 _FORBIDDEN_ROW_LEVEL_KEYS = frozenset(
     {
@@ -41,6 +42,8 @@ _FORBIDDEN_ROW_LEVEL_KEYS = frozenset(
         "records",
         "draws",
         "predictions",
+        "path",
+        "paths",
     }
 )
 
@@ -140,20 +143,17 @@ def test_real_replay_binds_sources_identity_and_positive_mass() -> None:
     )
 
 
-def test_frozen_143_plus_2_gate_refuses_stale_exclusions_only() -> None:
+def test_promoted_145_column_gate_passes_with_required_spi_support() -> None:
     gate = _resource(_GATE_RESOURCE)
     coverage = gate["input_coverage"]
     details = coverage["details"]
 
     assert gate["enforced"] is True
-    assert coverage["passed"] is False
-    assert coverage["failures"] == [
-        "Stale reviewed exclusions — the column carries signal now, promote "
-        "it to a hard requirement: ['charitable_investment_gifts', 'gift_aid']."
-    ]
-    assert details["required_columns"] == 143
-    assert set(details["reviewed_exclusions"]) == _DISTRIBUTIONAL_COLUMNS
-    assert set(details["stale_exclusions"]) == _DISTRIBUTIONAL_COLUMNS
+    assert coverage["passed"] is True
+    assert coverage["failures"] == []
+    assert details["required_columns"] == 145
+    assert details["reviewed_exclusions"] == {}
+    assert details["stale_exclusions"] == []
     assert details["missing"] == []
     assert details["degenerate_required"] == []
     assert details["insufficient_effective_mass"] == []
@@ -163,12 +163,54 @@ def test_frozen_143_plus_2_gate_refuses_stale_exclusions_only() -> None:
         assert diagnostic["effective_signal_mass_share"] >= (
             DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
         )
+        family_diagnostic = details["family_effective_mass"]["hmrc_spi_income"][
+            column
+        ]
+        assert family_diagnostic["required_support_channel"] == "spi"
+        assert family_diagnostic["effective_signal_mass_share"] >= (
+            DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
+        )
+    build_state = details["family_build_state"]["hmrc_spi_income"]
+    assert build_state["actual_output_weight_kind"] == "importance"
+    assert build_state["actual_build_period"] == "2023"
+    assert build_state["valid_mass_change_records"] >= 1
+
+
+def test_national_staging_record_is_aggregate_and_binds_green_artifacts() -> None:
+    record = _resource(_BUILD_RECORD_RESOURCE)
+
+    assert record["build_kind"] == "uk_national_staging_dataset"
+    assert record["status"] == "passed"
+    assert record["stages"] == [
+        "frs_hmrc_retained_leaves",
+        "hmrc_spi_income",
+    ]
+    assert record["input_coverage"]["passed"] is True
+    assert record["input_coverage"]["required_columns"] == 145
+    assert record["input_coverage"]["reviewed_exclusion_columns"] == 0
+    assert record["input_coverage"]["missing"] == []
+    assert record["input_coverage"]["degenerate_required"] == []
+    assert record["input_coverage"]["insufficient_effective_mass"] == []
+    assert record["dataset"]["household_weight_kind"] == "importance"
+    assert record["dataset"]["entity_rows"]["person"] > 0
+    assert record["dataset"]["entity_rows"]["household"] > 0
+    assert record["artifacts"]["staging_h5"]["retention"] == "local_untracked"
+    assert record["artifacts"]["spi_donor"] == {
+        "sha256": SPI_DONOR_SHA256,
+        "size_bytes": SPI_DONOR_SIZE_BYTES,
+    }
+    assert record["artifacts"]["hmrc_surface"]["sha256"] == (
+        HMRC_SPI_COLLATED_ODS_SHA256
+    )
+    assert record["hmrc_replay"]["summary"]["excluded_with_fence"] == (
+        HMRC_SPI_TARGET_RECORD_COUNT
+    )
 
 
 def test_committed_replay_artifacts_contain_no_row_level_payloads_or_local_paths() -> (
     None
 ):
-    for resource in (_REPLAY_RESOURCE, _GATE_RESOURCE):
+    for resource in (_REPLAY_RESOURCE, _GATE_RESOURCE, _BUILD_RECORD_RESOURCE):
         payload = _resource(resource)
         assert not (_walk_keys(payload) & _FORBIDDEN_ROW_LEVEL_KEYS)
         serialized = json.dumps(payload, allow_nan=False, sort_keys=True)
