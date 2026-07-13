@@ -262,9 +262,7 @@ def _certified_like_dead_spi_support():
             "employment_income": np.arange(1_000.0, 9_000.0, 1_000.0),
         }
     )
-    benunit = pd.DataFrame(
-        {"benunit_id": np.arange(201, 209, dtype="int64")}
-    )
+    benunit = pd.DataFrame({"benunit_id": np.arange(201, 209, dtype="int64")})
     return create_uk_spi_support_tables(
         person=person,
         benunit=benunit,
@@ -276,9 +274,7 @@ def _certified_like_dead_spi_support():
 
 def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
     dead = _certified_like_dead_spi_support()
-    dead_spi = dead.household[
-        dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
-    ]
+    dead_spi = dead.household[dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]]
     original_total = float(dead.household["household_weight"].sum())
 
     result = replace_uk_spi_support_tables(

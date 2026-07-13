@@ -17,8 +17,8 @@ enhanced FRS pipeline — pending review” and the required tracking note.
 | National orchestration seam | No status change | Ordered stage protocol, stable verified-byte binding, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
 | Effective-mass coverage | −2 required; +2 reviewed exclusions | Candidate evidence and the final gate both require signal on at least 0.000001 of owning-entity effective population mass; zero-weight Gift Aid support is excluded honestly until restoration | Complete |
 | HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
-| HMRC/SPI income restoration | Not promoted | The adjudicated Option 1 raw-FRS audit found complete sources for only part of the ten-leaf crosswalk; five leaves have no source-faithful monetary measure and two are incomplete, as recorded below | Blocked pending per-constituent adjudication |
-| Real-donor replay, 2026-07-13 | No status change | The donor and ODS pins remain verified, but the adjudicated source audit triggered the required stop before donor replay; no staging file, coverage sidecar, or aggregate 208-fact report was emitted | Blocked pending per-constituent adjudication |
+| HMRC/SPI adjudicated replay | Not promoted | Full PAY/UBISJA/INCPBEN and the explicitly named OSSBEN/SRP subsets are retained; five source-absent leaves and both subsets carry canonical fences; complete FRS Total Income bands remain unavailable | Complete as a fenced replay; not a restored family |
+| Real-donor replay, 2026-07-13 | No status change | Pinned donor + ODS, 100,000-row reviewed bootstrap, 432,779 SPI predictions, exact post-draw identity, 1ppm Gift Aid checks, and a complete 0 exact / 0 directional / 208 excluded aggregate report | Complete; final 143+2 gate correctly blocks stale exclusions |
 
 ## Restoration diagnosis
 
@@ -48,20 +48,21 @@ This seam does not clone households, assign local geography, publish a release,
 or alter `tools/build_uk_rowwise_dataset.py`. The existing geography tool
 remains downstream and separate.
 
-The HMRC stage is designed to drop the certified candidate's zero-weight SPI
-rows, rebuild one SPI channel, allocate 50% of unchanged national household
-mass to it as `IMPORTANCE` weights, and record the factor-one allocation as a
-deliberate `MassChangeRecord`. A successful calibration would then transition
-`IMPORTANCE` to `CALIBRATED`, conserve national mass, compile all 208 facts,
-respect a 5× record-weight ratio cap, and keep every target within 5%.
+The HMRC stage drops the certified candidate's zero-weight SPI rows, rebuilds
+one SPI channel, allocates 50% of unchanged national household mass to it as
+`IMPORTANCE` weights, and records the factor-one allocation as a deliberate
+`MassChangeRecord`. The latest constituent adjudication forbids calibration:
+all 208 published facts use non-overlapping Total Income bands, while the FRS
+instrument cannot materialize complete Total Income. The replay therefore
+keeps `IMPORTANCE` weights and emits a fenced report instead of fitting biased
+constraints.
 
-While Q2 remains blocked, the manifest records `hmrc_spi_income` as
-`deferred_until_restored`: the stage plan and family-specific gates are not
-executable release requirements yet, and its two effective-mass columns remain
-reviewed exclusions. Promotion is fail-closed and coupled: once source-backed
-FRS constituents make the family runnable, the source contract must record the
-restored state, the family becomes `required_at_build`, and both columns must
-be promoted to required from evidence produced by the restored candidate.
+The manifest records `hmrc_spi_income` as `deferred_until_restored`. The two
+charitable columns remain reviewed exclusions under the conductor-frozen
+**143 required + 2 reviewed exclusions** contract even after the real replay
+demonstrates positive-mass signal. This deliberately makes the final anti-rot
+gate fail on those stale exclusions; status promotion is a separate conductor
+decision and was not performed on this branch.
 
 ## Reviewed real-source evidence
 
@@ -125,7 +126,7 @@ Tests assert the identity on every synthetic row. The official rounded `TI`,
 `TEI`, and `TII` donor fields are validation inputs only and are never stochastic
 QRF outputs.
 
-## Q2 fail-closed blocker
+## Q2 fail-closed audit and adjudicated resolution
 
 The conductor requires the Table 3.6 employment measure to use one documented
 constituent crosswalk identically on both FRS and SPI channels, while preserving
@@ -143,21 +144,10 @@ faithful substitute for the missing HMRC leaves or SPI `OTHERINC`. Consequently
 the published broad measure cannot be reconstructed like-for-like from the
 certified base.
 
-The source manifest and runtime therefore require all normalized FRS leaves and
-fail before ODS parsing, SPI replacement, donor fitting, calibration, or staging
-write when any is absent. They explicitly forbid substituting
-`employment_income` or `miscellaneous_income`. This is the adjudicated stop
-condition, not a reviewed exclusion or a relaxed gate.
-
-The licensed 2022–23 donor staged on 2026-07-13 does not resolve this blocker.
-Its 141,323,762-byte size and SHA-256 `5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66`
-and the ODS identity were reverified before use. A production invocation against
-the certified candidate then failed at
-`assert_frs_hmrc_auxiliary_crosswalk_available` with all ten normalized FRS
-constituents missing. The preflight ran before ODS parsing, donor reading, SPI
-replacement, calibration, the release gate, and all staging writes, as designed.
-The caller-owned `uk_runtime/` scratch directory remained empty and is locally
-excluded from Git.
+The first production preflight therefore stopped before ODS parsing, donor
+reading, SPI replacement, QRF fitting, or staging writes. That fail-closed stop
+was the correct pre-adjudication result: it proved the compact candidate alone
+could not supply the broad crosswalk and wrote no artifact.
 
 The final source-semantic audit confirms that this is not a naming-only gap.
 The official SPI 2022–23 Annex A defines monetary `EPB` and `EXPS`, separately
@@ -172,11 +162,21 @@ Consequently, `employment_income` plus reported benefit aggregates is a new
 shared proxy, not the conductor-required identical documented constituent
 crosswalk. It was not substituted into the release path.
 
-A throwaway, non-release diagnostic using those candidate aggregates was
-stopped during stage-two QRF prediction as soon as the codebook audit
-established that the mappings were proxies. It wrote no row-level or aggregate
-artifact and is not replay evidence. The strict production result above is the
-only admissible release-path result.
+The conductor subsequently adjudicated the raw-source audit constituent by
+constituent. The national seam now retains full `PAY`, `UBISJA`, and structurally
+expressible `INCPBEN` leaves directly from the raw FRS, alongside rather than in
+place of PolicyEngine inputs. It separately names
+`ossben_identifiable_subset` and `srp_regular_code5`; neither is represented as
+the full SPI concept. `EPB`, `EXPS`, `TAXTERM`, `MOTHINC`, and `OTHERINC` remain
+source-absent and fenced. The runtime writes `NaN`, not zero or a proxy, where a
+full source concept cannot be materialized on the FRS channel.
+
+Because those missing and partial legs prevent a complete like-for-like FRS
+Total Income measure, every published fact depending on an income band is a
+reviewed exclusion. The partial measures do not establish a one-directional
+bound on band membership, so none qualifies as directional. The real replay
+therefore evaluates the complete 208-fact surface as 208 fenced exclusions and
+performs no HMRC calibration.
 
 ## Q2 Option 1 raw-FRS source audit, 2026-07-13
 
@@ -210,13 +210,54 @@ it is not evidence that the normalized leaf is populated.
 | `OTHERINC` | The same `ADULT`, `ODDJOB`, and `JOB` fields, plus `PENSION`, `ACCOUNTS`, `ASSETS`, and `BENEFITS`, were searched for a distinct residual-income field | **Missing.** No person-level raw FRS variable has SPI `OTHERINC` semantics, and the miscellaneous pool cannot be split between `MOTHINC` and `OTHERINC` from source evidence. | No separable mass estimate; the unresolved pool is 1.4650566%. |
 | `SRP` | `BENEFITS.BENAMT` where `BENEFIT == 5`; codes 6 and 9 checked for widow-related amounts | **Incomplete.** Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension. | 18.1567916% has regular code-5 State Pension; not counted as complete `SRP` support. |
 
-This establishes the adjudicated stop condition: `EPB`, `EXPS`, `TAXTERM`,
+This establishes the adjudicated source contract: `EPB`, `EXPS`, `TAXTERM`,
 `MOTHINC`, and `OTHERINC` have no complete raw FRS source, while `OSSBEN` and
-`SRP` are only partial. No imputation, proxy, normalized-leaf stage, source-
-manifest promotion, national staging build, or real-donor replay was attempted.
-The release contract remains **143 required + 2 reviewed exclusions**.
+`SRP` are only partial. The retained-leaf stage implements exactly the three
+full and two explicitly named subset findings. It does not impute, combine
+heterogeneous fields, or promote a subset to a full source concept. The release
+contract remains **143 required + 2 reviewed exclusions**.
 
-No national staging artifact has passed the 208 real targets, the weighted
-charitable-giving floor, or the income-tax backtest. `gift_aid` and
-`charitable_investment_gifts` remain distributional/effective-weight gaps and
-the HMRC family is **not counted restored**.
+## Real-donor HMRC replay, 2026-07-13
+
+The production replay reverified both opaque source identities before either
+file was read: the 141,323,762-byte licensed SPI donor at SHA-256
+`5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66`
+and the 166,693-byte official ODS at SHA-256
+`ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e`.
+The retained FRS sources were also bound by stable verified bytes:
+`ADULT` has 28,590 rows and SHA-256 `e09f9647…`; `BENEFITS` has 46,636 rows
+and SHA-256 `ff30d054…`. Their source signals are 13,412 `PAY` rows, 163
+`UBISJA` rows, zero observed but structurally wired `INCPBEN` rows, 627 OSSBEN
+subset rows, and 8,494 regular-code-5 SRP rows.
+
+The seam removed all 200,000 dead zero-weight SPI households and rebuilt one
+honest SPI channel. It assigned that channel a reviewed 50% share of the
+unchanged 28,840,551.182 national household mass, recorded the deliberate
+allocation, and retained `IMPORTANCE` output weights. The reviewed seed-42 QRF
+fit used 100,000 donor records, trained the FRS-only fill on 72,496 rows, and
+produced 432,779 SPI person predictions. `TEI + TII = TI` holds by construction
+on all 432,779 predictions.
+
+The aggregate replay report contains the full 8 components × 13 bands × 2
+measures surface. Its result is **0 exact pass, 0 exact fail, 0 directional
+pass, 0 directional fail, and 208 excluded with canonical fences**. Every
+estimate and delta for an excluded fact is null. This is intentional: a partial
+FRS employment or pension measure cannot assign complete HMRC Total Income
+bands, so computing those facts would introduce known but unbounded bias.
+
+The 1 ppm effective-mass floor rejects dead support and numerical dust while
+remaining roughly two orders of magnitude below the rarest populated reference
+share. The rebuilt channel exceeds it honestly: `gift_aid` has 12,894
+positive-mass rows and a 0.0133031567 mass share;
+`charitable_investment_gifts` has 294 rows and a 0.0002805533 share. Neither is
+counted restored while its manifest status remains a reviewed exclusion.
+
+The final release gate sees all 143 required columns, no missing or degenerate
+requirement, and no insufficient effective-mass result. It fails only on the
+two charitable columns as stale reviewed exclusions, exactly as the frozen
+143+2 contract requires. No staging H5 was written. The committed aggregate
+artifacts are `hmrc_income_replay_report.json` (SHA-256 `32d343ab…`) and
+`hmrc_income_release_gate_report.json` (SHA-256 `21a87534…`); they contain no
+row-level donor data or local paths. The HMRC family remains **not counted
+restored** pending conductor review of the status promotion and the fenced
+published targets.

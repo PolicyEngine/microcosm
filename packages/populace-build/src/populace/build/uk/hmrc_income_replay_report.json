@@ -1,0 +1,5097 @@
+{
+  "build_evidence": {
+    "calibration_performed": false,
+    "mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
+    "output_weight_kind": "importance",
+    "replaced_spi_households": 200000,
+    "spi_prior_mass_share": 0.5,
+    "stage": "hmrc_spi_income"
+  },
+  "diagnostic_aggregates": [],
+  "effective_mass_evidence": {
+    "columns": {
+      "charitable_investment_gifts": 0.00028055329260683216,
+      "gift_aid": 0.01330315665904484
+    },
+    "denominator": "all_person_effective_mass",
+    "minimum_nondefault_mass_share": 1e-06,
+    "required_support_channel": "spi"
+  },
+  "facts": [
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 444000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4810000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1360000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 16900000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1140000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 11800000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1070000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4350000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 651000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 8030000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3100000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 48600000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2050000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 22200000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2140000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 13600000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 961000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 15700000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 7470000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 172000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2320000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 24900000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2660000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 30200000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 595000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 12600000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 5370000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 170000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1160000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 12300000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1450000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 24900000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 359000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 8730000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3500000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 139000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 568000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 6020000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 779000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 16900000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 311000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 8220000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3430000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 174000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 441000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4660000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 643000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 17400000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 143000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 5360000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1640000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 118000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 176000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1890000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 259000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 9470000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 85000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4980000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 791000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 82300000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 74000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 847000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 109000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 5430000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 40000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3650000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 264000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 39200000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 21000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 265000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 29000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1810000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 34000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4390000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 180000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 36600000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 14000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 179000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 20000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1570000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 21000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4840000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 93000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 29000000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 8000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 96000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 10000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1120000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 15000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 6670000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 44000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 23100000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 43000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 640000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 11000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "self_employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 19500000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 21000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "employment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 35500000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/employment_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "state_pension",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 20000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/state_pension_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "private_pension_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 370000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 101000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 670000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1250000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 274000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 115000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 175000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 7000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 6000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_12_570_to_15_000",
+      "total_income_lower_bound": 12570,
+      "total_income_upper_bound": 15000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 232000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1690000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2840000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1370000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 372000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 855000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 25000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 33000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_15_000_to_20_000",
+      "total_income_lower_bound": 15000,
+      "total_income_upper_bound": 20000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 431000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3820000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 5250000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3130000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 843000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3330000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 58000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 157000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_20_000_to_30_000",
+      "total_income_lower_bound": 20000,
+      "total_income_upper_bound": 30000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 364000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3800000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3690000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2530000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 667000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 4700000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 50000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 190000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_30_000_to_40_000",
+      "total_income_lower_bound": 30000,
+      "total_income_upper_bound": 40000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 325000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3780000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2370000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1870000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 627000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 8400000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 44000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 216000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_40_000_to_50_000",
+      "total_income_lower_bound": 40000,
+      "total_income_upper_bound": 50000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 397000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 5400000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2230000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2340000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 643000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 12500000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 65000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 377000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_50_000_to_70_000",
+      "total_income_lower_bound": 50000,
+      "total_income_upper_bound": 70000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 226000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3770000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1070000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1620000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 336000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 9440000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 52000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 415000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_70_000_to_100_000",
+      "total_income_lower_bound": 70000,
+      "total_income_upper_bound": 100000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 137000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 2550000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 489000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1260000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 222000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 6870000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 46000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 455000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_100_000_to_150_000",
+      "total_income_lower_bound": 100000,
+      "total_income_upper_bound": 150000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 54000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1150000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 146000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 650000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 92000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3450000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 27000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 322000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_150_000_to_200_000",
+      "total_income_lower_bound": 150000,
+      "total_income_upper_bound": 200000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 41000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1050000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 111000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 733000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 75000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3700000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 26000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 499000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_200_000_to_300_000",
+      "total_income_lower_bound": 200000,
+      "total_income_upper_bound": 300000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 23000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 765000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 68000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 673000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 49000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3430000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 22000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 642000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_300_000_to_500_000",
+      "total_income_lower_bound": 300000,
+      "total_income_upper_bound": 500000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 13000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 474000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 38000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 653000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 32000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 3820000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 17000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 744000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_500_000_to_1_000_000",
+      "total_income_lower_bound": 500000,
+      "total_income_upper_bound": 1000000,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 7000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "property_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 439000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/property_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 21000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "savings_interest_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1240000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/savings_interest_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 19000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "dividend_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 11100000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "count",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 13000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_count_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "people"
+    },
+    {
+      "blocked_dependencies": [
+        "hmrc_spi_assessable_income"
+      ],
+      "classification": "excluded",
+      "comparison_limit": null,
+      "component": "other_investment_income",
+      "delta": null,
+      "estimate": null,
+      "fence_ids": [
+        "full_frs_tei_band_unavailable"
+      ],
+      "measure": "amount",
+      "operator": null,
+      "outcome": "excluded_with_fence",
+      "period": "2023",
+      "published_value": 1790000000.0,
+      "relative_delta": null,
+      "target_name": "hmrc/other_investment_income_income_band_1_000_000_to_inf",
+      "total_income_lower_bound": 1000000,
+      "total_income_upper_bound": null,
+      "unit": "GBP"
+    }
+  ],
+  "fences": {
+    "frs_epb_source_absent": {
+      "constituents": [
+        "EPB"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.",
+      "mass_implication": "12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.",
+      "rationale": "Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.",
+      "raw_sources_searched": [
+        "JOB.EXPBEN01-EXPBEN13",
+        "JOB.CARVAL",
+        "JOB.CARAMT",
+        "JOB.FUELAMT",
+        "JOB.VCHAMT",
+        "JOB.CHVAMT"
+      ]
+    },
+    "frs_exps_source_absent": {
+      "constituents": [
+        "EXPS"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.",
+      "mass_implication": "5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.",
+      "rationale": "The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.",
+      "raw_sources_searched": [
+        "JOB.EXPBEN04/EXPBEN05",
+        "JOB.MILEAMT/JOB.MOTAMT",
+        "JOB.UMILEAMT/JOB.UMOTAMT",
+        "JOB.DEDUC1-DEDUC9",
+        "JOB.UDEDUC1-UDEDUC9"
+      ]
+    },
+    "frs_mothinc_source_absent": {
+      "constituents": [
+        "MOTHINC"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.",
+      "mass_implication": "Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.",
+      "rationale": "The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.",
+      "raw_sources_searched": [
+        "ODDJOB.OJAMT/ODDJOB.OJNOW",
+        "ADULT.ALLPAY2",
+        "ADULT.ROYYR2-ROYYR4",
+        "JOB.OWNOTHER"
+      ]
+    },
+    "frs_ossben_identifiable_subset": {
+      "constituents": [
+        "OSSBEN",
+        "ossben_identifiable_subset"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.",
+      "mass_implication": "1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.",
+      "rationale": "The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.",
+      "raw_sources_searched": [
+        "BENEFITS.BENAMT",
+        "BENEFITS.BENEFIT",
+        "BENEFITS.VAR2",
+        "BENEFITS codes 13, 16, 6, and 30"
+      ]
+    },
+    "frs_otherinc_source_absent": {
+      "constituents": [
+        "OTHERINC"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.",
+      "mass_implication": "No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.",
+      "rationale": "A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.",
+      "raw_sources_searched": [
+        "ADULT, ODDJOB, and JOB miscellaneous fields",
+        "PENSION",
+        "ACCOUNTS",
+        "ASSETS",
+        "BENEFITS"
+      ]
+    },
+    "frs_srp_regular_code5_subset": {
+      "constituents": [
+        "SRP",
+        "srp_regular_code5"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.",
+      "mass_implication": "18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.",
+      "rationale": "The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.",
+      "raw_sources_searched": [
+        "BENEFITS.BENAMT where BENEFIT == 5",
+        "BENEFITS codes 6 and 9"
+      ]
+    },
+    "frs_taxterm_source_absent": {
+      "constituents": [
+        "TAXTERM"
+      ],
+      "dependent_fence_ids": [],
+      "finding": "Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.",
+      "mass_implication": "0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.",
+      "rationale": "Gross redundancy pay cannot be relabeled as taxable termination pay.",
+      "raw_sources_searched": [
+        "ADULT.REDAMT",
+        "ADULT and JOB taxable-termination split search"
+      ]
+    },
+    "full_frs_tei_band_unavailable": {
+      "constituents": [
+        "EPB",
+        "EXPS",
+        "TAXTERM",
+        "MOTHINC",
+        "OTHERINC",
+        "OSSBEN",
+        "SRP"
+      ],
+      "dependent_fence_ids": [
+        "frs_epb_source_absent",
+        "frs_exps_source_absent",
+        "frs_taxterm_source_absent",
+        "frs_mothinc_source_absent",
+        "frs_otherinc_source_absent",
+        "frs_ossben_identifiable_subset",
+        "frs_srp_regular_code5_subset"
+      ],
+      "finding": "The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.",
+      "mass_implication": "Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.",
+      "rationale": "A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.",
+      "raw_sources_searched": []
+    }
+  },
+  "qrf_evidence": {
+    "donor_rows": 100000,
+    "fits": {
+      "uk_frs_only_spi_fill": {
+        "weight_kind": "importance"
+      },
+      "uk_spi_2022_23_income": {
+        "weight_kind": "design"
+      }
+    },
+    "post_draw_identity": {
+      "exact": true,
+      "formula": "TEI + TII",
+      "rows_checked": 432779
+    },
+    "spi_prediction_rows": 432779,
+    "stage2_training_rows": 72496
+  },
+  "report_kind": "uk_hmrc_income_208_fact_replay",
+  "schema_version": 1,
+  "source_evidence": {
+    "certified_candidate": {
+      "filename": "populace_uk_2023.h5",
+      "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+      "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+      "size_bytes": 1315880118
+    },
+    "hmrc_surface": {
+      "mapped_build_period": "2023",
+      "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+      "sha256": "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e",
+      "size_bytes": 166693,
+      "tables": [
+        "Table_3_6",
+        "Table_3_7"
+      ],
+      "vintage": "2023-24"
+    },
+    "raw_frs_retained_leaves": {
+      "annualization": {
+        "days_per_week": 7,
+        "days_per_year": 365.25,
+        "weeks_per_year": 52.17857142857143
+      },
+      "lineage": {
+        "candidate_people": 1157100,
+        "capital_gains_person_id_offset": 33505005,
+        "clone_id_multiplier": 100000000,
+        "raw_source_people": 28640,
+        "spi_person_id_offset": 16754003
+      },
+      "mapped_build_period": "2023",
+      "retained_leaves": {
+        "hmrc_spi_incapacity_benefit_income": {
+          "formula": "sum(BENAMT where BENEFIT == 17) * (365.25 / 7)",
+          "raw_sources": [
+            "BENEFITS.BENEFIT=17:BENAMT"
+          ],
+          "scope": "full",
+          "source_signal_rows": 0,
+          "spi_concept": "INCPBEN",
+          "structural_zero": true
+        },
+        "hmrc_spi_pay": {
+          "formula": "max(0, ADULT.INEARNS) * (365.25 / 7)",
+          "raw_sources": [
+            "ADULT.INEARNS"
+          ],
+          "scope": "full",
+          "source_signal_rows": 13412,
+          "spi_concept": "PAY",
+          "structural_zero": false
+        },
+        "hmrc_spi_unemployment_benefit_income": {
+          "formula": "sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)",
+          "raw_sources": [
+            "BENEFITS.BENEFIT=14:BENAMT",
+            "BENEFITS.BENEFIT=19:BENAMT"
+          ],
+          "scope": "full",
+          "source_signal_rows": 163,
+          "spi_concept": "UBISJA",
+          "structural_zero": false
+        },
+        "ossben_identifiable_subset": {
+          "formula": "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)",
+          "raw_sources": [
+            "BENEFITS.BENEFIT=13:BENAMT",
+            "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT"
+          ],
+          "scope": "identifiable_subset",
+          "source_signal_rows": 627,
+          "spi_concept": "OSSBEN",
+          "structural_zero": false
+        },
+        "srp_regular_code5": {
+          "formula": "sum(BENAMT where BENEFIT == 5) * (365.25 / 7)",
+          "raw_sources": [
+            "BENEFITS.BENEFIT=5:BENAMT"
+          ],
+          "scope": "regular_code5_subset",
+          "source_signal_rows": 8494,
+          "spi_concept": "SRP",
+          "structural_zero": false
+        }
+      },
+      "source_vintage": "2023-24",
+      "sources": {
+        "adult": {
+          "extracted_columns": [
+            "sernum",
+            "person",
+            "inearns"
+          ],
+          "filename": "adult.tab",
+          "rows": 28590,
+          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
+          "size_bytes": 35323384,
+          "source_vintage": "2023-24"
+        },
+        "benefits": {
+          "extracted_columns": [
+            "sernum",
+            "person",
+            "benefit",
+            "benamt",
+            "var2"
+          ],
+          "filename": "benefits.tab",
+          "rows": 46636,
+          "sha256": "ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b",
+          "size_bytes": 4460292,
+          "source_vintage": "2023-24"
+        }
+      },
+      "stage": "frs_hmrc_retained_leaves"
+    },
+    "spi_donor": {
+      "release": "2022-23",
+      "rows_used": 100000,
+      "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+      "size_bytes": 141323762
+    }
+  },
+  "summary": {
+    "all_exclusions_fenced": true,
+    "all_facts_adjudicated": true,
+    "comparison_coverage_count": 0,
+    "comparison_coverage_share": 0.0,
+    "directional_fail": 0,
+    "directional_pass": 0,
+    "exact_fail": 0,
+    "exact_pass": 0,
+    "excluded_with_fence": 208,
+    "release_blocking_comparison_failures": 0,
+    "status": "reviewed_exclusions_only",
+    "total_facts": 208
+  }
+}

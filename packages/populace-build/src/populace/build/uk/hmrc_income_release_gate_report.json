@@ -1,0 +1,1197 @@
+{
+  "enforced": true,
+  "input_coverage": {
+    "details": {
+      "degenerate_required": [],
+      "dormant_exclusions": [],
+      "effective_mass_by_column": {
+        "a_and_e_visits": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "aa_category": {
+          "effective_signal_mass": 863624.2726425615,
+          "effective_signal_mass_share": 0.012621280461508523,
+          "entity": "person",
+          "positive_mass_signal_rows": 19040,
+          "signal_rows": 19040,
+          "total_effective_mass": 68426042.45079419
+        },
+        "access_fund": {
+          "effective_signal_mass": 7350.1870965678045,
+          "effective_signal_mass_share": 0.00010741797761946255,
+          "entity": "person",
+          "positive_mass_signal_rows": 216,
+          "signal_rows": 216,
+          "total_effective_mass": 68426042.45079419
+        },
+        "accommodation_type": {
+          "effective_signal_mass": 28840551.182180054,
+          "effective_signal_mass_share": 1.0,
+          "entity": "household",
+          "positive_mass_signal_rows": 535080,
+          "signal_rows": 535080,
+          "total_effective_mass": 28840551.182180054
+        },
+        "admitted_patient_visits": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "adult_ema": {
+          "effective_signal_mass": 23765.73255992516,
+          "effective_signal_mass_share": 0.0003473199926331458,
+          "entity": "person",
+          "positive_mass_signal_rows": 346,
+          "signal_rows": 346,
+          "total_effective_mass": 68426042.45079419
+        },
+        "afcs_reported": {
+          "effective_signal_mass": 160677.43273743478,
+          "effective_signal_mass_share": 0.00234819122928203,
+          "entity": "person",
+          "positive_mass_signal_rows": 2768,
+          "signal_rows": 2768,
+          "total_effective_mass": 68426042.45079419
+        },
+        "age": {
+          "effective_signal_mass": 67556811.77132654,
+          "effective_signal_mass_share": 0.9872967857217123,
+          "entity": "person",
+          "positive_mass_signal_rows": 1142153,
+          "signal_rows": 1142153,
+          "total_effective_mass": 68426042.45079419
+        },
+        "age_started_or_accepted_current_education_or_training": {
+          "effective_signal_mass": 11561624.437432397,
+          "effective_signal_mass_share": 0.16896526561135652,
+          "entity": "person",
+          "positive_mass_signal_rows": 190068,
+          "signal_rows": 190068,
+          "total_effective_mass": 68426042.45079419
+        },
+        "alcohol_and_tobacco_consumption": {
+          "effective_signal_mass": 16151876.2437502,
+          "effective_signal_mass_share": 0.5600404840296564,
+          "entity": "household",
+          "positive_mass_signal_rows": 320553,
+          "signal_rows": 320553,
+          "total_effective_mass": 28840551.182180054
+        },
+        "attends_private_school_random_draw": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "brma": {
+          "effective_signal_mass": 28789931.82202916,
+          "effective_signal_mass_share": 0.9982448546204563,
+          "entity": "household",
+          "positive_mass_signal_rows": 533983,
+          "signal_rows": 533983,
+          "total_effective_mass": 28840551.182180054
+        },
+        "bsp_reported": {
+          "effective_signal_mass": 287511.89648473007,
+          "effective_signal_mass_share": 0.004201790519910348,
+          "entity": "person",
+          "positive_mass_signal_rows": 5062,
+          "signal_rows": 5062,
+          "total_effective_mass": 68426042.45079419
+        },
+        "bus_subsidy_spending": {
+          "effective_signal_mass": 5235528.13884277,
+          "effective_signal_mass_share": 0.18153356729456988,
+          "entity": "household",
+          "positive_mass_signal_rows": 111332,
+          "signal_rows": 111332,
+          "total_effective_mass": 28840551.182180054
+        },
+        "capital_gains": {
+          "effective_signal_mass": 1926488.0483883815,
+          "effective_signal_mass_share": 0.02815431054300323,
+          "entity": "person",
+          "positive_mass_signal_rows": 267540,
+          "signal_rows": 267540,
+          "total_effective_mass": 68426042.45079419
+        },
+        "carers_allowance_reported": {
+          "effective_signal_mass": 780960.7888678451,
+          "effective_signal_mass_share": 0.011413209954812764,
+          "entity": "person",
+          "positive_mass_signal_rows": 12289,
+          "signal_rows": 12289,
+          "total_effective_mass": 68426042.45079419
+        },
+        "charitable_investment_gifts": {
+          "effective_signal_mass": 19197.151509625182,
+          "effective_signal_mass_share": 0.00028055329260683216,
+          "entity": "person",
+          "positive_mass_signal_rows": 294,
+          "signal_rows": 294,
+          "total_effective_mass": 68426042.45079419
+        },
+        "child_benefit_opts_out": {
+          "effective_signal_mass": 7767833.357248136,
+          "effective_signal_mass_share": 0.2124730276173564,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 141154,
+          "signal_rows": 141154,
+          "total_effective_mass": 36559150.32771718
+        },
+        "child_benefit_reported": {
+          "effective_signal_mass": 6028066.490956548,
+          "effective_signal_mass_share": 0.0880960855699259,
+          "entity": "person",
+          "positive_mass_signal_rows": 99970,
+          "signal_rows": 99970,
+          "total_effective_mass": 68426042.45079419
+        },
+        "child_ema": {
+          "effective_signal_mass": 21628.011762556944,
+          "effective_signal_mass_share": 0.00031607865935122365,
+          "entity": "person",
+          "positive_mass_signal_rows": 783,
+          "signal_rows": 783,
+          "total_effective_mass": 68426042.45079419
+        },
+        "child_tax_credit_reported": {
+          "effective_signal_mass": 713980.4130696153,
+          "effective_signal_mass_share": 0.010434337388181485,
+          "entity": "person",
+          "positive_mass_signal_rows": 12278,
+          "signal_rows": 12278,
+          "total_effective_mass": 68426042.45079419
+        },
+        "childcare_expenses": {
+          "effective_signal_mass": 2394559.4935998055,
+          "effective_signal_mass_share": 0.03499485587408852,
+          "entity": "person",
+          "positive_mass_signal_rows": 42366,
+          "signal_rows": 42366,
+          "total_effective_mass": 68426042.45079419
+        },
+        "clothing_and_footwear_consumption": {
+          "effective_signal_mass": 13387419.436147079,
+          "effective_signal_mass_share": 0.464187364228284,
+          "entity": "household",
+          "positive_mass_signal_rows": 265255,
+          "signal_rows": 265255,
+          "total_effective_mass": 28840551.182180054
+        },
+        "communication_consumption": {
+          "effective_signal_mass": 24088391.474838603,
+          "effective_signal_mass_share": 0.8352264602252919,
+          "entity": "household",
+          "positive_mass_signal_rows": 441258,
+          "signal_rows": 441258,
+          "total_effective_mass": 28840551.182180054
+        },
+        "corporate_wealth": {
+          "effective_signal_mass": 23959532.62145654,
+          "effective_signal_mass_share": 0.8307584855126005,
+          "entity": "household",
+          "positive_mass_signal_rows": 439231,
+          "signal_rows": 439231,
+          "total_effective_mass": 28840551.182180054
+        },
+        "council_tax": {
+          "effective_signal_mass": 27850575.923542596,
+          "effective_signal_mass_share": 0.9656741907467725,
+          "entity": "household",
+          "positive_mass_signal_rows": 472848,
+          "signal_rows": 472848,
+          "total_effective_mass": 28840551.182180054
+        },
+        "council_tax_band": {
+          "effective_signal_mass": 24180909.55535398,
+          "effective_signal_mass_share": 0.8384343767429395,
+          "entity": "household",
+          "positive_mass_signal_rows": 454045,
+          "signal_rows": 454045,
+          "total_effective_mass": 28840551.182180054
+        },
+        "council_tax_benefit_reported": {
+          "effective_signal_mass": 2963194.4071725346,
+          "effective_signal_mass_share": 0.043305067793499755,
+          "entity": "person",
+          "positive_mass_signal_rows": 55466,
+          "signal_rows": 55466,
+          "total_effective_mass": 68426042.45079419
+        },
+        "current_education": {
+          "effective_signal_mass": 13478066.29140815,
+          "effective_signal_mass_share": 0.19697275786628102,
+          "entity": "person",
+          "positive_mass_signal_rows": 211273,
+          "signal_rows": 211273,
+          "total_effective_mass": 68426042.45079419
+        },
+        "dfe_education_spending": {
+          "effective_signal_mass": 7260.814134317209,
+          "effective_signal_mass_share": 0.0002517571210221359,
+          "entity": "household",
+          "positive_mass_signal_rows": 197,
+          "signal_rows": 197,
+          "total_effective_mass": 28840551.182180054
+        },
+        "diesel_spending": {
+          "effective_signal_mass": 4556864.252685856,
+          "effective_signal_mass_share": 0.15800198213623057,
+          "entity": "household",
+          "positive_mass_signal_rows": 95552,
+          "signal_rows": 95552,
+          "total_effective_mass": 28840551.182180054
+        },
+        "dividend_income": {
+          "effective_signal_mass": 5438541.209001973,
+          "effective_signal_mass_share": 0.079480575146705,
+          "entity": "person",
+          "positive_mass_signal_rows": 95421,
+          "signal_rows": 95421,
+          "total_effective_mass": 68426042.45079419
+        },
+        "dla_m_category": {
+          "effective_signal_mass": 547340.7989531923,
+          "effective_signal_mass_share": 0.007999012939361358,
+          "entity": "person",
+          "positive_mass_signal_rows": 10679,
+          "signal_rows": 10679,
+          "total_effective_mass": 68426042.45079419
+        },
+        "dla_sc_category": {
+          "effective_signal_mass": 625966.2742879909,
+          "effective_signal_mass_share": 0.009148070703316346,
+          "entity": "person",
+          "positive_mass_signal_rows": 12857,
+          "signal_rows": 12857,
+          "total_effective_mass": 68426042.45079419
+        },
+        "domestic_energy_consumption": {
+          "effective_signal_mass": 28231730.121193495,
+          "effective_signal_mass_share": 0.9788901031349658,
+          "entity": "household",
+          "positive_mass_signal_rows": 528680,
+          "signal_rows": 528680,
+          "total_effective_mass": 28840551.182180054
+        },
+        "domestic_rates": {
+          "effective_signal_mass": 650935.8292780424,
+          "effective_signal_mass_share": 0.022570159119574714,
+          "entity": "household",
+          "positive_mass_signal_rows": 59220,
+          "signal_rows": 59220,
+          "total_effective_mass": 28840551.182180054
+        },
+        "education_consumption": {
+          "effective_signal_mass": 2635095.84988401,
+          "effective_signal_mass_share": 0.09136773542359267,
+          "entity": "household",
+          "positive_mass_signal_rows": 59582,
+          "signal_rows": 59582,
+          "total_effective_mass": 28840551.182180054
+        },
+        "education_grants": {
+          "effective_signal_mass": 834160.887394258,
+          "effective_signal_mass_share": 0.012190693155959019,
+          "entity": "person",
+          "positive_mass_signal_rows": 7029,
+          "signal_rows": 7029,
+          "total_effective_mass": 68426042.45079419
+        },
+        "electricity_consumption": {
+          "effective_signal_mass": 23727791.649333727,
+          "effective_signal_mass_share": 0.8227232378275284,
+          "entity": "household",
+          "positive_mass_signal_rows": 446286,
+          "signal_rows": 446286,
+          "total_effective_mass": 28840551.182180054
+        },
+        "employee_pension_contributions": {
+          "effective_signal_mass": 15988131.109154,
+          "effective_signal_mass_share": 0.2336556453729034,
+          "entity": "person",
+          "positive_mass_signal_rows": 256866,
+          "signal_rows": 256866,
+          "total_effective_mass": 68426042.45079419
+        },
+        "employer_pension_contributions": {
+          "effective_signal_mass": 20586869.84806306,
+          "effective_signal_mass_share": 0.30086307947543905,
+          "entity": "person",
+          "positive_mass_signal_rows": 325688,
+          "signal_rows": 325688,
+          "total_effective_mass": 68426042.45079419
+        },
+        "employment_income": {
+          "effective_signal_mass": 37990917.794027306,
+          "effective_signal_mass_share": 0.5552113849247812,
+          "entity": "person",
+          "positive_mass_signal_rows": 563115,
+          "signal_rows": 563115,
+          "total_effective_mass": 68426042.45079419
+        },
+        "employment_status": {
+          "effective_signal_mass": 67429067.54536968,
+          "effective_signal_mass_share": 0.9854298908761027,
+          "entity": "person",
+          "positive_mass_signal_rows": 1145350,
+          "signal_rows": 1145350,
+          "total_effective_mass": 68426042.45079419
+        },
+        "esa_contrib_reported": {
+          "effective_signal_mass": 328886.1440270169,
+          "effective_signal_mass_share": 0.0048064469644510275,
+          "entity": "person",
+          "positive_mass_signal_rows": 6776,
+          "signal_rows": 6776,
+          "total_effective_mass": 68426042.45079419
+        },
+        "esa_income_reported": {
+          "effective_signal_mass": 440259.72094890854,
+          "effective_signal_mass_share": 0.006434095925765449,
+          "entity": "person",
+          "positive_mass_signal_rows": 9991,
+          "signal_rows": 9991,
+          "total_effective_mass": 68426042.45079419
+        },
+        "external_child_payments": {
+          "effective_signal_mass": 381183.10753863666,
+          "effective_signal_mass_share": 0.013216914792327594,
+          "entity": "household",
+          "positive_mass_signal_rows": 6218,
+          "signal_rows": 6218,
+          "total_effective_mass": 28840551.182180054
+        },
+        "food_and_non_alcoholic_beverages_consumption": {
+          "effective_signal_mass": 28456722.94347256,
+          "effective_signal_mass_share": 0.9866913695136086,
+          "entity": "household",
+          "positive_mass_signal_rows": 528813,
+          "signal_rows": 528813,
+          "total_effective_mass": 28840551.182180054
+        },
+        "free_school_fruit_veg": {
+          "effective_signal_mass": 304132.53077873506,
+          "effective_signal_mass_share": 0.004444689768481637,
+          "entity": "person",
+          "positive_mass_signal_rows": 5561,
+          "signal_rows": 5561,
+          "total_effective_mass": 68426042.45079419
+        },
+        "free_school_meals": {
+          "effective_signal_mass": 1989868.7716336558,
+          "effective_signal_mass_share": 0.029080576639582644,
+          "entity": "person",
+          "positive_mass_signal_rows": 39427,
+          "signal_rows": 39427,
+          "total_effective_mass": 68426042.45079419
+        },
+        "full_rate_vat_expenditure_rate": {
+          "effective_signal_mass": 28840551.182180054,
+          "effective_signal_mass_share": 1.0,
+          "entity": "household",
+          "positive_mass_signal_rows": 535080,
+          "signal_rows": 535080,
+          "total_effective_mass": 28840551.182180054
+        },
+        "gas_consumption": {
+          "effective_signal_mass": 28119719.1368127,
+          "effective_signal_mass_share": 0.9750063013423703,
+          "entity": "household",
+          "positive_mass_signal_rows": 527743,
+          "signal_rows": 527743,
+          "total_effective_mass": 28840551.182180054
+        },
+        "gender": {
+          "effective_signal_mass": 34703914.81682503,
+          "effective_signal_mass_share": 0.5071740754520612,
+          "entity": "person",
+          "positive_mass_signal_rows": 598694,
+          "signal_rows": 598694,
+          "total_effective_mass": 68426042.45079419
+        },
+        "gift_aid": {
+          "effective_signal_mass": 910282.3622813676,
+          "effective_signal_mass_share": 0.01330315665904484,
+          "entity": "person",
+          "positive_mass_signal_rows": 12894,
+          "signal_rows": 12894,
+          "total_effective_mass": 68426042.45079419
+        },
+        "gross_financial_wealth": {
+          "effective_signal_mass": 28641079.681716137,
+          "effective_signal_mass_share": 0.9930836446500659,
+          "entity": "household",
+          "positive_mass_signal_rows": 529490,
+          "signal_rows": 529490,
+          "total_effective_mass": 28840551.182180054
+        },
+        "health_consumption": {
+          "effective_signal_mass": 13426560.471374907,
+          "effective_signal_mass_share": 0.46554451704344973,
+          "entity": "household",
+          "positive_mass_signal_rows": 267340,
+          "signal_rows": 267340,
+          "total_effective_mass": 28840551.182180054
+        },
+        "healthy_start_vouchers": {
+          "effective_signal_mass": 199633.6948896601,
+          "effective_signal_mass_share": 0.002917510464429074,
+          "entity": "person",
+          "positive_mass_signal_rows": 3532,
+          "signal_rows": 3532,
+          "total_effective_mass": 68426042.45079419
+        },
+        "highest_education": {
+          "effective_signal_mass": 40436324.765195906,
+          "effective_signal_mass_share": 0.5909493420472774,
+          "entity": "person",
+          "positive_mass_signal_rows": 663059,
+          "signal_rows": 663059,
+          "total_effective_mass": 68426042.45079419
+        },
+        "hours_worked": {
+          "effective_signal_mass": 31048318.108100228,
+          "effective_signal_mass_share": 0.4537500196716384,
+          "entity": "person",
+          "positive_mass_signal_rows": 498447,
+          "signal_rows": 498447,
+          "total_effective_mass": 68426042.45079419
+        },
+        "household_furnishings_consumption": {
+          "effective_signal_mass": 24328202.96919869,
+          "effective_signal_mass_share": 0.8435415403652394,
+          "entity": "household",
+          "positive_mass_signal_rows": 454267,
+          "signal_rows": 454267,
+          "total_effective_mass": 28840551.182180054
+        },
+        "household_owns_tv": {
+          "effective_signal_mass": 1406226.2495876695,
+          "effective_signal_mass_share": 0.04875864683392549,
+          "entity": "household",
+          "positive_mass_signal_rows": 26244,
+          "signal_rows": 26244,
+          "total_effective_mass": 28840551.182180054
+        },
+        "household_weight": {
+          "effective_signal_mass": 28840551.182180054,
+          "effective_signal_mass_share": 1.0,
+          "entity": "household",
+          "positive_mass_signal_rows": 535080,
+          "signal_rows": 535080,
+          "total_effective_mass": 28840551.182180054
+        },
+        "housing_benefit_reported": {
+          "effective_signal_mass": 1586057.2116802891,
+          "effective_signal_mass_share": 0.023179145759026437,
+          "entity": "person",
+          "positive_mass_signal_rows": 33682,
+          "signal_rows": 33682,
+          "total_effective_mass": 68426042.45079419
+        },
+        "housing_service_charges": {
+          "effective_signal_mass": 3346251.34507484,
+          "effective_signal_mass_share": 0.1160259151753804,
+          "entity": "household",
+          "positive_mass_signal_rows": 56422,
+          "signal_rows": 56422,
+          "total_effective_mass": 28840551.182180054
+        },
+        "housing_water_and_electricity_consumption": {
+          "effective_signal_mass": 28829705.524606947,
+          "effective_signal_mass_share": 0.9996239441644302,
+          "entity": "household",
+          "positive_mass_signal_rows": 534985,
+          "signal_rows": 534985,
+          "total_effective_mass": 28840551.182180054
+        },
+        "iidb_reported": {
+          "effective_signal_mass": 314372.1172695424,
+          "effective_signal_mass_share": 0.004594334350048235,
+          "entity": "person",
+          "positive_mass_signal_rows": 5228,
+          "signal_rows": 5228,
+          "total_effective_mass": 68426042.45079419
+        },
+        "income_support_reported": {
+          "effective_signal_mass": 277790.6168250483,
+          "effective_signal_mass_share": 0.004059720639620655,
+          "entity": "person",
+          "positive_mass_signal_rows": 3766,
+          "signal_rows": 3766,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_before_universal_credit_qualifying_young_person_terminal_date": {
+          "effective_signal_mass": 33363.25775339281,
+          "effective_signal_mass_share": 0.00048758128569812646,
+          "entity": "person",
+          "positive_mass_signal_rows": 1043,
+          "signal_rows": 1043,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_benunit_head": {
+          "effective_signal_mass": 36559150.32771718,
+          "effective_signal_mass_share": 0.5342870786953258,
+          "entity": "person",
+          "positive_mass_signal_rows": 618884,
+          "signal_rows": 618884,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_disabled_for_benefits": {
+          "effective_signal_mass": 4420848.858504084,
+          "effective_signal_mass_share": 0.06460769467535928,
+          "entity": "person",
+          "positive_mass_signal_rows": 90697,
+          "signal_rows": 90697,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_enhanced_disabled_for_benefits": {
+          "effective_signal_mass": 1958586.6302177936,
+          "effective_signal_mass_share": 0.02862340945154371,
+          "entity": "person",
+          "positive_mass_signal_rows": 39775,
+          "signal_rows": 39775,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_household_head": {
+          "effective_signal_mass": 28840551.182180054,
+          "effective_signal_mass_share": 0.42148500993491717,
+          "entity": "person",
+          "positive_mass_signal_rows": 535080,
+          "signal_rows": 535080,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_in_non_advanced_education": {
+          "effective_signal_mass": 11561624.437432397,
+          "effective_signal_mass_share": 0.16896526561135652,
+          "entity": "person",
+          "positive_mass_signal_rows": 190068,
+          "signal_rows": 190068,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_married": {
+          "effective_signal_mass": 10086150.112239903,
+          "effective_signal_mass_share": 0.27588579115836637,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 162539,
+          "signal_rows": 162539,
+          "total_effective_mass": 36559150.32771718
+        },
+        "is_parent": {
+          "effective_signal_mass": 15623787.991458535,
+          "effective_signal_mass_share": 0.22833101889085208,
+          "entity": "person",
+          "positive_mass_signal_rows": 237284,
+          "signal_rows": 237284,
+          "total_effective_mass": 68426042.45079419
+        },
+        "is_severely_disabled_for_benefits": {
+          "effective_signal_mass": 2424637.8701538863,
+          "effective_signal_mass_share": 0.03543443085865248,
+          "entity": "person",
+          "positive_mass_signal_rows": 49350,
+          "signal_rows": 49350,
+          "total_effective_mass": 68426042.45079419
+        },
+        "jsa_contrib_reported": {
+          "effective_signal_mass": 80156.5365901617,
+          "effective_signal_mass_share": 0.0011714331812745567,
+          "entity": "person",
+          "positive_mass_signal_rows": 1871,
+          "signal_rows": 1871,
+          "total_effective_mass": 68426042.45079419
+        },
+        "jsa_income_reported": {
+          "effective_signal_mass": 135238.7191274983,
+          "effective_signal_mass_share": 0.001976421758203388,
+          "entity": "person",
+          "positive_mass_signal_rows": 1797,
+          "signal_rows": 1797,
+          "total_effective_mass": 68426042.45079419
+        },
+        "lump_sum_income": {
+          "effective_signal_mass": 256069.866422514,
+          "effective_signal_mass_share": 0.0037422866682178244,
+          "entity": "person",
+          "positive_mass_signal_rows": 3268,
+          "signal_rows": 3268,
+          "total_effective_mass": 68426042.45079419
+        },
+        "main_residence_value": {
+          "effective_signal_mass": 19744381.56913287,
+          "effective_signal_mass_share": 0.6846048622445361,
+          "entity": "household",
+          "positive_mass_signal_rows": 365612,
+          "signal_rows": 365612,
+          "total_effective_mass": 28840551.182180054
+        },
+        "main_residential_property_purchased_is_first_home": {
+          "effective_signal_mass": 11096952.507071903,
+          "effective_signal_mass_share": 0.3847690856174922,
+          "entity": "household",
+          "positive_mass_signal_rows": 205916,
+          "signal_rows": 205916,
+          "total_effective_mass": 28840551.182180054
+        },
+        "maintenance_expenses": {
+          "effective_signal_mass": 687201.7540514631,
+          "effective_signal_mass_share": 0.010042985527705132,
+          "entity": "person",
+          "positive_mass_signal_rows": 9677,
+          "signal_rows": 9677,
+          "total_effective_mass": 68426042.45079419
+        },
+        "maintenance_income": {
+          "effective_signal_mass": 686406.4175306278,
+          "effective_signal_mass_share": 0.010031362226220069,
+          "entity": "person",
+          "positive_mass_signal_rows": 13851,
+          "signal_rows": 13851,
+          "total_effective_mass": 68426042.45079419
+        },
+        "marital_status": {
+          "effective_signal_mass": 34605111.40629271,
+          "effective_signal_mass_share": 0.5057301309099904,
+          "entity": "person",
+          "positive_mass_signal_rows": 638276,
+          "signal_rows": 638276,
+          "total_effective_mass": 68426042.45079419
+        },
+        "maximum_extended_childcare_hours_usage": {
+          "effective_signal_mass": 36518834.07443071,
+          "effective_signal_mass_share": 0.9988972322134111,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 618249,
+          "signal_rows": 618249,
+          "total_effective_mass": 36559150.32771718
+        },
+        "miscellaneous_consumption": {
+          "effective_signal_mass": 27112369.185717173,
+          "effective_signal_mass_share": 0.9400780524080037,
+          "entity": "household",
+          "positive_mass_signal_rows": 502762,
+          "signal_rows": 502762,
+          "total_effective_mass": 28840551.182180054
+        },
+        "miscellaneous_income": {
+          "effective_signal_mass": 977236.541704461,
+          "effective_signal_mass_share": 0.014281646383497935,
+          "entity": "person",
+          "positive_mass_signal_rows": 14691,
+          "signal_rows": 14691,
+          "total_effective_mass": 68426042.45079419
+        },
+        "mortgage_capital_repayment": {
+          "effective_signal_mass": 8498640.157643527,
+          "effective_signal_mass_share": 0.29467675926022696,
+          "entity": "household",
+          "positive_mass_signal_rows": 134791,
+          "signal_rows": 134791,
+          "total_effective_mass": 28840551.182180054
+        },
+        "mortgage_interest_repayment": {
+          "effective_signal_mass": 8451111.067367647,
+          "effective_signal_mass_share": 0.29302876404766504,
+          "entity": "household",
+          "positive_mass_signal_rows": 133887,
+          "signal_rows": 133887,
+          "total_effective_mass": 28840551.182180054
+        },
+        "net_financial_wealth": {
+          "effective_signal_mass": 28831638.112677667,
+          "effective_signal_mass_share": 0.9996909535658287,
+          "entity": "household",
+          "positive_mass_signal_rows": 534778,
+          "signal_rows": 534778,
+          "total_effective_mass": 28840551.182180054
+        },
+        "nhs_a_and_e_spending": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "nhs_admitted_patient_spending": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "nhs_outpatient_spending": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "non_residential_property_value": {
+          "effective_signal_mass": 389919.90537677624,
+          "effective_signal_mass_share": 0.013519849288376264,
+          "entity": "household",
+          "positive_mass_signal_rows": 7254,
+          "signal_rows": 7254,
+          "total_effective_mass": 28840551.182180054
+        },
+        "num_vehicles": {
+          "effective_signal_mass": 22438871.039812762,
+          "effective_signal_mass_share": 0.7780319765066505,
+          "entity": "household",
+          "positive_mass_signal_rows": 412324,
+          "signal_rows": 412324,
+          "total_effective_mass": 28840551.182180054
+        },
+        "other_residential_property_value": {
+          "effective_signal_mass": 2362639.266958119,
+          "effective_signal_mass_share": 0.08192073903282202,
+          "entity": "household",
+          "positive_mass_signal_rows": 44217,
+          "signal_rows": 44217,
+          "total_effective_mass": 28840551.182180054
+        },
+        "outpatient_visits": {
+          "effective_signal_mass": 68426042.45079419,
+          "effective_signal_mass_share": 1.0,
+          "entity": "person",
+          "positive_mass_signal_rows": 1157739,
+          "signal_rows": 1157739,
+          "total_effective_mass": 68426042.45079419
+        },
+        "owned_land": {
+          "effective_signal_mass": 568320.772100223,
+          "effective_signal_mass_share": 0.01970561410252714,
+          "entity": "household",
+          "positive_mass_signal_rows": 10190,
+          "signal_rows": 10190,
+          "total_effective_mass": 28840551.182180054
+        },
+        "pension_contributions_via_salary_sacrifice": {
+          "effective_signal_mass": 5927908.652980369,
+          "effective_signal_mass_share": 0.08663234699337147,
+          "entity": "person",
+          "positive_mass_signal_rows": 88747,
+          "signal_rows": 88747,
+          "total_effective_mass": 68426042.45079419
+        },
+        "pension_credit_reported": {
+          "effective_signal_mass": 826419.1589996142,
+          "effective_signal_mass_share": 0.012077553068978087,
+          "entity": "person",
+          "positive_mass_signal_rows": 17228,
+          "signal_rows": 17228,
+          "total_effective_mass": 68426042.45079419
+        },
+        "personal_pension_contributions": {
+          "effective_signal_mass": 2264518.014966716,
+          "effective_signal_mass_share": 0.033094388245457164,
+          "entity": "person",
+          "positive_mass_signal_rows": 36761,
+          "signal_rows": 36761,
+          "total_effective_mass": 68426042.45079419
+        },
+        "petrol_spending": {
+          "effective_signal_mass": 11965649.38161584,
+          "effective_signal_mass_share": 0.4148897608104367,
+          "entity": "household",
+          "positive_mass_signal_rows": 237724,
+          "signal_rows": 237724,
+          "total_effective_mass": 28840551.182180054
+        },
+        "pip_dl_category": {
+          "effective_signal_mass": 2113820.0875431984,
+          "effective_signal_mass_share": 0.030892040688503448,
+          "entity": "person",
+          "positive_mass_signal_rows": 43823,
+          "signal_rows": 43823,
+          "total_effective_mass": 68426042.45079419
+        },
+        "pip_m_category": {
+          "effective_signal_mass": 1718300.420041113,
+          "effective_signal_mass_share": 0.025111790167855447,
+          "entity": "person",
+          "positive_mass_signal_rows": 35917,
+          "signal_rows": 35917,
+          "total_effective_mass": 68426042.45079419
+        },
+        "private_pension_income": {
+          "effective_signal_mass": 11910623.032379884,
+          "effective_signal_mass_share": 0.17406564234582067,
+          "entity": "person",
+          "positive_mass_signal_rows": 251798,
+          "signal_rows": 251798,
+          "total_effective_mass": 68426042.45079419
+        },
+        "private_transfer_income": {
+          "effective_signal_mass": 571722.7779640398,
+          "effective_signal_mass_share": 0.008355338954100277,
+          "entity": "person",
+          "positive_mass_signal_rows": 10140,
+          "signal_rows": 10140,
+          "total_effective_mass": 68426042.45079419
+        },
+        "property_income": {
+          "effective_signal_mass": 2740831.2633905592,
+          "effective_signal_mass_share": 0.04005538191634445,
+          "entity": "person",
+          "positive_mass_signal_rows": 41578,
+          "signal_rows": 41578,
+          "total_effective_mass": 68426042.45079419
+        },
+        "property_purchased": {
+          "effective_signal_mass": 948914.4101044352,
+          "effective_signal_mass_share": 0.032902089981232695,
+          "entity": "household",
+          "positive_mass_signal_rows": 20021,
+          "signal_rows": 20021,
+          "total_effective_mass": 28840551.182180054
+        },
+        "property_wealth": {
+          "effective_signal_mass": 21472422.432613295,
+          "effective_signal_mass_share": 0.7445219162760188,
+          "entity": "household",
+          "positive_mass_signal_rows": 384929,
+          "signal_rows": 384929,
+          "total_effective_mass": 28840551.182180054
+        },
+        "rail_subsidy_spending": {
+          "effective_signal_mass": 857652.5208338542,
+          "effective_signal_mass_share": 0.02973772988651406,
+          "entity": "household",
+          "positive_mass_signal_rows": 19355,
+          "signal_rows": 19355,
+          "total_effective_mass": 28840551.182180054
+        },
+        "rail_usage": {
+          "effective_signal_mass": 857652.5208338542,
+          "effective_signal_mass_share": 0.02973772988651406,
+          "entity": "household",
+          "positive_mass_signal_rows": 19355,
+          "signal_rows": 19355,
+          "total_effective_mass": 28840551.182180054
+        },
+        "receives_benefits_in_own_right": {
+          "effective_signal_mass": 3846722.08379302,
+          "effective_signal_mass_share": 0.05621722294635458,
+          "entity": "person",
+          "positive_mass_signal_rows": 71918,
+          "signal_rows": 71918,
+          "total_effective_mass": 68426042.45079419
+        },
+        "recreation_consumption": {
+          "effective_signal_mass": 28392753.766603045,
+          "effective_signal_mass_share": 0.9844733405839451,
+          "entity": "household",
+          "positive_mass_signal_rows": 526706,
+          "signal_rows": 526706,
+          "total_effective_mass": 28840551.182180054
+        },
+        "region": {
+          "effective_signal_mass": 24817901.147553667,
+          "effective_signal_mass_share": 0.8605210417368204,
+          "entity": "household",
+          "positive_mass_signal_rows": 490300,
+          "signal_rows": 490300,
+          "total_effective_mass": 28840551.182180054
+        },
+        "rent": {
+          "effective_signal_mass": 10213970.899170073,
+          "effective_signal_mass_share": 0.35415311013476963,
+          "entity": "household",
+          "positive_mass_signal_rows": 168366,
+          "signal_rows": 168366,
+          "total_effective_mass": 28840551.182180054
+        },
+        "restaurants_and_hotels_consumption": {
+          "effective_signal_mass": 17642485.34000019,
+          "effective_signal_mass_share": 0.6117249711545422,
+          "entity": "household",
+          "positive_mass_signal_rows": 326715,
+          "signal_rows": 326715,
+          "total_effective_mass": 28840551.182180054
+        },
+        "savings": {
+          "effective_signal_mass": 19321632.71001872,
+          "effective_signal_mass_share": 0.6699467214744889,
+          "entity": "household",
+          "positive_mass_signal_rows": 353944,
+          "signal_rows": 353944,
+          "total_effective_mass": 28840551.182180054
+        },
+        "savings_interest_income": {
+          "effective_signal_mass": 25641588.879146934,
+          "effective_signal_mass_share": 0.37473435494367574,
+          "entity": "person",
+          "positive_mass_signal_rows": 430508,
+          "signal_rows": 430508,
+          "total_effective_mass": 68426042.45079419
+        },
+        "sda_reported": {
+          "effective_signal_mass": 35719.11994628095,
+          "effective_signal_mass_share": 0.0005220106068821225,
+          "entity": "person",
+          "positive_mass_signal_rows": 573,
+          "signal_rows": 573,
+          "total_effective_mass": 68426042.45079419
+        },
+        "self_employment_income": {
+          "effective_signal_mass": 5166343.792963676,
+          "effective_signal_mass_share": 0.07550259532660891,
+          "entity": "person",
+          "positive_mass_signal_rows": 77969,
+          "signal_rows": 77969,
+          "total_effective_mass": 68426042.45079419
+        },
+        "ssmg_reported": {
+          "effective_signal_mass": 23537.4999471921,
+          "effective_signal_mass_share": 0.0003439845284654324,
+          "entity": "person",
+          "positive_mass_signal_rows": 503,
+          "signal_rows": 503,
+          "total_effective_mass": 68426042.45079419
+        },
+        "state_pension_reported": {
+          "effective_signal_mass": 12518470.72050856,
+          "effective_signal_mass_share": 0.18294892225442835,
+          "entity": "person",
+          "positive_mass_signal_rows": 271782,
+          "signal_rows": 271782,
+          "total_effective_mass": 68426042.45079419
+        },
+        "statutory_maternity_pay": {
+          "effective_signal_mass": 158986.4256384369,
+          "effective_signal_mass_share": 0.0023234783124095704,
+          "entity": "person",
+          "positive_mass_signal_rows": 2991,
+          "signal_rows": 2991,
+          "total_effective_mass": 68426042.45079419
+        },
+        "statutory_sick_pay": {
+          "effective_signal_mass": 260556.31957839362,
+          "effective_signal_mass_share": 0.0038078531250110236,
+          "entity": "person",
+          "positive_mass_signal_rows": 2515,
+          "signal_rows": 2515,
+          "total_effective_mass": 68426042.45079419
+        },
+        "structural_insurance_payments": {
+          "effective_signal_mass": 16265997.337529302,
+          "effective_signal_mass_share": 0.5639974504918513,
+          "entity": "household",
+          "positive_mass_signal_rows": 328338,
+          "signal_rows": 328338,
+          "total_effective_mass": 28840551.182180054
+        },
+        "student_loan_balance": {
+          "effective_signal_mass": 1357683.2491104433,
+          "effective_signal_mass_share": 0.019841615859733024,
+          "entity": "person",
+          "positive_mass_signal_rows": 21788,
+          "signal_rows": 21788,
+          "total_effective_mass": 68426042.45079419
+        },
+        "student_loan_plan": {
+          "effective_signal_mass": 3536582.579151172,
+          "effective_signal_mass_share": 0.05168474534669109,
+          "entity": "person",
+          "positive_mass_signal_rows": 55424,
+          "signal_rows": 55424,
+          "total_effective_mass": 68426042.45079419
+        },
+        "student_loan_repayments": {
+          "effective_signal_mass": 3536582.579151172,
+          "effective_signal_mass_share": 0.05168474534669109,
+          "entity": "person",
+          "positive_mass_signal_rows": 55424,
+          "signal_rows": 55424,
+          "total_effective_mass": 68426042.45079419
+        },
+        "student_loans": {
+          "effective_signal_mass": 1394410.3777565777,
+          "effective_signal_mass_share": 0.02037835782712863,
+          "entity": "person",
+          "positive_mass_signal_rows": 13691,
+          "signal_rows": 13691,
+          "total_effective_mass": 68426042.45079419
+        },
+        "tax_free_savings_income": {
+          "effective_signal_mass": 8649044.917008396,
+          "effective_signal_mass_share": 0.1263998999098626,
+          "entity": "person",
+          "positive_mass_signal_rows": 136781,
+          "signal_rows": 136781,
+          "total_effective_mass": 68426042.45079419
+        },
+        "tenure_type": {
+          "effective_signal_mass": 23174394.38241681,
+          "effective_signal_mass_share": 0.8035350724065136,
+          "entity": "household",
+          "positive_mass_signal_rows": 451005,
+          "signal_rows": 451005,
+          "total_effective_mass": 28840551.182180054
+        },
+        "transport_consumption": {
+          "effective_signal_mass": 23932932.719677385,
+          "effective_signal_mass_share": 0.8298361764481471,
+          "entity": "household",
+          "positive_mass_signal_rows": 438211,
+          "signal_rows": 438211,
+          "total_effective_mass": 28840551.182180054
+        },
+        "universal_credit_reported": {
+          "effective_signal_mass": 2997120.179591885,
+          "effective_signal_mass_share": 0.04380086984786739,
+          "entity": "person",
+          "positive_mass_signal_rows": 49468,
+          "signal_rows": 49468,
+          "total_effective_mass": 68426042.45079419
+        },
+        "water_and_sewerage_charges": {
+          "effective_signal_mass": 26897188.763771348,
+          "effective_signal_mass_share": 0.9326170153221806,
+          "entity": "household",
+          "positive_mass_signal_rows": 456211,
+          "signal_rows": 456211,
+          "total_effective_mass": 28840551.182180054
+        },
+        "winter_fuel_allowance_reported": {
+          "effective_signal_mass": 12643757.109826714,
+          "effective_signal_mass_share": 0.18477989749179136,
+          "entity": "person",
+          "positive_mass_signal_rows": 274811,
+          "signal_rows": 274811,
+          "total_effective_mass": 68426042.45079419
+        },
+        "working_tax_credit_reported": {
+          "effective_signal_mass": 610247.2894470464,
+          "effective_signal_mass_share": 0.008918348447316399,
+          "entity": "person",
+          "positive_mass_signal_rows": 9046,
+          "signal_rows": 9046,
+          "total_effective_mass": 68426042.45079419
+        },
+        "would_claim_child_benefit": {
+          "effective_signal_mass": 3530981.6080275937,
+          "effective_signal_mass_share": 0.0965827043674643,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 66684,
+          "signal_rows": 66684,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_extended_childcare": {
+          "effective_signal_mass": 7040270.265861793,
+          "effective_signal_mass_share": 0.19257204291545693,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 117657,
+          "signal_rows": 117657,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_marriage_allowance": {
+          "effective_signal_mass": 33973134.070815444,
+          "effective_signal_mass_share": 0.4964942126420046,
+          "entity": "person",
+          "positive_mass_signal_rows": 579819,
+          "signal_rows": 579819,
+          "total_effective_mass": 68426042.45079419
+        },
+        "would_claim_pc": {
+          "effective_signal_mass": 11271928.260985056,
+          "effective_signal_mass_share": 0.308320301756009,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 185848,
+          "signal_rows": 185848,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_scp": {
+          "effective_signal_mass": 9457763.185230952,
+          "effective_signal_mass_share": 0.13821876651761816,
+          "entity": "person",
+          "positive_mass_signal_rows": 162571,
+          "signal_rows": 162571,
+          "total_effective_mass": 68426042.45079419
+        },
+        "would_claim_targeted_childcare": {
+          "effective_signal_mass": 14627303.20732674,
+          "effective_signal_mass_share": 0.40009964882135424,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 251135,
+          "signal_rows": 251135,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_tfc": {
+          "effective_signal_mass": 15622043.13630061,
+          "effective_signal_mass_share": 0.42730870373803026,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 257513,
+          "signal_rows": 257513,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_uc": {
+          "effective_signal_mass": 16565996.640225103,
+          "effective_signal_mass_share": 0.4531286009583668,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 279120,
+          "signal_rows": 279120,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_claim_universal_childcare": {
+          "effective_signal_mass": 15660779.118070886,
+          "effective_signal_mass_share": 0.42836824646325894,
+          "entity": "benunit",
+          "positive_mass_signal_rows": 270677,
+          "signal_rows": 270677,
+          "total_effective_mass": 36559150.32771718
+        },
+        "would_evade_tv_licence_fee": {
+          "effective_signal_mass": 3047632.464588265,
+          "effective_signal_mass_share": 0.10567178294676041,
+          "entity": "household",
+          "positive_mass_signal_rows": 56894,
+          "signal_rows": 56894,
+          "total_effective_mass": 28840551.182180054
+        }
+      },
+      "effective_mass_policy": {
+        "minimum_nondefault_mass_share": 1e-06,
+        "rationale": "One part per million rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference.",
+        "reviewed_on": "2026-07-11",
+        "weight_source": "household_weight"
+      },
+      "family_build_state": {},
+      "family_effective_mass": {},
+      "insufficient_effective_mass": [],
+      "missing": [],
+      "present_columns": 145,
+      "required_columns": 143,
+      "reviewed_exclusions": {
+        "charitable_investment_gifts": "not yet ported from enhanced FRS pipeline \u2014 pending review",
+        "gift_aid": "not yet ported from enhanced FRS pipeline \u2014 pending review"
+      },
+      "stale_exclusions": [
+        "charitable_investment_gifts",
+        "gift_aid"
+      ],
+      "wrong_entity_columns": {}
+    },
+    "failures": [
+      "Stale reviewed exclusions \u2014 the column carries signal now, promote it to a hard requirement: ['charitable_investment_gifts', 'gift_aid']."
+    ],
+    "passed": false
+  },
+  "schema_version": 1
+}
