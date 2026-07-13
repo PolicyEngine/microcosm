@@ -47,9 +47,12 @@ Past that resolution the two paths are the same model.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -70,6 +73,8 @@ from populace.frame import Frame
 __all__ = [
     "RegimeGatedQRF",
     "FittedRegimeGatedQRF",
+    "QRFChainState",
+    "QRFChainStepResult",
     "Regime",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
@@ -374,6 +379,37 @@ _PREDICT_CHUNK_ROWS = 10_000
 #: :func:`os.cpu_count`.
 _PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 
+#: Environment override for quantile-forest fit parallelism. Unset retains the
+#: historical ``n_jobs=-1`` behavior; checkpointed production builds can pin it
+#: to one (or another positive width) without changing the model API.
+_N_JOBS_ENV = "POPULACE_FIT_N_JOBS"
+
+
+def _fit_n_jobs() -> int:
+    """Resolve quantile-forest fit parallelism.
+
+    Unset preserves the historical ``n_jobs=-1`` default. If the environment
+    variable is present it must be a strict positive base-10 integer; in
+    particular, an empty string is an invalid configured value rather than a
+    second spelling of "unset".
+
+    Raises:
+        ValueError: If ``POPULACE_FIT_N_JOBS`` is set to anything other than a
+            positive integer.
+    """
+    override = os.environ.get(_N_JOBS_ENV)
+    if override is None:
+        return -1
+    try:
+        jobs = int(override)
+    except ValueError:
+        raise ValueError(
+            f"{_N_JOBS_ENV} must be a positive integer, got {override!r}."
+        ) from None
+    if jobs < 1 or str(jobs) != override:
+        raise ValueError(f"{_N_JOBS_ENV} must be a positive integer, got {override!r}.")
+    return jobs
+
 
 def _predict_workers() -> int:
     """Resolve the draw's thread-pool width.
@@ -435,7 +471,7 @@ def _fit_forest(
         # Tree fitting and prediction parallelize without affecting the
         # seed-determined draws; forests are deterministic per random_state
         # regardless of worker count.
-        n_jobs=-1,
+        n_jobs=_fit_n_jobs(),
     )
     model.fit(x_fit, y_fit)
     return _Forest(model=model, columns=columns)
@@ -464,6 +500,470 @@ class _TargetModel:
     gate: HistGradientBoostingClassifier | None
     positive: _Forest | None
     negative: _Forest | None
+
+
+_CHAIN_STATE_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class _IndexIdentity:
+    """Compact, JSON-safe identity for a pandas row index.
+
+    Checkpoint state must not embed millions of index values, but resuming on a
+    reordered recipient would corrupt every chained prior. A SHA-256 digest of
+    pandas' stable per-value hashes, combined with the exact index class, dtype,
+    names, and length, gives the state a fixed-size row-order identity.
+    """
+
+    length: int
+    class_name: str
+    dtype: str
+    names_repr: str
+    sha256: str
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation."""
+        return {
+            "length": self.length,
+            "class_name": self.class_name,
+            "dtype": self.dtype,
+            "names_repr": self.names_repr,
+            "sha256": self.sha256,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> _IndexIdentity:
+        """Restore an identity from :meth:`to_dict` output."""
+        expected = {"length", "class_name", "dtype", "names_repr", "sha256"}
+        if set(value) != expected:
+            raise ValueError(
+                "QRF chain index identity keys must be exactly "
+                f"{sorted(expected)}, got {sorted(value)}."
+            )
+        length = value["length"]
+        if not isinstance(length, int) or isinstance(length, bool) or length < 0:
+            raise ValueError("QRF chain index identity length must be >= 0.")
+        strings = {
+            key: value[key] for key in ("class_name", "dtype", "names_repr", "sha256")
+        }
+        if any(not isinstance(item, str) for item in strings.values()):
+            raise ValueError("QRF chain index identity metadata must be strings.")
+        digest = strings["sha256"]
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("QRF chain index identity sha256 is malformed.")
+        return cls(length=length, **strings)
+
+
+def _index_identity(index: pd.Index) -> _IndexIdentity:
+    """Return a stable, row-order-sensitive identity for ``index``."""
+    hashes = pd.util.hash_pandas_object(index, index=False, categorize=False).to_numpy(
+        dtype="<u8", copy=False
+    )
+    digest = hashlib.sha256()
+    digest.update(hashes.tobytes(order="C"))
+    return _IndexIdentity(
+        length=len(index),
+        class_name=type(index).__name__,
+        dtype=str(index.dtype),
+        names_repr=repr(tuple(index.names)),
+        sha256=digest.hexdigest(),
+    )
+
+
+def _weight_identity(weights: np.ndarray | None) -> str:
+    """Fingerprint the exact resolved fit weights for safe resume checks."""
+    if weights is None:
+        return "none"
+    values = np.asarray(weights)
+    digest = hashlib.sha256()
+    digest.update(values.dtype.str.encode("ascii"))
+    digest.update(str(values.shape).encode("ascii"))
+    digest.update(np.ascontiguousarray(values).tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _rng_state_json(rng: np.random.Generator) -> str:
+    """Serialize a generator state to immutable canonical JSON text."""
+    return json.dumps(
+        rng.bit_generator.state,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _rng_from_state_json(value: str, *, stream: str) -> np.random.Generator:
+    """Restore a generator from a chain state's canonical JSON text."""
+    try:
+        state = json.loads(value)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"QRF chain {stream} RNG state is not valid JSON.") from exc
+    if not isinstance(state, dict) or state.get("bit_generator") != "PCG64":
+        raise ValueError(f"QRF chain {stream} RNG state must describe NumPy PCG64.")
+    rng = np.random.default_rng()
+    try:
+        rng.bit_generator.state = state
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"QRF chain {stream} RNG state is invalid.") from exc
+    return rng
+
+
+@dataclass(frozen=True)
+class QRFChainState:
+    """Immutable checkpoint state for a target-at-a-time QRF chain.
+
+    The state deliberately contains no frame, fitted model, or mutable NumPy
+    object. It records the exact model configuration and chain order, the
+    completed target prefix, donor/recipient row identities, resolved weight
+    identity, and *separate* fit/draw RNG states. :meth:`to_dict` output can be
+    passed through ``json.dumps``/``json.loads`` and restored with
+    :meth:`from_dict` between subprocesses.
+
+    Donor priors are never stored here: each target fit reads the observed prior
+    targets from the donor input. Recipient priors are likewise external and
+    must be supplied to :meth:`RegimeGatedQRF.fit_draw_next` as the exact raw
+    draw prefix, allowing a build to checkpoint them losslessly.
+    """
+
+    predictors: tuple[str, ...]
+    targets: tuple[str, ...]
+    completed_targets: tuple[str, ...]
+    entity: str | None
+    weight_kind: str
+    weight_sha256: str
+    n_estimators: int
+    zero_atol: float
+    max_samples_leaf: int | float | None
+    max_samples_leaf_kind: str
+    seed: int
+    fit_n_jobs: int
+    donor_index: _IndexIdentity
+    recipient_index: _IndexIdentity | None
+    fit_rng_state_json: str
+    draw_rng_state_json: str
+    schema_version: int = _CHAIN_STATE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        """Reject malformed or internally inconsistent checkpoint state."""
+        if self.schema_version != _CHAIN_STATE_SCHEMA_VERSION:
+            raise ValueError(
+                "Unsupported QRF chain state schema_version "
+                f"{self.schema_version}; expected {_CHAIN_STATE_SCHEMA_VERSION}."
+            )
+        if not self.predictors or not self.targets:
+            raise ValueError("QRF chain state requires predictors and targets.")
+        if len(set(self.predictors)) != len(self.predictors):
+            raise ValueError("QRF chain state predictors contain duplicates.")
+        if len(set(self.targets)) != len(self.targets):
+            raise ValueError("QRF chain state targets contain duplicates.")
+        if set(self.predictors) & set(self.targets):
+            raise ValueError("QRF chain state predictors and targets overlap.")
+        expected_prefix = self.targets[: len(self.completed_targets)]
+        if self.completed_targets != expected_prefix:
+            raise ValueError(
+                "QRF chain completed_targets must be an exact target-order prefix; "
+                f"expected {expected_prefix}, got {self.completed_targets}."
+            )
+        if len(self.completed_targets) > len(self.targets):
+            raise ValueError("QRF chain completed target prefix is too long.")
+        expected_leaf_kind = (
+            "none"
+            if self.max_samples_leaf is None
+            else "int"
+            if isinstance(self.max_samples_leaf, int)
+            and not isinstance(self.max_samples_leaf, bool)
+            else "float"
+            if isinstance(self.max_samples_leaf, float)
+            else "invalid"
+        )
+        if self.max_samples_leaf_kind != expected_leaf_kind:
+            raise ValueError(
+                "QRF chain max_samples_leaf kind/value mismatch: "
+                f"{self.max_samples_leaf_kind!r} vs {self.max_samples_leaf!r}."
+            )
+        _rng_from_state_json(self.fit_rng_state_json, stream="fit")
+        _rng_from_state_json(self.draw_rng_state_json, stream="draw")
+
+    @property
+    def next_target(self) -> str | None:
+        """The next target in the locked order, or ``None`` when complete."""
+        if self.is_complete:
+            return None
+        return self.targets[len(self.completed_targets)]
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every target in the locked order has been fit and drawn."""
+        return len(self.completed_targets) == len(self.targets)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-roundtrippable checkpoint mapping."""
+        return {
+            "schema_version": self.schema_version,
+            "predictors": list(self.predictors),
+            "targets": list(self.targets),
+            "completed_targets": list(self.completed_targets),
+            "entity": self.entity,
+            "weight_kind": self.weight_kind,
+            "weight_sha256": self.weight_sha256,
+            "model_config": {
+                "n_estimators": self.n_estimators,
+                "zero_atol": self.zero_atol,
+                "max_samples_leaf": self.max_samples_leaf,
+                "max_samples_leaf_kind": self.max_samples_leaf_kind,
+                "seed": self.seed,
+                "fit_n_jobs": self.fit_n_jobs,
+            },
+            "donor_index": self.donor_index.to_dict(),
+            "recipient_index": (
+                None if self.recipient_index is None else self.recipient_index.to_dict()
+            ),
+            "fit_rng_state": json.loads(self.fit_rng_state_json),
+            "draw_rng_state": json.loads(self.draw_rng_state_json),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> QRFChainState:
+        """Restore and validate state produced by :meth:`to_dict`."""
+        expected = {
+            "schema_version",
+            "predictors",
+            "targets",
+            "completed_targets",
+            "entity",
+            "weight_kind",
+            "weight_sha256",
+            "model_config",
+            "donor_index",
+            "recipient_index",
+            "fit_rng_state",
+            "draw_rng_state",
+        }
+        if set(value) != expected:
+            raise ValueError(
+                "QRF chain state keys must be exactly "
+                f"{sorted(expected)}, got {sorted(value)}."
+            )
+
+        def names(key: str) -> tuple[str, ...]:
+            raw = value[key]
+            if not isinstance(raw, list) or any(not isinstance(x, str) for x in raw):
+                raise ValueError(f"QRF chain state {key} must be a list of strings.")
+            return tuple(raw)
+
+        config = value["model_config"]
+        if not isinstance(config, Mapping):
+            raise ValueError("QRF chain state model_config must be an object.")
+        config_keys = {
+            "n_estimators",
+            "zero_atol",
+            "max_samples_leaf",
+            "max_samples_leaf_kind",
+            "seed",
+            "fit_n_jobs",
+        }
+        if set(config) != config_keys:
+            raise ValueError(
+                "QRF chain model_config keys must be exactly "
+                f"{sorted(config_keys)}, got {sorted(config)}."
+            )
+        donor_index = value["donor_index"]
+        recipient_index = value["recipient_index"]
+        if not isinstance(donor_index, Mapping):
+            raise ValueError("QRF chain donor_index must be an object.")
+        if recipient_index is not None and not isinstance(recipient_index, Mapping):
+            raise ValueError("QRF chain recipient_index must be null or an object.")
+        entity = value["entity"]
+        if entity is not None and not isinstance(entity, str):
+            raise ValueError("QRF chain entity must be null or a string.")
+        string_fields = ("weight_kind", "weight_sha256")
+        if any(not isinstance(value[key], str) for key in string_fields):
+            raise ValueError("QRF chain weight metadata must be strings.")
+
+        # Keep JSON's int and float spellings distinct: max_samples_leaf=1 and
+        # 1.0 have different sklearn semantics even though Python says they are
+        # equal, so the explicit kind field is load-bearing.
+        n_estimators = config["n_estimators"]
+        seed = config["seed"]
+        fit_n_jobs = config["fit_n_jobs"]
+        zero_atol = config["zero_atol"]
+        if not isinstance(n_estimators, int) or isinstance(n_estimators, bool):
+            raise ValueError("QRF chain n_estimators must be an integer.")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise ValueError("QRF chain seed must be an integer.")
+        if (
+            not isinstance(fit_n_jobs, int)
+            or isinstance(fit_n_jobs, bool)
+            or fit_n_jobs == 0
+            or fit_n_jobs < -1
+        ):
+            raise ValueError("QRF chain fit_n_jobs must be -1 or a positive integer.")
+        if not isinstance(zero_atol, (int, float)) or isinstance(zero_atol, bool):
+            raise ValueError("QRF chain zero_atol must be numeric.")
+        leaf = config["max_samples_leaf"]
+        leaf_kind = config["max_samples_leaf_kind"]
+        if not isinstance(leaf_kind, str):
+            raise ValueError("QRF chain max_samples_leaf_kind must be a string.")
+
+        fit_rng_state = json.dumps(
+            value["fit_rng_state"],
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        draw_rng_state = json.dumps(
+            value["draw_rng_state"],
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return cls(
+            schema_version=value["schema_version"],
+            predictors=names("predictors"),
+            targets=names("targets"),
+            completed_targets=names("completed_targets"),
+            entity=entity,
+            weight_kind=value["weight_kind"],
+            weight_sha256=value["weight_sha256"],
+            n_estimators=n_estimators,
+            zero_atol=float(zero_atol),
+            max_samples_leaf=leaf,
+            max_samples_leaf_kind=leaf_kind,
+            seed=seed,
+            fit_n_jobs=fit_n_jobs,
+            donor_index=_IndexIdentity.from_dict(donor_index),
+            recipient_index=(
+                None
+                if recipient_index is None
+                else _IndexIdentity.from_dict(recipient_index)
+            ),
+            fit_rng_state_json=fit_rng_state,
+            draw_rng_state_json=draw_rng_state,
+        )
+
+
+@dataclass(frozen=True)
+class QRFChainStepResult:
+    """One raw target draw plus the state *after* that target completed.
+
+    ``state`` is the advanced state and is the one checkpoint callers must
+    persist for the next subprocess; it is not the predecessor state passed to
+    :meth:`RegimeGatedQRF.fit_draw_next`.
+
+    Attributes:
+        target: The target just fit and drawn.
+        raw_draw: Positionally aligned float64 recipient draws. The array is
+            read-only so checkpoint code cannot accidentally mutate the result.
+        state: Chain state after this target, ready for the next subprocess.
+        regime: The target's detected :class:`Regime`.
+        weight_kind: The resolved donor fit weight kind.
+    """
+
+    target: str
+    raw_draw: np.ndarray
+    state: QRFChainState
+    regime: str
+    weight_kind: str
+
+
+@dataclass(frozen=True)
+class _ResolvedFitInput:
+    """One fit input after the shared entity/weight resolution path."""
+
+    entity: str | None
+    table: pd.DataFrame
+    weights: np.ndarray | None
+    weight_kind: str
+
+
+def _resolve_qrf_fit_input(
+    frame_or_df: Frame | pd.DataFrame,
+    predictors: list[str],
+    targets: list[str],
+    weights: WeightSpec,
+) -> _ResolvedFitInput:
+    """Resolve the two QRF front doors identically for all fit modes."""
+    if isinstance(frame_or_df, Frame):
+        entity = predictors_targets_entity(frame_or_df, predictors, targets)
+        weight_values = resolve_fit_weights(frame_or_df, entity, weights)
+        table = frame_or_df.table(entity)
+    else:
+        entity = None
+        dataframe_fit_columns(frame_or_df, predictors, targets)
+        weight_values = resolve_dataframe_fit_weights(
+            frame_or_df, weights, predictors=predictors, targets=targets
+        )
+        table = frame_or_df
+    weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
+    _validate_targets_finite(table, targets)
+    return _ResolvedFitInput(entity, table, weight_values, weight_kind)
+
+
+def _max_samples_leaf_kind(value: int | float | None) -> str:
+    """Return the type tag needed to distinguish sklearn's int/float modes."""
+    if value is None:
+        return "none"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    return "invalid"
+
+
+def _gate_draw_with_rng(
+    gate: HistGradientBoostingClassifier,
+    features: pd.DataFrame,
+    columns: tuple[str, ...],
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Draw sign classes from a fitted gate using the supplied RNG stream."""
+    x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
+    proba = np.asarray(gate.predict_proba(x))
+    cumulative = np.cumsum(proba, axis=1)
+    u = rng.random(len(x))
+    chosen = (cumulative >= u[:, None]).argmax(axis=1)
+    return np.asarray(gate.classes_)[chosen]
+
+
+def _draw_target_with_rng(
+    features: pd.DataFrame,
+    model: _TargetModel,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Draw one target through its regime pipeline with an explicit RNG.
+
+    Both monolithic prediction and targetwise subprocess steps call this helper,
+    pinning RNG consumption and draw semantics to one implementation.
+    """
+    if model is _RELEASED:
+        raise RuntimeError(
+            "This target's fitted forests were released by a prior "
+            "predict(release_models=True) call; refit or predict without "
+            "releasing to draw again."
+        )
+    n = len(features)
+    if model.regime == Regime.DEGENERATE_ZERO:
+        return np.zeros(n, dtype=np.float64)
+
+    quantiles = rng.random(n)
+    if model.regime == Regime.POSITIVE_ONLY:
+        return model.positive.draw(features, quantiles)
+    if model.regime == Regime.NEGATIVE_ONLY:
+        return model.negative.draw(features, quantiles)
+
+    signs = _gate_draw_with_rng(model.gate, features, model.columns, rng)
+    values = np.zeros(n, dtype=np.float64)
+    pos_mask = signs == 1
+    neg_mask = signs == -1
+    if pos_mask.any() and model.positive is not None:
+        values[pos_mask] = model.positive.draw(
+            features.loc[pos_mask], quantiles[pos_mask]
+        )
+    if neg_mask.any() and model.negative is not None:
+        values[neg_mask] = model.negative.draw(
+            features.loc[neg_mask], quantiles[neg_mask]
+        )
+    return values
 
 
 class RegimeGatedQRF:
@@ -535,24 +1035,7 @@ class RegimeGatedQRF:
         """
         predictors = list(predictors)
         targets = list(targets)
-        if isinstance(frame_or_df, Frame):
-            entity = predictors_targets_entity(frame_or_df, predictors, targets)
-            weight_values = resolve_fit_weights(frame_or_df, entity, weights)
-            table = frame_or_df.table(entity)
-        else:
-            # The standalone front door: no entity to resolve, no typed
-            # weights to default to — the caller must state the weights.
-            entity = None
-            dataframe_fit_columns(frame_or_df, predictors, targets)
-            weight_values = resolve_dataframe_fit_weights(
-                frame_or_df, weights, predictors=predictors, targets=targets
-            )
-            table = frame_or_df
-        # Record the kind actually resolved (inherited kind on a Frame, "none"
-        # for any unweighted fit, "explicit" for a DataFrame vector) so a build
-        # can audit what the fit weighted by, not what the caller intended.
-        weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
-        _validate_targets_finite(table, targets)
+        resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
 
         # Split the model seed into two independent streams: one drives the
         # fit (bootstrap resample, forest randomness, gate random_state), the
@@ -567,25 +1050,248 @@ class RegimeGatedQRF:
         target_models: dict[str, _TargetModel] = {}
         for position, target in enumerate(targets):
             chained = (*predictors, *targets[:position])
-            y = table[target].to_numpy(dtype=np.float64)
-            features = table.loc[:, list(chained)].to_numpy(dtype=np.float64)
+            y = resolved.table[target].to_numpy(dtype=np.float64)
+            features = resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64)
             target_models[target] = self._fit_target(
                 features=features,
                 y=y,
                 columns=chained,
-                weights=weight_values,
+                weights=resolved.weights,
                 rng=rng,
             )
 
         return FittedRegimeGatedQRF(
-            entity=entity,
+            entity=resolved.entity,
             predictors=predictors,
             targets=targets,
             target_models=target_models,
             zero_atol=self.zero_atol,
             draw_seed=draw_seed,
-            weight_kind=weight_kind,
+            weight_kind=resolved.weight_kind,
         )
+
+    def start_chain(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        predictors: list[str],
+        targets: list[str],
+        *,
+        weights: WeightSpec = DESIGN_WEIGHTS,
+    ) -> QRFChainState:
+        """Initialize a safe target-at-a-time chain checkpoint.
+
+        This performs the same entity, column, target-finiteness, and weight
+        resolution as :meth:`fit`, then locks the donor row order, resolved
+        weights, exact model configuration, target order, and independent fit
+        and draw RNG streams into immutable JSON-roundtrippable state. No model
+        is fit until :meth:`fit_draw_next`.
+        """
+        predictors = list(predictors)
+        targets = list(targets)
+        resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
+        fit_rng = np.random.default_rng(fit_seed)
+        draw_rng = np.random.default_rng(draw_seed)
+        return QRFChainState(
+            predictors=tuple(predictors),
+            targets=tuple(targets),
+            completed_targets=(),
+            entity=resolved.entity,
+            weight_kind=resolved.weight_kind,
+            weight_sha256=_weight_identity(resolved.weights),
+            n_estimators=self.n_estimators,
+            zero_atol=self.zero_atol,
+            max_samples_leaf=self.max_samples_leaf,
+            max_samples_leaf_kind=_max_samples_leaf_kind(self.max_samples_leaf),
+            seed=self.seed,
+            fit_n_jobs=_fit_n_jobs(),
+            donor_index=_index_identity(resolved.table.index),
+            recipient_index=None,
+            fit_rng_state_json=_rng_state_json(fit_rng),
+            draw_rng_state_json=_rng_state_json(draw_rng),
+        )
+
+    def fit_draw_next(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        recipient_predictors: Frame | pd.DataFrame,
+        raw_prior_draws: pd.DataFrame,
+        *,
+        state: QRFChainState,
+        weights: WeightSpec = DESIGN_WEIGHTS,
+    ) -> QRFChainStepResult:
+        """Fit and draw exactly the next target in a checkpointed chain.
+
+        Fit features use the donor's *observed* completed-target prefix. Draw
+        features use ``raw_prior_draws`` — never finalized, snapped, or
+        otherwise post-processed values — so targetwise subprocesses preserve
+        the monolithic chain's conditioning semantics bit for bit.
+
+        Every call re-runs the ordinary input/weight resolution and refuses
+        model-config drift, target-prefix drift, donor/recipient row reordering,
+        weight drift, an entity/front-door change, or non-float64 raw priors.
+
+        Returns:
+            A result whose ``state`` is the state *after* this target and must
+            be checkpointed for the next subprocess.
+        """
+        if not isinstance(state, QRFChainState):
+            raise TypeError("state must be a QRFChainState.")
+        self._validate_chain_config(state)
+        if state.is_complete:
+            raise ValueError("QRF chain is already complete; there is no next target.")
+
+        predictors = list(state.predictors)
+        targets = list(state.targets)
+        resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        self._validate_chain_donor(state, resolved)
+        recipient = self._chain_recipient_table(recipient_predictors, state)
+        recipient_identity = _index_identity(recipient.index)
+        if state.recipient_index is not None and (
+            recipient_identity != state.recipient_index
+        ):
+            raise ValueError(
+                "QRF chain recipient index/order changed since the first target."
+            )
+        self._validate_raw_prior_draws(raw_prior_draws, recipient.index, state)
+
+        position = len(state.completed_targets)
+        target = state.targets[position]
+        chained = (*state.predictors, *state.completed_targets)
+        fit_rng = _rng_from_state_json(state.fit_rng_state_json, stream="fit")
+        draw_rng = _rng_from_state_json(state.draw_rng_state_json, stream="draw")
+        target_model = self._fit_target(
+            features=resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64),
+            y=resolved.table[target].to_numpy(dtype=np.float64),
+            columns=chained,
+            weights=resolved.weights,
+            rng=fit_rng,
+        )
+
+        augmented = recipient.loc[:, list(state.predictors)].copy()
+        for prior in state.completed_targets:
+            augmented[prior] = raw_prior_draws[prior].to_numpy(
+                dtype=np.float64, copy=False
+            )
+        raw_draw = np.asarray(
+            _draw_target_with_rng(augmented, target_model, draw_rng),
+            dtype=np.float64,
+        )
+        raw_draw.setflags(write=False)
+        advanced = replace(
+            state,
+            completed_targets=(*state.completed_targets, target),
+            recipient_index=recipient_identity,
+            fit_rng_state_json=_rng_state_json(fit_rng),
+            draw_rng_state_json=_rng_state_json(draw_rng),
+        )
+        return QRFChainStepResult(
+            target=target,
+            raw_draw=raw_draw,
+            state=advanced,
+            regime=target_model.regime,
+            weight_kind=resolved.weight_kind,
+        )
+
+    def _validate_chain_config(self, state: QRFChainState) -> None:
+        """Refuse any model configuration drift across subprocesses."""
+        actual = (
+            self.n_estimators,
+            self.zero_atol,
+            self.max_samples_leaf,
+            _max_samples_leaf_kind(self.max_samples_leaf),
+            self.seed,
+            _fit_n_jobs(),
+        )
+        expected = (
+            state.n_estimators,
+            state.zero_atol,
+            state.max_samples_leaf,
+            state.max_samples_leaf_kind,
+            state.seed,
+            state.fit_n_jobs,
+        )
+        if actual != expected or actual[3] != expected[3]:
+            raise ValueError(
+                "QRF chain model configuration changed across subprocesses: "
+                f"expected {expected}, got {actual}."
+            )
+
+    @staticmethod
+    def _validate_chain_donor(
+        state: QRFChainState, resolved: _ResolvedFitInput
+    ) -> None:
+        """Refuse donor front-door, row-order, or resolved-weight drift."""
+        if resolved.entity != state.entity:
+            raise ValueError(
+                "QRF chain donor entity/input kind changed: expected "
+                f"{state.entity!r}, got {resolved.entity!r}."
+            )
+        if _index_identity(resolved.table.index) != state.donor_index:
+            raise ValueError("QRF chain donor index/order changed since start_chain.")
+        if resolved.weight_kind != state.weight_kind:
+            raise ValueError(
+                "QRF chain resolved weight kind changed: expected "
+                f"{state.weight_kind!r}, got {resolved.weight_kind!r}."
+            )
+        if _weight_identity(resolved.weights) != state.weight_sha256:
+            raise ValueError("QRF chain resolved weight values/order changed.")
+
+    @staticmethod
+    def _chain_recipient_table(
+        recipient_predictors: Frame | pd.DataFrame, state: QRFChainState
+    ) -> pd.DataFrame:
+        """Resolve recipient predictors with the ordinary predict semantics."""
+        if isinstance(recipient_predictors, Frame):
+            if state.entity is None:
+                raise ValueError(
+                    "This QRF chain was started on a plain DataFrame, so it has "
+                    "no entity to read from a recipient Frame."
+                )
+            table = recipient_predictors.table(state.entity)
+            kind = "frame"
+        else:
+            table = recipient_predictors
+            kind = "DataFrame"
+        missing = [column for column in state.predictors if column not in table]
+        if missing:
+            raise ValueError(
+                f"recipient predictors ({kind}) are missing column(s) {missing}; "
+                f"the chain conditions on {list(state.predictors)}."
+            )
+        return table
+
+    @staticmethod
+    def _validate_raw_prior_draws(
+        raw_prior_draws: pd.DataFrame,
+        recipient_index: pd.Index,
+        state: QRFChainState,
+    ) -> None:
+        """Require the exact ordered float64 raw-recipient target prefix."""
+        if not isinstance(raw_prior_draws, pd.DataFrame):
+            raise TypeError("raw_prior_draws must be a pandas DataFrame.")
+        expected = list(state.completed_targets)
+        actual = list(raw_prior_draws.columns)
+        if actual != expected:
+            raise ValueError(
+                "raw_prior_draws columns must be the exact completed target "
+                f"prefix in order: expected {expected}, got {actual}."
+            )
+        if not raw_prior_draws.index.equals(recipient_index):
+            raise ValueError(
+                "raw_prior_draws index/order must exactly match recipient predictors."
+            )
+        for target in expected:
+            if raw_prior_draws[target].dtype != np.dtype(np.float64):
+                raise ValueError(
+                    f"raw_prior_draws[{target!r}] must retain float64 raw QRF "
+                    f"draws, got {raw_prior_draws[target].dtype}."
+                )
+            values = raw_prior_draws[target].to_numpy(copy=False)
+            if not np.isfinite(values).all():
+                raise ValueError(
+                    f"raw_prior_draws[{target!r}] contains non-finite values."
+                )
 
     def _fit_target(
         self,
@@ -813,35 +1519,7 @@ class FittedRegimeGatedQRF:
 
     def _draw_target(self, features: pd.DataFrame, model: _TargetModel) -> np.ndarray:
         """Draw one value per row for a single target via its regime pipeline."""
-        if model is _RELEASED:
-            raise RuntimeError(
-                "This target's fitted forests were released by a prior "
-                "predict(release_models=True) call; refit or predict without "
-                "releasing to draw again."
-            )
-        n = len(features)
-        if model.regime == Regime.DEGENERATE_ZERO:
-            return np.zeros(n, dtype=np.float64)
-
-        quantiles = self._rng.random(n)
-        if model.regime == Regime.POSITIVE_ONLY:
-            return model.positive.draw(features, quantiles)
-        if model.regime == Regime.NEGATIVE_ONLY:
-            return model.negative.draw(features, quantiles)
-
-        signs = self._gate_draw(model.gate, features, model.columns)
-        values = np.zeros(n, dtype=np.float64)
-        pos_mask = signs == 1
-        neg_mask = signs == -1
-        if pos_mask.any() and model.positive is not None:
-            values[pos_mask] = model.positive.draw(
-                features.loc[pos_mask], quantiles[pos_mask]
-            )
-        if neg_mask.any() and model.negative is not None:
-            values[neg_mask] = model.negative.draw(
-                features.loc[neg_mask], quantiles[neg_mask]
-            )
-        return values
+        return _draw_target_with_rng(features, model, self._rng)
 
     def _gate_draw(
         self,
@@ -864,12 +1542,7 @@ class FittedRegimeGatedQRF:
         Returns:
             One sign code (``-1`` / ``0`` / ``1``) per row.
         """
-        x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
-        proba = np.asarray(gate.predict_proba(x))
-        cumulative = np.cumsum(proba, axis=1)
-        u = self._rng.random(len(x))
-        chosen = (cumulative >= u[:, None]).argmax(axis=1)
-        return np.asarray(gate.classes_)[chosen]
+        return _gate_draw_with_rng(gate, features, columns, self._rng)
 
     def __repr__(self) -> str:
         regimes = ", ".join(f"{k}:{v}" for k, v in self.regimes().items())

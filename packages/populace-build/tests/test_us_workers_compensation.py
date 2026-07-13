@@ -646,7 +646,7 @@ def test_release_promotion_plan_builders_and_probe_are_wired() -> None:
     support_builder = (ROOT / "tools/build_us_puf_support_base.py").read_text()
     fiscal_builder = (ROOT / "tools/build_us_fiscal_refresh_release.py").read_text()
     cache_driver = (ROOT / "experiments/build_j_recert/buildj_base.sh").read_text()
-    assert support_builder.count("with_us_workers_compensation(") == 2
+    assert support_builder.count("with_us_workers_compensation(") == 4
     assert "us_workers_compensation_signal_gate(" in support_builder
     assert "us_workers_compensation_signal_gate(" in fiscal_builder
     assert f'"{_OUTPUT}"' in cache_driver

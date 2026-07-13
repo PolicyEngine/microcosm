@@ -99,6 +99,34 @@ def test_cd_assignment_is_state_constrained_and_index_independent() -> None:
     ]
 
 
+def test_cd_assignment_consumes_normalized_state_rng_groups_in_sorted_order() -> None:
+    household = pd.DataFrame(
+        {
+            "household_id": range(6),
+            "state_fips": [2, "01", "2", 1, "02", 1],
+        }
+    )
+    distribution = pd.DataFrame(
+        {
+            "state_fips": ["01", "01", "02", "02"],
+            "congressional_district_geoid": ["0101", "0102", "0200", "0201"],
+            "sampling_weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    assigned = assign_congressional_districts_to_households(
+        household,
+        distribution,
+        seed=0,
+    )
+
+    rng = np.random.default_rng(0)
+    expected = np.empty(len(household), dtype=np.int64)
+    expected[[1, 3, 5]] = rng.choice([101, 102], size=3, replace=True, p=[0.5, 0.5])
+    expected[[0, 2, 4]] = rng.choice([200, 201], size=3, replace=True, p=[0.5, 0.5])
+    assert assigned["congressional_district_geoid"].tolist() == expected.tolist()
+
+
 def test_cd_assignment_refuses_missing_state_distribution() -> None:
     household = pd.DataFrame({"household_id": [1], "state_fips": [6]})
     distribution = pd.DataFrame(

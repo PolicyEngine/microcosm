@@ -11,15 +11,30 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from collections.abc import Sequence
+import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from populace.build import FitWeightRecord, weights_audit_gate
+from populace.build.frame_checkpoint import write_frame_checkpoint
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
+from populace.build.outer_stage_runtime import (
+    Stage,
+    StagePipeline,
+    StageRuntime,
+    assert_clone_expansion,
+    assert_unchanged_identity,
+)
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
+from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -31,6 +46,7 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_PUF_SUPPORT_FIT_NAME,
     US_SUPPORT_SPINE_SPEC,
     AsecSource,
     build_pooled_asec_unit_frame,
@@ -99,6 +115,11 @@ from populace.build.us_runtime import (
     with_us_wic_claim_input,
     with_us_workers_compensation,
 )
+from populace.build.us_runtime.puf_qrf_chain import (
+    finalize_primary_puf_qrf_chain,
+    initialize_primary_puf_qrf_chain,
+    run_primary_puf_qrf_chain,
+)
 from populace.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
 from populace.frame import Frame, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -107,6 +128,103 @@ from populace.frame.units import US_SCHEMA
 PERIOD = 2024
 DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
+ALL_STAGE_CHECKPOINT_FILENAME = "stage_all.frame.h5"
+LEGACY_STAGE_ALIASES = ("a", "b", "c", "d")
+PIPELINE_STEPS = (
+    "source_construction",
+    "pre_clone_enrichment",
+    "clone_feature_extraction",
+    "primary_qrf_chain",
+    "qrf_finalization",
+    "qbi_reconciliation",
+    "wic_post_clone",
+    "housing_assistance",
+    "prior_year_income_post_clone",
+    "child_support_post_clone",
+    "disability_benefits_post_clone",
+    "workers_compensation_post_clone",
+    "weeks_unemployed_post_clone",
+    "childcare_post_clone",
+    "energy_subsidy_post_clone",
+    "retirement_contributions_post_clone",
+    "retirement_distributions_post_clone",
+    "education_inputs_post_clone",
+    "congressional_district_assignment",
+    "block_ladder_assignment",
+    "final_export",
+)
+STAGE_NAMES = (*LEGACY_STAGE_ALIASES, *PIPELINE_STEPS)
+# The order is executable configuration, not documentation: stage dispatch and
+# checkpoint metadata both validate this exact sequence before any transform.
+STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("source_construction", ("_load_base_frame_from_args",)),
+    (
+        "pre_clone_enrichment",
+        (
+            "derive_us_cps_carried_inputs",
+            "with_us_prior_year_income_inputs",
+            "with_us_relationship_inputs",
+            "with_us_medicare_take_up_input",
+            "with_us_housing_inputs[includes_acs_rent_in_current_order]",
+            "with_us_eligibility_inputs",
+            "with_us_pregnancy_inputs",
+            "with_us_wic_claim_input",
+            "with_us_child_support_inputs",
+            "with_us_disability_benefits",
+            "with_us_workers_compensation",
+            "with_us_weeks_unemployed",
+            "with_us_childcare_inputs",
+            "with_us_energy_subsidy_input",
+            "with_us_retirement_contribution_inputs",
+            "with_us_retirement_distribution_inputs",
+            "with_us_immigration_inputs",
+        ),
+    ),
+    (
+        "clone_feature_extraction",
+        (
+            "clone_us_frame_for_puf_support",
+            "puf_tax_unit_donor_from_arrays",
+            "initialize_primary_puf_qrf_chain",
+        ),
+    ),
+    ("primary_qrf_chain", ("run_primary_puf_qrf_chain[target_subprocesses]",)),
+    ("qrf_finalization", ("finalize_primary_puf_qrf_chain",)),
+    ("qbi_reconciliation", ("with_us_qbi_input_reconciliation",)),
+    ("wic_post_clone", ("with_us_wic_claim_input",)),
+    (
+        "housing_assistance",
+        ("impute_us_housing_assistance_to_puf_support",),
+    ),
+    (
+        "prior_year_income_post_clone",
+        ("with_us_prior_year_income_inputs",),
+    ),
+    ("child_support_post_clone", ("with_us_child_support_inputs",)),
+    ("disability_benefits_post_clone", ("with_us_disability_benefits",)),
+    ("workers_compensation_post_clone", ("with_us_workers_compensation",)),
+    ("weeks_unemployed_post_clone", ("with_us_weeks_unemployed",)),
+    ("childcare_post_clone", ("with_us_childcare_inputs",)),
+    ("energy_subsidy_post_clone", ("with_us_energy_subsidy_input",)),
+    (
+        "retirement_contributions_post_clone",
+        ("with_us_retirement_contribution_inputs",),
+    ),
+    (
+        "retirement_distributions_post_clone",
+        ("with_us_retirement_distribution_inputs",),
+    ),
+    ("education_inputs_post_clone", ("with_us_education_inputs",)),
+    (
+        "congressional_district_assignment",
+        ("with_household_congressional_districts",),
+    ),
+    ("block_ladder_assignment", ("with_household_us_geography_ladder",)),
+    ("final_export", ("PolicyEngineUSEngine.write_dataset",)),
+)
+OUTER_STAGE_PIPELINE = StagePipeline(
+    tuple(Stage(name, " -> ".join(boundaries)) for name, boundaries in STAGE_BOUNDARIES)
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -153,6 +271,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--stage",
+        choices=(*STAGE_NAMES, "all"),
+        default="all",
+        help=(
+            "Run one descriptive checkpointed stage, or run all stages as fresh "
+            "processes in the locked order. a-d remain parse-only Phase-1 aliases."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        help="Directory for durable frame checkpoints and stage_profile.json.",
+    )
+    parser.add_argument(
+        "--equivalence-boundary-dir",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--equivalence-deterministic-h5-metadata",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
     parser.add_argument(
@@ -246,11 +388,388 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
+    if args.stage != "all" and args.checkpoint_dir is None:
+        parser.error("a named --stage requires --checkpoint-dir")
+    if args.equivalence_boundary_dir is not None and (
+        args.stage != "all" or args.checkpoint_dir is not None
+    ):
+        parser.error(
+            "--equivalence-boundary-dir requires monolithic --stage all without "
+            "--checkpoint-dir"
+        )
+    if (
+        args.equivalence_deterministic_h5_metadata
+        and args.equivalence_boundary_dir is None
+        and args.checkpoint_dir is None
+    ):
+        parser.error(
+            "--equivalence-deterministic-h5-metadata requires an equivalence "
+            "boundary or checkpoint directory"
+        )
     return args
 
 
-def main() -> None:
-    args = _parse_args()
+def main(argv: list[str] | None = None) -> None:
+    """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
+
+    args = _parse_args() if argv is None else _parse_args(argv)
+
+    stage = getattr(args, "stage", "all")
+    checkpoint_dir = getattr(args, "checkpoint_dir", None)
+    if stage != "all":
+        hash_seed = os.environ.get("PYTHONHASHSEED")
+        if (
+            hash_seed is None
+            or not hash_seed.isdigit()
+            or int(hash_seed) > 4_294_967_295
+        ):
+            raise SystemExit(
+                "Named staged builds require an explicit PYTHONHASHSEED; use "
+                "--stage all to default fresh child processes to 0."
+            )
+        _run_configured_stage(args)
+        return
+    if checkpoint_dir is None:
+        # This is intentionally a direct call with no profiler, checkpoint
+        # directory creation, or other side effect.  It is the pre-refactor
+        # pipeline and remains the byte-for-byte compatibility path.
+        boundary_dir = getattr(args, "equivalence_boundary_dir", None)
+        observer = (
+            None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
+        )
+        if observer is None:
+            _run_all(args)
+        else:
+            _run_all(args, boundary_observer=observer)
+            observer.assert_complete()
+        return
+    _run_staged_all(args)
+
+
+def _run_staged_all(args: argparse.Namespace) -> None:
+    """Run every outer boundary in a fresh interpreter, resuming by prefix."""
+
+    runtime = StageRuntime(
+        args.checkpoint_dir,
+        OUTER_STAGE_PIPELINE,
+        run_config=_stage_run_config(args),
+    )
+    completed_prefix = runtime.context.completed
+    remaining = PIPELINE_STEPS[len(completed_prefix) :]
+    if not remaining and completed_prefix == PIPELINE_STEPS:
+        # Re-enter only the fresh final child so it can validate/repair the
+        # export and stage_all alias after a crash in the post-context window.
+        remaining = ("final_export",)
+    for stage in remaining:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                *_stage_cli_args(args, stage),
+            ],
+            check=False,
+            env=_staged_subprocess_environment(),
+        )
+        if completed.returncode != 0:
+            raise SystemExit(
+                f"Checkpointed stage {stage!r} failed with exit code "
+                f"{completed.returncode}."
+            )
+
+
+def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
+    """Reconstruct one stage invocation from validated parsed arguments."""
+
+    command: list[str] = []
+    if args.base_h5 is not None:
+        command.extend(("--base-h5", str(args.base_h5)))
+    else:
+        for value in args.asec_h5:
+            command.extend(("--asec-h5", value))
+    command.extend(("--target-year", str(args.target_year)))
+    if args.asec_max_households is not None:
+        command.extend(("--asec-max-households", str(args.asec_max_households)))
+    _append_path_argument(command, "--support-spine-spec", args.support_spine_spec)
+    command.extend(("--puf-h5", str(args.puf_h5)))
+    _append_path_argument(
+        command,
+        "--asec-2023-weeks-unemployed-source",
+        args.asec_2023_weeks_unemployed_source,
+    )
+    _append_path_argument(command, "--acs-h5", args.acs_h5)
+    command.extend(("--out", str(args.out)))
+    command.extend(("--stage", stage))
+    command.extend(("--checkpoint-dir", str(args.checkpoint_dir)))
+    command.extend(("--seed", str(args.seed)))
+    command.extend(("--n-estimators", str(args.n_estimators)))
+    _append_path_argument(command, "--ledger-facts", args.ledger_facts)
+    if args.assign_congressional_districts:
+        command.append("--assign-congressional-districts")
+    _append_path_argument(
+        command,
+        "--congressional-district-vintage-crosswalk",
+        args.congressional_district_vintage_crosswalk,
+    )
+    command.extend(
+        ("--congressional-district-seed", str(args.congressional_district_seed))
+    )
+    _append_path_argument(
+        command, "--block-ladder-artifact", args.block_ladder_artifact
+    )
+    if args.without_block_ladder:
+        command.append("--without-block-ladder")
+    command.extend(("--geography-ladder-seed", str(args.geography_ladder_seed)))
+    if args.allow_geography_ladder_gate_failures:
+        command.append("--allow-geography-ladder-gate-failures")
+    if getattr(args, "equivalence_deterministic_h5_metadata", False):
+        command.append("--equivalence-deterministic-h5-metadata")
+    return command
+
+
+def _append_path_argument(command: list[str], flag: str, value: Path | None) -> None:
+    if value is not None:
+        command.extend((flag, str(value)))
+
+
+def _staged_subprocess_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.setdefault("PYTHONHASHSEED", "0")
+    return environment
+
+
+def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
+    """Return the canonical inputs and settings locked across stage resumes."""
+
+    def path(value: Path | None) -> str | None:
+        return None if value is None else str(value.resolve())
+
+    asec_sources: list[str] | None = None
+    if args.asec_h5 is not None:
+        asec_sources = []
+        for value in args.asec_h5:
+            raw_year, raw_path = value.split("=", 1)
+            asec_sources.append(f"{int(raw_year)}={Path(raw_path).resolve()}")
+    thread_environment = {
+        name: (
+            os.environ.get(name, "0")
+            if name == "PYTHONHASHSEED"
+            else os.environ.get(name)
+        )
+        for name in (
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "BLIS_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "POPULACE_FIT_N_JOBS",
+            "POPULACE_FIT_PREDICT_WORKERS",
+            "PYTHONHASHSEED",
+        )
+    }
+    return {
+        "allow_geography_ladder_gate_failures": bool(
+            args.allow_geography_ladder_gate_failures
+        ),
+        "asec_h5": asec_sources,
+        "asec_max_households": args.asec_max_households,
+        "asec_2023_weeks_unemployed_source": path(
+            args.asec_2023_weeks_unemployed_source
+        ),
+        "acs_h5": path(args.acs_h5),
+        "assign_congressional_districts": bool(args.assign_congressional_districts),
+        "base_h5": path(args.base_h5),
+        "block_ladder_artifact": path(args.block_ladder_artifact),
+        "builder_code_identity": _builder_code_identity(),
+        "congressional_district_seed": args.congressional_district_seed,
+        "congressional_district_vintage_crosswalk": path(
+            args.congressional_district_vintage_crosswalk
+        ),
+        "geography_ladder_seed": args.geography_ladder_seed,
+        "equivalence_deterministic_h5_metadata": bool(
+            getattr(args, "equivalence_deterministic_h5_metadata", False)
+        ),
+        "ledger_facts": path(args.ledger_facts),
+        "n_estimators": args.n_estimators,
+        "out": path(args.out),
+        "puf_h5": path(args.puf_h5),
+        "seed": args.seed,
+        "support_spine_spec": path(args.support_spine_spec),
+        "target_year": args.target_year,
+        "thread_environment": thread_environment,
+        "without_block_ladder": bool(args.without_block_ladder),
+    }
+
+
+def _builder_code_identity() -> dict[str, object]:
+    """Fingerprint executable sources and dependency versions for safe resume."""
+
+    root = Path(__file__).resolve().parents[1]
+    candidates = [Path(__file__).resolve(), root / "pyproject.toml", root / "uv.lock"]
+    for source_root in sorted((root / "packages").glob("*/src")):
+        candidates.extend(
+            path
+            for path in source_root.rglob("*")
+            if path.is_file()
+            and path.suffix in {".json", ".py", ".toml", ".yaml", ".yml"}
+        )
+    digest = hashlib.sha256()
+    for source_path in sorted(set(candidates)):
+        relative = source_path.relative_to(root).as_posix().encode("utf-8")
+        content = source_path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "little"))
+        digest.update(content)
+    dependency_versions: dict[str, str | None] = {}
+    for distribution in (
+        "h5py",
+        "numpy",
+        "pandas",
+        "policyengine-us",
+        "quantile-forest",
+        "scikit-learn",
+    ):
+        try:
+            dependency_versions[distribution] = importlib_metadata.version(distribution)
+        except importlib_metadata.PackageNotFoundError:
+            dependency_versions[distribution] = None
+    return {
+        "dependency_versions": dependency_versions,
+        "python": sys.version,
+        "source_sha256": digest.hexdigest(),
+    }
+
+
+class _EquivalenceBoundaryObserver:
+    """Write test-only monolith snapshots without changing production stages."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._next_stage_index = 0
+
+    def observe_frame(self, stage: str, frame: Frame) -> None:
+        expected = PIPELINE_STEPS[self._next_stage_index]
+        if stage != expected:
+            raise AssertionError(
+                f"Monolith boundary order changed: expected {expected!r}, got "
+                f"{stage!r}."
+            )
+        write_frame_checkpoint(
+            self.root / f"{self._next_stage_index:03d}_{stage}.frame.h5",
+            frame,
+            metadata={
+                "artifact_kind": "populace_monolith_equivalence_boundary",
+                "pipeline_steps": list(PIPELINE_STEPS),
+                "stage": stage,
+                "stage_index": self._next_stage_index,
+            },
+        )
+        self._next_stage_index += 1
+
+    def observe_primary_qrf(
+        self,
+        frame: Frame,
+        raw_predictions: pd.DataFrame,
+    ) -> None:
+        self.observe_frame("primary_qrf_chain", frame)
+        target_dir = self.root / "primary_qrf" / "targets"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for target_index, target in enumerate(raw_predictions.columns):
+            safe_target = "".join(
+                character if character.isalnum() or character in "-_" else "_"
+                for character in target
+            )
+            path = target_dir / f"{target_index:03d}__{safe_target}.h5"
+            temporary = path.with_name(f".{path.name}.tmp")
+            temporary.unlink(missing_ok=True)
+            import h5py
+
+            try:
+                values = np.ascontiguousarray(raw_predictions[target], dtype="<f8")
+                with h5py.File(temporary, mode="w") as h5:
+                    h5.create_dataset(
+                        "raw_draw_bits",
+                        data=values.view("<u8"),
+                        dtype="<u8",
+                        track_times=False,
+                    )
+                    h5.attrs["target"] = target
+                    h5.attrs["target_index"] = target_index
+                    h5.flush()
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def assert_complete(self) -> None:
+        if self._next_stage_index != len(PIPELINE_STEPS):
+            raise AssertionError(
+                "Monolith boundary observer stopped after "
+                f"{self._next_stage_index}/{len(PIPELINE_STEPS)} stages."
+            )
+
+
+def _observe_frame_boundary(
+    observer: _EquivalenceBoundaryObserver | None,
+    stage: str,
+    frame: Frame,
+) -> None:
+    if observer is not None:
+        observer.observe_frame(stage, frame)
+
+
+@contextmanager
+def _without_pytables_leaf_timestamps(enabled: bool) -> Iterator[None]:
+    """Disable test-only HDF5 leaf mtimes for physical byte comparisons."""
+
+    if not enabled:
+        yield
+        return
+    from tables.leaf import Leaf
+
+    original_init = Leaf.__init__
+
+    def deterministic_init(
+        leaf: object,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if len(args) >= 7:
+            args = (*args[:6], False, *args[7:])
+        else:
+            kwargs["track_times"] = False
+        original_init(leaf, *args, **kwargs)
+
+    Leaf.__init__ = deterministic_init
+    try:
+        yield
+    finally:
+        Leaf.__init__ = original_init
+
+
+def _write_policyengine_dataset(
+    args: argparse.Namespace,
+    frame: Frame,
+    output_h5: Path,
+) -> None:
+    """Write the export, canonicalizing only test-harness timestamp metadata."""
+
+    deterministic = bool(getattr(args, "equivalence_deterministic_h5_metadata", False))
+    with _without_pytables_leaf_timestamps(deterministic):
+        PolicyEngineUSEngine().write_dataset(
+            frame,
+            output_h5,
+            period=args.target_year,
+        )
+
+
+def _run_all(
+    args: argparse.Namespace,
+    *,
+    boundary_observer: _EquivalenceBoundaryObserver | None = None,
+) -> Frame:
+    """Run the existing single-process pipeline in its original order."""
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -258,6 +777,7 @@ def main() -> None:
     summary_path = out_dir / _summary_filename(args.target_year)
 
     raw_base, base_source = _load_base_frame_from_args(args)
+    _observe_frame_boundary(boundary_observer, "source_construction", raw_base)
     weeks_unemployed_source_path = (
         args.asec_2023_weeks_unemployed_source
         if args.asec_2023_weeks_unemployed_source is not None
@@ -395,16 +915,31 @@ def main() -> None:
         seed=args.seed,
         time_period=args.target_year,
     )
+    _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
-    imputed, weights_audit = impute_and_audit_us_puf_support(
-        expanded,
-        donor,
-        seed=args.seed,
-        n_estimators=args.n_estimators,
-    )
+    _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
+    if boundary_observer is None:
+        imputed, weights_audit = impute_and_audit_us_puf_support(
+            expanded,
+            donor,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+        )
+    else:
+        imputed, weights_audit = impute_and_audit_us_puf_support(
+            expanded,
+            donor,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+            raw_predictions_callback=lambda predictions: (
+                boundary_observer.observe_primary_qrf(expanded, predictions)
+            ),
+        )
+    _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
     imputed = with_us_qbi_input_reconciliation(imputed)
+    _observe_frame_boundary(boundary_observer, "qbi_reconciliation", imputed)
     imputed = with_us_wic_claim_input(
         imputed,
         seed=args.seed,
@@ -422,10 +957,12 @@ def main() -> None:
             "Medicare take-up input signal gate failed after support cloning:\n  "
             + "\n  ".join(medicare_take_up_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "wic_post_clone", imputed)
     imputed = impute_us_housing_assistance_to_puf_support(
         imputed,
         seed=args.seed,
     )
+    _observe_frame_boundary(boundary_observer, "housing_assistance", imputed)
     imputed = with_us_prior_year_income_inputs(
         imputed,
         seed=args.seed,
@@ -468,6 +1005,7 @@ def main() -> None:
             "Domestic-production-ALD signal gate failed:\n  "
             + "\n  ".join(domestic_production_ald_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "prior_year_income_post_clone", imputed)
     imputed = with_us_child_support_inputs(
         imputed,
         seed=args.seed,
@@ -479,6 +1017,7 @@ def main() -> None:
             "Child-support signal gate failed:\n  "
             + "\n  ".join(child_support_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "child_support_post_clone", imputed)
     imputed = with_us_disability_benefits(
         imputed,
         seed=args.seed,
@@ -490,6 +1029,9 @@ def main() -> None:
             "Disability-benefits signal gate failed:\n  "
             + "\n  ".join(disability_benefits_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "disability_benefits_post_clone", imputed
+    )
     imputed = with_us_workers_compensation(
         imputed,
         seed=args.seed,
@@ -501,6 +1043,9 @@ def main() -> None:
             "Workers-compensation signal gate failed:\n  "
             + "\n  ".join(workers_compensation_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "workers_compensation_post_clone", imputed
+    )
     imputed = with_us_weeks_unemployed(
         imputed,
         seed=args.seed,
@@ -537,6 +1082,7 @@ def main() -> None:
             "Capital-gain details signal gate failed:\n  "
             + "\n  ".join(capital_gain_details_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "weeks_unemployed_post_clone", imputed)
     imputed = with_us_childcare_inputs(
         imputed,
         seed=args.seed,
@@ -548,6 +1094,7 @@ def main() -> None:
             "Childcare-input signal gate failed:\n  "
             + "\n  ".join(childcare_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "childcare_post_clone", imputed)
     imputed = with_us_energy_subsidy_input(
         imputed,
         seed=args.seed,
@@ -576,6 +1123,7 @@ def main() -> None:
             "Miscellaneous-itemized signal gate failed:\n  "
             + "\n  ".join(misc_itemized_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "energy_subsidy_post_clone", imputed)
     imputed = with_us_retirement_contribution_inputs(
         imputed,
         seed=args.seed,
@@ -587,6 +1135,9 @@ def main() -> None:
             "Retirement-contribution signal gate failed:\n  "
             + "\n  ".join(retirement_contributions_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "retirement_contributions_post_clone", imputed
+    )
     imputed = with_us_retirement_distribution_inputs(
         imputed,
         seed=args.seed,
@@ -598,6 +1149,9 @@ def main() -> None:
             "Retirement-distribution signal gate failed:\n  "
             + "\n  ".join(retirement_distributions_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "retirement_distributions_post_clone", imputed
+    )
     imputed = with_us_education_inputs(
         imputed,
         seed=args.seed,
@@ -609,6 +1163,7 @@ def main() -> None:
             "Education-input signal gate failed:\n  "
             + "\n  ".join(education_inputs_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
         ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
@@ -648,6 +1203,9 @@ def main() -> None:
                 "seed": args.congressional_district_seed,
             }
         )
+    _observe_frame_boundary(
+        boundary_observer, "congressional_district_assignment", imputed
+    )
     geography_ladder_assignment = {
         "applied": False,
         "opted_out": bool(args.without_block_ladder),
@@ -686,7 +1244,8 @@ def main() -> None:
                 },
             }
         )
-    PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=args.target_year)
+    _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
+    _write_policyengine_dataset(args, imputed, output_h5)
     if (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
@@ -884,6 +1443,758 @@ def main() -> None:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+    _observe_frame_boundary(boundary_observer, "final_export", imputed)
+    return imputed
+
+
+def _run_configured_stage(args: argparse.Namespace) -> None:
+    """Dispatch one separately executed outer stage."""
+
+    if args.stage in LEGACY_STAGE_ALIASES:
+        raise SystemExit(
+            f"Stage alias {args.stage!r} was Phase-1-only; use one of the "
+            f"descriptive stages {list(PIPELINE_STEPS)}."
+        )
+    _run_outer_stage(args)
+
+
+def _run_outer_stage(args: argparse.Namespace) -> None:
+    """Run one exact pipeline step through the lossless outer-stage runtime."""
+
+    runtime = StageRuntime(
+        args.checkpoint_dir,
+        OUTER_STAGE_PIPELINE,
+        run_config=_stage_run_config(args),
+    )
+    if args.stage in runtime.context.completed:
+        if args.stage == "final_export":
+            _repair_completed_final_stage(args, runtime)
+        return
+
+    with profile_stage(args.stage, args.checkpoint_dir):
+        if args.stage == "source_construction":
+            predecessor = runtime.load_predecessor(args.stage)
+            if predecessor is not None:
+                raise AssertionError(
+                    "source construction unexpectedly has a predecessor"
+                )
+            frame, metadata = _source_construction_stage(args)
+            runtime.complete(args.stage, frame, metadata=metadata)
+            return
+
+        if args.stage == "primary_qrf_chain":
+            runtime.require_ready(args.stage)
+            run_primary_puf_qrf_chain(args.checkpoint_dir / "primary_qrf")
+            runtime.complete_without_frame(
+                args.stage,
+                metadata={
+                    "primary_qrf_checkpoint_dir": str(
+                        (args.checkpoint_dir / "primary_qrf").resolve()
+                    )
+                },
+            )
+            return
+
+        predecessor = runtime.load_predecessor(args.stage)
+        if predecessor is None:
+            raise AssertionError(f"stage {args.stage!r} requires a predecessor")
+        before = predecessor.frame
+        stage_metadata = runtime.metadata
+        if args.stage == "pre_clone_enrichment":
+            after, metadata = _pre_clone_enrichment_stage(
+                args,
+                before,
+                stage_metadata["source_construction"],
+            )
+            assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == "clone_feature_extraction":
+            after, metadata = _clone_feature_extraction_stage(args, before)
+            assert_clone_expansion(
+                before,
+                after,
+                channels=(
+                    BASE_ASEC_SUPPORT_CHANNEL,
+                    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                ),
+            )
+        elif args.stage == "qrf_finalization":
+            after, metadata = _qrf_finalization_stage(args, before)
+            assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == "final_export":
+            after = before
+            metadata = _export_staged_result(args, after, stage_metadata)
+            assert_unchanged_identity(before, after, stage=args.stage)
+        else:
+            after, metadata = _post_qrf_frame_stage(
+                args.stage,
+                args,
+                before,
+                stage_metadata,
+            )
+            assert_unchanged_identity(before, after, stage=args.stage)
+        completed = runtime.complete(args.stage, after, metadata=metadata)
+        if args.stage == "final_export":
+            _link_all_stage_checkpoint(args.checkpoint_dir, completed.path)
+
+
+def _link_all_stage_checkpoint(checkpoint_dir: Path, source: Path) -> None:
+    destination = checkpoint_dir / ALL_STAGE_CHECKPOINT_FILENAME
+    if destination.exists():
+        if os.path.samefile(source, destination):
+            return
+        destination.unlink()
+    os.link(source, destination)
+
+
+def _repair_completed_final_stage(
+    args: argparse.Namespace,
+    runtime: StageRuntime,
+) -> None:
+    loaded = runtime.load("final_export")
+    metadata = runtime.metadata["final_export"]
+    output_h5 = Path(str(metadata["output_h5"]))
+    summary_path = Path(str(metadata["summary_path"]))
+    output_valid = output_h5.is_file() and _sha256(output_h5) == metadata.get(
+        "output_sha256"
+    )
+    summary_valid = summary_path.is_file() and _sha256(summary_path) == metadata.get(
+        "summary_sha256"
+    )
+    if not output_valid or not summary_valid:
+        regenerated = _export_staged_result(args, loaded.frame, runtime.metadata)
+        for key in ("output_sha256", "summary_sha256"):
+            if regenerated[key] != metadata.get(key):
+                raise RuntimeError(
+                    f"Recreated final artifact {key} differs from the committed "
+                    "stage metadata; refusing to bless a non-reproducible resume."
+                )
+    _link_all_stage_checkpoint(args.checkpoint_dir, loaded.path)
+
+
+def _source_construction_stage(
+    args: argparse.Namespace,
+) -> tuple[Frame, dict[str, object]]:
+    frame, base_source = _load_base_frame_from_args(args)
+    weeks_path = (
+        args.asec_2023_weeks_unemployed_source
+        if args.asec_2023_weeks_unemployed_source is not None
+        else fetch_asec_2023_weeks_unemployed_source()
+    )
+    return frame, {
+        "base_source": base_source,
+        "base_rows": _row_counts(frame),
+        "base_household_weight_total": float(frame.weights_for("household").total),
+        "weeks_unemployed_source_path": str(Path(weeks_path).resolve()),
+    }
+
+
+def _pre_clone_enrichment_stage(
+    args: argparse.Namespace,
+    raw_base: Frame,
+    source_metadata: dict[str, object],
+) -> tuple[Frame, dict[str, object]]:
+    weeks_path = Path(str(source_metadata["weeks_unemployed_source_path"]))
+    weeks_source = load_asec_2023_weeks_unemployed_source(weeks_path)
+    base = derive_us_cps_carried_inputs(raw_base)
+    base = with_us_prior_year_income_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_relationship_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals: dict[str, object] = {
+        "relationship_inputs_signal": _checked_gate_payload(
+            us_relationship_inputs_signal_gate(base),
+            "Relationship-input signal gate failed",
+        )
+    }
+    base = with_us_medicare_take_up_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["medicare_take_up_input_signal"] = _checked_gate_payload(
+        us_medicare_take_up_signal_gate(base),
+        "Medicare take-up input signal gate failed before support cloning",
+    )
+    housing_gate = us_housing_inputs_signal_gate(base)
+    acs_rent_donor: pd.DataFrame | None = None
+    if not housing_gate.passed:
+        if args.acs_h5 is None:
+            raise SystemExit(
+                "Housing-input signal gate is not already green and --acs-h5 "
+                "was not provided; exact pre_subsidy_rent restoration requires "
+                "the pinned ACS 2022 donor."
+            )
+        acs_rent_donor = load_acs_2022_rent_donor(args.acs_h5)
+        base = with_us_housing_inputs(
+            base,
+            seed=args.seed,
+            time_period=args.target_year,
+            acs_rent_donor=acs_rent_donor,
+        )
+        housing_gate = us_housing_inputs_signal_gate(base)
+    signals["housing_inputs_signal"] = _checked_gate_payload(
+        housing_gate,
+        "Housing-input signal gate failed before support cloning",
+    )
+    base = with_us_eligibility_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["eligibility_inputs_signal"] = _checked_gate_payload(
+        us_eligibility_inputs_signal_gate(base),
+        "Eligibility-input signal gate failed before support cloning",
+    )
+    base = with_us_pregnancy_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["pregnancy_signal"] = _checked_gate_payload(
+        us_pregnancy_signal_gate(base),
+        "Pregnancy signal gate failed before support cloning",
+    )
+    base = with_us_wic_claim_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["wic_claim_signal"] = _checked_gate_payload(
+        us_wic_claim_signal_gate(base),
+        "WIC-claim signal gate failed before support cloning",
+    )
+    base = with_us_child_support_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_disability_benefits(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_workers_compensation(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_weeks_unemployed(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_2023_source=weeks_source,
+    )
+    base = with_us_childcare_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_energy_subsidy_input(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_retirement_contribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_retirement_distribution_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    base = with_us_immigration_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    return base, {
+        "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
+        "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
+        "acs_rent_donor_rows": (
+            int(len(acs_rent_donor)) if acs_rent_donor is not None else None
+        ),
+        "signals": signals,
+        "weeks_unemployed_source": {
+            "path": str(weeks_path),
+            "sha256": _sha256(weeks_path),
+            "upstream_archive_sha256": ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            "rows": int(len(weeks_source)),
+            "audit": dict(weeks_source.attrs.get("source_audit", {})),
+        },
+    }
+
+
+def _checked_gate_payload(gate, label: str) -> dict[str, object]:
+    passed = bool(gate.passed)
+    failures = list(gate.failures)
+    details = dict(gate.details)
+    if not passed:
+        raise SystemExit(f"{label}:\n  " + "\n  ".join(failures))
+    return {"passed": passed, "failures": failures, "details": details}
+
+
+def _clone_feature_extraction_stage(
+    args: argparse.Namespace,
+    base: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    expanded = clone_us_frame_for_puf_support(base)
+    donor = puf_tax_unit_donor_from_arrays(_read_h5_arrays(args.puf_h5))
+    qrf_dir = args.checkpoint_dir / "primary_qrf"
+    if qrf_dir.exists():
+        # The outer context marks clone_feature_extraction only after both its
+        # Frame and chain inputs commit. A retry before that mark cannot have a
+        # valid downstream target prefix, so discard only this incomplete,
+        # builder-owned inner artifact and recreate it deterministically.
+        shutil.rmtree(qrf_dir)
+    initialize_primary_puf_qrf_chain(
+        expanded,
+        donor,
+        qrf_dir,
+        seed=args.seed,
+        n_estimators=args.n_estimators,
+    )
+    return expanded, {
+        "puf_h5": str(args.puf_h5.resolve()),
+        "puf_sha256": _sha256(args.puf_h5),
+        "puf_donor_rows": int(len(donor)),
+        "puf_donor_columns": sorted(donor.columns.tolist()),
+        "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
+    }
+
+
+def _qrf_finalization_stage(
+    args: argparse.Namespace,
+    expanded: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    imputed, weight_kind = finalize_primary_puf_qrf_chain(
+        expanded, args.checkpoint_dir / "primary_qrf"
+    )
+    report = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)])
+    if not report.passed:
+        raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
+    return imputed, {
+        "weights_audit": {
+            "passed": report.passed,
+            "failures": list(report.failures),
+            "details": dict(report.details),
+        }
+    }
+
+
+def _post_qrf_frame_stage(
+    stage: str,
+    args: argparse.Namespace,
+    frame: Frame,
+    stage_metadata: dict[str, dict[str, object]],
+) -> tuple[Frame, dict[str, object]]:
+    signals: dict[str, object] = {}
+    metadata: dict[str, object] = {"signals": signals}
+    if stage == "qbi_reconciliation":
+        frame = with_us_qbi_input_reconciliation(frame)
+    elif stage == "wic_post_clone":
+        frame = with_us_wic_claim_input(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["wic_claim_signal"] = _checked_gate_payload(
+            us_wic_claim_signal_gate(frame),
+            "WIC-claim signal gate failed after support cloning",
+        )
+        signals["medicare_take_up_input_signal"] = _checked_gate_payload(
+            us_medicare_take_up_signal_gate(frame),
+            "Medicare take-up input signal gate failed after support cloning",
+        )
+    elif stage == "housing_assistance":
+        frame = impute_us_housing_assistance_to_puf_support(frame, seed=args.seed)
+    elif stage == "prior_year_income_post_clone":
+        frame = with_us_prior_year_income_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["prior_year_income_signal"] = _checked_gate_payload(
+            us_prior_year_income_signal_gate(frame),
+            "Prior-year-income signal gate failed",
+        )
+        signals["prior_year_income_source_reconciliation"] = _checked_gate_payload(
+            us_prior_year_income_source_reconciliation_gate(frame),
+            "Prior-year-income source reconciliation failed",
+        )
+        signals["housing_inputs_signal"] = _checked_gate_payload(
+            us_housing_inputs_signal_gate(frame),
+            "Housing-input signal gate failed after PUF-support imputation",
+        )
+        signals["qbi_inputs_signal"] = _checked_gate_payload(
+            us_qbi_inputs_signal_gate(frame),
+            "QBI-input signal gate failed",
+        )
+        signals["farm_business_income_signal"] = _checked_gate_payload(
+            us_farm_business_income_signal_gate(frame),
+            "Farm-business-income signal gate failed",
+        )
+        signals["domestic_production_ald_signal"] = _checked_gate_payload(
+            us_domestic_production_ald_signal_gate(frame),
+            "Domestic-production-ALD signal gate failed",
+        )
+    elif stage == "child_support_post_clone":
+        frame = with_us_child_support_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["child_support_signal"] = _checked_gate_payload(
+            us_child_support_signal_gate(frame), "Child-support signal gate failed"
+        )
+    elif stage == "disability_benefits_post_clone":
+        frame = with_us_disability_benefits(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["disability_benefits_signal"] = _checked_gate_payload(
+            us_disability_benefits_signal_gate(frame),
+            "Disability-benefits signal gate failed",
+        )
+    elif stage == "workers_compensation_post_clone":
+        frame = with_us_workers_compensation(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["workers_compensation_signal"] = _checked_gate_payload(
+            us_workers_compensation_signal_gate(frame),
+            "Workers-compensation signal gate failed",
+        )
+    elif stage == "weeks_unemployed_post_clone":
+        source = stage_metadata["source_construction"]
+        recorded_weeks = stage_metadata["pre_clone_enrichment"][
+            "weeks_unemployed_source"
+        ]
+        weeks_path = Path(str(source["weeks_unemployed_source_path"]))
+        actual_weeks_sha256 = _sha256(weeks_path)
+        if actual_weeks_sha256 != recorded_weeks["sha256"]:
+            raise SystemExit(
+                "Weeks-unemployed source changed between pre-clone and post-clone "
+                f"stages: expected {recorded_weeks['sha256']}, got "
+                f"{actual_weeks_sha256}. Start a new checkpoint directory."
+            )
+        weeks_source = load_asec_2023_weeks_unemployed_source(weeks_path)
+        frame = with_us_weeks_unemployed(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+            asec_2023_source=weeks_source,
+        )
+        signals["weeks_unemployed_signal"] = _checked_gate_payload(
+            us_weeks_unemployed_signal_gate(frame),
+            "Weeks-unemployed signal gate failed",
+        )
+        signals["educator_expense_signal"] = _checked_gate_payload(
+            us_educator_expense_signal_gate(frame),
+            "Educator-expense signal gate failed",
+        )
+        signals["form_4952_election_signal"] = _checked_gate_payload(
+            us_form_4952_election_signal_gate(frame),
+            "Form 4952 election signal gate failed",
+        )
+        signals["salt_refund_income_signal"] = _checked_gate_payload(
+            us_salt_refund_income_signal_gate(frame),
+            "SALT-refund-income signal gate failed",
+        )
+        signals["capital_gain_details_signal"] = _checked_gate_payload(
+            us_capital_gain_details_signal_gate(frame),
+            "Capital-gain details signal gate failed",
+        )
+    elif stage == "childcare_post_clone":
+        frame = with_us_childcare_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["childcare_inputs_signal"] = _checked_gate_payload(
+            us_childcare_signal_gate(frame), "Childcare-input signal gate failed"
+        )
+    elif stage == "energy_subsidy_post_clone":
+        frame = with_us_energy_subsidy_input(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["energy_subsidy_signal"] = _checked_gate_payload(
+            us_energy_subsidy_signal_gate(frame),
+            "Energy-subsidy signal gate failed",
+        )
+        signals["alimony_inputs_signal"] = _checked_gate_payload(
+            us_alimony_signal_gate(frame), "Alimony-input signal gate failed"
+        )
+        signals["casualty_loss_signal"] = _checked_gate_payload(
+            us_casualty_loss_signal_gate(frame), "Casualty-loss signal gate failed"
+        )
+        signals["misc_itemized_signal"] = _checked_gate_payload(
+            us_misc_itemized_signal_gate(frame),
+            "Miscellaneous-itemized signal gate failed",
+        )
+    elif stage == "retirement_contributions_post_clone":
+        frame = with_us_retirement_contribution_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["retirement_contributions_signal"] = _checked_gate_payload(
+            us_retirement_contributions_signal_gate(frame),
+            "Retirement-contribution signal gate failed",
+        )
+    elif stage == "retirement_distributions_post_clone":
+        frame = with_us_retirement_distribution_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["retirement_distributions_signal"] = _checked_gate_payload(
+            us_retirement_distributions_signal_gate(frame),
+            "Retirement-distribution signal gate failed",
+        )
+    elif stage == "education_inputs_post_clone":
+        frame = with_us_education_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["education_inputs_signal"] = _checked_gate_payload(
+            us_education_inputs_signal_gate(frame),
+            "Education-input signal gate failed",
+        )
+    elif stage == "congressional_district_assignment":
+        assignment: dict[str, object] = {"applied": False}
+        if args.assign_congressional_districts:
+            ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
+            if args.congressional_district_vintage_crosswalk is not None:
+                ledger_facts = (
+                    translate_congressional_district_facts_to_current_vintage(
+                        ledger_facts,
+                        load_congressional_district_vintage_crosswalk(
+                            args.congressional_district_vintage_crosswalk
+                        ),
+                    )
+                )
+            distribution = congressional_district_distribution_from_ledger_facts(
+                ledger_facts
+            )
+            frame = with_household_congressional_districts(
+                frame,
+                distribution,
+                seed=args.congressional_district_seed,
+            )
+            assignment = congressional_district_assignment_summary(
+                frame.table("household"), distribution
+            )
+            assignment.update(
+                {
+                    "ledger_facts": str(args.ledger_facts.resolve()),
+                    "ledger_facts_sha256": _sha256(args.ledger_facts),
+                    "congressional_district_vintage_crosswalk": (
+                        str(args.congressional_district_vintage_crosswalk.resolve())
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "congressional_district_vintage_crosswalk_sha256": (
+                        _sha256(args.congressional_district_vintage_crosswalk)
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "seed": args.congressional_district_seed,
+                }
+            )
+        metadata["congressional_district_assignment"] = assignment
+    elif stage == "block_ladder_assignment":
+        assignment = {
+            "applied": False,
+            "opted_out": bool(args.without_block_ladder),
+        }
+        if args.block_ladder_artifact is not None:
+            ladder = load_us_block_ladder(args.block_ladder_artifact)
+            frame = with_household_us_geography_ladder(
+                frame,
+                ladder,
+                seed=args.geography_ladder_seed,
+                expected_congressional_district_vintage=(
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+                ),
+            )
+            household = frame.table("household")
+            household_weights = frame.weights_for("household").values
+            gate = us_geography_ladder_gate(household, household_weights)
+            if not gate.passed and not args.allow_geography_ladder_gate_failures:
+                raise SystemExit(
+                    "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
+                )
+            assignment = us_geography_ladder_assignment_summary(
+                household,
+                ladder,
+                weight_values=household_weights,
+            )
+            assignment.update(
+                {
+                    "artifact": str(args.block_ladder_artifact.resolve()),
+                    "artifact_sha256": _sha256(args.block_ladder_artifact),
+                    "seed": args.geography_ladder_seed,
+                    "gate": {
+                        "passed": gate.passed,
+                        "failures": list(gate.failures),
+                        "details": dict(gate.details),
+                    },
+                }
+            )
+        metadata["geography_ladder_assignment"] = assignment
+    else:
+        raise ValueError(f"Unknown post-QRF frame stage {stage!r}.")
+    return frame, metadata
+
+
+def _export_staged_result(
+    args: argparse.Namespace,
+    frame: Frame,
+    stage_metadata: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    out_dir = args.out.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_h5 = out_dir / _dataset_filename(args.target_year)
+    summary_path = out_dir / _summary_filename(args.target_year)
+    _write_policyengine_dataset(args, frame, output_h5)
+    congressional = stage_metadata["congressional_district_assignment"][
+        "congressional_district_assignment"
+    ]
+    geography = stage_metadata["block_ladder_assignment"]["geography_ladder_assignment"]
+    if (
+        args.congressional_district_vintage_crosswalk is not None
+        or args.block_ladder_artifact is not None
+    ):
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            if args.congressional_district_vintage_crosswalk is not None:
+                h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = (
+                    congressional["congressional_district_vintage_crosswalk_sha256"]
+                )
+                h5.attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+                )
+            if args.block_ladder_artifact is not None:
+                h5.attrs[GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR] = geography[
+                    "artifact_sha256"
+                ]
+                h5.attrs[GEOGRAPHY_LADDER_VINTAGES_ATTR] = json.dumps(
+                    geography["layer_vintages"], sort_keys=True
+                )
+
+    source = stage_metadata["source_construction"]
+    pre_clone = stage_metadata["pre_clone_enrichment"]
+    clone = stage_metadata["clone_feature_extraction"]
+    qrf = stage_metadata["qrf_finalization"]
+    signals = _merged_stage_signals(stage_metadata)
+    required_signals = (
+        "qbi_inputs_signal",
+        "farm_business_income_signal",
+        "domestic_production_ald_signal",
+        "child_support_signal",
+        "disability_benefits_signal",
+        "workers_compensation_signal",
+        "weeks_unemployed_signal",
+        "eligibility_inputs_signal",
+        "pregnancy_signal",
+        "wic_claim_signal",
+        "educator_expense_signal",
+        "form_4952_election_signal",
+        "salt_refund_income_signal",
+        "capital_gain_details_signal",
+        "childcare_inputs_signal",
+        "energy_subsidy_signal",
+        "alimony_inputs_signal",
+        "casualty_loss_signal",
+        "misc_itemized_signal",
+        "education_inputs_signal",
+        "retirement_contributions_signal",
+        "retirement_distributions_signal",
+        "relationship_inputs_signal",
+        "medicare_take_up_input_signal",
+        "housing_inputs_signal",
+        "prior_year_income_signal",
+        "prior_year_income_source_reconciliation",
+    )
+    missing_signals = [name for name in required_signals if name not in signals]
+    if missing_signals:
+        raise ValueError(
+            f"Staged summary is missing signal gate(s): {missing_signals}."
+        )
+
+    summary: dict[str, object] = {
+        "base_source": source["base_source"],
+        "base_h5": (
+            source["base_source"].get("path")
+            if source["base_source"].get("kind") == "base_h5"
+            else None
+        ),
+        "base_sha256": (
+            source["base_source"].get("sha256")
+            if source["base_source"].get("kind") == "base_h5"
+            else None
+        ),
+        "puf_h5": clone["puf_h5"],
+        "puf_sha256": clone["puf_sha256"],
+        "acs_h5": pre_clone["acs_h5"],
+        "acs_sha256": pre_clone["acs_sha256"],
+        "acs_rent_donor_rows": pre_clone["acs_rent_donor_rows"],
+        "weeks_unemployed_source": pre_clone["weeks_unemployed_source"],
+        "output_h5": str(output_h5),
+        "output_sha256": _sha256(output_h5),
+        "seed": args.seed,
+        "n_estimators": args.n_estimators,
+        "base_rows": source["base_rows"],
+        "expanded_rows": _row_counts(frame),
+        "base_household_weight_total": source["base_household_weight_total"],
+        "expanded_household_weight_total": float(frame.weights_for("household").total),
+        "channel_weight_totals": _channel_weight_totals(frame),
+        "puf_donor_rows": clone["puf_donor_rows"],
+        "puf_donor_columns": clone["puf_donor_columns"],
+        "weights_audit": qrf["weights_audit"],
+        **{name: signals[name] for name in required_signals},
+        "congressional_district_assignment": stage_metadata[
+            "congressional_district_assignment"
+        ]["congressional_district_assignment"],
+        "geography_ladder_assignment": geography,
+        "channel_output_totals": _channel_output_totals(frame),
+        "immigration_composition": us_immigration_composition_summary(frame),
+    }
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return {
+        "output_h5": str(output_h5),
+        "output_sha256": summary["output_sha256"],
+        "summary_path": str(summary_path),
+        "summary_sha256": _sha256(summary_path),
+    }
+
+
+def _merged_stage_signals(
+    stage_metadata: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    signals: dict[str, object] = {}
+    for stage in PIPELINE_STEPS:
+        metadata = stage_metadata.get(stage, {})
+        stage_signals = metadata.get("signals", {})
+        if not isinstance(stage_signals, dict):
+            raise ValueError(f"Stage {stage!r} signals metadata must be an object.")
+        signals.update(stage_signals)
+    return signals
 
 
 def impute_and_audit_us_puf_support(
@@ -895,6 +2206,7 @@ def impute_and_audit_us_puf_support(
     predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
 ) -> tuple[Frame, dict]:
     """Impute the PUF support channel and audit the fit's resolved weight kind.
 
@@ -921,6 +2233,8 @@ def impute_and_audit_us_puf_support(
             be exercised on a small synthetic frame in an engine-free test; the
             build calls this with the defaults, so production behavior is
             unchanged.
+        raw_predictions_callback: Optional test-only observer for complete raw
+            chained draws before finalization.
 
     Returns:
         ``(imputed_frame, weights_audit)`` where ``weights_audit`` is the gate's
@@ -942,6 +2256,7 @@ def impute_and_audit_us_puf_support(
         seed=seed,
         n_estimators=n_estimators,
         fit_records=fit_records,
+        raw_predictions_callback=raw_predictions_callback,
     )
     report = weights_audit_gate(fit_records)
     if not report.passed:

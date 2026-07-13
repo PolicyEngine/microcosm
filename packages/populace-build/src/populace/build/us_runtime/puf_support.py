@@ -9,7 +9,8 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -28,14 +29,17 @@ QRF: Any | None = None
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
     "clone_us_frame_for_puf_support",
+    "finalize_us_puf_tax_detail_predictions",
     "impute_us_puf_tax_detail_support",
     "puf_tax_unit_donor_from_arrays",
+    "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
     "support_channel_column",
     "support_clone_index_column",
@@ -55,6 +59,26 @@ _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
 )
+
+
+@dataclass(frozen=True)
+class PufTaxDetailChainInputs:
+    """Normalized donor and recipient surfaces for the raw PUF QRF chain."""
+
+    donor: pd.DataFrame
+    donor_frame: Frame
+    recipient_features: pd.DataFrame
+    recipient_tax_unit_ids: np.ndarray
+    predictors: tuple[str, ...]
+    person_outputs: tuple[str, ...]
+    tax_unit_outputs: tuple[str, ...]
+
+    @property
+    def target_order(self) -> tuple[str, ...]:
+        """Return the exact person-then-tax-unit chained target order."""
+
+        return (*self.person_outputs, *self.tax_unit_outputs)
+
 
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
@@ -510,6 +534,7 @@ def impute_us_puf_tax_detail_support(
     seed: int = 0,
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
+    raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -532,6 +557,9 @@ def impute_us_puf_tax_detail_support(
             Opt-in: omitting it leaves the imputation byte-for-byte unchanged, so
             existing callers are unaffected. This is the seam a build stage wires
             to run the audit and abort a release on an unweighted fit.
+        raw_predictions_callback: Test-only observer called synchronously with
+            the complete raw chained draws before any clipping, snapping, or
+            finalization. Production callers leave it unset.
     """
 
     if frame.schema != US_SCHEMA:
@@ -594,6 +622,122 @@ def impute_us_puf_tax_detail_support(
     predictions = fitted.predict(
         features.loc[puf_mask, list(predictors)], release_models=True
     )
+    if raw_predictions_callback is not None:
+        raw_predictions_callback(predictions)
+    return finalize_us_puf_tax_detail_predictions(
+        frame,
+        donor,
+        predictions,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+    )
+
+
+def prepare_us_puf_tax_detail_chain_inputs(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> PufTaxDetailChainInputs:
+    """Prepare lossless donor and recipient inputs for targetwise QRF workers."""
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("PUF tax-detail support imputation requires the US schema.")
+    tax_unit_channel = support_channel_column("tax_unit")
+    person_channel = support_channel_column("person")
+    if tax_unit_channel not in frame.table("tax_unit").columns:
+        raise ValueError("PUF support metadata is missing from the tax_unit table.")
+    if person_channel not in frame.table("person").columns:
+        raise ValueError("PUF support metadata is missing from the person table.")
+
+    engine = _formula_owned_engine()
+    assert_formula_owned_blocklist_current(engine)
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs, engine=engine)
+    predictors = tuple(predictors)
+    person_outputs = tuple(person_outputs)
+    tax_unit_outputs = tuple(tax_unit_outputs)
+    outputs = (*person_outputs, *tax_unit_outputs)
+    donor_tax_units = donor_tax_units.copy()
+    _add_predictor_aliases(donor_tax_units, predictors)
+    missing_donor = [
+        column
+        for column in (*predictors, *outputs, "weight")
+        if column not in donor_tax_units
+    ]
+    if missing_donor:
+        raise ValueError(
+            f"PUF donor tax-unit table missing column(s): {missing_donor}."
+        )
+
+    donor = donor_tax_units.loc[:, [*predictors, *outputs, "weight"]].copy()
+    for column in donor.columns:
+        donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
+    donor_frame = _tax_unit_model_frame(donor)
+    features = _tax_unit_feature_frame(frame, predictors)
+    puf_mask = (
+        frame.table("tax_unit")[tax_unit_channel].to_numpy()
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF support channel has no tax-unit rows.")
+    recipient_features = features.loc[puf_mask, list(predictors)].copy()
+    recipient_tax_unit_ids = (
+        frame.table("tax_unit").loc[puf_mask, "tax_unit_id"].to_numpy(copy=True)
+    )
+    return PufTaxDetailChainInputs(
+        donor=donor,
+        donor_frame=donor_frame,
+        recipient_features=recipient_features,
+        recipient_tax_unit_ids=recipient_tax_unit_ids,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+    )
+
+
+def finalize_us_puf_tax_detail_predictions(
+    frame: Frame,
+    donor: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> Frame:
+    """Finalize a complete raw PUF QRF chain onto its support channel.
+
+    Raw draws must arrive in the exact person-then-tax-unit chain order and
+    retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
+    placement, and sparsification happen only here, after every target has
+    drawn; later targets therefore always condition on raw predecessor draws.
+    """
+
+    person_outputs = tuple(person_outputs)
+    tax_unit_outputs = tuple(tax_unit_outputs)
+    outputs = (*person_outputs, *tax_unit_outputs)
+    if tuple(predictions.columns) != outputs:
+        raise ValueError(
+            "PUF raw prediction columns must match the exact target order: "
+            f"expected {list(outputs)}, got {list(predictions.columns)}."
+        )
+    missing_donor = [column for column in (*outputs, "weight") if column not in donor]
+    if missing_donor:
+        raise ValueError(f"PUF finalization donor missing column(s): {missing_donor}.")
+
+    tax_unit_channel = support_channel_column("tax_unit")
+    person_channel = support_channel_column("person")
+    puf_mask = (
+        frame.table("tax_unit")[tax_unit_channel].to_numpy()
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    expected_index = frame.table("tax_unit").index[puf_mask]
+    if not predictions.index.equals(expected_index):
+        raise ValueError(
+            "PUF raw predictions changed recipient row order or index before "
+            "finalization."
+        )
+
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)
@@ -1102,7 +1246,15 @@ def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
 ) -> np.ndarray:
-    """Map continuous model predictions to the nearest observed donor value."""
+    """Map predictions to nearest donor values without a pairwise matrix.
+
+    ``observed_array`` is sorted by :func:`numpy.unique`, so each finite
+    prediction needs only its insertion point and the donor values immediately
+    beside it.  Equal-distance ties select the lower value, matching the first
+    index returned by ``argmin`` in the former recipient-by-unique-values
+    matrix implementation.  The explicit infinity branches preserve that
+    implementation's edge-case behavior as well.
+    """
 
     value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
     observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
@@ -1111,10 +1263,30 @@ def _snap_to_observed_values(
     )
     if len(observed_array) == 0:
         return value_array.to_numpy(dtype=np.float64)
-    positions = np.abs(
-        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
-    ).argmin(axis=1)
-    return observed_array[positions]
+
+    numeric_values = value_array.to_numpy(dtype=np.float64)
+    snapped = np.empty_like(numeric_values)
+    finite_mask = np.isfinite(numeric_values)
+    finite_values = numeric_values[finite_mask]
+    insertion_points = np.searchsorted(observed_array, finite_values, side="left")
+    right_positions = np.minimum(insertion_points, len(observed_array) - 1)
+    left_positions = np.maximum(insertion_points - 1, 0)
+    left_values = observed_array[left_positions]
+    right_values = observed_array[right_positions]
+    choose_right = insertion_points == 0
+    interior = (insertion_points > 0) & (insertion_points < len(observed_array))
+    choose_right[interior] = np.abs(
+        right_values[interior] - finite_values[interior]
+    ) < np.abs(finite_values[interior] - left_values[interior])
+    snapped[finite_mask] = np.where(choose_right, right_values, left_values)
+
+    negative_infinity = np.isneginf(numeric_values)
+    snapped[negative_infinity] = observed_array[0]
+    positive_infinity = np.isposinf(numeric_values)
+    snapped[positive_infinity] = (
+        observed_array[-1] if np.isposinf(observed_array[-1]) else observed_array[0]
+    )
+    return snapped
 
 
 def _write_person_tax_unit_boolean_counts(
