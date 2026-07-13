@@ -1617,3 +1617,51 @@ def test_main_summary_records_prior_year_income_gate() -> None:
     assert '"details": dict(prior_year_income_gate.details)' in source
     assert '"prior_year_income_source_reconciliation": {' in source
     assert '"passed": prior_year_income_reconciliation_gate.passed' in source
+
+
+def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
+    """Child-stage argv reconstruction preserves the locked run identity.
+
+    ``--stage all`` locks ``_stage_run_config(parent_args)`` into the
+    checkpoint context, then spawns each stage child with
+    ``_stage_cli_args``-reconstructed argv; the child recomputes the config
+    and refuses on any difference. base-r4 died in six seconds because a
+    newly added input (``--asec-education-source``) entered the run config
+    without entering the reconstruction. This round-trip pins the whole
+    class: every parsed input that the run config records must survive
+    reconstruction bit for bit.
+    """
+
+    builder = _load_support_builder_module()
+    puf = tmp_path / "puf.h5"
+    puf.write_bytes(b"puf")
+    sidecar = tmp_path / "asecpub24csv.zip"
+    sidecar.write_bytes(b"zip")
+    argv = [
+        "--asec-h5",
+        f"2023={tmp_path / 'census_cps_2023.h5'}",
+        "--asec-h5",
+        f"2024={tmp_path / 'census_cps_2024.h5'}",
+        "--puf-h5",
+        str(puf),
+        "--asec-education-source",
+        f"2023={sidecar}",
+        "--target-year",
+        "2024",
+        "--out",
+        str(tmp_path / "out"),
+        "--seed",
+        "0",
+        "--stage",
+        "all",
+        "--checkpoint-dir",
+        str(tmp_path / "ck"),
+        "--without-block-ladder",
+    ]
+    parent = builder._parse_args(argv)
+    child_argv = builder._stage_cli_args(parent, "source_construction")
+    child = builder._parse_args(child_argv)
+
+    parent_config = builder._stage_run_config(parent)
+    child_config = builder._stage_run_config(child)
+    assert child_config == parent_config
