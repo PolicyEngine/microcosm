@@ -230,6 +230,7 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     monkeypatch,
     tmp_path,
 ) -> None:
+    pytest.importorskip("policyengine_uk")
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -377,6 +378,7 @@ def test_spi_stage2_does_not_require_frs_other_investment_income(
     monkeypatch,
     tmp_path,
 ) -> None:
+    pytest.importorskip("policyengine_uk")
     support = _dead_support(drop_income_component="other_investment_income")
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -419,6 +421,7 @@ def test_spi_weighted_bootstrap_does_not_apply_fact_twice(
     monkeypatch,
     tmp_path,
 ) -> None:
+    pytest.importorskip("policyengine_uk")
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)

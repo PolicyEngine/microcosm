@@ -166,6 +166,7 @@ def _simulation_factory(dataset) -> _FakeSimulation:
 
 
 def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
+    pytest.importorskip("policyengine_uk")
     dataset, targets = _feasible_dataset_and_targets()
     _FakeSimulation.calls = []
 
@@ -203,6 +204,7 @@ def test_materializes_all_hmrc_targets_with_mapped_taxpayer_semantics() -> None:
 
 
 def test_state_pension_targets_use_the_same_srp_auxiliary_as_band_income() -> None:
+    pytest.importorskip("policyengine_uk")
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
     person["state_pension_reported"] = 9_999_999.0
@@ -226,6 +228,7 @@ def test_state_pension_targets_use_the_same_srp_auxiliary_as_band_income() -> No
 
 
 def test_exact_surface_calibrates_with_conserved_positive_weights() -> None:
+    pytest.importorskip("policyengine_uk")
     dataset, targets = _feasible_dataset_and_targets()
     materialized = materialize_uk_hmrc_calibration_frame(
         dataset,
@@ -254,6 +257,7 @@ def test_exact_surface_calibrates_with_conserved_positive_weights() -> None:
 
 
 def test_materialization_fails_closed_when_one_component_has_no_band_support() -> None:
+    pytest.importorskip("policyengine_uk")
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
     mask = person["other_investment_income"] > 0
@@ -295,6 +299,7 @@ def test_materialization_rejects_wrong_mapped_period() -> None:
 
 
 def test_materialization_rejects_tax_free_interest_above_gross() -> None:
+    pytest.importorskip("policyengine_uk")
     dataset, targets = _feasible_dataset_and_targets()
     person = dataset.person.copy()
     person.loc[0, "tax_free_savings_income"] = 1.0

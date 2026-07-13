@@ -439,6 +439,7 @@ def test_restoration_binds_loaded_candidate_bytes_before_source_io(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")
     candidate_path = tmp_path / CERTIFIED_UK_CANDIDATE_FILENAME
     write_uk_national_dataset(_dataset(), candidate_path)
     monkeypatch.setattr(
