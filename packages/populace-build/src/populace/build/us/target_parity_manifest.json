@@ -1,0 +1,420 @@
+{
+ "schema_version": 1,
+ "reference": {
+  "feed": "consumer_facts_buildh_v8.jsonl",
+  "feed_sha256": "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669",
+  "target_period": "2024",
+  "registry_compile": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions",
+  "us_data_source": "policyengine-us-data (archived): db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
+  "family_granularity": "namespace.concept of the ledger source_record_id (us_target_family_id)",
+  "compiled_families": "25",
+  "reviewed_exclusions": "55"
+ },
+ "families": {
+  "bea_nipa.business_current_transfer_receipts": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.defined_contribution_actual_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.defined_contribution_employer_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.disposable_personal_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.employer_government_social_insurance_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.employer_pension_and_insurance_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.farm_proprietors_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.government_social_benefits_to_persons": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.medicaid_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.medicare_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.nonfarm_proprietors_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.other_government_social_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_current_taxes": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_current_transfer_receipts": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_dividend_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_interest_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_outlays": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_saving": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.personal_saving_rate": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.proprietors_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.rental_income_of_persons": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.social_security_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.supplements_to_wages_and_salaries": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.total_wages_salaries": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.unemployment_insurance_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_nipa.veterans_benefits": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA NIPA national-accounts aggregate (calendar-year macro control total). Not a household-linear administrative level PolicyEngine-US calibrates against: household income components are fit from the IRS SOI micro tables (irs_soi.historic_table_2, compiled) and CBO revenue-by-source projections (cbo.revenue_projection, compiled). The NIPA aggregate is retained in the ledger as a macro cross-check, not a calibration target.",
+   "evidence": "compiled siblings irs_soi.historic_table_2 and cbo.revenue_projection supply the household-linear income surface; sample fact bea_nipa.cy2023.personal_income.a065rc.amount"
+  },
+  "bea_regional.state_contributions_for_government_social_insurance": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_dividends_interest_rent": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_personal_current_transfer_receipts": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_personal_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_proprietors_income": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_residence_adjustment": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_supplements_to_wages_salaries": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bea_regional.state_wages_salaries": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "BEA regional (state) personal-income account aggregate. State income is calibrated from the IRS SOI state tables (irs_soi.state_2022 and the historic_table_2 state rows, compiled) and Census STC (census_stc.individual_income_tax_collections, compiled); the BEA regional total is a macro state control without a per-record model counterpart.",
+   "evidence": "compiled siblings irs_soi.state_2022 and census_stc.individual_income_tax_collections; sample fact bea_regional.cy2023.state_personal_income.us.amount"
+  },
+  "bls.consumer_expenditure": {
+   "status": "reviewed_exclusion",
+   "classification": "source_absent",
+   "reason": "BLS Consumer Expenditure Survey aggregates targeted by the retired us-data pipeline (nation/bls/ce). The pinned consumer feed carries no BLS source fact, so there is no ledger-shaped fact to compile; source-absent pending a Ledger BLS CE ingest.",
+   "evidence": "policyengine-us-data (archived) references nation/bls/ce; feed source families carry no 'bls' source"
+  },
+  "cbo.revenue_projection": {
+   "status": "compiled"
+  },
+  "cbo.revenues": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "CBO total federal revenue line (fiscal-year budget aggregate). The household-linear CBO surface populace calibrates is the income-by-source projection (cbo.revenue_projection, compiled as cbo:5); a total revenue outturn is an aggregate, not a per-record target.",
+   "evidence": "compiled sibling cbo.revenue_projection; sample fact cbo.fy2023.revenues.individual_income_taxes.actual_amount"
+  },
+  "census.popproj2023": {
+   "status": "reviewed_exclusion",
+   "classification": "superseded",
+   "reason": "Census Bureau population PROJECTIONS (forward vintage popproj2023). Population is calibrated to the OBSERVED Census resident-population estimates (census_pep.v2024 and national_resident_population_age, compiled as census_pep:936); the projection series is a forward-looking alternative, not the observed administrative count.",
+   "evidence": "compiled sibling census_pep.v2024; sample fact census.popproj2023.cy2023.national_population.age_0.population"
+  },
+  "census_acs.acs1_2023": {
+   "status": "reviewed_exclusion",
+   "classification": "survey_derived",
+   "reason": "American Community Survey 1-year estimates. ACS is a household SAMPLE SURVEY, not an administrative universe, so its aggregates are excluded by principle. ACS age detail is used only at congressional-district grain when include_congressional_district_targets is enabled (off for the national release).",
+   "evidence": "census_acs facts return None unless include_congressional_district_targets in fiscal_targets._reference_from_ledger_fact; sample fact census_acs.acs1_2023.b01001.female_age.01.age_15_to_17.female_population"
+  },
+  "census_pep.national_resident_population_age": {
+   "status": "compiled"
+  },
+  "census_pep.v2024": {
+   "status": "compiled"
+  },
+  "census_stc.individual_income_tax_collections": {
+   "status": "compiled"
+  },
+  "cms_aca.oep2024": {
+   "status": "compiled"
+  },
+  "cms_medicaid.state_enrollment": {
+   "status": "compiled"
+  },
+  "cms_medicare.part_b_premium_income": {
+   "status": "compiled"
+  },
+  "cms_nhe.medicaid_title_xix_expenditures": {
+   "status": "reviewed_exclusion",
+   "classification": "non_linear",
+   "reason": "CMS National Health Expenditure Medicaid Title XIX spending. Already declared calibration_role=validation_only in DIRECT_LEDGER_TARGETS: PolicyEngine-US allocates Medicaid spending from state totals through person_weight-dependent denominators, so reweighting recomputes per-person costs and this is not a linear calibration row.",
+   "evidence": "DIRECT_LEDGER_TARGETS ('cms_nhe','expenditure_amount','medicaid_title_xix') metadata calibration_role=validation_only"
+  },
+  "federal_reserve_z1.households_nonprofits_balance_sheet": {
+   "status": "reviewed_exclusion",
+   "classification": "macro_control_total",
+   "reason": "Federal Reserve Financial Accounts (Z.1) households & nonprofits net-worth aggregate. A macro balance-sheet total; household net worth is imputed and calibrated from SCF micro on the input side (scf_wealth source stage), not from this national aggregate.",
+   "evidence": "scf_wealth.py source stage supplies the net-worth micro; sample fact federal_reserve_z1.cy2023.households_nonprofits_balance_sheet.net_worth.fl152090005.amount_outstanding"
+  },
+  "hhs_acf_liheap.national_profile": {
+   "status": "reviewed_exclusion",
+   "classification": "deferred",
+   "reason": "HHS LIHEAP national profile (households served / funds). PolicyEngine-US does not yet expose a LIHEAP receipt outcome to fit this count to a per-household model counterpart, so it is deferred rather than dropped; retained as a ledger reference fact.",
+   "evidence": "no LIHEAP target_role in INDICATOR_LEDGER_TARGETS/DIRECT_LEDGER_TARGETS; sample fact hhs_acf_liheap.fy2023.national_profile.state_programs.households_served"
+  },
+  "hhs_acf_tanf.average_monthly_families": {
+   "status": "reviewed_exclusion",
+   "classification": "deferred",
+   "reason": "HHS ACF TANF average-monthly family caseload. TANF is calibrated on BENEFIT DOLLARS (hhs_acf_tanf.cash_assistance, compiled as hhs_acf_tanf:30); the caseload COUNT is not yet wired to a TANF-receipt indicator (the SNAP-household caseload analog for TANF), so it is deferred.",
+   "evidence": "compiled sibling hhs_acf_tanf.cash_assistance carries the dollar targets; sample fact hhs_acf_tanf.fy2024.average_monthly_families.us.us_total.total_families"
+  },
+  "hhs_acf_tanf.average_monthly_recipients": {
+   "status": "reviewed_exclusion",
+   "classification": "deferred",
+   "reason": "HHS ACF TANF average-monthly recipient caseload. As with the family caseload, TANF is calibrated on benefit dollars (hhs_acf_tanf.cash_assistance, compiled); the recipient COUNT has no wired TANF-receipt indicator yet and is deferred.",
+   "evidence": "compiled sibling hhs_acf_tanf.cash_assistance; sample fact hhs_acf_tanf.fy2024.average_monthly_recipients.us.us_total.total_recipients"
+  },
+  "hhs_acf_tanf.cash_assistance": {
+   "status": "compiled"
+  },
+  "hud.housing_assistance": {
+   "status": "reviewed_exclusion",
+   "classification": "source_absent",
+   "reason": "HUD housing-assistance aggregates targeted by the retired us-data pipeline (db/etl_housing_assistance.py). The pinned feed carries no HUD source fact; source-absent pending a Ledger HUD ingest.",
+   "evidence": "policyengine-us-data (archived) db/etl_housing_assistance.py; feed carries no 'hud' source"
+  },
+  "irs_soi.congressional_district_2022": {
+   "status": "reviewed_exclusion",
+   "classification": "off_by_default",
+   "reason": "IRS SOI congressional-district table. CD-level targets are opt-in (include_congressional_district_targets=False for the national release); the national and state SOI surfaces are compiled instead. Enabling CD targets compiles these \u2014 they are excluded for the national build by design, not dropped.",
+   "evidence": "test_soi_congressional_district_targets_are_opt_in + the include_congressional_district_targets gate in fiscal_targets._soi_reference_from_fact"
+  },
+  "irs_soi.filing_season_week47": {
+   "status": "compiled"
+  },
+  "irs_soi.form_w2_401k_elective_deferrals": {
+   "status": "reviewed_exclusion",
+   "classification": "input_side",
+   "reason": "IRS SOI / W-2 retirement-contribution aggregate. Retirement contributions are modeled as imputed INPUT columns (traditional/roth 401(k) and IRA contributions), governed by the input-coverage contract, not as reweighting targets. Calibrating them as fiscal targets would double-govern a quantity the input-coverage gate already owns.",
+   "evidence": "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS declares the *_contributions_desired input columns in release_input_coverage.py"
+  },
+  "irs_soi.form_w2_designated_roth_401k_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "input_side",
+   "reason": "IRS SOI / W-2 retirement-contribution aggregate. Retirement contributions are modeled as imputed INPUT columns (traditional/roth 401(k) and IRA contributions), governed by the input-coverage contract, not as reweighting targets. Calibrating them as fiscal targets would double-govern a quantity the input-coverage gate already owns.",
+   "evidence": "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS declares the *_contributions_desired input columns in release_input_coverage.py"
+  },
+  "irs_soi.form_w2_social_security_tips": {
+   "status": "reviewed_exclusion",
+   "classification": "not_modeled",
+   "reason": "IRS W-2 Social Security tip aggregates. Already declared in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: current US support does not materialize a positive tip_income source column, so the W-2 tip return counts need the SIPP/ORG tip source stage wired before calibration.",
+   "evidence": "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS entry irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count"
+  },
+  "irs_soi.historic_table_2": {
+   "status": "compiled"
+  },
+  "irs_soi.roth_ira_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "input_side",
+   "reason": "IRS SOI / W-2 retirement-contribution aggregate. Retirement contributions are modeled as imputed INPUT columns (traditional/roth 401(k) and IRA contributions), governed by the input-coverage contract, not as reweighting targets. Calibrating them as fiscal targets would double-govern a quantity the input-coverage gate already owns.",
+   "evidence": "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS declares the *_contributions_desired input columns in release_input_coverage.py"
+  },
+  "irs_soi.state_2022": {
+   "status": "compiled"
+  },
+  "irs_soi.table_1_1": {
+   "status": "compiled"
+  },
+  "irs_soi.table_1_2": {
+   "status": "compiled"
+  },
+  "irs_soi.table_1_4": {
+   "status": "compiled"
+  },
+  "irs_soi.table_2_1": {
+   "status": "compiled"
+  },
+  "irs_soi.table_2_5": {
+   "status": "compiled"
+  },
+  "irs_soi.table_4_3": {
+   "status": "compiled"
+  },
+  "irs_soi.traditional_ira_contributions": {
+   "status": "reviewed_exclusion",
+   "classification": "input_side",
+   "reason": "IRS SOI / W-2 retirement-contribution aggregate. Retirement contributions are modeled as imputed INPUT columns (traditional/roth 401(k) and IRA contributions), governed by the input-coverage contract, not as reweighting targets. Calibrating them as fiscal targets would double-govern a quantity the input-coverage gate already owns.",
+   "evidence": "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS declares the *_contributions_desired input columns in release_input_coverage.py"
+  },
+  "jct.tax_expenditures": {
+   "status": "compiled"
+  },
+  "kff.marketplace_effectuated_enrollment": {
+   "status": "reviewed_exclusion",
+   "classification": "superseded",
+   "reason": "Kaiser Family Foundation state marketplace effectuated-enrollment compilation. ACA marketplace enrollment is calibrated from the primary CMS administrative source (cms_aca.oep2024, compiled as cms_aca:102); KFF is a secondary aggregator of the same underlying CMS data, excluded to avoid a duplicate target.",
+   "evidence": "compiled sibling cms_aca.oep2024; sample fact kff.marketplace_effectuated_enrollment.2024.state.us.total_effectuated_marketplace_enrollment"
+  },
+  "ssa_supplement.oasdi_ssi_payments": {
+   "status": "compiled"
+  },
+  "ssa_supplement.ssi_payments": {
+   "status": "compiled"
+  },
+  "ssa_supplement.ssi_recipients": {
+   "status": "compiled"
+  },
+  "usda_snap.national_average_monthly_households": {
+   "status": "compiled"
+  },
+  "usda_snap.national_average_monthly_persons": {
+   "status": "reviewed_exclusion",
+   "classification": "not_modeled",
+   "reason": "USDA FNS SNAP average-monthly PERSONS. The SNAP assistance unit is often a subset of the SPM unit (FY2024 FNS persons-per-household 1.88 vs 2.82 simulated members per taker unit), so a person indicator overcounts FNS participants by ~50%. The household caseload (usda_snap.national/state_average_monthly_households, compiled) is the calibrated count; persons stay unmapped until sub-unit participation is modeled.",
+   "evidence": "INDICATOR_LEDGER_TARGETS average_monthly_households comment + test_snap_person_caseload_fact_is_not_compiled"
+  },
+  "usda_snap.national_benefits": {
+   "status": "compiled"
+  },
+  "usda_snap.state_average_monthly_households": {
+   "status": "compiled"
+  },
+  "usda_snap.state_average_monthly_persons": {
+   "status": "reviewed_exclusion",
+   "classification": "not_modeled",
+   "reason": "USDA FNS SNAP average-monthly PERSONS. The SNAP assistance unit is often a subset of the SPM unit (FY2024 FNS persons-per-household 1.88 vs 2.82 simulated members per taker unit), so a person indicator overcounts FNS participants by ~50%. The household caseload (usda_snap.national/state_average_monthly_households, compiled) is the calibrated count; persons stay unmapped until sub-unit participation is modeled.",
+   "evidence": "INDICATOR_LEDGER_TARGETS average_monthly_households comment + test_snap_person_caseload_fact_is_not_compiled"
+  },
+  "usda_snap.state_benefits": {
+   "status": "compiled"
+  },
+  "wic.national_summary": {
+   "status": "reviewed_exclusion",
+   "classification": "source_absent",
+   "reason": "USDA WIC national annual summary targeted by the retired us-data pipeline (WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE in etl_national_targets). The pinned feed carries no WIC source fact; source-absent. WIC receipt is modeled via the would_claim_wic take-up input, not a target.",
+   "evidence": "policyengine-us-data (archived) db/etl_national_targets.py WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source"
+  }
+ }
+}
