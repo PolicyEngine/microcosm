@@ -9,13 +9,19 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.us_runtime.qbi_inputs import (
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+    US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
+    US_QBI_OUTPUT_COLUMNS,
+)
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
 
@@ -23,14 +29,17 @@ QRF: Any | None = None
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
     "clone_us_frame_for_puf_support",
+    "finalize_us_puf_tax_detail_predictions",
     "impute_us_puf_tax_detail_support",
     "puf_tax_unit_donor_from_arrays",
+    "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
     "support_channel_column",
     "support_clone_index_column",
@@ -50,6 +59,26 @@ _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
 )
+
+
+@dataclass(frozen=True)
+class PufTaxDetailChainInputs:
+    """Normalized donor and recipient surfaces for the raw PUF QRF chain."""
+
+    donor: pd.DataFrame
+    donor_frame: Frame
+    recipient_features: pd.DataFrame
+    recipient_tax_unit_ids: np.ndarray
+    predictors: tuple[str, ...]
+    person_outputs: tuple[str, ...]
+    tax_unit_outputs: tuple[str, ...]
+
+    @property
+    def target_order(self) -> tuple[str, ...]:
+        """Return the exact person-then-tax-unit chained target order."""
+
+        return (*self.person_outputs, *self.tax_unit_outputs)
+
 
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
@@ -71,6 +100,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "tax_exempt_interest_income",
     "short_term_capital_gains",
     "long_term_capital_gains_before_response",
+    "long_term_capital_gains_on_collectibles",
     "non_sch_d_capital_gains",
     "taxable_private_pension_income",
     "taxable_ira_distributions",
@@ -78,11 +108,19 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "social_security_disability",
     "social_security_dependents",
     "social_security_survivors",
+    "alimony_income",
+    "alimony_expense",
+    "salt_refund_income",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
+    "investment_income_elected_form_4952",
     "student_loan_interest",
+    "educator_expense",
+    "qualified_tuition_expenses",
+    "casualty_loss",
+    "unreimbursed_business_employee_expenses",
     # The engine owns the realized contribution amounts through the
     # IRA-limit scale and self-employment caps; the persistable leaves are
     # the desired contributions, equal to the PUF's observed deductions at
@@ -92,10 +130,13 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "rental_income",
     "estate_income",
     "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
     "miscellaneous_income",
     "partnership_income",
     "s_corp_income",
     "partnership_self_employment_net_earnings",
+    *US_QBI_OUTPUT_COLUMNS,
 )
 
 PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
@@ -106,6 +147,8 @@ PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
 )
 
 PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
+    "domestic_production_ald",
+    "unrecaptured_section_1250_gain",
     "first_home_mortgage_balance",
     "second_home_mortgage_balance",
     "first_home_mortgage_interest",
@@ -121,11 +164,32 @@ _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
         "second_home_mortgage_origination_year",
     }
 )
+_PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS = frozenset(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
+_PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS = frozenset(
+    {
+        "domestic_production_ald",
+        "unrecaptured_section_1250_gain",
+    }
+)
 _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
     {
         "taxable_interest_income",
+        "qualified_tuition_expenses",
+        "educator_expense",
+        "casualty_loss",
+        "investment_income_elected_form_4952",
+        "long_term_capital_gains_on_collectibles",
+        "alimony_income",
+        "alimony_expense",
+        "salt_refund_income",
     }
 )
+
+# ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
+# only the cloned PUF half for this leaf; pruning the ASEC half would discard
+# reported source observations. Expense has no ASEC analogue, so its zero ASEC
+# half is unaffected by the ordinary all-channel sparsification loop.
+_PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS = frozenset({"alimony_income"})
 
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
@@ -159,6 +223,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "non_qualified_dividend_income",
         "tax_exempt_interest_income",
         "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
         "taxable_pension_income",
         "taxable_private_pension_income",
         "taxable_ira_distributions",
@@ -166,11 +231,21 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "social_security_disability",
         "social_security_dependents",
         "social_security_survivors",
+        "alimony_income",
+        "alimony_expense",
+        "salt_refund_income",
         "charitable_cash_donations",
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
+        "investment_income_elected_form_4952",
         "student_loan_interest",
+        "educator_expense",
+        "qualified_tuition_expenses",
+        "casualty_loss",
+        "unreimbursed_business_employee_expenses",
+        "domestic_production_ald",
+        "unrecaptured_section_1250_gain",
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
         "health_savings_account_ald",
@@ -180,6 +255,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
+        *US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     }
 )
 # Person-grain PE input leaves the processed PUF artifact only observes as
@@ -197,12 +273,67 @@ _PERSON_OUTPUT_TAX_UNIT_GRAIN_SOURCES: Mapping[str, str] = {
 # Contributions require compensation, so an earnings basis keeps per-person
 # contribution limits binding the way they do on the donor records.
 _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
+    "casualty_loss": (
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ),
+    "educator_expense": ("employment_income_before_lsr",),
     "traditional_ira_contributions_desired": (
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",
     ),
     "self_employed_pension_contributions_desired": (
         "self_employment_income_before_lsr",
+    ),
+    "qualified_tuition_expenses": ("is_full_time_college_student",),
+    "estate_income_would_be_qualified": ("estate_income",),
+    "farm_operations_income_would_be_qualified": ("farm_operations_income",),
+    "farm_rent_income_would_be_qualified": ("farm_rent_income",),
+    "partnership_s_corp_income_would_be_qualified": (
+        "partnership_income",
+        "s_corp_income",
+    ),
+    "rental_income_would_be_qualified": ("rental_income",),
+    "self_employment_income_would_be_qualified": (
+        "self_employment_income_before_lsr",
+        "sstb_self_employment_income_before_lsr",
+    ),
+    "sstb_self_employment_income_would_be_qualified": (
+        "sstb_self_employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+    ),
+    "business_is_sstb": (
+        "sstb_self_employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "estate_income",
+    ),
+    "qualified_bdc_income": ("non_qualified_dividend_income",),
+    "qualified_reit_and_ptp_income": (
+        "non_qualified_dividend_income",
+        "partnership_income",
+        "s_corp_income",
+    ),
+    "sstb_self_employment_income_before_lsr": (
+        "business_is_sstb",
+        "self_employment_income_before_lsr",
+    ),
+    "sstb_unadjusted_basis_qualified_property": ("business_is_sstb",),
+    "sstb_w2_wages_from_qualified_business": ("business_is_sstb",),
+    "unadjusted_basis_qualified_property": (
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "rental_income",
+        "estate_income",
+    ),
+    "w2_wages_from_qualified_business": (
+        "self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "rental_income",
+        "estate_income",
     ),
 }
 _PREDICTOR_LEAF_ALIASES: Mapping[str, tuple[str, ...]] = {
@@ -403,6 +534,7 @@ def impute_us_puf_tax_detail_support(
     seed: int = 0,
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
+    raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -410,7 +542,10 @@ def impute_us_puf_tax_detail_support(
     tax-unit predictions from the PUF donor; person-grain predicted tax-unit
     totals are distributed over the cloned people using their copied ASEC
     within-tax-unit shares, falling back to the first person in the unit when
-    the copied support has no mass for a variable.
+    the copied support has no mass for a variable. Boolean QBI targets are
+    modeled as tax-unit person counts, snapped to observed integer counts, and
+    placed on source-aligned people instead of collapsing every positive count
+    onto one person.
 
     Args:
         fit_records: An optional sink for the build-level weights audit (populace
@@ -422,6 +557,9 @@ def impute_us_puf_tax_detail_support(
             Opt-in: omitting it leaves the imputation byte-for-byte unchanged, so
             existing callers are unaffected. This is the seam a build stage wires
             to run the audit and abort a release on an unweighted fit.
+        raw_predictions_callback: Test-only observer called synchronously with
+            the complete raw chained draws before any clipping, snapping, or
+            finalization. Production callers leave it unset.
     """
 
     if frame.schema != US_SCHEMA:
@@ -472,9 +610,7 @@ def impute_us_puf_tax_detail_support(
         # Record the kind the fit *resolved* to (not the "design" spec above):
         # the build-level weights audit reads this back to prove the production
         # fit did not silently resolve unweighted (populace #300).
-        fit_records.append(
-            FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind)
-        )
+        fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, fitted.weight_kind))
 
     features = _tax_unit_feature_frame(frame, predictors)
     puf_mask = (
@@ -483,11 +619,139 @@ def impute_us_puf_tax_detail_support(
     )
     if not puf_mask.any():
         raise ValueError("PUF support channel has no tax-unit rows.")
-    predictions = fitted.predict(features.loc[puf_mask, list(predictors)])
+    predictions = fitted.predict(
+        features.loc[puf_mask, list(predictors)], release_models=True
+    )
+    if raw_predictions_callback is not None:
+        raw_predictions_callback(predictions)
+    return finalize_us_puf_tax_detail_predictions(
+        frame,
+        donor,
+        predictions,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+    )
+
+
+def prepare_us_puf_tax_detail_chain_inputs(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+    *,
+    predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> PufTaxDetailChainInputs:
+    """Prepare lossless donor and recipient inputs for targetwise QRF workers."""
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("PUF tax-detail support imputation requires the US schema.")
+    tax_unit_channel = support_channel_column("tax_unit")
+    person_channel = support_channel_column("person")
+    if tax_unit_channel not in frame.table("tax_unit").columns:
+        raise ValueError("PUF support metadata is missing from the tax_unit table.")
+    if person_channel not in frame.table("person").columns:
+        raise ValueError("PUF support metadata is missing from the person table.")
+
+    engine = _formula_owned_engine()
+    assert_formula_owned_blocklist_current(engine)
+    _reject_formula_owned_outputs(person_outputs, tax_unit_outputs, engine=engine)
+    predictors = tuple(predictors)
+    person_outputs = tuple(person_outputs)
+    tax_unit_outputs = tuple(tax_unit_outputs)
+    outputs = (*person_outputs, *tax_unit_outputs)
+    donor_tax_units = donor_tax_units.copy()
+    _add_predictor_aliases(donor_tax_units, predictors)
+    missing_donor = [
+        column
+        for column in (*predictors, *outputs, "weight")
+        if column not in donor_tax_units
+    ]
+    if missing_donor:
+        raise ValueError(
+            f"PUF donor tax-unit table missing column(s): {missing_donor}."
+        )
+
+    donor = donor_tax_units.loc[:, [*predictors, *outputs, "weight"]].copy()
+    for column in donor.columns:
+        donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
+    donor_frame = _tax_unit_model_frame(donor)
+    features = _tax_unit_feature_frame(frame, predictors)
+    puf_mask = (
+        frame.table("tax_unit")[tax_unit_channel].to_numpy()
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    if not puf_mask.any():
+        raise ValueError("PUF support channel has no tax-unit rows.")
+    recipient_features = features.loc[puf_mask, list(predictors)].copy()
+    recipient_tax_unit_ids = (
+        frame.table("tax_unit").loc[puf_mask, "tax_unit_id"].to_numpy(copy=True)
+    )
+    return PufTaxDetailChainInputs(
+        donor=donor,
+        donor_frame=donor_frame,
+        recipient_features=recipient_features,
+        recipient_tax_unit_ids=recipient_tax_unit_ids,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+    )
+
+
+def finalize_us_puf_tax_detail_predictions(
+    frame: Frame,
+    donor: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+) -> Frame:
+    """Finalize a complete raw PUF QRF chain onto its support channel.
+
+    Raw draws must arrive in the exact person-then-tax-unit chain order and
+    retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
+    placement, and sparsification happen only here, after every target has
+    drawn; later targets therefore always condition on raw predecessor draws.
+    """
+
+    person_outputs = tuple(person_outputs)
+    tax_unit_outputs = tuple(tax_unit_outputs)
+    outputs = (*person_outputs, *tax_unit_outputs)
+    if tuple(predictions.columns) != outputs:
+        raise ValueError(
+            "PUF raw prediction columns must match the exact target order: "
+            f"expected {list(outputs)}, got {list(predictions.columns)}."
+        )
+    missing_donor = [column for column in (*outputs, "weight") if column not in donor]
+    if missing_donor:
+        raise ValueError(f"PUF finalization donor missing column(s): {missing_donor}.")
+
+    tax_unit_channel = support_channel_column("tax_unit")
+    person_channel = support_channel_column("person")
+    puf_mask = (
+        frame.table("tax_unit")[tax_unit_channel].to_numpy()
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    expected_index = frame.table("tax_unit").index[puf_mask]
+    if not predictions.index.equals(expected_index):
+        raise ValueError(
+            "PUF raw predictions changed recipient row order or index before "
+            "finalization."
+        )
+
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
             predictions[column] = predictions[column].clip(lower=0.0)
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
+        if column in _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS:
+            predictions[column] = _snap_to_observed_values(
+                predictions[column],
+                donor[column],
+            )
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
             predictions[column] = _snap_to_observed_values(
                 predictions[column],
                 donor[column],
@@ -510,18 +774,44 @@ def impute_us_puf_tax_detail_support(
     for column in tax_unit_outputs:
         _ensure_float_output_column(tables["tax_unit"], column)
         tables["tax_unit"].loc[puf_mask, column] = predictions[column].to_numpy()
+    for column in tax_unit_outputs:
+        if column in _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS:
+            _sparsify_tax_unit_output_to_donor_positive_rate(
+                tables,
+                column=column,
+                donor_positive_rate=_weighted_positive_rate(
+                    donor[column],
+                    donor["weight"],
+                ),
+                household_weights=frame.weights_for("household").values,
+                tax_unit_channel=tax_unit_channel,
+            )
 
     person_puf_mask = tables["person"][person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     for column in person_outputs:
         _ensure_float_output_column(tables["person"], column)
-        _write_person_tax_unit_totals(
-            tables["person"],
-            mask=person_puf_mask,
-            column=column,
-            totals=pd.Series(predictions[column].to_numpy(), index=tax_unit_ids),
-            nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
-            fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(column, ()),
-        )
+        totals = pd.Series(predictions[column].to_numpy(), index=tax_unit_ids)
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS:
+            _write_person_tax_unit_boolean_counts(
+                tables["person"],
+                mask=person_puf_mask,
+                column=column,
+                totals=totals,
+                fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
+                    column, ()
+                ),
+            )
+        else:
+            _write_person_tax_unit_totals(
+                tables["person"],
+                mask=person_puf_mask,
+                column=column,
+                totals=totals,
+                nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+                fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
+                    column, ()
+                ),
+            )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
             _sparsify_tax_unit_person_output_to_donor_positive_rate(
@@ -956,7 +1246,15 @@ def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
 ) -> np.ndarray:
-    """Map continuous model predictions to the nearest observed donor value."""
+    """Map predictions to nearest donor values without a pairwise matrix.
+
+    ``observed_array`` is sorted by :func:`numpy.unique`, so each finite
+    prediction needs only its insertion point and the donor values immediately
+    beside it.  Equal-distance ties select the lower value, matching the first
+    index returned by ``argmin`` in the former recipient-by-unique-values
+    matrix implementation.  The explicit infinity branches preserve that
+    implementation's edge-case behavior as well.
+    """
 
     value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
     observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
@@ -965,10 +1263,95 @@ def _snap_to_observed_values(
     )
     if len(observed_array) == 0:
         return value_array.to_numpy(dtype=np.float64)
-    positions = np.abs(
-        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
-    ).argmin(axis=1)
-    return observed_array[positions]
+
+    numeric_values = value_array.to_numpy(dtype=np.float64)
+    snapped = np.empty_like(numeric_values)
+    finite_mask = np.isfinite(numeric_values)
+    finite_values = numeric_values[finite_mask]
+    insertion_points = np.searchsorted(observed_array, finite_values, side="left")
+    right_positions = np.minimum(insertion_points, len(observed_array) - 1)
+    left_positions = np.maximum(insertion_points - 1, 0)
+    left_values = observed_array[left_positions]
+    right_values = observed_array[right_positions]
+    choose_right = insertion_points == 0
+    interior = (insertion_points > 0) & (insertion_points < len(observed_array))
+    choose_right[interior] = np.abs(
+        right_values[interior] - finite_values[interior]
+    ) < np.abs(finite_values[interior] - left_values[interior])
+    snapped[finite_mask] = np.where(choose_right, right_values, left_values)
+
+    negative_infinity = np.isneginf(numeric_values)
+    snapped[negative_infinity] = observed_array[0]
+    positive_infinity = np.isposinf(numeric_values)
+    snapped[positive_infinity] = (
+        observed_array[-1] if np.isposinf(observed_array[-1]) else observed_array[0]
+    )
+    return snapped
+
+
+def _write_person_tax_unit_boolean_counts(
+    person: pd.DataFrame,
+    *,
+    mask: pd.Series,
+    column: str,
+    totals: pd.Series,
+    fallback_basis_columns: tuple[str, ...] = (),
+) -> None:
+    """Place a predicted number of true people within each tax unit.
+
+    PUF QBI flags are person inputs, but the shared support model trains at
+    tax-unit grain. Their donor targets are therefore integer counts. Treating
+    a count as an amount would put (say) ``2`` on one person and ``0`` on the
+    spouse; a later boolean cast would silently turn two true people into one.
+    This placement preserves the snapped count and ranks people by the source
+    columns the flag qualifies, with stable first-person fallback for ties.
+    """
+
+    row_ids = person.loc[mask, "person_tax_unit_id"]
+    if row_ids.empty:
+        return
+    score = np.zeros(len(row_ids), dtype=np.float64)
+    for basis_column in fallback_basis_columns:
+        if basis_column not in person.columns:
+            continue
+        score += (
+            pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
+            .fillna(0.0)
+            .clip(lower=0.0)
+            .to_numpy(dtype=np.float64)
+        )
+
+    placement = pd.DataFrame(
+        {
+            "tax_unit_id": row_ids.to_numpy(),
+            "score": score,
+            "source_position": np.arange(len(row_ids), dtype=np.int64),
+        },
+        index=row_ids.index,
+    ).sort_values(
+        ["tax_unit_id", "score", "source_position"],
+        ascending=[True, False, True],
+        kind="mergesort",
+    )
+    placement["rank"] = placement.groupby("tax_unit_id", sort=False).cumcount()
+    placement["unit_size"] = placement.groupby("tax_unit_id", sort=False)[
+        "tax_unit_id"
+    ].transform("size")
+    desired = (
+        placement["tax_unit_id"]
+        .map(totals)
+        .fillna(0.0)
+        .round()
+        .clip(lower=0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    desired = np.minimum(
+        desired,
+        placement["unit_size"].to_numpy(dtype=np.float64),
+    )
+    placement["selected"] = placement["rank"].to_numpy() < desired
+    selected = placement["selected"].reindex(row_ids.index).fillna(False)
+    person.loc[mask, column] = selected.to_numpy(dtype=np.float64)
 
 
 def _write_person_tax_unit_totals(
@@ -1032,6 +1415,72 @@ def _weighted_positive_rate(values: pd.Series, weights: pd.Series) -> float:
     return float((numeric_weights * (numeric_values > 0.0)).sum() / total_weight)
 
 
+def _sparsify_tax_unit_output_to_donor_positive_rate(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    column: str,
+    donor_positive_rate: float,
+    household_weights: np.ndarray,
+    tax_unit_channel: str,
+) -> None:
+    """Prune a sparse tax-unit amount to the donor's weighted positive rate."""
+
+    positive_rate = float(np.clip(donor_positive_rate, 0.0, 1.0))
+    person = tables["person"]
+    household = tables["household"]
+    tax_unit = tables["tax_unit"]
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "household_weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+    household_weight = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"],
+    )
+    tax_unit_household_id = (
+        person.groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+        .astype("int64")
+    )
+    tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
+
+    for channel in tax_unit[tax_unit_channel].dropna().unique():
+        channel_mask = tax_unit[tax_unit_channel] == channel
+        channel_rows = tax_unit.loc[channel_mask]
+        amounts = pd.Series(
+            pd.to_numeric(channel_rows[column], errors="coerce")
+            .fillna(0.0)
+            .to_numpy(dtype=np.float64),
+            index=channel_rows["tax_unit_id"].to_numpy(),
+        )
+        weights = tax_unit_weight.reindex(amounts.index).fillna(0.0)
+        positive = amounts > 0.0
+        positive_weight = float(weights[positive].sum())
+        desired_positive_weight = positive_rate * float(weights.sum())
+        if positive_weight <= desired_positive_weight or positive_weight <= 0.0:
+            continue
+
+        ranked = (
+            pd.DataFrame({"amount": amounts[positive], "weight": weights[positive]})
+            .sort_values("amount", ascending=False)
+            .copy()
+        )
+        cumulative = ranked["weight"].cumsum()
+        keep = cumulative <= desired_positive_weight
+        if not keep.any() and len(keep) > 0:
+            keep.iloc[0] = True
+        kept_ids = set(ranked.index[keep])
+
+        sparse_amounts = amounts.copy()
+        sparse_amounts.loc[positive & ~amounts.index.isin(kept_ids)] = 0.0
+        original_total = float((amounts * weights).sum())
+        sparse_total = float((sparse_amounts * weights).sum())
+        if original_total != 0.0 and sparse_total != 0.0:
+            sparse_amounts *= original_total / sparse_total
+        tax_unit.loc[channel_mask, column] = sparse_amounts.to_numpy()
+
+
 def _sparsify_tax_unit_person_output_to_donor_positive_rate(
     tables: Mapping[str, pd.DataFrame],
     *,
@@ -1067,7 +1516,16 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
         .sum()
     )
 
-    for channel in tax_unit[tax_unit_channel].dropna().unique():
+    channels = tax_unit[tax_unit_channel].dropna().unique()
+    if column in _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS:
+        channels = np.asarray(
+            [
+                channel
+                for channel in channels
+                if channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+            ]
+        )
+    for channel in channels:
         channel_tax_unit_ids = tax_unit.loc[
             tax_unit[tax_unit_channel] == channel,
             "tax_unit_id",
@@ -1192,6 +1650,7 @@ def _person_source_values(
     source_aliases = {
         "employment_income_before_lsr": ("employment_income",),
         "self_employment_income_before_lsr": ("self_employment_income",),
+        "sstb_self_employment_income_before_lsr": ("sstb_self_employment_income",),
         "long_term_capital_gains_before_response": ("long_term_capital_gains",),
         "taxable_private_pension_income": ("taxable_pension_income",),
         # The PUF observes realized IRA deductions; at baseline the engine's
@@ -1227,6 +1686,11 @@ def _person_source_values(
         "taxable_unemployment_compensation" in arrays
     ):
         return _numeric_array(arrays["taxable_unemployment_compensation"])
+    if output == "qualified_tuition_expenses" and "E03230" in arrays:
+        tuition = _numeric_array(arrays["E03230"])
+        if "E87530" in arrays:
+            tuition = np.maximum(tuition, _numeric_array(arrays["E87530"]))
+        return np.maximum(tuition, 0.0)
     if output in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS:
         if output != "social_security_retirement":
             for source in ("social_security", "total_social_security", "E02400"):

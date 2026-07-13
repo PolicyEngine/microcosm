@@ -32,6 +32,7 @@ import pytest
 import populace.build.us_runtime.reform_coverage_smoke as smoke_module
 from populace.build.us_runtime import (
     SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_QBI_OUTPUT_COLUMNS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ReformCoverageProbe,
     ReleaseInputColumn,
@@ -65,6 +66,36 @@ def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(values=np.asarray([1000.0]), kind=WeightKind.DESIGN)},
+    )
+
+
+def _household_weight_frame(
+    typed_values: np.ndarray,
+    *,
+    stored_values: np.ndarray | None = None,
+) -> Frame:
+    """A Frame whose authoritative household weights may shadow a stale column."""
+
+    typed_values = np.asarray(typed_values, dtype=np.float64)
+    n = len(typed_values)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(n, dtype="int64"),
+            "person_household_id": np.arange(1, n + 1, dtype="int64"),
+        }
+    )
+    household = pd.DataFrame({"household_id": np.arange(1, n + 1, dtype="int64")})
+    if stored_values is not None:
+        household["household_weight"] = np.asarray(stored_values, dtype=np.float64)
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(
+                values=typed_values,
+                kind=WeightKind.CALIBRATED,
+            )
+        },
     )
 
 
@@ -195,6 +226,36 @@ class TestReleaseInputCoverageGate:
             "alimony_income": "Residual income-source layer not yet sourced; tracked."
         }
 
+    def test_typed_household_weights_count_as_persisted_input_signal(self) -> None:
+        manifest = _manifest((ReleaseInputColumn("household_weight", "required"),))
+        frame = _household_weight_frame(np.asarray([125.0, 275.0]))
+        assert "household_weight" not in frame.table("household")
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({"household_weight": 1.0}),
+            manifest=manifest,
+        )
+
+        assert result.passed
+        assert result.failures == ()
+
+    def test_typed_household_weights_override_stale_table_column(self) -> None:
+        manifest = _manifest((ReleaseInputColumn("household_weight", "required"),))
+        frame = _household_weight_frame(
+            np.asarray([1.0, 1.0]),
+            stored_values=np.asarray([125.0, 275.0]),
+        )
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({"household_weight": 1.0}),
+            manifest=manifest,
+        )
+
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["household_weight"]
+
 
 class _Series:
     def __init__(self, total: float) -> None:
@@ -231,6 +292,88 @@ def _probe(min_abs_effect: float = 1_000_000_000.0) -> ReformCoverageProbe:
     )
 
 
+def _tips_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="tips_probe",
+        name="OBBBA no-tax-on-tips deduction",
+        parameter_changes={
+            "gov.irs.deductions.tip_income.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        budget_measure="income_tax",
+        binding_inputs=("tip_income", "treasury_tipped_occupation_code"),
+        min_abs_effect=100_000_000.0,
+        reason="The cap repeal must bind through qualified tip income.",
+        issue="PolicyEngine/populace#38",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
+def _overtime_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="obbba_no_tax_on_overtime",
+        name="OBBBA no-tax-on-overtime deduction",
+        parameter_changes={
+            "gov.irs.deductions.overtime_income.cap.SINGLE": {
+                "2026-01-01.2026-12-31": 0
+            }
+        },
+        budget_measure="income_tax",
+        binding_inputs=("fsla_overtime_premium",),
+        min_abs_effect=100_000_000.0,
+        reason="The cap repeal must bind through the FLSA overtime premium.",
+        issue="PolicyEngine/populace#242",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
+def _auto_loan_probe() -> ReformCoverageProbe:
+    return ReformCoverageProbe(
+        id="obbba_auto_loan_interest",
+        name="OBBBA no-tax-on-auto-loan-interest deduction",
+        parameter_changes={
+            "gov.irs.deductions.auto_loan_interest.cap": {"2026-01-01.2026-12-31": 0}
+        },
+        budget_measure="income_tax",
+        binding_inputs=("qualified_passenger_vehicle_loan_interest",),
+        min_abs_effect=100_000_000.0,
+        reason="The repeal must bind through qualifying vehicle-loan interest.",
+        issue="PolicyEngine/populace#252",
+        effect_direction="baseline_minus_reform",
+        period=2026,
+        expected_sign="negative",
+    )
+
+
+def test_reform_probe_requires_exactly_one_reform_kind() -> None:
+    kwargs = {
+        "id": "form_4952",
+        "name": "Form 4952 neutralization",
+        "budget_measure": "income_tax",
+        "binding_inputs": ("investment_income_elected_form_4952",),
+        "min_abs_effect": 1_000_000.0,
+        "reason": "The neutralization binds only through the input.",
+        "issue": "PolicyEngine/populace#274",
+    }
+    with pytest.raises(ValueError, match="exactly one"):
+        ReformCoverageProbe(parameter_changes={}, **kwargs)
+    with pytest.raises(ValueError, match="exactly one"):
+        ReformCoverageProbe(
+            parameter_changes={"some.parameter": {"2024-01-01": 0}},
+            neutralized_variable="investment_income_elected_form_4952",
+            **kwargs,
+        )
+    with pytest.raises(ValueError, match="binding_inputs"):
+        ReformCoverageProbe(
+            parameter_changes={},
+            neutralized_variable="different_input",
+            **kwargs,
+        )
+
+
 class TestReformCoverageSmokeGate:
     def test_zero_bound_reform_fails(self, monkeypatch) -> None:
         # Case 5: with the asset inputs absent, everyone already passes the SSI
@@ -263,6 +406,89 @@ class TestReformCoverageSmokeGate:
         assert result.passed
         assert result.details["results"]["ssi_probe"]["effect"] == pytest.approx(1.6e9)
 
+    def test_wrong_signed_effect_fails(self, monkeypatch) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        def simulate(reform):
+            return _Sim(3.0e10 if reform == "REFORM" else 4.0e10)
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=[_probe()], period=2024
+        )
+        assert not result.passed
+        assert result.details["results"]["ssi_probe"]["effect"] == -1.0e10
+        assert "expected a positive effect" in result.failures[0]
+
+    def test_negative_tip_effect_uses_probe_period_and_passes(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        periods: list[int] = []
+
+        class RecordingSim(_Sim):
+            def calculate(self, measure: str, period):
+                periods.append(period)
+                return super().calculate(measure, period)
+
+        def simulate(reform):
+            return RecordingSim(10.5e9 if reform == "REFORM" else 10.0e9)
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate,
+            probes=[_tips_probe()],
+            period=2024,
+        )
+
+        assert result.passed
+        assert periods == [2026, 2026]
+        assert result.details["default_period"] == 2024
+        tip_result = result.details["results"]["tips_probe"]
+        assert tip_result["period"] == 2026
+        assert tip_result["effect"] == pytest.approx(-0.5e9)
+        assert tip_result["expected_sign"] == "negative"
+
+    def test_negative_overtime_effect_passes_and_wrong_sign_fails(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[_overtime_probe()],
+        )
+        assert passing.passed
+        assert passing.details["results"]["obbba_no_tax_on_overtime"][
+            "effect"
+        ] == pytest.approx(-0.5e9)
+
+        wrong_sign = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(9.5e9 if reform else 10.0e9),
+            probes=[_overtime_probe()],
+        )
+        assert not wrong_sign.passed
+        assert "expected a negative effect" in wrong_sign.failures[0]
+
+    def test_negative_auto_loan_effect_passes_and_wrong_sign_fails(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[_auto_loan_probe()],
+        )
+        assert passing.passed
+        result = passing.details["results"]["obbba_auto_loan_interest"]
+        assert result["effect"] == pytest.approx(-0.5e9)
+        assert result["period"] == 2026
+
+        wrong_sign = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(9.5e9 if reform else 10.0e9),
+            probes=[_auto_loan_probe()],
+        )
+        assert not wrong_sign.passed
+        assert "expected a negative effect" in wrong_sign.failures[0]
+
     def test_probeless_gate_is_refused(self) -> None:
         # A probe-less smoke gate would pass vacuously — refuse it.
         with pytest.raises(ValueError, match="at least one probe"):
@@ -282,6 +508,279 @@ class TestShippedManifest:
             assert asset in manifest.required_columns
             assert asset not in manifest.reviewed_exclusions
 
+    def test_post_reference_ssi_disability_criterion_has_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "meets_ssi_disability_criteria"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "ssi_disability_criteria_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "ssi"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
+    def test_restored_ssi_take_up_has_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "takes_up_ssi_if_eligible"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        matches = [
+            probe
+            for probe in manifest.probes
+            if probe.id == "ssi_take_up_neutralization"
+        ]
+        assert len(matches) == 1
+        probe = matches[0]
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "ssi"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 10_000_000_000.0
+
+    def test_restored_head_start_take_up_has_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "takes_up_head_start_if_eligible"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        matches = [
+            probe
+            for probe in manifest.probes
+            if probe.id == "head_start_take_up_neutralization"
+        ]
+        assert len(matches) == 1
+        probe = matches[0]
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "head_start"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect > 0.0
+
+    def test_post_reference_obbba_inputs_are_hard_requirements(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "fsla_overtime_premium",
+            "qualified_passenger_vehicle_loan_interest",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_legacy_auto_loan_columns_are_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("auto_loan_balance", "auto_loan_interest"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_sipp_vehicle_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("household_vehicles_owned", "household_vehicles_value"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_signed_scf_net_worth_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "net_worth" in manifest.required_columns
+        assert "net_worth" not in manifest.reviewed_exclusions
+
+    def test_typed_household_weight_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "household_weight" in manifest.required_columns
+        assert "household_weight" not in manifest.reviewed_exclusions
+
+    def test_education_input_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "qualified_tuition_expenses",
+            "educational_assistance",
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+            "has_american_opportunity_credit_institution_ein",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_retirement_contribution_family_is_a_hard_requirement(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_casualty_loss_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "casualty_loss" in manifest.required_columns
+        assert "casualty_loss" not in manifest.reviewed_exclusions
+
+    def test_alimony_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("alimony_income", "alimony_expense"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_misc_itemized_input_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "unreimbursed_business_employee_expenses"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+    def test_childcare_input_is_a_hard_requirement(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "spm_unit_pre_subsidy_childcare_expenses"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+    def test_energy_subsidy_is_promoted_with_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "spm_unit_energy_subsidy"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "spm_unit_energy_subsidy_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "spm_unit_benefits"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
+    def test_voluntary_filing_is_promoted_with_aca_ptc_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "would_file_taxes_voluntarily"
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "voluntary_filing_aca_ptc_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == column
+        assert probe.budget_measure == "aca_ptc"
+        assert probe.period == 2024
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.expected_sign == "positive"
+        assert probe.binding_inputs == (column,)
+        assert probe.min_abs_effect == 100_000_000.0
+
+    def test_child_support_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("child_support_received", "child_support_expense"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_disability_benefits_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "disability_benefits" in manifest.required_columns
+        assert "disability_benefits" not in manifest.reviewed_exclusions
+
+    def test_educator_expense_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "educator_expense" in manifest.required_columns
+        assert "educator_expense" not in manifest.reviewed_exclusions
+
+    def test_other_health_insurance_premiums_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "other_health_insurance_premiums" in manifest.required_columns
+        assert "other_health_insurance_premiums" not in manifest.reviewed_exclusions
+
+    def test_prior_year_income_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in (
+            "self_employment_income_last_year",
+            "previous_year_income_available",
+        ):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "prior_year_self_employment_neutralization"
+        )
+        assert probe.period == 2024
+        assert probe.neutralized_variable == "self_employment_income_last_year"
+        assert probe.parameter_changes == {}
+        assert probe.binding_inputs == ("self_employment_income_last_year",)
+        assert probe.budget_measure == "tax_unit_earned_income_last_year"
+        assert probe.effect_direction == "baseline_minus_reform"
+
+    def test_weeks_unemployed_is_required_without_a_false_policy_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        column = "weeks_unemployed"
+
+        assert column in manifest.required_columns
+        assert column not in manifest.reviewed_exclusions
+        # PolicyEngine-US 1.764.6 consumes this leaf only through Pennsylvania
+        # UC, whose other monetary-eligibility inputs remain default-zero. A
+        # direct neutralization would test the column against itself, not a
+        # budget-policy path, so this family deliberately adds no such probe.
+        assert all(
+            column not in probe.binding_inputs and probe.neutralized_variable != column
+            for probe in manifest.probes
+        )
+
+    def test_signed_farm_business_income_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in ("farm_operations_income", "farm_rent_income"):
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_qbi_input_family_is_promoted(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in US_QBI_OUTPUT_COLUMNS:
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    def test_domestic_production_ald_is_promoted_separately_from_qbi(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert "domestic_production_ald" in manifest.required_columns
+        assert "domestic_production_ald" not in manifest.reviewed_exclusions
+
+    def test_form_4952_election_is_promoted_with_unique_probe(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        output = "investment_income_elected_form_4952"
+        assert output in manifest.required_columns
+        assert output not in manifest.reviewed_exclusions
+
+        probe = next(
+            probe
+            for probe in manifest.probes
+            if probe.id == "form_4952_election_neutralization"
+        )
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable == output
+        assert probe.binding_inputs == (output,)
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -289,6 +788,403 @@ class TestShippedManifest:
         assert set(SSI_COUNTABLE_RESOURCE_ASSETS) <= set(ssi.binding_inputs)
         assert ssi.budget_measure == "ssi"
         assert ssi.min_abs_effect > 0
+        assert ssi.expected_sign == "positive"
+
+    def test_shipped_tip_probe_has_2026_period_sign_and_inputs(self) -> None:
+        tip = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_no_tax_on_tips"
+        )
+        assert tip.period == 2026
+        assert tip.expected_sign == "negative"
+        assert tip.effect_direction == "baseline_minus_reform"
+        assert tip.budget_measure == "income_tax"
+        assert set(tip.binding_inputs) == {
+            "tip_income",
+            "treasury_tipped_occupation_code",
+        }
+
+    def test_shipped_aotc_probe_binds_through_education_inputs(self) -> None:
+        aotc = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "aotc_abolition"
+        )
+        assert aotc.period == 2024
+        assert aotc.expected_sign == "positive"
+        assert aotc.effect_direction == "baseline_minus_reform"
+        assert aotc.budget_measure == "american_opportunity_credit"
+        assert set(aotc.binding_inputs) == {
+            "qualified_tuition_expenses",
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+            "has_american_opportunity_credit_institution_ein",
+        }
+        assert aotc.min_abs_effect > 0
+        assert set(aotc.parameter_changes) == {
+            "gov.irs.credits.education.american_opportunity_credit.abolition"
+        }
+
+    def test_shipped_savers_credit_probe_binds_through_contributions(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "savers_credit_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "savers_credit"
+        assert set(probe.binding_inputs) == {
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        }
+        assert probe.min_abs_effect == 100_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.credits.retirement_saving.contributions_cap"
+        }
+
+    def test_shipped_casualty_probe_has_2026_period_sign_and_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_casualty_loss_limit"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("casualty_loss",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.deductions.itemized.casualty.active"
+        }
+
+    def test_shipped_alimony_probe_has_sign_period_and_expense_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "alimony_expense_ald_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "negative"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("alimony_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount"
+        }
+
+    def test_shipped_misc_itemized_probe_has_2026_period_sign_and_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_misc_itemized_deductions"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("unreimbursed_business_employee_expenses",)
+        assert probe.min_abs_effect == 100_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.deductions.itemized.misc.applies"
+        }
+
+    def test_shipped_cdcc_probe_has_2026_period_sign_and_input(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_cdcc"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "negative"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("spm_unit_pre_subsidy_childcare_expenses",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.irs.credits.cdcc.phase_out.max",
+            "gov.irs.credits.cdcc.phase_out.min",
+            "gov.irs.credits.cdcc.phase_out.amended_structure.applies",
+        }
+
+    def test_shipped_child_support_received_probe_removes_only_snap_source(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "child_support_received_snap_exclusion"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("child_support_received",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "disability_benefits",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        }
+
+    def test_shipped_child_support_expense_probe_removes_only_snap_deduction(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "child_support_expense_snap_deduction_abolition"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("child_support_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.deductions.allowed": {
+                "2024-01-01.2024-12-31": [
+                    "snap_standard_deduction",
+                    "snap_earned_income_deduction",
+                    "snap_dependent_care_deduction",
+                    "snap_excess_medical_expense_deduction",
+                    "snap_excess_shelter_expense_deduction",
+                ]
+            }
+        }
+
+    def test_shipped_disability_probe_removes_only_snap_unearned_source(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "disability_benefits_snap_exclusion"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("disability_benefits",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.usda.snap.income.sources.unearned": {
+                "2024-01-01.2024-12-31": [
+                    "ssi",
+                    "tanf",
+                    "general_assistance",
+                    "pension_income",
+                    "veterans_benefits",
+                    "unemployment_compensation",
+                    "workers_compensation",
+                    "social_security",
+                    "retirement_distributions",
+                    "rental_income",
+                    "child_support_received",
+                    "alimony_income",
+                    "financial_assistance",
+                    "survivor_benefits",
+                    "dividend_income",
+                    "interest_income",
+                    "miscellaneous_income",
+                ]
+            }
+        }
+
+    def test_shipped_educator_expense_probe_removes_only_its_ald(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "educator_expense_ald_abolition"
+        )
+
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("educator_expense",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert probe.parameter_changes == {
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "alimony_expense_ald",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                ]
+            }
+        }
+
+    def test_shipped_qbi_probes_cover_reit_and_wage_property_inputs(self) -> None:
+        probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        reit = probes["qbi_reit_ptp_rate_abolition"]
+        assert reit.period == 2024
+        assert reit.expected_sign == "positive"
+        assert reit.effect_direction == "baseline_minus_reform"
+        assert reit.budget_measure == "qualified_business_income_deduction"
+        assert reit.binding_inputs == ("qualified_reit_and_ptp_income",)
+        assert set(reit.parameter_changes) == {
+            "gov.irs.deductions.qbi.max.reit_ptp_rate"
+        }
+
+        guardrails = probes["qbi_wage_property_guardrails_zeroed"]
+        assert guardrails.period == 2024
+        assert guardrails.expected_sign == "positive"
+        assert guardrails.effect_direction == "baseline_minus_reform"
+        assert guardrails.budget_measure == "qualified_business_income_deduction"
+        assert set(guardrails.binding_inputs) == {
+            "w2_wages_from_qualified_business",
+            "unadjusted_basis_qualified_property",
+        }
+        assert set(guardrails.parameter_changes) == {
+            "gov.irs.deductions.qbi.max.w2_wages.rate",
+            "gov.irs.deductions.qbi.max.w2_wages.alt_rate",
+            "gov.irs.deductions.qbi.max.business_property.rate",
+        }
+
+    def test_shipped_farm_probes_each_remove_only_the_bound_qbi_leaf(self) -> None:
+        probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        current_income_definition = {
+            "self_employment_income",
+            "partnership_s_corp_income",
+            "farm_rent_income",
+            "farm_operations_income",
+            "rental_income",
+            "estate_income",
+        }
+        cases = {
+            "qbi_farm_operations_income_exclusion": (
+                "farm_operations_income",
+                "negative",
+            ),
+            "qbi_farm_rent_income_exclusion": ("farm_rent_income", "positive"),
+        }
+
+        for probe_id, (removed_input, expected_sign) in cases.items():
+            probe = probes[probe_id]
+            assert probe.period == 2026
+            assert probe.expected_sign == expected_sign
+            assert probe.effect_direction == "baseline_minus_reform"
+            assert probe.budget_measure == "qualified_business_income_deduction"
+            assert probe.binding_inputs == (removed_input,)
+            assert probe.min_abs_effect == 1_000_000.0
+            assert set(probe.parameter_changes) == {
+                "gov.irs.deductions.qbi.income_definition"
+            }
+            definition = probe.parameter_changes[
+                "gov.irs.deductions.qbi.income_definition"
+            ]
+            assert set(definition) == {"2026-01-01.2026-12-31"}
+            assert set(definition["2026-01-01.2026-12-31"]) == (
+                current_income_definition - {removed_input}
+            )
+
+    def test_shipped_domestic_production_probe_reactivates_only_its_ald(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "domestic_production_ald_reactivation"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "income_tax"
+        assert probe.binding_inputs == ("domestic_production_ald",)
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {"gov.irs.ald.deductions"}
+        deductions = probe.parameter_changes["gov.irs.ald.deductions"]
+        assert set(deductions) == {"2024-01-01.2024-12-31"}
+        assert deductions["2024-01-01.2024-12-31"].count("domestic_production_ald") == 1
+
+    def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:
+        overtime = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_no_tax_on_overtime"
+        )
+        assert overtime.period == 2026
+        assert overtime.expected_sign == "negative"
+        assert overtime.effect_direction == "baseline_minus_reform"
+        assert overtime.budget_measure == "income_tax"
+        assert overtime.binding_inputs == ("fsla_overtime_premium",)
+        assert overtime.min_abs_effect > 0
+        assert set(overtime.parameter_changes) == {
+            "gov.irs.deductions.overtime_income.cap.JOINT",
+            "gov.irs.deductions.overtime_income.cap.SINGLE",
+            "gov.irs.deductions.overtime_income.cap.HEAD_OF_HOUSEHOLD",
+            "gov.irs.deductions.overtime_income.cap.SURVIVING_SPOUSE",
+            "gov.irs.deductions.overtime_income.cap.SEPARATE",
+        }
+
+    def test_shipped_auto_loan_probe_has_2026_period_sign_and_input(self) -> None:
+        auto = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "obbba_auto_loan_interest"
+        )
+        assert auto.period == 2026
+        assert auto.expected_sign == "negative"
+        assert auto.effect_direction == "baseline_minus_reform"
+        assert auto.budget_measure == "income_tax"
+        assert auto.binding_inputs == ("qualified_passenger_vehicle_loan_interest",)
+        assert set(auto.parameter_changes) == {
+            "gov.irs.deductions.auto_loan_interest.cap"
+        }
+
+    def test_shipped_vehicle_asset_probe_binds_through_both_inputs(self) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "tx_snap_additional_vehicle_exemption_abolition"
+        )
+        assert probe.period == 2026
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "baseline_minus_reform"
+        assert probe.budget_measure == "snap"
+        assert set(probe.binding_inputs) == {
+            "household_vehicles_owned",
+            "household_vehicles_value",
+        }
+        assert probe.min_abs_effect == 1_000_000.0
+        assert set(probe.parameter_changes) == {
+            "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption"
+        }
 
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:
         # The #368 red-gate guarantee cannot be quietly undone: turning an SSI
@@ -314,6 +1210,10 @@ class TestShippedManifest:
             assert_release_input_coverage_manifest_current(
                 manifest=tampered, engine=None
             )
+
+    def test_duplicate_probe_ids_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate reform coverage probe id"):
+            _manifest(_CONTRACT.columns, probes=(_probe(), _probe()))
 
 
 def _load_manifest_generator():

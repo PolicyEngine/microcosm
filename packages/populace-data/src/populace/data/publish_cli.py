@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 from populace.data.release import publish_release
-from populace.data.slack import notify_release
 
 
 def _staging_missing(release_dir: Path) -> bool:
@@ -91,6 +90,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional latest.json timestamp override for reproducible tests.",
     )
     parser.add_argument(
+        "--no-latest",
+        action="store_true",
+        help=(
+            "Publish as a non-default release: upload files and create the "
+            "immutable tag, but never touch latest.json (the default pointer)."
+        ),
+    )
+    parser.add_argument(
         "--allow-incomplete-reform-validation",
         action="store_true",
         help=(
@@ -131,17 +138,13 @@ def main(argv: list[str] | None = None) -> int:
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),
         updated_at=args.updated_at,
+        update_latest=not args.no_latest,
     )
     print(json.dumps(pointer, indent=2))
 
-    # Real-time release alert, fired the moment latest.json is live. No-op
-    # unless the country's SLACK_WEBHOOK_POPULACE_* env var is set, and never
-    # fatal — a Slack failure must not fail an otherwise-successful publish.
-    notify_release(
-        args.repo_id,
-        str(pointer.get("release_id", "")),
-        pointer.get("updated_at"),
-    )
+    # The Slack release alert now fires inside publish_release (coupled to the
+    # promotion, so every publish path announces the release), warning loudly if
+    # the webhook is unset. Nothing to do here.
     return 0
 
 

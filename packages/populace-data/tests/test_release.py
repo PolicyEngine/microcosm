@@ -27,6 +27,15 @@ from populace.data.release import (
     publish_release,
 )
 
+
+@pytest.fixture(autouse=True)
+def _no_slack_webhook(monkeypatch):
+    """Keep publish_release's release alert hermetic: never post to a real
+    webhook if the dev/CI environment happens to have one set."""
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_UK", raising=False)
+
+
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
@@ -616,6 +625,52 @@ def test_pointer_payload_names_every_contract_file() -> None:
     )
 
 
+def test_publish_release_announces_after_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """The alert fires from publish_release itself — every publish path, not
+    just the CLI — with the released id and timestamp."""
+    calls: list = []
+    monkeypatch.setattr(
+        "populace.data.release.notify_release",
+        lambda repo_id, release_id, updated_at, **kw: calls.append(
+            (repo_id, release_id, updated_at, kw)
+        ),
+    )
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    assert calls == [
+        (
+            "policyengine/populace-us",
+            RELEASE_ID,
+            "2026-06-11T13:53:15+00:00",
+            {"warn_if_unset": True},
+        )
+    ]
+
+
+def test_publish_release_notify_false_skips_alert(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    calls: list = []
+    monkeypatch.setattr(
+        "populace.data.release.notify_release", lambda *a, **k: calls.append(a)
+    )
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        notify=False,
+    )
+    assert calls == []
+
+
 def test_publish_uploads_pointer_last(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -632,6 +687,33 @@ def test_publish_uploads_pointer_last(
     assert final_commit["paths"][-1] == LATEST_POINTER_PATH
     for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in final_commit["paths"][:-1]
+
+
+def test_publish_no_latest_never_touches_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+        update_latest=False,
+    )
+    # Immutable branch + tag flow is unchanged; the final main commit exists
+    # (release copies + root artifacts) but carries NO pointer operation.
+    assert [event for event, _ in hub.events] == [
+        "create_branch",
+        "create_commit",
+        "create_tag",
+        "delete_branch",
+        "create_commit",
+    ]
+    final_event, final_commit = hub.events[-1]
+    assert final_event == "create_commit"
+    assert final_commit["revision"] == "main"
+    assert LATEST_POINTER_PATH not in final_commit["paths"]
+    assert final_commit["message"] == f"Publish non-default release {RELEASE_ID}"
 
 
 def test_publish_commits_immutable_release_before_root_and_pointer(
@@ -745,6 +827,39 @@ def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     uploaded_paths = [path for path, _ in hub.uploads]
     release_path = f"releases/{RELEASE_ID}/reform_validation.json"
     assert "reform_validation.json" not in uploaded_paths
+    assert release_path in uploaded_paths
+    assert uploaded_paths.index(release_path) < uploaded_paths.index(
+        LATEST_POINTER_PATH
+    )
+
+
+def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    diagnostics_path = release_dir / "us_ssi_take_up.json"
+    diagnostics_path.write_text('{"schema_version": 1}')
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"]["us_ssi_take_up"] = {
+        "kind": "diagnostics",
+        "path": diagnostics_path.name,
+        "repo_id": "policyengine/populace-us",
+        "revision": RELEASE_ID,
+        "sha256": _sha256(diagnostics_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+
+    uploaded_paths = [path for path, _ in hub.uploads]
+    release_path = f"releases/{RELEASE_ID}/{diagnostics_path.name}"
+    assert diagnostics_path.name not in uploaded_paths
     assert release_path in uploaded_paths
     assert uploaded_paths.index(release_path) < uploaded_paths.index(
         LATEST_POINTER_PATH

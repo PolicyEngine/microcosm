@@ -13,6 +13,7 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
+from populace.build.us_runtime.alimony import derive_us_alimony_from_asec
 from populace.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -63,7 +64,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "other_medical_expenses",
         "over_the_counter_health_expenses",
         "rental_income",
-        "farm_income",
+        "farm_operations_income",
         "has_champva_health_coverage_at_interview",
         "has_esi",
         "has_indian_health_service_coverage_at_interview",
@@ -76,6 +77,7 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
         "has_va_health_coverage_at_interview",
         "is_female",
         "unemployment_compensation",
+        "alimony_income",
         "miscellaneous_income",
     }
 )
@@ -154,11 +156,13 @@ def derive_us_cps_carried_inputs(frame: Frame) -> Frame:
     )
     _fill_missing(person, "taxable_ira_distributions", _ira_distributions(person))
 
+    person = derive_us_alimony_from_asec(person)
+    tables["person"] = person
+
     direct_sources: Mapping[str, str] = {
         "rental_income": "RNT_VAL",
-        "farm_income": "FRSE_VAL",
+        "farm_operations_income": "FRSE_VAL",
         "unemployment_compensation": "UC_VAL",
-        "miscellaneous_income": "OI_VAL",
         "health_insurance_premiums_without_medicare_part_b": "PHIP_VAL",
         "medicare_part_b_premiums": "PEMCPREM",
         "other_medical_expenses": "PMED_VAL",

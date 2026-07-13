@@ -15,14 +15,27 @@ from populace.build.us_runtime import US_SOURCE_MANIFEST
 from populace.build.us_runtime.puf_aggregate_records import (
     AGGREGATE_RECIDS,
     SYNTHETIC_RECID_START,
+    derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
 )
 from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
     calibrate_us_binary_assignment_from_manifest,
     calibrate_us_binary_assignment_joint_targets_from_manifest,
+    derive_us_child_support_from_manifest,
+    derive_us_disability_benefits_from_manifest,
+    derive_us_energy_subsidy_from_manifest,
+    derive_us_other_health_insurance_from_manifest,
+    derive_us_prior_year_income_from_manifest,
     derive_us_puf_policyengine_variables_from_manifest,
+    derive_us_weeks_unemployed_from_manifest,
     disaggregate_us_puf_aggregate_records_from_manifest,
+    impute_us_child_support_to_puf_support_from_manifest,
+    impute_us_disability_benefits_to_puf_support_from_manifest,
+    impute_us_energy_subsidy_to_puf_support_from_manifest,
+    impute_us_other_health_insurance_to_puf_support_from_manifest,
+    impute_us_prior_year_income_to_puf_support_from_manifest,
+    impute_us_weeks_unemployed_to_puf_support_from_manifest,
     us_source_operation_handlers,
 )
 
@@ -59,6 +72,7 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
                     "E26270": abs_agi * rng.uniform(0.01, 0.15) * sign,
                     "E00900": abs_agi * 0.03 * sign,
                     "E02100": abs_agi * 0.01 * sign,
+                    "E27200": abs_agi * 0.005 * sign,
                     "E00400": abs_agi * 0.01,
                     "E00600": abs_agi * 0.05,
                 }
@@ -91,11 +105,98 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
                 "E26270": abs_agi * 0.10 * sign,
                 "E00900": abs_agi * 0.03 * sign,
                 "E02100": abs_agi * 0.01 * sign,
+                "E27200": abs_agi * 0.005 * sign,
                 "E00400": abs_agi * 0.01,
                 "E00600": abs_agi * 0.05,
             }
         )
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+    result["E03230"] = np.where(result["RECID"] % 5 == 0, 1_500.0, 0.0)
+    result["E87530"] = np.where(result["RECID"] % 7 == 0, 4_000.0, 0.0)
+    result["E00800"] = np.where(result["RECID"] % 13 == 0, 3_000.0, 0.0)
+    result["E03500"] = np.where(result["RECID"] % 17 == 0, 2_000.0, 0.0)
+    result["E20500"] = np.where(result["RECID"] % 11 == 0, 8_000.0, 0.0)
+    result["E03240"] = np.where(result["RECID"] % 9 == 0, 6_000.0, 0.0)
+    result["E03220"] = np.where(result["RECID"] % 7 == 0, 300.0, 0.0)
+    result["E20400"] = np.where(result["RECID"] % 3 == 0, 2_500.0, 0.0)
+    result["E58990"] = np.where(result["RECID"] % 19 == 0, 5_000.0, 0.0)
+    result["E00700"] = np.where(result["RECID"] % 5 == 0, 1_200.0, 0.0)
+    result["E24518"] = np.where(result["RECID"] % 23 == 0, 4_000.0, 0.0)
+    result["E24515"] = np.where(result["RECID"] % 29 == 0, 6_000.0, 0.0)
+    return result
+
+
+def test_us_child_support_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_child_support_inputs"] is derive_us_child_support_from_manifest
+    )
+    assert (
+        handlers["impute_child_support_to_puf_support"]
+        is impute_us_child_support_to_puf_support_from_manifest
+    )
+
+
+def test_us_disability_benefits_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_disability_benefits"]
+        is derive_us_disability_benefits_from_manifest
+    )
+    assert (
+        handlers["impute_disability_benefits_to_puf_support"]
+        is impute_us_disability_benefits_to_puf_support_from_manifest
+    )
+
+
+def test_us_energy_subsidy_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert handlers["derive_energy_subsidy"] is derive_us_energy_subsidy_from_manifest
+    assert (
+        handlers["impute_energy_subsidy_to_puf_support"]
+        is impute_us_energy_subsidy_to_puf_support_from_manifest
+    )
+
+
+def test_us_other_health_insurance_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_other_health_insurance_premiums"]
+        is derive_us_other_health_insurance_from_manifest
+    )
+    assert (
+        handlers["impute_other_health_insurance_premiums_to_puf_support"]
+        is impute_us_other_health_insurance_to_puf_support_from_manifest
+    )
+
+
+def test_us_prior_year_income_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_prior_year_income"]
+        is derive_us_prior_year_income_from_manifest
+    )
+    assert (
+        handlers["impute_prior_year_income_to_puf_support"]
+        is impute_us_prior_year_income_to_puf_support_from_manifest
+    )
+
+
+def test_us_weeks_unemployed_handlers_are_in_shared_registry() -> None:
+    handlers = us_source_operation_handlers()
+
+    assert (
+        handlers["derive_weeks_unemployed"] is derive_us_weeks_unemployed_from_manifest
+    )
+    assert (
+        handlers["impute_weeks_unemployed_to_puf_support"]
+        is impute_us_weeks_unemployed_to_puf_support_from_manifest
+    )
 
 
 def _make_aca_people() -> pd.DataFrame:
@@ -180,7 +281,26 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         stop_after="disaggregate_aggregate_records",
     )
 
-    expected = disaggregate_puf_aggregate_records(mini_puf, seed=42)
+    expected = disaggregate_puf_aggregate_records(
+        derive_puf_policyengine_variables(
+            mini_puf,
+            qualified_tuition_primary_source="E03230",
+            qualified_tuition_optional_source="E87530",
+            alimony_income_source="E00800",
+            alimony_expense_source="E03500",
+            casualty_loss_source="E20500",
+            domestic_production_ald_source="E03240",
+            educator_expense_source="E03220",
+            unreimbursed_business_employee_expenses_source="E20400",
+            farm_operations_income_source="E02100",
+            farm_rent_income_source="E27200",
+            investment_income_elected_form_4952_source="E58990",
+            salt_refund_income_source="E00700",
+            collectibles_capital_gain_source="E24518",
+            unrecaptured_section_1250_gain_source="E24515",
+        ),
+        seed=42,
+    )
     pd.testing.assert_frame_equal(result, expected)
     assert not result["RECID"].isin(AGGREGATE_RECIDS).any()
     assert (result["RECID"] >= SYNTHETIC_RECID_START).any()
@@ -193,6 +313,32 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         result["non_qualified_dividend_income"],
         result["E00600"] - result["E00650"],
     )
+    assert np.allclose(
+        result["qualified_tuition_expenses"],
+        np.maximum(result["E03230"], result["E87530"]),
+    )
+    assert (result["qualified_tuition_expenses"] >= 0.0).all()
+    assert np.allclose(result["alimony_income"], result["E00800"])
+    assert np.allclose(result["alimony_expense"], result["E03500"])
+    assert np.allclose(result["casualty_loss"], result["E20500"])
+    assert (result["casualty_loss"] >= 0.0).all()
+    assert np.allclose(result["domestic_production_ald"], result["E03240"])
+    assert (result["domestic_production_ald"] >= 0.0).all()
+    assert np.allclose(result["educator_expense"], result["E03220"])
+    assert (result["educator_expense"] >= 0.0).all()
+    assert np.allclose(
+        result["unreimbursed_business_employee_expenses"], result["E20400"]
+    )
+    assert np.allclose(result["farm_operations_income"], result["E02100"])
+    assert np.allclose(result["farm_rent_income"], result["E27200"])
+    assert np.allclose(result["investment_income_elected_form_4952"], result["E58990"])
+    assert (result["investment_income_elected_form_4952"] >= 0.0).all()
+    assert np.allclose(result["salt_refund_income"], result["E00700"])
+    assert (result["salt_refund_income"] >= 0.0).all()
+    assert np.allclose(
+        result["long_term_capital_gains_on_collectibles"], result["E24518"]
+    )
+    assert np.allclose(result["unrecaptured_section_1250_gain"], result["E24515"])
 
 
 def test_us_puf_manifest_prefix_uses_build_seed() -> None:

@@ -74,6 +74,7 @@ def _write_asec(
                 "H_SEQ": household_id,
                 "HSUP_WGT": household_weight,
                 "GESTFIPS": state_fips,
+                "H_TENURE": 1 + (household_id % 2),
             }
         )
         if n_people >= 2:
@@ -197,7 +198,9 @@ def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(
     assert metadata["weighted_person_population"] == pytest.approx(200.0)
     assert np.array_equal(frame.table("household")["household_id"], np.array([1, 2]))
     assert frame.table("household")["state_fips"].tolist() == [6, 36]
+    assert frame.table("household")["H_TENURE"].tolist() == [2, 2]
     assert "state_fips" not in frame.table("person")
+    assert "H_TENURE" not in frame.table("person")
 
 
 def test_build_pooled_asec_unit_frame_aligns_household_weights_by_remapped_id(

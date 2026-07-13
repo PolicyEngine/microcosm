@@ -1,4 +1,4 @@
-"""SCF-imputed household financial-asset inputs (SSI countable resources).
+"""SCF-imputed financial-asset inputs and household net worth.
 
 Without this stage the published dataset stores none of the liquid-asset
 input columns SSI's resource test reads, so each silently takes the
@@ -10,7 +10,7 @@ SSI resource-limit reform silently scores $0. That is the failure of
 populace issues #356/#368 (the dropped-column counterpart of #278's zeroed
 input bases).
 
-The three columns are the SSI countable-resource leaves in PolicyEngine-US
+The three person columns are the SSI countable-resource leaves in PolicyEngine-US
 (``policyengine_us/parameters/gov/ssa/ssi/eligibility/resources/
 countable.yaml``: ``bank_account_assets`` / ``stock_assets`` /
 ``bond_assets``). They are imputed from the Federal Reserve Survey of
@@ -80,16 +80,21 @@ reasons, both #356 follow-ups, neither a bug in this stage:
 The nonzero *incidence* already matches the dense-native reference (40.3% vs
 42.5%); the gap is amount and calibration, not the grain.
 
-The household-total SCF wealth components the manifest also declares
-(net_worth, primary-residence value, auto-loan interest, etc.) remain
-follow-up work (populace #356); this stage ships only the three SSI
-liquid-asset leaves, which is what makes the SSI resource-limit reform class
-score again.
+The stage also restores the household ``net_worth`` input from the SCF
+``networth`` summary-extract field. At archived commit ``42ed5d45``,
+``utils/asset_imputation.py`` lines 15-19 and 182-184 make that field the direct
+``scf_net_worth`` QRF anchor; ``calibration/source_impute.py`` lines 1146-1164
+fits it, and lines 1324-1338 reconcile construction-only balance-sheet
+components to the anchor before exporting their signed sum as ``net_worth``.
+Persisting the source-backed anchor is therefore the policy-facing result of
+the retired reconciliation without manufacturing or exporting its internal
+``scf_*`` component columns. ``net_worth`` is signed: indebted households may
+have negative values, so it must never be clipped at zero.
 
-Healing behavior: a frame already carrying all three columns *with signal*
-passes through untouched (idempotent). A frame carrying a constant
-``bank_account_assets`` — indistinguishable from the engine's 0 default — is
-re-imputed rather than trusted.
+Healing behavior: a frame already carrying all three person columns and the
+household net-worth column *with signal* passes through untouched (idempotent).
+A constant ``bank_account_assets`` or ``net_worth`` column — indistinguishable
+from an engine broadcast default — is re-imputed rather than trusted.
 """
 
 from __future__ import annotations
@@ -112,12 +117,16 @@ __all__ = [
     "SCF_2022_SUMMARY_EXTRACT_URL",
     "SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
+    "SCF_NET_WORTH_TARGET_COMPONENTS",
     "SCF_WEALTH_PREDICTORS",
     "US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS",
+    "US_SCF_NET_WORTH_OUTPUT_COLUMNS",
+    "US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS",
     "US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS",
     "US_SCF_WEALTH_STAGE_NAME",
     "fetch_scf_2022_summary_extract",
     "impute_us_scf_financial_assets",
+    "impute_us_scf_net_worth",
     "load_scf_2022_financial_asset_donor",
     "us_scf_wealth_signal_gate",
     "us_scf_wealth_stage_spec",
@@ -163,9 +172,15 @@ US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS: tuple[str, ...] = (
     "bond_assets",
 )
 
+#: The signed household-grain PolicyEngine input restored from SCF networth.
+US_SCF_NET_WORTH_OUTPUT_COLUMNS: tuple[str, ...] = ("net_worth",)
+
 #: Release gates require these person columns to carry signal (≥2 values).
 US_SCF_WEALTH_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
+)
+US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS: tuple[str, ...] = (
+    US_SCF_NET_WORTH_OUTPUT_COLUMNS
 )
 
 #: Each output column and the SCF summary-extract components it sums
@@ -174,6 +189,9 @@ SCF_FINANCIAL_ASSET_TARGET_COMPONENTS: dict[str, tuple[str, ...]] = {
     "bank_account_assets": ("liq",),
     "stock_assets": ("stocks", "nmmf"),
     "bond_assets": ("bond",),
+}
+SCF_NET_WORTH_TARGET_COMPONENTS: dict[str, tuple[str, ...]] = {
+    "net_worth": ("networth",),
 }
 
 #: The predictor columns the imputation conditions on, in the manifest's
@@ -203,6 +221,23 @@ _DEFAULT_N_ESTIMATORS = 100
 #: feature).
 _DONOR_WEIGHT_COLUMN = "scf_weight"
 
+#: Raw SCF summary-extract columns used to construct the shared eight-feature
+#: donor surface.  The auto-loan family reads the full SCF for its targets but
+#: deliberately reuses this summary-extract predictor construction so its QRF
+#: conditions on the same concepts as the retired pipeline and the SSI-assets
+#: stage.
+_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS: tuple[str, ...] = (
+    "wgt",
+    "age",
+    "hhsex",
+    "racecl5",
+    "married",
+    "kids",
+    "wageinc",
+    "intdivinc",
+    "ssretinc",
+)
+
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _HOUSEHOLD_ID_COLUMN = "person_household_id"
 
@@ -213,12 +248,18 @@ _HOUSEHOLD_ID_COLUMN = "person_household_id"
 _BANK_NONZERO_SHARE_BAND = (0.25, 0.85)
 _STOCK_NONZERO_SHARE_BAND = (0.03, 0.40)
 _BOND_NONZERO_SHARE_BAND = (0.001, 0.12)
+#: Household net worth is nearly always nonzero and legitimately signed. The
+#: pinned eCPS nonzero share is 0.997241; the SHA-pinned SCF donor is 0.996678
+#: nonzero, 0.921249 positive, and 0.075429 negative by survey weight.
+_NET_WORTH_NONZERO_SHARE_BAND = (0.90, 1.0)
+_NET_WORTH_POSITIVE_SHARE_BAND = (0.75, 1.0)
+_NET_WORTH_NEGATIVE_SHARE_BAND = (0.001, 0.25)
 
 
 def us_scf_wealth_stage_spec() -> SourceStageSpec:
     """Load the packaged ``scf_wealth`` source-stage manifest entry.
 
-    The three produced columns must be a subset of the stage's declared
+    The policy-facing produced columns must be a subset of the stage's declared
     outputs, so the manifest stays the single source declaration (survey,
     citation, sentinel policy) this runtime implements.
     """
@@ -233,7 +274,11 @@ def us_scf_wealth_stage_spec() -> SourceStageSpec:
         )
     spec = stage_map[US_SCF_WEALTH_STAGE_NAME]
     declared = set(spec.outputs)
-    missing = [c for c in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS if c not in declared]
+    required_outputs = (
+        *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+        *US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+    )
+    missing = [column for column in required_outputs if column not in declared]
     if missing:
         raise ValueError(
             f"{US_SCF_WEALTH_STAGE_NAME!r} manifest stage does not declare "
@@ -247,6 +292,52 @@ def _replace_sentinels(values: pd.Series) -> pd.Series:
 
     numeric = pd.to_numeric(values, errors="coerce")
     return numeric.mask(numeric.isin(_SCF_SENTINELS), 0.0).fillna(0.0)
+
+
+def _scf_summary_predictor_table(raw: pd.DataFrame) -> pd.DataFrame:
+    """Build the common SCF predictor/weight table from summary-extract rows.
+
+    The function keeps row order and row count unchanged.  Callers that join a
+    second SCF artifact (the auto-loan port) can therefore align the returned
+    predictors through the summary extract's ``(y1, yy1)`` keys before applying
+    the positive-weight filter.
+    """
+
+    missing = sorted(set(_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS) - set(raw.columns))
+    if missing:
+        raise ValueError(
+            f"SCF 2022 summary extract missing required column(s): {missing}."
+        )
+
+    donor = pd.DataFrame(index=raw.index)
+    donor["age"] = _replace_sentinels(raw["age"]).to_numpy(dtype=np.float64)
+    donor["is_female"] = (pd.to_numeric(raw["hhsex"], errors="coerce") == 2).to_numpy(
+        dtype=np.float64
+    )
+    donor["cps_race"] = (
+        pd.to_numeric(raw["racecl5"], errors="coerce")
+        .map(_SCF_RACECL5_TO_CPS_RACE)
+        .fillna(7)
+        .to_numpy(dtype=np.float64)
+    )
+    donor["is_married"] = (
+        pd.to_numeric(raw["married"], errors="coerce") == 1
+    ).to_numpy(dtype=np.float64)
+    donor["own_children_in_household"] = np.maximum(
+        _replace_sentinels(raw["kids"]).to_numpy(dtype=np.float64), 0.0
+    )
+    donor["employment_income"] = _replace_sentinels(raw["wageinc"]).to_numpy(
+        dtype=np.float64
+    )
+    donor["interest_dividend_income"] = _replace_sentinels(raw["intdivinc"]).to_numpy(
+        dtype=np.float64
+    )
+    donor["social_security_pension_income"] = _replace_sentinels(
+        raw["ssretinc"]
+    ).to_numpy(dtype=np.float64)
+    weight = pd.to_numeric(raw["wgt"], errors="coerce").fillna(0.0)
+    donor[_DONOR_WEIGHT_COLUMN] = np.maximum(weight.to_numpy(dtype=np.float64), 0.0)
+    return donor.loc[:, [*SCF_WEALTH_PREDICTORS, _DONOR_WEIGHT_COLUMN]]
 
 
 def _sha256_hexdigest(payload: bytes) -> str:
@@ -343,10 +434,9 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
             ``https://www.federalreserve.gov/econres/files/scfp2022s.zip``).
 
     Returns:
-        A household-grain donor DataFrame carrying the three target columns
-        (``bank_account_assets`` / ``stock_assets`` / ``bond_assets``), the
-        eight predictor columns, and the donor weight column
-        (``scf_weight``).
+        A household-grain donor DataFrame carrying the three liquid-asset
+        targets, signed ``net_worth``, the eight predictor columns, and the
+        donor weight column (``scf_weight``).
 
     Raises:
         ValueError: If the extract is missing a required source column.
@@ -358,15 +448,8 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
         "stocks",
         "nmmf",
         "bond",
-        "wgt",
-        "age",
-        "hhsex",
-        "racecl5",
-        "married",
-        "kids",
-        "wageinc",
-        "intdivinc",
-        "ssretinc",
+        "networth",
+        *_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS,
     }
     missing = sorted(required - set(raw.columns))
     if missing:
@@ -383,34 +466,13 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
                 dtype=np.float64
             )
         donor[output] = np.maximum(total, 0.0)
-    # Predictors (head/household values from the summary extract).
-    donor["age"] = _replace_sentinels(raw["age"]).to_numpy(dtype=np.float64)
-    donor["is_female"] = (
-        pd.to_numeric(raw["hhsex"], errors="coerce") == 2
-    ).to_numpy(dtype=np.float64)
-    donor["cps_race"] = (
-        pd.to_numeric(raw["racecl5"], errors="coerce")
-        .map(_SCF_RACECL5_TO_CPS_RACE)
-        .fillna(7)
-        .to_numpy(dtype=np.float64)
-    )
-    donor["is_married"] = (
-        pd.to_numeric(raw["married"], errors="coerce") == 1
-    ).to_numpy(dtype=np.float64)
-    donor["own_children_in_household"] = np.maximum(
-        _replace_sentinels(raw["kids"]).to_numpy(dtype=np.float64), 0.0
-    )
-    donor["employment_income"] = _replace_sentinels(raw["wageinc"]).to_numpy(
-        dtype=np.float64
-    )
-    donor["interest_dividend_income"] = _replace_sentinels(raw["intdivinc"]).to_numpy(
-        dtype=np.float64
-    )
-    donor["social_security_pension_income"] = _replace_sentinels(
-        raw["ssretinc"]
-    ).to_numpy(dtype=np.float64)
-    weight = pd.to_numeric(raw["wgt"], errors="coerce").fillna(0.0)
-    donor[_DONOR_WEIGHT_COLUMN] = np.maximum(weight.to_numpy(dtype=np.float64), 0.0)
+    # SCF networth is already the complete signed balance-sheet aggregate.
+    # Preserve negative values: they are indebted-household source signal, not
+    # missing-value sentinels.
+    donor["net_worth"] = pd.to_numeric(raw["networth"], errors="coerce").fillna(0.0)
+    predictors = _scf_summary_predictor_table(raw)
+    for column in (*SCF_WEALTH_PREDICTORS, _DONOR_WEIGHT_COLUMN):
+        donor[column] = predictors[column].to_numpy(dtype=np.float64)
     return donor.loc[donor[_DONOR_WEIGHT_COLUMN] > 0].reset_index(drop=True)
 
 
@@ -482,9 +544,7 @@ def _household_head_mask(person: pd.DataFrame) -> np.ndarray:
     person of each household).
     """
 
-    household = pd.to_numeric(
-        person[_HOUSEHOLD_ID_COLUMN], errors="coerce"
-    ).to_numpy()
+    household = pd.to_numeric(person[_HOUSEHOLD_ID_COLUMN], errors="coerce").to_numpy()
     lineno = pd.to_numeric(person["A_LINENO"], errors="coerce").fillna(9_999).to_numpy()
     position = np.arange(len(person))
     # Sort by household, then line number, then original position; the first
@@ -549,6 +609,46 @@ def _household_head_predictor_table(person: pd.DataFrame) -> pd.DataFrame:
     return features.loc[:, list(SCF_WEALTH_PREDICTORS)]
 
 
+def _draw_us_scf_targets(
+    person: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    targets: tuple[str, ...],
+    seed: int,
+    n_estimators: int,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Draw SCF household targets for one reference person per household."""
+
+    from populace.fit import QRF
+
+    donor_missing = [
+        column
+        for column in (*SCF_WEALTH_PREDICTORS, *targets, _DONOR_WEIGHT_COLUMN)
+        if column not in donor.columns
+    ]
+    if donor_missing:
+        raise ValueError(f"SCF donor table missing column(s): {donor_missing}.")
+
+    fit_frame = donor.loc[
+        :,
+        [*SCF_WEALTH_PREDICTORS, *targets, _DONOR_WEIGHT_COLUMN],
+    ].copy()
+    for column in (*SCF_WEALTH_PREDICTORS, *targets):
+        fit_frame[column] = pd.to_numeric(fit_frame[column], errors="coerce")
+        if not np.isfinite(fit_frame[column].to_numpy(dtype=np.float64)).all():
+            raise ValueError(f"SCF donor column {column!r} contains nonfinite values.")
+
+    fitted = QRF(n_estimators=int(n_estimators), seed=int(seed)).fit(
+        fit_frame,
+        predictors=list(SCF_WEALTH_PREDICTORS),
+        targets=list(targets),
+        weights=_DONOR_WEIGHT_COLUMN,
+    )
+    head_mask = _household_head_mask(person)
+    head_features = _household_head_predictor_table(person).loc[head_mask]
+    return fitted.predict(head_features), head_mask
+
+
 def impute_us_scf_financial_assets(
     person: pd.DataFrame,
     donor: pd.DataFrame,
@@ -577,42 +677,13 @@ def impute_us_scf_financial_assets(
         each non-negative float64 and zero off the household heads.
     """
 
-    from populace.fit import QRF
-
-    donor_missing = [
-        column
-        for column in (
-            *SCF_WEALTH_PREDICTORS,
-            *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
-            _DONOR_WEIGHT_COLUMN,
-        )
-        if column not in donor.columns
-    ]
-    if donor_missing:
-        raise ValueError(f"SCF donor table missing column(s): {donor_missing}.")
-
-    fit_frame = donor.loc[
-        :,
-        [
-            *SCF_WEALTH_PREDICTORS,
-            *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
-            _DONOR_WEIGHT_COLUMN,
-        ],
-    ].copy()
-    for column in (*SCF_WEALTH_PREDICTORS, *US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS):
-        fit_frame[column] = pd.to_numeric(fit_frame[column], errors="coerce").fillna(
-            0.0
-        )
-
-    fitted = QRF(n_estimators=int(n_estimators), seed=int(seed)).fit(
-        fit_frame,
-        predictors=list(SCF_WEALTH_PREDICTORS),
-        targets=list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS),
-        weights=_DONOR_WEIGHT_COLUMN,
+    drawn, head_mask = _draw_us_scf_targets(
+        person,
+        donor,
+        targets=US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+        seed=seed,
+        n_estimators=n_estimators,
     )
-    head_mask = _household_head_mask(person)
-    head_features = _household_head_predictor_table(person).loc[head_mask]
-    drawn = fitted.predict(head_features)
     result = pd.DataFrame(index=person.index)
     head_positions = np.flatnonzero(head_mask)
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
@@ -622,6 +693,57 @@ def impute_us_scf_financial_assets(
         )
         result[column] = values
     return result
+
+
+def impute_us_scf_net_worth(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> pd.Series:
+    """Impute signed SCF net worth and align it to household-table order.
+
+    The retired source imputer treats SCF ``networth`` as a direct QRF anchor,
+    predicts at person grain, and keeps one reference-person value for each
+    household. Its internal component reconciliation is constructed to equal
+    this anchor. This port persists that policy-facing household result without
+    exposing the construction-only ``scf_*`` components.
+    """
+
+    if "household_id" not in household:
+        raise ValueError("US SCF net-worth imputation requires household_id.")
+    drawn, head_mask = _draw_us_scf_targets(
+        person,
+        donor,
+        targets=US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+        seed=seed,
+        n_estimators=n_estimators,
+    )
+    reference_household_ids = person.loc[head_mask, _HOUSEHOLD_ID_COLUMN].to_numpy()
+    if pd.Series(reference_household_ids).duplicated().any():
+        raise ValueError(
+            "US SCF net-worth imputation produced duplicate reference households."
+        )
+    values = pd.to_numeric(drawn["net_worth"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    if not np.isfinite(values).all():
+        raise ValueError("US SCF net-worth predictions contain nonfinite values.")
+    by_household = pd.Series(values, index=reference_household_ids)
+    household_ids = household["household_id"].to_numpy()
+    aligned = by_household.reindex(household_ids)
+    if aligned.isna().any():
+        missing = household_ids[aligned.isna().to_numpy()][:5].tolist()
+        raise ValueError(
+            f"US SCF net-worth imputation does not cover household id(s) {missing}."
+        )
+    return pd.Series(
+        aligned.to_numpy(dtype=np.float64),
+        index=household.index,
+        name="net_worth",
+    )
 
 
 def _bank_assets_carry_signal(person: pd.DataFrame) -> bool:
@@ -635,6 +757,22 @@ def _bank_assets_carry_signal(person: pd.DataFrame) -> bool:
     return values.nunique() > 1
 
 
+def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
+    """Whether persisted household net worth is finite and nonconstant."""
+
+    if "net_worth" not in household:
+        return False
+    values = pd.to_numeric(household["net_worth"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    return (
+        len(values) == len(household)
+        and bool(np.isfinite(values).all())
+        and np.unique(values).size > 1
+        and bool((values != 0).any())
+    )
+
+
 def with_us_scf_wealth_inputs(
     frame: Frame,
     *,
@@ -642,12 +780,12 @@ def with_us_scf_wealth_inputs(
     time_period: int,
     scf_donor: pd.DataFrame,
 ) -> Frame:
-    """Impute the three SSI financial-asset columns onto a US frame.
+    """Impute SSI financial assets and signed household net worth.
 
-    A frame already carrying all three output columns with a non-constant
-    bank-assets distribution passes through untouched (idempotent). Any
-    other surface — columns missing, or bank assets constant at the engine
-    default — is re-imputed from the SCF donor.
+    A frame already carrying all three person outputs and household net worth
+    with nonconstant signal passes through untouched (idempotent). Missing or
+    default-valued surfaces are independently healed from the SCF donor, so an
+    existing liquid-asset draw is not replaced merely because net worth is new.
 
     Args:
         frame: A US-schema frame whose person table carries the recipient
@@ -659,7 +797,8 @@ def with_us_scf_wealth_inputs(
             :func:`load_scf_2022_financial_asset_donor`).
 
     Returns:
-        A new frame whose person table carries all three asset columns.
+        A new frame whose person table carries all three asset columns and
+        whose household table carries signed ``net_worth``.
 
     Raises:
         ValueError: If the frame is not US-schema.
@@ -671,18 +810,29 @@ def with_us_scf_wealth_inputs(
     # imputation is skipped, so a manifest/runtime drift fails loudly.
     us_scf_wealth_stage_spec()
     person = frame.table("person")
-    have_all = all(
+    household = frame.table("household")
+    have_all_assets = all(
         column in person.columns for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
     )
-    if have_all and _bank_assets_carry_signal(person):
+    assets_carry_signal = have_all_assets and _bank_assets_carry_signal(person)
+    net_worth_carries_signal = _net_worth_carries_signal(household)
+    if assets_carry_signal and net_worth_carries_signal:
         return frame
 
-    imputed = impute_us_scf_financial_assets(
-        person, scf_donor, seed=int(seed)
-    )
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
-        tables["person"][column] = imputed[column].to_numpy(dtype=np.float64)
+    if not assets_carry_signal:
+        imputed_assets = impute_us_scf_financial_assets(
+            person, scf_donor, seed=int(seed)
+        )
+        for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+            tables["person"][column] = imputed_assets[column].to_numpy(dtype=np.float64)
+    if not net_worth_carries_signal:
+        tables["household"]["net_worth"] = impute_us_scf_net_worth(
+            person,
+            household,
+            scf_donor,
+            seed=int(seed),
+        ).to_numpy(dtype=np.float64)
     return Frame(
         tables,
         frame.schema,
@@ -693,11 +843,16 @@ def with_us_scf_wealth_inputs(
 
 
 def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
-    """Weighted financial-asset summary for gates and release manifests."""
+    """Weighted financial-asset and net-worth diagnostics."""
 
     person = frame.table("person")
+    household = frame.table("household")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
+    household_weights = np.asarray(
+        frame.resolve_weights("household").values, dtype=np.float64
+    )
+    total_household_weight = float(household_weights.sum())
 
     def _nonzero_share(column: str) -> float:
         values = pd.to_numeric(person[column], errors="coerce").fillna(0.0).to_numpy()
@@ -717,12 +872,26 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         )
 
     unique_counts = {
-        column: int(
-            pd.to_numeric(person[column], errors="coerce").dropna().nunique()
-        )
+        column: int(pd.to_numeric(person[column], errors="coerce").dropna().nunique())
         for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
         if column in person.columns
     }
+    net_worth = (
+        pd.to_numeric(household["net_worth"], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        if "net_worth" in household
+        else np.asarray([], dtype=np.float64)
+    )
+    finite_net_worth = np.isfinite(net_worth)
+
+    def _net_worth_share(mask: np.ndarray) -> float:
+        return (
+            float(household_weights[mask].sum()) / total_household_weight
+            if total_household_weight > 0 and len(mask) == len(household_weights)
+            else 0.0
+        )
+
     return {
         "bank_account_assets_nonzero_share": _nonzero_share("bank_account_assets")
         if "bank_account_assets" in person.columns
@@ -740,11 +909,34 @@ def us_scf_wealth_summary(frame: Frame) -> dict[str, object]:
         "stock_nonzero_share_band": list(_STOCK_NONZERO_SHARE_BAND),
         "bond_nonzero_share_band": list(_BOND_NONZERO_SHARE_BAND),
         "unique_counts": unique_counts,
+        "net_worth_unique_count": int(
+            pd.to_numeric(household["net_worth"], errors="coerce").dropna().nunique()
+        )
+        if "net_worth" in household
+        else 0,
+        "net_worth_nonfinite": int(np.count_nonzero(~np.isfinite(net_worth))),
+        "net_worth_nonzero_share": _net_worth_share(
+            finite_net_worth & (net_worth != 0)
+        ),
+        "net_worth_positive_share": _net_worth_share(
+            finite_net_worth & (net_worth > 0)
+        ),
+        "net_worth_negative_share": _net_worth_share(
+            finite_net_worth & (net_worth < 0)
+        ),
+        "net_worth_weighted_total": float(
+            np.sum(np.where(finite_net_worth, net_worth, 0.0) * household_weights)
+        )
+        if len(net_worth) == len(household_weights)
+        else 0.0,
+        "net_worth_nonzero_share_band": list(_NET_WORTH_NONZERO_SHARE_BAND),
+        "net_worth_positive_share_band": list(_NET_WORTH_POSITIVE_SHARE_BAND),
+        "net_worth_negative_share_band": list(_NET_WORTH_NEGATIVE_SHARE_BAND),
     }
 
 
 def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
-    """Require the financial-asset surface to carry a plausible distribution.
+    """Require financial assets and net worth to carry plausible distributions.
 
     Fails when a column is missing or constant, or when a weighted
     nonzero-share leaves its plausibility band — each of which reproduces
@@ -758,12 +950,23 @@ def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
         for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS
         if column not in person.columns
     ]
-    if missing:
+    missing_household = [
+        column
+        for column in US_SCF_NET_WORTH_OUTPUT_COLUMNS
+        if column not in frame.table("household")
+    ]
+    if missing or missing_household:
         return GateResult(
             name="scf_wealth_signal",
             passed=False,
-            failures=(f"person columns missing: {missing}.",),
-            details={"missing": missing},
+            failures=(
+                f"person columns missing: {missing}; household columns missing: "
+                f"{missing_household}.",
+            ),
+            details={
+                "missing_person": missing,
+                "missing_household": missing_household,
+            },
         )
 
     summary = us_scf_wealth_summary(frame)
@@ -785,6 +988,36 @@ def us_scf_wealth_signal_gate(frame: Frame) -> GateResult:
             failures.append(
                 f"{label} nonzero share {share:.3f} outside plausibility band "
                 f"[{low}, {high}]."
+            )
+    if int(summary["net_worth_nonfinite"]):
+        failures.append(
+            f"net_worth: {summary['net_worth_nonfinite']} nonfinite value(s)."
+        )
+    if int(summary["net_worth_unique_count"]) < 2:
+        failures.append("net_worth: constant column carries no signal.")
+    for share_key, band, label in (
+        (
+            "net_worth_nonzero_share",
+            _NET_WORTH_NONZERO_SHARE_BAND,
+            "nonzero",
+        ),
+        (
+            "net_worth_positive_share",
+            _NET_WORTH_POSITIVE_SHARE_BAND,
+            "positive",
+        ),
+        (
+            "net_worth_negative_share",
+            _NET_WORTH_NEGATIVE_SHARE_BAND,
+            "negative",
+        ),
+    ):
+        share = float(summary[share_key])
+        low, high = band
+        if not low <= share <= high:
+            failures.append(
+                f"net_worth {label} share {share:.3f} outside plausibility "
+                f"band [{low}, {high}]."
             )
     return GateResult(
         name="scf_wealth_signal",

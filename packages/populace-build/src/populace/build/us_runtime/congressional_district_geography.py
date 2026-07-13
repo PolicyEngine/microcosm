@@ -126,7 +126,14 @@ def assign_congressional_districts_to_households(
     assigned = household.copy()
     output = np.empty(len(assigned), dtype=np.int64)
     rng = np.random.default_rng(seed)
-    for state_fips, state_positions in states.groupby(states, sort=True).groups.items():
+    state_groups = states.groupby(states, sort=True).groups
+    state_group_order = list(state_groups)
+    assert state_group_order == sorted(states.unique().tolist()), (
+        "Congressional-district RNG state groups must be sorted unique "
+        "normalized state FIPS values."
+    )
+    for state_fips in state_group_order:
+        state_positions = state_groups[state_fips]
         state_distribution = prepared_distribution[
             prepared_distribution["state_fips"] == state_fips
         ]

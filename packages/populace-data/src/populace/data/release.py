@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from populace.data.contract import required_release_files, validate_release_dir
+from populace.data.slack import notify_release
 
 __all__ = [
     "LATEST_POINTER_PATH",
@@ -116,6 +117,8 @@ def publish_release(
     tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
     updated_at: str | None = None,
+    update_latest: bool = True,
+    notify: bool = True,
 ) -> dict:
     """Upload a release directory and point ``latest.json`` at it.
 
@@ -146,6 +149,13 @@ def publish_release(
         extra_files: Additional filenames in ``release_dir`` to upload
             beyond the contract files (e.g. a diagnostics artifact).
         updated_at: Pointer timestamp; defaults to now (UTC).
+        notify: Post a best-effort Slack release alert once ``latest.json`` is
+            live (no-op unless the country ``SLACK_WEBHOOK_POPULACE_*`` env var
+            is set; never fatal). Coupling the alert to the promotion here means
+            every publish path announces the release, not just the CLI. Only
+            fires when ``update_latest`` is set — a non-default publish moves no
+            pointer, so there is no "new latest release" to announce. Set
+            ``False`` to suppress it (tests, dry-runs, re-publishes).
 
     Returns:
         The ``latest.json`` payload that was published.
@@ -228,7 +238,15 @@ def publish_release(
         root_artifacts=root_artifacts,
         payload=payload,
         create_tag=create_tag,
+        update_latest=update_latest,
     )
+    # The pointer is live: announce it. Best-effort and coupled to the promotion
+    # so every publish path alerts; warn (don't fail) if the webhook is unset.
+    # Skip when no pointer moved — a non-default publish is not a new release.
+    if notify and update_latest:
+        notify_release(
+            repo_id, release_id, payload.get("updated_at"), warn_if_unset=True
+        )
     return payload
 
 
@@ -305,6 +323,7 @@ def _publish_atomic(
     root_artifacts: Mapping[str, str],
     payload: dict,
     create_tag: bool,
+    update_latest: bool = True,
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
@@ -345,10 +364,16 @@ def _publish_atomic(
         branch=staging_branch,
         repo_type="dataset",
     )
+    if update_latest:
+        message = f"Update latest release to {release_id}"
+        pointer = json.dumps(payload, indent=1).encode()
+    else:
+        message = f"Publish non-default release {release_id}"
+        pointer = None
     api.create_commit(
         repo_id=repo_id,
         repo_type="dataset",
-        commit_message=f"Update latest release to {release_id}",
+        commit_message=message,
         parent_commit=main_revision,
         operations=_commit_operations(
             release_dir=release_dir,
@@ -356,7 +381,7 @@ def _publish_atomic(
             release_id=release_id,
             filenames=filenames,
             root_artifacts=root_artifacts,
-            pointer=json.dumps(payload, indent=1).encode(),
+            pointer=pointer,
         ),
     )
 
