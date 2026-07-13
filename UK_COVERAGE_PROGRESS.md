@@ -18,6 +18,7 @@ enhanced FRS pipeline — pending review” and the required tracking note.
 | Effective-mass coverage | −2 required; +2 reviewed exclusions | Candidate evidence and the final gate both require signal on at least 0.000001 of owning-entity effective population mass; zero-weight Gift Aid support is excluded honestly until restoration | Complete |
 | HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
 | HMRC/SPI income restoration | Not promoted | Q2 cannot be materialized like-for-like on the certified FRS channel; fail-closed blocker below | Blocked pending conductor review |
+| Real-donor replay, 2026-07-13 | No status change | The staged donor and ODS match their reviewed byte identities, but the production entrypoint stops at the Q2 FRS preflight before either source is opened; no staging file, coverage sidecar, or aggregate 208-fact replay report was emitted | Blocked pending conductor review |
 
 ## Restoration diagnosis
 
@@ -147,6 +148,35 @@ fail before ODS parsing, SPI replacement, donor fitting, calibration, or staging
 write when any is absent. They explicitly forbid substituting
 `employment_income` or `miscellaneous_income`. This is the adjudicated stop
 condition, not a reviewed exclusion or a relaxed gate.
+
+The licensed 2022–23 donor staged on 2026-07-13 does not resolve this blocker.
+Its 141,323,762-byte size and SHA-256 `5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66`
+and the ODS identity were reverified before use. A production invocation against
+the certified candidate then failed at
+`assert_frs_hmrc_auxiliary_crosswalk_available` with all ten normalized FRS
+constituents missing. The preflight ran before ODS parsing, donor reading, SPI
+replacement, calibration, the release gate, and all staging writes, as designed.
+The caller-owned `uk_runtime/` scratch directory remained empty and is locally
+excluded from Git.
+
+The final source-semantic audit confirms that this is not a naming-only gap.
+The official SPI 2022–23 Annex A defines monetary `EPB` and `EXPS`, separately
+taxable `TAXTERM`, `INCPBEN`, `OSSBEN`, and `UBISJA`, and distinct `MOTHINC`
+and `OTHERINC` fields. The pinned enhanced-FRS pipeline persists FRS `INEARNS`
+only as aggregate PolicyEngine `employment_income`; it has no monetary
+equivalents for `EPB` or `EXPS`, cannot separate taxable termination pay from
+gross redundancy, and its `miscellaneous_income` combines concepts that cannot
+be assigned source-faithfully between the two SPI miscellaneous leaves.
+`incapacity_benefit_reported` is also all-default on the pinned eFRS surface.
+Consequently, `employment_income` plus reported benefit aggregates is a new
+shared proxy, not the conductor-required identical documented constituent
+crosswalk. It was not substituted into the release path.
+
+A throwaway, non-release diagnostic using those candidate aggregates was
+stopped during stage-two QRF prediction as soon as the codebook audit
+established that the mappings were proxies. It wrote no row-level or aggregate
+artifact and is not replay evidence. The strict production result above is the
+only admissible release-path result.
 
 Conductor review must choose one of these before restoration can resume:
 
