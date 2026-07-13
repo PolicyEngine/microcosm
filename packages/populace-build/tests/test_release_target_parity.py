@@ -291,6 +291,13 @@ class TestShippedManifest:
         ):
             assert manifest.by_name[family].status == COMPILED_STATUS
 
+    def test_wired_social_security_tips_family_is_compiled(self) -> None:
+        manifest = load_target_parity_manifest()
+        assert (
+            manifest.by_name["irs_soi.form_w2_social_security_tips"].status
+            == COMPILED_STATUS
+        )
+
     def test_deferred_state_wages_carry_a_fence(self) -> None:
         manifest = load_target_parity_manifest()
         state_wages = manifest.by_name["bea_regional.state_wages_salaries"]
