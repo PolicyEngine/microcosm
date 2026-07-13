@@ -1,10 +1,13 @@
 """Best-effort Slack notification when a Populace release is published.
 
-Sent inline from :func:`populace.data.publish_cli.main` right after
-``latest.json`` is uploaded, so the alert is real-time (no polling) and fires
-wherever the publish runs. The webhook URL comes from a per-country env var, so
-this is a no-op unless it is configured, and a failed post is logged rather than
-raised — a Slack hiccup must never fail a release.
+Sent inline from :func:`populace.data.release.publish_release` right after
+``latest.json`` is uploaded — coupled to the promotion itself, so the alert
+fires for *every* publish path (the CLI, a build script, a manual promote), not
+just one entry point. The webhook URL comes from a per-country env var, so this
+is a no-op unless it is configured, and a failed post is logged rather than
+raised — a Slack hiccup must never fail a release. Pass ``warn_if_unset=True``
+(as ``publish_release`` does) to make a missing webhook loud instead of silent,
+so a misconfiguration shows up in the publish log rather than vanishing.
 """
 
 from __future__ import annotations
@@ -45,15 +48,24 @@ def notify_release(
     *,
     webhook: str | None = None,
     post: Callable[[str, dict[str, Any]], None] | None = None,
+    warn_if_unset: bool = False,
 ) -> bool:
     """Announce a published release to the country's Slack channel.
 
     Returns True if a message was sent. Returns False (no-op) when the webhook
-    env var is unset. Never raises — a failed post is logged, not fatal.
+    env var is unset. Never raises — a failed post is logged, not fatal. When
+    ``warn_if_unset`` is set, an unset webhook logs a warning instead of
+    returning silently, so a release that publishes without an alert is visible
+    in the log rather than a mystery.
     """
     country = country_for_repo(repo_id)
     url = webhook or os.environ.get(CHANNEL_ENV[country])
     if not url:
+        if warn_if_unset:
+            print(
+                f"::warning:: {CHANNEL_ENV[country]} is not set — release "
+                f"{release_id} was published without a Slack alert."
+            )
         return False
 
     label = "🇬🇧 UK" if country == "uk" else "🇺🇸 US"

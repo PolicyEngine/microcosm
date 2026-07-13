@@ -27,6 +27,15 @@ from populace.data.release import (
     publish_release,
 )
 
+
+@pytest.fixture(autouse=True)
+def _no_slack_webhook(monkeypatch):
+    """Keep publish_release's release alert hermetic: never post to a real
+    webhook if the dev/CI environment happens to have one set."""
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_UK", raising=False)
+
+
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
@@ -614,6 +623,52 @@ def test_pointer_payload_names_every_contract_file() -> None:
         payload["paths"]["us_source_coverage"]
         == f"releases/{RELEASE_ID}/{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE}"
     )
+
+
+def test_publish_release_announces_after_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """The alert fires from publish_release itself — every publish path, not
+    just the CLI — with the released id and timestamp."""
+    calls: list = []
+    monkeypatch.setattr(
+        "populace.data.release.notify_release",
+        lambda repo_id, release_id, updated_at, **kw: calls.append(
+            (repo_id, release_id, updated_at, kw)
+        ),
+    )
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    assert calls == [
+        (
+            "policyengine/populace-us",
+            RELEASE_ID,
+            "2026-06-11T13:53:15+00:00",
+            {"warn_if_unset": True},
+        )
+    ]
+
+
+def test_publish_release_notify_false_skips_alert(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    calls: list = []
+    monkeypatch.setattr(
+        "populace.data.release.notify_release", lambda *a, **k: calls.append(a)
+    )
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        notify=False,
+    )
+    assert calls == []
 
 
 def test_publish_uploads_pointer_last(
