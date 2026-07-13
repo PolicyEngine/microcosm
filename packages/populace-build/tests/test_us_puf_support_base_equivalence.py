@@ -17,6 +17,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytables = pytest.importorskip("tables")  # pandas HDF backend for equivalence H5 comparisons
+
 from populace.build.frame_checkpoint import load_frame_checkpoint
 from populace.build.outer_stage_runtime import StageRuntime
 from populace.build.us_runtime import (

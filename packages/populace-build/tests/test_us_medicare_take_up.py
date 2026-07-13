@@ -423,7 +423,7 @@ def test_both_release_builders_run_stage_and_gate() -> None:
     assert support_builder.index("with_us_medicare_take_up_input(") < (
         support_builder.index("clone_us_frame_for_puf_support(base)")
     )
-    assert support_builder.count("us_medicare_take_up_signal_gate(") == 2
+    assert support_builder.count("us_medicare_take_up_signal_gate(") == 4
     assert "with_us_medicare_take_up_input(" in fiscal_builder
     assert "us_medicare_take_up_signal_gate(" in fiscal_builder
     assert f'"{_OUTPUT}"' in cache_driver
