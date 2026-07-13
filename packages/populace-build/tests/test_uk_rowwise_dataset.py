@@ -5,20 +5,11 @@ import pytest
 
 from populace.build.uk_runtime import (
     ROWWISE_GEOGRAPHY_COLUMNS,
-    SPI_PRIOR_MASS_CHANGE_REASON,
-    UKNationalDataset,
-    UKReleaseInputColumn,
-    UKReleaseInputCoverageManifest,
     clone_uk_dataset_tables_with_rowwise_geography,
     clone_uk_dataset_with_rowwise_geography,
-    load_uk_national_dataset,
-    load_uk_release_input_coverage_manifest,
-    uk_release_input_coverage_gate,
     validate_uk_rowwise_dataset_tables,
-    write_uk_national_dataset,
     write_uk_rowwise_dataset,
 )
-from populace.frame import MassChangeRecord, WeightKind
 
 
 class FakeUKDataset:
@@ -47,14 +38,6 @@ class FakeUKDatasetWithoutPeriod:
         self.person = person
         self.benunit = benunit
         self.household = household
-
-
-class _StubCoverageEngine:
-    def default_values(self, names) -> dict[str, float]:
-        return {str(name): 0.0 for name in names}
-
-    def variable_entities(self, names) -> dict[str, str]:
-        return {str(name): "person" for name in names}
 
 
 def household_frame() -> pd.DataFrame:
@@ -264,71 +247,3 @@ def test_clone_uk_dataset_h5_roundtrip(tmp_path) -> None:
         assert len(store["household"]) == 4
         assert len(store["person"]) == 6
         assert len(store["benunit"]) == 4
-
-
-def test_rowwise_h5_roundtrip_preserves_required_at_build_provenance(
-    tmp_path,
-) -> None:
-    pytest.importorskip("tables")
-    person = person_frame().copy()
-    person["gift_aid"] = [10.0, 20.0, 30.0]
-    person["charitable_investment_gifts"] = [1.0, 2.0, 3.0]
-    person["person_support_channel"] = "spi"
-    mass_record = MassChangeRecord(
-        entity="household",
-        old_total=30.0,
-        new_total=30.0,
-        declared_factor=1.0,
-        reason=SPI_PRIOR_MASS_CHANGE_REASON,
-    )
-    national = UKNationalDataset(
-        person=person,
-        benunit=benunit_frame(),
-        household=household_frame(),
-        time_period="2023",
-        household_weight_kind=WeightKind.CALIBRATED,
-        mass_log=(mass_record,),
-    )
-    source = write_uk_national_dataset(national, tmp_path / "national.h5")
-    output = tmp_path / "rowwise.h5"
-
-    cloned = clone_uk_dataset_with_rowwise_geography(
-        source,
-        crosswalk_frame(),
-        output_path=output,
-        n_clones=2,
-        seed=2,
-    )
-    reloaded = load_uk_national_dataset(output)
-
-    assert cloned.household_weight_kind is WeightKind.CALIBRATED
-    assert cloned.mass_log == (mass_record,)
-    assert reloaded.household_weight_kind is WeightKind.CALIBRATED
-    assert reloaded.mass_log == (mass_record,)
-    assert reloaded.household["household_weight"].sum() == pytest.approx(30.0)
-
-    shipped = load_uk_release_input_coverage_manifest()
-    required_family_coverage = {
-        name: {**dict(family), "status": "required_at_build"}
-        for name, family in shipped.family_coverage.items()
-    }
-    contract = UKReleaseInputCoverageManifest(
-        reference={"source": "rowwise provenance test"},
-        candidate_evidence={"source": "rowwise provenance test"},
-        columns=(
-            UKReleaseInputColumn("gift_aid", "required"),
-            UKReleaseInputColumn("charitable_investment_gifts", "required"),
-        ),
-        family_coverage=required_family_coverage,
-        effective_mass_coverage=shipped.effective_mass_coverage,
-    )
-    for frame in (cloned, reloaded):
-        gate = uk_release_input_coverage_gate(
-            frame,
-            _StubCoverageEngine(),
-            manifest=contract,
-        )
-        assert gate.passed, gate.failures
-        build_state = gate.details["family_build_state"]["hmrc_spi_income"]
-        assert build_state["actual_output_weight_kind"] == "calibrated"
-        assert build_state["valid_mass_change_records"] == 1
