@@ -17,8 +17,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytables = pytest.importorskip("tables")  # pandas HDF backend for equivalence H5 comparisons
-
 from populace.build.frame_checkpoint import load_frame_checkpoint
 from populace.build.outer_stage_runtime import StageRuntime
 from populace.build.us_runtime import (
@@ -26,6 +24,8 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 from populace.frame import Frame
+
+pytest.importorskip("tables")  # pandas HDF backend for equivalence H5 comparisons
 
 _INPUT_DIR_ENV = "POPULACE_US_PUF_EQUIVALENCE_INPUT_DIR"
 _WEEKS_SOURCE_ENV = "POPULACE_US_PUF_EQUIVALENCE_WEEKS_SOURCE"
