@@ -5,7 +5,7 @@
   "feed_sha256": "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669",
   "target_period": "2024",
   "registry_compile": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions",
-  "us_data_source": "policyengine-us-data (archived): db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
+  "us_data_source": "retired us-data pipeline (archived): db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
   "family_granularity": "namespace.concept of the ledger source_record_id (us_target_family_id)",
   "compiled_families": "25",
   "reviewed_exclusions": "55"
@@ -225,7 +225,7 @@
    "status": "reviewed_exclusion",
    "classification": "source_absent",
    "reason": "BLS Consumer Expenditure Survey aggregates targeted by the retired us-data pipeline (nation/bls/ce). The pinned consumer feed carries no BLS source fact, so there is no ledger-shaped fact to compile; source-absent pending a Ledger BLS CE ingest.",
-   "evidence": "policyengine-us-data (archived) references nation/bls/ce; feed source families carry no 'bls' source"
+   "evidence": "retired us-data pipeline (archived) references nation/bls/ce; feed source families carry no 'bls' source"
   },
   "cbo.revenue_projection": {
    "status": "compiled"
@@ -303,7 +303,7 @@
    "status": "reviewed_exclusion",
    "classification": "source_absent",
    "reason": "HUD housing-assistance aggregates targeted by the retired us-data pipeline (db/etl_housing_assistance.py). The pinned feed carries no HUD source fact; source-absent pending a Ledger HUD ingest.",
-   "evidence": "policyengine-us-data (archived) db/etl_housing_assistance.py; feed carries no 'hud' source"
+   "evidence": "retired us-data pipeline (archived) db/etl_housing_assistance.py; feed carries no 'hud' source"
   },
   "irs_soi.congressional_district_2022": {
    "status": "reviewed_exclusion",
@@ -414,7 +414,7 @@
    "status": "reviewed_exclusion",
    "classification": "source_absent",
    "reason": "USDA WIC national annual summary targeted by the retired us-data pipeline (WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE in etl_national_targets). The pinned feed carries no WIC source fact; source-absent. WIC receipt is modeled via the would_claim_wic take-up input, not a target.",
-   "evidence": "policyengine-us-data (archived) db/etl_national_targets.py WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source"
+   "evidence": "retired us-data pipeline (archived) db/etl_national_targets.py WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source"
   }
  }
 }

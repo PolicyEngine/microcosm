@@ -266,23 +266,23 @@ _SOURCE_ABSENT_US_DATA_FAMILIES: dict[str, tuple[str, str]] = {
         "us-data pipeline (nation/bls/ce). The pinned consumer feed carries no "
         "BLS source fact, so there is no ledger-shaped fact to compile; "
         "source-absent pending a Ledger BLS CE ingest.",
-        "policyengine-us-data (archived) references nation/bls/ce; feed source "
-        "families carry no 'bls' source",
+        "retired us-data pipeline (archived) references nation/bls/ce; feed "
+        "source families carry no 'bls' source",
     ),
     "wic.national_summary": (
         "USDA WIC national annual summary targeted by the retired us-data "
         "pipeline (WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE in etl_national_targets). "
         "The pinned feed carries no WIC source fact; source-absent. WIC receipt "
         "is modeled via the would_claim_wic take-up input, not a target.",
-        "policyengine-us-data (archived) db/etl_national_targets.py "
+        "retired us-data pipeline (archived) db/etl_national_targets.py "
         "WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE; feed carries no 'wic' source",
     ),
     "hud.housing_assistance": (
         "HUD housing-assistance aggregates targeted by the retired us-data "
         "pipeline (db/etl_housing_assistance.py). The pinned feed carries no HUD "
         "source fact; source-absent pending a Ledger HUD ingest.",
-        "policyengine-us-data (archived) db/etl_housing_assistance.py; feed "
-        "carries no 'hud' source",
+        "retired us-data pipeline (archived) db/etl_housing_assistance.py; "
+        "feed carries no 'hud' source",
     ),
 }
 
@@ -381,7 +381,7 @@ def build_manifest(
                 "apply_us_medicaid_enrollment_substitutions"
             ),
             "us_data_source": (
-                "policyengine-us-data (archived): db/etl_national_targets.py, "
+                "retired us-data pipeline (archived): db/etl_national_targets.py, "
                 "db/etl_*.py, utils/national_target_parity.py"
             ),
             "family_granularity": (
