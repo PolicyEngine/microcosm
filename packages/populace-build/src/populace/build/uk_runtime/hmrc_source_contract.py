@@ -72,6 +72,28 @@ HMRC_DISTRIBUTIONAL_INPUTS = (
     "gift_aid",
     "charitable_investment_gifts",
 )
+_STAGE2_SOURCE_FAITHFUL_INCOME_PREDICTORS = (
+    "employment_income",
+    "self_employment_income",
+    "savings_interest_income",
+    "dividend_income",
+    "private_pension_income",
+    "property_income",
+)
+_STAGE2_SOURCE_FAITHFUL_PREDICTORS = (
+    "age",
+    "gender",
+    "region",
+    *_STAGE2_SOURCE_FAITHFUL_INCOME_PREDICTORS,
+)
+_STAGE2_REVIEWED_ABSENT_PREDICTORS = {
+    "other_investment_income": (
+        "This remains a stage-1 SPI draw and an official HMRC fact component, "
+        "but it is not an FRS-only stage-2 predictor: policyengine-uk-data "
+        "frs_only.py defines exactly six income predictors and the certified "
+        "Populace UK base candidate has no other_investment_income column."
+    )
+}
 
 _EXPECTED_OPERATION_KINDS = (
     "verify_certified_candidate",
@@ -588,7 +610,19 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "stage2.predictors",
         tuple(stage2.get("predictors", ())),
+        _STAGE2_SOURCE_FAITHFUL_PREDICTORS,
+    )
+    _expect(
+        failures,
+        "runtime.stage2.predictors",
         FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,
+        _STAGE2_SOURCE_FAITHFUL_PREDICTORS,
+    )
+    _expect(
+        failures,
+        "stage2.reviewed_absent_predictors",
+        dict(stage2.get("reviewed_absent_predictors", {})),
+        _STAGE2_REVIEWED_ABSENT_PREDICTORS,
     )
     expected_stage2_outputs = tuple(
         column

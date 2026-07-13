@@ -59,6 +59,14 @@ _STAGE1_OUTPUTS = [
     "hmrc_spi_other_income",
     "hmrc_spi_state_pension_income",
 ]
+_STAGE2_INCOME_PREDICTORS = [
+    "employment_income",
+    "self_employment_income",
+    "savings_interest_income",
+    "dividend_income",
+    "private_pension_income",
+    "property_income",
+]
 _FRS_HMRC_FULL_CONSTITUENTS = [
     "hmrc_spi_pay",
     "hmrc_spi_unemployment_benefit_income",
@@ -313,7 +321,26 @@ def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> Non
     stage2 = operations["fit_weighted_qrf_stage2"]
     assert stage2["weight"] == "household_weight"
     assert stage2["weight_mapping"] == "household_to_person"
-    assert "other_investment_income" in stage2["predictors"]
+    assert stage2["predictors"] == [
+        "age",
+        "gender",
+        "region",
+        *_STAGE2_INCOME_PREDICTORS,
+    ]
+    assert "other_investment_income" not in stage2["predictors"]
+    assert set(stage2["reviewed_absent_predictors"]) == {"other_investment_income"}
+    assert (
+        "stage-1 SPI draw"
+        in stage2["reviewed_absent_predictors"]["other_investment_income"]
+    )
+    assert (
+        "exactly six income predictors"
+        in stage2["reviewed_absent_predictors"]["other_investment_income"]
+    )
+    assert (
+        "no other_investment_income column"
+        in stage2["reviewed_absent_predictors"]["other_investment_income"]
+    )
     assert "state_pension_reported" in stage2["outputs"]
     assert "universal_credit_reported" in stage2["outputs"]
     assert "employee_pension_contributions" in stage2["outputs"]
@@ -546,6 +573,11 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             ("stages", 0, "operations", 6, "reviewed_absent_outputs"),
             {"maternity_allowance_reported": "changed"},
             "stage2.reviewed_absent_outputs",
+        ),
+        (
+            ("stages", 0, "operations", 6, "reviewed_absent_predictors"),
+            {"other_investment_income": "changed"},
+            "stage2.reviewed_absent_predictors",
         ),
         (
             (

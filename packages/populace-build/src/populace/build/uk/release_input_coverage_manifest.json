@@ -534,7 +534,7 @@
     "full_frs_tei_band_unavailable"
    ],
    "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "a5d817fd56f592637de75dcfb19c39417e4386f1d10918a5de51e5d14f37cec3",
+   "source_manifest_sha256": "1eff03a9aacf438331397a7c6d60e36271a21bf477c3269b208c241ac7d6c26f",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",

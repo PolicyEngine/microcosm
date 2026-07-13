@@ -22,6 +22,7 @@ from populace.build.uk_runtime.frs_hmrc_leaves import (
 )
 from populace.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
+    FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_HMRC_EMPLOYED_INCOME_COLUMN,
@@ -38,7 +39,6 @@ from populace.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
-    SPI_INCOME_IMPUTATION_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
@@ -463,11 +463,7 @@ def impute_uk_spi_income_support(
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
 
-    income_predictors = tuple(
-        column
-        for column in SPI_INCOME_IMPUTATION_COLUMNS
-        if column not in {"gift_aid", "charitable_investment_gifts"}
-    )
+    income_predictors = FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
     train_predictors = _person_predictors(
         person.loc[training_people],
         household,
@@ -972,9 +968,18 @@ def _validate_predictions(
 
 
 def _require_finite_numeric(frame: pd.DataFrame, *, label: str) -> None:
-    numeric = frame.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
-    if not np.isfinite(numeric).all():
-        raise ValueError(f"{label} must contain only finite numeric values.")
+    numeric = frame.apply(pd.to_numeric, errors="coerce")
+    finite = np.isfinite(numeric.to_numpy(dtype=float))
+    if not finite.all():
+        non_finite_counts = {
+            str(column): int((~finite[:, position]).sum())
+            for position, column in enumerate(numeric.columns)
+            if (~finite[:, position]).any()
+        }
+        raise ValueError(
+            f"{label} must contain only finite numeric values; non-finite "
+            f"counts by column: {non_finite_counts}."
+        )
 
 
 def _require_columns(

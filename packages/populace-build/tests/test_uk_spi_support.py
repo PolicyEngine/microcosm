@@ -226,9 +226,18 @@ def test_spi_variable_surfaces_include_efrs_stage1_and_stage2_fixes() -> None:
     )
     assert "gift_aid" in SPI_INCOME_IMPUTATION_COLUMNS
     assert "charitable_investment_gifts" in SPI_INCOME_IMPUTATION_COLUMNS
-    assert set(SPI_INCOME_COMPONENT_COLUMNS).issubset(
-        FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS
+    assert FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS == (
+        "age",
+        "gender",
+        "region",
+        "employment_income",
+        "self_employment_income",
+        "savings_interest_income",
+        "dividend_income",
+        "private_pension_income",
+        "property_income",
     )
+    assert "other_investment_income" not in FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS
     assert "universal_credit_reported" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "housing_benefit_reported" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "employee_pension_contributions" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS

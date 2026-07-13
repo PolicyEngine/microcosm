@@ -367,9 +367,11 @@
             "savings_interest_income",
             "dividend_income",
             "private_pension_income",
-            "property_income",
-            "other_investment_income"
+            "property_income"
           ],
+          "reviewed_absent_predictors": {
+            "other_investment_income": "This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: policyengine-uk-data frs_only.py defines exactly six income predictors and the certified Populace UK base candidate has no other_investment_income column."
+          },
           "categorical_predictors": [
             "gender",
             "region"
@@ -726,7 +728,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN, and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor."
+      "notes": "Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. Stage 2 mirrors policyengine-uk-data frs_only.py exactly: its income predictors are employment, self-employment, savings interest, dividends, private pension, and property income. Other investment income remains a stage-1 SPI draw and official HMRC fact component, but is excluded from stage 2 because the certified FRS candidate does not carry it. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN, and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor."
     }
   ]
 }

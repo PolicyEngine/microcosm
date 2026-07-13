@@ -108,11 +108,23 @@ SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
 )
 
+# The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
+# is a first-stage SPI draw and HMRC accounting component, but the FRS base
+# does not supply `other_investment_income` for second-stage training.
+FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS = (
+    "employment_income",
+    "self_employment_income",
+    "savings_interest_income",
+    "dividend_income",
+    "private_pension_income",
+    "property_income",
+)
+
 FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS = (
     "age",
     "gender",
     "region",
-    *SPI_INCOME_COMPONENT_COLUMNS,
+    *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
 )
 
 # Mirrors the eFRS second-stage FRS-only QRF output surface. These fields are
@@ -1027,6 +1039,7 @@ __all__ = [
     "BASE_FRS_SUPPORT_CHANNEL",
     "DEFAULT_SPI_PRIOR_MASS_SHARE",
     "DEFAULT_SPI_SUPPORT_HOUSEHOLDS",
+    "FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS",
     "FRS_ONLY_SPI_FILL_PERSON_COLUMNS",
     "FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS",
     "HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN",

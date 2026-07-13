@@ -103,6 +103,7 @@ def _dead_support(
     *,
     drop_stage2: str | None = None,
     drop_hmrc_leaf: str | None = None,
+    drop_income_component: str | None = None,
 ):
     household = pd.DataFrame(
         {
@@ -121,6 +122,8 @@ def _dead_support(
         "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
     }
     for position, column in enumerate(SPI_INCOME_IMPUTATION_COLUMNS, start=1):
+        if column == drop_income_component:
+            continue
         person_columns[column] = np.arange(
             position,
             position + 4,
@@ -368,6 +371,48 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     spi_households = support.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
     assert support.household.loc[spi_households, "household_weight"].gt(0).all()
     assert support.household_weight_kind is WeightKind.IMPORTANCE
+
+
+def test_spi_stage2_does_not_require_frs_other_investment_income(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    support = _dead_support(drop_income_component="other_investment_income")
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    result = impute_uk_spi_income_support(
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+    )
+
+    channel = support_channel_column("person")
+    spi_people = result.person[channel] == "spi"
+    assert result.person.loc[~spi_people, "other_investment_income"].isna().all()
+    assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
+
+
+def test_finite_numeric_diagnostic_names_columns_and_counts() -> None:
+    frame = pd.DataFrame(
+        {
+            "good": [1.0, 2.0, 3.0],
+            "bad": [np.nan, np.inf, 3.0],
+            "also_bad": ["not-numeric", 1.0, 2.0],
+        }
+    )
+
+    with pytest.raises(ValueError) as error:
+        spi_income._require_finite_numeric(frame, label="diagnostic fixture")
+
+    message = str(error.value)
+    assert "'bad': 2" in message
+    assert "'also_bad': 1" in message
+    assert "good" not in message
 
 
 def test_spi_weighted_bootstrap_does_not_apply_fact_twice(
