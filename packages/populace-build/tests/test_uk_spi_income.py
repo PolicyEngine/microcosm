@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,11 @@ import pandas as pd
 import pytest
 
 from populace.build.uk_runtime import spi_income
+from populace.build.uk_runtime.frs_hmrc_leaves import (
+    FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
+    FRS_HMRC_RETAINED_LEAF_COLUMNS,
+    FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
+)
 from populace.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
@@ -19,7 +25,6 @@ from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_HMRC_EMPLOYED_INCOME_COLUMN,
-    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
     SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN,
@@ -121,24 +126,14 @@ def _dead_support(
             position + 4,
             dtype=float,
         )
-    for position, column in enumerate(
-        (
-            *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
-            SPI_HMRC_OTHER_INCOME_COLUMN,
-            SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
-        ),
-        start=1,
-    ):
+    for position, column in enumerate(FRS_HMRC_RETAINED_LEAF_COLUMNS, start=1):
         if column == drop_hmrc_leaf:
             continue
-        if column == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
-            person_columns[column] = [-3.0, -1.0, 1.0, 3.0]
-        else:
-            person_columns[column] = np.arange(
-                position,
-                position + 4,
-                dtype=float,
-            )
+        person_columns[column] = np.arange(
+            position,
+            position + 4,
+            dtype=float,
+        )
     for position, column in enumerate(FRS_ONLY_SPI_FILL_PERSON_COLUMNS, start=1):
         if column in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS or column == drop_stage2:
             continue
@@ -286,22 +281,39 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
         result.person.loc[base_people, before.columns],
         before.loc[base_people],
     )
+    for subset in (
+        FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
+        FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
+    ):
+        pd.testing.assert_series_equal(result.person[subset], before[subset])
+
+    unavailable_on_frs = (
+        *spi_income.FRS_HMRC_UNAVAILABLE_FULL_CONCEPT_COLUMNS,
+        SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+    )
+    assert result.person.loc[base_people, list(unavailable_on_frs)].isna().all().all()
 
     expected_employed = (
         np.maximum(
-            result.person[SPI_HMRC_PAY_COLUMN]
-            + result.person[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
-            - result.person[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
+            result.person.loc[spi_people, SPI_HMRC_PAY_COLUMN]
+            + result.person.loc[spi_people, SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
+            - result.person.loc[spi_people, SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
             0.0,
         )
-        + result.person[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
-        + result.person[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
-        + result.person[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
-        + result.person[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
-        + result.person[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
+        + result.person.loc[
+            spi_people,
+            SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+        ]
     )
     np.testing.assert_array_equal(
-        result.person[SPI_HMRC_EMPLOYED_INCOME_COLUMN],
+        result.person.loc[spi_people, SPI_HMRC_EMPLOYED_INCOME_COLUMN],
         expected_employed,
     )
     expected_pe_employment = (
@@ -315,35 +327,43 @@ def test_spi_qrf_stages_use_typed_weights_and_restore_gross_savings(
     )
     expected_total_earned = (
         expected_employed
-        + result.person[SPI_HMRC_OTHER_INCOME_COLUMN]
-        + result.person[SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
-        + result.person["self_employment_income"]
-        + result.person["private_pension_income"]
+        + result.person.loc[spi_people, SPI_HMRC_OTHER_INCOME_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
+        + result.person.loc[spi_people, "self_employment_income"]
+        + result.person.loc[spi_people, "private_pension_income"]
     )
     expected_total_investment = (
-        result.person["savings_interest_income"]
-        - result.person["tax_free_savings_income"]
-        + result.person["dividend_income"]
-        + result.person["property_income"]
-        + result.person["other_investment_income"]
+        result.person.loc[spi_people, "savings_interest_income"]
+        - result.person.loc[spi_people, "tax_free_savings_income"]
+        + result.person.loc[spi_people, "dividend_income"]
+        + result.person.loc[spi_people, "property_income"]
+        + result.person.loc[spi_people, "other_investment_income"]
     )
     np.testing.assert_array_equal(
-        result.person[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN],
+        result.person.loc[spi_people, SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN],
         expected_total_earned,
     )
     np.testing.assert_array_equal(
-        result.person[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+        result.person.loc[spi_people, SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
         expected_total_investment,
     )
     np.testing.assert_array_equal(
-        result.person[HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
+        result.person.loc[spi_people, HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
         expected_total_earned + expected_total_investment,
     )
-    signed_miscellaneous = result.person[
-        SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
-    ]
-    assert signed_miscellaneous.lt(0.0).any()
-    assert signed_miscellaneous.gt(0.0).any()
+    np.testing.assert_array_equal(
+        result.person.loc[spi_people, HMRC_SPI_ASSESSABLE_INCOME_COLUMN],
+        result.person.loc[spi_people, SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN]
+        + result.person.loc[spi_people, SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN],
+    )
+    assert (
+        result.person.loc[
+            spi_people,
+            SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+        ]
+        .lt(0.0)
+        .all()
+    )
 
     spi_households = support.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
     assert support.household.loc[spi_households, "household_weight"].gt(0).all()
@@ -509,17 +529,44 @@ def test_spi_qrf_fails_closed_on_unreviewed_stage2_gap(monkeypatch, tmp_path) ->
         )
 
 
-def test_spi_qrf_fails_closed_on_missing_normalized_frs_hmrc_leaf(
+def test_spi_qrf_fails_closed_on_missing_retained_frs_hmrc_leaf(
     monkeypatch,
     tmp_path,
 ) -> None:
-    support = _dead_support(drop_hmrc_leaf=SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN)
+    missing = FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN
+    support = _dead_support(drop_hmrc_leaf=missing)
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     _bypass_reviewed_donor_identity(monkeypatch)
 
-    with pytest.raises(ValueError, match=SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN):
+    with pytest.raises(ValueError, match=missing):
+        impute_uk_spi_income_support(
+            support,
+            donor_path,
+            donor_sample_size=None,
+        )
+
+
+@pytest.mark.parametrize(
+    "unavailable_full_concept",
+    spi_income.FRS_HMRC_UNAVAILABLE_FULL_CONCEPT_COLUMNS,
+)
+def test_spi_qrf_forbids_source_absent_full_concepts_on_frs(
+    monkeypatch,
+    tmp_path,
+    unavailable_full_concept,
+) -> None:
+    support = _dead_support()
+    person = support.person.copy()
+    person[unavailable_full_concept] = 0.0
+    support = replace(support, person=person)
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    with pytest.raises(ValueError, match=unavailable_full_concept):
         impute_uk_spi_income_support(
             support,
             donor_path,

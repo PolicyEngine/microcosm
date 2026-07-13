@@ -13,6 +13,13 @@ import numpy as np
 import pandas as pd
 
 from populace.build.gates import FitWeightRecord
+from populace.build.uk_runtime.frs_hmrc_leaves import (
+    FRS_HMRC_INCPBEN_COLUMN,
+    FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
+    FRS_HMRC_PAY_COLUMN,
+    FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
+    FRS_HMRC_UBISJA_COLUMN,
+)
 from populace.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
@@ -55,6 +62,7 @@ FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
 SPI_DONOR_SHA256 = "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66"
 SPI_DONOR_SIZE_BYTES = 141_323_762
+_SPI_DONOR_VERIFICATION_TOKEN = object()
 # The pinned donor's published TI field differs from TEI + TII by at most £5
 # because the public-use fields are rounded. Synthetic draws never inherit
 # that discrepancy: their accounting aggregates are derived after the draw.
@@ -79,8 +87,7 @@ SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP = {
 
 SPI_POLICYENGINE_EMPLOYMENT_SOURCE_COLUMNS = ("PAY", "EPB", "TAXTERM")
 SPI_POLICYENGINE_EMPLOYMENT_FORMULA = (
-    "hmrc_spi_pay + hmrc_spi_employment_benefits + "
-    "hmrc_spi_taxable_termination_pay"
+    "hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay"
 )
 SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP = {
     SPI_HMRC_PAY_COLUMN: ("PAY",),
@@ -99,18 +106,27 @@ SPI_HMRC_EMPLOYED_INCOME_FORMULA = (
     "hmrc_spi_unemployment_benefit_income + "
     "hmrc_spi_miscellaneous_employment_income"
 )
-# Q2 requires the broad HMRC measure to use one identical leaf crosswalk on
-# both support channels. The certified FRS artifact does not currently carry
-# these normalized leaves, so the stage must fail closed instead of aliasing
-# its narrower employment_income input to the published HMRC measure.
+# The FRS instrument can source three full concepts and two explicitly named
+# subsets. The remaining full SPI concepts are donor-only: they must be absent
+# before the QRF rather than represented by zeroes or by the two partial leaves.
 FRS_HMRC_AUXILIARY_SOURCE_COLUMNS = {
-    column: (column,)
-    for column in (
-        *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
-        SPI_HMRC_OTHER_INCOME_COLUMN,
-        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
-    )
+    FRS_HMRC_PAY_COLUMN: (FRS_HMRC_PAY_COLUMN,),
+    FRS_HMRC_UBISJA_COLUMN: (FRS_HMRC_UBISJA_COLUMN,),
+    FRS_HMRC_INCPBEN_COLUMN: (FRS_HMRC_INCPBEN_COLUMN,),
+    FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN: (
+        FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
+    ),
+    FRS_HMRC_SRP_REGULAR_CODE5_COLUMN: (FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,),
 }
+FRS_HMRC_UNAVAILABLE_FULL_CONCEPT_COLUMNS = (
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+    SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
+    SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+    SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+    SPI_HMRC_OTHER_INCOME_COLUMN,
+    SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
+    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+)
 
 SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS = {
     "incapacity_benefit_reported": (
@@ -222,30 +238,91 @@ class UKSPIIncomeImputationResult:
     reviewed_absent_stage2_outputs: dict[str, str]
 
 
+@dataclass(frozen=True)
+class _SPIDonorFingerprint:
+    """Stable-file identity binding a reviewed hash to the parsed donor bytes."""
+
+    device: int
+    inode: int
+    size_bytes: int
+    modified_ns: int
+    changed_ns: int
+
+
+@dataclass(frozen=True)
+class VerifiedSPIDonorIdentity:
+    """Opaque proof that the local licensed donor matched the reviewed bytes."""
+
+    path: Path
+    sha256: str
+    size_bytes: int
+    fingerprint: _SPIDonorFingerprint
+    _verification_token: object
+
+
+def verify_spi_donor_identity(path: str | Path) -> VerifiedSPIDonorIdentity:
+    """Verify the licensed donor before parsing and bind the proof to its file."""
+
+    donor = Path(path).expanduser().resolve()
+    if donor.name != SPI_DONOR_FILENAME:
+        raise ValueError(
+            f"Current SPI donor must be named {SPI_DONOR_FILENAME!r}, got "
+            f"{donor.name!r}."
+        )
+    if not donor.is_file():
+        raise FileNotFoundError(f"SPI 2022-23 donor not found: {donor}.")
+    before = _spi_donor_fingerprint(donor)
+    if before.size_bytes != SPI_DONOR_SIZE_BYTES:
+        raise ValueError(
+            "SPI 2022-23 donor size does not match the reviewed UKDS source "
+            f"identity: expected {SPI_DONOR_SIZE_BYTES}, got {before.size_bytes}."
+        )
+    digest = _sha256(donor)
+    after = _spi_donor_fingerprint(donor)
+    if after != before:
+        raise RuntimeError(
+            "SPI 2022-23 donor changed while its reviewed identity was being verified."
+        )
+    if digest != SPI_DONOR_SHA256:
+        raise ValueError(
+            "SPI 2022-23 donor SHA-256 does not match the reviewed UKDS source "
+            f"identity: expected {SPI_DONOR_SHA256}, got {digest}."
+        )
+    return VerifiedSPIDonorIdentity(
+        path=donor,
+        sha256=digest,
+        size_bytes=before.size_bytes,
+        fingerprint=before,
+        _verification_token=_SPI_DONOR_VERIFICATION_TOKEN,
+    )
+
+
 def assert_frs_hmrc_auxiliary_crosswalk_available(person: pd.DataFrame) -> None:
-    """Fail closed until a reviewed FRS decomposition supplies every Q2 leaf."""
+    """Require the adjudicated FRS leaves and forbid unavailable full concepts."""
 
     required = tuple(FRS_HMRC_AUXILIARY_SOURCE_COLUMNS)
     missing = sorted(set(required) - set(person.columns))
     if missing:
         raise ValueError(
-            "Certified UK FRS channel cannot materialize the reviewed HMRC "
-            "Table 3.6 crosswalk; missing normalized source constituent(s): "
-            f"{missing}. A reviewed FRS decomposition stage is required; "
-            "employment_income is not a like-for-like substitute."
+            "Certified UK FRS channel is missing adjudicated retained HMRC "
+            f"leaf column(s): {missing}. Retain PAY, UBISJA, INCPBEN, "
+            "ossben_identifiable_subset, and srp_regular_code5 from their "
+            "reviewed raw FRS sources before the SPI QRF."
+        )
+    unavailable = sorted(
+        set(FRS_HMRC_UNAVAILABLE_FULL_CONCEPT_COLUMNS) & set(person.columns)
+    )
+    if unavailable:
+        raise ValueError(
+            "Pre-QRF FRS candidate must not materialize source-absent full "
+            f"SPI concept column(s): {unavailable}. EPB, EXPS, TAXTERM, "
+            "MOTHINC, OTHERINC, full OSSBEN, and full SRP cannot be zero-filled "
+            "or inferred from their named subsets."
         )
     numeric = person[list(required)].apply(pd.to_numeric, errors="coerce")
-    _require_finite_numeric(numeric, label="FRS HMRC normalized source constituents")
-    nonnegative = [
-        column
-        for column in required
-        if column != SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
-    ]
-    if (numeric[nonnegative].to_numpy(dtype=float) < 0.0).any():
-        raise ValueError(
-            "FRS HMRC normalized non-negative source constituents contain "
-            "negative values."
-        )
+    _require_finite_numeric(numeric, label="FRS HMRC retained leaves")
+    if (numeric.to_numpy(dtype=float) < 0.0).any():
+        raise ValueError("FRS HMRC retained leaves contain negative values.")
 
 
 def impute_uk_spi_income_support(
@@ -256,6 +333,7 @@ def impute_uk_spi_income_support(
     n_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     build_period: int | str = 2023,
+    verified_donor: VerifiedSPIDonorIdentity | None = None,
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support."""
 
@@ -273,15 +351,19 @@ def impute_uk_spi_income_support(
         raise ValueError("donor_sample_size must be a positive integer or None.")
 
     donor_path = Path(spi_tab_path).expanduser().resolve()
-    if donor_path.name != SPI_DONOR_FILENAME:
+    if verified_donor is None:
+        # Keep the private helper call as the narrow test seam used by the
+        # synthetic-donor unit tests. Production receives an opaque identity.
+        verified_donor = _verify_spi_donor_identity(donor_path)
+    elif verified_donor.path != donor_path:
         raise ValueError(
-            f"Current SPI donor must be named {SPI_DONOR_FILENAME!r}, got "
-            f"{donor_path.name!r}."
+            "Verified SPI donor identity does not match the requested donor path."
         )
-    if not donor_path.is_file():
-        raise FileNotFoundError(f"SPI 2022-23 donor not found: {donor_path}.")
-    _verify_spi_donor_identity(donor_path)
+    if isinstance(verified_donor, VerifiedSPIDonorIdentity):
+        _assert_verified_spi_donor_current(verified_donor)
     raw_donor = pd.read_csv(donor_path, delimiter="\t")
+    if isinstance(verified_donor, VerifiedSPIDonorIdentity):
+        _assert_verified_spi_donor_current(verified_donor)
     donor = _prepare_spi_donor(raw_donor, seed=seed)
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
     if donor_sample_size is not None:
@@ -360,7 +442,10 @@ def impute_uk_spi_income_support(
         raise ValueError("SPI stage-1 produced negative non-negative outputs.")
     for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
         if column not in person:
-            person[column] = 0.0
+            # These full concepts are unavailable on the FRS instrument. NaN
+            # is the honest state until the SPI donor overwrites its own rows;
+            # zero would falsely assert a measured structural zero on FRS.
+            person[column] = np.nan
         person.loc[spi_people, column] = stage1_draws[column].to_numpy()
     person = _derive_policyengine_employment_input(person, spi_people=spi_people)
 
@@ -429,7 +514,7 @@ def impute_uk_spi_income_support(
         dtype=np.float64
     )
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
-    person = derive_hmrc_income_auxiliaries(person)
+    person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _refresh_disability_derived_inputs(
         person,
         spi_people=spi_people,
@@ -442,8 +527,16 @@ def impute_uk_spi_income_support(
             FitWeightRecord(FRS_ONLY_FIT_NAME, stage2.weight_kind),
         ),
         donor_path=donor_path,
-        donor_sha256=_sha256(donor_path),
-        donor_size_bytes=donor_path.stat().st_size,
+        donor_sha256=(
+            verified_donor.sha256
+            if isinstance(verified_donor, VerifiedSPIDonorIdentity)
+            else _sha256(donor_path)
+        ),
+        donor_size_bytes=(
+            verified_donor.size_bytes
+            if isinstance(verified_donor, VerifiedSPIDonorIdentity)
+            else donor_path.stat().st_size
+        ),
         donor_rows=len(donor),
         stage2_training_rows=int(training_people.sum()),
         spi_prediction_rows=int(spi_people.sum()),
@@ -558,9 +651,9 @@ def _validate_spi_source_leaf_reconciliation(numeric: pd.DataFrame) -> None:
     for group, mask in groups.items():
         if not mask.any():
             continue
-        for field, tolerance in (
-            SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP[group].items()
-        ):
+        for field, tolerance in SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP[
+            group
+        ].items():
             error = np.abs(
                 numeric.loc[mask, field].to_numpy(dtype=float)
                 - derived[field].loc[mask].to_numpy(dtype=float)
@@ -580,34 +673,12 @@ def _seed_frs_hmrc_auxiliary_leaves(
     *,
     spi_people: pd.Series,
 ) -> pd.DataFrame:
-    """Require the normalized HMRC leaves on the FRS channel.
-
-    These columns are intentionally not inferred from broader PolicyEngine
-    aggregates. If a future reviewed FRS decomposition stage materializes the
-    leaves, this check admits them and the SPI channel overwrites its cloned
-    copies with joint donor draws. The certified candidate currently fails
-    here, which is the reviewed fail-closed outcome for unresolved Q2.
-    """
+    """Validate retained FRS leaves without manufacturing unavailable concepts."""
 
     if len(spi_people) != len(person):
         raise ValueError("SPI person mask must align to the person table.")
     assert_frs_hmrc_auxiliary_crosswalk_available(person)
-    result = person.copy()
-    base_people = ~spi_people.to_numpy(dtype=bool)
-    for auxiliary, sources in FRS_HMRC_AUXILIARY_SOURCE_COLUMNS.items():
-        _require_columns(result, sources, label="FRS HMRC auxiliary crosswalk")
-        values = result[list(sources)].apply(pd.to_numeric, errors="coerce")
-        base_values = values.loc[base_people]
-        _require_finite_numeric(base_values, label=f"FRS HMRC auxiliary {auxiliary}")
-        if (
-            auxiliary != SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
-            and (base_values.to_numpy(dtype=float) < 0.0).any()
-        ):
-            raise ValueError(
-                f"FRS HMRC auxiliary source for {auxiliary!r} must be non-negative."
-            )
-        result[auxiliary] = values.sum(axis=1).to_numpy(dtype=float)
-    return result
+    return person.copy()
 
 
 def _derive_policyengine_employment_input(
@@ -637,8 +708,18 @@ def _derive_policyengine_employment_input(
     return result
 
 
-def derive_hmrc_income_auxiliaries(person: pd.DataFrame) -> pd.DataFrame:
-    """Derive TEI, TII and TI exactly from the post-draw source leaves."""
+def derive_hmrc_income_auxiliaries(
+    person: pd.DataFrame,
+    *,
+    row_mask: pd.Series | np.ndarray | None = None,
+) -> pd.DataFrame:
+    """Derive TEI, TII and TI exactly, optionally only on selected rows.
+
+    The whole-frame default preserves the exact synthetic/calibration contract.
+    A row mask is used by the mixed FRS/SPI stage: full concepts absent from the
+    FRS instrument remain unavailable there, while SPI rows receive identities
+    derived deterministically from their joint donor draws.
+    """
 
     required = (
         *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
@@ -653,7 +734,8 @@ def derive_hmrc_income_auxiliaries(person: pd.DataFrame) -> pd.DataFrame:
         "other_investment_income",
     )
     _require_columns(person, required, label="HMRC accounting identity")
-    numeric = person[list(required)].apply(pd.to_numeric, errors="coerce")
+    mask = _hmrc_auxiliary_row_mask(person, row_mask)
+    numeric = person.loc[mask, list(required)].apply(pd.to_numeric, errors="coerce")
     _require_finite_numeric(numeric, label="HMRC accounting identity leaves")
     nonnegative = [
         column
@@ -702,17 +784,54 @@ def derive_hmrc_income_auxiliaries(person: pd.DataFrame) -> pd.DataFrame:
     assessable = total_earned + total_investment
 
     result = person.copy()
-    result[SPI_HMRC_EMPLOYED_INCOME_COLUMN] = employed_income
-    result[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN] = total_earned
-    result[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN] = total_investment
-    result["hmrc_spi_assessable_income"] = assessable
+    derived = {
+        SPI_HMRC_EMPLOYED_INCOME_COLUMN: employed_income,
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN: total_earned,
+        SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN: total_investment,
+        "hmrc_spi_assessable_income": assessable,
+    }
+    if row_mask is None:
+        for column, values in derived.items():
+            result[column] = values
+    else:
+        # A prior full-frame auxiliary is not valid evidence for the partial
+        # FRS channel. Clear every derived output, then materialize SPI only.
+        for column, values in derived.items():
+            result[column] = np.nan
+            result.loc[mask, column] = values
     if not np.array_equal(
-        result["hmrc_spi_assessable_income"].to_numpy(dtype=float),
-        result[SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN].to_numpy(dtype=float)
-        + result[SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN].to_numpy(dtype=float),
+        result.loc[mask, "hmrc_spi_assessable_income"].to_numpy(dtype=float),
+        result.loc[mask, SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN].to_numpy(dtype=float)
+        + result.loc[mask, SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN].to_numpy(
+            dtype=float
+        ),
     ):
         raise RuntimeError("HMRC TI must equal derived TEI + TII exactly.")
     return result
+
+
+def _hmrc_auxiliary_row_mask(
+    person: pd.DataFrame,
+    row_mask: pd.Series | np.ndarray | None,
+) -> np.ndarray:
+    """Return a strict row-aligned boolean mask for optional HMRC derivation."""
+
+    if row_mask is None:
+        return np.ones(len(person), dtype=bool)
+    if isinstance(row_mask, pd.Series):
+        if not row_mask.index.equals(person.index):
+            raise ValueError("HMRC auxiliary row mask index must align to person.")
+        if row_mask.isna().any() or not pd.api.types.is_bool_dtype(row_mask.dtype):
+            raise ValueError("HMRC auxiliary row mask must contain only booleans.")
+        mask = row_mask.to_numpy(dtype=bool)
+    else:
+        raw = np.asarray(row_mask)
+        if raw.ndim != 1 or raw.dtype.kind != "b":
+            raise ValueError("HMRC auxiliary row mask must be one-dimensional bool.")
+        mask = raw.astype(bool, copy=False)
+    if len(mask) != len(person):
+        raise ValueError("HMRC auxiliary row mask must align to the person table.")
+    return mask
 
 
 def _person_predictors(
@@ -883,21 +1002,33 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _verify_spi_donor_identity(path: Path) -> None:
-    """Fail before parsing unless the local UKDS donor is the reviewed file."""
+def _spi_donor_fingerprint(path: Path) -> _SPIDonorFingerprint:
+    stat = path.stat()
+    return _SPIDonorFingerprint(
+        device=stat.st_dev,
+        inode=stat.st_ino,
+        size_bytes=stat.st_size,
+        modified_ns=stat.st_mtime_ns,
+        changed_ns=stat.st_ctime_ns,
+    )
 
-    size_bytes = path.stat().st_size
-    if size_bytes != SPI_DONOR_SIZE_BYTES:
+
+def _assert_verified_spi_donor_current(identity: VerifiedSPIDonorIdentity) -> None:
+    if identity._verification_token is not _SPI_DONOR_VERIFICATION_TOKEN:
         raise ValueError(
-            "SPI 2022-23 donor size does not match the reviewed UKDS source "
-            f"identity: expected {SPI_DONOR_SIZE_BYTES}, got {size_bytes}."
+            "SPI donor identity must come from verify_spi_donor_identity()."
         )
-    digest = _sha256(path)
-    if digest != SPI_DONOR_SHA256:
-        raise ValueError(
-            "SPI 2022-23 donor SHA-256 does not match the reviewed UKDS source "
-            f"identity: expected {SPI_DONOR_SHA256}, got {digest}."
+    if _spi_donor_fingerprint(identity.path) != identity.fingerprint:
+        raise RuntimeError(
+            "SPI 2022-23 donor changed after identity verification; refusing "
+            "to parse bytes not bound to the reviewed SHA-256."
         )
+
+
+def _verify_spi_donor_identity(path: Path) -> VerifiedSPIDonorIdentity:
+    """Backward-compatible private seam for synthetic-donor unit tests."""
+
+    return verify_spi_donor_identity(path)
 
 
 @cache
@@ -1058,6 +1189,7 @@ def _assign_spi_values(
 __all__ = [
     "DEFAULT_SPI_DONOR_SAMPLE_SIZE",
     "FRS_HMRC_AUXILIARY_SOURCE_COLUMNS",
+    "FRS_HMRC_UNAVAILABLE_FULL_CONCEPT_COLUMNS",
     "FRS_ONLY_FIT_NAME",
     "SPI_DONOR_DOI",
     "SPI_DONOR_FILENAME",
@@ -1084,7 +1216,9 @@ __all__ = [
     "SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS",
     "SPI_TI_IDENTITY_ABS_TOLERANCE_GBP",
     "UKSPIIncomeImputationResult",
+    "VerifiedSPIDonorIdentity",
     "assert_frs_hmrc_auxiliary_crosswalk_available",
     "derive_hmrc_income_auxiliaries",
     "impute_uk_spi_income_support",
+    "verify_spi_donor_identity",
 ]

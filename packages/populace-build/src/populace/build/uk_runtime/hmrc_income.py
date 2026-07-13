@@ -24,6 +24,7 @@ __all__ = [
     "HMRCIncomeTargetSet",
     "HMRC_SPI_BUILD_PERIOD",
     "HMRC_SPI_ASSESSABLE_INCOME_COLUMN",
+    "HMRC_SPI_COLLATED_ODS_FILENAME",
     "HMRC_SPI_COLLATED_ODS_MIME_TYPE",
     "HMRC_SPI_COLLATED_ODS_SHA256",
     "HMRC_SPI_COLLATED_ODS_SIZE_BYTES",
@@ -35,8 +36,10 @@ __all__ = [
     "HMRC_SPI_SOURCE_TAX_YEAR_START",
     "HMRC_SPI_SOURCE_VINTAGE",
     "HMRC_SPI_TARGET_RECORD_COUNT",
+    "VerifiedHMRCODSIdentity",
     "hmrc_spi_component_source_columns",
     "materialize_hmrc_spi_income_band_targets",
+    "verify_hmrc_spi_collated_ods",
 ]
 
 HMRC_SPI_PUBLICATION_URL = (
@@ -47,6 +50,7 @@ HMRC_SPI_COLLATED_ODS_URL = (
     "https://assets.publishing.service.gov.uk/media/"
     "69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods"
 )
+HMRC_SPI_COLLATED_ODS_FILENAME = "Collated_Tables_3_1_to_3_11_2324.ods"
 HMRC_SPI_COLLATED_ODS_SHA256 = (
     "ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e"
 )
@@ -86,6 +90,7 @@ HMRC_SPI_INCOME_COMPONENTS = (
 HMRC_SPI_TARGET_RECORD_COUNT = (
     len(HMRC_SPI_INCOME_BAND_LOWER_BOUNDS) * len(HMRC_SPI_INCOME_COMPONENTS) * 2
 )
+_HMRC_ODS_VERIFICATION_TOKEN = object()
 
 HMRCIncomeMeasure = Literal["count", "amount"]
 HMRCIncomeUnit = Literal["people", "GBP"]
@@ -128,6 +133,29 @@ class HMRCIncomeTargetSet:
 
     source: HMRCIncomeSourceProvenance
     targets: tuple[HMRCIncomeBandTargetRecord, ...]
+
+
+@dataclass(frozen=True)
+class _HMRCODSFileFingerprint:
+    """Stable-file identity binding a reviewed hash to the parsed ODS bytes."""
+
+    device: int
+    inode: int
+    size_bytes: int
+    modified_ns: int
+    changed_ns: int
+
+
+@dataclass(frozen=True)
+class VerifiedHMRCODSIdentity:
+    """Opaque proof that the local ODS matched the reviewed official file."""
+
+    path: Path
+    sha256: str
+    size_bytes: int
+    mime_type: str
+    fingerprint: _HMRCODSFileFingerprint
+    _verification_token: object
 
 
 @dataclass(frozen=True)
@@ -323,7 +351,7 @@ def hmrc_spi_component_source_columns() -> dict[str, tuple[str, int, int]]:
 
 
 def materialize_hmrc_spi_income_band_targets(
-    ods_path: str | Path,
+    ods_path: str | Path | VerifiedHMRCODSIdentity,
     *,
     build_period: int | str,
 ) -> HMRCIncomeTargetSet:
@@ -343,24 +371,17 @@ def materialize_hmrc_spi_income_band_targets(
         )
 
     _validate_component_layouts()
-    path = Path(ods_path).expanduser().resolve()
-    if not path.is_file():
-        raise FileNotFoundError(f"HMRC SPI collated ODS not found: {path}.")
-    size_bytes = path.stat().st_size
-    if size_bytes != HMRC_SPI_COLLATED_ODS_SIZE_BYTES:
-        raise ValueError(
-            "HMRC SPI collated ODS size does not match the reviewed source "
-            f"identity: expected {HMRC_SPI_COLLATED_ODS_SIZE_BYTES}, got "
-            f"{size_bytes}."
-        )
-    source_sha256 = _sha256(path)
-    if source_sha256 != HMRC_SPI_COLLATED_ODS_SHA256:
-        raise ValueError(
-            "HMRC SPI collated ODS SHA-256 does not match the reviewed source "
-            f"identity: expected {HMRC_SPI_COLLATED_ODS_SHA256}, got "
-            f"{source_sha256}."
-        )
+    identity = (
+        ods_path
+        if isinstance(ods_path, VerifiedHMRCODSIdentity)
+        else verify_hmrc_spi_collated_ods(ods_path)
+    )
+    _assert_verified_hmrc_ods_current(identity)
+    path = identity.path
+    size_bytes = identity.size_bytes
+    source_sha256 = identity.sha256
     tables = _read_ods_tables(path)
+    _assert_verified_hmrc_ods_current(identity)
 
     source = HMRCIncomeSourceProvenance(
         local_path=path,
@@ -385,6 +406,44 @@ def materialize_hmrc_spi_income_band_targets(
     targets = tuple(records)
     _validate_target_surface(targets)
     return HMRCIncomeTargetSet(source=source, targets=targets)
+
+
+def verify_hmrc_spi_collated_ods(
+    ods_path: str | Path,
+) -> VerifiedHMRCODSIdentity:
+    """Verify the official ODS before parsing and bind the proof to its file."""
+
+    path = Path(ods_path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"HMRC SPI collated ODS not found: {path}.")
+    before = _hmrc_ods_fingerprint(path)
+    if before.size_bytes != HMRC_SPI_COLLATED_ODS_SIZE_BYTES:
+        raise ValueError(
+            "HMRC SPI collated ODS size does not match the reviewed source "
+            f"identity: expected {HMRC_SPI_COLLATED_ODS_SIZE_BYTES}, got "
+            f"{before.size_bytes}."
+        )
+    source_sha256 = _sha256(path)
+    after = _hmrc_ods_fingerprint(path)
+    if after != before:
+        raise RuntimeError(
+            "HMRC SPI collated ODS changed while its reviewed identity was "
+            "being verified."
+        )
+    if source_sha256 != HMRC_SPI_COLLATED_ODS_SHA256:
+        raise ValueError(
+            "HMRC SPI collated ODS SHA-256 does not match the reviewed source "
+            f"identity: expected {HMRC_SPI_COLLATED_ODS_SHA256}, got "
+            f"{source_sha256}."
+        )
+    return VerifiedHMRCODSIdentity(
+        path=path,
+        sha256=source_sha256,
+        size_bytes=before.size_bytes,
+        mime_type=HMRC_SPI_COLLATED_ODS_MIME_TYPE,
+        fingerprint=before,
+        _verification_token=_HMRC_ODS_VERIFICATION_TOKEN,
+    )
 
 
 def _read_ods_tables(path: Path) -> dict[str, _ODSTable]:
@@ -446,6 +505,29 @@ def _read_ods_tables(path: Path) -> dict[str, _ODSTable]:
         sheet_name: _ods_table_from_element(element, sheet_name=sheet_name)
         for sheet_name, element in table_elements.items()
     }
+
+
+def _hmrc_ods_fingerprint(path: Path) -> _HMRCODSFileFingerprint:
+    stat = path.stat()
+    return _HMRCODSFileFingerprint(
+        device=stat.st_dev,
+        inode=stat.st_ino,
+        size_bytes=stat.st_size,
+        modified_ns=stat.st_mtime_ns,
+        changed_ns=stat.st_ctime_ns,
+    )
+
+
+def _assert_verified_hmrc_ods_current(identity: VerifiedHMRCODSIdentity) -> None:
+    if identity._verification_token is not _HMRC_ODS_VERIFICATION_TOKEN:
+        raise ValueError(
+            "HMRC ODS identity must come from verify_hmrc_spi_collated_ods()."
+        )
+    if _hmrc_ods_fingerprint(identity.path) != identity.fingerprint:
+        raise RuntimeError(
+            "HMRC SPI collated ODS changed after identity verification; "
+            "refusing to parse bytes not bound to the reviewed SHA-256."
+        )
 
 
 def _ods_table_from_element(
