@@ -1124,6 +1124,190 @@ def _usda_snap_caseload_fact(
     }
 
 
+def _ssa_ssi_by_area_fact(
+    *,
+    measure_id: str,
+    value: float,
+    record_set_concept: str,
+    area_category: str,
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+) -> dict[str, object]:
+    """A synthetic SSA OASDI/SSI ledger fact (source_name ``ssa``).
+
+    ``record_set_concept`` is one of ``ssi_recipients.by_area_category``,
+    ``ssi_payments.by_area_category`` or ``oasdi_ssi_payments``;
+    ``area_category`` is the fused area+category groupby value id
+    (``all_areas_total``, ``alabama_aged``, ``ssi_payments`` …).
+    """
+    record_set_id = f"ssa_supplement.cy2024.{record_set_concept}"
+    source_record_id = f"{record_set_id}.{area_category}.{measure_id}"
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="ssa",
+        measure_id=measure_id,
+        value=value,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        groupby_dimension="ssa_supplement.area_category",
+        groupby_value_id=area_category,
+        layout_record_set_id=record_set_id,
+    )
+
+
+def test_ssa_ssi_recipients_national_fact_maps_to_ssi_indicator() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="recipient_count",
+                value=7_404_820,
+                record_set_concept="ssi_recipients.by_area_category",
+                area_category="all_areas_total",
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "ssa_supplement.cy2024.ssi_recipients.by_area_category"
+        ".all_areas_total.recipient_count"
+    ]
+    assert spec.family == "ssa"
+    assert spec.value == 7_404_820
+    assert spec.metadata["target_role"] == "ssi_recipients"
+    assert spec.metadata["base_variable"] == "ssi"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert "state_fips" not in spec.metadata
+
+
+def test_ssa_ssi_recipients_state_fact_compiles_with_state_fips() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="recipient_count",
+                value=137_206,
+                record_set_concept="ssi_recipients.by_area_category",
+                area_category="alabama_total",
+                geography_level="state",
+                geography_id="0400000US01",
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "ssa_supplement.cy2024.ssi_recipients.by_area_category"
+        ".alabama_total.recipient_count"
+    ]
+    assert spec.family == "ssa"
+    assert spec.metadata["target_role"] == "ssi_recipients"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["base_variable"] == "ssi"
+    assert spec.metadata["state_fips"] == "01"
+
+
+def test_ssa_ssi_recipient_eligibility_category_subrows_are_not_compiled() -> None:
+    # PolicyEngine-US does not model the aged/blind/disabled SSI eligibility
+    # split, so only the all-category "total" is a model counterpart; the
+    # sub-rows are reviewed exclusions in the target-parity manifest.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="recipient_count",
+                value=1_161_623,
+                record_set_concept="ssi_recipients.by_area_category",
+                area_category="all_areas_aged",
+            ),
+        ]
+    )
+
+    assert not [spec for spec in registry.specs if "ssi_recipients" in spec.name]
+
+
+def test_ssa_ssi_state_payment_fact_compiles_as_dollar_sum() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=954_623_000,
+                record_set_concept="ssi_payments.by_area_category",
+                area_category="alabama_total",
+                geography_level="state",
+                geography_id="0400000US01",
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "ssa_supplement.cy2024.ssi_payments.by_area_category"
+        ".alabama_total.payment_amount"
+    ]
+    assert spec.family == "ssa"
+    assert spec.metadata["target_role"] == "ssi_state_payments"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "ssi"
+    assert spec.metadata["state_fips"] == "01"
+
+
+def test_ssa_ssi_national_payment_by_area_is_not_double_counted() -> None:
+    # The national by-area SSI payment equals the OASDI-table ssi_payments
+    # figure already compiled as ssi_total; only the state rows are compiled.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=63_079_493_000,
+                record_set_concept="ssi_payments.by_area_category",
+                area_category="all_areas_total",
+            ),
+        ]
+    )
+
+    assert not [
+        spec for spec in registry.specs if "ssi_payments.by_area_category" in spec.name
+    ]
+
+
+def test_ssa_oasdi_ssi_payment_aggregates_still_compile() -> None:
+    # Regression guard: the six national OASDI + SSI payment aggregates keep the
+    # standing DIRECT_LEDGER_TARGETS mappings (family ssa) through the new SSA
+    # dispatch, so the SSI recipient/payment extension never regresses them.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=1_471_195_000_000,
+                record_set_concept="oasdi_ssi_payments",
+                area_category="social_security_benefits",
+            ),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=63_079_493_000,
+                record_set_concept="oasdi_ssi_payments",
+                area_category="ssi_payments",
+            ),
+        ]
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    social_security = specs[
+        "ssa_supplement.cy2024.oasdi_ssi_payments"
+        ".social_security_benefits.payment_amount"
+    ]
+    assert social_security.metadata["target_role"] == "social_security_total"
+    assert social_security.metadata["base_variable"] == "social_security"
+    ssi_payments = specs[
+        "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount"
+    ]
+    assert ssi_payments.metadata["target_role"] == "ssi_total"
+    assert ssi_payments.metadata["base_variable"] == "ssi"
+    assert ssi_payments.metadata["measure_mode"] == "sum"
+
+
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
     source_record_id = "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
 

@@ -2043,6 +2043,8 @@ def _reference_from_ledger_fact(
                 include_congressional_district_targets
             ),
         )
+    if source_name == "ssa":
+        return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
@@ -2326,6 +2328,120 @@ def _population_age_reference_from_fact(
         measure=source_record_id,
         period=target_period,
         family="census_population",
+        metadata=metadata,
+    )
+
+
+# SSA by-area record sets carry an eligibility category (total/aged/blind/
+# disabled) fused into ``layout.groupby_value_id`` (``all_areas_total``,
+# ``alabama_aged`` …). Only the all-category ``total`` has a PolicyEngine-US
+# counterpart: the model computes SSI receipt and amount but not the SSI
+# eligibility-category split, so aged/blind/disabled sub-rows are reviewed
+# exclusions in the target-parity manifest rather than silent drops.
+_SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN = "oasdi_ssi_payments"
+_SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
+#: Engine-computed SSI counterpart both by-area families bind through. Receipt
+#: is an indicator sum of person-level ``ssi`` (recipients); federal payments
+#: are its dollar sum — the same variable the national ``ssi_total`` payment
+#: target already materializes.
+_SSA_SSI_BASE_VARIABLE = "ssi"
+SSA_SSI_RECIPIENTS_TARGET_ROLE = "ssi_recipients"
+SSA_SSI_STATE_PAYMENTS_TARGET_ROLE = "ssi_state_payments"
+
+
+def _ssa_area_category(fact: object) -> str:
+    """The SSA by-area eligibility category (``total``/``aged``/``blind``/...).
+
+    Encoded as the suffix of ``layout.groupby_value_id``; empty when the fact is
+    not an area-category row (e.g. the national OASDI payment aggregates).
+    """
+    groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+    if not groupby_value_id:
+        return ""
+    return groupby_value_id.rsplit("_", 1)[-1]
+
+
+def _ssa_ssi_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile an SSA (``source_name == "ssa"``) fact into a US target.
+
+    Three SSA record sets reach here:
+
+    - ``oasdi_ssi_payments`` — the six national OASDI benefit and SSI payment
+      aggregates. Delegated unchanged to :func:`_direct_reference_from_fact` so
+      the standing ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (family ``ssa``:
+      ``social_security_total`` … ``ssi_total``) never regress.
+    - ``ssi_recipients.by_area_category`` — SSI recipients (a count). The
+      all-category ``total`` maps to an indicator sum of engine ``ssi`` receipt
+      at national and state grain (role ``ssi_recipients``). This is the
+      ``nation/ssa/ssi_recipients`` administrative family the retired
+      us-data/eCPS pipeline calibrated to that the populace registry dropped.
+    - ``ssi_payments.by_area_category`` — SSI federal payments (a dollar sum).
+      The national ``all_areas_total`` equals the ``oasdi_ssi_payments``
+      ``ssi_payments`` figure already compiled as ``ssi_total``, so only the
+      state ``total`` rows the national OASDI table does not carry are compiled
+      here (role ``ssi_state_payments``).
+
+    Non-``total`` eligibility categories (aged/blind/disabled) return ``None``;
+    PolicyEngine-US does not model the SSI eligibility-category split, so those
+    sub-rows are reviewed exclusions in the target-parity manifest.
+    """
+    record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+    if _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN in record_set_id:
+        return _direct_reference_from_fact(fact, target_period=target_period)
+
+    measure_id = _measure_id(fact)
+    if measure_id == "recipient_count":
+        target_role = SSA_SSI_RECIPIENTS_TARGET_ROLE
+        measure_mode = "indicator_sum"
+    elif measure_id == "payment_amount":
+        target_role = SSA_SSI_STATE_PAYMENTS_TARGET_ROLE
+        measure_mode = "sum"
+    else:
+        return None
+
+    if _ssa_area_category(fact) != _SSA_SSI_CALIBRATABLE_AREA_CATEGORY:
+        return None
+
+    geography_level = _geography_level(fact)
+    if geography_level == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+    elif geography_level == "country":
+        # The national by-area SSI payment duplicates the OASDI-table ssi_total
+        # already compiled from oasdi_ssi_payments; keep only the state rows.
+        if measure_id == "payment_amount":
+            return None
+        state_fips = None
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": measure_mode,
+        "base_variable": _SSA_SSI_BASE_VARIABLE,
+        "target_role": target_role,
+        "source_measure_id": measure_id,
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+    }
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="ssa",
         metadata=metadata,
     )
 

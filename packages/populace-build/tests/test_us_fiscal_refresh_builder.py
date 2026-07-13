@@ -2298,6 +2298,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+    monkeypatch.setattr(
+        builder, "assert_target_parity_manifest_current", lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_release_target_parity_gate",
+        lambda registry, **kwargs: builder.GateResult(
+            name="us_release_target_parity",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
 
     def fake_load_frame(path):
         captured["source_stage_events"].append("load_frame")

@@ -19,6 +19,8 @@
   "state_spm_poverty_levels.json",
   "support_spine.json",
   "take_up_contract.json",
+  "target_parity_feed_families.json",
+  "target_parity_manifest.json",
   "tax_expenditure_reforms.json"
  ]
 }
