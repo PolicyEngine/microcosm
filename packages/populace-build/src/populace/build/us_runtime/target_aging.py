@@ -124,6 +124,13 @@ _TARGET_ROLE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
     "cbo_qualified_dividend_income": "qualified_dividend_income",
     "cbo_net_capital_gain": "net_capital_gain",
     "cbo_net_business_income": "net_business_income",
+    # BEA NIPA all-population income targets (nonfiler-inclusive) age by their
+    # own CBO income-by-source series so a cy2023 source level is projected to
+    # the build year on the matching concept, not the AGI default. The cy2024
+    # NIPA wage level needs no aging (source == build period).
+    "nipa_wages_and_salaries": "wages_and_salaries",
+    "bea_state_wages": "wages_and_salaries",
+    "nipa_proprietors_income": "net_business_income",
 }
 
 

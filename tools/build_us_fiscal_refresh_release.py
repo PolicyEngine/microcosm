@@ -69,6 +69,7 @@ from populace.build.us_runtime import (
     assert_release_input_coverage_manifest_current,
     assert_take_up_contract_current,
     assert_take_up_treatments_consistent,
+    assert_target_parity_manifest_current,
     assert_validation_leaf_registry_current,
     compile_us_fiscal_target_registry,
     fetch_asec_2023_weeks_unemployed_source,
@@ -118,6 +119,7 @@ from populace.build.us_runtime import (
     us_register_consistency_gate,
     us_relationship_inputs_signal_gate,
     us_release_input_coverage_gate,
+    us_release_target_parity_gate,
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
@@ -6395,6 +6397,23 @@ def main() -> None:
     target_registry, medicaid_enrollment_substitutions = (
         apply_us_medicaid_enrollment_substitutions(target_registry)
     )
+    # Target-parity contract (launch gate): every administrative target family
+    # the retired us-data/eCPS pipeline calibrated to must be compiled into the
+    # registry or carry a reviewed exclusion (target_parity_manifest.json). Runs
+    # on the full compiled + substituted registry — before the optional
+    # diagnostic JCT skip — so the gate sees the true family surface, and
+    # hard-fails the build on a silently dropped family or a rotted manifest,
+    # exactly like the release input-coverage gate on the export frame.
+    assert_target_parity_manifest_current(registry=target_registry)
+    target_parity_gate = us_release_target_parity_gate(target_registry)
+    if not target_parity_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Target parity coverage failed: {failure}"
+                for failure in target_parity_gate.failures
+            )
+        )
     target_specs = target_registry.specs
     if args.diagnostic_skip_tax_expenditure_targets:
         tax_expenditure_measures = {

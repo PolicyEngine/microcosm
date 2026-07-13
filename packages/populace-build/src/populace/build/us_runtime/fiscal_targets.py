@@ -427,6 +427,17 @@ DIRECT_LEDGER_TARGETS: dict[
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
+    # Household net worth: the retired us-data/eCPS pipeline calibrated a
+    # national wealth control (loss.py "net_worth", PR #282). Per-household
+    # net_worth is SCF-imputed and fixed, so the weighted sum is linear in the
+    # reweighting weights — a valid direct-sum target that pins the post-reweight
+    # aggregate the input-stage SCF imputation does not. Federal Reserve Z.1
+    # series BOGZ1FL192090005Q (households & nonprofits net worth).
+    ("federal_reserve", "amount_outstanding", "fl152090005"): (
+        "net_worth",
+        "federal_reserve",
+        {"target_role": "household_net_worth"},
+    ),
 }
 
 
@@ -505,6 +516,17 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
             "target_role": "snap_households",
             "fact_aggregation": "time_mean",
         },
+    ),
+    # LIHEAP recipient households: the retired us-data/eCPS pipeline calibrated
+    # the ACF national recipient-household count (loss.py
+    # _add_liheap_targets_from_db, PR #688) as an indicator sum of the model's
+    # energy-subsidy receipt over SPM units — the exact SNAP-caseload pattern.
+    # Only the recipient COUNT is targeted; LIHEAP dollars stay deferred (the
+    # ACF component split is not a clean model concept, us-data PR #688).
+    ("hhs_acf_liheap", "households_served"): (
+        "spm_unit_energy_subsidy",
+        "hhs_acf_liheap",
+        {"target_role": "liheap_households"},
     ),
 }
 
@@ -2043,6 +2065,10 @@ def _reference_from_ledger_fact(
                 include_congressional_district_targets
             ),
         )
+    if source_name == "ssa":
+        return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
+    if source_name == "bea":
+        return _bea_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
@@ -2326,6 +2352,212 @@ def _population_age_reference_from_fact(
         measure=source_record_id,
         period=target_period,
         family="census_population",
+        metadata=metadata,
+    )
+
+
+# SSA by-area record sets carry an eligibility category (total/aged/blind/
+# disabled) fused into ``layout.groupby_value_id`` (``all_areas_total``,
+# ``alabama_aged`` …). Only the all-category ``total`` has a PolicyEngine-US
+# counterpart: the model computes SSI receipt and amount but not the SSI
+# eligibility-category split, so aged/blind/disabled sub-rows are reviewed
+# exclusions in the target-parity manifest rather than silent drops.
+_SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN = "oasdi_ssi_payments"
+_SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
+#: Engine-computed SSI counterpart both by-area families bind through. Receipt
+#: is an indicator sum of person-level ``ssi`` (recipients); federal payments
+#: are its dollar sum — the same variable the national ``ssi_total`` payment
+#: target already materializes.
+_SSA_SSI_BASE_VARIABLE = "ssi"
+SSA_SSI_RECIPIENTS_TARGET_ROLE = "ssi_recipients"
+SSA_SSI_STATE_PAYMENTS_TARGET_ROLE = "ssi_state_payments"
+
+
+def _ssa_area_category(fact: object) -> str:
+    """The SSA by-area eligibility category (``total``/``aged``/``blind``/...).
+
+    Encoded as the suffix of ``layout.groupby_value_id``; empty when the fact is
+    not an area-category row (e.g. the national OASDI payment aggregates).
+    """
+    groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
+    if not groupby_value_id:
+        return ""
+    return groupby_value_id.rsplit("_", 1)[-1]
+
+
+def _ssa_ssi_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile an SSA (``source_name == "ssa"``) fact into a US target.
+
+    Three SSA record sets reach here:
+
+    - ``oasdi_ssi_payments`` — the six national OASDI benefit and SSI payment
+      aggregates. Delegated unchanged to :func:`_direct_reference_from_fact` so
+      the standing ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (family ``ssa``:
+      ``social_security_total`` … ``ssi_total``) never regress.
+    - ``ssi_recipients.by_area_category`` — SSI recipients (a count). The
+      all-category ``total`` maps to an indicator sum of engine ``ssi`` receipt
+      at national and state grain (role ``ssi_recipients``). This is the
+      ``nation/ssa/ssi_recipients`` administrative family the retired
+      us-data/eCPS pipeline calibrated to that the populace registry dropped.
+    - ``ssi_payments.by_area_category`` — SSI federal payments (a dollar sum).
+      The national ``all_areas_total`` equals the ``oasdi_ssi_payments``
+      ``ssi_payments`` figure already compiled as ``ssi_total``, so only the
+      state ``total`` rows the national OASDI table does not carry are compiled
+      here (role ``ssi_state_payments``).
+
+    Non-``total`` eligibility categories (aged/blind/disabled) return ``None``;
+    PolicyEngine-US does not model the SSI eligibility-category split, so those
+    sub-rows are reviewed exclusions in the target-parity manifest.
+    """
+    record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+    if _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN in record_set_id:
+        return _direct_reference_from_fact(fact, target_period=target_period)
+
+    measure_id = _measure_id(fact)
+    if measure_id == "recipient_count":
+        target_role = SSA_SSI_RECIPIENTS_TARGET_ROLE
+        measure_mode = "indicator_sum"
+    elif measure_id == "payment_amount":
+        target_role = SSA_SSI_STATE_PAYMENTS_TARGET_ROLE
+        measure_mode = "sum"
+    else:
+        return None
+
+    if _ssa_area_category(fact) != _SSA_SSI_CALIBRATABLE_AREA_CATEGORY:
+        return None
+
+    geography_level = _geography_level(fact)
+    if geography_level == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+    elif geography_level == "country":
+        # The national by-area SSI payment duplicates the OASDI-table ssi_total
+        # already compiled from oasdi_ssi_payments; keep only the state rows.
+        if measure_id == "payment_amount":
+            return None
+        state_fips = None
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": measure_mode,
+        "base_variable": _SSA_SSI_BASE_VARIABLE,
+        "target_role": target_role,
+        "source_measure_id": measure_id,
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+    }
+    if state_fips:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="ssa",
+        metadata=metadata,
+    )
+
+
+# BEA all-population (nonfiler-inclusive) income targets the retired us-data/
+# eCPS pipeline calibrated to (us-data utils/loss.py
+# BEA_NIPA_DIRECT_SUM_TARGETS, PR #994). Only the national wage and proprietors'
+# income series are direct-sum targets here: us-data explicitly declined the
+# NIPA interest/dividend totals because they include imputed interest,
+# pension-plan dividends, and trust flows that are not a close microdata concept
+# (PR #1059), and its state wage target (PR #1034) requires a place-of-work ->
+# residence definitional adjustment the feed's raw SAINC4 line-50 facts cannot
+# reproduce, so state wages are a documented reviewed exclusion. Every other BEA
+# series in the feed is a ledger reference fact, not a calibration target.
+_BEA_NATIONAL_WAGES_RECORD_SET = "bea_nipa.total_wages_salaries"
+_BEA_NATIONAL_PROPRIETORS_RECORD_SET = "bea_nipa.proprietors_income"
+#: The engine-computed counterparts us-data mapped these NIPA totals to.
+_BEA_WAGES_BASE_VARIABLE = "employment_income_before_lsr"
+_BEA_PROPRIETORS_BASE_VARIABLES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+    "farm_operations_income",
+    "partnership_s_corp_income",
+)
+BEA_NIPA_WAGES_TARGET_ROLE = "nipa_wages_and_salaries"
+BEA_NIPA_PROPRIETORS_TARGET_ROLE = "nipa_proprietors_income"
+
+
+def _bea_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    """Compile a BEA (``source_name == "bea"``) fact into a US target.
+
+    Follows the retired us-data/eCPS mapping exactly (us-data
+    utils/loss.py ``BEA_NIPA_DIRECT_SUM_TARGETS``, PR #994):
+
+    - ``bea_nipa.total_wages_salaries`` (BEA NIPA Table 2.1 gross wages and
+      salaries for all workers, **including nonfilers**; FRED A034RC) →
+      economy-wide engine ``employment_income_before_lsr``, national. This is
+      the ~$12.4T wage universe that filed tax returns and CPS-reported wages
+      (~$4T in the base microdata) systematically undercount — the nonfiler /
+      unreported-wage coverage gap the target was added to close (PR #994).
+    - ``bea_nipa.proprietors_income`` (BEA NIPA Table 2.1 proprietors' income
+      with IVA and CCAdj, all persons; FRED A041RC) → the same additive
+      expression us-data used: Schedule C non-SSTB and SSTB self-employment
+      income before labor-supply responses, farm operations income, and active
+      partnership/S-corp income, national.
+
+    Only these two national record sets compile; every other BEA series returns
+    ``None`` (a reviewed exclusion in the target-parity manifest, whose fence
+    records the NIPA interest/dividend decline and the state-wage
+    residence-adjustment gap).
+    """
+    record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+    if _geography_level(fact) != "country":
+        return None
+
+    if record_set_id == _BEA_NATIONAL_WAGES_RECORD_SET:
+        base_variable: str | tuple[str, ...] = _BEA_WAGES_BASE_VARIABLE
+        target_role = BEA_NIPA_WAGES_TARGET_ROLE
+    elif record_set_id == _BEA_NATIONAL_PROPRIETORS_RECORD_SET:
+        base_variable = _BEA_PROPRIETORS_BASE_VARIABLES
+        target_role = BEA_NIPA_PROPRIETORS_TARGET_ROLE
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": "sum",
+        "target_role": target_role,
+        "source_measure_id": _measure_id(fact),
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+    }
+    if isinstance(base_variable, tuple):
+        metadata["base_variables"] = ",".join(base_variable)
+    else:
+        metadata["base_variable"] = base_variable
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="bea",
+        signed=_numeric_value(fact) < 0,
         metadata=metadata,
     )
 
