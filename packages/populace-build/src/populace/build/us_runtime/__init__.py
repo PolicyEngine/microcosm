@@ -166,6 +166,13 @@ from populace.build.us_runtime.domestic_production import (
     us_domestic_production_ald_stage_spec,
     us_domestic_production_ald_summary,
 )
+from populace.build.us_runtime.education_assistance_source import (
+    ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+    ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    fetch_asec_education_assistance_source,
+    fill_asec_education_assistance_source,
+    load_asec_education_assistance_sources,
+)
 from populace.build.us_runtime.education_inputs import (
     US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
     US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS,
@@ -1258,6 +1265,11 @@ __all__ = [
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
+    "ASEC_EDUCATION_ASSISTANCE_ARCHIVES",
+    "ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS",
+    "fetch_asec_education_assistance_source",
+    "fill_asec_education_assistance_source",
+    "load_asec_education_assistance_sources",
     "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_EDUCATION_INPUTS_STAGE_NAME",
     "derive_us_education_inputs_from_manifest",

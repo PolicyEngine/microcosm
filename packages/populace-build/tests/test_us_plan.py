@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -985,3 +986,268 @@ class TestUsSources:
                 if needle in text:
                     offenders.append((rel, needle))
         assert offenders == []
+
+
+class TestBaseStageSourceClosure:
+    """Every base-stage required source column has a declared provider.
+
+    populace#417's sibling failure class: a stage's REQUIRED_SOURCE_COLUMNS
+    named a raw ASEC column (``ED_VAL``) that no ingestion path or earlier
+    stage provided, and the gap only surfaced 17 stages into a full-scale
+    build.  This test closes the class statically: the union of base-stage
+    requirements must be covered by the frozen census_cps person columns,
+    pool-constructed identity columns, the pinned sidecar restorations, or
+    another stage's declared outputs.
+    """
+
+    #: Person columns of the frozen census_cps_2022/2023/2024 inputs (union),
+    #: pinned so CI can check requirement closure without the data files.
+    #: Regenerate via pd.read_hdf(..., "person", stop=1).columns if the
+    #: upstream archives are ever re-vendored.
+    CENSUS_CPS_PERSON_COLUMNS = frozenset(
+        {
+            "ACTC_CRD",
+            "AGI",
+            "ANN_VAL",
+            "A_AGE",
+            "A_ENRLW",
+            "A_EXPRRP",
+            "A_FAMREL",
+            "A_FAMTYP",
+            "A_FNLWGT",
+            "A_FTPT",
+            "A_HRS1",
+            "A_HSCOL",
+            "A_LINENO",
+            "A_MARITL",
+            "A_MJOCC",
+            "A_SEX",
+            "A_SPOUSE",
+            "CAID",
+            "CAP_VAL",
+            "CENSUS_TAX_ID",
+            "CHAMPVA",
+            "CHSP_VAL",
+            "CSP_VAL",
+            "CTC_CRD",
+            "DIS_SC1",
+            "DIS_SC2",
+            "DIS_VAL1",
+            "DIS_VAL2",
+            "DIV_VAL",
+            "DST_SC1",
+            "DST_SC1_YNG",
+            "DST_SC2",
+            "DST_SC2_YNG",
+            "DST_VAL1",
+            "DST_VAL1_YNG",
+            "DST_VAL2",
+            "DST_VAL2_YNG",
+            "EIT_CRED",
+            "FEDTAX_AC",
+            "FEDTAX_BC",
+            "FRSE_VAL",
+            "HRSWK",
+            "IHSFLG",
+            "INT_VAL",
+            "I_ERNVAL",
+            "I_SEVAL",
+            "LKWEEKS",
+            "MARG_TAX",
+            "MCARE",
+            "MIL",
+            "MOOP",
+            "NOW_CAID",
+            "NOW_CHAMPVA",
+            "NOW_COV",
+            "NOW_DIR",
+            "NOW_GRP",
+            "NOW_IHSFLG",
+            "NOW_MCAID",
+            "NOW_MCARE",
+            "NOW_MIL",
+            "NOW_MRK",
+            "NOW_MRKS",
+            "NOW_MRKUN",
+            "NOW_NONM",
+            "NOW_OTHMT",
+            "NOW_PCHIP",
+            "NOW_PRIV",
+            "NOW_PUB",
+            "NOW_VACARE",
+            "OI_OFF",
+            "OI_VAL",
+            "PAW_VAL",
+            "PEAFEVER",
+            "PECOHAB",
+            "PEDISDRS",
+            "PEDISEAR",
+            "PEDISEYE",
+            "PEDISOUT",
+            "PEDISPHY",
+            "PEDISREM",
+            "PEINUSYR",
+            "PEIO1COW",
+            "PEIOOCC",
+            "PEMCPREM",
+            "PENATVTY",
+            "PEN_SC1",
+            "PEN_SC2",
+            "PEPAR1",
+            "PEPAR2",
+            "PERIDNUM",
+            "PF_SEQ",
+            "PHIP_VAL",
+            "PH_SEQ",
+            "PMED_VAL",
+            "PNSN_VAL",
+            "POCCU2",
+            "POTC_VAL",
+            "PRCITSHP",
+            "PRDTHSP",
+            "PRDTRACE",
+            "PTOTVAL",
+            "P_SEQ",
+            "RESNSS1",
+            "RESNSS2",
+            "RESNSSI1",
+            "RESNSSI2",
+            "RETCB_VAL",
+            "RNT_VAL",
+            "SEMP_VAL",
+            "SPM_ACTC",
+            "SPM_BBSUBVAL",
+            "SPM_CAPHOUSESUB",
+            "SPM_CAPWKCCXPNS",
+            "SPM_CHILDCAREXPNS",
+            "SPM_CHILDSUPPD",
+            "SPM_EITC",
+            "SPM_ENGVAL",
+            "SPM_EQUIVSCALE",
+            "SPM_FAMTYPE",
+            "SPM_FEDTAX",
+            "SPM_FEDTAXBC",
+            "SPM_FICA",
+            "SPM_GEOADJ",
+            "SPM_HAGE",
+            "SPM_HHISP",
+            "SPM_HMARITALSTATUS",
+            "SPM_HRACE",
+            "SPM_ID",
+            "SPM_MEDXPNS",
+            "SPM_NUMADULTS",
+            "SPM_NUMKIDS",
+            "SPM_NUMPER",
+            "SPM_POOR",
+            "SPM_POVTHRESHOLD",
+            "SPM_RESOURCES",
+            "SPM_SCHLUNCH",
+            "SPM_SNAPSUB",
+            "SPM_STTAX",
+            "SPM_TENMORTSTATUS",
+            "SPM_TOTVAL",
+            "SPM_WCOHABIT",
+            "SPM_WEIGHT",
+            "SPM_WFOSTER22",
+            "SPM_WICVAL",
+            "SPM_WKXPNS",
+            "SPM_WNEWHEAD",
+            "SPM_WNEWPARENT",
+            "SPM_WUI_LT15",
+            "SSI_VAL",
+            "SSI_YN",
+            "SS_VAL",
+            "SS_YN",
+            "STATETAX_A",
+            "STATETAX_B",
+            "TAX_ID",
+            "TAX_INC",
+            "UC_VAL",
+            "VET_VAL",
+            "WC_VAL",
+            "WICYN",
+            "WKSWORK",
+            "WSAL_VAL",
+        }
+    )
+
+    #: Columns the pool constructor itself attaches to every person row.
+    POOL_CONSTRUCTED_COLUMNS = frozenset(
+        {
+            "source_year",
+            "person_id",
+            "person_weight",
+            "person_support_channel",
+            "person_tax_unit_id",
+            "person_household_id",
+            "person_family_id",
+            "person_spm_unit_id",
+            "source_household_id",
+            "person_source_id",
+        }
+    )
+
+    #: Raw columns restored from pinned official sidecars because the frozen
+    #: census_cps inputs never carried them (LKWEEKS only for income year
+    #: 2022; ED_VAL for every pooled year).
+    SIDECAR_RESTORED_COLUMNS = frozenset({"LKWEEKS", "ED_VAL"})
+
+    #: Release-time stage constants whose inputs are produced inside the
+    #: fiscal-refresh release tool, not the base builder (org_wages consumes
+    #: hours/weeks columns the release derives upstream of it).
+    RELEASE_TIME_REQUIREMENT_CONSTANTS = frozenset(
+        {
+            "US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS",
+        }
+    )
+
+    def test_every_base_stage_requirement_has_a_provider(self) -> None:
+        import populace.build.us_runtime as us_runtime
+
+        produced: set[str] = set()
+        for name in dir(us_runtime):
+            if name.endswith("_OUTPUT_COLUMNS"):
+                produced.update(getattr(us_runtime, name))
+        manifest = json.loads(
+            (
+                ROOT
+                / "packages/populace-build/src/populace/build/us/source_stages.json"
+            ).read_text()
+        )
+        for stage in manifest.get("stages", []):
+            produced.update(stage.get("outputs", ()))
+        # The CPS-carried derivation attaches its person/SPM inputs (age,
+        # is_female, medical expenses, ...) before any source stage runs.
+        from populace.build.us_runtime.cps_carried import (
+            CPS_CARRIED_FORMULA_OWNED_COLUMNS,
+            CPS_CARRIED_PERSON_INPUTS,
+            CPS_CARRIED_SPM_UNIT_INPUTS,
+        )
+
+        produced.update(CPS_CARRIED_PERSON_INPUTS)
+        produced.update(CPS_CARRIED_FORMULA_OWNED_COLUMNS)
+        produced.update(CPS_CARRIED_SPM_UNIT_INPUTS)
+
+        providers = (
+            self.CENSUS_CPS_PERSON_COLUMNS
+            | self.POOL_CONSTRUCTED_COLUMNS
+            | self.SIDECAR_RESTORED_COLUMNS
+            | produced
+        )
+        unsourced: dict[str, list[str]] = {}
+        for name in dir(us_runtime):
+            if not name.endswith("_REQUIRED_SOURCE_COLUMNS"):
+                continue
+            if name in self.RELEASE_TIME_REQUIREMENT_CONSTANTS:
+                continue
+            missing = [
+                column
+                for column in getattr(us_runtime, name)
+                if column not in providers
+            ]
+            if missing:
+                unsourced[name] = missing
+        assert unsourced == {}, (
+            "Stage source columns with no declared provider (wire an ingestion "
+            f"carry, a pinned sidecar, or an upstream stage output): {unsourced}"
+        )

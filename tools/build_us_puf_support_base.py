@@ -59,6 +59,7 @@ from populace.build.us_runtime import (
     impute_us_puf_tax_detail_support,
     load_acs_2022_rent_donor,
     load_asec_2023_weeks_unemployed_source,
+    load_asec_education_assistance_sources,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
@@ -259,6 +260,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Optional local path to the SHA-pinned official 2023 ASEC CSV ZIP "
             "used to restore income-year-2022 LKWEEKS. When omitted the "
             "official Census archive is fetched and verified."
+        ),
+    )
+    parser.add_argument(
+        "--asec-education-source",
+        action="append",
+        metavar="YEAR=PATH",
+        help=(
+            "Optional INCOME_YEAR=PATH mapping to a local copy of the "
+            "SHA-pinned official ASEC survey archive (zip or extracted "
+            "pppub member) restoring that pooled income year's ED_VAL "
+            "(income year YYYY maps to the survey-year YYYY+1 archive). "
+            "Years without a mapping are fetched from the official Census "
+            "archive and verified against the same pins."
         ),
     )
     parser.add_argument(
@@ -537,6 +551,38 @@ def _staged_subprocess_environment() -> dict[str, str]:
     return environment
 
 
+def _asec_education_source_paths(
+    args: argparse.Namespace,
+) -> dict[int, Path] | None:
+    """Parse --asec-education-source INCOME_YEAR=PATH mappings."""
+
+    if not getattr(args, "asec_education_source", None):
+        return None
+    paths: dict[int, Path] = {}
+    for value in args.asec_education_source:
+        raw_year, _, raw_path = value.partition("=")
+        if not raw_path:
+            raise SystemExit(
+                "--asec-education-source values must be INCOME_YEAR=PATH, got "
+                f"{value!r}."
+            )
+        year = int(raw_year)
+        if year in paths:
+            raise SystemExit(f"--asec-education-source repeats income year {year}.")
+        paths[year] = Path(raw_path)
+    return paths
+
+
+def _pooled_income_years(args: argparse.Namespace) -> tuple[int, ...]:
+    """Income years of the pooled ASEC inputs, from the --asec-h5 mappings."""
+
+    years = []
+    for value in getattr(args, "asec_h5", None) or ():
+        raw_year, _, _ = value.partition("=")
+        years.append(int(raw_year))
+    return tuple(sorted(set(years)))
+
+
 def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
     """Return the canonical inputs and settings locked across stage resumes."""
 
@@ -575,6 +621,16 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "asec_max_households": args.asec_max_households,
         "asec_2023_weeks_unemployed_source": path(
             args.asec_2023_weeks_unemployed_source
+        ),
+        "asec_education_source": (
+            None
+            if _asec_education_source_paths(args) is None
+            else {
+                str(year): str(source_path.resolve())
+                for year, source_path in sorted(
+                    _asec_education_source_paths(args).items()
+                )
+            }
         ),
         "acs_h5": path(args.acs_h5),
         "assign_congressional_districts": bool(args.assign_congressional_districts),
@@ -785,6 +841,10 @@ def _run_all(
     )
     weeks_unemployed_source = load_asec_2023_weeks_unemployed_source(
         weeks_unemployed_source_path
+    )
+    education_assistance_source = load_asec_education_assistance_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
     )
     base = derive_us_cps_carried_inputs(raw_base)
     base = with_us_prior_year_income_inputs(
@@ -1156,6 +1216,7 @@ def _run_all(
         imputed,
         seed=args.seed,
         time_period=args.target_year,
+        asec_education_source=education_assistance_source,
     )
     education_inputs_gate = us_education_inputs_signal_gate(imputed)
     if not education_inputs_gate.passed:
@@ -1286,6 +1347,10 @@ def _run_all(
             "upstream_archive_sha256": (ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256),
             "rows": int(len(weeks_unemployed_source)),
             "audit": dict(weeks_unemployed_source.attrs.get("source_audit", {})),
+        },
+        "education_assistance_source": {
+            "income_years": [int(year) for year in _pooled_income_years(args)],
+            "audit": dict(education_assistance_source.attrs.get("source_audit", {})),
         },
         "output_h5": str(output_h5),
         "output_sha256": _sha256(output_h5),
@@ -1964,10 +2029,15 @@ def _post_qrf_frame_stage(
             "Retirement-distribution signal gate failed",
         )
     elif stage == "education_inputs_post_clone":
+        education_assistance_source = load_asec_education_assistance_sources(
+            _asec_education_source_paths(args),
+            income_years=_pooled_income_years(args),
+        )
         frame = with_us_education_inputs(
             frame,
             seed=args.seed,
             time_period=args.target_year,
+            asec_education_source=education_assistance_source,
         )
         signals["education_inputs_signal"] = _checked_gate_payload(
             us_education_inputs_signal_gate(frame),
