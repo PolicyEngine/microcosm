@@ -1,12 +1,14 @@
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from populace.build import FitWeightRecord
+from populace.build.frame_checkpoint import load_frame_checkpoint
 from populace.build.us_runtime import (
     US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
@@ -278,6 +280,79 @@ def test_stage_cli_rejects_unknown_stage() -> None:
         )
 
     assert exc.value.code == 2
+
+
+def test_named_stage_requires_checkpoint_directory() -> None:
+    builder = _load_support_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._parse_args(
+            [
+                "--base-h5",
+                "base.h5",
+                "--puf-h5",
+                "puf.h5",
+                "--out",
+                "out",
+                "--without-block-ladder",
+                "--stage",
+                "a",
+            ]
+        )
+
+    assert exc.value.code == 2
+
+
+def test_main_legacy_all_has_no_checkpoint_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_support_builder_module()
+    args = SimpleNamespace(stage="all", checkpoint_dir=None)
+    calls: list[object] = []
+    sentinel_frame = object()
+    monkeypatch.setattr(builder, "_parse_args", lambda _argv: args)
+    monkeypatch.setattr(
+        builder,
+        "_run_all",
+        lambda actual_args: calls.append(actual_args) or sentinel_frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_frame_checkpoint",
+        lambda *_args, **_kwargs: pytest.fail("legacy path wrote a checkpoint"),
+    )
+
+    builder.main([])
+
+    assert calls == [args]
+
+
+def test_main_checkpointed_all_profiles_and_writes_restorable_frame(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = SimpleNamespace(
+        stage="all",
+        checkpoint_dir=tmp_path,
+        target_year=2024,
+    )
+    frame = _minimal_us_frame()
+    monkeypatch.setattr(builder, "_parse_args", lambda _argv: args)
+    monkeypatch.setattr(builder, "_run_all", lambda _args: frame)
+
+    builder.main([])
+
+    checkpoint_path = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    loaded = load_frame_checkpoint(checkpoint_path)
+    assert loaded.metadata == {
+        "function_boundaries": [],
+        "stage": "all",
+        "target_year": 2024,
+    }
+    assert loaded.frame.weights_for("household").kind is WeightKind.DESIGN
+    profile = json.loads((tmp_path / "stage_profile.json").read_text())
+    assert profile["stages"]["all"]["status"] == "succeeded"
 
 
 def test_pooled_asec_mode_loads_sources_with_manifest_metadata(

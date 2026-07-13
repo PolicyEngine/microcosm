@@ -18,8 +18,10 @@ import numpy as np
 import pandas as pd
 
 from populace.build import FitWeightRecord, weights_audit_gate
+from populace.build.frame_checkpoint import write_frame_checkpoint
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
+from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -107,11 +109,12 @@ from populace.frame.units import US_SCHEMA
 PERIOD = 2024
 DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
+ALL_STAGE_CHECKPOINT_FILENAME = "stage_all.frame.h5"
 STAGE_NAMES = ("a", "b", "c", "d")
 # Phase 2 populates this only after the conductor supplies empirical cut points.
 # Each entry is ``(stage_name, ordered_function_boundaries)`` so changing the
 # process topology cannot silently change the transformation order.
-STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = ()
+STAGE_BOUNDARIES: list[tuple[str, tuple[str, ...]]] = []
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -265,15 +268,43 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
+    if args.stage != "all" and args.checkpoint_dir is None:
+        parser.error("a named --stage requires --checkpoint-dir")
     return args
 
 
-def main() -> None:
-    args = _parse_args()
+def main(argv: list[str] | None = None) -> None:
+    """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
 
-    if getattr(args, "stage", "all") != "all":
+    args = _parse_args() if argv is None else _parse_args(argv)
+
+    stage = getattr(args, "stage", "all")
+    checkpoint_dir = getattr(args, "checkpoint_dir", None)
+    if stage != "all":
         _run_configured_stage(args)
         return
+    if checkpoint_dir is None:
+        # This is intentionally a direct call with no profiler, checkpoint
+        # directory creation, or other side effect.  It is the pre-refactor
+        # pipeline and remains the byte-for-byte compatibility path.
+        _run_all(args)
+        return
+
+    with profile_stage("all", checkpoint_dir):
+        frame = _run_all(args)
+        write_frame_checkpoint(
+            checkpoint_dir / ALL_STAGE_CHECKPOINT_FILENAME,
+            frame,
+            metadata={
+                "stage": "all",
+                "target_year": args.target_year,
+                "function_boundaries": [],
+            },
+        )
+
+
+def _run_all(args: argparse.Namespace) -> Frame:
+    """Run the existing single-process pipeline in its original order."""
 
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -907,6 +938,7 @@ def main() -> None:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+    return imputed
 
 
 def _run_configured_stage(args: argparse.Namespace) -> None:

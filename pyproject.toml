@@ -30,3 +30,6 @@ testpaths = ["packages"]
 # importlib mode lets shards share test-file basenames (each has its own
 # test_compat.py) without the prepend-mode rootdir collision.
 addopts = "-q --import-mode=importlib"
+markers = [
+    "slow: end-to-end tests that require large local source artifacts",
+]

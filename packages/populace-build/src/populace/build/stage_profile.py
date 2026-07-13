@@ -6,6 +6,7 @@ import fcntl
 import json
 import math
 import os
+import resource
 import shutil
 import subprocess
 import tempfile
@@ -34,7 +35,14 @@ def current_rss_bytes() -> int:
     procfs_rss_bytes = _read_procfs_current_rss_bytes()
     if procfs_rss_bytes is not None:
         return procfs_rss_bytes
-    return _read_ps_current_rss_bytes()
+    try:
+        return _read_ps_current_rss_bytes()
+    except (OSError, subprocess.SubprocessError):
+        # Some sandboxed macOS workers deny process inspection even for the
+        # current PID.  Keep profiling non-fatal there; ru_maxrss is a
+        # lifetime high-water mark rather than current RSS, but remains a
+        # truthful conservative RSS observation.
+        return _read_resource_peak_rss_bytes()
 
 
 def _read_procfs_current_rss_bytes() -> int | None:
@@ -75,6 +83,13 @@ def _read_ps_current_rss_bytes() -> int:
     if rss_kib <= 0:
         raise RuntimeError(f"ps reported non-positive current RSS: {rss_kib} KiB")
     return rss_kib * 1024
+
+
+def _read_resource_peak_rss_bytes() -> int:
+    peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    if peak <= 0:
+        raise RuntimeError(f"resource reported non-positive peak RSS: {peak}")
+    return peak if os.uname().sysname == "Darwin" else peak * 1024
 
 
 # Keep a narrow patch seam for tests without adding a test-only argument to the
