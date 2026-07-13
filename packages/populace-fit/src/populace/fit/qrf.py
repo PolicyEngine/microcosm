@@ -384,6 +384,21 @@ _PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 #: to one (or another positive width) without changing the model API.
 _N_JOBS_ENV = "POPULACE_FIT_N_JOBS"
 
+#: A target whose ``y`` has at most this many distinct values is treated as
+#: near-discrete for leaf-storage purposes. Continuous dollar targets have
+#: distinct counts in the thousands; the pathological class (QBI
+#: ``*_would_be_qualified`` six-level ratios, ``business_is_sstb``, mortgage
+#: origination years) tops out at 17.
+_DISCRETE_Y_UNIQUE_MAX = 32
+
+#: Per-leaf sample cap applied to near-discrete targets in place of full leaf
+#: retention. A leaf's conditional over at most a few dozen atoms is estimated
+#: from this many seeded samples with multinomial error ~1/sqrt(4096) per atom
+#: share — invisible at draw time — while bounding the forest's dense per-leaf
+#: value store, which with full retention reached 57-67GB on a single such
+#: target (Build M base, target 40).
+_DISCRETE_Y_LEAF_BOUND = 4_096
+
 
 def _fit_n_jobs() -> int:
     """Resolve quantile-forest fit parallelism.
@@ -462,11 +477,32 @@ def _fit_forest(
     conditional to ~``n_estimators`` atoms and undershoots tail mass; ``None``
     keeps every leaf sample, so the conditional reflects the full leaf
     population.
+
+    Near-discrete targets are the exception to the ``None`` policy: nodes whose
+    ``y`` is already pure stop splitting, so a dominant repeated value
+    concentrates into leaves holding hundreds of thousands of identical
+    samples, and the forest's dense per-leaf value store
+    (``trees x leaves x largest_leaf``) reaches tens of GB. Such a leaf's
+    conditional is a distribution over a handful of atoms, so a seeded
+    subsample of :data:`_DISCRETE_Y_LEAF_BOUND` values per leaf reproduces
+    every leaf quantile to multinomial noise while bounding memory; the guard
+    triggers on the pre-bootstrap ``y`` so it is a deterministic property of
+    the donor column, and it never touches continuous targets or explicit
+    ``max_samples_leaf`` configurations.
     """
     x_fit, y_fit = _weighted_bootstrap(x, y, weights, rng)
+    effective_max_samples_leaf = max_samples_leaf
+    if max_samples_leaf is None and 2 <= len(np.unique(y)) <= _DISCRETE_Y_UNIQUE_MAX:
+        effective_max_samples_leaf = _DISCRETE_Y_LEAF_BOUND
+        print(
+            "populace-fit: near-discrete target "
+            f"({len(np.unique(y))} distinct values); bounding "
+            f"max_samples_leaf at {_DISCRETE_Y_LEAF_BOUND} for this forest.",
+            flush=True,
+        )
     model = RandomForestQuantileRegressor(
         n_estimators=n_estimators,
-        max_samples_leaf=max_samples_leaf,
+        max_samples_leaf=effective_max_samples_leaf,
         random_state=seed,
         # Tree fitting and prediction parallelize without affecting the
         # seed-determined draws; forests are deterministic per random_state
