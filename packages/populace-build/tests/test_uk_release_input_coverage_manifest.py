@@ -60,9 +60,7 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
     ]
     assert evidence["effective_nondefault_mass_shares"]["gift_aid"] == 0.0
     assert (
-        evidence["effective_nondefault_mass_shares"][
-            "charitable_investment_gifts"
-        ]
+        evidence["effective_nondefault_mass_shares"]["charitable_investment_gifts"]
         == 0.0
     )
     assert (
@@ -115,7 +113,9 @@ def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
     assert regenerated == committed
 
 
-def test_initial_manifest_requires_only_effectively_populated_reference_inputs() -> None:
+def test_initial_manifest_requires_only_effectively_populated_reference_inputs() -> (
+    None
+):
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
@@ -130,8 +130,7 @@ def test_initial_manifest_requires_only_effectively_populated_reference_inputs()
         if entry["status"] == "reviewed_exclusion"
     } == {"charitable_investment_gifts", "gift_aid"}
     assert all(
-        entry["reason"]
-        == "not yet ported from enhanced FRS pipeline — pending review"
+        entry["reason"] == "not yet ported from enhanced FRS pipeline — pending review"
         and entry["tracking_note"].strip()
         for entry in manifest["columns"].values()
         if entry["status"] == "reviewed_exclusion"
@@ -154,9 +153,7 @@ def test_hmrc_family_is_deferred_with_future_promotion_contract() -> None:
     family = manifest["family_coverage"]["hmrc_spi_income"]
 
     assert family["status"] == "deferred_until_restored"
-    assert family["restoration_status"] == (
-        "blocked_pending_reviewed_frs_decomposition"
-    )
+    assert family["restoration_status"] == "adjudicated_partial_replay"
     assert family["source_manifest"] == "hmrc_income_source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
     assert family["source_vintages"] == {
@@ -170,9 +167,31 @@ def test_hmrc_family_is_deferred_with_future_promotion_contract() -> None:
         "rebuilt 2022-23 SPI support channel; total national mass is conserved."
     )
     assert family["input_weight_kind"] == "importance"
-    assert family["output_weight_kind"] == "calibrated"
+    assert family["output_weight_kind"] == "importance"
+    assert family["calibration_permitted"] is False
     assert family["required_target_count"] == 208
     assert family["band_measure"] == "hmrc_spi_assessable_income"
+    assert family["fact_outcome_counts"] == {
+        "exact_pass": 0,
+        "exact_fail": 0,
+        "directional_pass": 0,
+        "directional_fail": 0,
+        "excluded_with_fence": 208,
+    }
+    assert family["fact_fence_id"] == "full_frs_tei_band_unavailable"
+    assert len(family["reviewed_fence_ids"]) == 8
+    assert family["retained_frs_constituents"] == {
+        "full": [
+            "hmrc_spi_pay",
+            "hmrc_spi_unemployment_benefit_income",
+            "hmrc_spi_incapacity_benefit_income",
+        ],
+        "named_subsets": [
+            "ossben_identifiable_subset",
+            "srp_regular_code5",
+        ],
+        "source_absent": ["EPB", "EXPS", "TAXTERM", "MOTHINC", "OTHERINC"],
+    }
     assert family["effective_mass_requirements"] == {
         "gift_aid": {
             "status": "distributional_required",

@@ -464,6 +464,7 @@
   "hmrc_spi_income": {
    "band_measure": "hmrc_spi_assessable_income",
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "calibration_permitted": false,
    "effective_mass_requirements": {
     "charitable_investment_gifts": {
      "mass_share_denominator": "all_person_effective_mass",
@@ -480,8 +481,16 @@
      "support_channel_column": "person_support_channel"
     }
    },
+   "fact_fence_id": "full_frs_tei_band_unavailable",
+   "fact_outcome_counts": {
+    "directional_fail": 0,
+    "directional_pass": 0,
+    "exact_fail": 0,
+    "exact_pass": 0,
+    "excluded_with_fence": 208
+   },
    "input_weight_kind": "importance",
-   "output_weight_kind": "calibrated",
+   "output_weight_kind": "importance",
    "promotion_rule": "Gift Aid inputs count as restored only in a build whose rebuilt SPI channel clears the effective-mass floor; raw column presence alone is not restoration.",
    "required_components": [
     "employment_income",
@@ -495,9 +504,37 @@
    ],
    "required_mass_change_reason": "Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
    "required_target_count": 208,
-   "restoration_status": "blocked_pending_reviewed_frs_decomposition",
+   "restoration_status": "adjudicated_partial_replay",
+   "retained_frs_constituents": {
+    "full": [
+     "hmrc_spi_pay",
+     "hmrc_spi_unemployment_benefit_income",
+     "hmrc_spi_incapacity_benefit_income"
+    ],
+    "named_subsets": [
+     "ossben_identifiable_subset",
+     "srp_regular_code5"
+    ],
+    "source_absent": [
+     "EPB",
+     "EXPS",
+     "TAXTERM",
+     "MOTHINC",
+     "OTHERINC"
+    ]
+   },
+   "reviewed_fence_ids": [
+    "frs_epb_source_absent",
+    "frs_exps_source_absent",
+    "frs_taxterm_source_absent",
+    "frs_mothinc_source_absent",
+    "frs_otherinc_source_absent",
+    "frs_ossben_identifiable_subset",
+    "frs_srp_regular_code5_subset",
+    "full_frs_tei_band_unavailable"
+   ],
    "source_manifest": "hmrc_income_source_stages.json",
-   "source_manifest_sha256": "b7ae759c6b970118fe2a8e15406afa6f326f5fabe4ae7600a740212a578d160d",
+   "source_manifest_sha256": "a5d817fd56f592637de75dcfb19c39417e4386f1d10918a5de51e5d14f37cec3",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023",
@@ -505,8 +542,7 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income",
-   "status": "deferred_until_restored",
-   "taxpayer_mask": "hmrc_spi_taxpayer"
+   "status": "deferred_until_restored"
   }
  },
  "reference": {

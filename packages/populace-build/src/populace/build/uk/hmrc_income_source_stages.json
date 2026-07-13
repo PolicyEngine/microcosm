@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "The UK HMRC/SPI income family is source-manifest-defined. Private donor data must be supplied locally, every artifact must be SHA-256 verified at runtime, declared source columns and published bands fail closed, and calibrated weights must retain a strictly positive reviewed prior.",
+  "policy": "The UK HMRC/SPI income family is source-manifest-defined. Private donor data must be supplied locally, every artifact must be SHA-256 verified at runtime, retained FRS constituents and published bands fail closed, and the current replay keeps importance-kind weights because all 208 banded facts require an unavailable full FRS total-income measure.",
   "stages": [
     {
       "stage": "hmrc_spi_income",
@@ -34,7 +34,7 @@
           "runtime_sha256_required": true
         },
         {
-          "role": "calibration_surface",
+          "role": "published_fact_surface",
           "kind": "administrative_table",
           "format": "ods",
           "survey": "HMRC Personal Incomes Tables 3.6 and 3.7",
@@ -62,28 +62,91 @@
           "fail_on_mismatch": true
         },
         {
-          "kind": "require_frs_hmrc_employment_crosswalk",
+          "kind": "retain_adjudicated_frs_hmrc_leaves",
           "population": "certified_populace_uk_candidate_base_channel",
-          "normalized_constituents": [
-            "hmrc_spi_pay",
+          "source_vintage": "2023-24",
+          "mapped_build_period": 2023,
+          "annualization": "weekly raw FRS amounts * (365.25 / 7)",
+          "status": "adjudicated_partial_replay",
+          "retained_full_constituents": {
+            "hmrc_spi_pay": {
+              "spi_concept": "PAY",
+              "scope": "full",
+              "raw_sources": [
+                "ADULT.INEARNS"
+              ],
+              "formula": "max(0, ADULT.INEARNS) * (365.25 / 7)"
+            },
+            "hmrc_spi_unemployment_benefit_income": {
+              "spi_concept": "UBISJA",
+              "scope": "full",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=14:BENAMT",
+                "BENEFITS.BENEFIT=19:BENAMT"
+              ],
+              "formula": "sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)"
+            },
+            "hmrc_spi_incapacity_benefit_income": {
+              "spi_concept": "INCPBEN",
+              "scope": "full",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=17:BENAMT"
+              ],
+              "formula": "sum(BENAMT where BENEFIT == 17) * (365.25 / 7)",
+              "observed_support": "structural zero in the audited 2023-24 FRS; retained so future vintages flow"
+            }
+          },
+          "retained_named_subsets": {
+            "ossben_identifiable_subset": {
+              "spi_concept": "OSSBEN",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=13:BENAMT",
+                "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT"
+              ],
+              "formula": "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)",
+              "scope": "identifiable_subset"
+            },
+            "srp_regular_code5": {
+              "spi_concept": "SRP",
+              "raw_sources": [
+                "BENEFITS.BENEFIT=5:BENAMT"
+              ],
+              "formula": "sum(BENAMT where BENEFIT == 5) * (365.25 / 7)",
+              "scope": "regular_code5_subset"
+            }
+          },
+          "source_absent_full_constituents": [
+            "EPB",
+            "EXPS",
+            "TAXTERM",
+            "MOTHINC",
+            "OTHERINC"
+          ],
+          "full_concepts_forbidden_on_frs": [
             "hmrc_spi_employment_benefits",
             "hmrc_spi_employment_expenses",
-            "hmrc_spi_incapacity_benefit_income",
-            "hmrc_spi_other_social_security_income",
             "hmrc_spi_taxable_termination_pay",
-            "hmrc_spi_unemployment_benefit_income",
             "hmrc_spi_miscellaneous_employment_income",
             "hmrc_spi_other_income",
+            "hmrc_spi_other_social_security_income",
             "hmrc_spi_state_pension_income"
           ],
-          "employed_income_formula": "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + hmrc_spi_other_social_security_income + hmrc_spi_taxable_termination_pay + hmrc_spi_unemployment_benefit_income + hmrc_spi_miscellaneous_employment_income",
-          "status": "blocked_pending_reviewed_frs_decomposition",
-          "current_candidate_missing_all_normalized_constituents": true,
           "forbid_proxy_substitution": [
             "employment_income",
             "miscellaneous_income"
           ],
-          "fail_on_missing_constituent": true
+          "fail_on_missing_retained_constituent": true,
+          "fail_on_full_concept_alias": true
+        },
+        {
+          "kind": "verify_pinned_hmrc_source_pair",
+          "artifact_roles": [
+            "qrf_donor",
+            "published_fact_surface"
+          ],
+          "require_before_source_read": true,
+          "runtime_sha256_required": true,
+          "fail_on_mismatch": true
         },
         {
           "kind": "replace_zero_weight_spi_support",
@@ -370,7 +433,7 @@
         },
         {
           "kind": "materialize_hmrc_income_bands_fail_closed",
-          "artifact_role": "calibration_surface",
+          "artifact_role": "published_fact_surface",
           "mapped_build_period": 2023,
           "period_mapping": "tax_year_start",
           "column_index_base": 0,
@@ -445,17 +508,7 @@
           "fail_on_non_numeric_value": true
         },
         {
-          "kind": "derive_taxpayer_mask",
-          "output": "hmrc_spi_taxpayer",
-          "entity": "person",
-          "variable": "income_tax",
-          "comparison": "strictly_greater_than",
-          "threshold": 0,
-          "mapped_build_period": 2023,
-          "fail_on_missing_variable": true
-        },
-        {
-          "kind": "calibrate_weighted_income_bands",
+          "kind": "classify_hmrc_income_facts_with_reviewed_fences",
           "target_operation": "materialize_hmrc_income_bands_fail_closed",
           "components": [
             "employment_income",
@@ -467,32 +520,166 @@
             "dividend_income",
             "other_investment_income"
           ],
-          "breakdown_variable": "hmrc_spi_assessable_income",
-          "breakdown_definition": "deterministic TEI + TII from the same normalized post-source leaves on every FRS and SPI row",
-          "employment_measure": "hmrc_spi_employed_income",
-          "employment_measure_definition": "the require_frs_hmrc_employment_crosswalk formula, applied identically on every FRS and SPI row",
-          "state_pension_measure": "hmrc_spi_state_pension_income",
-          "state_pension_measure_definition": "the direct SRP leaf also used in deterministic TEI and band assignment on every FRS and SPI row",
-          "require_identical_crosswalk_all_channels": true,
-          "savings_interest_measure": "savings_interest_income - tax_free_savings_income; fail if tax-free exceeds gross",
-          "taxpayer_mask": "hmrc_spi_taxpayer",
-          "count_condition": "component > 0",
-          "measures": [
-            "count",
-            "amount"
-          ],
-          "weight": "household_weight",
-          "weight_mapping": "household_to_person",
+          "breakdown_dependency": "hmrc_spi_assessable_income",
+          "frs_breakdown_status": "unavailable_full_measure",
           "input_weight_kind": "importance",
-          "output_weight_kind": "calibrated",
-          "solver": "populace.calibrate.calibrate",
-          "max_weight_ratio": 5,
-          "maximum_abs_relative_error": 0.05,
-          "required_target_count": 208,
-          "require_strictly_positive_prior": true,
-          "preserve_total_household_mass": true,
-          "fail_on_unmaterialized_target": true,
-          "fail_on_zero_support": true
+          "output_weight_kind": "importance",
+          "calibration_permitted": false,
+          "required_fact_count": 208,
+          "outcome_counts": {
+            "exact_pass": 0,
+            "exact_fail": 0,
+            "directional_pass": 0,
+            "directional_fail": 0,
+            "excluded_with_fence": 208
+          },
+          "classification_rationale": "Every published fact uses non-overlapping total-income bands. The FRS channel cannot materialize full TEI, and omitted income can move a person between bands, so neither an exact fact nor a per-band directional bound is valid.",
+          "reviewed_fences": [
+            {
+              "fence_id": "frs_epb_source_absent",
+              "constituents": [
+                "EPB"
+              ],
+              "raw_sources_searched": [
+                "JOB.EXPBEN01-EXPBEN13",
+                "JOB.CARVAL",
+                "JOB.CARAMT",
+                "JOB.FUELAMT",
+                "JOB.VCHAMT",
+                "JOB.CHVAMT"
+              ],
+              "finding": "Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.",
+              "mass_implication": "12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.",
+              "rationale": "Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_exps_source_absent",
+              "constituents": [
+                "EXPS"
+              ],
+              "raw_sources_searched": [
+                "JOB.EXPBEN04/EXPBEN05",
+                "JOB.MILEAMT/JOB.MOTAMT",
+                "JOB.UMILEAMT/JOB.UMOTAMT",
+                "JOB.DEDUC1-DEDUC9",
+                "JOB.UDEDUC1-UDEDUC9"
+              ],
+              "finding": "Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.",
+              "mass_implication": "5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.",
+              "rationale": "The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_taxterm_source_absent",
+              "constituents": [
+                "TAXTERM"
+              ],
+              "raw_sources_searched": [
+                "ADULT.REDAMT",
+                "ADULT and JOB taxable-termination split search"
+              ],
+              "finding": "Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.",
+              "mass_implication": "0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.",
+              "rationale": "Gross redundancy pay cannot be relabeled as taxable termination pay.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_mothinc_source_absent",
+              "constituents": [
+                "MOTHINC"
+              ],
+              "raw_sources_searched": [
+                "ODDJOB.OJAMT/ODDJOB.OJNOW",
+                "ADULT.ALLPAY2",
+                "ADULT.ROYYR2-ROYYR4",
+                "JOB.OWNOTHER"
+              ],
+              "finding": "Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.",
+              "mass_implication": "Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.",
+              "rationale": "The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_otherinc_source_absent",
+              "constituents": [
+                "OTHERINC"
+              ],
+              "raw_sources_searched": [
+                "ADULT, ODDJOB, and JOB miscellaneous fields",
+                "PENSION",
+                "ACCOUNTS",
+                "ASSETS",
+                "BENEFITS"
+              ],
+              "finding": "Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.",
+              "mass_implication": "No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.",
+              "rationale": "A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_ossben_identifiable_subset",
+              "constituents": [
+                "OSSBEN",
+                "ossben_identifiable_subset"
+              ],
+              "raw_sources_searched": [
+                "BENEFITS.BENAMT",
+                "BENEFITS.BENEFIT",
+                "BENEFITS.VAR2",
+                "BENEFITS codes 13, 16, 6, and 30"
+              ],
+              "finding": "Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.",
+              "mass_implication": "1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.",
+              "rationale": "The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "frs_srp_regular_code5_subset",
+              "constituents": [
+                "SRP",
+                "srp_regular_code5"
+              ],
+              "raw_sources_searched": [
+                "BENEFITS.BENAMT where BENEFIT == 5",
+                "BENEFITS codes 6 and 9"
+              ],
+              "finding": "Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.",
+              "mass_implication": "18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.",
+              "rationale": "The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.",
+              "dependent_fence_ids": []
+            },
+            {
+              "fence_id": "full_frs_tei_band_unavailable",
+              "constituents": [
+                "EPB",
+                "EXPS",
+                "TAXTERM",
+                "MOTHINC",
+                "OTHERINC",
+                "OSSBEN",
+                "SRP"
+              ],
+              "raw_sources_searched": [],
+              "finding": "The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.",
+              "mass_implication": "Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.",
+              "rationale": "A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.",
+              "dependent_fence_ids": [
+                "frs_epb_source_absent",
+                "frs_exps_source_absent",
+                "frs_taxterm_source_absent",
+                "frs_mothinc_source_absent",
+                "frs_otherinc_source_absent",
+                "frs_ossben_identifiable_subset",
+                "frs_srp_regular_code5_subset"
+              ]
+            }
+          ],
+          "fact_fence_id": "full_frs_tei_band_unavailable",
+          "blocked_dependency": "hmrc_spi_assessable_income",
+          "fail_on_unfenced_exclusion": true,
+          "fail_on_fact_count_mismatch": true,
+          "forbid_biased_estimate_or_delta": true
         },
         {
           "kind": "gate_distributional_effective_mass",
@@ -539,7 +726,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Current-source contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates, with TI exactly equal to TEI + TII. Raw donor leaves reconcile to published aggregates within separately pinned ordinary/composite PUT anonymization envelopes while the published TI identity retains its independent GBP 5 check. PolicyEngine employment_income stays PAY + EPB + TAXTERM. Table 3.6 employment uses a separate broad HMRC auxiliary built from one normalized constituent crosswalk on both channels, and state pension uses the same SRP auxiliary included in TEI and band assignment. The certified candidate does not retain those normalized FRS constituents, so the family fails closed before source I/O pending a reviewed FRS decomposition stage. No employment_income or miscellaneous_income proxy is permitted."
+      "notes": "Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN, and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor."
     }
   ]
 }

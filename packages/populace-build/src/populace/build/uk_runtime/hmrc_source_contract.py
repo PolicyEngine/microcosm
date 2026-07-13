@@ -8,13 +8,12 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from populace.build.uk_runtime.hmrc_calibration import (
-    DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR,
-    DEFAULT_HMRC_MAX_WEIGHT_RATIO,
-    HMRC_ASSESSABLE_INCOME_COLUMN,
-    HMRC_TAXPAYER_COLUMN,
+from populace.build.uk_runtime.frs_hmrc_leaves import (
+    FRS_HMRC_RETAINED_LEAF_COLUMNS,
+    FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE,
 )
 from populace.build.uk_runtime.hmrc_income import (
+    HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
     HMRC_SPI_BUILD_PERIOD,
     HMRC_SPI_COLLATED_ODS_MIME_TYPE,
     HMRC_SPI_COLLATED_ODS_SHA256,
@@ -27,6 +26,10 @@ from populace.build.uk_runtime.hmrc_income import (
     HMRC_SPI_TARGET_RECORD_COUNT,
     hmrc_spi_component_source_columns,
 )
+from populace.build.uk_runtime.hmrc_replay import (
+    CANONICAL_HMRC_FACT_FENCES,
+    FULL_FRS_TI_BAND_FENCE_ID,
+)
 from populace.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
@@ -38,7 +41,6 @@ from populace.build.uk_runtime.spi_income import (
     SPI_DONOR_SIZE_BYTES,
     SPI_DONOR_UKDS_STUDY,
     SPI_DONOR_VINTAGE,
-    SPI_HMRC_EMPLOYED_INCOME_FORMULA,
     SPI_POLICYENGINE_EMPLOYMENT_FORMULA,
     SPI_QRF_SOURCE_COLUMNS,
     SPI_SOURCE_COMPOSITE_INDICATOR,
@@ -54,10 +56,6 @@ from populace.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,
     SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
-    SPI_HMRC_EMPLOYED_INCOME_COLUMN,
-    SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
-    SPI_HMRC_OTHER_INCOME_COLUMN,
-    SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_REPLACEMENT_STRATA_COLUMNS,
@@ -77,14 +75,14 @@ HMRC_DISTRIBUTIONAL_INPUTS = (
 
 _EXPECTED_OPERATION_KINDS = (
     "verify_certified_candidate",
-    "require_frs_hmrc_employment_crosswalk",
+    "retain_adjudicated_frs_hmrc_leaves",
+    "verify_pinned_hmrc_source_pair",
     "replace_zero_weight_spi_support",
     "strict_read_private_table",
     "fit_weighted_qrf_stage1",
     "fit_weighted_qrf_stage2",
     "materialize_hmrc_income_bands_fail_closed",
-    "derive_taxpayer_mask",
-    "calibrate_weighted_income_bands",
+    "classify_hmrc_income_facts_with_reviewed_fences",
     "gate_distributional_effective_mass",
 )
 
@@ -153,7 +151,7 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "artifact roles",
         tuple(sorted(artifacts)),
-        ("calibration_surface", "qrf_donor"),
+        ("published_fact_surface", "qrf_donor"),
     )
     donor = artifacts.get("qrf_donor", {})
     _expect(failures, "qrf_donor.filename", donor.get("filename"), SPI_DONOR_FILENAME)
@@ -183,64 +181,64 @@ def assert_uk_hmrc_income_source_contract_current(
         donor.get("runtime_sha256_required"),
         True,
     )
-    surface = artifacts.get("calibration_surface", {})
+    surface = artifacts.get("published_fact_surface", {})
     _expect(
         failures,
-        "calibration_surface.locator",
+        "published_fact_surface.locator",
         surface.get("locator"),
         HMRC_SPI_COLLATED_ODS_URL,
     )
     _expect(
         failures,
-        "calibration_surface.publication",
+        "published_fact_surface.publication",
         surface.get("publication"),
         HMRC_SPI_PUBLICATION_URL,
     )
     _expect(
         failures,
-        "calibration_surface.vintage",
+        "published_fact_surface.vintage",
         surface.get("vintage"),
         HMRC_SPI_SOURCE_VINTAGE,
     )
     _expect(
         failures,
-        "calibration_surface.mapped_build_period",
+        "published_fact_surface.mapped_build_period",
         str(surface.get("mapped_build_period")),
         HMRC_SPI_BUILD_PERIOD,
     )
     _expect(
         failures,
-        "calibration_surface.period_mapping",
+        "published_fact_surface.period_mapping",
         surface.get("period_mapping"),
         "tax_year_start",
     )
     _expect(
         failures,
-        "calibration_surface.sheets",
+        "published_fact_surface.sheets",
         tuple(surface.get("sheets", ())),
         ("Table_3_6", "Table_3_7"),
     )
     _expect(
         failures,
-        "calibration_surface.runtime_sha256_required",
+        "published_fact_surface.runtime_sha256_required",
         surface.get("runtime_sha256_required"),
         True,
     )
     _expect(
         failures,
-        "calibration_surface.sha256",
+        "published_fact_surface.sha256",
         surface.get("sha256"),
         HMRC_SPI_COLLATED_ODS_SHA256,
     )
     _expect(
         failures,
-        "calibration_surface.size_bytes",
+        "published_fact_surface.size_bytes",
         surface.get("size_bytes"),
         HMRC_SPI_COLLATED_ODS_SIZE_BYTES,
     )
     _expect(
         failures,
-        "calibration_surface.mime_type",
+        "published_fact_surface.mime_type",
         surface.get("mime_type"),
         HMRC_SPI_COLLATED_ODS_MIME_TYPE,
     )
@@ -268,48 +266,114 @@ def assert_uk_hmrc_income_source_contract_current(
     _expect(failures, "verify.artifact", verify.get("artifact"), "base_candidate")
     _expect(failures, "verify.fail_on_mismatch", verify.get("fail_on_mismatch"), True)
 
-    frs_crosswalk = operations.get("require_frs_hmrc_employment_crosswalk", {})
-    normalized_constituents = (
-        *SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS,
-        SPI_HMRC_OTHER_INCOME_COLUMN,
-        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    frs_leaves = operations.get("retain_adjudicated_frs_hmrc_leaves", {})
+    _expect(
+        failures,
+        "frs_leaves.source_vintage",
+        frs_leaves.get("source_vintage"),
+        "2023-24",
     )
     _expect(
         failures,
-        "frs_crosswalk.normalized_constituents",
-        tuple(frs_crosswalk.get("normalized_constituents", ())),
-        normalized_constituents,
+        "frs_leaves.mapped_build_period",
+        str(frs_leaves.get("mapped_build_period")),
+        HMRC_SPI_BUILD_PERIOD,
     )
     _expect(
         failures,
-        "frs_crosswalk.status",
-        frs_crosswalk.get("status"),
-        "blocked_pending_reviewed_frs_decomposition",
+        "frs_leaves.status",
+        frs_leaves.get("status"),
+        "adjudicated_partial_replay",
+    )
+    full = _mapping(
+        frs_leaves.get("retained_full_constituents"),
+        "frs_leaves.retained_full_constituents",
+        failures,
+    )
+    subsets = _mapping(
+        frs_leaves.get("retained_named_subsets"),
+        "frs_leaves.retained_named_subsets",
+        failures,
+    )
+    expected_full_columns = FRS_HMRC_RETAINED_LEAF_COLUMNS[:3]
+    expected_subset_columns = FRS_HMRC_RETAINED_LEAF_COLUMNS[3:]
+    _expect(
+        failures,
+        "frs_leaves.retained_full_constituents.columns",
+        tuple(full),
+        expected_full_columns,
     )
     _expect(
         failures,
-        "frs_crosswalk.employed_income_formula",
-        frs_crosswalk.get("employed_income_formula"),
-        SPI_HMRC_EMPLOYED_INCOME_FORMULA,
+        "frs_leaves.retained_named_subsets.columns",
+        tuple(subsets),
+        expected_subset_columns,
+    )
+    for column in FRS_HMRC_RETAINED_LEAF_COLUMNS:
+        actual = dict((full | subsets).get(column, {}))
+        observed_support = actual.pop("observed_support", None)
+        _expect(
+            failures,
+            f"frs_leaves.{column}.source_evidence",
+            actual,
+            FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE[column],
+        )
+        if column == "hmrc_spi_incapacity_benefit_income":
+            _expect(
+                failures,
+                f"frs_leaves.{column}.observed_support",
+                observed_support,
+                "structural zero in the audited 2023-24 FRS; retained so future vintages flow",
+            )
+        elif observed_support is not None:
+            failures.append(
+                f"frs_leaves.{column}.observed_support: unexpected declaration"
+            )
+    _expect(
+        failures,
+        "frs_leaves.source_absent_full_constituents",
+        tuple(frs_leaves.get("source_absent_full_constituents", ())),
+        ("EPB", "EXPS", "TAXTERM", "MOTHINC", "OTHERINC"),
     )
     _expect(
         failures,
-        "frs_crosswalk.current_candidate_missing_all_normalized_constituents",
-        frs_crosswalk.get("current_candidate_missing_all_normalized_constituents"),
-        True,
+        "frs_leaves.full_concepts_forbidden_on_frs",
+        tuple(frs_leaves.get("full_concepts_forbidden_on_frs", ())),
+        (
+            "hmrc_spi_employment_benefits",
+            "hmrc_spi_employment_expenses",
+            "hmrc_spi_taxable_termination_pay",
+            "hmrc_spi_miscellaneous_employment_income",
+            "hmrc_spi_other_income",
+            "hmrc_spi_other_social_security_income",
+            "hmrc_spi_state_pension_income",
+        ),
     )
     _expect(
         failures,
-        "frs_crosswalk.forbid_proxy_substitution",
-        tuple(frs_crosswalk.get("forbid_proxy_substitution", ())),
+        "frs_leaves.forbid_proxy_substitution",
+        tuple(frs_leaves.get("forbid_proxy_substitution", ())),
         ("employment_income", "miscellaneous_income"),
     )
+    for flag in (
+        "fail_on_missing_retained_constituent",
+        "fail_on_full_concept_alias",
+    ):
+        _expect(failures, f"frs_leaves.{flag}", frs_leaves.get(flag), True)
+
+    source_pair = operations.get("verify_pinned_hmrc_source_pair", {})
     _expect(
         failures,
-        "frs_crosswalk.fail_on_missing_constituent",
-        frs_crosswalk.get("fail_on_missing_constituent"),
-        True,
+        "source_pair.artifact_roles",
+        tuple(source_pair.get("artifact_roles", ())),
+        ("qrf_donor", "published_fact_surface"),
     )
+    for flag in (
+        "require_before_source_read",
+        "runtime_sha256_required",
+        "fail_on_mismatch",
+    ):
+        _expect(failures, f"source_pair.{flag}", source_pair.get(flag), True)
 
     prior = operations.get("replace_zero_weight_spi_support", {})
     _expect(failures, "prior.existing_channel", prior.get("existing_channel"), "spi")
@@ -568,6 +632,12 @@ def assert_uk_hmrc_income_source_contract_current(
     )
 
     materialize = operations.get("materialize_hmrc_income_bands_fail_closed", {})
+    _expect(
+        failures,
+        "materialize.artifact_role",
+        materialize.get("artifact_role"),
+        "published_fact_surface",
+    )
     actual_layout = {
         str(component): (
             str(spec.get("sheet")),
@@ -640,110 +710,100 @@ def assert_uk_hmrc_income_source_contract_current(
     ):
         _expect(failures, f"materialize.{flag}", materialize.get(flag), True)
 
-    taxpayer = operations.get("derive_taxpayer_mask", {})
-    _expect(failures, "taxpayer.output", taxpayer.get("output"), HMRC_TAXPAYER_COLUMN)
-    _expect(failures, "taxpayer.variable", taxpayer.get("variable"), "income_tax")
-    _expect(
-        failures,
-        "taxpayer.comparison",
-        taxpayer.get("comparison"),
-        "strictly_greater_than",
-    )
-    _expect(failures, "taxpayer.threshold", taxpayer.get("threshold"), 0)
-    _expect(
-        failures,
-        "taxpayer.mapped_build_period",
-        str(taxpayer.get("mapped_build_period")),
-        HMRC_SPI_BUILD_PERIOD,
+    classification = operations.get(
+        "classify_hmrc_income_facts_with_reviewed_fences", {}
     )
     _expect(
         failures,
-        "taxpayer.fail_on_missing_variable",
-        taxpayer.get("fail_on_missing_variable"),
-        True,
-    )
-
-    calibration = operations.get("calibrate_weighted_income_bands", {})
-    _expect(
-        failures,
-        "calibration.components",
-        tuple(calibration.get("components", ())),
+        "classification.components",
+        tuple(classification.get("components", ())),
         HMRC_SPI_INCOME_COMPONENTS,
     )
     _expect(
         failures,
-        "calibration.breakdown_variable",
-        calibration.get("breakdown_variable"),
-        HMRC_ASSESSABLE_INCOME_COLUMN,
+        "classification.breakdown_dependency",
+        classification.get("breakdown_dependency"),
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
     )
     _expect(
         failures,
-        "calibration.employment_measure",
-        calibration.get("employment_measure"),
-        SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+        "classification.frs_breakdown_status",
+        classification.get("frs_breakdown_status"),
+        "unavailable_full_measure",
     )
     _expect(
         failures,
-        "calibration.state_pension_measure",
-        calibration.get("state_pension_measure"),
-        SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
-    )
-    _expect(
-        failures,
-        "calibration.require_identical_crosswalk_all_channels",
-        calibration.get("require_identical_crosswalk_all_channels"),
-        True,
-    )
-    _expect(
-        failures,
-        "calibration.savings_interest_measure",
-        calibration.get("savings_interest_measure"),
-        "savings_interest_income - tax_free_savings_income; fail if tax-free "
-        "exceeds gross",
-    )
-    _expect(
-        failures,
-        "calibration.taxpayer_mask",
-        calibration.get("taxpayer_mask"),
-        HMRC_TAXPAYER_COLUMN,
-    )
-    _expect(
-        failures,
-        "calibration.input_weight_kind",
-        calibration.get("input_weight_kind"),
+        "classification.input_weight_kind",
+        classification.get("input_weight_kind"),
         "importance",
     )
     _expect(
         failures,
-        "calibration.output_weight_kind",
-        calibration.get("output_weight_kind"),
-        "calibrated",
+        "classification.output_weight_kind",
+        classification.get("output_weight_kind"),
+        "importance",
     )
     _expect(
         failures,
-        "calibration.max_weight_ratio",
-        calibration.get("max_weight_ratio"),
-        DEFAULT_HMRC_MAX_WEIGHT_RATIO,
+        "classification.calibration_permitted",
+        classification.get("calibration_permitted"),
+        False,
     )
     _expect(
         failures,
-        "calibration.maximum_abs_relative_error",
-        calibration.get("maximum_abs_relative_error"),
-        DEFAULT_HMRC_MAX_ABS_RELATIVE_ERROR,
-    )
-    _expect(
-        failures,
-        "calibration.required_target_count",
-        calibration.get("required_target_count"),
+        "classification.required_fact_count",
+        classification.get("required_fact_count"),
         HMRC_SPI_TARGET_RECORD_COUNT,
     )
+    _expect(
+        failures,
+        "classification.outcome_counts",
+        dict(classification.get("outcome_counts", {})),
+        {
+            "exact_pass": 0,
+            "exact_fail": 0,
+            "directional_pass": 0,
+            "directional_fail": 0,
+            "excluded_with_fence": HMRC_SPI_TARGET_RECORD_COUNT,
+        },
+    )
+    _expect(
+        failures,
+        "classification.fact_fence_id",
+        classification.get("fact_fence_id"),
+        FULL_FRS_TI_BAND_FENCE_ID,
+    )
+    _expect(
+        failures,
+        "classification.blocked_dependency",
+        classification.get("blocked_dependency"),
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+    )
+    actual_fences = _mapping_sequence(
+        classification.get("reviewed_fences"),
+        "classification.reviewed_fences",
+        failures,
+    )
+    _expect(
+        failures,
+        "classification.reviewed_fences",
+        tuple(dict(fence) for fence in actual_fences),
+        tuple(
+            {"fence_id": fence.fence_id, **fence.to_payload()}
+            for fence in CANONICAL_HMRC_FACT_FENCES
+        ),
+    )
     for flag in (
-        "require_strictly_positive_prior",
-        "preserve_total_household_mass",
-        "fail_on_unmaterialized_target",
-        "fail_on_zero_support",
+        "fail_on_unfenced_exclusion",
+        "fail_on_fact_count_mismatch",
+        "forbid_biased_estimate_or_delta",
     ):
-        _expect(failures, f"calibration.{flag}", calibration.get(flag), True)
+        _expect(
+            failures,
+            f"classification.{flag}",
+            classification.get(flag),
+            True,
+        )
 
     effective = operations.get("gate_distributional_effective_mass", {})
     _expect(

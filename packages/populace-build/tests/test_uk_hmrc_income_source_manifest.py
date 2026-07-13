@@ -59,17 +59,21 @@ _STAGE1_OUTPUTS = [
     "hmrc_spi_other_income",
     "hmrc_spi_state_pension_income",
 ]
-_FRS_HMRC_NORMALIZED_CONSTITUENTS = [
+_FRS_HMRC_FULL_CONSTITUENTS = [
     "hmrc_spi_pay",
-    "hmrc_spi_employment_benefits",
-    "hmrc_spi_employment_expenses",
-    "hmrc_spi_incapacity_benefit_income",
-    "hmrc_spi_other_social_security_income",
-    "hmrc_spi_taxable_termination_pay",
     "hmrc_spi_unemployment_benefit_income",
-    "hmrc_spi_miscellaneous_employment_income",
-    "hmrc_spi_other_income",
-    "hmrc_spi_state_pension_income",
+    "hmrc_spi_incapacity_benefit_income",
+]
+_FRS_HMRC_NAMED_SUBSETS = [
+    "ossben_identifiable_subset",
+    "srp_regular_code5",
+]
+_FRS_HMRC_SOURCE_ABSENT = [
+    "EPB",
+    "EXPS",
+    "TAXTERM",
+    "MOTHINC",
+    "OTHERINC",
 ]
 _DERIVED_AUXILIARIES = [
     "hmrc_spi_employed_income",
@@ -137,14 +141,14 @@ def test__given_uk_hmrc_manifest__then_one_scoped_stage_is_declared() -> None:
     ]
     assert [operation["kind"] for operation in stage["operations"]] == [
         "verify_certified_candidate",
-        "require_frs_hmrc_employment_crosswalk",
+        "retain_adjudicated_frs_hmrc_leaves",
+        "verify_pinned_hmrc_source_pair",
         "replace_zero_weight_spi_support",
         "strict_read_private_table",
         "fit_weighted_qrf_stage1",
         "fit_weighted_qrf_stage2",
         "materialize_hmrc_income_bands_fail_closed",
-        "derive_taxpayer_mask",
-        "calibrate_weighted_income_bands",
+        "classify_hmrc_income_facts_with_reviewed_fences",
         "gate_distributional_effective_mass",
     ]
 
@@ -156,7 +160,7 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     artifacts = _by_role(stage)
 
     assert len(stage["artifacts"]) == 2
-    assert set(artifacts) == {"qrf_donor", "calibration_surface"}
+    assert set(artifacts) == {"qrf_donor", "published_fact_surface"}
     donor = artifacts["qrf_donor"]
     assert donor["survey"] == "Survey of Personal Incomes Public Use Tape 2022-23"
     assert donor["vintage"] == "2022-23"
@@ -169,7 +173,7 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     assert donor["locator"] == "caller-supplied local input"
     assert donor["runtime_sha256_required"] is True
 
-    surface = artifacts["calibration_surface"]
+    surface = artifacts["published_fact_surface"]
     assert surface["vintage"] == "2023-24"
     assert surface["locator"] == _COLLATED_ODS_URL
     assert surface["sha256"] == _COLLATED_ODS_SHA256
@@ -189,26 +193,47 @@ def test__given_hmrc_source_artifacts__then_vintages_and_runtime_hashes_are_exac
     assert base["runtime_sha256_required"] is True
 
 
-def test__given_frs_channel__then_hmrc_crosswalk_fails_closed_without_leaves() -> None:
+def test__given_frs_channel__then_adjudicated_leaves_and_subsets_are_explicit() -> None:
     operations = _by_kind(_stage(_manifest()))
-    crosswalk = operations["require_frs_hmrc_employment_crosswalk"]
+    leaves = operations["retain_adjudicated_frs_hmrc_leaves"]
 
-    assert crosswalk["normalized_constituents"] == _FRS_HMRC_NORMALIZED_CONSTITUENTS
-    assert crosswalk["status"] == "blocked_pending_reviewed_frs_decomposition"
-    assert crosswalk["current_candidate_missing_all_normalized_constituents"] is True
-    assert crosswalk["forbid_proxy_substitution"] == [
+    assert list(leaves["retained_full_constituents"]) == _FRS_HMRC_FULL_CONSTITUENTS
+    assert list(leaves["retained_named_subsets"]) == _FRS_HMRC_NAMED_SUBSETS
+    assert leaves["source_absent_full_constituents"] == _FRS_HMRC_SOURCE_ABSENT
+    assert leaves["status"] == "adjudicated_partial_replay"
+    assert leaves["source_vintage"] == "2023-24"
+    assert leaves["mapped_build_period"] == 2023
+    assert leaves["retained_full_constituents"]["hmrc_spi_pay"] == {
+        "spi_concept": "PAY",
+        "scope": "full",
+        "raw_sources": ["ADULT.INEARNS"],
+        "formula": "max(0, ADULT.INEARNS) * (365.25 / 7)",
+    }
+    assert leaves["retained_full_constituents"]["hmrc_spi_incapacity_benefit_income"][
+        "observed_support"
+    ].startswith("structural zero")
+    assert (
+        leaves["retained_named_subsets"]["ossben_identifiable_subset"]["scope"]
+        == "identifiable_subset"
+    )
+    assert leaves["retained_named_subsets"]["srp_regular_code5"]["scope"] == (
+        "regular_code5_subset"
+    )
+    assert leaves["forbid_proxy_substitution"] == [
         "employment_income",
         "miscellaneous_income",
     ]
-    assert crosswalk["fail_on_missing_constituent"] is True
-    assert crosswalk["employed_income_formula"] == (
-        "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
-        "hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + "
-        "hmrc_spi_other_social_security_income + "
-        "hmrc_spi_taxable_termination_pay + "
-        "hmrc_spi_unemployment_benefit_income + "
-        "hmrc_spi_miscellaneous_employment_income"
-    )
+    assert leaves["fail_on_missing_retained_constituent"] is True
+    assert leaves["fail_on_full_concept_alias"] is True
+
+    source_pair = operations["verify_pinned_hmrc_source_pair"]
+    assert source_pair == {
+        "kind": "verify_pinned_hmrc_source_pair",
+        "artifact_roles": ["qrf_donor", "published_fact_surface"],
+        "require_before_source_read": True,
+        "runtime_sha256_required": True,
+        "fail_on_mismatch": True,
+    }
 
 
 def test__given_spi_donor__then_both_qrf_stages_are_weighted_and_strict() -> None:
@@ -347,40 +372,65 @@ def test__given_official_tables__then_all_eight_components_fail_closed() -> None
     assert materializer["fail_on_non_numeric_value"] is True
 
 
-def test__given_materialized_hmrc_targets__then_taxpayer_calibration_is_guarded() -> (
+def test__given_materialized_hmrc_targets__then_all_facts_are_fenced_without_calibration() -> (
     None
 ):
     operations = _by_kind(_stage(_manifest()))
 
-    mask = operations["derive_taxpayer_mask"]
-    assert mask == {
-        "kind": "derive_taxpayer_mask",
-        "output": "hmrc_spi_taxpayer",
-        "entity": "person",
-        "variable": "income_tax",
-        "comparison": "strictly_greater_than",
-        "threshold": 0,
-        "mapped_build_period": 2023,
-        "fail_on_missing_variable": True,
+    classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
+    assert classification["components"] == _OFFICIAL_COMPONENTS
+    assert classification["breakdown_dependency"] == "hmrc_spi_assessable_income"
+    assert classification["frs_breakdown_status"] == "unavailable_full_measure"
+    assert classification["input_weight_kind"] == "importance"
+    assert classification["output_weight_kind"] == "importance"
+    assert classification["calibration_permitted"] is False
+    assert classification["required_fact_count"] == 208
+    assert classification["outcome_counts"] == {
+        "exact_pass": 0,
+        "exact_fail": 0,
+        "directional_pass": 0,
+        "directional_fail": 0,
+        "excluded_with_fence": 208,
     }
-
-    calibration = operations["calibrate_weighted_income_bands"]
-    assert calibration["components"] == _OFFICIAL_COMPONENTS
-    assert calibration["taxpayer_mask"] == "hmrc_spi_taxpayer"
-    assert calibration["count_condition"] == "component > 0"
-    assert calibration["measures"] == ["count", "amount"]
-    assert calibration["weight"] == "household_weight"
-    assert calibration["weight_mapping"] == "household_to_person"
-    assert calibration["input_weight_kind"] == "importance"
-    assert calibration["output_weight_kind"] == "calibrated"
-    assert calibration["breakdown_variable"] == "hmrc_spi_assessable_income"
-    assert calibration["required_target_count"] == 208
-    assert calibration["max_weight_ratio"] == 5
-    assert calibration["maximum_abs_relative_error"] == 0.05
-    assert calibration["require_strictly_positive_prior"] is True
-    assert calibration["preserve_total_household_mass"] is True
-    assert calibration["fail_on_unmaterialized_target"] is True
-    assert calibration["fail_on_zero_support"] is True
+    fences = {fence["fence_id"]: fence for fence in classification["reviewed_fences"]}
+    assert set(fences) == {
+        "frs_epb_source_absent",
+        "frs_exps_source_absent",
+        "frs_taxterm_source_absent",
+        "frs_mothinc_source_absent",
+        "frs_otherinc_source_absent",
+        "frs_ossben_identifiable_subset",
+        "frs_srp_regular_code5_subset",
+        "full_frs_tei_band_unavailable",
+    }
+    for fence in fences.values():
+        assert fence["constituents"]
+        assert fence["finding"].strip()
+        assert fence["mass_implication"].strip()
+        assert fence["rationale"].strip()
+    assert fences["frs_epb_source_absent"]["raw_sources_searched"] == [
+        "JOB.EXPBEN01-EXPBEN13",
+        "JOB.CARVAL",
+        "JOB.CARAMT",
+        "JOB.FUELAMT",
+        "JOB.VCHAMT",
+        "JOB.CHVAMT",
+    ]
+    assert fences["frs_ossben_identifiable_subset"]["constituents"] == [
+        "OSSBEN",
+        "ossben_identifiable_subset",
+    ]
+    assert fences["frs_srp_regular_code5_subset"]["constituents"] == [
+        "SRP",
+        "srp_regular_code5",
+    ]
+    full_ti = fences["full_frs_tei_band_unavailable"]
+    assert len(full_ti["dependent_fence_ids"]) == 7
+    assert "non-overlapping" in full_ti["rationale"]
+    assert classification["fact_fence_id"] == "full_frs_tei_band_unavailable"
+    assert classification["fail_on_unfenced_exclusion"] is True
+    assert classification["fail_on_fact_count_mismatch"] is True
+    assert classification["forbid_biased_estimate_or_delta"] is True
 
     prior = operations["replace_zero_weight_spi_support"]
     assert prior["require_existing_weight"] == 0
@@ -403,7 +453,7 @@ def test__given_standalone_contract__then_sources_are_explicit_artifacts() -> No
 
     assert artifacts["qrf_donor"]["access"] == "private_local_input"
     assert artifacts["qrf_donor"]["locator"] == "caller-supplied local input"
-    assert artifacts["calibration_surface"]["locator"] == _COLLATED_ODS_URL
+    assert artifacts["published_fact_surface"]["locator"] == _COLLATED_ODS_URL
     assert all(artifact["runtime_sha256_required"] for artifact in artifacts.values())
 
 
@@ -422,7 +472,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
         (
             ("stages", 0, "artifacts", 1, "vintage"),
             "2022-23",
-            "calibration_surface.vintage",
+            "published_fact_surface.vintage",
         ),
         (
             ("stages", 0, "artifacts", 0, "sha256"),
@@ -432,36 +482,36 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
         (
             ("stages", 0, "artifacts", 1, "size_bytes"),
             1,
-            "calibration_surface.size_bytes",
+            "published_fact_surface.size_bytes",
         ),
         (
             ("stages", 0, "operations", 1, "status"),
             "ready",
-            "frs_crosswalk.status",
+            "frs_leaves.status",
         ),
         (
             (
                 "stages",
                 0,
                 "operations",
-                2,
+                3,
                 "spi_prior_national_household_mass_share",
             ),
             0.25,
             "prior.mass_share",
         ),
         (
-            ("stages", 0, "operations", 4, "sample_size"),
+            ("stages", 0, "operations", 5, "sample_size"),
             50_000,
             "stage1.sample_size",
         ),
         (
-            ("stages", 0, "operations", 4, "outputs"),
+            ("stages", 0, "operations", 5, "outputs"),
             ["employment_income"],
             "stage1.outputs",
         ),
         (
-            ("stages", 0, "operations", 4, "source_ti_identity_fields"),
+            ("stages", 0, "operations", 5, "source_ti_identity_fields"),
             ["TI"],
             "stage1.source_ti_identity_fields",
         ),
@@ -470,7 +520,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
                 "stages",
                 0,
                 "operations",
-                4,
+                5,
                 "derived_policyengine_outputs",
                 "employment_income",
                 "formula",
@@ -483,7 +533,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
                 "stages",
                 0,
                 "operations",
-                4,
+                5,
                 "source_leaf_reconciliation",
                 "maximum_absolute_difference_gbp",
                 "ordinary",
@@ -493,7 +543,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             "stage1.source_leaf_reconciliation.maximum_absolute_difference_gbp",
         ),
         (
-            ("stages", 0, "operations", 5, "reviewed_absent_outputs"),
+            ("stages", 0, "operations", 6, "reviewed_absent_outputs"),
             {"maternity_allowance_reported": "changed"},
             "stage2.reviewed_absent_outputs",
         ),
@@ -502,7 +552,7 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
                 "stages",
                 0,
                 "operations",
-                6,
+                7,
                 "component_columns",
                 "savings_interest_income",
                 "amount_column_index",
@@ -511,19 +561,26 @@ def test_runtime_source_contract_matches_committed_manifest() -> None:
             "materialize.component_columns",
         ),
         (
-            ("stages", 0, "operations", 8, "max_weight_ratio"),
-            10,
-            "calibration.max_weight_ratio",
+            ("stages", 0, "operations", 8, "output_weight_kind"),
+            "calibrated",
+            "classification.output_weight_kind",
         ),
         (
-            ("stages", 0, "operations", 8, "state_pension_measure"),
-            "state_pension",
-            "calibration.state_pension_measure",
+            ("stages", 0, "operations", 8, "required_fact_count"),
+            207,
+            "classification.required_fact_count",
         ),
         (
-            ("stages", 0, "operations", 8, "maximum_abs_relative_error"),
-            0.10,
-            "calibration.maximum_abs_relative_error",
+            (
+                "stages",
+                0,
+                "operations",
+                8,
+                "outcome_counts",
+                "excluded_with_fence",
+            ),
+            207,
+            "classification.outcome_counts",
         ),
         (
             ("stages", 0, "operations", 9, "required_support_channel"),

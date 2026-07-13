@@ -316,9 +316,10 @@ def _candidate_effective_weights(
     )
     benunit = store.select("benunit", columns=["benunit_id"])
 
-    if household["household_id"].isna().any() or household[
-        "household_id"
-    ].duplicated().any():
+    if (
+        household["household_id"].isna().any()
+        or household["household_id"].duplicated().any()
+    ):
         raise ValueError(
             "Candidate effective-mass evidence requires unique household_id values."
         )
@@ -475,9 +476,7 @@ def build_candidate_evidence(
         name for name, share in nondefault_shares.items() if share <= 0.0
     )
     signal = sorted(name for name, share in nondefault_shares.items() if share > 0.0)
-    effective_floor = float(
-        EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"]
-    )
+    effective_floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
     insufficient_effective_mass = sorted(
         name
         for name in surface
@@ -609,9 +608,7 @@ def _validate_known_gaps(
             f"missing={missing}, extra={extra}, mismatched={mismatched}."
         )
     floor = float(EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"])
-    expected = {
-        name for name in surface if float(effective_nondefault[name]) < floor
-    }
+    expected = {name for name in surface if float(effective_nondefault[name]) < floor}
     actual = set(raw_gaps)
     if actual != expected:
         raise ValueError(
@@ -734,13 +731,13 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"qrf_donor", "calibration_surface"}
+    required_artifacts = {"qrf_donor", "published_fact_surface"}
     missing_artifacts = sorted(required_artifacts - set(artifacts))
     required_operations = {
-        "require_frs_hmrc_employment_crosswalk",
+        "retain_adjudicated_frs_hmrc_leaves",
+        "verify_pinned_hmrc_source_pair",
         "replace_zero_weight_spi_support",
-        "derive_taxpayer_mask",
-        "calibrate_weighted_income_bands",
+        "classify_hmrc_income_facts_with_reviewed_fences",
         "gate_distributional_effective_mass",
     }
     missing_operations = sorted(required_operations - set(operations))
@@ -750,8 +747,8 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
             f"missing_artifacts={missing_artifacts}, "
             f"missing_operations={missing_operations}."
         )
-    calibration = operations["calibrate_weighted_income_bands"]
-    frs_crosswalk = operations["require_frs_hmrc_employment_crosswalk"]
+    classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
+    frs_leaves = operations["retain_adjudicated_frs_hmrc_leaves"]
     prior = operations["replace_zero_weight_spi_support"]
     effective = operations["gate_distributional_effective_mass"]
     floor = float(effective["minimum_nondefault_mass_share"])
@@ -779,31 +776,41 @@ def _hmrc_family_coverage_contract() -> dict[str, Any]:
     return {
         "status": (
             "required_at_build"
-            if str(frs_crosswalk["status"]) == "restored"
+            if str(frs_leaves["status"]) == "restored"
             else "deferred_until_restored"
         ),
-        "restoration_status": str(frs_crosswalk["status"]),
+        "restoration_status": str(frs_leaves["status"]),
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
         "base_candidate_sha256": str(stage["base_candidate"]["sha256"]),
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
-            "hmrc_surface": str(artifacts["calibration_surface"]["vintage"]),
+            "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),
             "mapped_build_period": str(
-                artifacts["calibration_surface"]["mapped_build_period"]
+                artifacts["published_fact_surface"]["mapped_build_period"]
             ),
         },
         "spi_prior_national_household_mass_share": float(
             prior["spi_prior_national_household_mass_share"]
         ),
         "required_mass_change_reason": str(prior["mass_change_reason"]),
-        "input_weight_kind": str(calibration["input_weight_kind"]),
-        "output_weight_kind": str(calibration["output_weight_kind"]),
-        "required_components": list(calibration["components"]),
-        "required_target_count": int(calibration["required_target_count"]),
-        "taxpayer_mask": str(calibration["taxpayer_mask"]),
-        "band_measure": str(calibration["breakdown_variable"]),
+        "input_weight_kind": str(classification["input_weight_kind"]),
+        "output_weight_kind": str(classification["output_weight_kind"]),
+        "calibration_permitted": bool(classification["calibration_permitted"]),
+        "required_components": list(classification["components"]),
+        "required_target_count": int(classification["required_fact_count"]),
+        "band_measure": str(classification["breakdown_dependency"]),
+        "fact_outcome_counts": dict(classification["outcome_counts"]),
+        "fact_fence_id": str(classification["fact_fence_id"]),
+        "reviewed_fence_ids": [
+            str(fence["fence_id"]) for fence in classification["reviewed_fences"]
+        ],
+        "retained_frs_constituents": {
+            "full": list(frs_leaves["retained_full_constituents"]),
+            "named_subsets": list(frs_leaves["retained_named_subsets"]),
+            "source_absent": list(frs_leaves["source_absent_full_constituents"]),
+        },
         "effective_mass_requirements": {
             str(column): {
                 "status": "distributional_required",
