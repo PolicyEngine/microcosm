@@ -2732,10 +2732,28 @@ def _snap_state_target_table(target_specs: tuple) -> pd.DataFrame:
 
 
 def _spm_unit_state_fips(frame: Frame) -> np.ndarray:
-    """SPM-unit-aligned state FIPS text codes via the frame's linkage."""
-    return np.asarray(
-        _state_fips_text(frame.broadcast("state_fips", to="spm_unit").to_numpy())
+    """SPM-unit-aligned state FIPS text codes via the person linkage.
+
+    ``Frame.broadcast`` only targets the person entity, so state_fips is
+    broadcast to persons and collapsed to one value per SPM unit (members of
+    an SPM unit share a household, hence a state).
+    """
+    person = frame.table("person")
+    person_state = frame.broadcast("state_fips", to="person").to_numpy()
+    first_by_unit = (
+        pd.Series(person_state, index=person["person_spm_unit_id"].to_numpy())
+        .groupby(level=0)
+        .first()
     )
+    spm_unit_ids = frame.table("spm_unit")["spm_unit_id"].to_numpy()
+    aligned = first_by_unit.reindex(spm_unit_ids)
+    if aligned.isna().any():
+        missing = int(aligned.isna().sum())
+        raise RuntimeError(
+            f"SNAP state take-up: {missing} spm_unit(s) have no member "
+            "persons to carry state_fips."
+        )
+    return np.asarray(_state_fips_text(aligned.to_numpy()))
 
 
 def _snap_spm_unit_eligibility(

@@ -6873,3 +6873,30 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
         "assert_take_up_treatments_consistent",
     ):
         assert preflight in called, f"main() no longer calls {preflight}"
+
+
+def test_spm_unit_state_fips_collapses_person_broadcast_per_unit() -> None:
+    """_spm_unit_state_fips must not ask Frame.broadcast for a group target.
+
+    Frame.broadcast only supports the person entity; the SNAP state take-up
+    stage previously crashed on every release run by broadcasting to
+    spm_unit. The helper must collapse the person-level broadcast to one
+    zero-padded FIPS text code per SPM unit, in spm_unit table order.
+    """
+    builder = _load_builder_module()
+    sys.path.insert(0, str(Path(__file__).parent))
+    try:
+        from test_us_snap_state_take_up import _us_frame
+    finally:
+        sys.path.pop(0)
+
+    frame = _us_frame(
+        [
+            {"person_id": 1, "person_spm_unit_id": 10, "state_fips": 6},
+            {"person_id": 2, "person_spm_unit_id": 10, "state_fips": 6},
+            {"person_id": 3, "person_spm_unit_id": 20, "state_fips": 36},
+            {"person_id": 4, "person_spm_unit_id": 30, "state_fips": 2},
+        ]
+    )
+    out = builder._spm_unit_state_fips(frame)
+    assert list(out) == ["06", "36", "02"]
