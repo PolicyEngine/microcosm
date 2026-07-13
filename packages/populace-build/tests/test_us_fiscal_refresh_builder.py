@@ -1981,6 +1981,45 @@ def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
     assert weights[1] == weights[3]
 
 
+def test_fiscal_target_loss_weights_apply_family_multipliers() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="snap_state_row",
+                entity="household",
+                measure="snap_state_row",
+                value=100.0,
+                source="fixture",
+                family="usda_snap",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="ordinary_amount_row",
+                entity="household",
+                measure="ordinary_amount_row",
+                value=100.0,
+                source="fixture",
+                family="other_family",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+        ),
+        country="us",
+    )
+
+    base_weights = builder._fiscal_target_loss_weights(registry)
+    boosted_weights = builder._fiscal_target_loss_weights(registry, {"usda_snap": 8.0})
+
+    assert np.isclose(boosted_weights.mean(), 1.0)
+    assert np.isclose(
+        boosted_weights[0] / boosted_weights[1],
+        8.0 * base_weights[0] / base_weights[1],
+    )
+
+    with pytest.raises(ValueError, match="matches no compiled target"):
+        builder._fiscal_target_loss_weights(registry, {"missing_family": 2.0})
+
+
 def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> None:
     builder = _load_builder_module()
     registry = TargetRegistry(
