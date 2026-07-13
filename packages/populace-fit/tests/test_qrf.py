@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 from populace.fit import QRFChainState, Regime, RegimeGatedQRF, fit
-from populace.fit.qrf import _fit_n_jobs, detect_regime
+from populace.fit.qrf import _DISCRETE_Y_LEAF_BOUND, _fit_n_jobs, detect_regime
 
 # ----------------------------------------------------------------------------
 # Regime detection: structural, unweighted support classification
@@ -543,6 +543,77 @@ def test_forests_keep_all_leaf_samples(make_person_frame) -> None:
     fitted = fit(frame, ["x"], ["target"], n_estimators=8, seed=0)
     forest = fitted._target_models["target"].positive.model
     assert forest.max_samples_leaf is None
+
+
+def test_near_discrete_targets_get_bounded_leaf_samples(make_person_frame) -> None:
+    """A few-atom target trades full leaf retention for a bounded subsample.
+
+    With ``max_samples_leaf=None`` a near-discrete ``y`` (here six atoms, one
+    dominant) stops splitting once nodes are y-pure, so a dominant atom piles
+    hundreds of thousands of identical samples into single leaves and the
+    forest's dense per-leaf store (``trees x leaves x largest_leaf``) reaches
+    tens of GB — the QBI ``*_would_be_qualified`` targets jetsammed the Build M
+    base at 57-67GB per worker this way. The guard caps such targets' leaf
+    storage at _DISCRETE_Y_LEAF_BOUND; their leaf conditionals hold at most a
+    few dozen atoms, so the capped subsample reproduces every leaf quantile to
+    multinomial noise.
+    """
+    rng = np.random.default_rng(0)
+    n = 600
+    atoms = np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    target = atoms[rng.choice(len(atoms), size=n, p=[0.05, 0.05, 0.7, 0.1, 0.05, 0.05])]
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+    fitted = fit(frame, ["x"], ["target"], n_estimators=8, seed=0)
+    forest = fitted._target_models["target"].positive.model
+    assert forest.max_samples_leaf == _DISCRETE_Y_LEAF_BOUND
+
+
+def test_near_discrete_bound_never_overrides_explicit_config(
+    make_person_frame,
+) -> None:
+    """An explicit ``max_samples_leaf`` wins over the near-discrete guard.
+
+    The guard exists to rescue the ``None`` (keep-everything) default from
+    pathological targets; a caller who pinned a leaf budget said what they
+    meant, and silently rewriting it would make the recorded chain config lie.
+    """
+    rng = np.random.default_rng(0)
+    n = 600
+    atoms = np.array([0.0, 0.5, 1.0])
+    target = atoms[rng.choice(len(atoms), size=n, p=[0.2, 0.6, 0.2])]
+    frame = make_person_frame({"x": rng.normal(size=n), "target": target})
+    fitted = RegimeGatedQRF(n_estimators=8, seed=0, max_samples_leaf=7).fit(
+        frame, ["x"], ["target"]
+    )
+    forest = fitted._target_models["target"].positive.model
+    assert forest.max_samples_leaf == 7
+
+
+def test_near_discrete_bound_draws_are_seed_deterministic(make_person_frame) -> None:
+    """The bounded-leaf path draws identically across identical fits.
+
+    The guard is a pure function of the pre-bootstrap ``y``, consumes no RNG,
+    and the capped forest is seeded — so two fits from the same seed must agree
+    bit for bit, exactly like the uncapped path. This is what lets a resumed
+    per-target chain refit a capped target without perturbing the stream.
+    """
+    rng = np.random.default_rng(1)
+    n = 500
+    atoms = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    data = {
+        "x": rng.normal(size=n),
+        "target": atoms[rng.choice(len(atoms), size=n)],
+    }
+    frame = make_person_frame(data)
+    first = fit(frame, ["x"], ["target"], n_estimators=8, seed=7).predict(
+        frame.table("person").loc[:, ["x"]]
+    )
+    second = fit(frame, ["x"], ["target"], n_estimators=8, seed=7).predict(
+        frame.table("person").loc[:, ["x"]]
+    )
+    np.testing.assert_array_equal(
+        first["target"].to_numpy(), second["target"].to_numpy()
+    )
 
 
 # ----------------------------------------------------------------------------
