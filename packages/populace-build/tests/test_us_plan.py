@@ -941,6 +941,20 @@ class TestUsSources:
             "packages/populace-build/src/populace/build/us/ecps_parity_reference.json",
             "packages/populace-build/src/populace/build/us_runtime/parity_reference.py",
             "packages/populace-build/tests/test_us_parity_reference.py",
+            # UK coverage has the same frozen-incumbent exception: these files
+            # name only the immutable, sha-verified enhanced-FRS reference and
+            # never import or execute the retired data package.
+            "packages/populace-build/src/populace/build/uk/efrs_parity_reference.json",
+            "packages/populace-build/src/populace/build/uk/hmrc_income_source_stages.json",
+            "packages/populace-build/src/populace/build/uk_runtime/parity_reference.py",
+            # The HMRC source contract pins the licensed SPI/ODS input
+            # identities, whose reviewed provenance names the archived data
+            # repository the licensed copies were vendored from. Identity
+            # strings only — nothing is imported or fetched from it.
+            "packages/populace-build/src/populace/build/uk_runtime/hmrc_source_contract.py",
+            "packages/populace-build/tests/test_uk_parity_reference.py",
+            "tools/build_uk_efrs_parity_reference.py",
+            "UK_COVERAGE_PROGRESS.md",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []
@@ -957,6 +971,10 @@ class TestUsSources:
                 # in local-path provenance; the shipped tree under packages/ is
                 # still swept. Same non-shipped class as ``out``.
                 or "experiments" in path.parts
+                # UK runtime scratch (staging builds, replay outputs) is
+                # caller-owned run scaffolding, untracked in CI, and records
+                # licensed-source provenance; same non-shipped class as ``out``.
+                or "uk_runtime" in path.parts
             ):
                 continue
             rel = str(path.relative_to(ROOT))

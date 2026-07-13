@@ -1537,6 +1537,7 @@ def input_column_coverage_gate(
     degenerate_columns: Iterable[str] = (),
     reviewed_exclusions: Mapping[str, str] | None = None,
     name: str = "input_column_coverage",
+    reference_label: str = "eCPS",
 ) -> GateResult:
     """Every declared-required input column is present AND carries signal.
 
@@ -1580,6 +1581,9 @@ def input_column_coverage_gate(
             fails the gate, a dormant entry is only reported.
         name: Gate name for the manifest (defaults to
             ``"input_column_coverage"``).
+        reference_label: Human-readable reference dataset label used in failure
+            messages. Defaults to ``"eCPS"`` so existing US callers and output
+            remain byte-for-byte unchanged.
 
     Returns:
         Pass iff every required column is present and non-degenerate, no
@@ -1593,6 +1597,8 @@ def input_column_coverage_gate(
     """
     if not name:
         raise ValueError("input column coverage gate name must be non-empty.")
+    if not reference_label:
+        raise ValueError("input column coverage reference_label must be non-empty.")
     exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
     present = {str(column) for column in present_columns}
     degenerate = {str(column) for column in degenerate_columns} & present
@@ -1612,7 +1618,8 @@ def input_column_coverage_gate(
         if column not in present:
             missing.append(column)
             failures.append(
-                f"{column}: required eCPS input column is absent from the "
+                f"{column}: required {reference_label} input column is absent "
+                "from the "
                 "export; the engine defaults it and every reform binding "
                 "through it scores ~$0. Impute it (carry it through the base "
                 "and selection) or record a reviewed exclusion with the "
@@ -1621,7 +1628,8 @@ def input_column_coverage_gate(
         elif column in degenerate:
             degenerate_required.append(column)
             failures.append(
-                f"{column}: required eCPS input column is present but every "
+                f"{column}: required {reference_label} input column is present "
+                "but every "
                 "value equals the engine default; the export writer's "
                 "default-broadcast makes it indistinguishable from absence. "
                 "Impute it or record a reviewed exclusion with the tracking "
