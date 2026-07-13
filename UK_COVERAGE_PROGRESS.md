@@ -17,8 +17,8 @@ enhanced FRS pipeline — pending review” and the required tracking note.
 | National orchestration seam | No status change | Ordered stage protocol, stable verified-byte binding, cheap preflight, final manifest gate, and atomic staging-H5 write | Complete |
 | Effective-mass coverage | −2 required; +2 reviewed exclusions | Candidate evidence and the final gate both require signal on at least 0.000001 of owning-entity effective population mass; zero-weight Gift Aid support is excluded honestly until restoration | Complete |
 | HMRC/SPI source identities and Q1 | No raw status change | Reviewed donor/ODS pins; real ODS 208-fact parse; documented donor-leaf reconciliation; deterministic TEI/TII/TI synthetic contract; one SRP surface for bands and Table 3.6 | Complete |
-| HMRC/SPI income restoration | Not promoted | Q2 cannot be materialized like-for-like on the certified FRS channel; fail-closed blocker below | Blocked pending conductor review |
-| Real-donor replay, 2026-07-13 | No status change | The staged donor and ODS match their reviewed byte identities, but the production entrypoint stops at the Q2 FRS preflight before either source is opened; no staging file, coverage sidecar, or aggregate 208-fact replay report was emitted | Blocked pending conductor review |
+| HMRC/SPI income restoration | Not promoted | The adjudicated Option 1 raw-FRS audit found complete sources for only part of the ten-leaf crosswalk; five leaves have no source-faithful monetary measure and two are incomplete, as recorded below | Blocked pending per-constituent adjudication |
+| Real-donor replay, 2026-07-13 | No status change | The donor and ODS pins remain verified, but the adjudicated source audit triggered the required stop before donor replay; no staging file, coverage sidecar, or aggregate 208-fact report was emitted | Blocked pending per-constituent adjudication |
 
 ## Restoration diagnosis
 
@@ -178,11 +178,43 @@ established that the mappings were proxies. It wrote no row-level or aggregate
 artifact and is not replay evidence. The strict production result above is the
 only admissible release-path result.
 
-Conductor review must choose one of these before restoration can resume:
+## Q2 Option 1 raw-FRS source audit, 2026-07-13
 
-1. approve a new FRS decomposition/imputation stage that materializes every
-   normalized HMRC constituent with source evidence; or
-2. explicitly review a shared higher-level proxy and its expected bias.
+The conductor selected Option 1 with no proxy: retain all ten normalized leaves
+from source-faithful FRS variables, or, if any leaf has no raw source, document
+the per-constituent evidence and stop. The audit covered the 2023-24 raw FRS
+`ADULT`, `JOB`, `BENEFITS`, and `ODDJOB` tables and the other income-bearing
+`PENSION`, `ACCOUNTS`, and `ASSETS` tables. It also checked the current
+`policyengine-uk-data` FRS loader and the
+[official FRS 2023-24 benefit definitions](https://doc.ukdataservice.ac.uk/doc/9367/mrdoc/pdf/9367_frs_2023_24_benefits_documentation.pdf)
+against the
+[SPI 2022-23 Annex A definitions](https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf).
+The licensed SPI donor was not opened for this audit.
+
+The mass estimates below use the certified candidate's FRS channel: positive
+household weights are folded through the candidate's exact raw-household and
+person ancestry, yielding 68,441,459.783 effective person-mass units. A nearby
+flag or partial amount is reported only as an at-risk or lower-bound diagnostic;
+it is not evidence that the normalized leaf is populated.
+
+| SPI leaf sought | Raw FRS table and variable evidence | Source-faithful finding | Effective-mass implication |
+| --- | --- | --- | ---: |
+| `PAY` | `ADULT.INEARNS`; `JOB.UGRSPAY` checked for the underlying job-level gross-pay composition | Available as the annualized earned-pay measure. | 38.7291454% has positive pay. |
+| `EPB` | `JOB.EXPBEN01`-`EXPBEN13`; partial amount fields `CARVAL`, `CARAMT`, `FUELAMT`, `VCHAMT`, and `CHVAMT` | **Missing.** `EXPBEN*` are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits. | 12.9485464% has at least one receipt flag, but this is not monetary support. |
+| `EXPS` | `JOB.EXPBEN04`/`EXPBEN05`, `MILEAMT`, `MOTAMT`, `UMILEAMT`, `UMOTAMT`, `DEDUC1`-`DEDUC9`, and `UDEDUC1`-`UDEDUC9` | **Missing.** These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI. | 5.1302528% has an adjacent reimbursement flag; the true `EXPS` mass is not estimable. |
+| `INCPBEN` | `BENEFITS.BENAMT` where `BENEFIT == 17` | Structurally expressible, but the current FRS has no code-17 rows and therefore no observed monetary signal. | 0% observed mass. |
+| `OSSBEN` | `BENEFITS.BENAMT`, `BENEFIT`, and `VAR2`: code 13 and contribution-based code 16 are identifiable; codes 6 and 30 were also searched | **Incomplete.** Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted. | 1.8045088% identifiable lower-bound mass; not counted as support. |
+| `TAXTERM` | `ADULT.REDAMT`; `ADULT` and `JOB` searched for a taxable termination split | **Missing.** `REDAMT` is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay. | 0.3746084% has positive gross redundancy pay; taxable mass is unknown. |
+| `UBISJA` | `BENEFITS.BENAMT` where `BENEFIT` is 14 (JSA) or 19 (Income Support) | Available as the annualized source measure. | 0.5378644% has positive source signal. |
+| `MOTHINC` | `ODDJOB.OJAMT`/`OJNOW`, `ADULT.ALLPAY2`, `ADULT.ROYYR2`-`ROYYR4`, and `JOB.OWNOTHER` | **Missing.** The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy. | Odd-job-only mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%. |
+| `OTHERINC` | The same `ADULT`, `ODDJOB`, and `JOB` fields, plus `PENSION`, `ACCOUNTS`, `ASSETS`, and `BENEFITS`, were searched for a distinct residual-income field | **Missing.** No person-level raw FRS variable has SPI `OTHERINC` semantics, and the miscellaneous pool cannot be split between `MOTHINC` and `OTHERINC` from source evidence. | No separable mass estimate; the unresolved pool is 1.4650566%. |
+| `SRP` | `BENEFITS.BENAMT` where `BENEFIT == 5`; codes 6 and 9 checked for widow-related amounts | **Incomplete.** Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension. | 18.1567916% has regular code-5 State Pension; not counted as complete `SRP` support. |
+
+This establishes the adjudicated stop condition: `EPB`, `EXPS`, `TAXTERM`,
+`MOTHINC`, and `OTHERINC` have no complete raw FRS source, while `OSSBEN` and
+`SRP` are only partial. No imputation, proxy, normalized-leaf stage, source-
+manifest promotion, national staging build, or real-donor replay was attempted.
+The release contract remains **143 required + 2 reviewed exclusions**.
 
 No national staging artifact has passed the 208 real targets, the weighted
 charitable-giving floor, or the income-tax backtest. `gift_aid` and
