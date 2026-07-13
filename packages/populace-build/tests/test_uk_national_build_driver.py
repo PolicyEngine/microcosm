@@ -11,11 +11,14 @@ import pytest
 
 _PATH_ARGUMENTS = (
     "evidence_path",
+    "replay_path",
     "coverage_path",
     "input_h5",
     "staging_h5",
     "spi_tab",
     "hmrc_ods",
+    "adult_tab",
+    "benefits_tab",
 )
 
 
@@ -37,22 +40,36 @@ def test_national_build_driver_uses_standalone_national_seam(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    adult_tab = frs_raw_dir / "adult.tab"
+    benefits_tab = frs_raw_dir / "benefits.tab"
+    frs_raw_dir.mkdir()
     input_h5.write_bytes(b"base")
     spi_tab.write_bytes(b"spi")
     hmrc_ods.write_bytes(b"hmrc")
+    adult_tab.write_bytes(b"adult")
+    benefits_tab.write_bytes(b"benefits")
     calls = []
+    replay_writes = []
 
     def fake_build(**kwargs):
         calls.append(kwargs)
         kwargs["stages"][0].transform.last_result = SimpleNamespace(
-            evidence=lambda: {"stage": "hmrc_spi_income"}
+            evidence=lambda: {"stage": "frs_hmrc_retained_leaves"}
+        )
+        kwargs["stages"][1].transform.last_result = SimpleNamespace(
+            evidence=lambda: {"stage": "hmrc_spi_income"},
+            replay_report=SimpleNamespace(summary={"excluded_with_fence": 208}),
         )
         staging_h5.write_bytes(b"staged")
         kwargs["input_coverage_path"].write_text('{"passed": true}\n')
         return SimpleNamespace(
             input_h5=input_h5.resolve(),
             staging_h5=staging_h5.resolve(),
-            stage_names=("hmrc_spi_income",),
+            stage_names=(
+                "frs_hmrc_retained_leaves",
+                "hmrc_spi_income",
+            ),
             input_coverage=SimpleNamespace(
                 passed=True,
                 failures=(),
@@ -61,6 +78,14 @@ def test_national_build_driver_uses_standalone_national_seam(
         )
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
+    monkeypatch.setattr(
+        builder,
+        "write_hmrc_replay_report",
+        lambda report, path: (
+            replay_writes.append((report, Path(path))),
+            Path(path).write_text('{"excluded_with_fence": 208}\n'),
+        )[1],
+    )
     monkeypatch.setattr(
         builder,
         "verify_certified_uk_candidate",
@@ -81,6 +106,8 @@ def test_national_build_driver_uses_standalone_national_seam(
             str(input_h5),
             "--staging-h5",
             str(staging_h5),
+            "--frs-raw-dir",
+            str(frs_raw_dir),
             "--spi-tab",
             str(spi_tab),
             "--hmrc-ods",
@@ -93,25 +120,196 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert len(calls) == 1
     assert calls[0]["input_h5"] == input_h5
     assert calls[0]["staging_h5"] == staging_h5
-    assert len(calls[0]["stages"]) == 1
-    assert calls[0]["stages"][0].name == "hmrc_spi_income"
-    transform = calls[0]["stages"][0].transform
-    assert transform.spi_tab_path == spi_tab
-    assert transform.hmrc_ods_path == hmrc_ods
-    assert transform.certified_candidate.revision == "test-revision"
+    assert len(calls[0]["stages"]) == 2
+    assert calls[0]["stages"][0].name == "frs_hmrc_retained_leaves"
+    retained_transform = calls[0]["stages"][0].transform
+    assert retained_transform.adult_tab_path == adult_tab
+    assert retained_transform.benefits_tab_path == benefits_tab
+    assert calls[0]["stages"][1].name == "hmrc_spi_income"
+    hmrc_transform = calls[0]["stages"][1].transform
+    assert hmrc_transform.spi_tab_path == spi_tab
+    assert hmrc_transform.hmrc_ods_path == hmrc_ods
+    assert hmrc_transform.certified_candidate.revision == "test-revision"
+    assert hmrc_transform.retained_leaves_transform is retained_transform
     assert calls[0]["input_coverage_path"] == staging_h5.with_suffix(
         ".input_coverage.json"
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["build_kind"] == "uk_national_staging_dataset"
-    assert payload["stages"] == ["hmrc_spi_income"]
+    assert payload["stages"] == [
+        "frs_hmrc_retained_leaves",
+        "hmrc_spi_income",
+    ]
     assert payload["input_coverage"]["passed"] is True
+    assert payload["hmrc_replay"]["summary"] == {"excluded_with_fence": 208}
     assert payload["artifacts"]["staging_h5"]["sha256"]
     evidence_path = staging_h5.with_suffix(".hmrc_income.json")
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert evidence["base_candidate"]["revision"] == "test-revision"
+    assert evidence["retained_leaves"]["stage"] == "frs_hmrc_retained_leaves"
     assert evidence["family"]["stage"] == "hmrc_spi_income"
     assert payload["artifacts"]["hmrc_evidence"]["sha256"]
+    replay_path = staging_h5.with_suffix(".hmrc_replay.json")
+    assert replay_writes == [(hmrc_transform.last_result.replay_report, replay_path)]
+    assert payload["artifacts"]["hmrc_replay"]["sha256"]
+    assert payload["artifacts"]["frs_adult"]["sha256"]
+    assert payload["artifacts"]["frs_benefits"]["sha256"]
+
+
+def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "hmrc.ods"
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    frs_raw_dir.mkdir()
+    for path, content in (
+        (input_h5, b"base"),
+        (spi_tab, b"spi"),
+        (hmrc_ods, b"hmrc"),
+        (frs_raw_dir / "adult.tab", b"adult"),
+        (frs_raw_dir / "benefits.tab", b"benefits"),
+    ):
+        path.write_bytes(content)
+
+    replay_report = object()
+
+    def fake_build(**kwargs):
+        kwargs["stages"][0].transform.last_result = SimpleNamespace(
+            evidence=lambda: {"stage": "frs_hmrc_retained_leaves"}
+        )
+        kwargs["stages"][1].transform.last_result = SimpleNamespace(
+            evidence=lambda: {"stage": "hmrc_spi_income"},
+            replay_report=replay_report,
+        )
+        kwargs["input_coverage_path"].write_text('{"passed": false}\n')
+        raise RuntimeError(
+            "Release gates failed: Input coverage failed: gift_aid remains "
+            "a reviewed exclusion with positive effective-mass signal"
+        )
+
+    monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=4,
+        ),
+    )
+    replay_calls = []
+
+    def fake_write_replay(report, path):
+        replay_calls.append((report, Path(path)))
+        Path(path).write_text('{"excluded_with_fence": 208}\n')
+        return Path(path)
+
+    monkeypatch.setattr(builder, "write_hmrc_replay_report", fake_write_replay)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--staging-h5",
+            str(staging_h5),
+            "--frs-raw-dir",
+            str(frs_raw_dir),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Release gates failed"):
+        builder.main()
+
+    evidence = json.loads(
+        staging_h5.with_suffix(".hmrc_income.json").read_text(encoding="utf-8")
+    )
+    assert evidence["retained_leaves"]["stage"] == ("frs_hmrc_retained_leaves")
+    assert evidence["family"]["stage"] == "hmrc_spi_income"
+    assert replay_calls == [
+        (replay_report, staging_h5.with_suffix(".hmrc_replay.json"))
+    ]
+    assert not staging_h5.exists()
+
+
+def test_national_driver_does_not_write_reports_for_stage_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "hmrc.ods"
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    frs_raw_dir.mkdir()
+    for path in (
+        input_h5,
+        spi_tab,
+        hmrc_ods,
+        frs_raw_dir / "adult.tab",
+        frs_raw_dir / "benefits.tab",
+    ):
+        path.write_bytes(b"source")
+
+    monkeypatch.setattr(
+        builder,
+        "build_uk_national_dataset",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("SPI donor identity mismatch")
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=6,
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_hmrc_replay_report",
+        lambda *_args: pytest.fail("stage errors must not emit replay reports"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--staging-h5",
+            str(staging_h5),
+            "--frs-raw-dir",
+            str(frs_raw_dir),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="SPI donor identity mismatch"):
+        builder.main()
+
+    assert not staging_h5.with_suffix(".hmrc_income.json").exists()
+    assert not staging_h5.with_suffix(".hmrc_replay.json").exists()
 
 
 @pytest.mark.parametrize(
@@ -174,11 +372,15 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    frs_raw_dir = tmp_path / "frs_2023_24"
     evidence = tmp_path / "evidence.json"
+    frs_raw_dir.mkdir()
     input_h5.write_bytes(b"certified base")
     staging_h5.write_bytes(b"previous staging")
     spi_tab.write_bytes(b"licensed donor")
     hmrc_ods.write_bytes(b"official surface")
+    (frs_raw_dir / "adult.tab").write_bytes(b"raw adult")
+    (frs_raw_dir / "benefits.tab").write_bytes(b"raw benefits")
     evidence.write_bytes(b"previous evidence")
     monkeypatch.setattr(
         builder,
@@ -199,6 +401,8 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
             str(input_h5),
             "--staging-h5",
             str(staging_h5),
+            "--frs-raw-dir",
+            str(frs_raw_dir),
             "--spi-tab",
             str(spi_tab),
             "--hmrc-ods",
@@ -226,6 +430,8 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
         "--spi-donor-sample-size",
         "--max-weight-ratio",
         "--maximum-abs-relative-error",
+        "--calibration-epochs",
+        "--calibration-learning-rate",
     ],
 )
 def test_national_driver_rejects_unreviewed_release_overrides(
@@ -242,6 +448,8 @@ def test_national_driver_rejects_unreviewed_release_overrides(
             "base.h5",
             "--staging-h5",
             "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
             "--spi-tab",
             "put2223uk.tab",
             "--hmrc-ods",

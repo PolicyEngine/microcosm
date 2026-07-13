@@ -9,6 +9,10 @@ import uuid
 from itertools import combinations
 from pathlib import Path
 
+from populace.build.uk_runtime.frs_hmrc_leaves import (
+    UKFRSHMRCRetainedLeavesStageTransform,
+)
+from populace.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from populace.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
@@ -32,6 +36,15 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Caller-owned path for the gated national staging H5.",
+    )
+    parser.add_argument(
+        "--frs-raw-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Raw FRS 2023-24 directory containing adult.tab and benefits.tab "
+            "for source-faithful retained HMRC leaves."
+        ),
     )
     parser.add_argument(
         "--spi-tab",
@@ -61,10 +74,16 @@ def _parse_args() -> argparse.Namespace:
             "suffix '.hmrc_income.json'."
         ),
     )
+    parser.add_argument(
+        "--hmrc-replay-json",
+        type=Path,
+        help=(
+            "Aggregate-only 208-fact replay report path. Defaults beside "
+            "--staging-h5 with suffix '.hmrc_replay.json'."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
-    parser.add_argument("--calibration-epochs", type=int, default=256)
-    parser.add_argument("--calibration-learning-rate", type=float, default=0.02)
     return parser.parse_args()
 
 
@@ -76,47 +95,78 @@ def main() -> int:
     evidence_path = args.hmrc_evidence_json or args.staging_h5.with_suffix(
         ".hmrc_income.json"
     )
+    replay_path = args.hmrc_replay_json or args.staging_h5.with_suffix(
+        ".hmrc_replay.json"
+    )
+    retained_leaves_transform = (
+        UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(args.frs_raw_dir)
+    )
     _validate_distinct_paths(
         evidence_path=evidence_path,
+        replay_path=replay_path,
         coverage_path=coverage_path,
         input_h5=args.input_h5,
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
         hmrc_ods=args.hmrc_ods,
+        adult_tab=retained_leaves_transform.adult_tab_path,
+        benefits_tab=retained_leaves_transform.benefits_tab_path,
     )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
-    transform = UKHMRCIncomeStageTransform(
+    replay_path.unlink(missing_ok=True)
+    hmrc_transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
         hmrc_ods_path=args.hmrc_ods,
         certified_candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
-        calibration_epochs=args.calibration_epochs,
-        calibration_learning_rate=args.calibration_learning_rate,
     )
-    result = build_uk_national_dataset(
-        input_h5=args.input_h5,
-        staging_h5=args.staging_h5,
-        stages=(UKNationalStage(name="hmrc_spi_income", transform=transform),),
-        input_coverage_path=coverage_path,
+    try:
+        result = build_uk_national_dataset(
+            input_h5=args.input_h5,
+            staging_h5=args.staging_h5,
+            stages=(
+                UKNationalStage(
+                    name="frs_hmrc_retained_leaves",
+                    transform=retained_leaves_transform,
+                ),
+                UKNationalStage(
+                    name="hmrc_spi_income",
+                    transform=hmrc_transform,
+                ),
+            ),
+            input_coverage_path=coverage_path,
+        )
+    except RuntimeError as error:
+        if (
+            _is_final_release_gate_failure(error)
+            and retained_leaves_transform.last_result is not None
+            and hmrc_transform.last_result is not None
+        ):
+            _write_stage_reports(
+                evidence_path=evidence_path,
+                replay_path=replay_path,
+                candidate=candidate,
+                retained_leaves_transform=retained_leaves_transform,
+                hmrc_transform=hmrc_transform,
+            )
+        raise
+    _write_stage_reports(
+        evidence_path=evidence_path,
+        replay_path=replay_path,
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
     )
-    if transform.last_result is None:  # pragma: no cover - defensive
-        raise RuntimeError("HMRC/SPI national stage completed without evidence.")
+    assert hmrc_transform.last_result is not None  # guarded by report writer
     hmrc_evidence = {
-        "schema_version": 1,
-        "base_candidate": {
-            "path": str(candidate.path),
-            "filename": candidate.filename,
-            "revision": candidate.revision,
-            "sha256": candidate.sha256,
-            "size_bytes": candidate.size_bytes,
-        },
-        "family": transform.last_result.evidence(),
+        "passed": True,
+        "summary": dict(hmrc_transform.last_result.replay_report.summary),
     }
-    _write_json(evidence_path, hmrc_evidence)
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
         "stages": list(result.stage_names),
         "input_coverage": {
@@ -129,9 +179,13 @@ def main() -> int:
             "staging_h5": _artifact_info(result.staging_h5),
             "input_coverage": _artifact_info(coverage_path),
             "hmrc_evidence": _artifact_info(evidence_path),
+            "hmrc_replay": _artifact_info(replay_path),
             "spi_donor": _artifact_info(args.spi_tab),
             "hmrc_surface": _artifact_info(args.hmrc_ods),
+            "frs_adult": _artifact_info(retained_leaves_transform.adult_tab_path),
+            "frs_benefits": _artifact_info(retained_leaves_transform.benefits_tab_path),
         },
+        "hmrc_replay": hmrc_evidence,
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -165,22 +219,65 @@ def _write_json(path: str | Path, payload: dict[str, object]) -> Path:
     return output
 
 
+def _write_stage_reports(
+    *,
+    evidence_path: Path,
+    replay_path: Path,
+    candidate: object,
+    retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
+    hmrc_transform: UKHMRCIncomeStageTransform,
+) -> None:
+    retained_result = retained_leaves_transform.last_result
+    hmrc_result = hmrc_transform.last_result
+    if retained_result is None or hmrc_result is None:
+        raise RuntimeError(
+            "UK national HMRC stages did not both complete; refusing to write "
+            "partial or stale aggregate evidence."
+        )
+    payload = {
+        "schema_version": 2,
+        "base_candidate": {
+            "path": str(candidate.path),
+            "filename": candidate.filename,
+            "revision": candidate.revision,
+            "sha256": candidate.sha256,
+            "size_bytes": candidate.size_bytes,
+        },
+        "retained_leaves": retained_result.evidence(),
+        "family": hmrc_result.evidence(),
+    }
+    _write_json(evidence_path, payload)
+    write_hmrc_replay_report(hmrc_result.replay_report, replay_path)
+
+
+def _is_final_release_gate_failure(error: RuntimeError) -> bool:
+    """Match only the national seam's post-stage, pre-staging hard gate."""
+
+    return str(error).startswith("Release gates failed: Input coverage failed:")
+
+
 def _validate_distinct_paths(
     *,
     evidence_path: Path,
+    replay_path: Path,
     coverage_path: Path,
     input_h5: Path,
     staging_h5: Path,
     spi_tab: Path,
     hmrc_ods: Path,
+    adult_tab: Path,
+    benefits_tab: Path,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
         "--staging-h5": staging_h5.resolve(),
         "--spi-tab": spi_tab.resolve(),
         "--hmrc-ods": hmrc_ods.resolve(),
+        "--frs-raw-dir/adult.tab": adult_tab.resolve(),
+        "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--input-coverage-json": coverage_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
+        "--hmrc-replay-json": replay_path.resolve(),
     }
     collisions = [
         (left_label, right_label, left_path, right_path)
