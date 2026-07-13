@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 
 from populace.build import FitWeightRecord
-from populace.build.frame_checkpoint import load_frame_checkpoint
 from populace.build.us_runtime import (
     US_PUF_SUPPORT_FIT_NAME,
     clone_us_frame_for_puf_support,
@@ -237,6 +236,194 @@ def test_stage_cli_defaults_to_legacy_all_without_checkpoints() -> None:
     assert args.checkpoint_dir is None
 
 
+def test_reconciled_outer_pipeline_order_is_locked() -> None:
+    builder = _load_support_builder_module()
+    expected = (
+        "source_construction",
+        "pre_clone_enrichment",
+        "clone_feature_extraction",
+        "primary_qrf_chain",
+        "qrf_finalization",
+        "qbi_reconciliation",
+        "wic_post_clone",
+        "housing_assistance",
+        "prior_year_income_post_clone",
+        "child_support_post_clone",
+        "disability_benefits_post_clone",
+        "workers_compensation_post_clone",
+        "weeks_unemployed_post_clone",
+        "childcare_post_clone",
+        "energy_subsidy_post_clone",
+        "retirement_contributions_post_clone",
+        "retirement_distributions_post_clone",
+        "education_inputs_post_clone",
+        "congressional_district_assignment",
+        "block_ladder_assignment",
+        "final_export",
+    )
+
+    assert builder.PIPELINE_STEPS == expected
+    assert builder.OUTER_STAGE_PIPELINE.names == expected
+    assert tuple(name for name, _boundaries in builder.STAGE_BOUNDARIES) == expected
+
+
+def test_source_and_preclone_stages_round_trip_design_weight_kind(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    weeks_path = tmp_path / "weeks.zip"
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+            "--stage",
+            "source_construction",
+            "--checkpoint-dir",
+            str(tmp_path / "checkpoints"),
+        ]
+    )
+    frame = _minimal_us_frame()
+    monkeypatch.setattr(
+        builder,
+        "_load_base_frame_from_args",
+        lambda _args: (frame, {"kind": "fixture"}),
+    )
+    weeks = pd.DataFrame({"PERIDNUM": [1]})
+    weeks.attrs["source_audit"] = {"fixture": True}
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: weeks,
+    )
+    identity_transforms = (
+        "derive_us_cps_carried_inputs",
+        "with_us_prior_year_income_inputs",
+        "with_us_relationship_inputs",
+        "with_us_medicare_take_up_input",
+        "with_us_eligibility_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+        "with_us_child_support_inputs",
+        "with_us_disability_benefits",
+        "with_us_workers_compensation",
+        "with_us_weeks_unemployed",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_retirement_distribution_inputs",
+        "with_us_immigration_inputs",
+    )
+    for name in identity_transforms:
+        monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    passing_gate = SimpleNamespace(passed=True, failures=(), details={})
+    for name in (
+        "us_relationship_inputs_signal_gate",
+        "us_medicare_take_up_signal_gate",
+        "us_housing_inputs_signal_gate",
+        "us_eligibility_inputs_signal_gate",
+        "us_pregnancy_signal_gate",
+        "us_wic_claim_signal_gate",
+    ):
+        monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
+    monkeypatch.setattr(builder, "_sha256", lambda _path: "fixture-sha256")
+
+    builder._run_outer_stage(args)
+    args.stage = "pre_clone_enrichment"
+    builder._run_outer_stage(args)
+
+    runtime = builder.StageRuntime(
+        args.checkpoint_dir,
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=builder._stage_run_config(args),
+    )
+    loaded = runtime.load("pre_clone_enrichment")
+    assert runtime.context.completed == (
+        "source_construction",
+        "pre_clone_enrichment",
+    )
+    assert loaded.frame.weights_for("household").kind is WeightKind.DESIGN
+
+
+def test_weeks_post_clone_rejects_source_content_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    weeks_path = tmp_path / "weeks.zip"
+    monkeypatch.setattr(builder, "_sha256", lambda _path: "changed-sha256")
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        lambda _path: pytest.fail("drifted weeks source was loaded"),
+    )
+
+    with pytest.raises(SystemExit, match="changed between pre-clone and post-clone"):
+        builder._post_qrf_frame_stage(
+            "weeks_unemployed_post_clone",
+            SimpleNamespace(seed=0, target_year=2024),
+            _minimal_us_frame(),
+            {
+                "source_construction": {
+                    "weeks_unemployed_source_path": str(weeks_path)
+                },
+                "pre_clone_enrichment": {
+                    "weeks_unemployed_source": {"sha256": "original-sha256"}
+                },
+            },
+        )
+
+
+def test_outer_stage_resume_rejects_changed_builder_code(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+            "--checkpoint-dir",
+            str(tmp_path / "checkpoints"),
+        ]
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "first"},
+    )
+    first_config = builder._stage_run_config(args)
+    builder.StageRuntime(
+        args.checkpoint_dir,
+        builder.OUTER_STAGE_PIPELINE,
+        run_config=first_config,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "second"},
+    )
+
+    with pytest.raises(ValueError, match="run_config differs"):
+        builder.StageRuntime(
+            args.checkpoint_dir,
+            builder.OUTER_STAGE_PIPELINE,
+            run_config=builder._stage_run_config(args),
+        )
+
+
 @pytest.mark.parametrize("stage", ["a", "b", "c", "d", "all"])
 def test_stage_cli_accepts_declared_stage_names(stage: str) -> None:
     builder = _load_support_builder_module()
@@ -318,8 +505,8 @@ def test_main_legacy_all_has_no_checkpoint_side_effects(
     )
     monkeypatch.setattr(
         builder,
-        "write_frame_checkpoint",
-        lambda *_args, **_kwargs: pytest.fail("legacy path wrote a checkpoint"),
+        "_run_staged_all",
+        lambda *_args, **_kwargs: pytest.fail("legacy path entered staged runtime"),
     )
 
     builder.main([])
@@ -327,7 +514,7 @@ def test_main_legacy_all_has_no_checkpoint_side_effects(
     assert calls == [args]
 
 
-def test_main_checkpointed_all_profiles_and_writes_restorable_frame(
+def test_main_checkpointed_all_dispatches_fresh_process_supervisor(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -337,22 +524,132 @@ def test_main_checkpointed_all_profiles_and_writes_restorable_frame(
         checkpoint_dir=tmp_path,
         target_year=2024,
     )
-    frame = _minimal_us_frame()
+    calls: list[object] = []
     monkeypatch.setattr(builder, "_parse_args", lambda _argv: args)
-    monkeypatch.setattr(builder, "_run_all", lambda _args: frame)
+    monkeypatch.setattr(
+        builder,
+        "_run_all",
+        lambda _args: pytest.fail("checkpointed path entered monolith"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_run_staged_all",
+        lambda actual_args: calls.append(actual_args),
+    )
 
     builder.main([])
 
-    checkpoint_path = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
-    loaded = load_frame_checkpoint(checkpoint_path)
-    assert loaded.metadata == {
-        "function_boundaries": [],
-        "stage": "all",
-        "target_year": 2024,
+    assert calls == [args]
+
+
+def test_staged_all_defaults_fresh_children_to_fixed_python_hash_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_support_builder_module()
+    monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+
+    environment = builder._staged_subprocess_environment()
+
+    assert environment["PYTHONHASHSEED"] == "0"
+
+
+def test_completed_staged_all_reenters_final_child_for_crash_window_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    class CompletedRuntime:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.context = SimpleNamespace(completed=builder.PIPELINE_STEPS)
+
+    monkeypatch.setattr(builder, "StageRuntime", CompletedRuntime)
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder,
+        "_stage_cli_args",
+        lambda _args, stage: ["--stage", stage],
+    )
+
+    def fake_run(command, *, check, env):
+        assert not check
+        calls.append((command, env))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(builder.subprocess, "run", fake_run)
+    monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+
+    builder._run_staged_all(SimpleNamespace(checkpoint_dir=tmp_path))
+
+    assert len(calls) == 1
+    assert calls[0][0][-2:] == ["--stage", "final_export"]
+    assert calls[0][1]["PYTHONHASHSEED"] == "0"
+
+
+def test_completed_final_stage_repairs_missing_artifacts_and_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    checkpoint = tmp_path / "020_final_export.frame.h5"
+    checkpoint.write_bytes(b"valid-checkpoint")
+    output = tmp_path / "output.h5"
+    summary = tmp_path / "summary.json"
+    metadata = {
+        "output_h5": str(output),
+        "output_sha256": "output-digest",
+        "summary_path": str(summary),
+        "summary_sha256": "summary-digest",
     }
-    assert loaded.frame.weights_for("household").kind is WeightKind.DESIGN
-    profile = json.loads((tmp_path / "stage_profile.json").read_text())
-    assert profile["stages"]["all"]["status"] == "succeeded"
+    frame = object()
+    runtime = SimpleNamespace(
+        load=lambda _stage: SimpleNamespace(frame=frame, path=checkpoint),
+        metadata={"final_export": metadata},
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(
+        builder,
+        "_export_staged_result",
+        lambda _args, frame, _metadata: (
+            calls.append(frame)
+            or {
+                "output_sha256": "output-digest",
+                "summary_sha256": "summary-digest",
+            }
+        ),
+    )
+
+    builder._repair_completed_final_stage(
+        SimpleNamespace(checkpoint_dir=tmp_path), runtime
+    )
+
+    assert calls == [frame]
+    alias = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    assert alias.is_file()
+    assert alias.stat().st_ino == checkpoint.stat().st_ino
+
+
+def test_direct_named_stage_requires_fixed_python_hash_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_support_builder_module()
+    monkeypatch.delenv("PYTHONHASHSEED", raising=False)
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda _argv: SimpleNamespace(
+            stage="source_construction", checkpoint_dir=Path("checkpoints")
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_run_configured_stage",
+        lambda _args: pytest.fail("unseeded named stage ran"),
+    )
+
+    with pytest.raises(SystemExit, match="require an explicit PYTHONHASHSEED"):
+        builder.main([])
 
 
 def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
