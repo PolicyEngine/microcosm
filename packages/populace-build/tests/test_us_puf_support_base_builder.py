@@ -81,6 +81,7 @@ def _support_donor() -> pd.DataFrame:
 def test_equivalence_h5_metadata_mode_disables_all_leaf_timestamps(
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend patched by the metadata mode
     builder = _load_support_builder_module()
     paths = [tmp_path / "first.h5", tmp_path / "second.h5"]
     for path in paths:
