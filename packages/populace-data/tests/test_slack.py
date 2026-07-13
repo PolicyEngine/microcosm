@@ -35,6 +35,29 @@ def test_notify_posts_to_country_webhook(monkeypatch) -> None:
     assert "UK" in payload["blocks"][0]["text"]["text"]
 
 
+def test_notify_warns_when_unset_and_requested(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    result = notify_release(
+        "policyengine/populace-us",
+        "populace-us-2024-abc-20260620T000000Z",
+        warn_if_unset=True,
+    )
+    assert result is False
+    captured = capsys.readouterr()
+    assert "SLACK_WEBHOOK_POPULACE_US is not set" in captured.out + captured.err
+
+
+def test_notify_silent_when_unset_and_not_requested(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    result = notify_release(
+        "policyengine/populace-us",
+        "populace-us-2024-abc-20260620T000000Z",
+    )
+    assert result is False
+    captured = capsys.readouterr()
+    assert "SLACK_WEBHOOK" not in captured.out + captured.err
+
+
 def test_notify_never_raises_on_post_failure() -> None:
     def boom(url, payload):
         raise RuntimeError("slack down")
