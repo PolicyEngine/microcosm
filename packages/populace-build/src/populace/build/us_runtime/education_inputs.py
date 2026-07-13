@@ -35,6 +35,9 @@ from populace.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from populace.build.us_runtime.education_assistance_source import (
+    fill_asec_education_assistance_source,
+)
 from populace.frame import Frame
 from populace.frame.units import US_SCHEMA
 
@@ -75,7 +78,21 @@ US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_TUITION_SHARE_BAND = (0.003, 0.05)
+_PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
+_ASEC_CHANNEL = "asec"
+_PUF_CHANNEL = "puf_tax_detail"
+# Qualified tuition is a PUF-only tax-detail chain target: on the two-channel
+# support pool it is exactly zero on the ASEC half BY DESIGN (like every other
+# PUF-only detail column — partnership income, charitable donations, mortgage
+# interest all decompose the same way on the full-scale pool), and the PUF
+# half carries the PUF-faithful per-person rate (~0.56% weighted on the first
+# full-scale base, base-r3 ck016). The retired extended-CPS 2.64% person rate
+# is a blended post-imputation file rate and is not comparable to this
+# pre-selection pool, which is how the original [0.003, 0.05] total floor was
+# mis-set. The gate now asserts the channel invariant directly: ASEC exactly
+# zero, PUF share within band, blended total within band.
+_TUITION_SHARE_BAND = (0.001, 0.05)
+_TUITION_PUF_CHANNEL_SHARE_BAND = (0.002, 0.05)
 _ASSISTANCE_SHARE_BAND = (0.005, 0.08)
 _DERIVE_EDUCATION_INPUTS_PARAMETER_KEYS = frozenset()
 
@@ -157,8 +174,15 @@ def with_us_education_inputs(
     *,
     seed: int,
     time_period: int,
+    asec_education_source: pd.DataFrame | None = None,
 ) -> Frame:
-    """Materialize education inputs on a US frame, healing default surfaces."""
+    """Materialize education inputs on a US frame, healing default surfaces.
+
+    The frozen census_cps inputs never carried raw ASEC ``ED_VAL``, so when
+    the person table lacks it the pinned education-assistance sidecar
+    (:mod:`.education_assistance_source`) must be supplied; the fill is an
+    exact per-income-year ``PERIDNUM`` join and never predicts a value.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US education inputs require the US schema.")
@@ -167,6 +191,17 @@ def with_us_education_inputs(
 
     person = frame.table("person")
     stage_person = person.copy(deep=True)
+    if "ED_VAL" not in stage_person.columns:
+        if asec_education_source is None:
+            raise SourceRuntimeError(
+                "US education-inputs stage requires the pinned ASEC "
+                "education-assistance sidecar to restore ED_VAL (the frozen "
+                "census_cps inputs never carried it); pass "
+                "--asec-education-source or allow the official fetch."
+            )
+        stage_person = fill_asec_education_assistance_source(
+            stage_person, asec_education_source
+        )
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
     output = run_source_stage(
         us_education_inputs_stage_spec(),
@@ -221,9 +256,30 @@ def us_education_inputs_summary(frame: Frame) -> dict[str, object]:
     for column in US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS:
         values = person[column].fillna(False).astype(bool).to_numpy()
         incoherent[column] = int(np.count_nonzero(values != tuition_positive))
+    channels: dict[str, dict[str, float | int]] = {}
+    if _PERSON_SUPPORT_CHANNEL_COLUMN in person:
+        channel = person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+        for name in (_ASEC_CHANNEL, _PUF_CHANNEL):
+            mask = channel == name
+            channel_weight = float(weights[mask].sum())
+            channels[name] = {
+                "rows": int(np.count_nonzero(mask)),
+                "tuition_positive_rows": int(np.count_nonzero(mask & tuition_positive)),
+                "tuition_positive_share": (
+                    float(weights[mask & tuition_positive].sum()) / channel_weight
+                    if channel_weight > 0.0
+                    else 0.0
+                ),
+                "assistance_positive_share": (
+                    float(weights[mask & assistance_positive].sum()) / channel_weight
+                    if channel_weight > 0.0
+                    else 0.0
+                ),
+            }
     return {
         "qualified_tuition_share": _share(tuition_positive),
         "educational_assistance_share": _share(assistance_positive),
+        "channels": channels,
         "qualified_tuition_total": float(np.nansum(tuition)),
         "educational_assistance_total": float(np.nansum(assistance)),
         "tuition_share_band": list(_TUITION_SHARE_BAND),
@@ -288,6 +344,24 @@ def us_education_inputs_signal_gate(frame: Frame) -> GateResult:
         if count:
             failures.append(
                 f"{column}: {count} rows disagree with positive qualified tuition."
+            )
+
+    channels = summary.get("channels") or {}
+    if channels:
+        asec = channels.get(_ASEC_CHANNEL, {})
+        if int(asec.get("tuition_positive_rows", 0)):
+            failures.append(
+                "qualified_tuition_expenses is a PUF-only tax-detail column but "
+                f"{asec['tuition_positive_rows']} ASEC-channel row(s) carry it; "
+                "the support channels have cross-contaminated."
+            )
+        puf = channels.get(_PUF_CHANNEL, {})
+        puf_share = float(puf.get("tuition_positive_share", 0.0))
+        puf_low, puf_high = _TUITION_PUF_CHANNEL_SHARE_BAND
+        if not (puf_low <= puf_share <= puf_high):
+            failures.append(
+                f"puf_tax_detail qualified-tuition share {puf_share:.4f} outside "
+                f"plausibility band [{puf_low}, {puf_high}]."
             )
     return GateResult(
         name="education_inputs_signal",
