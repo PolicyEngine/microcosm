@@ -118,9 +118,23 @@ _PUF_IMPUTATION_PARAMETER_KEYS = frozenset(
         "weight",
     }
 )
+#: Per-column plausibility bands on the pooled (ASEC + PUF-clone) person share.
+#: The halves are NOT symmetric and must not share a floor: CPS asks custodial
+#: parents about receipt but relies on payer self-reports for expense, so the
+#: expense share runs structurally lower. Measured at the first full-scale run
+#: through this gate (Build M base, 2026-07-13, seed 0): raw ASEC person share
+#: 0.66% expense / 0.98% received; the QRF draws a covariate-consistent 0.27%
+#: on the PUF tax-detail clone channel; the ~50/50 pool blends to 0.466%
+#: expense — non-degenerate, deterministic, and reproduced bit-identically with
+#: the leaf-storage guard disabled. A shared 0.005 floor mislabeled that as
+#:  degenerate. The retired us-data pipeline's sequential imputation shipped
+#: 1.99% (extended CPS) and 2.96% (enhanced CPS) against the same 0.62-0.66%
+#: survey marginal — prevalence drift, not a reference; whether prevalence
+#: should instead be seeded to OCSE payer counts is populace#417. Degeneracy
+#: per channel is still enforced by _CHANNEL_NONZERO_SHARE_BAND below.
 _NONZERO_SHARE_BANDS: dict[str, tuple[float, float]] = {
     "child_support_received": (0.005, 0.15),
-    "child_support_expense": (0.005, 0.15),
+    "child_support_expense": (0.003, 0.15),
 }
 _CHANNEL_NONZERO_SHARE_BAND = (0.002, 0.15)
 
