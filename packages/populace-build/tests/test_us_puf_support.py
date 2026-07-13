@@ -29,6 +29,67 @@ from populace.build.us_runtime.puf_support import (
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
+def _legacy_snap_to_observed_values(
+    values: list[object] | np.ndarray,
+    observed: list[object] | np.ndarray,
+) -> np.ndarray:
+    """Reference the pre-OOM-fix recipient-by-donor implementation."""
+
+    value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    observed_array = np.unique(
+        np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+    )
+    if len(observed_array) == 0:
+        return value_array.to_numpy(dtype=np.float64)
+    positions = np.abs(
+        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
+    ).argmin(axis=1)
+    return observed_array[positions]
+
+
+def test_snap_to_observed_values_is_bit_identical_to_legacy_matrix() -> None:
+    rng = np.random.default_rng(20260712)
+    values = np.concatenate(
+        [
+            rng.normal(loc=500.0, scale=1_000.0, size=2_000),
+            np.asarray([-np.inf, np.inf, np.nan, 0.5, 1.5, 2.5]),
+        ]
+    )
+    observed = np.concatenate(
+        [
+            rng.normal(loc=250.0, scale=750.0, size=400),
+            np.asarray([np.nan, -np.inf, np.inf, 0.0, 1.0, 2.0, 3.0]),
+        ]
+    )
+
+    expected = _legacy_snap_to_observed_values(values, observed)
+    actual = puf_support_module._snap_to_observed_values(values, observed)
+
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
+
+
+def test_snap_to_observed_values_handles_large_surfaces_without_pairwise_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = np.arange(100_000, dtype=np.float64)
+    values = np.linspace(-1.0, 100_001.0, 20_000, dtype=np.float64)
+
+    original_abs = puf_support_module.np.abs
+
+    def reject_pairwise_matrix(array: np.ndarray) -> np.ndarray:
+        assert array.ndim <= 1, "snap allocated the recipient-by-donor matrix"
+        return original_abs(array)
+
+    monkeypatch.setattr(puf_support_module.np, "abs", reject_pairwise_matrix)
+    actual = puf_support_module._snap_to_observed_values(values, observed)
+
+    assert actual.shape == values.shape
+    assert actual[0] == 0.0
+    assert actual[-1] == 99_999.0
+
+
 def _minimal_us_frame() -> Frame:
     person = pd.DataFrame(
         {

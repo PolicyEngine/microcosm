@@ -1102,7 +1102,15 @@ def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
 ) -> np.ndarray:
-    """Map continuous model predictions to the nearest observed donor value."""
+    """Map predictions to nearest donor values without a pairwise matrix.
+
+    ``observed_array`` is sorted by :func:`numpy.unique`, so each finite
+    prediction needs only its insertion point and the donor values immediately
+    beside it.  Equal-distance ties select the lower value, matching the first
+    index returned by ``argmin`` in the former recipient-by-unique-values
+    matrix implementation.  The explicit infinity branches preserve that
+    implementation's edge-case behavior as well.
+    """
 
     value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
     observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
@@ -1111,10 +1119,30 @@ def _snap_to_observed_values(
     )
     if len(observed_array) == 0:
         return value_array.to_numpy(dtype=np.float64)
-    positions = np.abs(
-        value_array.to_numpy(dtype=np.float64)[:, None] - observed_array[None, :]
-    ).argmin(axis=1)
-    return observed_array[positions]
+
+    numeric_values = value_array.to_numpy(dtype=np.float64)
+    snapped = np.empty_like(numeric_values)
+    finite_mask = np.isfinite(numeric_values)
+    finite_values = numeric_values[finite_mask]
+    insertion_points = np.searchsorted(observed_array, finite_values, side="left")
+    right_positions = np.minimum(insertion_points, len(observed_array) - 1)
+    left_positions = np.maximum(insertion_points - 1, 0)
+    left_values = observed_array[left_positions]
+    right_values = observed_array[right_positions]
+    choose_right = insertion_points == 0
+    interior = (insertion_points > 0) & (insertion_points < len(observed_array))
+    choose_right[interior] = np.abs(
+        right_values[interior] - finite_values[interior]
+    ) < np.abs(finite_values[interior] - left_values[interior])
+    snapped[finite_mask] = np.where(choose_right, right_values, left_values)
+
+    negative_infinity = np.isneginf(numeric_values)
+    snapped[negative_infinity] = observed_array[0]
+    positive_infinity = np.isposinf(numeric_values)
+    snapped[positive_infinity] = (
+        observed_array[-1] if np.isposinf(observed_array[-1]) else observed_array[0]
+    )
+    return snapped
 
 
 def _write_person_tax_unit_boolean_counts(
