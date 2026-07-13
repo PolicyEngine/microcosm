@@ -510,6 +510,8 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
         "--asec-2023-weeks-unemployed-source",
         args.asec_2023_weeks_unemployed_source,
     )
+    for value in args.asec_education_source or ():
+        command.extend(("--asec-education-source", value))
     _append_path_argument(command, "--acs-h5", args.acs_h5)
     command.extend(("--out", str(args.out)))
     command.extend(("--stage", stage))
