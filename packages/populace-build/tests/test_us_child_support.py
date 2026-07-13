@@ -481,3 +481,24 @@ def test_policyengine_us_graph_uses_positive_annual_received_and_expense() -> No
     assert active.calculate("snap_child_support_deduction", "2024-01")[
         0
     ] == pytest.approx(200.0)
+
+
+def test_nonzero_share_bands_are_asymmetric_by_half() -> None:
+    """The expense floor sits below the received floor, deliberately.
+
+    CPS asks custodial parents about receipt but relies on payer self-report
+    for expense, so the expense share runs structurally lower: at the first
+    full-scale gate run (Build M base) the pooled expense share was 0.466% —
+    faithful ASEC channel (0.660%) blended with a covariate-consistent clone
+    channel (0.272%) — while received sat at 0.854%. A shared 0.005 floor
+    mislabeled that expense signal as degenerate (see populace#417). This pins
+    the split so a refactor back to one shared band fails loudly.
+    """
+    from populace.build.us_runtime.child_support import _NONZERO_SHARE_BANDS
+
+    assert _NONZERO_SHARE_BANDS["child_support_received"] == (0.005, 0.15)
+    assert _NONZERO_SHARE_BANDS["child_support_expense"] == (0.003, 0.15)
+    assert (
+        _NONZERO_SHARE_BANDS["child_support_expense"][0]
+        < _NONZERO_SHARE_BANDS["child_support_received"][0]
+    )
