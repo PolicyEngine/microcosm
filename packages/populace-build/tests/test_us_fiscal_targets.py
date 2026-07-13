@@ -1308,6 +1308,171 @@ def test_ssa_oasdi_ssi_payment_aggregates_still_compile() -> None:
     assert ssi_payments.metadata["measure_mode"] == "sum"
 
 
+def _bea_national_fact(
+    *,
+    record_set_concept: str,
+    measure_id: str,
+    groupby_value_id: str,
+    value: float,
+) -> dict[str, object]:
+    record_set_id = f"bea_nipa.cy2024.{record_set_concept}"
+    source_record_id = f"{record_set_id}.{groupby_value_id}.{measure_id}"
+    return _dynamic_ledger_fact(
+        source_record_id=source_record_id,
+        source_name="bea",
+        measure_id=measure_id,
+        value=value,
+        groupby_value_id=groupby_value_id,
+        layout_record_set_id=record_set_id,
+    )
+
+
+def test_bea_nipa_wages_map_to_employment_income_before_lsr() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _bea_national_fact(
+                record_set_concept="total_wages_salaries",
+                measure_id="wages_salaries_amount",
+                groupby_value_id="a034rc",
+                value=12_387_929_000_000,
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "bea_nipa.cy2024.total_wages_salaries.a034rc.wages_salaries_amount"
+    ]
+    assert spec.family == "bea"
+    assert spec.value == 12_387_929_000_000
+    assert spec.metadata["base_variable"] == "employment_income_before_lsr"
+    assert spec.metadata["target_role"] == "nipa_wages_and_salaries"
+    assert spec.metadata["measure_mode"] == "sum"
+
+
+def test_bea_nipa_proprietors_map_to_self_employment_expression() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _bea_national_fact(
+                record_set_concept="proprietors_income",
+                measure_id="amount",
+                groupby_value_id="a041rc",
+                value=2_023_080_000_000,
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "bea_nipa.cy2024.proprietors_income.a041rc.amount"
+    ]
+    assert spec.family == "bea"
+    assert spec.metadata["base_variables"] == (
+        "self_employment_income_before_lsr,sstb_self_employment_income_before_lsr,"
+        "farm_operations_income,partnership_s_corp_income"
+    )
+    assert spec.metadata["target_role"] == "nipa_proprietors_income"
+
+
+def test_bea_other_nipa_series_are_not_compiled() -> None:
+    # Only wages and proprietors are direct-sum NIPA targets (loss.py PR #994);
+    # every other BEA series is a ledger reference fact, not a target.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _bea_national_fact(
+                record_set_concept="personal_income",
+                measure_id="amount",
+                groupby_value_id="a065rc",
+                value=20_000_000_000_000,
+            ),
+        ]
+    )
+
+    assert not [spec for spec in registry.specs if "personal_income" in spec.name]
+
+
+def test_bea_state_wages_are_deferred_not_compiled() -> None:
+    # Raw place-of-work state wages need us-data's residence adjustment (PR #1034)
+    # the feed cannot reproduce; the state distribution is deferred.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=("bea_regional.cy2024.state_wages_salaries.al.amount"),
+                source_name="bea",
+                measure_id="amount",
+                value=137_000_000_000,
+                geography_level="state",
+                geography_id="0400000US01",
+                groupby_value_id="al",
+                layout_record_set_id="bea_regional.cy2024.state_wages_salaries",
+            ),
+        ]
+    )
+
+    assert not [spec for spec in registry.specs if "state_wages_salaries" in spec.name]
+
+
+def test_federal_reserve_net_worth_maps_to_net_worth_variable() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=(
+                    "federal_reserve_z1.cy2024.households_nonprofits_balance_sheet"
+                    ".net_worth.fl152090005.amount_outstanding"
+                ),
+                source_name="federal_reserve",
+                measure_id="amount_outstanding",
+                value=160_000_000_000_000,
+                groupby_value_id="fl152090005",
+                layout_record_set_id=(
+                    "federal_reserve_z1.cy2024.households_nonprofits_balance_sheet"
+                    ".net_worth"
+                ),
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "federal_reserve_z1.cy2024.households_nonprofits_balance_sheet"
+        ".net_worth.fl152090005.amount_outstanding"
+    ]
+    assert spec.family == "federal_reserve"
+    assert spec.value == 160_000_000_000_000
+    assert spec.metadata["base_variable"] == "net_worth"
+    assert spec.metadata["target_role"] == "household_net_worth"
+
+
+def test_liheap_households_map_to_energy_subsidy_indicator() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=(
+                    "hhs_acf_liheap.fy2024.national_profile.state_programs"
+                    ".households_served"
+                ),
+                source_name="hhs_acf_liheap",
+                measure_id="households_served",
+                value=5_876_646,
+                groupby_value_id="state_programs",
+                layout_record_set_id="hhs_acf_liheap.fy2024.national_profile",
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "hhs_acf_liheap.fy2024.national_profile.state_programs.households_served"
+    ]
+    assert spec.family == "hhs_acf_liheap"
+    assert spec.value == 5_876_646
+    assert spec.metadata["base_variable"] == "spm_unit_energy_subsidy"
+    assert spec.metadata["target_role"] == "liheap_households"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+
+
 def test_dynamic_us_fiscal_targets_use_builder_target_period() -> None:
     source_record_id = "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
 

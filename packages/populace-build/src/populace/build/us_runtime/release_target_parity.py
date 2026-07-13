@@ -61,8 +61,9 @@ __all__ = [
     "COMPILED_STATUS",
     "REVIEWED_EXCLUSION_STATUS",
     "SOURCE_ABSENT_CLASSIFICATION",
-    "SSI_RECIPIENT_RED_LINE_FAMILIES",
+    "RED_LINE_COMPILED_FAMILIES",
     "TargetFamily",
+    "TargetFence",
     "TargetParityManifest",
     "assert_target_parity_manifest_current",
     "load_target_parity_feed_families",
@@ -88,13 +89,23 @@ _VALID_STATUSES = frozenset({COMPILED_STATUS, REVIEWED_EXCLUSION_STATUS})
 #: declared families exempt from the feed-surface reconciliation.
 SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 
-#: The core SSA SSI recipient family. Per this contract it must ship
-#: ``compiled`` with no reviewed exclusion — the whole point of the register is
-#: that the family the retired pipeline calibrated (``nation/ssa/ssi_recipients``)
-#: can never again be silently dropped. The anti-rot check refuses to let it be
-#: downgraded, mirroring the #368 SSI countable-resource asset red line on the
-#: input-coverage side.
-SSI_RECIPIENT_RED_LINE_FAMILIES = ("ssa_supplement.ssi_recipients",)
+#: Families that must ship ``compiled`` with no reviewed exclusion — the whole
+#: point of the register is that the administrative targets the retired pipeline
+#: calibrated can never again be silently dropped. The anti-rot check refuses to
+#: let any of them be downgraded, mirroring the #368 SSI countable-resource asset
+#: red line on the input-coverage side.
+#:
+#: - ``ssa_supplement.ssi_recipients``: the SSA SSI recipient count
+#:   (``nation/ssa/ssi_recipients``).
+#: - ``bea_nipa.total_wages_salaries``: the BEA NIPA all-population wage total
+#:   (``nation/bea/nipa_wages_and_salaries``, PR #994) — economy-wide wages
+#:   including nonfilers, the ~$12.4T universe that tax-return / CPS-reported
+#:   wages undercount by two-thirds. Silent loss of it is the exact failure the
+#:   Chesterton's-fence audit surfaced.
+RED_LINE_COMPILED_FAMILIES = (
+    "ssa_supplement.ssi_recipients",
+    "bea_nipa.total_wages_salaries",
+)
 
 
 def _is_target_period_token(value: str) -> bool:
@@ -145,6 +156,42 @@ def us_target_family_id(source_record_id: str) -> str:
 
 
 @dataclass(frozen=True)
+class TargetFence:
+    """The Chesterton's-fence record behind one reviewed exclusion.
+
+    A category label (``macro_control_total``, ``not_modeled``, ``superseded``)
+    is not a sufficient reason to drop a target the retired pipeline calibrated
+    to. Before an exclusion may stand it must recover *why the fence was built*:
+    the target's origin, the failure mode it guarded, and the purpose-informed
+    basis for not rebuilding it here. An unexplained fence gets rebuilt (wired),
+    not removed.
+
+    Attributes:
+        origin: Where the fence came from — the introducing (and, where
+            relevant, removing) ``us-data`` PR/commit, or the
+            explicit finding ``"not a us-data calibration target"`` when the feed
+            fact was never a target (a ledger reference fact).
+        purpose: The failure mode the target guarded, quoting the PR/issue
+            rationale verbatim where one exists, or stating ``"no discoverable
+            rationale in PR #N"`` (then the exclusion must justify itself on
+            mechanics), or ``"n/a"`` for a fact that was never a target.
+        verdict_basis: The purpose-informed reason the exclusion stands — a
+            named compiled family that subsumes it, an architecture change that
+            retires the need (with a code/PR cite), or a deferral with the
+            specific blocker. Never a bare category label.
+    """
+
+    origin: str
+    purpose: str
+    verdict_basis: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("origin", "purpose", "verdict_basis"):
+            if not getattr(self, field_name):
+                raise ValueError(f"TargetFence.{field_name} is required.")
+
+
+@dataclass(frozen=True)
 class TargetFamily:
     """One declared target-parity family.
 
@@ -155,13 +202,16 @@ class TargetFamily:
         classification: For a reviewed exclusion, the exclusion kind
             (``survey_derived``, ``macro_control_total``, ``non_linear``,
             ``off_by_default``, ``superseded``, ``source_absent``,
-            ``deferred``, ``input_side``, ``not_modeled``). Empty for a
-            compiled family.
+            ``deferred``, ``input_side``, ``not_modeled``, ``not_a_target``).
+            A classification is now a label ON TOP of the fence narrative, not a
+            reason by itself. Empty for a compiled family.
         reason: Why the gap is accepted — required for a reviewed exclusion.
         evidence: The concrete fact/mechanism the reason names (a sample
             ``source_record_id``, a code constant, a compiled sibling family).
-            Required for a reviewed exclusion — an undocumented exclusion is a
-            silent omission with extra steps.
+            Required for a reviewed exclusion.
+        fence: The Chesterton's-fence record (origin, purpose, verdict_basis).
+            REQUIRED for every reviewed exclusion — a category label alone is no
+            longer a sufficient reason to drop a us-data-era target.
         issue: Optional tracking issue owning the gap's closure.
         note: Optional free-text annotation.
     """
@@ -171,6 +221,7 @@ class TargetFamily:
     classification: str = ""
     reason: str = ""
     evidence: str = ""
+    fence: TargetFence | None = None
     issue: str = ""
     note: str = ""
 
@@ -196,6 +247,12 @@ class TargetFamily:
                 raise ValueError(
                     f"{self.name}: a reviewed exclusion needs evidence naming the "
                     "concrete fact or mechanism behind the reason."
+                )
+            if self.fence is None:
+                raise ValueError(
+                    f"{self.name}: a reviewed exclusion needs a fence "
+                    "{origin, purpose, verdict_basis} — a category label is not a "
+                    "sufficient reason to drop a us-data-era calibration target."
                 )
 
     @property
@@ -317,6 +374,18 @@ def load_target_parity_manifest(
     for name, entry in sorted(raw_families.items()):
         if not isinstance(entry, Mapping):
             raise ValueError(f"{resource}: family {name!r} must be a JSON object.")
+        raw_fence = entry.get("fence")
+        fence: TargetFence | None = None
+        if raw_fence is not None:
+            if not isinstance(raw_fence, Mapping):
+                raise ValueError(
+                    f"{resource}: family {name!r} 'fence' must be a JSON object."
+                )
+            fence = TargetFence(
+                origin=str(raw_fence.get("origin", "")),
+                purpose=str(raw_fence.get("purpose", "")),
+                verdict_basis=str(raw_fence.get("verdict_basis", "")),
+            )
         families.append(
             TargetFamily(
                 name=str(name),
@@ -324,6 +393,7 @@ def load_target_parity_manifest(
                 classification=str(entry.get("classification", "")),
                 reason=str(entry.get("reason", "")),
                 evidence=str(entry.get("evidence", "")),
+                fence=fence,
                 issue=str(entry.get("issue", "")),
                 note=str(entry.get("note", "")),
             )
@@ -449,7 +519,7 @@ def assert_target_parity_manifest_current(
       is drift and must be reconciled by regenerating the manifest.
     - The manifest's ``reference.feed_sha256`` must match the inventory's, so
       the two artifacts describe the same pinned feed.
-    - The core SSA SSI recipient family must stay ``compiled`` with no reviewed
+    - The red-line families must stay ``compiled`` with no reviewed
       exclusion — the red line this contract exists for cannot be quietly undone.
     - When a compiled registry is supplied, every ``compiled`` family must be
       present in it, every ``reviewed_exclusion`` family must be absent from it,
@@ -492,16 +562,16 @@ def assert_target_parity_manifest_current(
             f"{inventory_sha!r}; regenerate both from the same pinned feed."
         )
 
-    for family in SSI_RECIPIENT_RED_LINE_FAMILIES:
+    for family in RED_LINE_COMPILED_FAMILIES:
         entry = manifest.by_name.get(family)
         if entry is None:
             failures.append(
-                f"{family}: core SSA SSI recipient family must be declared and "
-                "compiled (the target-parity red line)."
+                f"{family}: red-line administrative target family must be declared "
+                "and compiled (the target-parity red line)."
             )
         elif entry.status != COMPILED_STATUS:
             failures.append(
-                f"{family}: core SSA SSI recipient family must stay status="
+                f"{family}: red-line administrative target family must stay status="
                 f"{COMPILED_STATUS!r}, not {entry.status!r} — it can never be "
                 "quietly downgraded to a reviewed exclusion."
             )

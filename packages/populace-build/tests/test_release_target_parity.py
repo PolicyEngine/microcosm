@@ -29,9 +29,10 @@ import pytest
 
 from populace.build.us_runtime.release_target_parity import (
     COMPILED_STATUS,
+    RED_LINE_COMPILED_FAMILIES,
     REVIEWED_EXCLUSION_STATUS,
-    SSI_RECIPIENT_RED_LINE_FAMILIES,
     TargetFamily,
+    TargetFence,
     TargetParityManifest,
     assert_target_parity_manifest_current,
     load_target_parity_feed_families,
@@ -39,6 +40,12 @@ from populace.build.us_runtime.release_target_parity import (
     registry_target_family_ids,
     us_release_target_parity_gate,
     us_target_family_id,
+)
+
+_FENCE = TargetFence(
+    origin="not a us-data calibration target (test)",
+    purpose="n/a — test fixture",
+    verdict_basis="no fence to rebuild (test)",
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -71,6 +78,7 @@ def _manifest(families: tuple[TargetFamily, ...]) -> TargetParityManifest:
 _CONTRACT = _manifest(
     (
         TargetFamily("ssa_supplement.ssi_recipients", COMPILED_STATUS),
+        TargetFamily("bea_nipa.total_wages_salaries", COMPILED_STATUS),
         TargetFamily("usda_snap.state_benefits", COMPILED_STATUS),
         TargetFamily(
             "bea_nipa.personal_income",
@@ -78,8 +86,27 @@ _CONTRACT = _manifest(
             classification="macro_control_total",
             reason="NIPA macro aggregate; income fit from SOI + CBO.",
             evidence="compiled sibling irs_soi.historic_table_2",
+            fence=_FENCE,
         ),
     )
+)
+
+#: The feed inventory consistent with ``_CONTRACT`` (every compiled + reviewed
+#: family present, both red-line families declared).
+_CONTRACT_FEED = {
+    "feed_sha256": "abc",
+    "families": {
+        "ssa_supplement.ssi_recipients": 52,
+        "bea_nipa.total_wages_salaries": 1,
+        "usda_snap.state_benefits": 51,
+        "bea_nipa.personal_income": 1,
+    },
+}
+
+_CONTRACT_COMPILED = (
+    "ssa_supplement.ssi_recipients",
+    "bea_nipa.total_wages_salaries",
+    "usda_snap.state_benefits",
 )
 
 
@@ -116,13 +143,11 @@ class TestFamilyId:
 
 class TestGate:
     def test_every_compiled_family_present_passes(self) -> None:
-        registry = _registry(
-            ["ssa_supplement.ssi_recipients", "usda_snap.state_benefits"]
-        )
+        registry = _registry(_CONTRACT_COMPILED)
         result = us_release_target_parity_gate(registry, manifest=_CONTRACT)
         assert result.passed
         assert result.name == "us_release_target_parity"
-        assert result.details["compiled_families"] == 2
+        assert result.details["compiled_families"] == 3
 
     def test_missing_compiled_family_fails_named(self) -> None:
         registry = _registry(["ssa_supplement.ssi_recipients"])
@@ -132,13 +157,7 @@ class TestGate:
 
     def test_stale_reviewed_exclusion_fails(self) -> None:
         # A reviewed-exclusion family the registry now compiles must be promoted.
-        registry = _registry(
-            [
-                "ssa_supplement.ssi_recipients",
-                "usda_snap.state_benefits",
-                "bea_nipa.personal_income",
-            ]
-        )
+        registry = _registry([*_CONTRACT_COMPILED, "bea_nipa.personal_income"])
         result = us_release_target_parity_gate(registry, manifest=_CONTRACT)
         assert not result.passed
         assert any("bea_nipa.personal_income" in failure for failure in result.failures)
@@ -162,6 +181,20 @@ class TestTargetFamilyValidation:
                 "x.y", REVIEWED_EXCLUSION_STATUS, classification="c", reason="r"
             )
 
+    def test_reviewed_exclusion_requires_fence(self) -> None:
+        with pytest.raises(ValueError, match="needs a fence"):
+            TargetFamily(
+                "x.y",
+                REVIEWED_EXCLUSION_STATUS,
+                classification="c",
+                reason="r",
+                evidence="e",
+            )
+
+    def test_fence_requires_all_three_fields(self) -> None:
+        with pytest.raises(ValueError, match="TargetFence.verdict_basis is required"):
+            TargetFence(origin="o", purpose="p", verdict_basis="")
+
     def test_unknown_status_rejected(self) -> None:
         with pytest.raises(ValueError, match="status must be one of"):
             TargetFamily("x.y", "maybe")
@@ -169,7 +202,10 @@ class TestTargetFamilyValidation:
 
 class TestAntiRot:
     def test_undeclared_feed_family_fails(self) -> None:
-        feed = {"feed_sha256": "abc", "families": {"new_source.new_concept": 3}}
+        feed = {
+            "feed_sha256": "abc",
+            "families": {**_CONTRACT_FEED["families"], "new_source.new_concept": 3},
+        }
         with pytest.raises(ValueError, match="not declared in the manifest"):
             assert_target_parity_manifest_current(
                 manifest=_CONTRACT, feed_families=feed
@@ -178,33 +214,22 @@ class TestAntiRot:
     def test_feed_surface_family_no_longer_in_feed_fails(self) -> None:
         # usda_snap.state_benefits is a declared compiled (feed-surface) family;
         # a feed inventory omitting it is drift.
-        feed = {
-            "feed_sha256": "abc",
-            "families": {
-                "ssa_supplement.ssi_recipients": 52,
-                "bea_nipa.personal_income": 1,
-            },
-        }
+        families = dict(_CONTRACT_FEED["families"])
+        del families["usda_snap.state_benefits"]
+        feed = {"feed_sha256": "abc", "families": families}
         with pytest.raises(ValueError, match="no longer carries"):
             assert_target_parity_manifest_current(
                 manifest=_CONTRACT, feed_families=feed
             )
 
     def test_feed_sha_mismatch_fails(self) -> None:
-        feed = {
-            "feed_sha256": "different",
-            "families": {
-                "ssa_supplement.ssi_recipients": 52,
-                "usda_snap.state_benefits": 51,
-                "bea_nipa.personal_income": 1,
-            },
-        }
+        feed = {**_CONTRACT_FEED, "feed_sha256": "different"}
         with pytest.raises(ValueError, match="does not match the feed-family"):
             assert_target_parity_manifest_current(
                 manifest=_CONTRACT, feed_families=feed
             )
 
-    def test_ssi_recipients_downgrade_is_rejected(self) -> None:
+    def test_red_line_downgrade_is_rejected(self) -> None:
         downgraded_families = tuple(
             replace(
                 family,
@@ -212,44 +237,23 @@ class TestAntiRot:
                 classification="deferred",
                 reason="pretend we dropped it",
                 evidence="none",
+                fence=_FENCE,
             )
-            if family.name in SSI_RECIPIENT_RED_LINE_FAMILIES
+            if family.name in RED_LINE_COMPILED_FAMILIES
             else family
             for family in _CONTRACT.families
         )
         downgraded = _manifest(downgraded_families)
-        feed = {
-            "feed_sha256": "abc",
-            "families": {
-                "ssa_supplement.ssi_recipients": 52,
-                "usda_snap.state_benefits": 51,
-                "bea_nipa.personal_income": 1,
-            },
-        }
         with pytest.raises(ValueError, match="must stay status='compiled'"):
             assert_target_parity_manifest_current(
-                manifest=downgraded, feed_families=feed
+                manifest=downgraded, feed_families=_CONTRACT_FEED
             )
 
     def test_registry_half_flags_undeclared_registry_family(self) -> None:
-        registry = _registry(
-            [
-                "ssa_supplement.ssi_recipients",
-                "usda_snap.state_benefits",
-                "surprise.family",
-            ]
-        )
-        feed = {
-            "feed_sha256": "abc",
-            "families": {
-                "ssa_supplement.ssi_recipients": 52,
-                "usda_snap.state_benefits": 51,
-                "bea_nipa.personal_income": 1,
-            },
-        }
+        registry = _registry([*_CONTRACT_COMPILED, "surprise.family"])
         with pytest.raises(ValueError, match="does not declare"):
             assert_target_parity_manifest_current(
-                manifest=_CONTRACT, feed_families=feed, registry=registry
+                manifest=_CONTRACT, feed_families=_CONTRACT_FEED, registry=registry
             )
 
 
@@ -260,18 +264,38 @@ class TestShippedManifest:
         assert manifest.reviewed_exclusions
         assert manifest.schema_version == 1
 
-    def test_every_reviewed_exclusion_carries_reason_and_evidence(self) -> None:
+    def test_every_reviewed_exclusion_carries_reason_evidence_and_fence(self) -> None:
         manifest = load_target_parity_manifest()
         for family in manifest.families:
             if family.status == REVIEWED_EXCLUSION_STATUS:
                 assert family.reason, family.name
                 assert family.classification, family.name
                 assert family.evidence, family.name
+                assert family.fence is not None, family.name
+                assert family.fence.origin, family.name
+                assert family.fence.purpose, family.name
+                assert family.fence.verdict_basis, family.name
 
-    def test_ssi_recipient_family_is_compiled(self) -> None:
+    def test_red_line_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
-        for family in SSI_RECIPIENT_RED_LINE_FAMILIES:
+        for family in RED_LINE_COMPILED_FAMILIES:
             assert manifest.by_name[family].status == COMPILED_STATUS
+
+    def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
+        manifest = load_target_parity_manifest()
+        for family in (
+            "bea_nipa.total_wages_salaries",
+            "bea_nipa.proprietors_income",
+            "federal_reserve_z1.households_nonprofits_balance_sheet",
+            "hhs_acf_liheap.national_profile",
+        ):
+            assert manifest.by_name[family].status == COMPILED_STATUS
+
+    def test_deferred_state_wages_carry_a_fence(self) -> None:
+        manifest = load_target_parity_manifest()
+        state_wages = manifest.by_name["bea_regional.state_wages_salaries"]
+        assert state_wages.status == REVIEWED_EXCLUSION_STATUS
+        assert "PR #1034" in state_wages.fence.origin
 
     def test_ssi_state_payments_family_is_compiled(self) -> None:
         manifest = load_target_parity_manifest()
