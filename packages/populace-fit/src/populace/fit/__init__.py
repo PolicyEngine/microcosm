@@ -80,6 +80,8 @@ from populace.fit.qrf import (  # noqa: E402 - after the compatibility gate
     DEFAULT_N_ESTIMATORS,
     DEFAULT_ZERO_ATOL,
     FittedRegimeGatedQRF,
+    QRFChainState,
+    QRFChainStepResult,
     Regime,
     RegimeGatedQRF,
 )
@@ -136,6 +138,8 @@ __all__ = [
     "QRF",
     "RegimeGatedQRF",
     "FittedRegimeGatedQRF",
+    "QRFChainState",
+    "QRFChainStepResult",
     "Regime",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
