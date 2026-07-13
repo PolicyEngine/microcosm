@@ -15,7 +15,8 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 
@@ -23,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from populace.build import FitWeightRecord, weights_audit_gate
+from populace.build.frame_checkpoint import write_frame_checkpoint
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
 from populace.build.outer_stage_runtime import (
     Stage,
@@ -283,6 +285,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Directory for durable frame checkpoints and stage_profile.json.",
     )
+    parser.add_argument(
+        "--equivalence-boundary-dir",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--equivalence-deterministic-h5-metadata",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--seed", default=0, type=int)
     parser.add_argument("--n-estimators", default=32, type=int)
     parser.add_argument(
@@ -378,6 +390,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--support-spine-spec requires --asec-h5")
     if args.stage != "all" and args.checkpoint_dir is None:
         parser.error("a named --stage requires --checkpoint-dir")
+    if args.equivalence_boundary_dir is not None and (
+        args.stage != "all" or args.checkpoint_dir is not None
+    ):
+        parser.error(
+            "--equivalence-boundary-dir requires monolithic --stage all without "
+            "--checkpoint-dir"
+        )
+    if (
+        args.equivalence_deterministic_h5_metadata
+        and args.equivalence_boundary_dir is None
+        and args.checkpoint_dir is None
+    ):
+        parser.error(
+            "--equivalence-deterministic-h5-metadata requires an equivalence "
+            "boundary or checkpoint directory"
+        )
     return args
 
 
@@ -405,7 +433,15 @@ def main(argv: list[str] | None = None) -> None:
         # This is intentionally a direct call with no profiler, checkpoint
         # directory creation, or other side effect.  It is the pre-refactor
         # pipeline and remains the byte-for-byte compatibility path.
-        _run_all(args)
+        boundary_dir = getattr(args, "equivalence_boundary_dir", None)
+        observer = (
+            None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
+        )
+        if observer is None:
+            _run_all(args)
+        else:
+            _run_all(args, boundary_observer=observer)
+            observer.assert_complete()
         return
     _run_staged_all(args)
 
@@ -485,6 +521,8 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     command.extend(("--geography-ladder-seed", str(args.geography_ladder_seed)))
     if args.allow_geography_ladder_gate_failures:
         command.append("--allow-geography-ladder-gate-failures")
+    if getattr(args, "equivalence_deterministic_h5_metadata", False):
+        command.append("--equivalence-deterministic-h5-metadata")
     return command
 
 
@@ -548,6 +586,9 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             args.congressional_district_vintage_crosswalk
         ),
         "geography_ladder_seed": args.geography_ladder_seed,
+        "equivalence_deterministic_h5_metadata": bool(
+            getattr(args, "equivalence_deterministic_h5_metadata", False)
+        ),
         "ledger_facts": path(args.ledger_facts),
         "n_estimators": args.n_estimators,
         "out": path(args.out),
@@ -600,7 +641,134 @@ def _builder_code_identity() -> dict[str, object]:
     }
 
 
-def _run_all(args: argparse.Namespace) -> Frame:
+class _EquivalenceBoundaryObserver:
+    """Write test-only monolith snapshots without changing production stages."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._next_stage_index = 0
+
+    def observe_frame(self, stage: str, frame: Frame) -> None:
+        expected = PIPELINE_STEPS[self._next_stage_index]
+        if stage != expected:
+            raise AssertionError(
+                f"Monolith boundary order changed: expected {expected!r}, got "
+                f"{stage!r}."
+            )
+        write_frame_checkpoint(
+            self.root / f"{self._next_stage_index:03d}_{stage}.frame.h5",
+            frame,
+            metadata={
+                "artifact_kind": "populace_monolith_equivalence_boundary",
+                "pipeline_steps": list(PIPELINE_STEPS),
+                "stage": stage,
+                "stage_index": self._next_stage_index,
+            },
+        )
+        self._next_stage_index += 1
+
+    def observe_primary_qrf(
+        self,
+        frame: Frame,
+        raw_predictions: pd.DataFrame,
+    ) -> None:
+        self.observe_frame("primary_qrf_chain", frame)
+        target_dir = self.root / "primary_qrf" / "targets"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for target_index, target in enumerate(raw_predictions.columns):
+            safe_target = "".join(
+                character if character.isalnum() or character in "-_" else "_"
+                for character in target
+            )
+            path = target_dir / f"{target_index:03d}__{safe_target}.h5"
+            temporary = path.with_name(f".{path.name}.tmp")
+            temporary.unlink(missing_ok=True)
+            import h5py
+
+            try:
+                values = np.ascontiguousarray(raw_predictions[target], dtype="<f8")
+                with h5py.File(temporary, mode="w") as h5:
+                    h5.create_dataset(
+                        "raw_draw_bits",
+                        data=values.view("<u8"),
+                        dtype="<u8",
+                        track_times=False,
+                    )
+                    h5.attrs["target"] = target
+                    h5.attrs["target_index"] = target_index
+                    h5.flush()
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def assert_complete(self) -> None:
+        if self._next_stage_index != len(PIPELINE_STEPS):
+            raise AssertionError(
+                "Monolith boundary observer stopped after "
+                f"{self._next_stage_index}/{len(PIPELINE_STEPS)} stages."
+            )
+
+
+def _observe_frame_boundary(
+    observer: _EquivalenceBoundaryObserver | None,
+    stage: str,
+    frame: Frame,
+) -> None:
+    if observer is not None:
+        observer.observe_frame(stage, frame)
+
+
+@contextmanager
+def _without_pytables_leaf_timestamps(enabled: bool) -> Iterator[None]:
+    """Disable test-only HDF5 leaf mtimes for physical byte comparisons."""
+
+    if not enabled:
+        yield
+        return
+    from tables.leaf import Leaf
+
+    original_init = Leaf.__init__
+
+    def deterministic_init(
+        leaf: object,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if len(args) >= 7:
+            args = (*args[:6], False, *args[7:])
+        else:
+            kwargs["track_times"] = False
+        original_init(leaf, *args, **kwargs)
+
+    Leaf.__init__ = deterministic_init
+    try:
+        yield
+    finally:
+        Leaf.__init__ = original_init
+
+
+def _write_policyengine_dataset(
+    args: argparse.Namespace,
+    frame: Frame,
+    output_h5: Path,
+) -> None:
+    """Write the export, canonicalizing only test-harness timestamp metadata."""
+
+    deterministic = bool(getattr(args, "equivalence_deterministic_h5_metadata", False))
+    with _without_pytables_leaf_timestamps(deterministic):
+        PolicyEngineUSEngine().write_dataset(
+            frame,
+            output_h5,
+            period=args.target_year,
+        )
+
+
+def _run_all(
+    args: argparse.Namespace,
+    *,
+    boundary_observer: _EquivalenceBoundaryObserver | None = None,
+) -> Frame:
     """Run the existing single-process pipeline in its original order."""
 
     out_dir = args.out.resolve()
@@ -609,6 +777,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
     summary_path = out_dir / _summary_filename(args.target_year)
 
     raw_base, base_source = _load_base_frame_from_args(args)
+    _observe_frame_boundary(boundary_observer, "source_construction", raw_base)
     weeks_unemployed_source_path = (
         args.asec_2023_weeks_unemployed_source
         if args.asec_2023_weeks_unemployed_source is not None
@@ -746,16 +915,31 @@ def _run_all(args: argparse.Namespace) -> Frame:
         seed=args.seed,
         time_period=args.target_year,
     )
+    _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
-    imputed, weights_audit = impute_and_audit_us_puf_support(
-        expanded,
-        donor,
-        seed=args.seed,
-        n_estimators=args.n_estimators,
-    )
+    _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
+    if boundary_observer is None:
+        imputed, weights_audit = impute_and_audit_us_puf_support(
+            expanded,
+            donor,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+        )
+    else:
+        imputed, weights_audit = impute_and_audit_us_puf_support(
+            expanded,
+            donor,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+            raw_predictions_callback=lambda predictions: (
+                boundary_observer.observe_primary_qrf(expanded, predictions)
+            ),
+        )
+    _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
     imputed = with_us_qbi_input_reconciliation(imputed)
+    _observe_frame_boundary(boundary_observer, "qbi_reconciliation", imputed)
     imputed = with_us_wic_claim_input(
         imputed,
         seed=args.seed,
@@ -773,10 +957,12 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Medicare take-up input signal gate failed after support cloning:\n  "
             + "\n  ".join(medicare_take_up_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "wic_post_clone", imputed)
     imputed = impute_us_housing_assistance_to_puf_support(
         imputed,
         seed=args.seed,
     )
+    _observe_frame_boundary(boundary_observer, "housing_assistance", imputed)
     imputed = with_us_prior_year_income_inputs(
         imputed,
         seed=args.seed,
@@ -819,6 +1005,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Domestic-production-ALD signal gate failed:\n  "
             + "\n  ".join(domestic_production_ald_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "prior_year_income_post_clone", imputed)
     imputed = with_us_child_support_inputs(
         imputed,
         seed=args.seed,
@@ -830,6 +1017,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Child-support signal gate failed:\n  "
             + "\n  ".join(child_support_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "child_support_post_clone", imputed)
     imputed = with_us_disability_benefits(
         imputed,
         seed=args.seed,
@@ -841,6 +1029,9 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Disability-benefits signal gate failed:\n  "
             + "\n  ".join(disability_benefits_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "disability_benefits_post_clone", imputed
+    )
     imputed = with_us_workers_compensation(
         imputed,
         seed=args.seed,
@@ -852,6 +1043,9 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Workers-compensation signal gate failed:\n  "
             + "\n  ".join(workers_compensation_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "workers_compensation_post_clone", imputed
+    )
     imputed = with_us_weeks_unemployed(
         imputed,
         seed=args.seed,
@@ -888,6 +1082,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Capital-gain details signal gate failed:\n  "
             + "\n  ".join(capital_gain_details_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "weeks_unemployed_post_clone", imputed)
     imputed = with_us_childcare_inputs(
         imputed,
         seed=args.seed,
@@ -899,6 +1094,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Childcare-input signal gate failed:\n  "
             + "\n  ".join(childcare_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "childcare_post_clone", imputed)
     imputed = with_us_energy_subsidy_input(
         imputed,
         seed=args.seed,
@@ -927,6 +1123,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Miscellaneous-itemized signal gate failed:\n  "
             + "\n  ".join(misc_itemized_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "energy_subsidy_post_clone", imputed)
     imputed = with_us_retirement_contribution_inputs(
         imputed,
         seed=args.seed,
@@ -938,6 +1135,9 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Retirement-contribution signal gate failed:\n  "
             + "\n  ".join(retirement_contributions_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "retirement_contributions_post_clone", imputed
+    )
     imputed = with_us_retirement_distribution_inputs(
         imputed,
         seed=args.seed,
@@ -949,6 +1149,9 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Retirement-distribution signal gate failed:\n  "
             + "\n  ".join(retirement_distributions_gate.failures)
         )
+    _observe_frame_boundary(
+        boundary_observer, "retirement_distributions_post_clone", imputed
+    )
     imputed = with_us_education_inputs(
         imputed,
         seed=args.seed,
@@ -960,6 +1163,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
             "Education-input signal gate failed:\n  "
             + "\n  ".join(education_inputs_gate.failures)
         )
+    _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
         ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
@@ -999,6 +1203,9 @@ def _run_all(args: argparse.Namespace) -> Frame:
                 "seed": args.congressional_district_seed,
             }
         )
+    _observe_frame_boundary(
+        boundary_observer, "congressional_district_assignment", imputed
+    )
     geography_ladder_assignment = {
         "applied": False,
         "opted_out": bool(args.without_block_ladder),
@@ -1037,7 +1244,8 @@ def _run_all(args: argparse.Namespace) -> Frame:
                 },
             }
         )
-    PolicyEngineUSEngine().write_dataset(imputed, output_h5, period=args.target_year)
+    _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
+    _write_policyengine_dataset(args, imputed, output_h5)
     if (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
@@ -1235,6 +1443,7 @@ def _run_all(args: argparse.Namespace) -> Frame:
     }
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
+    _observe_frame_boundary(boundary_observer, "final_export", imputed)
     return imputed
 
 
@@ -1860,7 +2069,7 @@ def _export_staged_result(
     out_dir.mkdir(parents=True, exist_ok=True)
     output_h5 = out_dir / _dataset_filename(args.target_year)
     summary_path = out_dir / _summary_filename(args.target_year)
-    PolicyEngineUSEngine().write_dataset(frame, output_h5, period=args.target_year)
+    _write_policyengine_dataset(args, frame, output_h5)
     congressional = stage_metadata["congressional_district_assignment"][
         "congressional_district_assignment"
     ]
@@ -1997,6 +2206,7 @@ def impute_and_audit_us_puf_support(
     predictors: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
 ) -> tuple[Frame, dict]:
     """Impute the PUF support channel and audit the fit's resolved weight kind.
 
@@ -2023,6 +2233,8 @@ def impute_and_audit_us_puf_support(
             be exercised on a small synthetic frame in an engine-free test; the
             build calls this with the defaults, so production behavior is
             unchanged.
+        raw_predictions_callback: Optional test-only observer for complete raw
+            chained draws before finalization.
 
     Returns:
         ``(imputed_frame, weights_audit)`` where ``weights_audit`` is the gate's
@@ -2044,6 +2256,7 @@ def impute_and_audit_us_puf_support(
         seed=seed,
         n_estimators=n_estimators,
         fit_records=fit_records,
+        raw_predictions_callback=raw_predictions_callback,
     )
     report = weights_audit_gate(fit_records)
     if not report.passed:

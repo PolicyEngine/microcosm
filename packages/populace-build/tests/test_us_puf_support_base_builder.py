@@ -78,6 +78,29 @@ def _support_donor() -> pd.DataFrame:
     )
 
 
+def test_equivalence_h5_metadata_mode_disables_all_leaf_timestamps(
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    paths = [tmp_path / "first.h5", tmp_path / "second.h5"]
+    for path in paths:
+        with builder._without_pytables_leaf_timestamps(True):
+            with pd.HDFStore(path, mode="w") as store:
+                store.put(
+                    "person",
+                    pd.DataFrame({"value": [1.0, 2.0]}),
+                    format="table",
+                    data_columns=True,
+                )
+        import tables
+
+        with tables.open_file(path, mode="r") as h5:
+            leaves = list(h5.walk_nodes("/", classname="Leaf"))
+            assert leaves
+            assert all(leaf._get_obj_timestamps().ctime == 0 for leaf in leaves)
+    assert paths[0].read_bytes() == paths[1].read_bytes()
+
+
 _SUPPORT_FIT_KWARGS = dict(
     predictors=(
         "puf_predictor_filing_status_code",
@@ -421,6 +444,41 @@ def test_outer_stage_resume_rejects_changed_builder_code(
             args.checkpoint_dir,
             builder.OUTER_STAGE_PIPELINE,
             run_config=builder._stage_run_config(args),
+        )
+
+
+def test_monolith_equivalence_observer_writes_all_boundaries_and_raw_bits(
+    tmp_path: Path,
+) -> None:
+    import h5py
+
+    builder = _load_support_builder_module()
+    frame = _minimal_us_frame()
+    observer = builder._EquivalenceBoundaryObserver(tmp_path)
+    raw = pd.DataFrame(
+        {
+            "first": np.asarray([0.0, -0.0], dtype=np.float64),
+            "second": np.asarray([1.25, np.nan], dtype=np.float64),
+        }
+    )
+    for stage in builder.PIPELINE_STEPS:
+        if stage == "primary_qrf_chain":
+            observer.observe_primary_qrf(frame, raw)
+        else:
+            observer.observe_frame(stage, frame)
+    observer.assert_complete()
+
+    boundary_files = sorted(tmp_path.glob("*.frame.h5"))
+    assert len(boundary_files) == len(builder.PIPELINE_STEPS)
+    raw_files = sorted((tmp_path / "primary_qrf" / "targets").glob("*.h5"))
+    assert [path.name for path in raw_files] == [
+        "000__first.h5",
+        "001__second.h5",
+    ]
+    with h5py.File(raw_files[0], mode="r") as h5:
+        np.testing.assert_array_equal(
+            np.asarray(h5["raw_draw_bits"], dtype=np.uint64),
+            raw["first"].to_numpy().view(np.uint64),
         )
 
 

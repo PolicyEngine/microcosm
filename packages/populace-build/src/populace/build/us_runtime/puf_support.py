@@ -9,7 +9,7 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -534,6 +534,7 @@ def impute_us_puf_tax_detail_support(
     seed: int = 0,
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
+    raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -556,6 +557,9 @@ def impute_us_puf_tax_detail_support(
             Opt-in: omitting it leaves the imputation byte-for-byte unchanged, so
             existing callers are unaffected. This is the seam a build stage wires
             to run the audit and abort a release on an unweighted fit.
+        raw_predictions_callback: Test-only observer called synchronously with
+            the complete raw chained draws before any clipping, snapping, or
+            finalization. Production callers leave it unset.
     """
 
     if frame.schema != US_SCHEMA:
@@ -618,6 +622,8 @@ def impute_us_puf_tax_detail_support(
     predictions = fitted.predict(
         features.loc[puf_mask, list(predictors)], release_models=True
     )
+    if raw_predictions_callback is not None:
+        raw_predictions_callback(predictions)
     return finalize_us_puf_tax_detail_predictions(
         frame,
         donor,
