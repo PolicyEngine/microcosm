@@ -5,6 +5,9 @@ surface.  This module checks the persisted candidate and its diagnostics as a
 separate acceptance step:
 
 * every state household-caseload and benefit target is present and fitted;
+* the ARTIFACT's simulated caseloads (engine ``snap > 0`` from the shipped H5)
+  also fit the FNS household targets — the calibrated column alone can hit
+  its targets while the shipped dataset diverges (populace#419);
 * the stage-time state take-up gate still reports a complete, anchor-preserving
   surface, with California saturation made explicit;
 * county FIPS coverage is complete and internally consistent, including a
@@ -22,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
+from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -93,6 +97,8 @@ __all__ = [
     "SNAP_STATE_FIPS",
     "assemble_us_snap_release_acceptance",
     "load_snap_fy2022_participation_reference",
+    "us_snap_artifact_caseload_gate",
+    "us_snap_simulated_state_caseloads",
     "us_snap_core_release_gate",
     "us_snap_county_coverage_gate",
     "us_snap_participation_validation",
@@ -472,6 +478,163 @@ def us_snap_participation_validation(
     }
 
 
+def _diagnostics_state_targets(
+    calibration_diagnostics: dict[str, Any], *, target_role: str
+) -> dict[str, float]:
+    """Per-state target values the calibrated release recorded for a role."""
+    targets = calibration_diagnostics.get("targets")
+    if not isinstance(targets, list):
+        targets = []
+    out: dict[str, float] = {}
+    for row in targets:
+        if not isinstance(row, dict):
+            continue
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        if metadata.get("target_role") != target_role:
+            continue
+        state = metadata.get("state_fips")
+        if state is None:
+            continue
+        out[str(state).zfill(2)] = float(row.get("target", 0.0))
+    return out
+
+
+def us_snap_simulated_state_caseloads(
+    h5_path: Path | str, *, period: int = 2024
+) -> dict[str, float]:
+    """Weighted SNAP taker-household count per state, simulated from the artifact.
+
+    This is the caseload a downstream PolicyEngine-US consumer computes from
+    the release: SPM units with engine ``snap > 0`` under the shipped weights
+    and take-up flags. ``MicroSeries`` retains the release's calibrated
+    weights through comparison, filtering, and ``sum``.
+    """
+    from policyengine_us import Microsimulation
+    from policyengine_us.data import USSingleYearDataset
+
+    h5_path = Path(h5_path)
+    dataset = USSingleYearDataset(file_path=str(h5_path))
+    simulation = Microsimulation(dataset=dataset)
+    snap = simulation.calc("snap", period=period, map_to="spm_unit")
+    takers = snap > 0
+    state_fips = _spm_unit_state_fips(h5_path)
+    if len(state_fips) != len(takers):
+        raise ValueError(
+            "SNAP artifact caseload state and simulation rows do not align: "
+            f"{len(state_fips)} states, {len(takers)} simulation rows."
+        )
+    state_fips.index = takers.index
+    return {
+        str(state): float(takers[state_fips == state].sum())
+        for state in sorted(set(state_fips))
+    }
+
+
+def us_snap_artifact_caseload_gate(
+    h5_path: Path | str,
+    calibration_diagnostics: dict[str, Any],
+    *,
+    period: int = 2024,
+    relative_tolerance: float = 0.10,
+    simulated_caseloads: Mapping[str, float] | None = None,
+) -> GateResult:
+    """Require the ARTIFACT's simulated caseloads to fit the FNS targets.
+
+    The calibrated-column fit gate (``us_snap_state_target_fit_gate``) proves
+    the solver hit the materialized caseload measure; this gate proves the
+    thing a downstream consumer actually computes from the shipped H5 agrees.
+    The two can diverge when the take-up stage's assignment basis or the
+    export's input surface differs from the build frame — populace#419
+    measured a release with a 52/52 calibrated fit whose artifact-simulated
+    caseloads missed 23/52 states (AK +563%). This gate fails closed on that
+    class.
+
+    Semantics note (recorded in details): the FNS targets are fiscal-year
+    average-monthly household stocks; the simulated measure is annual
+    engine participation (``snap > 0``) under the shipped take-up flags.
+
+    Args:
+        h5_path: The release H5.
+        calibration_diagnostics: The release's calibration diagnostics; the
+            per-state ``snap_households`` target values are read from it so
+            the gate compares against exactly what the build calibrated to.
+        period: Simulation period.
+        relative_tolerance: Maximum absolute relative miss per state.
+        simulated_caseloads: Injectable precomputed caseloads (tests); when
+            ``None`` the artifact is simulated.
+    """
+    if not 0.0 < relative_tolerance < 1.0:
+        raise ValueError("relative_tolerance must be in (0, 1).")
+    targets = _diagnostics_state_targets(
+        calibration_diagnostics, target_role="snap_households"
+    )
+    failures: list[str] = []
+    missing_targets = sorted(SNAP_STATE_FIPS - set(targets))
+    if missing_targets:
+        failures.append(
+            "artifact caseload fit: calibration diagnostics carry no "
+            f"snap_households target for state(s) {missing_targets}; the "
+            "release predates the FNS caseload surface or dropped it."
+        )
+    if simulated_caseloads is None:
+        simulated_caseloads = us_snap_simulated_state_caseloads(h5_path, period=period)
+    rows: list[dict[str, Any]] = []
+    for state in sorted(SNAP_STATE_FIPS & set(targets)):
+        target = targets[state]
+        modeled = simulated_caseloads.get(state)
+        relative_error = (
+            (modeled - target) / target if modeled is not None and target > 0 else None
+        )
+        within = relative_error is not None and (
+            abs(relative_error) <= relative_tolerance
+        )
+        if modeled is None:
+            failures.append(
+                f"artifact caseload fit: no simulated caseload for state {state}."
+            )
+        elif not within:
+            failures.append(
+                f"artifact caseload fit: state {state} simulated "
+                f"{modeled:,.0f} vs FNS target {target:,.0f} "
+                f"({relative_error:+.1%} > ±{relative_tolerance:.0%})."
+            )
+        rows.append(
+            {
+                "state_fips": state,
+                "target": target,
+                "simulated_taker_households": modeled,
+                "relative_error": relative_error,
+                "within_tolerance": within,
+            }
+        )
+    finite_errors = [
+        abs(row["relative_error"]) for row in rows if row["relative_error"] is not None
+    ]
+    return GateResult(
+        name="snap_artifact_caseload_fit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "semantics": (
+                "FNS targets are fiscal-year average-monthly household stocks; "
+                "the simulated measure is annual engine participation "
+                "(snap > 0) under the shipped take-up flags (populace#419)."
+            ),
+            "relative_tolerance": relative_tolerance,
+            "state_rows": len(rows),
+            "max_absolute_relative_error": (
+                max(finite_errors) if finite_errors else None
+            ),
+            "states_outside_tolerance": [
+                row["state_fips"] for row in rows if not row["within_tolerance"]
+            ],
+            "rows": rows,
+        },
+    )
+
+
 def assemble_us_snap_release_acceptance(
     *,
     release_id: str,
@@ -481,6 +644,7 @@ def assemble_us_snap_release_acceptance(
     h5_path: Path | str,
     participation_validation: dict[str, Any],
     target_relative_tolerance: float = 0.10,
+    simulated_caseloads: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Assemble the final required-gate verdict and advisory validator."""
     checks = {
@@ -503,6 +667,14 @@ def assemble_us_snap_release_acceptance(
             )
         ),
         "county_coverage": _gate_payload(us_snap_county_coverage_gate(h5_path)),
+        "artifact_household_caseload_fit": _gate_payload(
+            us_snap_artifact_caseload_gate(
+                h5_path,
+                calibration_diagnostics,
+                relative_tolerance=target_relative_tolerance,
+                simulated_caseloads=simulated_caseloads,
+            )
+        ),
     }
     required_failures = [
         name

@@ -8,6 +8,7 @@ from populace.build.us_runtime.snap_release_acceptance import (
     SNAP_STATE_FIPS,
     assemble_us_snap_release_acceptance,
     load_snap_fy2022_participation_reference,
+    us_snap_artifact_caseload_gate,
     us_snap_core_release_gate,
     us_snap_county_coverage_gate,
     us_snap_state_target_fit_gate,
@@ -150,8 +151,50 @@ def test_assembled_acceptance_keeps_participation_advisory(tmp_path) -> None:
         calibration_diagnostics={"targets": _target_rows()},
         h5_path=h5,
         participation_validation=participation,
+        simulated_caseloads={state: 100.0 for state in sorted(SNAP_STATE_FIPS)},
     )
     assert payload["passed"]
     assert payload["required_failures"] == []
     assert payload["california_saturation"]["saturated"] is True
     assert payload["fy2022_eligible_person_participation"] is participation
+
+
+def test_artifact_caseload_gate_passes_when_simulated_matches_targets(tmp_path) -> None:
+    diagnostics = {"targets": _target_rows()}
+    result = us_snap_artifact_caseload_gate(
+        tmp_path / "unused.h5",
+        diagnostics,
+        simulated_caseloads={state: 100.0 for state in sorted(SNAP_STATE_FIPS)},
+    )
+    assert result.passed
+    assert result.details["states_outside_tolerance"] == []
+
+
+def test_artifact_caseload_gate_fails_when_artifact_diverges_from_calibration(
+    tmp_path,
+) -> None:
+    """The populace#419 class: calibrated fit green, shipped artifact 5x off."""
+    diagnostics = {"targets": _target_rows(relative_error=0.0)}
+    simulated = {state: 100.0 for state in sorted(SNAP_STATE_FIPS)}
+    simulated["02"] = 663.0  # AK-style divergence
+    result = us_snap_artifact_caseload_gate(
+        tmp_path / "unused.h5",
+        diagnostics,
+        simulated_caseloads=simulated,
+    )
+    assert not result.passed
+    assert result.details["states_outside_tolerance"] == ["02"]
+    assert any("state 02" in failure for failure in result.failures)
+
+
+def test_artifact_caseload_gate_fails_when_release_lacks_caseload_targets(
+    tmp_path,
+) -> None:
+    diagnostics = {"targets": []}
+    result = us_snap_artifact_caseload_gate(
+        tmp_path / "unused.h5",
+        diagnostics,
+        simulated_caseloads={},
+    )
+    assert not result.passed
+    assert any("predates" in failure for failure in result.failures)
