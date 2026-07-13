@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from populace.build.us_runtime.snap_release_acceptance import (
     SNAP_STATE_FIPS,
@@ -120,6 +121,7 @@ def test_state_target_fit_gate_rejects_missing_state() -> None:
 
 
 def test_county_gate_checks_alaska_and_state_prefixes(tmp_path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
     good = tmp_path / "good.h5"
     _write_households(good)
     result = us_snap_county_coverage_gate(good)
@@ -134,6 +136,7 @@ def test_county_gate_checks_alaska_and_state_prefixes(tmp_path) -> None:
 
 
 def test_assembled_acceptance_keeps_participation_advisory(tmp_path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
     h5 = tmp_path / "candidate.h5"
     _write_households(h5)
     participation = {
