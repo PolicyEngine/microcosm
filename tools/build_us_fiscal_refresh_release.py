@@ -505,6 +505,22 @@ SUPPORTED_LEDGER_FILTER_METADATA_KEYS = frozenset(
     }
 )
 
+#: Series-identity qualifiers, distinct from the domain filters above: each
+#: identifies WHICH published series the registry selected (a NIPA table line,
+#: a LIHEAP program count), was applied at registry fact-selection time, and
+#: restricts nothing in the microdata — there is no household-level "series
+#: code" to filter on. The materializer must treat them as inert provenance;
+#: listing a key here asserts a reviewer verified it is identity-only. Unknown
+#: ledger_filter_* keys remain fatal so a genuine domain filter can never be
+#: silently ignored (the Build M sparse stop that motivated this class).
+IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
+    {
+        "ledger_filter_bea_nipa.series_code",
+        "ledger_filter_administering_entity",
+        "ledger_filter_program",
+    }
+)
+
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
     "cms_aca": "CMS ACA marketplace enrollment public use files",
@@ -3441,6 +3457,7 @@ def _unsupported_ledger_filter_metadata(
                 for key, value in metadata.items()
                 if str(key).startswith("ledger_filter")
                 and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+                and str(key) not in IDENTITY_LEDGER_FILTER_METADATA_KEYS
                 and not _is_noop_ledger_filter_value(str(value))
             )
         )

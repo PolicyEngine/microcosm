@@ -1264,6 +1264,42 @@ def test_unsupported_ledger_filter_metadata_all_value_is_noop() -> None:
     }
 
 
+def test_identity_ledger_filter_qualifiers_are_inert_not_unsupported() -> None:
+    """Series-identity qualifiers pass the guard; unknown domain filters fail.
+
+    Build M's sparse run stopped here: the #405 NIPA and LIHEAP targets carry
+    fact metadata identifying WHICH published series the registry selected
+    (a NIPA table line code, the LIHEAP state-programs count) — applied at
+    fact-selection, restricting nothing in the microdata. The guard now
+    recognizes the reviewed identity-qualifier class as inert while any
+    unknown ledger_filter_* key stays fatal, so a genuine domain filter can
+    never be silently ignored.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        SimpleNamespace(
+            name="bea_nipa.cy2024.total_wages_salaries.a034rc.wages_salaries_amount",
+            metadata={"ledger_filter_bea_nipa.series_code": "a034rc"},
+        ),
+        SimpleNamespace(
+            name="hhs_acf_liheap.fy2024.national_profile.state_programs.households_served",
+            metadata={
+                "ledger_filter_administering_entity": "state_programs",
+                "ledger_filter_program": "liheap",
+            },
+        ),
+        SimpleNamespace(
+            name="unknown_domain_filter",
+            metadata={"ledger_filter_novel_dimension": "specific_slice"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "unknown_domain_filter": ("ledger_filter_novel_dimension",)
+    }
+
+
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
     builder = _load_builder_module()
     counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
