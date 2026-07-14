@@ -514,7 +514,26 @@ def _assign_sources(
             source.loc[candidate & anchored, "candidate_weight"].sum()
         )
         reachable_goal = min(max(target, reporter_floor), capacity)
-        prior = min(target / capacity, 1.0) if capacity > 0 else 0.0
+        # The count-matching ratio is a meaningful reform propensity only
+        # while it subsamples (capacity >= target). Under saturation it
+        # degenerates to 1.0 and Bernoulli(1.0) flags the entire band — with
+        # candidates in every band (the restored disability battery), that is
+        # a constant, signal-free output and the take-up gate fails. Fall
+        # back to the observed take-up rate among today's candidates
+        # (reporter mass over candidate capacity): if a reform makes a
+        # household eligible, it takes up at the rate today's modeled
+        # eligibles are observed reporting. Current-law recipiency is
+        # unchanged either way — only the candidate domain below is ever
+        # paid, and the saturated branch still flags every candidate.
+        if capacity > 0:
+            count_ratio = target / capacity
+            prior = (
+                count_ratio
+                if count_ratio < 1.0
+                else min(reporter_floor / capacity, 1.0)
+            )
+        else:
+            prior = 0.0
 
         # Keep reform propensities off today's candidate domain. Candidate
         # decisions are then greedily count-calibrated below.

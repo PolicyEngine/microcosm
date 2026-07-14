@@ -241,6 +241,31 @@ def test_unreachable_target_saturates_only_the_counted_candidate_domain() -> Non
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
+def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
+    """Universal saturation must not flag the whole pool.
+
+    Build M's first sparse run died here: the restored disability battery put
+    SSI candidates in every age band, every band's candidate capacity fell
+    short of its SSA target, the count-matching ratio degenerated to 1.0, and
+    Bernoulli(1.0) flagged the entire pool — a constant output the gate
+    rejects. Under saturation the reform-domain propensity now falls back to
+    the observed take-up rate among candidates (reporter mass over capacity),
+    so candidates stay fully selected (current-law recipiency unchanged)
+    while the pool-wide flag keeps signal.
+    """
+
+    targets = {"under_18": 1e6, "18_64": 1e6, "65_plus": 1e6}
+    _, result, potential, diagnostics = _assigned(targets=targets)
+    person = result.table("person")
+    flag = person[_OUTPUT].to_numpy(dtype=bool)
+    assert flag[potential > 0].all()
+    assert not flag.all()
+    for band in diagnostics["age_bands"]:
+        assert band["saturated"]
+        assert band["selected_recipient_weight"] == band["candidate_capacity"]
+    assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
+
+
 def test_reporter_floor_above_target_never_drops_an_anchor() -> None:
     targets = {key: 5.0 for key in _TARGETS}
     _, result, _, diagnostics = _assigned(targets=targets)
