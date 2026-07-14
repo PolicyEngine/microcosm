@@ -2732,10 +2732,33 @@ def _snap_state_target_table(target_specs: tuple) -> pd.DataFrame:
 
 
 def _spm_unit_state_fips(frame: Frame) -> np.ndarray:
-    """SPM-unit-aligned state FIPS text codes via the frame's linkage."""
-    return np.asarray(
-        _state_fips_text(frame.broadcast("state_fips", to="spm_unit").to_numpy())
+    """SPM-unit-aligned state FIPS text codes via the frame's linkage.
+
+    ``Frame.broadcast`` only targets the person entity, so route household
+    state through persons and collapse per SPM unit. Every person in an SPM
+    unit shares its household's state; the fail-closed check keeps that
+    invariant honest rather than assuming it.
+    """
+    person = frame.table("person")
+    person_fips = _state_fips_text(
+        frame.broadcast("state_fips", to="person").to_numpy()
     )
+    per_unit = (
+        pd.Series(person_fips, index=person["person_spm_unit_id"].to_numpy())
+        .groupby(level=0)
+        .agg(["first", "nunique"])
+    )
+    if per_unit["nunique"].gt(1).any():
+        bad = per_unit.index[per_unit["nunique"].gt(1)].tolist()
+        raise ValueError(
+            f"SPM unit(s) span multiple state FIPS codes; invalid unit(s) {bad[:5]}."
+        )
+    spm_ids = frame.table("spm_unit")["spm_unit_id"].to_numpy()
+    aligned = per_unit["first"].reindex(spm_ids)
+    if aligned.isna().any():
+        bad = list(aligned.index[aligned.isna()])[:5]
+        raise ValueError(f"SPM unit(s) carry no person rows for state FIPS: {bad}.")
+    return np.asarray(aligned.to_numpy())
 
 
 def _snap_spm_unit_eligibility(

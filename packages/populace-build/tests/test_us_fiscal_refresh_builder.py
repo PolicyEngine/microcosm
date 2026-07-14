@@ -6873,3 +6873,73 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
         "assert_take_up_treatments_consistent",
     ):
         assert preflight in called, f"main() no longer calls {preflight}"
+
+
+def _spm_state_frame(states: list[str], *, split_unit: bool = False):
+    import numpy as np
+    import pandas as pd
+
+    from populace.frame import Frame, WeightKind, Weights
+    from populace.frame.units import US_SCHEMA
+
+    person_rows = []
+    for index in range(len(states)):
+        for member in range(2):
+            person_rows.append(
+                {
+                    "person_id": index * 10 + member,
+                    "person_household_id": index,
+                    # A split unit wires its second member to another
+                    # household (and so another state) to hit the guard.
+                    "person_spm_unit_id": (
+                        (index + 1) % len(states)
+                        if split_unit and index == 0 and member == 1
+                        else index
+                    ),
+                    "person_tax_unit_id": index,
+                    "person_family_id": index,
+                    "person_marital_unit_id": index * 10 + member,
+                    "age": 40,
+                }
+            )
+    person = pd.DataFrame(person_rows)
+    ids = np.arange(len(states), dtype="int64")
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids, "state_fips": states}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": person["person_marital_unit_id"].to_numpy()}
+        ),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                values=np.ones(len(states), dtype=np.float64),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def test_spm_unit_state_fips_routes_through_persons() -> None:
+    """SPM-unit state codes come via the person linkage, not broadcast().
+
+    Build M's sparse run died calling ``frame.broadcast(..., to="spm_unit")``
+    — the Frame API only broadcasts to persons, and the SNAP state take-up
+    path (a coverage-campaign restoration) had never run at full scale. The
+    helper now routes household state through persons and collapses per SPM
+    unit, failing closed if a unit ever spans two states.
+    """
+
+    builder = _load_builder_module()
+    frame = _spm_state_frame(["06", "36"])
+    aligned = builder._spm_unit_state_fips(frame)
+    assert list(aligned) == ["06", "36"]
+
+    with pytest.raises(ValueError, match="span multiple state"):
+        builder._spm_unit_state_fips(_spm_state_frame(["06", "36"], split_unit=True))
