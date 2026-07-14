@@ -100,3 +100,31 @@ class TestUsNonzeroShares:
         )
 
         assert set(shares) == {"student_loan_interest"}
+
+
+class TestTypedWeightMirror:
+    def test_household_weight_measures_typed_frame_weights(self) -> None:
+        """The parity universe measures weights as the export persists them.
+
+        Frame weights are typed pipeline state, not a table column; the H5
+        adapter materializes them as ``household_weight`` and the coverage
+        gate mirrors that. Build M's sparse run failed eCPS parity because
+        this module read the deliberately absent table column as an all-zero
+        layer while the reference's finished export carries it — the mirror
+        keeps the two gates and the export telling one story.
+        """
+
+        shares = us_nonzero_shares(_frame(), columns=["household_weight"])
+        assert shares["household_weight"] == 1.0
+
+    def test_table_column_still_wins_when_present(self) -> None:
+        frame = _frame()
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["household"]["household_weight"] = [0.0, 5.0]
+        rebuilt = Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        )
+        shares = us_nonzero_shares(rebuilt, columns=["household_weight"])
+        assert shares["household_weight"] == 0.5

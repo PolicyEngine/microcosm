@@ -82,4 +82,20 @@ def us_nonzero_shares(
             if requested is not None and column not in requested:
                 continue
             shares[column] = nonzero_share(table[column])
+
+    # Frame weights are typed pipeline state, not ordinary table data. The US
+    # adapter materializes the authoritative vector as ``household_weight``
+    # when writing PolicyEngine H5, and the coverage gate mirrors that export
+    # behavior; mirror it here too so the parity universe measures what is
+    # persisted instead of reading the deliberately absent table column as an
+    # all-zero layer (the Build M sparse failure: the reference's finished
+    # export carries the column, the candidate keeps it as typed state).
+    if (
+        (requested is None or "household_weight" in requested)
+        and "household_weight" not in shares
+        and "household" in frame.weighted_entities
+    ):
+        shares["household_weight"] = nonzero_share(
+            pd.Series(frame.weights_for("household").values)
+        )
     return shares
