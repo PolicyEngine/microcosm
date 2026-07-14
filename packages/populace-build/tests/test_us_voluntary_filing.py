@@ -593,6 +593,53 @@ def test_qrf_predicts_once_per_source_unit_and_fans_out_identical_clones(
     assert (by_source.nunique() == 1).all()
 
 
+def test_puf_only_survivor_units_predict_from_the_surviving_clone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A unit whose ASEC row was dropped by selection still predicts once.
+
+    Build M's sparse run died here: the certified frozen-support selection
+    keeps only the PUF clone for some source units (the L0-survivor case the
+    SSI reporter lineage already handles), and the receiver demanded exactly
+    one ASEC row per unit. The surviving clone carries the unit's source
+    predictors, so it serves as the prediction row; duplicated ASEC rows
+    remain a hard error.
+    """
+
+    expanded = clone_us_frame_for_puf_support(_frame(10))
+    person = expanded.table("person")
+    tax_unit = expanded.table("tax_unit")
+    dropped_source = tax_unit["tax_unit_source_id"].iloc[0]
+    dropped_units = tax_unit.loc[
+        tax_unit["tax_unit_source_id"].eq(dropped_source)
+        & tax_unit["tax_unit_support_channel"].eq("asec"),
+        "tax_unit_id",
+    ]
+    dropped = person["person_tax_unit_id"].isin(dropped_units)
+    sparse = expanded.select(~dropped.to_numpy())
+
+    class FakeFitted:
+        def predict(self, receiver: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame(
+                {_OUTPUT: np.ones(len(receiver), dtype=bool)},
+                index=receiver.index,
+            )
+
+    class FakeQRF:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def fit(self, *_args: object, **_kwargs: object) -> FakeFitted:
+            return FakeFitted()
+
+    monkeypatch.setattr(module, "QRF", FakeQRF)
+    predicted = impute_us_voluntary_filing(sparse, _donor(), seed=17)
+    survivors = sparse.table("tax_unit")["tax_unit_source_id"].eq(dropped_source)
+    assert survivors.any()
+    assert len(predicted) == len(sparse.table("tax_unit"))
+    assert predicted[survivors.to_numpy()].all()
+
+
 def test_real_qrf_recomputation_is_deterministic() -> None:
     frame = _frame(14)
     donor = _donor(120)

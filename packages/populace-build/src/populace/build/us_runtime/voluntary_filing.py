@@ -745,15 +745,30 @@ def _source_receiver_rows(
             .groupby(rows["_source_id"])
             .sum()
         )
-        if not asec_counts.eq(1).all():
-            bad = asec_counts.index[~asec_counts.eq(1)].tolist()
+        if asec_counts.gt(1).any():
+            bad = asec_counts.index[asec_counts.gt(1)].tolist()
             raise ValueError(
-                "US voluntary-filing support source units require exactly one "
-                f"ASEC row; invalid source unit(s) {bad[:5]}."
+                "US voluntary-filing support source units carry duplicated "
+                f"ASEC rows; invalid source unit(s) {bad[:5]}."
             )
-        source_rows = rows.loc[
-            rows["_support_channel"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
-        ].copy()
+        # Prefer each unit's ASEC row, but a frozen-support selection may
+        # legitimately keep only a unit's PUF clone (the L0-survivor case the
+        # SSI reporter lineage also handles — Build M's certified 57,240
+        # selection does exactly this). Clones carry the unit's source
+        # predictors, so the surviving row predicts identically; pick it
+        # deterministically by channel then tax-unit id.
+        ordered_rows = rows.copy()
+        ordered_rows["_asec_rank"] = (
+            ~ordered_rows["_support_channel"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
+        ).astype(int)
+        source_rows = (
+            ordered_rows.sort_values(
+                ["_source_id", "_asec_rank", "_support_channel", "_tax_unit_id"],
+                kind="stable",
+            )
+            .drop_duplicates("_source_id", keep="first")
+            .drop(columns="_asec_rank")
+        )
     else:
         if rows["_source_id"].duplicated().any():
             duplicates = rows.loc[
