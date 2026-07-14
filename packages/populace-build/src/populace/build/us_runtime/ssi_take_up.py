@@ -697,10 +697,12 @@ def us_ssi_take_up_diagnostics(
 ) -> dict[str, object]:
     """Diagnose a persisted assignment without changing its decisions.
 
-    The fiscal builder uses this after its dependency-aware reconciliation
-    calibration: the assignment must remain count-faithful on returned release
-    weights, while the exact flags used to materialize SSI and Medicaid target
-    vectors must not be mutated after optimization.
+    The fiscal builder uses this to measure the pre-refit (frozen) flags on the
+    returned weights for the reconciliation swap delta. Count-faithfulness on the
+    returned weights is no longer assumed by freezing the flags: the builder
+    re-assigns take-up under the returned weights and verifies by measurement
+    that the fresh pair moved aggregate recipient mass within one source-identity
+    weight per age band before publishing it.
     """
 
     us_ssi_take_up_stage_spec()
