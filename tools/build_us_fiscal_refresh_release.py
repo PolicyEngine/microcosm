@@ -4303,6 +4303,23 @@ def _ecps_parity_gate(
 #   non_sch_d_capital_gains ref $75.747B band [$37.874B, $113.621B]
 #                          SOI target ~$10.16B -> far below the lower edge;
 #                          cannot pass truthfully -> excluded.
+# Build M additions (same doctrine, measured on the Build M frame; the gate
+# flagged all three on sparse attempt 10, 5482d38-20260715T114657Z):
+#   rental_income          ref $432.870B band [$216.435B, $649.305B]
+#                          The registry now identifies the concept: SOI ht2
+#                          rental_royalty_income_amount is an ACTIVE national
+#                          target at $95.95B@2024 (plus 51 state rows) — far
+#                          BELOW the band's lower edge; a correctly calibrated
+#                          column cannot pass -> excluded.
+#   charitable_non_cash_donations ref $52.840B band [$26.420B, $79.260B]
+#                          SOI Table 2.1 TY2023 noncash contributions =
+#                          $116.417B (CBO-aged ~$126.57B@2024) — ABOVE the
+#                          band's upper edge; cannot pass truthfully ->
+#                          excluded (non_sch_d class: total pinned, split not).
+#   partnership_self_employment_net_earnings ref $61.740B
+#                          band [$30.870B, $92.610B]; EXPORT-side defect
+#                          (misc/#393 class), remedy tracked in populace#432;
+#                          exclusion lifts with the base rebuild.
 # Deliberately NOT excluded (parity checks stay live; the run adjudicates):
 #   miscellaneous_income   ref $47.401B  band [$23.700B, $71.101B]; SOI net
 #                          target ~$52.84B is IN-band -> genuine pass expected.
@@ -4313,6 +4330,51 @@ def _ecps_parity_gate(
 #   first_home_mortgage_interest follows home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per populace#38).
 US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
+    "rental_income": (
+        "Identified by the ACTIVE registry: irs_soi ht2 "
+        "rental_royalty_income_amount is a compiled national target at "
+        "$95.95B@2024 (with 51 state rows), so the solve pins the rental "
+        "concept to SOI while the live-default reference carries $432.87B "
+        "on this column — ~4.5x the SOI level, an incidental artifact of "
+        "the incumbent solve (nothing pinned rental before the Build H SOI "
+        "identification). The +/-50% band's lower edge ($216.44B) sits far "
+        "ABOVE the SOI-true level, so a correctly calibrated column cannot "
+        "pass this parity check. Corroboration: partnerships' net rental "
+        "real estate income is NEGATIVE (-$66.9B TY2022, SOI Partnership "
+        "Returns bulletin Fig. K) — net rental concepts run an order of "
+        "magnitude below the reference's gross-like mass. Build M sparse "
+        "exports $90.70B, at the pinned level (attempt 10, 5482d38)."
+    ),
+    "charitable_non_cash_donations": (
+        "Identified by SOI Table 2.1 TY2023 (the same vendored ledger bytes "
+        "the active $230.46B@2024 total-charitable target compiles from, "
+        "23in21id.xls): noncash ('other than cash') contributions = "
+        "$116.417B TY2023, CBO-aged ~$126.57B@2024 — ABOVE the reference "
+        "band's upper edge ($79.26B; ref $52.84B on this column). The "
+        "registry constrains the charitable TOTAL; the cash/noncash split "
+        "was never pinned, so the reference's split is an incidental "
+        "artifact of the incumbent solve (the non_sch_d_capital_gains "
+        "class: aggregate constrained, component split not). A correctly "
+        "calibrated column cannot pass. Build M sparse exports $92.67B, "
+        "between the reference and the SOI level (attempt 10, 5482d38)."
+    ),
+    "partnership_self_employment_net_earnings": (
+        "EXPORT-side defect, excluded with the remedy tracked (the "
+        "miscellaneous_income/#393 pattern, NOT a reference error): the "
+        "base-m pool collapses this signed, sparse column (4,467 nonzero "
+        "of 865k persons) to near-cancellation — positive leg +$47.71B "
+        "vs negative leg -$48.06B, net -$0.35B at base weights, against "
+        "base-j's +$12.21B and the PUF-direct-era reference's +$61.74B. "
+        "The unpinned solve then amplifies unpredictably (Build J landed "
+        "-37.6% in-band; Build M lands -$22.72B, -136.8%). Reachability "
+        "is not the barrier (ratio-5 on the positive leg alone reaches "
+        "$238B); the pool's leg cancellation is. Remedy = diagnose and "
+        "fix the QRF chain for this column in the staged base builder and "
+        "rebuild (single-chain, checkpointed), then identify the concept "
+        "with an SOI Schedule SE target so the solve stops treating it as "
+        "a free dimension (populace#432). This exclusion lifts with that "
+        "rebuild."
+    ),
     "miscellaneous_income": (
         "Source concept mismatch, established by populace#393's remedy "
         "experiments: the PUF pipeline maps miscellaneous_income = E01200, "
