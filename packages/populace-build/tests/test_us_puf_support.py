@@ -1,6 +1,7 @@
 """US PUF support-channel expansion tests."""
 
 import importlib
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from populace.build.us_runtime import (
     support_source_id_column,
 )
 from populace.build.us_runtime.puf_support import (
+    _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS,
@@ -1566,3 +1568,272 @@ class TestPufSupportWeightsAuditWiring:
         assert result.details["resolved_weight_kinds"] == {
             US_PUF_SUPPORT_FIT_NAME: "design"
         }
+
+
+# --------------------------------------------------------------------------- #
+# Signed-mass calibration: pin the imputed net signed mass of a sparse,
+# sign-mixed, heavy-tailed person output (farm_operations_income, populace
+# farm-chain-sign-structure; partnership_self_employment_net_earnings, #432) to
+# the donor instrument, so the regime-gated QRF's regression toward balance
+# cannot flip or cancel the source's net sign.
+# --------------------------------------------------------------------------- #
+
+
+def _puf_recipient_frame(
+    employment_income: Sequence[float],
+    self_employment_income: Sequence[float],
+    household_weights: Sequence[float],
+) -> Frame:
+    """One person per household/tax-unit, so person and tax-unit weights align."""
+
+    n = len(household_weights)
+    ids = np.arange(1, n + 1, dtype="int64")
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "employment_income": np.asarray(employment_income, dtype=np.float64),
+            "self_employment_income": np.asarray(
+                self_employment_income, dtype=np.float64
+            ),
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame(
+            {"household_id": ids, "state_fips": np.full(n, 6, dtype="int64")}
+        ),
+        "tax_unit": pd.DataFrame(
+            {"tax_unit_id": ids, "filing_status_input": ["SINGLE"] * n}
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    weights = {
+        "household": Weights(
+            np.asarray(household_weights, dtype=np.float64), WeightKind.DESIGN
+        )
+    }
+    return Frame(tables, US_SCHEMA, weights)
+
+
+def _per_weight_legs(
+    values: Sequence[float], weights: Sequence[float]
+) -> tuple[float, float]:
+    """Return (positive, negative) per-unit-weight weighted leg masses."""
+
+    values = np.asarray(values, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    total = weights.sum()
+    positive = float((np.maximum(values, 0.0) * weights).sum() / total)
+    negative = float((np.minimum(values, 0.0) * weights).sum() / total)
+    return positive, negative
+
+
+def _puf_channel_person_legs(frame: Frame, column: str) -> tuple[float, float]:
+    """Per-unit-weight positive/negative leg masses on the PUF person channel."""
+
+    person = frame.table("person")
+    household_weight = pd.Series(
+        frame.weights_for("household").values,
+        index=frame.table("household")["household_id"],
+    )
+    person_weight = person["person_household_id"].map(household_weight).to_numpy()
+    puf = (
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ).to_numpy()
+    values = pd.to_numeric(person[column], errors="coerce").fillna(0.0).to_numpy()
+    return _per_weight_legs(values[puf], person_weight[puf])
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "farm_operations_income",
+        "partnership_self_employment_net_earnings",
+    ],
+)
+def test_finalize_pins_signed_person_leg_masses_to_loss_heavy_donor(
+    monkeypatch: pytest.MonkeyPatch, column: str
+) -> None:
+    """A sign-flipped QRF draw is recalibrated to the donor's signed leg masses.
+
+    Both columns run through the one signed-mass-calibration code path, so a
+    single fix restores the net sign for the farm defect and #432 alike.
+    """
+
+    assert column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+
+    # The fake QRF returns a sign-flipped draw (net positive, both legs) for the
+    # six PUF recipients, reproducing the regime-gated QRF's regression toward a
+    # positive balance point even though the source instrument is loss-heavy.
+    raw_prediction = np.asarray([600.0, 600.0, 600.0, 600.0, -50.0, -50.0])
+
+    class FlippedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FlippedQRF":
+            assert outputs == [column]
+            assert weights == "design"
+            return self
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return pd.DataFrame({column: raw_prediction}, index=features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FlippedQRF)
+
+    frame = clone_us_frame_for_puf_support(
+        _puf_recipient_frame(
+            employment_income=[50_000.0] * 6,
+            self_employment_income=[0.0] * 6,
+            household_weights=[1.0, 1.0, 1.0, 3.0, 3.0, 3.0],
+        )
+    )
+    # Loss-heavy donor: small positive per-unit-weight mass, large negative.
+    donor = pd.DataFrame(
+        {
+            "employment_income": [50_000.0] * 6,
+            column: [200.0, 0.0, -400.0, -400.0, 0.0, 0.0],
+            "weight": [1.0, 1.0, 2.0, 2.0, 1.0, 1.0],
+        }
+    )
+    donor_pos, donor_neg = _per_weight_legs(
+        donor[column].to_numpy(), donor["weight"].to_numpy()
+    )
+    assert donor_pos + donor_neg < 0.0  # the source instrument is loss-heavy
+
+    raw_pos, raw_neg = _per_weight_legs(raw_prediction, [0.5, 0.5, 0.5, 1.5, 1.5, 1.5])
+    assert raw_pos + raw_neg > 0.0  # the raw QRF draw flips the net sign
+
+    imputed = impute_us_puf_tax_detail_support(
+        frame,
+        donor,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=(column,),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+    )
+
+    final_pos, final_neg = _puf_channel_person_legs(imputed, column)
+    # Each leg's per-unit-weight mass now equals the donor's, so the net sign
+    # tracks the loss-heavy source instead of the QRF's flipped draw.
+    assert final_pos == pytest.approx(donor_pos)
+    assert final_neg == pytest.approx(donor_neg)
+    assert final_pos + final_neg == pytest.approx(donor_pos + donor_neg)
+    assert final_pos + final_neg < 0.0
+
+
+def test_regime_gated_qrf_farm_net_flips_and_calibration_restores_the_source_sign() -> (
+    None
+):
+    """End-to-end: fit the chain's real QRF on a faithful loss-heavy Schedule-F
+    donor, show the raw draw flips the national net sign, and confirm the
+    signed-mass calibration restores the source's net-negative mass."""
+
+    column = "farm_operations_income"
+    seed = 7
+
+    def _features(rng: np.random.Generator, n: int) -> tuple[np.ndarray, np.ndarray]:
+        return (
+            np.abs(rng.normal(50_000, 40_000, n)),
+            np.abs(rng.normal(8_000, 30_000, n)),
+        )
+
+    recipient_rng = np.random.default_rng(seed)
+    wage, self_emp = _features(recipient_rng, 2_500)
+    frame = clone_us_frame_for_puf_support(
+        _puf_recipient_frame(
+            employment_income=wage,
+            self_employment_income=self_emp,
+            household_weights=np.clip(
+                np.exp(recipient_rng.normal(4.0, 1.5, 2_500)), 1.0, 30_000.0
+            ),
+        )
+    )
+
+    donor_rng = np.random.default_rng(seed)
+    donor_wage, donor_self_emp = _features(donor_rng, 8_000)
+    donor_weight = np.clip(np.exp(donor_rng.normal(4.0, 1.5, 8_000)), 1.0, 30_000.0)
+    # Sparse (~3%) signed Schedule-F: 40% gains, 60% heavier losses -> the
+    # weighted national mass is net-negative, like SOI sole-proprietor farm
+    # income.
+    nonzero = donor_rng.random(8_000) < 0.03
+    indices = np.flatnonzero(nonzero)
+    draws = donor_rng.random(len(indices))
+    gains = indices[draws < 0.40]
+    losses = indices[draws >= 0.40]
+    farm = np.zeros(8_000)
+    farm[gains] = donor_rng.lognormal(9.7, 1.0, len(gains))
+    farm[losses] = -donor_rng.lognormal(10.0, 1.0, len(losses))
+    donor = pd.DataFrame(
+        {
+            "employment_income": donor_wage,
+            "self_employment_income": donor_self_emp,
+            column: farm,
+            "weight": donor_weight,
+        }
+    )
+    donor_pos, donor_neg = _per_weight_legs(farm, donor_weight)
+    donor_net = donor_pos + donor_neg
+    assert donor_net < 0.0  # loss-heavy source instrument
+
+    raw_holder: dict[str, np.ndarray] = {}
+    imputed = impute_us_puf_tax_detail_support(
+        frame,
+        donor,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=(column,),
+        tax_unit_outputs=(),
+        n_estimators=60,
+        seed=0,
+        raw_predictions_callback=lambda predictions: raw_holder.__setitem__(
+            "raw", predictions[column].to_numpy().copy()
+        ),
+    )
+
+    # Recover the recipient tax-unit weights to score the raw draw's national net.
+    person = imputed.table("person")
+    tax_unit = imputed.table("tax_unit")
+    household_weight = pd.Series(
+        imputed.weights_for("household").values,
+        index=imputed.table("household")["household_id"],
+    )
+    tax_unit_household = person.groupby("person_tax_unit_id", sort=False)[
+        "person_household_id"
+    ].first()
+    tax_unit_weight = (
+        tax_unit["tax_unit_id"].map(tax_unit_household).map(household_weight).to_numpy()
+    )
+    puf_tax_unit = (
+        tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ).to_numpy()
+    raw_pos, raw_neg = _per_weight_legs(
+        raw_holder["raw"], tax_unit_weight[puf_tax_unit]
+    )
+    # The defect: the raw QRF draw regresses the net toward a positive balance
+    # point, flipping the loss-heavy source to a net-positive national mass.
+    assert raw_pos + raw_neg > 0.0
+
+    final_pos, final_neg = _puf_channel_person_legs(imputed, column)
+    # The fix: each PUF-channel leg is pinned to the donor's per-unit-weight
+    # mass, so the imputed national net tracks the source's net-negative sign.
+    assert final_pos == pytest.approx(donor_pos, rel=1e-6)
+    assert final_neg == pytest.approx(donor_neg, rel=1e-6)
+    assert final_pos + final_neg == pytest.approx(donor_net, rel=1e-6)
+    assert final_pos + final_neg < 0.0

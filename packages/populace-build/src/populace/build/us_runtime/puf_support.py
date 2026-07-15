@@ -191,6 +191,28 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
 # half is unaffected by the ordinary all-channel sparsification loop.
 _PUF_TAX_DETAIL_PRESERVE_BASE_ASEC_OUTPUTS = frozenset({"alimony_income"})
 
+# Sparse, sign-mixed, heavy-tailed person outputs whose imputed *signed* mass
+# must be pinned to the donor instrument. The regime-gated QRF imputes such a
+# column as an independent sign gate (a HistGradientBoostingClassifier) times
+# per-sign magnitude forests. On a rare loss-mixed column the gate regresses the
+# positive/negative/zero shares toward balance (it over-predicts the rarer
+# leg) and the magnitude forests inflate each leg, so nothing pins the aggregate
+# signed total: the imputed net -- a small difference of two large legs --
+# regresses toward a fixed balance point that is nearly independent of the
+# donor's true net. A loss-heavy source (SOI Schedule F, net-negative
+# nationally) is then dragged toward or past zero, flipping the export sign
+# (farm_operations_income) or manufacturing a spurious cancelling leg
+# (partnership_self_employment_net_earnings, populace #432). These columns get
+# a per-leg mass calibration in finalization -- the signed generalization of the
+# donor-positive-rate sparsification -- so the imputed per-unit-weight positive
+# and negative leg masses match the donor's and the net sign tracks the source.
+_PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
+    {
+        "farm_operations_income",
+        "partnership_self_employment_net_earnings",
+    }
+)
+
 # Known formula-owned outputs the PUF tax-detail donor must never carry as
 # persistable leaves. This is a documented *seed* set, not the whole story:
 # :func:`resolve_formula_owned_outputs` unions it with the set derived live
@@ -821,6 +843,17 @@ def finalize_us_puf_tax_detail_predictions(
                     donor[column],
                     donor["weight"],
                 ),
+                household_weights=frame.weights_for("household").values,
+                person_channel=person_channel,
+                tax_unit_channel=tax_unit_channel,
+            )
+    for column in person_outputs:
+        if column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS:
+            _calibrate_tax_unit_person_output_signed_mass_to_donor(
+                tables,
+                column=column,
+                donor_values=donor[column],
+                donor_weights=donor["weight"],
                 household_weights=frame.weights_for("household").values,
                 person_channel=person_channel,
                 tax_unit_channel=tax_unit_channel,
@@ -1564,6 +1597,134 @@ def _sparsify_tax_unit_person_output_to_donor_positive_rate(
             totals=sparse_totals,
             nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
         )
+
+
+def _weighted_signed_leg_masses(
+    values: pd.Series, weights: pd.Series
+) -> tuple[float, float, float]:
+    """Return donor-scale (positive, negative, total) weighted leg masses.
+
+    The two legs are reported separately so a signed calibration can pin each
+    one; the total weight is returned so callers can work in donor-invariant
+    per-unit-weight leg masses rather than population-scaled totals.
+    """
+
+    numeric_values = (
+        pd.to_numeric(values, errors="coerce").fillna(0.0).to_numpy(dtype=np.float64)
+    )
+    numeric_weights = (
+        pd.to_numeric(weights, errors="coerce")
+        .fillna(0.0)
+        .clip(lower=0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    positive_mass = float((np.maximum(numeric_values, 0.0) * numeric_weights).sum())
+    negative_mass = float((np.minimum(numeric_values, 0.0) * numeric_weights).sum())
+    return positive_mass, negative_mass, float(numeric_weights.sum())
+
+
+def _calibrate_tax_unit_person_output_signed_mass_to_donor(
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    column: str,
+    donor_values: pd.Series,
+    donor_weights: pd.Series,
+    household_weights: np.ndarray,
+    person_channel: str,
+    tax_unit_channel: str,
+) -> None:
+    """Pin a signed person output's per-leg mass to the donor instrument.
+
+    Scales the imputed positive and negative legs on the PUF support channel by
+    separate scalars so each leg's per-unit-weight weighted mass equals the
+    donor's. The gate's sign assignment (which rows are positive, negative, or
+    zero) and each leg's relative shape are untouched; only the two leg totals
+    move, restoring the net signed mass that the regime-gated QRF regresses
+    toward balance on a sparse, sign-mixed, heavy-tailed column. This is the
+    signed generalization of
+    :func:`_sparsify_tax_unit_person_output_to_donor_positive_rate`.
+
+    Applied to the PUF support channel only: the ASEC channel carries measured
+    source observations (Schedule F operations income is measured on ASEC as
+    ``FRSE_VAL``) that must never be rescaled.
+    """
+
+    person = tables["person"]
+    household = tables["household"]
+    tax_unit = tables["tax_unit"]
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "household_weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+
+    donor_positive, donor_negative, donor_weight_total = _weighted_signed_leg_masses(
+        donor_values, donor_weights
+    )
+    if donor_weight_total <= 0.0:
+        return
+    donor_positive_per_weight = donor_positive / donor_weight_total
+    donor_negative_per_weight = donor_negative / donor_weight_total
+
+    household_weight = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"],
+    )
+    tax_unit_household_id = (
+        person.groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+        .astype("int64")
+    )
+    tax_unit_weight = tax_unit_household_id.map(household_weight).fillna(0.0)
+    tax_unit_amount = (
+        pd.to_numeric(person[column], errors="coerce")
+        .fillna(0.0)
+        .groupby(person["person_tax_unit_id"], sort=False)
+        .sum()
+    )
+
+    channel_tax_unit_ids = tax_unit.loc[
+        tax_unit[tax_unit_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        "tax_unit_id",
+    ]
+    amounts = tax_unit_amount.reindex(channel_tax_unit_ids).fillna(0.0)
+    weights = tax_unit_weight.reindex(channel_tax_unit_ids).fillna(0.0)
+    channel_weight_total = float(weights.sum())
+    if channel_weight_total <= 0.0:
+        return
+
+    values_array = amounts.to_numpy(dtype=np.float64)
+    weights_array = weights.to_numpy(dtype=np.float64)
+    positive = values_array > 0.0
+    negative = values_array < 0.0
+    imputed_positive_per_weight = (
+        float((values_array[positive] * weights_array[positive]).sum())
+        / channel_weight_total
+    )
+    imputed_negative_per_weight = (
+        float((values_array[negative] * weights_array[negative]).sum())
+        / channel_weight_total
+    )
+
+    calibrated = values_array.copy()
+    # A leg with imputed mass can be rescaled to the donor's; a leg the gate
+    # produced but the donor lacks is scaled to zero (a one-sided donor pins the
+    # sign). A donor leg the gate produced no rows for cannot be injected by
+    # scaling, so it is left untouched rather than fabricated.
+    if imputed_positive_per_weight > 0.0:
+        calibrated[positive] *= donor_positive_per_weight / imputed_positive_per_weight
+    if imputed_negative_per_weight < 0.0:
+        calibrated[negative] *= donor_negative_per_weight / imputed_negative_per_weight
+
+    calibrated_totals = pd.Series(calibrated, index=amounts.index)
+    mask = person[person_channel] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    _write_person_tax_unit_totals(
+        person,
+        mask=mask,
+        column=column,
+        totals=calibrated_totals,
+        nonnegative=False,
+    )
 
 
 def _reconcile_puf_social_security_components(

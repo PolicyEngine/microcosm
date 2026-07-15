@@ -294,7 +294,16 @@ def test_weighted_qrf_preserves_asec_and_writes_signed_puf_support(
 
     assert asec[_OPERATIONS].tolist()[:4] == [500.0, -200.0, 800.0, -300.0]
     assert not asec[_RENT].any()
-    assert puf[_OPERATIONS].tolist()[:4] == [700.0, -400.0, 900.0, -500.0]
+    # farm_operations_income now carries the signed-mass calibration: each
+    # PUF-channel leg is rescaled so its per-unit-weight mass equals the donor's
+    # (positive 40/4 = 10.0, negative -20/4 = -5.0), pinning the imputed net to
+    # the source. The raw draw [700, -400, 900, -500] at PUF weight 0.5 has
+    # per-weight legs 80.0 / -45.0, so the positive leg scales by 10/80 = 0.125
+    # and the negative by 5/45 = 1/9; the signs and the measured ASEC leg are
+    # untouched. farm_rent_income is not signed-mass calibrated.
+    assert puf[_OPERATIONS].tolist()[:4] == pytest.approx(
+        [87.5, -400.0 / 9.0, 112.5, -500.0 / 9.0]
+    )
     assert puf[_RENT].tolist()[:4] == [300.0, -100.0, 600.0, -200.0]
     gate = us_farm_business_income_signal_gate(result)
     assert gate.passed, gate.failures
