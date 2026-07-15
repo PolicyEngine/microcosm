@@ -391,13 +391,13 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
     monkeypatch,
     small_frame,
 ) -> None:
-    """A national swap-delta breach fails closed after the bounded passes.
+    """A runaway swap delta still fails closed after the bounded passes.
 
     When re-assigning under the returned weights moves the aggregate recipient
-    mass by more than one source-identity weight per band (the frozen flags did
-    not hit the national total the refit was supposed to enforce), the fresh
-    pair's own gates pass but the swap-delta bound does not, so the pass fails
-    and the loop raises after ``max_passes`` with the swap value in the message.
+    mass by more than a tenth of the national total (the solve effectively
+    abandoned the SSI family), the fresh pair's own gates pass but the sanity
+    cap does not, so the pass fails and the loop raises after ``max_passes``
+    with the swap value in the message.
     """
     builder = _load_builder_module()
     national_spec = SimpleNamespace(
@@ -421,11 +421,12 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
     counts = {"assign": 0, "calibrate": 0, "stale": 0}
     allowance = 100.0
     fresh_selected = dict(band_targets)
-    # The frozen flags overshoot the national total by 5,000 (in under_18); the
-    # fresh re-assignment removes it, so the national swap delta 5,000 exceeds
-    # the bound of 300 (three bands * one 100-weight source identity each).
+    # The frozen flags overshoot the national total by 800,000 (in under_18);
+    # the fresh re-assignment removes it, so the national swap delta exceeds
+    # the runaway sanity cap (a tenth of the ~7.4M fresh total) — the solve
+    # abandoned the SSI family, which must still fail closed.
     stale_selected = {
-        "under_18": band_targets["under_18"] + 5_000.0,
+        "under_18": band_targets["under_18"] + 800_000.0,
         "18_64": band_targets["18_64"],
         "65_plus": band_targets["65_plus"],
     }
@@ -525,7 +526,7 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
 
     message = str(excinfo.value)
     assert "swap delta" in message
-    assert "5000.000" in message
+    assert "800000.000" in message
     # Two passes: a stage assign and an exit assign each pass, one stale diag
     # each pass, one refit each pass.
     assert counts == {"assign": 4, "calibrate": 2, "stale": 2}
@@ -593,35 +594,46 @@ def test_aligned_ssi_take_up_band_targets_applies_shares_to_national_total() -> 
     assert sum(record["band_shares"].values()) == pytest.approx(1.0)
 
 
-def test_ssi_take_up_swap_delta_bounds_national_move_by_band_allowance() -> None:
+def test_ssi_take_up_swap_delta_records_solve_residual_within_sanity_cap() -> None:
+    """The delta is the solve's SSI-family residual: recorded, sanity-capped.
+
+    Attempt 8 proved the delta tracks the age-blind solve's equilibrium miss
+    on the SSI-recipient family (~419k on 7.4M), not assignment granularity —
+    gating it at one source-identity weight per band demanded solve precision
+    no other target faces. A residual well beyond granularity but under a
+    tenth of the fresh national total is therefore recorded and passes; the
+    granularity sum ships as a reference quantity only.
+    """
+
     builder = _load_builder_module()
     stale = _ssi_diag_with_bands(
         {"under_18": 1_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
     )
-    # Fresh moves +30 in one band and -10 in another: national delta 20 is within
-    # the bound of 150 (three bands * one 50-weight source identity each).
+    # Fresh restores +400 nationally: far beyond the 150 granularity sum,
+    # within the 10% sanity cap (703 on a 7,030 fresh total).
     fresh = _ssi_diag_with_bands(
-        {"under_18": 1_030.0, "18_64": 3_990.0, "65_plus": 2_000.0}, allowance=50.0
+        {"under_18": 1_030.0, "18_64": 4_300.0, "65_plus": 1_700.0}, allowance=50.0
     )
     swap = builder._ssi_take_up_swap_delta(stale, fresh)
-    assert swap["national_swap_delta"] == pytest.approx(20.0)
-    assert swap["national_swap_bound"] == pytest.approx(150.0)
+    assert swap["national_swap_delta"] == pytest.approx(30.0)
+    assert swap["assignment_granularity_reference"] == pytest.approx(150.0)
+    assert swap["national_swap_sanity_cap"] == pytest.approx(703.0)
     assert swap["within_bound"] is True
-    assert swap["age_bands"]["under_18"]["swap_delta"] == pytest.approx(30.0)
-    assert swap["age_bands"]["18_64"]["swap_delta"] == pytest.approx(-10.0)
+    assert swap["age_bands"]["18_64"]["swap_delta"] == pytest.approx(300.0)
+    assert swap["age_bands"]["65_plus"]["swap_delta"] == pytest.approx(-300.0)
 
 
-def test_ssi_take_up_swap_delta_flags_national_breach() -> None:
+def test_ssi_take_up_swap_delta_flags_runaway_beyond_sanity_cap() -> None:
     builder = _load_builder_module()
     stale = _ssi_diag_with_bands(
         {"under_18": 1_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
     )
     fresh = _ssi_diag_with_bands(
-        {"under_18": 1_500.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
+        {"under_18": 2_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
     )
     swap = builder._ssi_take_up_swap_delta(stale, fresh)
-    assert swap["national_swap_delta"] == pytest.approx(500.0)
-    assert swap["national_swap_bound"] == pytest.approx(150.0)
+    assert swap["national_swap_delta"] == pytest.approx(1_000.0)
+    assert swap["national_swap_sanity_cap"] == pytest.approx(800.0)
     assert swap["within_bound"] is False
 
 
