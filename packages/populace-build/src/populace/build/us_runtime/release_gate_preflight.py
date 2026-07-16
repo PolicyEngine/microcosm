@@ -597,6 +597,8 @@ def check_smoke_probe_support(
       when a materially-signed leaf's net weighted sign contradicts its probe's
       declared ``expected_sign`` (populace#432, ``farm_operations_income``
       imputed net-positive where the Schedule-F instrument is loss-heavy).
+      Probes declaring ``expected_sign="either"`` assert no direction and are
+      exempt from the sign check.
     """
     probes = tuple(probes)
     selected_ids = np.asarray(selected_ids)
@@ -609,6 +611,10 @@ def check_smoke_probe_support(
     rows: list[dict[str, Any]] = []
 
     for probe in probes:
+        # An "either"-sign probe (populace#437: net direction is a frame
+        # property, not a coverage property) declares no direction, so the
+        # sign-contradiction check below never applies to it.
+        directional = probe.expected_sign in ("positive", "negative")
         expected_positive = probe.expected_sign == "positive"
         for leaf in probe.binding_inputs:
             entity = _leaf_entity(base_frame, leaf)
@@ -665,7 +671,8 @@ def check_smoke_probe_support(
             )
             net_positive = net > 0
             if (
-                materially_signed
+                directional
+                and materially_signed
                 and pool_support > 0
                 and net != 0.0
                 and net_positive != expected_positive
