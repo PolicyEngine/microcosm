@@ -535,7 +535,7 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 42
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 41
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -1985,6 +1985,7 @@ def test_soi_eitc_child_record_set_metadata_reaches_compiled_target() -> None:
 
     specs = {spec.name: spec for spec in registry.specs}
     spec = specs[source_record_id]
+    assert source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     assert spec.family == "irs_soi"
     assert spec.metadata["variable"] == "eitc"
     assert spec.metadata["agi_lower_bound"] == "25000.0"

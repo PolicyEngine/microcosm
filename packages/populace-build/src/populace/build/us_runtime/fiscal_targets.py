@@ -562,11 +562,6 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "support in the under-$1 AGI slice; this narrow offset-income cell needs "
         "richer state/tail support before it can be calibrated."
     ),
-    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
-        "Current US support does not yet materialize a positive tip_income source "
-        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
-        "source stage wired into the fiscal refresh before calibration."
-    ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
         "in Arkansas under PolicyEngine-US state TANF formulas."
