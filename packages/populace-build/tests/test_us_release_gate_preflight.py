@@ -406,6 +406,42 @@ def test__smoke_probe_support__signed_net_contradicts_expected_sign__at_risk() -
     assert result.at_risks and "contradicts" in result.at_risks[0]
 
 
+def test__smoke_probe_support__either_sign_probe__no_sign_flag() -> None:
+    # The same materially-signed net-positive pool as the contradiction test,
+    # but the probe declares expected_sign="either" (populace#437: direction
+    # is a frame property, not coverage) — no sign flag, PASS.
+    pool = [
+        {"hid": 1, "syear": 2024, "shh": 11, "chan": "asec", "clone": 0, "farm": 900.0},
+        {"hid": 2, "syear": 2024, "shh": 22, "chan": "asec", "clone": 0, "farm": 800.0},
+        {"hid": 3, "syear": 2023, "shh": 11, "chan": "puf", "clone": 1, "farm": -600.0},
+        {"hid": 4, "syear": 2023, "shh": 44, "chan": "puf", "clone": 1, "farm": -400.0},
+    ]
+    base = _frame(pool)
+    source = _selection(
+        [(2024, 11, "asec", 0), (2024, 22, "asec", 0), (2023, 11, "puf", 1)]
+    )
+    mask, _ = source.base_selection_mask(base, mode="frozen_support")
+    selected = selected_household_ids(base, mask)
+
+    result = check_smoke_probe_support(
+        base,
+        selected,
+        [
+            _probe(
+                leaf="farm_operations_income", expected_sign="either", probe_id="farm"
+            )
+        ],
+        min_selected_records=1,
+    )
+
+    assert result.status == "PASS"
+    assert not result.at_risks
+    (row,) = [r for r in result.rows if r["leaf"] == "farm_operations_income"]
+    assert row["pool_net"] > 0
+    assert row["expected_sign"] == "either"
+    assert row["verdict"] == "supported"
+
+
 def test__smoke_probe_support__one_signed_leaf__no_false_sign_flag() -> None:
     # A one-signed (all-positive) leaf with expected_sign="negative" must NOT be
     # flagged for a sign contradiction — only genuinely-signed columns are.
