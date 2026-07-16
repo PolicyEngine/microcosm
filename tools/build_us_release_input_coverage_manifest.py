@@ -566,15 +566,20 @@ REFORM_COVERAGE_PROBES = [
         "budget_measure": "qualified_business_income_deduction",
         "period": 2026,
         "effect_direction": "baseline_minus_reform",
-        "expected_sign": "negative",
+        "expected_sign": "either",
         "binding_inputs": ["farm_operations_income"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
             "Removing only farm_operations_income from the 2026 Section 199A "
-            "income definition isolates the restored signed Schedule F leaf. "
-            "The real staged candidate is loss-heavy, so excluding it raises "
-            "QBID and baseline-minus-reform is negative (-$4.16M). Without "
-            "farm_operations_income the reform is a structural zero."
+            "income definition isolates the restored Schedule F leaf. The "
+            "leaf is signed and two-channel: the ASEC channel carries the "
+            "measured FRSE farm self-employment values (net-positive in the "
+            "pooled frame) and the PUF channel carries the donor-pinned "
+            "signed Schedule F values (net-negative, loss-heavy, "
+            "populace#435), so the aggregate QBID effect direction is a "
+            "property of the frame mix and the solve, not of coverage. The "
+            "probe therefore requires a binding effect of at least the floor "
+            "in either direction; a structural zero still fails."
         ),
         "issue": "PolicyEngine/populace#298",
     },

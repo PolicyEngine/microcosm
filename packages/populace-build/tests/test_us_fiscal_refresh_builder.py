@@ -3506,7 +3506,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     try:
         builder.main()
     except RuntimeError as exc:
-        assert str(exc) == "Release gates failed: ctc failed"
+        # The batched pre-write report leads with the calibration battery
+        # failure; degraded-mode coverage/parity evaluation errors on the
+        # fake frame may append further lines after it.
+        assert str(exc).startswith("Release gates failed: ctc failed")
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 

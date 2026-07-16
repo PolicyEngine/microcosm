@@ -468,6 +468,61 @@ class TestReformCoverageSmokeGate:
         assert not wrong_sign.passed
         assert "expected a negative effect" in wrong_sign.failures[0]
 
+    def test_either_sign_probe_passes_both_directions_and_keeps_floor_teeth(
+        self, monkeypatch
+    ) -> None:
+        # A signed, two-channel input (e.g. farm_operations_income: measured
+        # ASEC leg plus donor-pinned PUF leg) proves COVERAGE by moving the
+        # measure at all — the aggregate direction is a property of the frame
+        # mix, not of coverage. "either" accepts the floor in both directions
+        # while a structural (sub-floor) effect still fails.
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        probe = ReformCoverageProbe(
+            id="either_probe",
+            name="Signed two-channel leaf exclusion",
+            parameter_changes={"gov.example.switch": {"2026-01-01.2026-12-31": 0}},
+            budget_measure="income_tax",
+            binding_inputs=("farm_operations_income",),
+            min_abs_effect=1_000_000.0,
+            reason="The exclusion binds through a signed leaf.",
+            issue="PolicyEngine/populace#298",
+            effect_direction="baseline_minus_reform",
+            expected_sign="either",
+        )
+
+        positive = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(9.0e9 if reform else 10.0e9),
+            probes=[probe],
+        )
+        assert positive.passed
+
+        negative = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(11.0e9 if reform else 10.0e9),
+            probes=[probe],
+        )
+        assert negative.passed
+
+        structural_zero = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.0e9 + (1.0e5 if reform else 0.0)),
+            probes=[probe],
+        )
+        assert not structural_zero.passed
+        assert "an effect in either direction" in structural_zero.failures[0]
+
+    def test_probe_rejects_unknown_expected_sign(self) -> None:
+        with pytest.raises(ValueError, match="expected_sign must be"):
+            ReformCoverageProbe(
+                id="bad_sign",
+                name="Bad sign",
+                parameter_changes={"gov.example.switch": {"2026": 0}},
+                budget_measure="income_tax",
+                binding_inputs=("x",),
+                min_abs_effect=1.0,
+                reason="r.",
+                issue="PolicyEngine/populace#1",
+                expected_sign="sideways",
+            )
+
     def test_negative_auto_loan_effect_passes_and_wrong_sign_fails(
         self, monkeypatch
     ) -> None:
@@ -1089,9 +1144,12 @@ class TestShippedManifest:
             "estate_income",
         }
         cases = {
+            # "either": the leaf is signed and two-channel (measured ASEC FRSE
+            # plus donor-pinned PUF Schedule F, populace#435) — the aggregate
+            # QBID direction is a frame property, not a coverage property.
             "qbi_farm_operations_income_exclusion": (
                 "farm_operations_income",
-                "negative",
+                "either",
             ),
             "qbi_farm_rent_income_exclusion": ("farm_rent_income", "positive"),
         }
