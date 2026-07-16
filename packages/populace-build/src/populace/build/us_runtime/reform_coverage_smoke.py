@@ -110,7 +110,16 @@ def us_reform_coverage_smoke_gate(
             effect = baseline_total - reform_total
         else:
             effect = reform_total - baseline_total
-        signed_magnitude = effect if probe.expected_sign == "positive" else -effect
+        # "either" proves BINDING without a directional claim: the probe
+        # passes when the reform moves the measure by the floor in either
+        # direction. For a signed, two-channel input (measured ASEC leg plus
+        # donor-pinned PUF leg, e.g. farm_operations_income) the aggregate
+        # sign is a property of the frame mix, not of coverage — pinning a
+        # direction rots when the frame's honest composition changes.
+        if probe.expected_sign == "either":
+            signed_magnitude = abs(effect)
+        else:
+            signed_magnitude = effect if probe.expected_sign == "positive" else -effect
         passed = signed_magnitude >= probe.min_abs_effect
         results[probe.id] = {
             "name": probe.name,
@@ -126,10 +135,15 @@ def us_reform_coverage_smoke_gate(
             "passed": passed,
         }
         if not passed:
+            expectation = (
+                "an effect in either direction"
+                if probe.expected_sign == "either"
+                else f"a {probe.expected_sign} effect"
+            )
             failures.append(
                 f"{probe.id}: '{probe.name}' scores {effect:+,.0f} on "
-                f"{probe.budget_measure} for {probe_period}; expected a "
-                f"{probe.expected_sign} effect with magnitude at least "
+                f"{probe.budget_measure} for {probe_period}; expected "
+                f"{expectation} with magnitude at least "
                 f"${probe.min_abs_effect:,.0f}. The reform did not bind as "
                 "declared, so its input leaves "
                 f"{list(probe.binding_inputs)} are absent or degenerate on the "

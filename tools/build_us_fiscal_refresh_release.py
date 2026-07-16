@@ -8655,16 +8655,25 @@ def main() -> None:
             "calibration_diagnostics",
             release_dir / "calibration_diagnostics.json",
         )
+    # Terminal-gate batching: evaluate EVERY terminal gate
+    # group and raise once with the full failure list, instead of aborting at
+    # the first failing group. Build M attempts 9/10/11 each burned a full
+    # release run to surface one group (zero-support, then export parity,
+    # then reform smoke) that a single run evaluates end to end. Green-path
+    # behavior is unchanged; on failure, later groups still run (guarded so
+    # an evaluation crash in degraded mode records a line rather than masking
+    # the earlier failures) and certification manifests are never written.
+    terminal_gate_failures: list[str] = list(gate_failures)
     if gate_failures:
         if telemetry is not None:
             telemetry.stage(
                 "release_gates",
                 status="failed",
-                message="Release gates failed.",
+                message="Release gates failed; continuing to evaluate the "
+                "remaining terminal gate groups before aborting.",
                 failures=gate_failures,
                 force_upload=True,
             )
-        raise RuntimeError("Release gates failed: " + "; ".join(gate_failures))
 
     if telemetry is not None:
         telemetry.stage("export_dataset", message="Writing PolicyEngine-US H5.")
@@ -8682,42 +8691,54 @@ def main() -> None:
     # asset inputs ship as hard requirements with no exclusion, so this gate is
     # RED on today's asset-less artifacts by design (Deliverable 2 turns it
     # green); that is the gate doing its job, not a bug.
-    input_coverage_gate = us_release_input_coverage_gate(export_frame, release_engine)
-    input_coverage_path = release_dir / "input_coverage.json"
-    input_coverage_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "enforced": not args.allow_input_coverage_gaps,
-                "input_coverage": {
-                    "passed": input_coverage_gate.passed,
-                    "failures": list(input_coverage_gate.failures),
-                    "details": dict(input_coverage_gate.details),
-                },
-            },
-            indent=2,
-            sort_keys=True,
+    try:
+        input_coverage_gate = us_release_input_coverage_gate(
+            export_frame, release_engine
         )
-        + "\n"
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact("input_coverage", input_coverage_path)
-    if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
-        if telemetry is not None:
-            telemetry.stage(
-                "export_dataset",
-                status="failed",
-                message="Release input-column coverage gate failed.",
-                failures=list(input_coverage_gate.failures),
-                force_upload=True,
+    except Exception as exc:
+        # Degraded mode only: with earlier pre-export failures on record, a
+        # coverage-evaluation crash becomes one more failure line instead of
+        # masking them. On a clean run the exception propagates as before.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "Input coverage failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        input_coverage_gate = None
+    if input_coverage_gate is not None:
+        input_coverage_path = release_dir / "input_coverage.json"
+        input_coverage_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_input_coverage_gaps,
+                    "input_coverage": {
+                        "passed": input_coverage_gate.passed,
+                        "failures": list(input_coverage_gate.failures),
+                        "details": dict(input_coverage_gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
+            + "\n"
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact("input_coverage", input_coverage_path)
+        if not input_coverage_gate.passed and not args.allow_input_coverage_gaps:
+            if telemetry is not None:
+                telemetry.stage(
+                    "export_dataset",
+                    status="failed",
+                    message="Release input-column coverage gate failed.",
+                    failures=list(input_coverage_gate.failures),
+                    force_upload=True,
+                )
+            terminal_gate_failures.extend(
                 f"Input coverage failed: {failure}"
                 for failure in input_coverage_gate.failures
             )
-        )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
     # parent built from a raw pooled-ASEC base, calibration correctly scales
@@ -8728,76 +8749,101 @@ def main() -> None:
     # still fails. This is a DISTINCT flag from --input-mass-reference-h5: the
     # base-vs-reference gate compares the *pre-calibration* base and would
     # over-fire against a calibrated reference on the same PUF columns.
-    export_reference_frame = (
-        load_us_frame(args.export_input_mass_reference_h5)
-        if args.export_input_mass_reference_h5 is not None
-        else None
-    )
-    export_input_mass_gate = _export_input_mass_gate(
-        export_frame,
-        base_frame,
-        relative_tolerance=args.input_mass_relative_tolerance,
-        minimum_reference_total=args.input_mass_minimum_reference_total,
-        reference_frame=export_reference_frame,
-        reference_name=(
-            args.export_input_mass_reference_h5.name
+    try:
+        export_reference_frame = (
+            load_us_frame(args.export_input_mass_reference_h5)
             if args.export_input_mass_reference_h5 is not None
-            else "base_frame"
-        ),
-        # Build H (populace#299): the two SOI-identified columns whose true
-        # target level provably cannot sit inside the live-default reference
-        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
-        # and both mortgage columns are deliberately NOT excluded so the run
-        # adjudicates their actual gate outcome. See the constant's band-math
-        # rationale above.
-        reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
-    )
-    input_mass_parity_path = release_dir / "input_mass_parity.json"
-    input_mass_parity_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "enforced": not args.allow_input_mass_drift,
-                "base_frame_vs_reference": (
-                    {
-                        "passed": input_mass_reference_gate.passed,
-                        "failures": list(input_mass_reference_gate.failures),
-                        "details": dict(input_mass_reference_gate.details),
-                    }
-                    if input_mass_reference_gate is not None
-                    else None
-                ),
-                "export_vs_base_frame": {
-                    "passed": export_input_mass_gate.passed,
-                    "failures": list(export_input_mass_gate.failures),
-                    "details": dict(export_input_mass_gate.details),
-                },
-            },
-            indent=2,
-            sort_keys=True,
+            else None
         )
-        + "\n"
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact("input_mass_parity", input_mass_parity_path)
-    if not export_input_mass_gate.passed and not args.allow_input_mass_drift:
-        if telemetry is not None:
-            telemetry.stage(
-                "export_dataset",
-                status="failed",
-                message="Export input mass parity gate failed.",
-                failures=list(export_input_mass_gate.failures),
-                force_upload=True,
+        export_input_mass_gate = _export_input_mass_gate(
+            export_frame,
+            base_frame,
+            relative_tolerance=args.input_mass_relative_tolerance,
+            minimum_reference_total=args.input_mass_minimum_reference_total,
+            reference_frame=export_reference_frame,
+            reference_name=(
+                args.export_input_mass_reference_h5.name
+                if args.export_input_mass_reference_h5 is not None
+                else "base_frame"
+            ),
+            # Build H (populace#299): the two SOI-identified columns whose true
+            # target level provably cannot sit inside the live-default reference
+            # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+            # and both mortgage columns are deliberately NOT excluded so the run
+            # adjudicates their actual gate outcome. See the constant's band-math
+            # rationale above.
+            reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        )
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate above.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "Input mass parity failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        export_input_mass_gate = None
+    if export_input_mass_gate is not None:
+        input_mass_parity_path = release_dir / "input_mass_parity.json"
+        input_mass_parity_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_input_mass_drift,
+                    "base_frame_vs_reference": (
+                        {
+                            "passed": input_mass_reference_gate.passed,
+                            "failures": list(input_mass_reference_gate.failures),
+                            "details": dict(input_mass_reference_gate.details),
+                        }
+                        if input_mass_reference_gate is not None
+                        else None
+                    ),
+                    "export_vs_base_frame": {
+                        "passed": export_input_mass_gate.passed,
+                        "failures": list(export_input_mass_gate.failures),
+                        "details": dict(export_input_mass_gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
             )
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
+            + "\n"
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact("input_mass_parity", input_mass_parity_path)
+        if not export_input_mass_gate.passed and not args.allow_input_mass_drift:
+            if telemetry is not None:
+                telemetry.stage(
+                    "export_dataset",
+                    status="failed",
+                    message="Export input mass parity gate failed.",
+                    failures=list(export_input_mass_gate.failures),
+                    force_upload=True,
+                )
+            terminal_gate_failures.extend(
                 f"Input mass parity failed: {failure}"
                 for failure in export_input_mass_gate.failures
             )
-        )
+    # Batched pre-export raise: the calibration battery, input coverage, and
+    # export-mass parity have ALL been evaluated at this point, so one failed
+    # run reports every failing pre-export group at once (Build M attempts 9
+    # and 10 each burned a ~2h run to surface one of these groups serially).
+    # The reform-coverage smoke and take-up contract keep their own raises
+    # below: each already evaluates and reports its full failure set
+    # internally, and both require the written H5 / export artifacts that a
+    # gate-failed run must not produce.
+    if terminal_gate_failures:
+        if telemetry is not None:
+            telemetry.stage(
+                "release_gates",
+                status="failed",
+                message="Release gates failed (batched pre-export report).",
+                failures=terminal_gate_failures,
+                force_upload=True,
+            )
+        raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     dataset_path = artifact_root / DATASET_FILENAME
-    release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
     # populace#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at

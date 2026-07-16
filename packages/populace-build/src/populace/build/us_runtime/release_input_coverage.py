@@ -317,9 +317,9 @@ class ReformCoverageProbe:
             raise ValueError(f"{self.id}: min_abs_effect must be positive.")
         if self.period is not None and self.period < 1990:
             raise ValueError(f"{self.id}: period must be a plausible year.")
-        if self.expected_sign not in {"positive", "negative"}:
+        if self.expected_sign not in {"positive", "negative", "either"}:
             raise ValueError(
-                f"{self.id}: expected_sign must be 'positive' or 'negative'."
+                f"{self.id}: expected_sign must be 'positive', 'negative', or 'either'."
             )
 
 
