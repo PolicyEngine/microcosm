@@ -534,3 +534,54 @@ def test__report__to_dict_is_json_ready() -> None:
     payload = report.to_dict()
     assert json.loads(json.dumps(payload))["exit_code"] == 1
     assert payload["checks"][0]["rows"] == [{"k": 1}]
+
+
+def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
+    monkeypatch, tmp_path
+) -> None:
+    """Regression: the loader passed the LedgerConsumerArtifact wrapper itself
+    to the registry compiler, so every ``--ledger-facts`` preflight crashed
+    with "'LedgerConsumerArtifact' object is not iterable" before the
+    zero-support preview could run. The compiler must receive the artifact's
+    fact ROWS, and the facts-sha pin must reach the artifact loader."""
+    import hashlib
+    import json
+    from types import SimpleNamespace
+
+    import populace.build.us_runtime.fiscal_targets as fiscal_targets
+    from populace.build.us_runtime.release_gate_preflight import (
+        _load_ledger_target_specs,
+    )
+
+    fact_row = {"aggregate_fact_key": "ledger.aggregate_fact.v2:abc123"}
+    feed = tmp_path / "consumer_facts.jsonl"
+    feed.write_text(json.dumps(fact_row) + "\n")
+    feed_sha = hashlib.sha256(feed.read_bytes()).hexdigest()
+
+    expected_specs = (
+        TargetSpec(
+            name="ledger.aggregate_fact.v2:abc123",
+            entity="household",
+            value=1.0,
+            measure="income",
+            source="ledger",
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_compile(facts, *, target_period):
+        captured["facts"] = facts
+        captured["target_period"] = target_period
+        return SimpleNamespace(specs=expected_specs)
+
+    monkeypatch.setattr(
+        fiscal_targets, "compile_us_fiscal_target_registry", fake_compile
+    )
+
+    specs = _load_ledger_target_specs(
+        feed, target_period=2024, ledger_facts_sha256=feed_sha
+    )
+
+    assert captured["facts"] == (fact_row,)
+    assert captured["target_period"] == 2024
+    assert specs == expected_specs

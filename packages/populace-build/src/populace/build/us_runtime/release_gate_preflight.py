@@ -760,10 +760,12 @@ def _load_ledger_target_specs(
         compile_us_fiscal_target_registry,
     )
 
-    facts = load_ledger_consumer_artifact(
+    artifact = load_ledger_consumer_artifact(
         ledger_facts, expected_facts_sha256=ledger_facts_sha256
     )
-    registry = compile_us_fiscal_target_registry(facts, target_period=target_period)
+    registry = compile_us_fiscal_target_registry(
+        artifact.facts, target_period=target_period
+    )
     return registry.specs
 
 
