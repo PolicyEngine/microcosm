@@ -4320,6 +4320,16 @@ def _ecps_parity_gate(
 #                          band [$30.870B, $92.610B]; EXPORT-side defect
 #                          (misc/#393 class), remedy tracked in populace#432;
 #                          exclusion lifts with the base rebuild.
+#   farm_income            ref $62.387B  band [$31.194B, $93.581B]
+#                          UNPINNED free dimension (attempt 12, 6584dfa, the
+#                          run's only failing group): 353 one-signed pool
+#                          carriers ($10.24B at base weights, identical
+#                          pre/post-#435), 109 in the frozen selection
+#                          ($4.10B); zero farm facts in the feed, zero farm
+#                          specs compiled; exports wander J -25.6% ->
+#                          att11 -43.2% -> att12 -62.4% on an identical
+#                          pool. Excluded per populace#441; lifts with the
+#                          SOI Table 1.4 Schedule F identification.
 # Deliberately NOT excluded (parity checks stay live; the run adjudicates):
 #   miscellaneous_income   ref $47.401B  band [$23.700B, $71.101B]; SOI net
 #                          target ~$52.84B is IN-band -> genuine pass expected.
@@ -4374,6 +4384,25 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "with an SOI Schedule SE target so the solve stops treating it as "
         "a free dimension (populace#432). This exclusion lifts with that "
         "rebuild."
+    ),
+    "farm_income": (
+        "Unpinned free dimension, adjudicated on Build M sparse attempt 12 "
+        "(6584dfa-20260716T105513Z; the run's ONLY failing gate group "
+        "under the #437 batched report): the v8 Ledger feed contains zero "
+        "farm facts and the compiled 2024 registry zero farm specs, so "
+        "nothing pins this column and the live-default reference's "
+        "$62.39B is an incidental artifact of the incumbent solve (the "
+        "estate_income class). The pool carries 353 one-signed nonzero "
+        "persons ($10.24B at base weights, byte-identical pre/post-#435 "
+        "— this is NOT the farm_operations_income signed leaf), 109 of "
+        "them in the frozen rmloss100+keogh-swap selection ($4.10B at "
+        "base weights); reaching the band floor ($31.19B) would require "
+        "stretching those 109 records 7.6x toward the incidental value. "
+        "Unpinned exports wander exactly as populace#432 describes: "
+        "Build J -25.6% in-band, attempt 11 -43.2% in-band, attempt 12 "
+        "-62.4% ($23.45B) out — on an identical pool. Excluded per "
+        "populace#441; the exclusion lifts when SOI Table 1.4 farm net "
+        "income (Schedule F) is identified as a Ledger target."
     ),
     "miscellaneous_income": (
         "Source concept mismatch, established by populace#393's remedy "
