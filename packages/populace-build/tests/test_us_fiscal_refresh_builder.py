@@ -7080,3 +7080,52 @@ def test_spm_unit_state_fips_routes_through_persons() -> None:
 
     with pytest.raises(ValueError, match="span multiple state"):
         builder._spm_unit_state_fips(_spm_state_frame(["06", "36"], split_unit=True))
+
+
+def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
+    """populace#443: #437 dropped release_engine.write_dataset(...) while
+    inserting the batched pre-export raise, so the smoke gate scored a stale
+    artifact from a prior run (and the manifest would have sha-pinned it).
+    Pin main()'s ordering contract at the AST level until the green-path
+    main() harness exists: exactly one export H5 write, strictly after the
+    single batched pre-export raise and before the reform-coverage smoke
+    reads dataset_path."""
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder.main)
+    tree = ast.parse(source)
+
+    batched_raises: list[int] = []
+    writes: list[int] = []
+    smokes: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise):
+            segment = ast.get_source_segment(source, node) or ""
+            if "terminal_gate_failures" in segment:
+                batched_raises.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", None)
+            )
+            if name == "write_dataset":
+                writes.append(node.lineno)
+            elif name == "us_reform_coverage_smoke_gate":
+                smokes.append(node.lineno)
+
+    assert len(batched_raises) == 1, batched_raises
+    assert len(writes) == 1, (
+        "main() must write the export H5 exactly once; the smoke gate and "
+        f"release manifest read that file (populace#443). Found: {writes}"
+    )
+    assert len(smokes) == 1, smokes
+    assert batched_raises[0] < writes[0] < smokes[0], (
+        "Ordering contract violated: batched pre-export raise "
+        f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < smoke "
+        f"({smokes[0]}) must hold so a gate-failed run never produces the "
+        "H5 and the smoke scores the just-written file."
+    )

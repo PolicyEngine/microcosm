@@ -8873,6 +8873,12 @@ def main() -> None:
             )
         raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     dataset_path = artifact_root / DATASET_FILENAME
+    # The export H5 write: everything below (reform smoke, take-up contract,
+    # release manifest sha) reads THIS file, and it must be written only after
+    # the batched pre-export raise so a gate-failed run never produces it.
+    # populace#443: #437 dropped this call while inserting the batched raise,
+    # so attempts 13/14 smoke-scored a stale artifact from a prior run.
+    release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
     # populace#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at
