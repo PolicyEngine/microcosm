@@ -543,7 +543,9 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
     to the registry compiler, so every ``--ledger-facts`` preflight crashed
     with "'LedgerConsumerArtifact' object is not iterable" before the
     zero-support preview could run. The compiler must receive the artifact's
-    fact ROWS, and the facts-sha pin must reach the artifact loader."""
+    fact ROWS with aging on (the release tool's --age-targets default; the
+    real feed's cross-period dollar facts fail the period contract un-aged),
+    and the facts-sha pin must reach the artifact loader."""
     import hashlib
     import json
     from types import SimpleNamespace
@@ -569,9 +571,10 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
     )
     captured: dict[str, object] = {}
 
-    def fake_compile(facts, *, target_period):
+    def fake_compile(facts, *, target_period, age_targets):
         captured["facts"] = facts
         captured["target_period"] = target_period
+        captured["age_targets"] = age_targets
         return SimpleNamespace(specs=expected_specs)
 
     monkeypatch.setattr(
@@ -584,4 +587,5 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
 
     assert captured["facts"] == (fact_row,)
     assert captured["target_period"] == 2024
+    assert captured["age_targets"] is True
     assert specs == expected_specs

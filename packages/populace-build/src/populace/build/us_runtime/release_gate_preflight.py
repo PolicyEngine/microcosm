@@ -763,8 +763,11 @@ def _load_ledger_target_specs(
     artifact = load_ledger_consumer_artifact(
         ledger_facts, expected_facts_sha256=ledger_facts_sha256
     )
+    # age_targets mirrors the release tool's default (--age-targets on): the
+    # feed's cross-period dollar facts fail the period contract un-aged, and
+    # the preview must compile the registry the release run will calibrate.
     registry = compile_us_fiscal_target_registry(
-        artifact.facts, target_period=target_period
+        artifact.facts, target_period=target_period, age_targets=True
     )
     return registry.specs
 
