@@ -7129,3 +7129,97 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
         f"({smokes[0]}) must hold so a gate-failed run never produces the "
         "H5 and the smoke scores the just-written file."
     )
+
+
+def test_selection_mass_protection_specs_measure_locked_source_mass(
+    small_frame,
+) -> None:
+    """populace#445: the protection target's value is the base pool's own
+    locked-source mass at base weights, measured at build time — and it rides
+    the standard policyengine_variable materializer contract so both the
+    fresh-materialize and checkpoint-reload paths compile it."""
+    builder = _load_builder_module()
+
+    (spec,) = builder._selection_mass_protection_specs(small_frame, ("income",))
+
+    assert spec.name == "selection_mass_protection.income"
+    assert spec.measure == "selection_mass_protection.income"
+    assert spec.entity == "household"
+    assert spec.value == 100.0 * 1000 + 250.0 * 2000 + 50.0 * 2000
+    assert spec.metadata["materializer"] == "policyengine_variable"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "income"
+    assert spec.metadata["target_role"] == "selection_mass_protection"
+    assert spec.metadata["protected_entity"] == "person"
+    assert spec.metadata["base_pool_carriers"] == "3"
+    assert spec.metadata["issue"] == "PolicyEngine/populace#445"
+    assert not spec.signed
+
+
+def test_selection_mass_protection_specs_fail_closed(small_frame) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(RuntimeError, match="absent from every entity table"):
+        builder._selection_mass_protection_specs(small_frame, ("keogh_missing",))
+
+    zeroed = small_frame.table("person").copy()
+    zeroed["income"] = 0.0
+    frame = Frame(
+        {"person": zeroed, "household": small_frame.table("household").copy()},
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    with pytest.raises(RuntimeError, match="no nonzero carriers"):
+        builder._selection_mass_protection_specs(frame, ("income",))
+
+
+def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
+    monkeypatch, tmp_path, small_frame
+) -> None:
+    """populace#445: unprotected runs keep their legacy identity (digest
+    bit-identical — the dense arm's warm checkpoints must stay valid), and a
+    protected run MISSES a column-less legacy checkpoint instead of loading
+    it (a load would silently drop the protection spec, because
+    _compile_materialized_target_registry keeps only specs whose measures
+    exist on the materialized household table)."""
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+
+    common = dict(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+    )
+    legacy = builder._target_frame_checkpoint_identity(**common)
+    default_kwarg = builder._target_frame_checkpoint_identity(
+        **common, selection_mass_protections=()
+    )
+    protected = builder._target_frame_checkpoint_identity(
+        **common, selection_mass_protections=("keogh_distributions",)
+    )
+
+    assert "selection_mass_protections" not in legacy
+    assert builder._target_frame_checkpoint_digest(
+        default_kwarg
+    ) == builder._target_frame_checkpoint_digest(legacy)
+    assert protected["selection_mass_protections"] == ["keogh_distributions"]
+    assert builder._target_frame_checkpoint_digest(
+        protected
+    ) != builder._target_frame_checkpoint_digest(legacy)
+
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=legacy,
+        compilation={"declared_targets": 0},
+    )
+    assert (
+        builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
+        is None
+    )
