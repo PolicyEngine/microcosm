@@ -5395,6 +5395,10 @@ def _reconcile_ssi_take_up_and_refit(
     band_targets, ssi_target_alignment = _aligned_ssi_take_up_band_targets(target_specs)
 
     last_failures: tuple[str, ...] = ()
+    # populace#447: the per-pass swap-delta trajectory must survive a terminal
+    # raise (converging-but-over-cap vs oscillating is the whole adjudication)
+    # and ride the success record.
+    pass_history: list[dict[str, object]] = []
     for pass_number in range(1, max_passes + 1):
         uncapped_ssi = _ssi_person_uncapped_amount(
             current_support,
@@ -5499,6 +5503,18 @@ def _reconcile_ssi_take_up_and_refit(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             selected_support=selected_support,
         )
+        pass_history.append(
+            {
+                "pass": pass_number,
+                "national_swap_delta": exit_result.ssi_swap_delta.get(
+                    "national_swap_delta"
+                ),
+                "national_swap_sanity_cap": exit_result.ssi_swap_delta.get(
+                    "national_swap_sanity_cap"
+                ),
+                "within_bound": exit_result.ssi_swap_delta.get("within_bound"),
+            }
+        )
         if exit_result.gates_passed:
             reconciliation_compilation = {
                 **dict(compilation),
@@ -5521,6 +5537,7 @@ def _reconcile_ssi_take_up_and_refit(
                     "target_alignment": ssi_target_alignment,
                     "ssi_swap_delta": exit_result.ssi_swap_delta,
                     "medicaid_enrollment_swap_delta": exit_result.medicaid_swap_delta,
+                    "pass_history": pass_history,
                 },
             }
             calibration_result = (
@@ -5542,9 +5559,21 @@ def _reconcile_ssi_take_up_and_refit(
         last_failures = exit_result.failures()
         current_support = export_frame
 
+    trajectory = "; ".join(
+        "pass {pass_number}: delta={delta:,.3f} cap={cap:,.3f} "
+        "within_bound={within}".format(
+            pass_number=entry["pass"],
+            delta=float(entry["national_swap_delta"] or 0.0),
+            cap=float(entry["national_swap_sanity_cap"] or 0.0),
+            within=entry["within_bound"],
+        )
+        for entry in pass_history
+    )
     raise RuntimeError(
         "SSI take-up reconciliation did not remain count-faithful on returned "
-        f"weights after {max_passes} pass(es): " + "; ".join(last_failures)
+        f"weights after {max_passes} pass(es): "
+        + "; ".join(last_failures)
+        + (f" Pass trajectory: {trajectory}." if pass_history else "")
     )
 
 
