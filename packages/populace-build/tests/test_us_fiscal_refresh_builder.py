@@ -372,6 +372,13 @@ def test_ssi_reconciliation_returns_fresh_pair_the_stale_gate_would_reject(
     )
     record = reconciliation.compilation["ssi_take_up_reconciliation"]
     assert record["exit_policy"] == "fresh_pair_under_returned_weights"
+    assert [entry["pass"] for entry in record["pass_history"]] == list(
+        range(1, len(record["pass_history"]) + 1)
+    )
+    assert all(
+        "national_swap_delta" in entry and "within_bound" in entry
+        for entry in record["pass_history"]
+    )
     assert record["target_alignment"][
         "registry_national_recipients_total"
     ] == pytest.approx(7_404_820.0)
@@ -527,6 +534,11 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
     message = str(excinfo.value)
     assert "swap delta" in message
     assert "800000.000" in message
+    # populace#447: the per-pass trajectory must survive the terminal raise —
+    # converging-but-over-cap vs oscillating is the adjudication evidence.
+    assert "Pass trajectory: pass 1: delta=" in message
+    assert "pass 2: delta=" in message
+    assert "within_bound=False" in message
     # Two passes: a stage assign and an exit assign each pass, one stale diag
     # each pass, one refit each pass.
     assert counts == {"assign": 4, "calibrate": 2, "stale": 2}
