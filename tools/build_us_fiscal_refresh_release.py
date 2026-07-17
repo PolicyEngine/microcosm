@@ -214,7 +214,12 @@ from populace.build.us_runtime.warm_start_selection import (
     load_selection_source_from_manifest,
     select_frozen_support,
 )
-from populace.calibrate import TargetRegistry, calibrate, calibrate_l0_refit
+from populace.calibrate import (
+    TargetRegistry,
+    TargetSpec,
+    calibrate,
+    calibrate_l0_refit,
+)
 from populace.calibrate.diagnostics import (
     diagnostics_payload,
     write_calibration_diagnostics,
@@ -726,6 +731,20 @@ def _parse_args() -> argparse.Namespace:
             "the dense parent can; declare those cells here so they do not "
             "fail the zero-support gate, with each reason recorded in the "
             "release manifest. The module registry is never mutated."
+        ),
+    )
+    parser.add_argument(
+        "--selection-mass-protection",
+        action="append",
+        default=[],
+        metavar="COLUMN",
+        help=(
+            "Input column whose locked-source mass (measured on the base "
+            "pool at base weights, never hardcoded) is injected as a "
+            "synthetic national calibration target, so the refit cannot "
+            "crush the carriers a protect-swap placed in the frozen "
+            "selection (PolicyEngine/populace#445; #434). Repeatable. The "
+            "protection lifts when the concept gains a real Ledger fact."
         ),
     )
     parser.add_argument("--out", type=Path, required=True)
@@ -1452,6 +1471,78 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _selection_mass_protection_specs(
+    base_frame: Frame,
+    columns: Sequence[str],
+) -> tuple[TargetSpec, ...]:
+    """Synthetic national targets pinning locked-source input masses (#445).
+
+    A protect-swap (#434) can carry a restored thin input's carriers into the
+    frozen selection, but nothing stops the refit from crushing their weights
+    when the concept is untargeted: Build M attempt 15 exported $6.1M of the
+    ASEC source's $148.97M ``keogh_distributions``. Each protected column
+    becomes an ordinary calibration target whose value is the base pool's own
+    locked-source mass at base weights — measured here at build time — so the
+    solve must preserve the mass the swap put in-selection. The target rides
+    the standard ``policyengine_variable`` materializer (the column must be an
+    engine variable) and its provenance rides the compilation payload. The
+    protection lifts when the concept gains a real Ledger fact (#445).
+    """
+    specs: list[TargetSpec] = []
+    for column in columns:
+        owner = None
+        for entity in base_frame.entities:
+            if column in base_frame.table(entity).columns:
+                owner = entity
+                break
+        if owner is None:
+            raise RuntimeError(
+                "Selection-mass protection column "
+                f"{column!r} is absent from every entity table in the base "
+                "pool."
+            )
+        values = np.asarray(base_frame.table(owner)[column], dtype=np.float64)
+        weights = np.asarray(base_frame.resolve_weights(owner).values, dtype=np.float64)
+        carriers = int((values != 0.0).sum())
+        if carriers == 0:
+            raise RuntimeError(
+                f"Selection-mass protection column {column!r} has no nonzero "
+                "carriers in the base pool; protecting it is a configuration "
+                "error."
+            )
+        mass = float(values @ weights)
+        if mass == 0.0:
+            raise RuntimeError(
+                f"Selection-mass protection column {column!r} nets to zero "
+                "at base weights (signed cancellation); a sum-mode mass "
+                "protection cannot pin it."
+            )
+        specs.append(
+            TargetSpec(
+                name=f"selection_mass_protection.{column}",
+                entity="household",
+                value=mass,
+                measure=f"selection_mass_protection.{column}",
+                source=(
+                    "Locked-source mass measured on the base pool at base "
+                    "weights (PolicyEngine/populace#445; #434 protect-swap)"
+                ),
+                signed=mass < 0,
+                metadata={
+                    "materializer": "policyengine_variable",
+                    "measure_mode": "sum",
+                    "base_variable": column,
+                    "target_role": "selection_mass_protection",
+                    "protected_column": column,
+                    "protected_entity": owner,
+                    "base_pool_carriers": str(carriers),
+                    "issue": "PolicyEngine/populace#445",
+                },
+            )
+        )
+    return tuple(specs)
+
+
 def _target_frame_checkpoint_identity(
     *,
     base_dataset_sha256: str,
@@ -1461,8 +1552,9 @@ def _target_frame_checkpoint_identity(
     target_registry_version: str,
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
+    selection_mass_protections: tuple[str, ...] = (),
 ) -> dict[str, object]:
-    return {
+    identity: dict[str, object] = {
         "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
         "materializer_version": TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
         "kind": "us_fiscal_refresh_target_frame",
@@ -1479,6 +1571,17 @@ def _target_frame_checkpoint_identity(
             else str(congressional_district_vintage_crosswalk_sha256)
         ),
     }
+    if selection_mass_protections:
+        # Key present only when protections are configured, so unprotected
+        # runs (the dense arm, every pre-#445 sparse run) keep their legacy
+        # digests and warm checkpoints. A protected run must MISS a
+        # column-less checkpoint: _compile_materialized_target_registry
+        # silently drops specs whose measures are absent from the
+        # materialized household table.
+        identity["selection_mass_protections"] = sorted(
+            str(column) for column in selection_mass_protections
+        )
+    return identity
 
 
 def _target_frame_checkpoint_digest(identity: Mapping[str, object]) -> str:
@@ -8366,6 +8469,20 @@ def main() -> None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
     policyengine_us_version = _package_or_workspace_version("policyengine-us")
+    selection_mass_protections = tuple(
+        dict.fromkeys(args.selection_mass_protection or ())
+    )
+    selection_mass_protection_specs: tuple[TargetSpec, ...] = ()
+    if selection_mass_protections:
+        # #445: injected AFTER the target-parity contract ran on the compiled
+        # feed registry (these are run-scoped builder targets, not feed
+        # families) and BEFORE the target frame materializes, so both the
+        # fresh and checkpoint-reload paths compile them. The identity below
+        # carries the protection list, so a column-less checkpoint misses.
+        selection_mass_protection_specs = _selection_mass_protection_specs(
+            base_frame, selection_mass_protections
+        )
+        target_specs = (*target_specs, *selection_mass_protection_specs)
     target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
         base_dataset_sha256=base_dataset_sha256,
         policyengine_us_version=policyengine_us_version,
@@ -8376,6 +8493,7 @@ def main() -> None:
         congressional_district_vintage_crosswalk_sha256=(
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
+        selection_mass_protections=selection_mass_protections,
     )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
