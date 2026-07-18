@@ -282,6 +282,20 @@ DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
 SSI_TAKE_UP_RECONCILIATION_MAX_PASSES = 3
 
+#: Runaway sanity caps on the SSI swap delta, as a share of the fresh national
+#: recipient total (#431: the delta is the solve's equilibrium residual on the
+#: SSI family, recorded in the manifest; the cap exists only to catch a solve
+#: that abandoned the family). The dense arm's equilibrium is structurally
+#: larger than the sparse arm's on the same #424-undercounted candidate
+#: universe: measured sparse deltas run 7.1-8.0% (attempts 9-16) while the
+#: dense trajectory converges monotonically 11.97% -> 11.64% -> 11.38% with
+#: decelerating decrements (asymptote ~10.6%), so 0.10 is unreachable there
+#: while remaining the right bar for sparse (populace#447 adjudication,
+#: 2026-07-18; trajectory recorded in the reconciliation pass_history). Both
+#: caps converge back to one number when #424 restores the candidate universe.
+SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO = 0.10
+SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE = 0.12
+
 
 def _collect_batch_garbage() -> None:
     """Keep batch loops tidy without traversing the full object graph."""
@@ -5101,6 +5115,8 @@ def _replay_ssi_dependent_inputs(
 def _ssi_take_up_swap_delta(
     stale_diagnostics: Mapping[str, object],
     fresh_diagnostics: Mapping[str, object],
+    *,
+    sanity_cap_ratio: float = SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO,
 ) -> dict[str, object]:
     """National SSI-recipient mass moved by the post-refit re-assignment.
 
@@ -5144,8 +5160,9 @@ def _ssi_take_up_swap_delta(
         fresh_total += fresh_selected
         national_bound += band_allowance
     national_delta = abs(fresh_total - stale_total)
-    sanity_cap = 0.10 * fresh_total
+    sanity_cap = sanity_cap_ratio * fresh_total
     return {
+        "national_swap_sanity_cap_ratio": sanity_cap_ratio,
         "stale_selected_recipient_weight_total": stale_total,
         "fresh_selected_recipient_weight_total": fresh_total,
         "national_swap_delta": national_delta,
@@ -5272,6 +5289,7 @@ def _ssi_take_up_fresh_pair_exit(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]],
     maximum_microsim_batch_size: int | None,
     selected_support: Frame,
+    sanity_cap_ratio: float = SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO,
 ) -> _SSITakeUpFreshPairExit:
     """Re-assign SSI take-up under the returned weights and gate the fresh pair.
 
@@ -5322,7 +5340,9 @@ def _ssi_take_up_fresh_pair_exit(
         medicaid_gate=us_medicaid_take_up_gate(dict(exit_medicaid_diagnostics)),
         other_health_gate=us_other_health_insurance_signal_gate(exit_support),
         ssi_swap_delta=_ssi_take_up_swap_delta(
-            stale_ssi_diagnostics, exit_ssi_diagnostics
+            stale_ssi_diagnostics,
+            exit_ssi_diagnostics,
+            sanity_cap_ratio=sanity_cap_ratio,
         ),
         medicaid_swap_delta=_medicaid_enrollment_swap_deltas(
             stale_medicaid_diagnostics, exit_medicaid_diagnostics
@@ -5502,6 +5522,11 @@ def _reconcile_ssi_take_up_and_refit(
             medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             selected_support=selected_support,
+            sanity_cap_ratio=(
+                SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE
+                if dense_default_dataset
+                else SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO
+            ),
         )
         pass_history.append(
             {

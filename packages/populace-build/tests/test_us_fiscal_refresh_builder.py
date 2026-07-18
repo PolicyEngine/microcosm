@@ -428,12 +428,13 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
     counts = {"assign": 0, "calibrate": 0, "stale": 0}
     allowance = 100.0
     fresh_selected = dict(band_targets)
-    # The frozen flags overshoot the national total by 800,000 (in under_18);
+    # The frozen flags overshoot the national total by 1,100,000 (in under_18);
     # the fresh re-assignment removes it, so the national swap delta exceeds
-    # the runaway sanity cap (a tenth of the ~7.4M fresh total) — the solve
+    # the runaway sanity cap on BOTH arms (0.10 sparse / 0.12 dense of the
+    # ~7.4M fresh total; populace#447) — the solve
     # abandoned the SSI family, which must still fail closed.
     stale_selected = {
-        "under_18": band_targets["under_18"] + 800_000.0,
+        "under_18": band_targets["under_18"] + 1_100_000.0,
         "18_64": band_targets["18_64"],
         "65_plus": band_targets["65_plus"],
     }
@@ -533,7 +534,7 @@ def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
 
     message = str(excinfo.value)
     assert "swap delta" in message
-    assert "800000.000" in message
+    assert "1100000.000" in message
     # populace#447: the per-pass trajectory must survive the terminal raise —
     # converging-but-over-cap vs oscillating is the adjudication evidence.
     assert "Pass trajectory: pass 1: delta=" in message
@@ -7234,4 +7235,43 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
         is None
+    )
+
+
+def test_ssi_swap_delta_dense_cap_ratio_admits_measured_dense_equilibrium() -> None:
+    """populace#447: the dense arm's reconcile equilibrium (measured trajectory
+    11.97% -> 11.64% -> 11.38%, decelerating toward ~10.6%) sits above the
+    sparse 10% runaway cap. The dense-specific 0.12 ratio admits the measured
+    equilibrium while both ratios still refuse a genuine runaway, and the
+    ratio used is recorded in the payload."""
+    builder = _load_builder_module()
+    fresh = {"under_18": 1_000_000.0, "18_64": 4_000_000.0, "65_plus": 2_400_000.0}
+    stale = dict(fresh)
+    # 11.42% of the 7.4M fresh national: inside 0.12, outside 0.10.
+    stale["18_64"] += 845_000.0
+
+    sparse = builder._ssi_take_up_swap_delta(
+        _ssi_diag_with_bands(stale, 40_000.0),
+        _ssi_diag_with_bands(fresh, 40_000.0),
+    )
+    dense = builder._ssi_take_up_swap_delta(
+        _ssi_diag_with_bands(stale, 40_000.0),
+        _ssi_diag_with_bands(fresh, 40_000.0),
+        sanity_cap_ratio=builder.SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE,
+    )
+
+    assert sparse["within_bound"] is False
+    assert sparse["national_swap_sanity_cap_ratio"] == 0.10
+    assert dense["within_bound"] is True
+    assert dense["national_swap_sanity_cap_ratio"] == 0.12
+    # A genuine runaway (>12%) is still refused on the dense ratio.
+    runaway = dict(fresh)
+    runaway["18_64"] += 1_000_000.0
+    assert (
+        builder._ssi_take_up_swap_delta(
+            _ssi_diag_with_bands(runaway, 40_000.0),
+            _ssi_diag_with_bands(fresh, 40_000.0),
+            sanity_cap_ratio=builder.SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE,
+        )["within_bound"]
+        is False
     )
