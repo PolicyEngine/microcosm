@@ -221,9 +221,22 @@ def _count_faithful_ssi_gate(builder):
     return gate
 
 
+@pytest.mark.parametrize(
+    ("sparse_selection_arm", "expected_cap_ratio"),
+    [
+        pytest.param(False, 0.12, id="dense-arm"),
+        # The leak regression: the sparse rmloss100 script ALSO passes
+        # --dense-default-dataset (an export-mode flag), so the arm
+        # discriminator must be the frozen-selection identity — a sparse-arm
+        # reconcile gates at 0.10 even in dense export mode.
+        pytest.param(True, 0.10, id="sparse-arm-dense-export-mode"),
+    ],
+)
 def test_ssi_reconciliation_returns_fresh_pair_the_stale_gate_would_reject(
     monkeypatch,
     small_frame,
+    sparse_selection_arm,
+    expected_cap_ratio,
 ) -> None:
     """The fresh pair is published where the stale pair the old loop gated fails.
 
@@ -347,6 +360,7 @@ def test_ssi_reconciliation_returns_fresh_pair_the_stale_gate_would_reject(
         initial_result,
         target_specs,
         dense_default_dataset=True,
+        sparse_selection_arm=sparse_selection_arm,
         seed=3,
         epochs=5,
         learning_rate=0.01,
@@ -372,6 +386,9 @@ def test_ssi_reconciliation_returns_fresh_pair_the_stale_gate_would_reject(
     )
     record = reconciliation.compilation["ssi_take_up_reconciliation"]
     assert record["exit_policy"] == "fresh_pair_under_returned_weights"
+    assert (
+        record["ssi_swap_delta"]["national_swap_sanity_cap_ratio"] == expected_cap_ratio
+    )
     assert [entry["pass"] for entry in record["pass_history"]] == list(
         range(1, len(record["pass_history"]) + 1)
     )
