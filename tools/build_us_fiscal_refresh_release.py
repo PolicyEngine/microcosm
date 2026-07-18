@@ -293,6 +293,11 @@ SSI_TAKE_UP_RECONCILIATION_MAX_PASSES = 3
 #: while remaining the right bar for sparse (populace#447 adjudication,
 #: 2026-07-18; trajectory recorded in the reconciliation pass_history). Both
 #: caps converge back to one number when #424 restores the candidate universe.
+#: ARM IDENTITY: the dense arm is the run WITHOUT a frozen selection manifest.
+#: ``--dense-default-dataset`` is an EXPORT-MODE flag that the sparse
+#: rmloss100 script also sets, and must never be used as the arm
+#: discriminator (a 32605c9-era sparse rerun gated at 0.12 through exactly
+#: that confusion; caught by its recorded cap ratio before anything shipped).
 SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO = 0.10
 SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE = 0.12
 
@@ -5356,6 +5361,7 @@ def _reconcile_ssi_take_up_and_refit(
     target_specs: tuple,
     *,
     dense_default_dataset: bool,
+    sparse_selection_arm: bool = True,
     seed: int,
     epochs: int,
     learning_rate: float,
@@ -5523,9 +5529,9 @@ def _reconcile_ssi_take_up_and_refit(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             selected_support=selected_support,
             sanity_cap_ratio=(
-                SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE
-                if dense_default_dataset
-                else SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO
+                SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO
+                if sparse_selection_arm
+                else SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE
             ),
         )
         pass_history.append(
@@ -8725,6 +8731,7 @@ def main() -> None:
         result,
         target_specs,
         dense_default_dataset=bool(args.dense_default_dataset),
+        sparse_selection_arm=args.selection_source_manifest is not None,
         seed=args.seed,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
