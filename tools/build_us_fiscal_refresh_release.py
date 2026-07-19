@@ -9,13 +9,32 @@ PolicyEngine-US H5, and emits the release contract files required by
 
 from __future__ import annotations
 
+import os
+
+# populace#456 (#447 ops note): bound the default BLAS/OpenMP/joblib thread
+# pools instead of inheriting machine geometry — per-thread scratch buffers
+# scale the resident set with core count (measured 125 GB anon-RSS at 16 vCPU
+# vs 249 GB at 32 vCPU for the same build). OpenBLAS and torch read these at
+# library load, so this must precede the numpy/torch imports below; operator-
+# set values always win (setdefault only). E402 is ignored for this file in
+# pyproject for exactly this block.
+_THREAD_POOL_DEFAULT = str(min(os.cpu_count() or 1, 16))
+for _thread_pool_variable in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "LOKY_MAX_CPU_COUNT",
+):
+    os.environ.setdefault(_thread_pool_variable, _THREAD_POOL_DEFAULT)
+
 import argparse
 import gc
 import hashlib
 import importlib.metadata
 import json
 import math
-import os
 import platform
 import shutil
 import subprocess
@@ -186,6 +205,7 @@ from populace.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
+from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime.fiscal_targets import SSA_SSI_RECIPIENTS_TARGET_ROLE
 from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.build.us_runtime.l0_refit_export import (
@@ -306,6 +326,21 @@ def _collect_batch_garbage() -> None:
     """Keep batch loops tidy without traversing the full object graph."""
 
     gc.collect(0)
+
+
+def _collect_family_garbage() -> None:
+    """Full collection at target-family boundaries (populace#456).
+
+    ``release_engine_simulation`` frees each batch's array mass by refcount,
+    but the residual simulation skeletons are cyclic, and anything promoted
+    past generation 0 is invisible to ``_collect_batch_garbage`` forever —
+    CPython's own full collections are throttled against the build's multi-GB
+    long-lived heap, so without an explicit sweep the skeletons accumulate
+    for the run's lifetime. One full collection per materialized family is
+    cheap next to the family's engine work.
+    """
+
+    gc.collect()
 
 
 @contextmanager
@@ -2448,9 +2483,10 @@ def _aca_source_tax_unit_table_batched(
                     full_positions,
                     tax_unit.columns.get_loc(column),
                 ] = batch_tax_unit[column].to_numpy()
-            batch_simulation._invalidate_all_caches()
+            release_engine_simulation(batch_simulation)
             del batch_tax_unit, batch_simulation, batch_frame
         _collect_batch_garbage()
+    _collect_family_garbage()
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
@@ -2657,9 +2693,10 @@ def _medicaid_person_eligibility(
                     "present in the full person table."
                 )
             eligibility[positions.astype(np.int64)] = batch_eligible
-            batch_simulation._invalidate_all_caches()
+            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
         _collect_batch_garbage()
+    _collect_family_garbage()
     return eligibility
 
 
@@ -2738,9 +2775,10 @@ def _ssi_person_uncapped_amount(
                     "in the full person table."
                 )
             uncapped[positions.astype(np.int64)] = batch_uncapped
-            batch_simulation._invalidate_all_caches()
+            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
         _collect_batch_garbage()
+    _collect_family_garbage()
     return uncapped
 
 
@@ -2957,9 +2995,10 @@ def _snap_spm_unit_eligibility(
                     "present in the full spm_unit table."
                 )
             eligibility[positions.astype(np.int64)] = batch_eligible
-            batch_simulation._invalidate_all_caches()
+            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
         _collect_batch_garbage()
+    _collect_family_garbage()
     return eligibility
 
 
@@ -2992,8 +3031,26 @@ def _with_snap_state_take_up_outputs(
     )
 
 
+_FORMULA_OWNED_GATE_ADAPTER: PolicyEngineUSEngine | None = None
+
+
+def _formula_owned_gate_adapter() -> PolicyEngineUSEngine:
+    """One adapter — and one engine system build — for every gate call.
+
+    populace#456: ``PolicyEngineUSEngine`` lazily builds its own
+    ``CountryTaxBenefitSystem`` for variable metadata, and every engine build
+    permanently registers ~5,600 ``sys.modules`` entries (~55-60 MB, immune
+    to gc). This gate runs per materialized reform family and per export, so
+    a fresh adapter per call multiplied engine builds ~100x over a dense run.
+    """
+    global _FORMULA_OWNED_GATE_ADAPTER
+    if _FORMULA_OWNED_GATE_ADAPTER is None:
+        _FORMULA_OWNED_GATE_ADAPTER = PolicyEngineUSEngine()
+    return _FORMULA_OWNED_GATE_ADAPTER
+
+
 def _assert_no_formula_owned_columns(frame: Frame) -> None:
-    adapter = PolicyEngineUSEngine()
+    adapter = _formula_owned_gate_adapter()
     tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
     if formula_owned:
@@ -3151,6 +3208,7 @@ class _BatchedReformValidationSimulation:
         self._microsimulation_cls = microsimulation_cls
         self._dataset_from_frame = dataset_from_frame
         self._cache: dict[tuple[str, int], float] = {}
+        self._reform_system = None
 
     def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
         key = (str(measure), int(period))
@@ -3185,16 +3243,28 @@ class _BatchedReformValidationSimulation:
                     )
                 )
                 dataset = self._dataset_from_frame(batch_frame)
-                simulation = (
-                    self._microsimulation_cls(dataset=dataset)
-                    if self._reform is None
-                    else self._microsimulation_cls(dataset=dataset, reform=self._reform)
-                )
+                if self._reform is None:
+                    simulation = self._microsimulation_cls(dataset=dataset)
+                else:
+                    # populace#456: one reform system per scored reform, not
+                    # one per batch (each engine build permanently leaks
+                    # ~5,600 sys.modules entries).
+                    if self._reform_system is None:
+                        self._reform_system = (
+                            self._microsimulation_cls.default_tax_benefit_system(
+                                reform=self._reform
+                            )
+                        )
+                    simulation = self._microsimulation_cls(
+                        tax_benefit_system=self._reform_system,
+                        dataset=dataset,
+                        reform=self._reform,
+                    )
                 total += float(simulation.calculate(measure, period).sum())
-                if hasattr(simulation, "_invalidate_all_caches"):
-                    simulation._invalidate_all_caches()
+                release_engine_simulation(simulation)
                 del simulation, dataset, batch_frame
             _collect_batch_garbage()
+        _collect_family_garbage()
         return total
 
 
@@ -3241,6 +3311,16 @@ def _reform_household_income_tax(
     _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
+    # populace#456: a reform simulation cannot reuse the engine's shared
+    # class-level system instance, so letting each batch construct its own
+    # ``Microsimulation(reform=...)`` rebuilt the full tax-benefit system per
+    # batch — measured at ~0.45 GB and ~5,600 permanently-leaked sys.modules
+    # entries per build (policyengine-core registers every variable module
+    # under a unique per-system name and never evicts). Build the reform
+    # system once per target family instead — the same
+    # ``default_tax_benefit_system(reform=...)`` construction the engine ran
+    # per batch — and hand it to every batch simulation explicitly.
+    reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
     batches = tuple(_household_position_batches(n_households, batch_size))
     if len(batches) > 1:
         print(
@@ -3264,16 +3344,22 @@ def _reform_household_income_tax(
                 system=system,
                 assert_no_formula_owned_columns=False,
             )
-            reformed = microsimulation_cls(dataset=reformed_dataset, reform=reform)
+            reformed = microsimulation_cls(
+                tax_benefit_system=reform_system,
+                dataset=reformed_dataset,
+                reform=reform,
+            )
             batch_income_tax = _collapse_tax_unit(
                 _calculate_array(reformed, "income_tax"),
                 batch_tax_unit_positions,
                 batch_frame.n("household"),
             )
             reform_income_tax[household_positions] = batch_income_tax
-            reformed._invalidate_all_caches()
+            release_engine_simulation(reformed)
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
+    del reform_system
+    _collect_family_garbage()
     return reform_income_tax
 
 
@@ -4057,9 +4143,12 @@ def _materialize_target_frame(
         eitc_child_count,
         tax_unit_itemizes,
     )
-    simulation._invalidate_all_caches()
+    # populace#456: the base simulation is pinned past its ``del`` by the
+    # shared system instance's ``simulation`` backref — for the full pool that
+    # is tens of GB held across the entire reform phase. Release it properly.
+    release_engine_simulation(simulation)
     del simulation, dataset
-    _collect_batch_garbage()
+    _collect_family_garbage()
     requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
@@ -5589,6 +5678,11 @@ def _reconcile_ssi_take_up_and_refit(
             )
         last_failures = exit_result.failures()
         current_support = export_frame
+        # populace#456: each pass rematerializes every fiscal target through
+        # the batched engine paths above; sweep the pass's cyclic residue so
+        # a multi-pass reconcile stays at single-pass footprint.
+        del target_frame, calibration_input, export_frame, exit_result
+        _collect_family_garbage()
 
     trajectory = "; ".join(
         "pass {pass_number}: delta={delta:,.3f} cap={cap:,.3f} "
