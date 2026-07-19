@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,14 @@ import pandas as pd
 SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
+#: The packaged default crosswalk, built from Census sources by
+#: ``tools/build_us_congressional_district_vintage_crosswalk.py`` and shipped
+#: under ``populace.build.us_runtime.data``. See the sibling ``.provenance.json``
+#: and ``CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md`` for exact source files and
+#: per-state population conservation.
+DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE = (
+    "congressional_district_vintage_crosswalk.csv"
+)
 CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR = (
     "populace_congressional_district_vintage_crosswalk_sha256"
 )
@@ -63,11 +72,140 @@ def load_congressional_district_vintage_crosswalk(path: str | Path) -> pd.DataFr
             source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
             target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
         )
-    return _prepare_crosswalk(
+    prepared = _prepare_crosswalk(
         pd.read_csv(source),
         source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
         target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
     )
+    if source == default_congressional_district_vintage_crosswalk_path():
+        validate_packaged_congressional_district_vintage_crosswalk(prepared)
+    return prepared
+
+
+def default_congressional_district_vintage_crosswalk_path() -> Path:
+    """Return the path to the packaged default CD-vintage crosswalk CSV."""
+
+    return Path(
+        str(
+            files("populace.build.us_runtime.data").joinpath(
+                DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE
+            )
+        )
+    )
+
+
+def load_default_congressional_district_vintage_crosswalk() -> pd.DataFrame:
+    """Load the packaged Census-built default 117th->119th CD crosswalk.
+
+    This is the canonical, versioned crosswalk built by
+    ``tools/build_us_congressional_district_vintage_crosswalk.py`` from Census
+    Block Assignment Files, the 119th BEF, and 2020 P.L. 94-171 block
+    populations. Builds may still pass an explicit crosswalk path to override it.
+    """
+
+    return load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+
+
+#: Both-vintage at-large jurisdictions (single district in the 117th AND the
+#: 119th Congress): AK, DE, DC (delegate), ND, SD, VT, WY. Montana left this
+#: set in the 2020 apportionment (1 -> 2 seats), which is why it is absent.
+_BOTH_VINTAGE_AT_LARGE_STATE_FIPS = frozenset(
+    {"02", "10", "11", "38", "46", "50", "56"}
+)
+_PACKAGED_CROSSWALK_DISTRICT_COUNT = 436
+
+
+def _district_roster_by_state(geoids: pd.Series) -> dict[str, list[str]]:
+    frame = pd.DataFrame(
+        {"state": geoids.str[:2], "district": geoids.str[2:]}
+    ).drop_duplicates()
+    return {
+        state: sorted(group["district"])
+        for state, group in frame.groupby("state", sort=True)
+    }
+
+
+def validate_packaged_congressional_district_vintage_crosswalk(
+    prepared: pd.DataFrame,
+) -> None:
+    """Strict shape contract for the packaged Census-built crosswalk.
+
+    The generic loader accepts any positive-mass crosswalk (external overrides
+    may use e.g. ACS dollar proxies); the packaged artifact is held to the
+    exact published redistricting geometry: 436 districts on each side across
+    51 jurisdictions, contiguous district rosters, normalized weights that sum
+    to 1 per source district alongside their 2020 population masses, and
+    identity rows for the jurisdictions that were at-large in both vintages.
+    """
+
+    if "pair_population" not in prepared.columns:
+        raise ValueError(
+            "Packaged CD vintage crosswalk must carry the pair_population "
+            "provenance column."
+        )
+    source_geoids = prepared["source_geography_id"].str.removeprefix(
+        SOURCE_CONGRESSIONAL_DISTRICT_PREFIX
+    )
+    target_geoids = prepared["target_geography_id"].str.removeprefix(
+        CURRENT_CONGRESSIONAL_DISTRICT_PREFIX
+    )
+    for label, geoids in (("source", source_geoids), ("target", target_geoids)):
+        count = geoids.nunique()
+        if count != _PACKAGED_CROSSWALK_DISTRICT_COUNT:
+            raise ValueError(
+                f"Packaged CD vintage crosswalk must cover exactly "
+                f"{_PACKAGED_CROSSWALK_DISTRICT_COUNT} {label} districts, "
+                f"found {count}."
+            )
+        rosters = _district_roster_by_state(geoids)
+        if len(rosters) != 51:
+            raise ValueError(
+                f"Packaged CD vintage crosswalk must cover 51 {label} "
+                f"jurisdictions, found {len(rosters)}."
+            )
+        for state, districts in rosters.items():
+            expected = (
+                ["00"]
+                if districts == ["00"]
+                else [f"{number:02d}" for number in range(1, len(districts) + 1)]
+            )
+            if districts != expected:
+                raise ValueError(
+                    f"Packaged CD vintage crosswalk {label} districts for "
+                    f"state {state} are not a contiguous roster: {districts}."
+                )
+    weights = prepared["weight"].to_numpy(dtype=np.float64)
+    if (weights <= 0.0).any() or (weights > 1.0).any():
+        raise ValueError("Packaged CD vintage crosswalk weights must lie in (0, 1].")
+    source_sums = prepared.groupby("source_geography_id")["weight"].sum()
+    off = source_sums[(source_sums - 1.0).abs() > 1e-9]
+    if len(off):
+        raise ValueError(
+            "Packaged CD vintage crosswalk weights must sum to 1 per source "
+            f"district; offenders: {off.head(5).to_dict()}."
+        )
+    at_large_sources = source_geoids.str[:2].isin(_BOTH_VINTAGE_AT_LARGE_STATE_FIPS)
+    identity = prepared.loc[at_large_sources]
+    identity_states = set(source_geoids.loc[at_large_sources].str[:2])
+    if identity_states != set(_BOTH_VINTAGE_AT_LARGE_STATE_FIPS):
+        raise ValueError(
+            "Packaged CD vintage crosswalk is missing both-vintage at-large "
+            f"jurisdictions: {sorted(_BOTH_VINTAGE_AT_LARGE_STATE_FIPS - identity_states)}."
+        )
+    non_identity = identity[
+        (identity["weight"] != 1.0)
+        | (
+            identity["source_geography_id"].str[-4:]
+            != identity["target_geography_id"].str[-4:]
+        )
+    ]
+    if len(non_identity):
+        raise ValueError(
+            "Both-vintage at-large jurisdictions must map identically with "
+            f"weight 1.0; offenders: {non_identity.head(5).to_dict('records')}."
+        )
 
 
 def translate_congressional_district_facts_to_current_vintage(
@@ -375,9 +513,10 @@ def _prepare_crosswalk(
     missing = sorted(required - set(frame.columns))
     if missing:
         raise ValueError(f"CD vintage crosswalk is missing column(s): {missing}.")
-    prepared = frame.loc[
-        :, ["source_geography_id", "target_geography_id", "weight"]
-    ].copy()
+    columns = ["source_geography_id", "target_geography_id", "weight"]
+    if "pair_population" in frame.columns:
+        columns.append("pair_population")
+    prepared = frame.loc[:, columns].copy()
     prepared["source_geography_id"] = prepared["source_geography_id"].map(str)
     prepared["target_geography_id"] = prepared["target_geography_id"].map(str)
     bad_source = prepared[
@@ -422,18 +561,43 @@ def _prepare_crosswalk(
     if not np.isfinite(weights).all() or (weights <= 0.0).any():
         raise ValueError("CD vintage crosswalk weight must be positive and finite.")
     prepared["weight"] = weights
-    prepared = (
-        prepared.groupby(
-            ["source_geography_id", "target_geography_id"], as_index=False
-        )["weight"]
-        .sum()
-        .sort_values(["source_geography_id", "target_geography_id"])
-        .reset_index(drop=True)
+    duplicated = prepared.duplicated(
+        ["source_geography_id", "target_geography_id"], keep=False
     )
+    if duplicated.any():
+        raise ValueError(
+            "CD vintage crosswalk contains duplicate source/target pairs: "
+            f"{prepared.loc[duplicated].head(5).to_dict('records')}."
+        )
+    prepared = prepared.sort_values(
+        ["source_geography_id", "target_geography_id"]
+    ).reset_index(drop=True)
     totals = prepared.groupby("source_geography_id")["weight"].transform("sum")
     if (totals <= 0.0).any():
         raise ValueError("CD vintage crosswalk source weights must sum positive.")
     prepared["share"] = prepared["weight"] / totals
+    if "pair_population" in prepared.columns:
+        populations = pd.to_numeric(
+            prepared["pair_population"], errors="coerce"
+        ).to_numpy(dtype=np.float64)
+        if not np.isfinite(populations).all() or (populations <= 0.0).any():
+            raise ValueError(
+                "CD vintage crosswalk pair_population must be positive and finite."
+            )
+        prepared["pair_population"] = populations
+        population_shares = populations / (
+            prepared.groupby("source_geography_id")["pair_population"]
+            .transform("sum")
+            .to_numpy(dtype=np.float64)
+        )
+        if not np.allclose(
+            prepared["share"].to_numpy(), population_shares, rtol=0.0, atol=1e-9
+        ):
+            raise ValueError(
+                "CD vintage crosswalk weight column is inconsistent with "
+                "pair_population: weights must be each pair's share of its "
+                "source district's population."
+            )
     return prepared
 
 
