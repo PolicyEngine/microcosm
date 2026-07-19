@@ -46,9 +46,20 @@ def test_measures_are_declared_columns():
     assert all(isinstance(spec.measure, str) for spec in UK_CGT_TARGET_SPECS)
 
 
-def test_facts_are_household_grain():
-    """UK weights are household-level, so the facts must constrain households."""
-    assert all(spec.entity == "household" for spec in UK_CGT_TARGET_SPECS)
+def test_facts_are_person_grain():
+    """UK measures are person-level, matching the hmrc_calibration convention.
+
+    The weights stay household-level; the frame carries them as household
+    ``Weights`` while the constraint rows live on the person table.
+    """
+    assert all(spec.entity == "person" for spec in UK_CGT_TARGET_SPECS)
+
+
+def test_measure_columns_are_prepared_names():
+    """Measures name prepared columns, not raw model inputs."""
+    by_name = {spec.name: spec for spec in UK_CGT_TARGET_SPECS}
+    assert by_name["hmrc/capital_gains_total"].measure == "uk_cgt_measure_gains_amount"
+    assert by_name["hmrc/cgt_taxpayers"].measure == "uk_cgt_measure_taxpayer_count"
 
 
 def test_registry_is_uk_and_content_addressed():

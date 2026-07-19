@@ -29,10 +29,14 @@ Two targets are declared:
 ``hmrc/cgt_taxpayers``
     Number of CGT taxpayers.
 
-Both are household-entity, matching the household grain of the UK weights, and
-both therefore need prepared columns on the household frame — the registry
-refuses callables so that it can serialize, and count-like facts are documented
-to use prepared indicator/count columns. See ``UK_CGT_REQUIRED_COLUMNS``.
+Both are person-entity, following the UK convention established by
+``uk_runtime.hmrc_calibration``: the measures are person-level, so the
+constraint rows live on the person table while the calibrated weights stay on
+the household table via the frame's household ``Weights``. Both therefore need
+prepared columns on the person frame — the registry refuses callables so that
+it can serialize, and count-like facts are documented to use prepared
+indicator/count columns. See ``UK_CGT_REQUIRED_COLUMNS``, and
+``uk_runtime.cgt_calibration`` for the materialization that prepares them.
 
 Open question for reviewers: ``us_runtime.fiscal_targets`` has since moved to
 value-free references whose values arrive from an external Ledger artifact at
@@ -64,47 +68,48 @@ _HMRC_CGT_SOURCE = (
 #: latest published tax year; build-side aging carries it to forecast years.
 _HMRC_CGT_PERIOD = 2023
 
-#: Columns the household frame must expose for these facts to compile.
+#: Prepared person columns the frame must expose for these facts to compile.
 #:
-#: ``capital_gains`` is the household sum of person-level chargeable gains.
-#: ``cgt_taxpayer_count`` is the household count of people whose gains exceed
-#: the annual exempt amount **in force for the period** — the AEA moved
+#: ``uk_cgt_measure_gains_amount`` is each person's chargeable gains, zeroed on
+#: people who are not CGT taxpayers.
+#: ``uk_cgt_measure_taxpayer_count`` is the 0/1 indicator for people whose
+#: gains exceed the annual exempt amount **in force for the period** — the AEA moved
 #: £12,300 -> £6,000 -> £3,000 across 2022-23 to 2024-25, so a fixed threshold
 #: would silently mean different things in different years.
 UK_CGT_REQUIRED_COLUMNS: tuple[str, ...] = (
-    "capital_gains",
-    "cgt_taxpayer_count",
+    "uk_cgt_measure_gains_amount",
+    "uk_cgt_measure_taxpayer_count",
 )
 
 UK_CGT_TARGET_SPECS: tuple[TargetSpec, ...] = (
     TargetSpec(
         name="hmrc/capital_gains_total",
-        entity="household",
-        measure="capital_gains",
+        entity="person",
+        measure="uk_cgt_measure_gains_amount",
         value=65_900_000_000.0,
         period=_HMRC_CGT_PERIOD,
         source=_HMRC_CGT_SOURCE,
         family="hmrc",
         notes=(
             "Total chargeable gains of CGT taxpayers in 2023-24. Declared "
-            "unsigned: the fact is a positive aggregate. Note that a household "
-            "measure summing gains net of losses can be negative for "
-            "individual records even though the total is positive, so a build "
+            "unsigned: the fact is a positive aggregate. Note that a measure "
+            "carrying gains net of losses can be negative on individual "
+            "person records even though the total is positive, so a build "
             "aggregating losses into this column should confirm the sign "
             "handling it wants."
         ),
     ),
     TargetSpec(
         name="hmrc/cgt_taxpayers",
-        entity="household",
-        measure="cgt_taxpayer_count",
+        entity="person",
+        measure="uk_cgt_measure_taxpayer_count",
         value=378_000.0,
         period=_HMRC_CGT_PERIOD,
         source=_HMRC_CGT_SOURCE,
         family="hmrc",
         notes=(
-            "Number of CGT taxpayers in 2023-24. The measure column counts "
-            "people above the annual exempt amount in force for the period; "
+            "Number of CGT taxpayers in 2023-24. The measure column is a "
+            "person-level indicator for people above the annual exempt amount in force for the period; "
             "the AEA is policy-dependent and must track the period rather "
             "than being hard-coded."
         ),

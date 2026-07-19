@@ -1,5 +1,14 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk_runtime.cgt_calibration import (
+    UK_CGT_ANNUAL_EXEMPT_AMOUNTS,
+    UK_CGT_GAINS_AMOUNT_COLUMN,
+    UK_CGT_SOURCE_COLUMN,
+    UK_CGT_TAXPAYER_COUNT_COLUMN,
+    UKCGTTargetMaterialization,
+    materialize_uk_cgt_calibration_frame,
+    uk_cgt_annual_exempt_amount,
+)
 from populace.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -305,6 +314,13 @@ from populace.build.uk_runtime.spi_support import (
 )
 
 __all__ = [
+    "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_CGT_GAINS_AMOUNT_COLUMN",
+    "UK_CGT_SOURCE_COLUMN",
+    "UK_CGT_TAXPAYER_COUNT_COLUMN",
+    "UKCGTTargetMaterialization",
+    "materialize_uk_cgt_calibration_frame",
+    "uk_cgt_annual_exempt_amount",
     "UK_CGT_REQUIRED_COLUMNS",
     "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
     "UK_CGT_TARGET_SPECS",
