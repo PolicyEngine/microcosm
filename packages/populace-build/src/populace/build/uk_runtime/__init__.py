@@ -32,6 +32,12 @@ from populace.build.uk_runtime.firm_generation import (
     validate_uk_firm_population,
     write_uk_firm_population,
 )
+from populace.build.uk_runtime.fiscal_targets import (
+    UK_CGT_REQUIRED_COLUMNS,
+    UK_CGT_TARGET_COVERAGE_REQUIREMENTS,
+    UK_CGT_TARGET_SPECS,
+    UK_FISCAL_TARGET_REGISTRY,
+)
 from populace.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
@@ -299,6 +305,10 @@ from populace.build.uk_runtime.spi_support import (
 )
 
 __all__ = [
+    "UK_CGT_REQUIRED_COLUMNS",
+    "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
+    "UK_CGT_TARGET_SPECS",
+    "UK_FISCAL_TARGET_REGISTRY",
     "AGE_BANDS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
