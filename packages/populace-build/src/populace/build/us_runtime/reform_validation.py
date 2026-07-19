@@ -23,6 +23,7 @@ builds a ``Microsimulation`` over the freshly written release H5.
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 from collections.abc import Callable, Iterable, Sequence
@@ -31,6 +32,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
 from populace.build.us_runtime.fiscal_targets import (
     STATE_FIPS_TO_POSTAL,
     US_JCT_TAX_EXPENDITURE_REFORMS,
@@ -739,6 +741,22 @@ def reform_validation_payload(
         reform = None if not changes else _build_parameter_reform(changes)
         return simulate(reform)  # type: ignore[misc]
 
+    def released_weighted_total(
+        transient_simulation: Any, measure: str, at_period: int
+    ) -> float:
+        """Weighted total of a single-use reform simulation, then release it.
+
+        populace#456: every out-of-sample score builds a full-release-sized
+        engine simulation whose object graph stays reachable after the local
+        name dies (system backref, branch-clone cycles). Release it and sweep
+        so the smoke phase runs at one-simulation footprint.
+        """
+        try:
+            return _weighted_total(transient_simulation, measure, at_period)
+        finally:
+            release_engine_simulation(transient_simulation)
+            gc.collect()
+
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
 
@@ -771,7 +789,7 @@ def reform_validation_payload(
         effects: dict[str, tuple[float, float, float]] = {}
         for (measure, period), group in groups.items():
             # state 0: pre-OBBBA (every provision reverted, across all groups).
-            prev_total = _weighted_total(
+            prev_total = released_weighted_total(
                 simulation_for_parameter_changes(obbba_pre_baseline_changes),
                 measure,
                 period,
@@ -786,7 +804,7 @@ def reform_validation_payload(
                     for path, change in obbba_pre_baseline_changes.items()
                     if path not in enacted
                 }
-                cur_total = _weighted_total(
+                cur_total = released_weighted_total(
                     simulation_for_parameter_changes(state_changes), measure, period
                 )
                 effects[spec.id] = (cur_total - prev_total, prev_total, cur_total)
@@ -804,7 +822,7 @@ def reform_validation_payload(
                 obbba_stacked = stacked_obbba_effects()
             return obbba_stacked.get(spec.id, (None, None, None))
         base = baseline_total(spec.budget_measure, spec.period)
-        reform_total = _weighted_total(
+        reform_total = released_weighted_total(
             simulate(spec.build_reform()), spec.budget_measure, spec.period
         )
         raw = reform_total - base
@@ -972,6 +990,13 @@ def reform_validation_payload(
                 },
             }
         )
+
+    # populace#456: the shared baseline simulation has served every reform row
+    # and baseline-level row by now; release it before assembling the payload.
+    if baseline is not None:
+        release_engine_simulation(baseline)
+        baseline = None
+        gc.collect()
 
     has_out_of_sample = any(not spec.in_sample for spec in specs) or bool(
         baseline_levels

@@ -4659,6 +4659,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     )
     datasets = []
     simulations = []
+    reform_systems = []
     formula_owned_assertions: list[int] = []
 
     class FakeVariable:
@@ -4670,10 +4671,17 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             "mock_credit": FakeVariable(),
         }
 
+        def __init__(self, reform=None):
+            self.reform = reform
+            reform_systems.append(self)
+
     class FakeMicrosimulation:
-        def __init__(self, *, dataset, reform=None):
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
             self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
             self.cache_invalidations = 0
             simulations.append(self)
 
@@ -4784,7 +4792,20 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert [dataset[3] for dataset in datasets] == [False, False, False]
     assert formula_owned_assertions == [2, 2]
     assert len(simulations) == 3
-    assert [simulation.cache_invalidations for simulation in simulations] == [1, 1, 1]
+    # populace#456: one reform system per target family (the metadata system
+    # plus one family system), shared by every batch simulation of the family
+    # — not one engine build per batch.
+    assert len(reform_systems) == 2
+    assert [system.reform is not None for system in reform_systems] == [False, True]
+    assert [simulation.tax_benefit_system for simulation in simulations] == [
+        None,
+        reform_systems[1],
+        reform_systems[1],
+    ]
+    # Each simulation was released (dataset reference severed), not merely
+    # cache-invalidated.
+    assert [simulation.dataset for simulation in simulations] == [None, None, None]
+    assert [simulation.cache_invalidations for simulation in simulations] == [0, 0, 0]
 
     target_frame_again, registry_again, dropped_again = (
         builder._materialize_target_frame(
@@ -4815,11 +4836,25 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert [dataset[3] for dataset in datasets] == [False, False, False, False]
     assert formula_owned_assertions == [2, 2, 2]
     assert len(simulations) == 4
+    # The cache hit skips reform materialization entirely, so the second run
+    # adds only its metadata system — no new family system is built.
+    assert len(reform_systems) == 3
+    assert [system.reform is not None for system in reform_systems] == [
+        False,
+        True,
+        False,
+    ]
+    assert [simulation.dataset for simulation in simulations] == [
+        None,
+        None,
+        None,
+        None,
+    ]
     assert [simulation.cache_invalidations for simulation in simulations] == [
-        1,
-        1,
-        1,
-        1,
+        0,
+        0,
+        0,
+        0,
     ]
 
 
@@ -5205,10 +5240,16 @@ def test_soi_eitc_child_targets_materialize_distinct_child_slices(
             )
         }
 
+        def __init__(self, reform=None):
+            self.reform = reform
+
     class FakeMicrosimulation:
-        def __init__(self, *, dataset, reform=None):
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
             self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
 
         def calculate(self, variable, *, period, **kwargs):
             assert period == builder.PERIOD
@@ -5418,10 +5459,16 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
             )
         }
 
+        def __init__(self, reform=None):
+            self.reform = reform
+
     class FakeMicrosimulation:
-        def __init__(self, *, dataset, reform=None):
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
             self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
 
         def calculate(self, variable, *, period, **kwargs):
             assert period == builder.PERIOD
@@ -5584,10 +5631,16 @@ def test_population_age_targets_materialize_person_age_counts(
             "age": FakeVariable("person"),
         }
 
+        def __init__(self, reform=None):
+            self.reform = reform
+
     class FakeMicrosimulation:
-        def __init__(self, *, dataset, reform=None):
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
             self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
 
         def calculate(self, variable, *, period, **kwargs):
             assert period == builder.PERIOD
@@ -6518,10 +6571,16 @@ def _install_multi_reform_fakes(
             **{variable: FakeVariable() for _, variable in reforms},
         }
 
+        def __init__(self, reform=None):
+            self.reform = reform
+
     class FakeMicrosimulation:
-        def __init__(self, *, dataset, reform=None):
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
             self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
             self.cache_invalidations = 0
 
         def calculate(self, variable, *, period, **kwargs):
