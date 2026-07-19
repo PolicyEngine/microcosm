@@ -8,7 +8,9 @@ from populace.build.us_runtime import (
     translate_congressional_district_facts_to_current_vintage,
 )
 from populace.build.us_runtime.congressional_district_vintage import (
+    _BOTH_VINTAGE_AT_LARGE_STATE_FIPS,
     default_congressional_district_vintage_crosswalk_path,
+    validate_packaged_congressional_district_vintage_crosswalk,
 )
 from populace.build.us_runtime.congressional_district_vintage_crosswalk import (
     CROSSWALK_BASIS_BLOCK_POPULATION,
@@ -116,17 +118,20 @@ def test_build_crosswalk_redistributes_by_population_and_conserves() -> None:
     )
 
     by_pair = {
-        (row["source_geography_id"], row["target_geography_id"]): row["weight"]
-        for row in rows
+        (row["source_geography_id"], row["target_geography_id"]): row for row in rows
     }
-    assert by_pair == {
+    assert {pair: row["pair_population"] for pair, row in by_pair.items()} == {
         ("5001700US0807", "5001900US0807"): 600,
         ("5001700US0807", "5001900US0808"): 400,
         ("5001700US0801", "5001900US0801"): 1000,
     }
+    # Weights are each pair's share of its old district's population.
+    assert by_pair[("5001700US0807", "5001900US0807")]["weight"] == 0.6
+    assert by_pair[("5001700US0807", "5001900US0808")]["weight"] == 0.4
+    assert by_pair[("5001700US0801", "5001900US0801")]["weight"] == 1.0
     # Conservation: every populated block is assigned, so the old-district
-    # weights sum back to the total population.
-    assert sum(row["weight"] for row in rows) == 2000
+    # population masses sum back to the total population.
+    assert sum(row["pair_population"] for row in rows) == 2000
     assert diagnostics["basis"] == CROSSWALK_BASIS_BLOCK_POPULATION
     assert diagnostics["state_conservation"]["08"] == {
         "state_population": 2000,
@@ -143,7 +148,8 @@ def test_build_crosswalk_reports_uncovered_population_without_inventing() -> Non
         current_cd_by_block={300010000000001: "01"},  # block 2 uncovered
         block_population={300010000000001: 500, 300010000000002: 250},
     )
-    assert [row["weight"] for row in rows] == [500]
+    assert [row["pair_population"] for row in rows] == [500]
+    assert [row["weight"] for row in rows] == [1.0]
     assert diagnostics["unmatched_population_no_current_district"] == 250
     assert diagnostics["state_conservation"]["30"]["unmatched_population"] == 250
 
@@ -161,9 +167,12 @@ def test_build_crosswalk_splits_at_large_state_by_population() -> None:
         current_cd_by_block=current_cd_by_block,
         block_population=block_population,
     )
-    by_target = {row["target_geography_id"]: row["weight"] for row in rows}
-    assert by_target["5001900US3001"] == 542112
-    assert by_target["5001900US3002"] == 542113
+    by_target = {row["target_geography_id"]: row for row in rows}
+    assert by_target["5001900US3001"]["pair_population"] == 542112
+    assert by_target["5001900US3002"]["pair_population"] == 542113
+    assert by_target["5001900US3001"]["weight"] == pytest.approx(0.5, abs=1e-6)
+    assert by_target["5001900US3002"]["weight"] == pytest.approx(0.5, abs=1e-6)
+    assert sum(row["weight"] for row in rows) == pytest.approx(1.0, abs=1e-12)
     assert all(row["source_geography_id"] == "5001700US3000" for row in rows)
 
 
@@ -186,7 +195,13 @@ def test_built_crosswalk_feeds_the_vintage_translator_and_conserves(tmp_path) ->
 
     with path.open("w", newline="") as stream:
         writer = _csv.DictWriter(
-            stream, fieldnames=["source_geography_id", "target_geography_id", "weight"]
+            stream,
+            fieldnames=[
+                "source_geography_id",
+                "target_geography_id",
+                "pair_population",
+                "weight",
+            ],
         )
         writer.writeheader()
         for row in rows:
@@ -392,3 +407,70 @@ def _soi_state_fact(measure_id, value, geography_id, source_row_id):
         },
         "source": {"source_name": "irs_soi", "vintage": "tax_year_2023", "url": "x"},
     }
+
+
+def test_packaged_crosswalk_weights_are_normalized_shares_of_population() -> None:
+    # The committed artifact's contract (populace#288 review): `weight` is the
+    # pair's share of its source district's 2020 population — summing to 1 per
+    # source in the RAW CSV, not merely after loader normalization — with the
+    # population masses preserved alongside as `pair_population`.
+    crosswalk = load_default_congressional_district_vintage_crosswalk()
+    assert "pair_population" in crosswalk.columns
+    assert (crosswalk["pair_population"] > 0).all()
+    assert (crosswalk["weight"] > 0).all()
+    assert (crosswalk["weight"] <= 1.0).all()
+    per_source = crosswalk.groupby("source_geography_id")["weight"].sum()
+    assert (per_source - 1.0).abs().max() < 1e-9
+    population_share = crosswalk["pair_population"] / crosswalk.groupby(
+        "source_geography_id"
+    )["pair_population"].transform("sum")
+    assert (crosswalk["weight"] - population_share).abs().max() < 1e-12
+
+
+def test_packaged_crosswalk_keeps_both_vintage_at_large_identity_rows() -> None:
+    crosswalk = load_default_congressional_district_vintage_crosswalk()
+    for state_fips in sorted(_BOTH_VINTAGE_AT_LARGE_STATE_FIPS):
+        rows = crosswalk[crosswalk["source_geography_id"] == f"5001700US{state_fips}00"]
+        assert len(rows) == 1, state_fips
+        assert rows.iloc[0]["target_geography_id"] == f"5001900US{state_fips}00"
+        assert rows.iloc[0]["weight"] == 1.0
+
+
+def test_loader_rejects_duplicate_source_target_pairs(tmp_path) -> None:
+    path = tmp_path / "crosswalk.csv"
+    path.write_text(
+        "source_geography_id,target_geography_id,weight\n"
+        "5001700US3000,5001900US3001,0.5\n"
+        "5001700US3000,5001900US3001,0.5\n"
+    )
+    with pytest.raises(ValueError, match="duplicate source/target"):
+        load_congressional_district_vintage_crosswalk(path)
+
+
+def test_loader_rejects_weight_inconsistent_with_pair_population(tmp_path) -> None:
+    path = tmp_path / "crosswalk.csv"
+    path.write_text(
+        "source_geography_id,target_geography_id,pair_population,weight\n"
+        "5001700US3000,5001900US3001,600,0.5\n"
+        "5001700US3000,5001900US3002,400,0.5\n"
+    )
+    with pytest.raises(ValueError, match="inconsistent with"):
+        load_congressional_district_vintage_crosswalk(path)
+
+
+def test_packaged_validator_requires_population_provenance_and_full_coverage() -> None:
+    import pandas as pd
+
+    without_population = pd.DataFrame(
+        {
+            "source_geography_id": ["5001700US3000"],
+            "target_geography_id": ["5001900US3001"],
+            "weight": [1.0],
+            "share": [1.0],
+        }
+    )
+    with pytest.raises(ValueError, match="pair_population"):
+        validate_packaged_congressional_district_vintage_crosswalk(without_population)
+    undersized = without_population.assign(pair_population=[600.0])
+    with pytest.raises(ValueError, match="exactly 436 source districts"):
+        validate_packaged_congressional_district_vintage_crosswalk(undersized)

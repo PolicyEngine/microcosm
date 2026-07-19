@@ -10,6 +10,18 @@ IRS SOI congressional-district table Populace calibrates against) to the
 old-vintage SOI CD facts onto the current district set, per
 [PolicyEngine/populace#205](https://github.com/PolicyEngine/populace/issues/205).
 
+Columns:
+
+- `source_geography_id` — 117th-Congress district (`5001700US` + state FIPS +
+  district, at-large/delegate `00`).
+- `target_geography_id` — 119th-Congress district (`5001900US` prefix, same
+  geoid convention).
+- `pair_population` — the 2020 P.L. 94-171 population of the blocks shared by
+  the pair; per-state sums conserve the 2020 state totals exactly.
+- `weight` — `pair_population` divided by the source district's total assigned
+  population: the normalized share, **summing to 1.0 per source district in
+  the raw file** (loader-enforced to 1e-9 for the packaged artifact).
+
 The translated CD targets are **derived build artifacts, never Ledger facts** —
 the fact-vs-computed boundary of
 [PolicyEngine/ledger#71](https://github.com/PolicyEngine/ledger/issues/71). The
@@ -81,7 +93,8 @@ with `block_ladder_sources`), so DC is `…US1100` on both sides.
   districts; the growing-state districts (CO-08, FL-28, MT-02, NC-14, OR-06,
   TX-37, TX-38) appear as populated **targets**.
 
-Because the weights are block populations that sum to each old district's total,
-the translation redistributes old-vintage totals across current districts and
+Because each `weight` is its pair's share of the old district's population
+(`pair_population` over the source total, so weights sum to 1 per source), the
+translation redistributes old-vintage totals across current districts and
 **conserves state and national totals exactly** before any period uprating — the
 #205 acceptance property.

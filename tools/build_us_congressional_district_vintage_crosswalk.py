@@ -212,7 +212,12 @@ def main(argv: list[str] | None = None) -> None:
     with args.out.open("w", newline="") as stream:
         writer = csv.DictWriter(
             stream,
-            fieldnames=["source_geography_id", "target_geography_id", "weight"],
+            fieldnames=[
+                "source_geography_id",
+                "target_geography_id",
+                "pair_population",
+                "weight",
+            ],
             lineterminator="\n",  # Unix newlines; RFC 4180 CRLF trips git checks.
         )
         writer.writeheader()

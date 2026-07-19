@@ -171,9 +171,12 @@ def build_cd_vintage_crosswalk_rows(
     """Join old + current CD block assignments by 2020 block population.
 
     Returns ``(rows, diagnostics)`` where each row is
-    ``{"source_geography_id", "target_geography_id", "weight"}`` with ``weight``
-    the summed 2020 population of the blocks shared by that (old, current)
-    district pair, and ``diagnostics`` reports per-state population conservation.
+    ``{"source_geography_id", "target_geography_id", "pair_population",
+    "weight"}``: ``pair_population`` is the summed 2020 population of the
+    blocks shared by that (old, current) district pair, ``weight`` is that
+    mass normalized by the old district's total assigned population — so
+    weights sum to 1.0 per source district — and ``diagnostics`` reports
+    per-state population conservation.
 
     A block contributes only when it has an old district, a current district,
     and a positive population. Blocks the assignments do not cover (or that fall
@@ -210,13 +213,17 @@ def build_cd_vintage_crosswalk_rows(
         pair_population[key] = pair_population.get(key, 0) + population
         state_assigned[state_fips] = state_assigned.get(state_fips, 0) + population
 
+    source_totals: dict[str, int] = {}
+    for (source_geoid, _), population in pair_population.items():
+        source_totals[source_geoid] = source_totals.get(source_geoid, 0) + population
     rows = [
         {
             "source_geography_id": f"{source_prefix}{source_geoid}",
             "target_geography_id": f"{target_prefix}{target_geoid}",
-            "weight": weight,
+            "pair_population": population,
+            "weight": population / source_totals[source_geoid],
         }
-        for (source_geoid, target_geoid), weight in sorted(pair_population.items())
+        for (source_geoid, target_geoid), population in sorted(pair_population.items())
     ]
 
     state_conservation = {

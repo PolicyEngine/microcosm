@@ -1,6 +1,6 @@
 {
   "block_vintage": "2020_tabulation_blocks",
-  "crosswalk_sha256": "383a666631aafd4f584816935ae340960fb3fc127929dccf61d223790a82140b",
+  "crosswalk_sha256": "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec",
   "diagnostics": {
     "basis": "block_population",
     "cross_state_population": 0,
