@@ -2908,6 +2908,38 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income() -> N
     assert "count" not in spec.metadata
 
 
+def test_soi_form_w2_social_security_tips_amount_targets_tip_income() -> None:
+    # populace#451 item 3: the W-2 Box 7 dollar aggregate binds as a sum-mode
+    # tip_income target (the generic "amount" measure id routes through the
+    # form_w2_item layout override, not the measure-id maps).
+    source_record_id = (
+        "irs_soi.ty2024.form_w2_social_security_tips.box_7_social_security_tips.amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="irs_soi",
+                measure_id="amount",
+                value=26_786_522_000,
+                period_value=2024,
+                layout_record_set_id="irs_soi.ty2024.form_w2_social_security_tips",
+                groupby_dimension="irs_soi.form_w2_item",
+                groupby_value_id="box_7_social_security_tips",
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "irs_soi"
+    assert spec.metadata["variable"] == "tip_income"
+    assert spec.metadata["base_variable"] == "tip_income"
+    assert spec.metadata["measure_mode"] == "sum"
+
+
 def test_soi_itemized_deduction_targets_require_itemizing() -> None:
     medical_source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns"
