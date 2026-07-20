@@ -563,9 +563,12 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "richer state/tail support before it can be calibrated."
     ),
     "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
-        "Current US support does not yet materialize a positive tip_income source "
-        "column; W-2 Social Security tip return counts need the SIPP/ORG tip "
-        "source stage wired into the fiscal refresh before calibration."
+        "The SIPP tip stage now materializes tip_income (549 carriers, $9.9B "
+        "weighted on certified Build M), but that support is under 1% of the "
+        "6.04M-return W-2 Box 7 class, so binding the return-count target "
+        "would demand ~600x weight concentration on those carriers. The "
+        "dollar-amount target binds first; the count target waits for tip "
+        "support widening (PolicyEngine/populace#451 item 3)."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -2108,11 +2111,14 @@ def _soi_reference_from_fact(
     if variable is None:
         variable = SOI_RETURN_MEASURE_VARIABLES.get(measure_id)
         is_count = variable is not None
-    if variable is None:
-        return None
+    # The layout override must run before the unmapped early-return: W-2 item
+    # facts carry the generic "amount" measure id, which no measure-id map can
+    # route, and are identified by their layout alone (populace#451 item 3).
     override = _soi_layout_variable_override(fact, measure_id=measure_id)
     if override is not None:
         variable, is_count = override
+    if variable is None:
+        return None
 
     lower, upper = _agi_bounds(fact)
     cross_period_agi_slice = _is_untransformed_cross_period_agi_slice(
@@ -2228,6 +2234,12 @@ def _soi_layout_variable_override(
         and groupby_value in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
     ):
         return "tip_income", True
+    if (
+        measure_id == "amount"
+        and groupby_dimension == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+        and groupby_value in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
+    ):
+        return "tip_income", False
     return None
 
 

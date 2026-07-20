@@ -279,6 +279,58 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/populace#38",
     },
     {
+        "id": "tip_income_neutralization",
+        "name": "Tip income neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "tip_income",
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["tip_income"],
+        "min_abs_effect": 100_000_000.0,
+        "reason": (
+            "PolicyEngine-US treats W-2 wages as already containing tips; "
+            "tip_income is the attribution column whose only federal tax "
+            "channel is the OBBBA qualified-tips deduction (2025-2028), so "
+            "the probe runs at 2026 law and the sign is negative: "
+            "neutralizing the column removes the deduction and raises "
+            "reform-side tax. Measured on certified Build M (549 carriers, "
+            "$9.886 billion weighted): baseline-minus-reform -$413.4 "
+            "million. External class: IRS SOI W-2 Table 4.B Box 7 $26.79 "
+            "billion (TY2020); Treasury TY2025 filing-season claims over 6 "
+            "million filers averaging over $7,100. A structural zero means "
+            "the tip attribution column was dropped or the deduction "
+            "channel broke."
+        ),
+        "issue": "PolicyEngine/populace#451",
+    },
+    {
+        "id": "fsla_overtime_premium_neutralization",
+        "name": "FLSA overtime premium neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "fsla_overtime_premium",
+        "budget_measure": "income_tax",
+        "period": 2026,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "negative",
+        "binding_inputs": ["fsla_overtime_premium"],
+        "min_abs_effect": 4_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US treats W-2 wages as already containing "
+            "overtime; fsla_overtime_premium is the attribution column "
+            "whose only federal tax channel is the OBBBA qualified-overtime "
+            "deduction (2025-2028), so the probe runs at 2026 law with a "
+            "negative expected sign. Measured on certified Build M (8,748 "
+            "carriers, $114.25 billion weighted): baseline-minus-reform "
+            "-$16.88 billion. External floor: Treasury TY2025 filing-season "
+            "claims over 25 million filers averaging over $3,100 (~$78 "
+            "billion qualified overtime). A structural zero means the "
+            "attribution column was dropped or the deduction channel broke."
+        ),
+        "issue": "PolicyEngine/populace#451",
+    },
+    {
         "id": "household_head_childcare_cap_neutralization",
         "name": "Household-head childcare earned-cap neutralization",
         "parameter_changes": {},
