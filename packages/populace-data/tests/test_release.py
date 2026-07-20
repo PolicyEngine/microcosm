@@ -42,7 +42,7 @@ DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
 CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 17
+TARGET_COUNT = 18
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -153,6 +153,19 @@ def _calibration_diagnostics() -> dict:
             ),
             *additional_critical_credit_rows(),
             *deduction_critical_target_rows(),
+            # The SOI Table 1.4 national dollar blanket (populace#462) needs
+            # at least one Table 1.4 dollar row on the surface, within its
+            # 25% blocking tolerance (the live Build M wages row).
+            _target_row(
+                "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
+                target_name="irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+                target=10_773_360_188_645.0,
+                initial_estimate=10_500_000_000_000.0,
+                final_estimate=10_774_383_029_502.0,
+                relative_error=(10_774_383_029_502.0 - 10_773_360_188_645.0)
+                / 10_773_360_188_645.0,
+                family="irs_soi",
+            ),
         ],
     }
 
@@ -320,7 +333,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 15,
+                "target_count": 16,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },

@@ -30,7 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 17
+TARGET_COUNT = 18
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -237,6 +237,19 @@ def _calibration_diagnostics() -> dict:
             ),
             *additional_critical_credit_rows(),
             *deduction_critical_target_rows(),
+            # The SOI Table 1.4 national dollar blanket (populace#462) needs
+            # at least one Table 1.4 dollar row on the surface, within its
+            # 25% blocking tolerance (the live Build M wages row).
+            _target_row(
+                "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
+                target_name="irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+                target=10_773_360_188_645.0,
+                initial_estimate=10_500_000_000_000.0,
+                final_estimate=10_774_383_029_502.0,
+                relative_error=(10_774_383_029_502.0 - 10_773_360_188_645.0)
+                / 10_773_360_188_645.0,
+                family="irs_soi",
+            ),
         ],
     }
 
@@ -404,7 +417,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 15,
+                "target_count": 16,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },
@@ -594,8 +607,7 @@ def test_us_release_ignores_congressional_district_layout_critical_fit(
     salt_target = next(
         row
         for row in diagnostics["targets"]
-        if row["name"]
-        == "irs_soi.ty2022.historic_table_2.us.all."
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all."
         "limited_state_local_taxes_amount@2024"
     )
     cd_layout_target = dict(salt_target)
@@ -1416,3 +1428,108 @@ def test_all_failures_reported_at_once(release_dir: Path) -> None:
 def test_a_missing_directory_is_a_contract_error(tmp_path: Path) -> None:
     with pytest.raises(ReleaseContractError, match="is not a directory"):
         validate_release_dir(tmp_path / "releases" / "nope")
+
+
+def test_us_release_rejects_table_1_4_national_dollar_breach(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024"
+    )
+    # Replay the live Build M defect (populace#462) onto the fixture's Table
+    # 1.4 row: the capital-gain-distributions dollar row shipped at +634.8%
+    # relative error, recorded in the release's own diagnostics.
+    target["name"] = (
+        "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024"
+    )
+    target["target_name"] = (
+        "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount"
+    )
+    target["target"] = 10_155_465_319.0
+    target["compiled_target"] = 10_155_465_319.0
+    target["initial_estimate"] = 10_155_465_319.0
+    target["final_estimate"] = 74_617_447_202.0
+    target["relative_error"] = (74_617_447_202.0 - 10_155_465_319.0) / 10_155_465_319.0
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "SOI Pub 1304 Table 1.4 national dollar rows" in failures
+    assert "capital_gain_distributions_amount" in failures
+    assert "relative_error=6.3475" in failures
+
+
+def test_us_release_requires_table_1_4_national_dollar_rows(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024"
+    )
+    # Rename the only Table 1.4 dollar row out of the class (keeping the row
+    # count intact): a diagnostics surface with no national Table 1.4 dollar
+    # row must not certify — a dropped or renamed feed family gates nothing.
+    target["name"] = "irs_soi.ty2023.table_1_9.all.wages_salaries_amount@2024"
+    target["target_name"] = "irs_soi.ty2023.table_1_9.all.wages_salaries_amount"
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "soi_table_1_4_national_dollar_rows" in failures
+
+
+def test_us_release_table_1_4_returns_rows_are_outside_the_dollar_blanket(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row for row in diagnostics["targets"] if row["name"] == "population@2024"
+    )
+    # The live Build M estate-trust net-loss RETURNS row landed at +495.9%; a
+    # count row is a distinct defect class the dollar blanket must not gate.
+    target["name"] = "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns@2024"
+    target["target_name"] = "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns"
+    target["target"] = 36_592.0
+    target["compiled_target"] = 36_592.0
+    target["initial_estimate"] = 36_592.0
+    target["final_estimate"] = 218_052.0
+    target["relative_error"] = (218_052.0 - 36_592.0) / 36_592.0
+    target["registry"] = {"family": "irs_soi"}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+    source_coverage = json.loads(
+        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
+    )
+    del source_coverage["fiscal_target_sources"]["cbo"]
+    source_coverage["fiscal_target_sources"]["irs_soi"]["target_count"] += 1
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=source_coverage,
+    )
+
+    validate_release_dir(release_dir)

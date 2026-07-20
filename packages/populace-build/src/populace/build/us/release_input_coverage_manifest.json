@@ -333,6 +333,10 @@
   "salt_refund_income": {
    "status": "required"
   },
+  "schedule_d_capital_gain_distributions": {
+   "note": "Schedule D line 13 route leg of the #282 capital-gain-distributions split (memo component of long_term_capital_gains, written by the capital_gain_distributions source stage); required with NO reviewed exclusion per PolicyEngine/populace#462 so a release whose export drops the route (the Build M live default shipped it at $0 while non_sch_d_capital_gains carried 7.3x its SOI target) fails the coverage gate. Currently absent — this is the intended red gate until the Build N rebuild carries the split through.",
+   "status": "required"
+  },
   "selected_marketplace_plan_benchmark_ratio": {
    "status": "required"
   },
@@ -519,11 +523,11 @@
   }
  },
  "counts": {
-  "required": 158,
+  "required": 159,
   "reviewed_exclusion": 8,
-  "total": 166
+  "total": 167
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, and meets_ssi_disability_criteria required by shipped validation probes. status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/populace#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/populace#368",
  "reference": {

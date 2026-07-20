@@ -971,6 +971,13 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             24_475_100.0,
             26_000_000.0,
         ),
+        # The SOI Table 1.4 national dollar blanket (populace#462) needs at
+        # least one Table 1.4 amount row on the surface, within tolerance.
+        diagnostic(
+            "irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+            10_773_360_188_645.0,
+            10_774_383_029_502.0,
+        ),
     )
 
 
@@ -7357,3 +7364,199 @@ def test_ssi_swap_delta_dense_cap_ratio_admits_measured_dense_equilibrium() -> N
         )["within_bound"]
         is False
     )
+
+
+def _table_1_4_diagnostic(builder, name: str, target: float, final: float):
+    return SimpleNamespace(
+        name=f"{name}@{builder.PERIOD}",
+        target=target,
+        initial_estimate=target,
+        final_estimate=final,
+        relative_error=(final - target) / target,
+    )
+
+
+def test_release_gate_failures_block_table_1_4_dollar_breaches() -> None:
+    builder = _load_builder_module()
+    breached = (
+        # The live Build M defect pair (populace#462): +634.8% on the
+        # capital-gain-distributions dollar row, -25.6% on net capital gains.
+        _table_1_4_diagnostic(
+            builder,
+            "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+            10_155_465_319.0,
+            74_617_447_202.0,
+        ),
+        _table_1_4_diagnostic(
+            builder,
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            1_270_864_366_489.0,
+            945_431_772_792.0,
+        ),
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + breached,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert len(failures) == 2
+    assert all(
+        failure.startswith("SOI Table 1.4 national dollar fit failed: ")
+        for failure in failures
+    )
+    joined = "\n".join(failures)
+    assert "capital_gain_distributions_amount@2024" in joined
+    assert "net_capital_gains_amount@2024" in joined
+    assert "6.3475" in joined
+
+
+def test_release_gate_failures_ignore_table_1_4_returns_rows() -> None:
+    builder = _load_builder_module()
+    # A wildly-missed returns (count) row is outside the dollar blanket: the
+    # live Build M estate_trust_net_loss_returns row landed at +495.9% and is
+    # a distinct defect class, not this gate's scope.
+    returns_row = _table_1_4_diagnostic(
+        builder,
+        "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns",
+        36_592.0,
+        218_052.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (returns_row,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
+
+
+def test_release_gate_failures_require_a_table_1_4_dollar_surface() -> None:
+    builder = _load_builder_module()
+    without_table_1_4 = tuple(
+        diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+        if ".table_1_4." not in diagnostic.name
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=without_table_1_4,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert any("soi_table_1_4_national_dollar_rows" in failure for failure in failures)
+
+
+def test_qrf_imputed_source_outputs_come_from_the_stage_manifest() -> None:
+    builder = _load_builder_module()
+
+    outputs = builder._qrf_imputed_source_outputs()
+
+    assert "non_sch_d_capital_gains" in outputs
+    assert "taxable_interest_income" in outputs
+    assert len(outputs) >= 60
+    # The capital_gain_distributions stage is a share split, not a QRF fit.
+    assert "schedule_d_capital_gain_distributions" not in outputs
+
+
+def _qrf_export_frame(builder, non_sch_d_values: np.ndarray) -> Frame:
+    n = int(non_sch_d_values.size)
+    ids = np.arange(1, n + 1, dtype="int64")
+    taxable_interest = np.zeros(n)
+    taxable_interest[: n // 2] = 1_000.0
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "non_sch_d_capital_gains": non_sch_d_values,
+            "taxable_interest_income": taxable_interest,
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.ones(n),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def test_qrf_tail_concentration_gate_flags_the_build_m_point_mass() -> None:
+    builder = _load_builder_module()
+    # 500 carriers of 12,000 person records (4.2% — sparse); the top 100 carry
+    # the repeated $594,484 donor ceiling, ~98% of the weighted mass.
+    values = np.zeros(12_000)
+    values[:100] = 594_484.0
+    values[100:500] = 2_979.0
+
+    gate, surface = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, values)
+    )
+
+    assert not gate.passed
+    assert any("non_sch_d_capital_gains" in line for line in gate.failures)
+    assert surface["checked_sparse_columns"] == ["non_sch_d_capital_gains"]
+    assert "taxable_interest_income" in surface["dense_columns"]
+    assert "short_term_capital_gains" in surface["absent_columns"]
+
+
+def test_qrf_tail_concentration_gate_passes_dispersed_sparse_mass() -> None:
+    builder = _load_builder_module()
+    values = np.zeros(12_000)
+    values[:500] = 2_979.0
+
+    gate, _ = builder._qrf_tail_concentration_gate(_qrf_export_frame(builder, values))
+
+    assert gate.passed
+
+
+def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    assert not builder._parse_args().allow_qrf_tail_concentration
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--allow-qrf-tail-concentration",
+        ],
+    )
+    assert builder._parse_args().allow_qrf_tail_concentration

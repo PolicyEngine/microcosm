@@ -106,6 +106,7 @@ from populace.build.us_runtime.workers_compensation import (
 )
 
 __all__ = [
+    "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
@@ -124,8 +125,9 @@ US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
 
 # The frozen reference artifact predates the retired pipeline's export of the
 # pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
-# vehicle interest leaf, and the final pipeline's five desired retirement-
-# contribution inputs, and its final SIPP-imputed SSI disability criterion.
+# vehicle interest leaf, the final pipeline's five desired retirement-
+# contribution inputs, its final SIPP-imputed SSI disability criterion, and
+# the #282 capital-gain-distributions route split's Schedule-D leg.
 # These are hard requirements because their shipped validation rows otherwise
 # become structural zeroes.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
@@ -137,6 +139,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "traditional_ira_contributions_desired",
         "roth_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
+        "schedule_d_capital_gain_distributions",
         *US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
     }
 )
@@ -195,6 +198,23 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
+)
+
+#: The two legs of the #282 capital-gain-distributions route split
+#: (populace#462 / #361 remedy): the direct route reported on Form 1040 line 7
+#: without Schedule D (``non_sch_d_capital_gains``, PUF E01100, the SOI Pub
+#: 1304 Table 1.4 "capital gain distributions" concept) and the Schedule D
+#: line 13 route (``schedule_d_capital_gain_distributions``, a memo component
+#: of ``long_term_capital_gains`` written by the ``capital_gain_distributions``
+#: source stage). The Build M live default shipped the direct leg 7.3x over
+#: its SOI dollar target while the Schedule-D leg was absent from the export
+#: entirely. Both ship as hard requirements with NO reviewed exclusion, so a
+#: release whose export drops either route leg fails the coverage gate — red
+#: on today's artifacts by design until the Build N rebuild carries the split
+#: through.
+US_CGD_ROUTE_REQUIRED_INPUTS = (
+    "non_sch_d_capital_gains",
+    "schedule_d_capital_gain_distributions",
 )
 
 
@@ -654,6 +674,20 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{asset}: SSI countable-resource asset input must be a "
                 "required manifest column (#368)."
+            )
+
+    for route_leg in US_CGD_ROUTE_REQUIRED_INPUTS:
+        if route_leg in reviewed:
+            failures.append(
+                f"{route_leg}: capital-gain-distributions route leg is a "
+                "reviewed exclusion, but #462 requires both #282 route legs "
+                "be hard requirements with no exclusion so a release that "
+                "drops either route from the export fails the coverage gate."
+            )
+        elif route_leg not in required:
+            failures.append(
+                f"{route_leg}: capital-gain-distributions route leg must be a "
+                "required manifest column (#462)."
             )
 
     for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:

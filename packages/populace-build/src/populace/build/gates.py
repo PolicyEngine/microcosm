@@ -67,8 +67,11 @@ __all__ = [
     "per_family_fit_gate",
     "source_coverage_gate",
     "source_stage_input_coverage_gate",
+    "tail_concentration_gate",
+    "target_fit_gate",
     "target_profile_coverage_gate",
     "TargetCoverageRequirement",
+    "TargetFitRequirement",
     "relative_error_loss",
     "target_surface_gate",
     "weights_audit_gate",
@@ -2016,5 +2019,443 @@ def weights_audit_gate(
             "unweighted_fits": unweighted_fits,
             "allowed_unweighted": dict(sorted(allowed_used.items())),
             "unused_allowed_unweighted": unused_allowed,
+        },
+    )
+
+
+@dataclass(frozen=True)
+class TargetFitRequirement:
+    """One within-tolerance-blocking requirement over calibrated target rows.
+
+    The exact-name critical-target registers (the release tool's
+    ``US_CRITICAL_TARGET_FIT_REQUIREMENTS``, the release contract's
+    ``_US_CRITICAL_TARGET_FIT_REQUIREMENTS``) can only block rows someone
+    enumerated in advance. populace#462 is what slips through: the live Build M
+    release shipped ``irs_soi.ty2023.table_1_4.all.capital_gain_distributions_
+    amount@2024`` at +634.8% relative error — recorded in its own diagnostics —
+    because no register named that row. A fit requirement names a row *class*
+    (e.g. every national SOI Pub 1304 Table 1.4 dollar row) so new rows in the
+    class are blocking the day the feed adds them.
+
+    Selector semantics differ deliberately from
+    :class:`TargetCoverageRequirement`: selectors here are **conjunctive across
+    fields** and disjunctive within a field. A row matches when, for every
+    non-empty selector field, it satisfies at least one entry of that field.
+    Coverage requirements ask "is at least one of these concepts present?"
+    (any-of); fit requirements ask "does every row shaped like this fit?" —
+    which needs name-shape ANDs (prefix ``irs_soi.`` AND substring
+    ``.table_1_4.`` AND suffix ``_amount@2024``).
+
+    Attributes:
+        requirement_id: Stable id for the requirement (manifest key).
+        label: Human-readable class label used in failure lines.
+        max_abs_relative_error: The blocking tolerance: every matched row's
+            ``|relative_error|`` must be at or below this. Must be finite and
+            positive.
+        accepted_names: Exact row names that match.
+        accepted_name_prefixes: Row-name prefixes (``str.startswith``).
+        accepted_name_substrings: Row-name substrings (case-sensitive).
+        accepted_name_suffixes: Row-name suffixes (``str.endswith``).
+        min_matches: Minimum rows the surface must contain for the requirement
+            (default 1). A pattern that matches nothing is vacuous — a renamed
+            table or a dropped feed family must fail loudly, not gate nothing.
+        notes: Free-text rationale recorded alongside the requirement.
+    """
+
+    requirement_id: str
+    label: str
+    max_abs_relative_error: float
+    accepted_names: tuple[str, ...] = ()
+    accepted_name_prefixes: tuple[str, ...] = ()
+    accepted_name_substrings: tuple[str, ...] = ()
+    accepted_name_suffixes: tuple[str, ...] = ()
+    min_matches: int = 1
+    notes: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.requirement_id:
+            raise ValueError("TargetFitRequirement.requirement_id is required.")
+        if not self.label:
+            raise ValueError(
+                f"TargetFitRequirement {self.requirement_id!r}: label is required."
+            )
+        max_abs = float(self.max_abs_relative_error)
+        if not np.isfinite(max_abs) or max_abs <= 0.0:
+            raise ValueError(
+                f"TargetFitRequirement {self.requirement_id!r}: "
+                "max_abs_relative_error must be finite and positive, got "
+                f"{self.max_abs_relative_error!r}."
+            )
+        if self.min_matches < 1:
+            raise ValueError(
+                f"TargetFitRequirement {self.requirement_id!r}: "
+                "min_matches must be at least 1."
+            )
+        if not (
+            self.accepted_names
+            or self.accepted_name_prefixes
+            or self.accepted_name_substrings
+            or self.accepted_name_suffixes
+        ):
+            raise ValueError(
+                f"TargetFitRequirement {self.requirement_id!r}: at least one "
+                "accepted selector is required."
+            )
+
+
+def _matches_target_fit_requirement(
+    name: str, requirement: TargetFitRequirement
+) -> bool:
+    if requirement.accepted_names and name not in requirement.accepted_names:
+        return False
+    if requirement.accepted_name_prefixes and not any(
+        name.startswith(prefix) for prefix in requirement.accepted_name_prefixes
+    ):
+        return False
+    if requirement.accepted_name_substrings and not any(
+        substring in name for substring in requirement.accepted_name_substrings
+    ):
+        return False
+    if requirement.accepted_name_suffixes and not any(
+        name.endswith(suffix) for suffix in requirement.accepted_name_suffixes
+    ):
+        return False
+    return True
+
+
+def _finite_number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    value = float(value)
+    if not np.isfinite(value):
+        return None
+    return value
+
+
+def target_fit_gate(
+    target_rows: Iterable[object],
+    requirements: Iterable[TargetFitRequirement],
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+    name: str = "target_fit",
+) -> GateResult:
+    """Every target row in a named class fits within its blocking tolerance.
+
+    The populace#462 catcher, generalized: the Build M live release recorded a
+    +634.8% relative error on a national SOI Pub 1304 Table 1.4 dollar target
+    (and −25.6% on the table's net-capital-gains line) inside its own
+    ``calibration_diagnostics.json`` and still certified, because dollar-target
+    tolerance blocking existed only for individually enumerated rows. This gate
+    takes the calibration's own per-target rows and a set of
+    :class:`TargetFitRequirement` row classes, recomputes each matched row's
+    relative error from ``target`` and ``final_estimate`` (never trusting a
+    recorded ``relative_error`` it can't reproduce), and fails the release when
+    any matched row's ``|relative_error|`` exceeds its class tolerance.
+
+    Args:
+        target_rows: Per-target diagnostics rows. Each row may be a mapping or
+            an attribute object (both the calibrate ``TargetDiagnostic`` shape
+            and the published ``calibration_diagnostics.json`` row shape work)
+            carrying ``name``, ``target``, and ``final_estimate``, plus an
+            optional recorded ``relative_error`` that is cross-checked for
+            staleness when present.
+        requirements: The row classes to block on.
+        reviewed_exclusions: Row name -> REASON for rows allowed to breach
+            their class tolerance (an adjudicated, tracked defect). An entry
+            for a row that no requirement matches, or for a row now within
+            tolerance everywhere it matches, is rot and fails the gate.
+        name: Gate name for the manifest (defaults to ``"target_fit"``).
+
+    Returns:
+        Pass iff every requirement matches at least ``min_matches`` rows and
+        every matched, non-excluded row is within its class tolerance, with no
+        stale or dangling exclusions.
+
+    Raises:
+        ValueError: If a reviewed exclusion has an empty reason.
+        TypeError: If ``reviewed_exclusions`` is not a mapping.
+    """
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+    requirements = tuple(requirements)
+
+    rows: dict[str, object] = {}
+    failures: list[str] = []
+    n_rows = 0
+    for row in target_rows:
+        n_rows += 1
+        row_name = str(_coverage_field(row, "name", "") or "")
+        if not row_name:
+            continue
+        if row_name in rows:
+            failures.append(
+                f"{row_name}: duplicate target row in the fit surface; "
+                "two rows under one name would let one mask the other's fit."
+            )
+            continue
+        rows[row_name] = row
+
+    matches_by_requirement: dict[str, list[str]] = {}
+    matched_names: set[str] = set()
+    for requirement in requirements:
+        matches = sorted(
+            row_name
+            for row_name in rows
+            if _matches_target_fit_requirement(row_name, requirement)
+        )
+        matches_by_requirement[requirement.requirement_id] = matches
+        matched_names.update(matches)
+        if len(matches) < requirement.min_matches:
+            failures.append(
+                f"{requirement.requirement_id}: target surface has "
+                f"{len(matches)} match(es), needs {requirement.min_matches} "
+                f"for {requirement.label} — a fit requirement that matches "
+                "nothing gates nothing."
+            )
+
+    # Row-level auditability, computed once per matched row: the relative
+    # error is recomputed from target and final_estimate (the same convention
+    # both critical-target registers use: a zero target compares the absolute
+    # difference), and a recorded relative_error that disagrees is stale.
+    relative_errors: dict[str, float] = {}
+    for row_name in sorted(matched_names):
+        row = rows[row_name]
+        target_value = _finite_number(_coverage_field(row, "target", None))
+        final_estimate = _finite_number(_coverage_field(row, "final_estimate", None))
+        if target_value is None or final_estimate is None:
+            raw_target = _coverage_field(row, "target", None)
+            raw_final = _coverage_field(row, "final_estimate", None)
+            kind = (
+                "non-finite"
+                if isinstance(raw_target, int | float)
+                and isinstance(raw_final, int | float)
+                and not isinstance(raw_target, bool)
+                and not isinstance(raw_final, bool)
+                else "non-numeric"
+            )
+            failures.append(
+                f"{row_name}: {kind} target/final_estimate "
+                f"(target={raw_target!r}, final_estimate={raw_final!r}); "
+                "an unauditable row cannot certify."
+            )
+            continue
+        if target_value == 0.0:
+            computed = final_estimate - target_value
+        else:
+            computed = (final_estimate - target_value) / target_value
+        relative_errors[row_name] = float(computed)
+        recorded = _coverage_field(row, "relative_error", None)
+        if recorded is not None:
+            recorded_number = _finite_number(recorded)
+            if recorded_number is None:
+                failures.append(
+                    f"{row_name}: non-numeric recorded relative_error {recorded!r}."
+                )
+            elif not np.isclose(recorded_number, computed, rtol=1e-9, atol=1e-9):
+                failures.append(
+                    f"{row_name}: stale relative_error {recorded_number!r}; "
+                    f"computed {computed:.6g} from target and final_estimate."
+                )
+
+    breached_exclusions: dict[str, str] = {}
+    for requirement in requirements:
+        max_abs = float(requirement.max_abs_relative_error)
+        for row_name in matches_by_requirement[requirement.requirement_id]:
+            if row_name not in relative_errors:
+                continue
+            error = relative_errors[row_name]
+            if abs(error) <= max_abs:
+                continue
+            if row_name in exclusions:
+                breached_exclusions[row_name] = exclusions[row_name]
+                continue
+            row = rows[row_name]
+            failures.append(
+                f"{row_name}: relative_error={error:.6g} exceeds "
+                f"{max_abs:.6g} for {requirement.label} "
+                f"({requirement.requirement_id}); "
+                f"target={_coverage_field(row, 'target', None)!r}, "
+                f"final_estimate={_coverage_field(row, 'final_estimate', None)!r}."
+            )
+
+    unmatched_exclusions = sorted(set(exclusions) - matched_names)
+    if unmatched_exclusions:
+        failures.append(
+            f"Reviewed exclusions not matched by any fit requirement: "
+            f"{unmatched_exclusions}."
+        )
+    stale_exclusions = sorted(
+        row_name
+        for row_name in exclusions
+        if row_name in matched_names and row_name not in breached_exclusions
+    )
+    if stale_exclusions:
+        failures.append(
+            f"Stale reviewed exclusions — the row fits its tolerance now, "
+            f"remove the exclusion: {stale_exclusions}."
+        )
+
+    worst = sorted(
+        relative_errors,
+        key=lambda row_name: abs(relative_errors[row_name]),
+        reverse=True,
+    )
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "rows_checked": n_rows,
+            "requirements_checked": len(requirements),
+            "matches_by_requirement": matches_by_requirement,
+            "relative_errors": relative_errors,
+            "worst_offenders": worst[:10],
+            "reviewed_exclusions": breached_exclusions,
+            "stale_exclusions": stale_exclusions,
+            "unmatched_exclusions": unmatched_exclusions,
+        },
+    )
+
+
+def tail_concentration_gate(
+    column_values: Mapping[str, Iterable[float]],
+    column_weights: Mapping[str, Iterable[float]],
+    *,
+    top_k: int = 100,
+    max_top_share: float = 0.75,
+    min_nonzero_records: int = 500,
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """No sparse imputed dollar column hides its mass in a handful of records.
+
+    The populace#462 signature: the Build M ``puf_tax_detail`` weighted-QRF
+    stage broadcast a donor-tail point mass (a repeated $594,484 ceiling
+    value) onto ``non_sch_d_capital_gains``, so 100 of the 2,295 weighted
+    carrier records carried 89% of the shipped $74.6B — 7.3x the SOI dollar
+    target — while the paired returns-count target was hit exactly. Support
+    clipping cannot catch this (every draw is inside the donor's realized
+    range) and count targets cannot either (the number of carriers is
+    correct); the tell is weighted-mass concentration. This gate computes, for
+    each column, the share of total weighted absolute mass (``|value| *
+    weight``) carried by the ``top_k`` records and fails when that share
+    exceeds ``max_top_share``.
+
+    Calibrated to the incident: with the defaults, the Build M column fails at
+    89% >> 75%, while every plausibly heavy-tailed sparse dollar column keeps
+    top-100-of-500+ carriers well below the threshold; a genuinely
+    concentrated column belongs behind a reviewed exclusion, not a silent
+    pass.
+
+    Args:
+        column_values: Column -> per-record values (a sparse QRF-imputed
+            dollar variable's export column). Signed columns are checked on
+            absolute mass.
+        column_weights: Column -> per-record weights, aligned with the
+            column's values. Every checked column must have weights — an
+            unweighted concentration check would miss weight-driven mass.
+        top_k: How many top weighted records form the tail (default 100, the
+            #462 measurement).
+        max_top_share: Blocking share threshold in (0, 1) (default 0.75).
+        min_nonzero_records: Columns with fewer weighted carriers (records
+            with non-zero mass) are reported as thin and not checked — with
+            ``top_k`` a material fraction of the carriers, a high share is
+            arithmetic, not evidence. Must exceed ``top_k``.
+        reviewed_exclusions: Column -> REASON for columns allowed to stay
+            concentrated (a documented, tracked defect or a genuinely
+            concentrated instrument). A column now below the threshold is a
+            stale entry and fails; an entry for a column absent from this
+            surface is dormant and only reported.
+
+    Returns:
+        Pass iff every checked, non-excluded column's top-``top_k`` weighted
+        mass share is at or below ``max_top_share`` and no exclusion is stale.
+
+    Raises:
+        ValueError: On invalid thresholds, a checked column with no or
+            misaligned weights, or an exclusion without a reason.
+        TypeError: If ``reviewed_exclusions`` is not a mapping.
+    """
+    if top_k < 1:
+        raise ValueError(f"top_k must be at least 1, got {top_k!r}.")
+    if not (0.0 < max_top_share < 1.0):
+        raise ValueError(f"max_top_share must be in (0, 1), got {max_top_share!r}.")
+    if min_nonzero_records <= top_k:
+        raise ValueError(
+            "min_nonzero_records must exceed top_k so the tail is a strict "
+            f"subset of the carriers, got min_nonzero_records="
+            f"{min_nonzero_records!r} with top_k={top_k!r}."
+        )
+    exclusions = _reviewed_exclusion_reasons(reviewed_exclusions)
+
+    failures: list[str] = []
+    top_share: dict[str, float] = {}
+    carrier_counts: dict[str, int] = {}
+    thin_columns: dict[str, int] = {}
+    used_exclusions: dict[str, str] = {}
+    stale_exclusions: list[str] = []
+
+    for column in sorted(column_values):
+        if column not in column_weights:
+            raise ValueError(
+                f"{column}: no weights declared for the tail-concentration "
+                "check; concentration without record weights is unauditable."
+            )
+        values = np.asarray(column_values[column], dtype=np.float64).reshape(-1)
+        weights = np.asarray(column_weights[column], dtype=np.float64).reshape(-1)
+        if values.shape[0] != weights.shape[0]:
+            raise ValueError(
+                f"{column}: values and weights must align, got "
+                f"{values.shape[0]} values vs {weights.shape[0]} weights."
+            )
+        finite = np.isfinite(values) & np.isfinite(weights)
+        mass = np.abs(values[finite]) * weights[finite]
+        mass = mass[mass > 0.0]
+        carriers = int(mass.size)
+        if carriers < min_nonzero_records:
+            thin_columns[column] = carriers
+            continue
+        total = float(mass.sum())
+        tail = float(np.partition(mass, -top_k)[-top_k:].sum())
+        share = tail / total
+        top_share[column] = float(share)
+        carrier_counts[column] = carriers
+        if column in exclusions:
+            if share > max_top_share:
+                used_exclusions[column] = exclusions[column]
+            else:
+                stale_exclusions.append(column)
+            continue
+        if share > max_top_share:
+            failures.append(
+                f"{column}: top {top_k} weighted records carry {share:.1%} of "
+                f"the weighted |mass| across {carriers} carriers (threshold "
+                f"{max_top_share:.0%}) — a donor-tail point mass broadcast by "
+                "a sparse imputation (the populace#462 "
+                "non_sch_d_capital_gains signature); fix the imputation or "
+                "record a reviewed exclusion."
+            )
+
+    if stale_exclusions:
+        failures.append(
+            f"Stale reviewed exclusions — the column is below the "
+            f"concentration threshold now, remove the exclusion: "
+            f"{sorted(stale_exclusions)}."
+        )
+    dormant_exclusions = sorted(set(exclusions) - set(column_values))
+
+    return GateResult(
+        name="tail_concentration",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "columns_checked": len(top_share),
+            "top_k": int(top_k),
+            "max_top_share": float(max_top_share),
+            "min_nonzero_records": int(min_nonzero_records),
+            "top_share": top_share,
+            "carrier_counts": carrier_counts,
+            "thin_columns": thin_columns,
+            "reviewed_exclusions": used_exclusions,
+            "stale_exclusions": sorted(stale_exclusions),
+            "dormant_exclusions": dormant_exclusions,
         },
     )

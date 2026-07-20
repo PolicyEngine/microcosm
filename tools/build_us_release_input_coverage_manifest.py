@@ -62,8 +62,9 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 
 # The pinned reference H5 predates the retired pipeline's FLSA-premium export,
 # OBBBA's distinct qualifying passenger-vehicle interest leaf, its five final
-# desired retirement-contribution inputs, and its final SIPP-imputed SSI
-# disability criterion. These later inputs are hard requirements because the
+# desired retirement-contribution inputs, its final SIPP-imputed SSI
+# disability criterion, and the #282 capital-gain-distributions route split's
+# Schedule-D leg. These later inputs are hard requirements because the
 # shipped validation provisions must bind.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "fsla_overtime_premium",
@@ -74,7 +75,24 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "roth_ira_contributions_desired",
     "self_employed_pension_contributions_desired",
     "meets_ssi_disability_criteria",
+    "schedule_d_capital_gain_distributions",
 )
+
+# Per-column annotations for post-reference hard requirements whose absence
+# from today's artifacts is the intended red gate (the #368 SSI-asset
+# pattern, extended by #462 to the capital-gain-distributions route).
+POST_REFERENCE_COLUMN_NOTES = {
+    "schedule_d_capital_gain_distributions": (
+        "Schedule D line 13 route leg of the #282 capital-gain-distributions "
+        "split (memo component of long_term_capital_gains, written by the "
+        "capital_gain_distributions source stage); required with NO reviewed "
+        "exclusion per PolicyEngine/populace#462 so a release whose export "
+        "drops the route (the Build M live default shipped it at $0 while "
+        "non_sch_d_capital_gains carried 7.3x its SOI target) fails the "
+        "coverage gate. Currently absent — this is the intended red gate "
+        "until the Build N rebuild carries the split through."
+    ),
+}
 
 QBI_INPUTS = (
     "estate_income_would_be_qualified",
@@ -1263,6 +1281,8 @@ def build_manifest() -> dict:
                     "gate fails until the asset stage is restored (Deliverable "
                     "2). Currently absent — this is the intended red gate."
                 )
+            elif name in POST_REFERENCE_COLUMN_NOTES:
+                column["note"] = POST_REFERENCE_COLUMN_NOTES[name]
             columns[name] = column
 
     required = sorted(n for n, c in columns.items() if c["status"] == "required")
@@ -1312,9 +1332,11 @@ def build_manifest() -> dict:
             "ecps_parity_reference.json populated layers, plus the documented "
             "post-reference fsla_overtime_premium, "
             "qualified_passenger_vehicle_loan_interest, five desired "
-            "retirement-contribution inputs, and "
+            "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "
-            "probes. "
+            "probes, and the #282 Schedule-D capital-gain-distributions "
+            "route leg schedule_d_capital_gain_distributions "
+            "(PolicyEngine/populace#462). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "

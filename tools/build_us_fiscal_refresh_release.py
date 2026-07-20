@@ -53,10 +53,13 @@ import pandas as pd
 
 from populace.build.gates import (
     GateResult,
+    TargetFitRequirement,
     default_valued_columns_gate,
     input_mass_parity_gate,
     nonconstant_columns_gate,
     parity_gate,
+    tail_concentration_gate,
+    target_fit_gate,
     target_profile_coverage_gate,
 )
 from populace.build.ledger_artifact import load_ledger_consumer_artifact
@@ -507,6 +510,32 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     },
 )
 
+#: Blanket within-tolerance blocking for every national SOI Pub 1304 Table 1.4
+#: dollar row (populace#462). The exact-name register above only blocks rows
+#: someone enumerated; Build M shipped the Table 1.4 capital-gain-distributions
+#: dollar row at +634.8% relative error (and net capital gains at -25.6%) with
+#: both recorded in its own calibration_diagnostics.json, because no register
+#: named them. 0.25 is the established broad-fit bound (the per-family hard
+#: threshold and the incumbent-improvement hard stop): on the live Build M
+#: surface it fails exactly the two defect rows and passes the other nine
+#: Table 1.4 dollar rows (worst passer: taxable_social_security_amount at
+#: -10.9%). Deliberately no incumbent-improvement escape — a national dollar
+#: row beyond broad fit is never certifiable.
+US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR = 0.25
+US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT = TargetFitRequirement(
+    requirement_id="soi_table_1_4_national_dollar_rows",
+    label="SOI Pub 1304 Table 1.4 national dollar rows",
+    accepted_name_prefixes=("irs_soi.",),
+    accepted_name_substrings=(".table_1_4.",),
+    accepted_name_suffixes=(f"_amount@{PERIOD}",),
+    max_abs_relative_error=US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR,
+    notes=(
+        "populace#462: the Build M live default shipped non_sch_d_capital_gains "
+        "at $74.6B against its $10.2B SOI target with no blocking tolerance on "
+        "the dollar row."
+    ),
+)
+
 DIRECT_ACTIVE_ALIASES = (
     "census-pep-2024-national-age-sex",
     "census-pep-2024-state-age-sex",
@@ -887,6 +916,18 @@ def _parse_args() -> argparse.Namespace:
             "the export drops or leaves degenerate — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
             "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--allow-qrf-tail-concentration",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (populace#462): record the QRF "
+            "tail-concentration gate result — sparse QRF-imputed dollar "
+            "columns whose top-k weighted records carry an implausible share "
+            "of the weighted mass (the non_sch_d_capital_gains donor-ceiling "
+            "point mass) — without failing the build. Release builds must "
+            "leave this unset."
         ),
     )
     parser.add_argument(
@@ -4702,6 +4743,95 @@ def _export_input_mass_gate(
     )
 
 
+#: QRF tail-concentration gate parameters (populace#462). top_k=100 and the
+#: 0.75 share threshold are calibrated to the incident: the Build M
+#: non_sch_d_capital_gains column carried 89% of its weighted mass in its top
+#: 100 records (a repeated $594,484 donor-ceiling value) across 2,295
+#: carriers. Columns are checked only when sparse (nonzero on at most 5% of
+#: their entity's records — the regime where a conditional QRF without a
+#: participation margin tail-broadcasts) and wide enough (at least 500
+#: weighted carriers) for a top-100 share to be evidence rather than
+#: arithmetic.
+US_QRF_TAIL_CONCENTRATION_TOP_K = 100
+US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE = 0.75
+US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS = 500
+US_QRF_SPARSE_NONZERO_SHARE_MAX = 0.05
+
+
+def _qrf_imputed_source_outputs() -> frozenset[str]:
+    """Variables produced by a ``fit_weighted_qrf`` source-stage operation.
+
+    Derived from the declarative stage manifest (``us/source_stages.json``)
+    rather than a hand list, so a new QRF-imputed stage output is covered by
+    the tail-concentration gate the day the manifest declares it.
+    """
+    return frozenset(
+        output
+        for stage in US_SOURCE_MANIFEST.stages
+        if any(operation.kind == "fit_weighted_qrf" for operation in stage.operations)
+        for output in stage.outputs
+    )
+
+
+def _qrf_tail_concentration_gate(
+    export_frame: Frame,
+) -> tuple[GateResult, dict[str, object]]:
+    """Tail-concentration gate over the sparse QRF-imputed export columns.
+
+    Runs :func:`populace.build.gates.tail_concentration_gate` on every
+    QRF-imputed source-stage output the export persists that is sparse
+    (nonzero share at most :data:`US_QRF_SPARSE_NONZERO_SHARE_MAX` of its
+    entity's records), at the export's calibrated weights. Returns the gate
+    result plus the surface metadata (which QRF outputs were checked, dense,
+    absent, or non-numeric) for the release artifact.
+    """
+    qrf_outputs = sorted(_qrf_imputed_source_outputs())
+    values: dict[str, np.ndarray] = {}
+    weights: dict[str, np.ndarray] = {}
+    absent: list[str] = []
+    dense: list[str] = []
+    non_numeric: list[str] = []
+    entity_weights: dict[str, np.ndarray] = {}
+    for column in qrf_outputs:
+        try:
+            entity = export_frame.column_entity(column)
+        except ValueError:
+            absent.append(column)
+            continue
+        series = export_frame.table(entity)[column]
+        if pd.api.types.is_bool_dtype(series):
+            non_numeric.append(column)
+            continue
+        column_values = pd.to_numeric(series, errors="coerce").fillna(0.0)
+        array = column_values.to_numpy(dtype=np.float64)
+        nonzero_share = float((array != 0.0).mean()) if array.size else 0.0
+        if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
+            dense.append(column)
+            continue
+        if entity not in entity_weights:
+            entity_weights[entity] = np.asarray(
+                export_frame.resolve_weights(entity).values, dtype=np.float64
+            )
+        values[column] = array
+        weights[column] = entity_weights[entity]
+    gate = tail_concentration_gate(
+        values,
+        weights,
+        top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+    )
+    surface: dict[str, object] = {
+        "qrf_imputed_outputs": len(qrf_outputs),
+        "checked_sparse_columns": sorted(values),
+        "dense_columns": dense,
+        "absent_columns": absent,
+        "non_numeric_columns": non_numeric,
+        "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
+    }
+    return gate, surface
+
+
 def _person_population(frame: Frame) -> float:
     return float(frame.resolve_weights("person").values.sum())
 
@@ -5955,6 +6085,21 @@ def _release_gate_failures(
             incumbent_diagnostics=incumbent_diagnostics,
         )
     )
+    # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is
+    # within-tolerance-blocking, by name pattern rather than enumeration, so
+    # rows the exact-name register above never listed (the +634.8%
+    # capital-gain-distributions defect) cannot certify. No incumbent-
+    # improvement escape: a national dollar row beyond broad fit never ships.
+    soi_table_1_4_gate = target_fit_gate(
+        getattr(result, "diagnostics", ()) or (),
+        (US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,),
+        name="soi_table_1_4_national_dollar_fit",
+    )
+    if not soi_table_1_4_gate.passed:
+        failures.extend(
+            f"SOI Table 1.4 national dollar fit failed: {failure}"
+            for failure in soi_table_1_4_gate.failures
+        )
     if not math.isfinite(result.initial_loss) or not math.isfinite(result.final_loss):
         failures.append("Calibration loss is non-finite.")
     elif result.final_loss > result.initial_loss:
@@ -9132,8 +9277,62 @@ def main() -> None:
                 f"Input mass parity failed: {failure}"
                 for failure in export_input_mass_gate.failures
             )
-    # Batched pre-export raise: the calibration battery, input coverage, and
-    # export-mass parity have ALL been evaluated at this point, so one failed
+    # populace#462: tail-concentration gate over the sparse QRF-imputed dollar
+    # columns at the export's calibrated weights. The Build M defect — 89% of
+    # the shipped non_sch_d_capital_gains mass in 100 records via a repeated
+    # $594,484 donor-ceiling value — is invisible to support clipping (every
+    # draw inside donor range), count targets (carrier count exact), and mass
+    # parity (column excluded from the reference band), but is unmistakable as
+    # top-k weighted-mass share.
+    try:
+        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(export_frame)
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate above.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "QRF tail concentration failed: evaluation error under earlier "
+            f"gate failures: {type(exc).__name__}: {exc}"
+        )
+        qrf_tail_gate = None
+        qrf_tail_surface = None
+    if qrf_tail_gate is not None:
+        qrf_tail_path = release_dir / "qrf_tail_concentration.json"
+        qrf_tail_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_qrf_tail_concentration,
+                    "surface": qrf_tail_surface,
+                    "tail_concentration": {
+                        "passed": qrf_tail_gate.passed,
+                        "failures": list(qrf_tail_gate.failures),
+                        "details": dict(qrf_tail_gate.details),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
+        if not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration:
+            if telemetry is not None:
+                telemetry.stage(
+                    "export_dataset",
+                    status="failed",
+                    message="QRF tail-concentration gate failed.",
+                    failures=list(qrf_tail_gate.failures),
+                    force_upload=True,
+                )
+            terminal_gate_failures.extend(
+                f"QRF tail concentration failed: {failure}"
+                for failure in qrf_tail_gate.failures
+            )
+    # Batched pre-export raise: the calibration battery, input coverage,
+    # export-mass parity, and QRF tail concentration have ALL been evaluated
+    # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9
     # and 10 each burned a ~2h run to surface one of these groups serially).
     # The reform-coverage smoke and take-up contract keep their own raises
