@@ -2,6 +2,8 @@ import json
 from hashlib import sha256
 from importlib.resources import files
 
+import pytest
+
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
 from populace.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
@@ -830,6 +832,7 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                 "observed_measure": {
                     "source_name": "cms_medicaid",
                     "source_measure_id": "total_medicaid_chip_enrollment",
+                    "unit": "people",
                 },
             },
         ],
@@ -1615,6 +1618,27 @@ def test_dynamic_us_fiscal_targets_do_not_prefer_future_observed_years() -> None
     ]
     assert spec.value == 2_100_000_000_000
     assert spec.period == 2024
+
+
+def test_sol_counterexample_dynamic_unit_gate_echoes_drifted_fact_unit() -> None:
+    # The production dynamic builders must not copy the expected unit from the
+    # very fact they gate. The latest income-tax fact here silently drifted from
+    # usd to usd_thousands with a correspondingly 1e6-smaller number; echoing the
+    # fact's own unit would let it validate against itself. The committed unit
+    # gate must reject it instead (finding #9 / Sol finding 4).
+    drifted_latest = _soi_income_tax_fact(2023, value=2_100_000_000_000)
+    drifted_latest["observed_measure"]["unit"] = "usd_thousands"
+    drifted_latest["value"] = 2_100_000
+
+    with pytest.raises(ValueError, match="does not match the declared expected_unit"):
+        compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _soi_income_tax_fact(2022, value=2_000_000_000_000),
+                drifted_latest,
+            ],
+            allow_unaged_dollar_targets=True,
+        )
 
 
 def test_dynamic_us_fiscal_targets_skip_future_only_source_periods() -> None:

@@ -59,7 +59,12 @@ from populace.build.gates import (
     parity_gate,
     target_profile_coverage_gate,
 )
-from populace.build.ledger_artifact import load_ledger_consumer_artifact
+from populace.build.ledger_artifact import (
+    LedgerConsumerArtifact,
+    load_ledger_consumer_artifact,
+    vendor_ledger_consumer_artifact,
+    verify_vendored_ledger_artifact,
+)
 from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.staging import StagingTelemetry
 from populace.build.us_runtime import (
@@ -750,16 +755,20 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--ledger-facts-sha256",
+        required=True,
         help=(
-            "Pin: expected SHA-256 of consumer_facts.jsonl. The build "
-            "refuses to start if the feed does not match."
+            "Required pin: expected SHA-256 of consumer_facts.jsonl. The build "
+            "loads the feed fail-closed (require_pins) and refuses to start if "
+            "the feed does not match."
         ),
     )
     parser.add_argument(
         "--ledger-manifest-sha256",
+        required=True,
         help=(
-            "Pin: expected SHA-256 of the Ledger consumer artifact "
-            "manifest.json. Requires an artifact directory feed."
+            "Required pin: expected SHA-256 of the Ledger consumer artifact "
+            "manifest.json. A hash-pinned artifact directory feed is required; "
+            "bare consumer-facts files are rejected."
         ),
     )
     parser.add_argument(
@@ -6552,6 +6561,7 @@ def _build_manifests(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
+    ledger_artifact_vendored: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / DATASET_FILENAME
     calibration_path = artifact_root / CALIBRATION_FILENAME
@@ -6610,6 +6620,9 @@ def _build_manifests(
         "runtime": runtime,
         "timing": timing_payload,
         "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
+        "ledger_artifact_vendored": (
+            dict(ledger_artifact_vendored) if ledger_artifact_vendored else None
+        ),
         "dataset": {
             "filename": DATASET_FILENAME,
             "sha256": dataset_sha,
@@ -6788,6 +6801,9 @@ def _build_manifests(
             },
             "timing": timing_payload,
             "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
+        "ledger_artifact_vendored": (
+            dict(ledger_artifact_vendored) if ledger_artifact_vendored else None
+        ),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             "default_dataset": default_dataset_payload,
@@ -7070,6 +7086,23 @@ def _staging_telemetry(
     )
 
 
+def _load_release_ledger_artifact(
+    args: argparse.Namespace,
+) -> LedgerConsumerArtifact:
+    """Load the pinned Ledger consumer feed for a release, fail-closed.
+
+    ``require_pins=True`` (finding #12) rejects a bare feed, demands both
+    content-hash pins, and makes a manifest-listed profile whose file is missing
+    a hard error instead of a silent skip that then vendors an incomplete feed.
+    """
+    return load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+        require_pins=True,
+    )
+
+
 def main() -> None:
     args = _parse_args()
     if _git_dirty():
@@ -7160,11 +7193,7 @@ def main() -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
-    ledger_artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-    )
+    ledger_artifact = _load_release_ledger_artifact(args)
     extra_support_exclusions = _load_zero_support_exclusions(
         args.zero_support_exclusions
     )
@@ -9375,6 +9404,15 @@ def main() -> None:
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started
+    # The exact verified feed bytes ship inside the release: a hash alone
+    # cannot reconstruct a feed whose source file later disappears.
+    vendored_ledger = vendor_ledger_consumer_artifact(
+        ledger_artifact,
+        release_dir / "ledger_artifact",
+        verified_facts_sha256=args.ledger_facts_sha256,
+        verified_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    verify_vendored_ledger_artifact(release_dir / "ledger_artifact")
     _build_manifests(
         release_id=release_id,
         release_dir=release_dir,
@@ -9399,6 +9437,7 @@ def main() -> None:
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
         ledger_artifact=ledger_artifact.provenance(),
+        ledger_artifact_vendored=vendored_ledger,
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
         staging=(
