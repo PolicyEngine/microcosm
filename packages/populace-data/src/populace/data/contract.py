@@ -222,6 +222,27 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         "target_roles": ("medical_expense_deduction_total",),
         "allow_incumbent_improvement": False,
     },
+    # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is
+    # within-tolerance-blocking by NAME PATTERN, not enumeration. The Build M
+    # live default shipped the Table 1.4 capital-gain-distributions dollar row
+    # at +634.8% relative error — recorded in its own diagnostics — because no
+    # exact-name entry above covered it. 0.25 is the established broad-fit
+    # bound (the incumbent-improvement hard stop): on the live Build M surface
+    # it fails exactly the two defect rows (capital_gain_distributions_amount
+    # +634.8%, net_capital_gains_amount -25.6%) and passes the other nine
+    # Table 1.4 dollar rows. No incumbent-improvement escape: a national
+    # dollar row beyond broad fit never certifies.
+    {
+        "requirement_id": "soi_table_1_4_national_dollar_rows",
+        "label": "SOI Pub 1304 Table 1.4 national dollar rows",
+        "max_abs_relative_error": 0.25,
+        "names": (),
+        "families": (),
+        "target_roles": (),
+        "name_substrings": (".table_1_4.",),
+        "name_suffixes": ("_amount@2024",),
+        "allow_incumbent_improvement": False,
+    },
 )
 _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 
@@ -839,6 +860,27 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 )
 
 
+def _matches_requirement_name_pattern(name: str, requirement: Mapping) -> bool:
+    """Whether a row name matches a requirement's name-shape selectors.
+
+    Pattern selectors (``name_substrings`` / ``name_suffixes``) are
+    conjunctive across fields and disjunctive within a field, so a
+    requirement can name a row *class* — every national SOI Table 1.4 dollar
+    row (substring ``.table_1_4.`` AND suffix ``_amount@2024``) — instead of
+    enumerating rows one by one (the populace#462 gap: the enumerated
+    register cannot block a row nobody listed).
+    """
+    substrings = tuple(requirement.get("name_substrings", ()))
+    suffixes = tuple(requirement.get("name_suffixes", ()))
+    if not substrings and not suffixes:
+        return False
+    if substrings and not any(substring in name for substring in substrings):
+        return False
+    if suffixes and not any(name.endswith(suffix) for suffix in suffixes):
+        return False
+    return True
+
+
 def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> None:
     targets = diagnostics.get("targets")
     if not isinstance(targets, list):
@@ -855,6 +897,9 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
             and not _is_congressional_district_layout_target(target)
             and (
                 target.get("name") in names
+                or _matches_requirement_name_pattern(
+                    str(target.get("name") or ""), requirement
+                )
                 or (
                     isinstance(target.get("metadata"), Mapping)
                     and target["metadata"].get("target_role") in target_roles

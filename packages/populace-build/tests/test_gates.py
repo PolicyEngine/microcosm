@@ -14,6 +14,7 @@ from populace.build import (
     GateReport,
     GateResult,
     TargetCoverageRequirement,
+    TargetFitRequirement,
     aggregate_admin_gate,
     default_valued_columns_gate,
     enum_domain_gate,
@@ -29,6 +30,8 @@ from populace.build import (
     source_coverage_gate,
     source_stage_input_coverage_gate,
     support_gate,
+    tail_concentration_gate,
+    target_fit_gate,
     target_profile_coverage_gate,
     target_surface_gate,
     weights_audit_gate,
@@ -1429,3 +1432,487 @@ class TestSourceStageInputCoverageGate:
         assert result.details["missing_consumers"] == {
             "qualified_tuition_expenses": ["soi_education_credits"]
         }
+
+
+def _fit_row(name: str, target: float, final_estimate: float) -> dict:
+    """A diagnostics-shaped target row (the contract/diagnostics mapping form)."""
+    relative_error = (
+        (final_estimate - target) / target if target != 0.0 else final_estimate - target
+    )
+    return {
+        "name": name,
+        "target": target,
+        "final_estimate": final_estimate,
+        "relative_error": relative_error,
+    }
+
+
+#: The live Build M SOI Pub 1304 Table 1.4 national dollar rows
+#: (populace#462): the +634.8% capital-gain-distributions defect and the
+#: -25.6% net-capital-gains miss shipped while every exact-name critical
+#: requirement passed. These rows are the replay fixture the blanket
+#: fit requirement must catch.
+_TABLE_1_4_REQUIREMENT = TargetFitRequirement(
+    requirement_id="soi_table_1_4_national_dollar_rows",
+    label="SOI Pub 1304 Table 1.4 national dollar rows",
+    accepted_name_prefixes=("irs_soi.",),
+    accepted_name_substrings=(".table_1_4.",),
+    accepted_name_suffixes=("_amount@2024",),
+    max_abs_relative_error=0.25,
+)
+
+_BUILD_M_CGD_ROW = _fit_row(
+    "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024",
+    10_155_465_319.0,
+    74_617_447_202.0,
+)
+_BUILD_M_NET_CAPITAL_GAINS_ROW = _fit_row(
+    "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount@2024",
+    1_270_864_366_489.0,
+    945_431_772_792.0,
+)
+_BUILD_M_WAGES_ROW = _fit_row(
+    "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
+    10_773_360_188_645.0,
+    10_774_383_029_502.0,
+)
+_BUILD_M_CGD_RETURNS_ROW = _fit_row(
+    "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns@2024",
+    3_209_131.0,
+    3_209_038.0,
+)
+_HT2_AMOUNT_ROW = _fit_row(
+    "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+    2_105_345_646_000.0,
+    2_067_762_165_736.424,
+)
+
+
+class _FitRowObject:
+    """Attribute-shaped row, mirroring calibrate TargetDiagnostic objects."""
+
+    def __init__(self, payload: dict) -> None:
+        for key, value in payload.items():
+            setattr(self, key, value)
+
+
+class TestTargetFitRequirement:
+    def test_requires_a_selector(self) -> None:
+        with pytest.raises(ValueError, match="selector"):
+            TargetFitRequirement(
+                requirement_id="x",
+                label="x",
+                max_abs_relative_error=0.25,
+            )
+
+    def test_requires_positive_finite_tolerance(self) -> None:
+        with pytest.raises(ValueError, match="max_abs_relative_error"):
+            TargetFitRequirement(
+                requirement_id="x",
+                label="x",
+                accepted_names=("a",),
+                max_abs_relative_error=0.0,
+            )
+        with pytest.raises(ValueError, match="max_abs_relative_error"):
+            TargetFitRequirement(
+                requirement_id="x",
+                label="x",
+                accepted_names=("a",),
+                max_abs_relative_error=float("nan"),
+            )
+
+    def test_requires_id_label_and_min_matches(self) -> None:
+        with pytest.raises(ValueError, match="requirement_id"):
+            TargetFitRequirement(
+                requirement_id="",
+                label="x",
+                accepted_names=("a",),
+                max_abs_relative_error=0.25,
+            )
+        with pytest.raises(ValueError, match="label"):
+            TargetFitRequirement(
+                requirement_id="x",
+                label="",
+                accepted_names=("a",),
+                max_abs_relative_error=0.25,
+            )
+        with pytest.raises(ValueError, match="min_matches"):
+            TargetFitRequirement(
+                requirement_id="x",
+                label="x",
+                accepted_names=("a",),
+                max_abs_relative_error=0.25,
+                min_matches=0,
+            )
+
+
+class TestTargetFitGate:
+    def test_within_tolerance_table_1_4_rows_pass(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_WAGES_ROW, _HT2_AMOUNT_ROW, _BUILD_M_CGD_RETURNS_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        assert result.passed
+        assert result.details["matches_by_requirement"] == {
+            "soi_table_1_4_national_dollar_rows": [
+                "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024"
+            ]
+        }
+
+    def test_build_m_capital_gain_distributions_breach_fails(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_CGD_ROW, _BUILD_M_WAGES_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        assert not result.passed
+        assert len(result.failures) == 1
+        failure = result.failures[0]
+        assert "capital_gain_distributions_amount@2024" in failure
+        assert "SOI Pub 1304 Table 1.4 national dollar rows" in failure
+        assert "6.347" in failure
+        assert "0.25" in failure
+
+    def test_build_m_net_capital_gains_breach_fails_too(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_CGD_ROW, _BUILD_M_NET_CAPITAL_GAINS_ROW, _BUILD_M_WAGES_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        assert not result.passed
+        assert len(result.failures) == 2
+        assert any("net_capital_gains_amount@2024" in line for line in result.failures)
+
+    def test_selector_fields_are_conjunctive(self) -> None:
+        # The ht2 national amount row shares the prefix and the suffix but not
+        # the ``.table_1_4.`` substring; the table_1_4 returns row shares the
+        # prefix and substring but not the ``_amount@`` suffix. Neither may
+        # match a requirement naming the Table 1.4 dollar-row class.
+        breached_returns = _fit_row(
+            "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns@2024",
+            36_592.0,
+            218_052.0,
+        )
+        breached_ht2 = _fit_row(
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+            2_105_345_646_000.0,
+            1_000_000_000_000.0,
+        )
+        result = target_fit_gate(
+            (breached_returns, breached_ht2, _BUILD_M_WAGES_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        assert result.passed
+
+    def test_object_rows_match_mapping_rows(self) -> None:
+        result = target_fit_gate(
+            (_FitRowObject(_BUILD_M_CGD_ROW),),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        assert not result.passed
+        assert "capital_gain_distributions_amount@2024" in result.failures[0]
+
+    def test_empty_surface_fails_min_matches(self) -> None:
+        result = target_fit_gate((_HT2_AMOUNT_ROW,), (_TABLE_1_4_REQUIREMENT,))
+        assert not result.passed
+        assert "soi_table_1_4_national_dollar_rows" in result.failures[0]
+        assert "0 match(es)" in result.failures[0]
+
+    def test_min_matches_floor_is_enforced(self) -> None:
+        requirement = TargetFitRequirement(
+            requirement_id="table_1_4_dollar_rows",
+            label="Table 1.4 dollar rows",
+            accepted_name_substrings=(".table_1_4.",),
+            accepted_name_suffixes=("_amount@2024",),
+            max_abs_relative_error=0.25,
+            min_matches=2,
+        )
+        result = target_fit_gate((_BUILD_M_WAGES_ROW,), (requirement,))
+        assert not result.passed
+        assert "needs 2" in result.failures[0]
+
+    def test_stale_recorded_relative_error_fails(self) -> None:
+        row = dict(_BUILD_M_CGD_ROW)
+        row["relative_error"] = 0.0
+        result = target_fit_gate((row,), (_TABLE_1_4_REQUIREMENT,))
+        assert not result.passed
+        assert any("stale relative_error" in line for line in result.failures)
+
+    def test_missing_recorded_relative_error_is_not_stale(self) -> None:
+        row = {
+            "name": _BUILD_M_WAGES_ROW["name"],
+            "target": _BUILD_M_WAGES_ROW["target"],
+            "final_estimate": _BUILD_M_WAGES_ROW["final_estimate"],
+        }
+        result = target_fit_gate((row,), (_TABLE_1_4_REQUIREMENT,))
+        assert result.passed
+
+    def test_non_numeric_target_fails(self) -> None:
+        row = dict(_BUILD_M_WAGES_ROW)
+        row["target"] = None
+        result = target_fit_gate((row,), (_TABLE_1_4_REQUIREMENT,))
+        assert not result.passed
+        assert any("non-numeric" in line for line in result.failures)
+
+    def test_non_finite_final_estimate_fails(self) -> None:
+        row = dict(_BUILD_M_WAGES_ROW)
+        row["final_estimate"] = float("inf")
+        result = target_fit_gate((row,), (_TABLE_1_4_REQUIREMENT,))
+        assert not result.passed
+        assert any("non-finite" in line for line in result.failures)
+
+    def test_zero_target_uses_absolute_difference(self) -> None:
+        requirement = TargetFitRequirement(
+            requirement_id="zero_target",
+            label="zero-target row",
+            accepted_names=("zero.row@2024",),
+            max_abs_relative_error=0.25,
+        )
+        within = _fit_row("zero.row@2024", 0.0, 0.1)
+        assert target_fit_gate((within,), (requirement,)).passed
+        beyond = _fit_row("zero.row@2024", 0.0, 0.3)
+        assert not target_fit_gate((beyond,), (requirement,)).passed
+
+    def test_reviewed_exclusion_passes_and_is_recorded(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_CGD_ROW, _BUILD_M_WAGES_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+            reviewed_exclusions={
+                _BUILD_M_CGD_ROW["name"]: "populace#462: tracked QRF defect."
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            _BUILD_M_CGD_ROW["name"]: "populace#462: tracked QRF defect."
+        }
+
+    def test_reviewed_exclusion_requires_reason(self) -> None:
+        with pytest.raises(ValueError, match="reason"):
+            target_fit_gate(
+                (_BUILD_M_CGD_ROW,),
+                (_TABLE_1_4_REQUIREMENT,),
+                reviewed_exclusions={_BUILD_M_CGD_ROW["name"]: ""},
+            )
+
+    def test_stale_reviewed_exclusion_fails(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_WAGES_ROW,),
+            (_TABLE_1_4_REQUIREMENT,),
+            reviewed_exclusions={
+                _BUILD_M_WAGES_ROW["name"]: "was out of tolerance once."
+            },
+        )
+        assert not result.passed
+        assert any("Stale reviewed exclusion" in line for line in result.failures)
+
+    def test_unmatched_reviewed_exclusion_fails(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_WAGES_ROW,),
+            (_TABLE_1_4_REQUIREMENT,),
+            reviewed_exclusions={"never.matched@2024": "dangling entry."},
+        )
+        assert not result.passed
+        assert any(
+            "not matched by any fit requirement" in line for line in result.failures
+        )
+
+    def test_excluded_rows_still_count_toward_min_matches(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_CGD_ROW,),
+            (_TABLE_1_4_REQUIREMENT,),
+            reviewed_exclusions={
+                _BUILD_M_CGD_ROW["name"]: "populace#462: tracked QRF defect."
+            },
+        )
+        assert result.passed
+
+    def test_details_carry_relative_errors_and_worst_offenders(self) -> None:
+        result = target_fit_gate(
+            (_BUILD_M_CGD_ROW, _BUILD_M_NET_CAPITAL_GAINS_ROW, _BUILD_M_WAGES_ROW),
+            (_TABLE_1_4_REQUIREMENT,),
+        )
+        errors = result.details["relative_errors"]
+        assert errors[_BUILD_M_CGD_ROW["name"]] == pytest.approx(6.3475, abs=5e-4)
+        worst = list(result.details["worst_offenders"])
+        assert worst[0] == _BUILD_M_CGD_ROW["name"]
+
+
+class TestTailConcentrationGate:
+    def _build_m_signature(self) -> tuple[np.ndarray, np.ndarray]:
+        """The populace#462 non_sch_d_capital_gains tail point-mass, to scale.
+
+        2,295 nonzero records; the top 100 weighted records carry ~89% of the
+        weighted dollar mass via a repeated $594,484 donor-ceiling value.
+        """
+        body_values = np.full(2_195, 2_979.0)
+        body_weights = np.full(2_195, 1_400.0)
+        tail_values = np.full(100, 594_484.0)
+        tail_weights = np.full(100, 1_117.0)
+        values = np.concatenate([body_values, tail_values])
+        weights = np.concatenate([body_weights, tail_weights])
+        return values, weights
+
+    def test_build_m_point_mass_signature_fails(self) -> None:
+        values, weights = self._build_m_signature()
+        result = tail_concentration_gate(
+            {"non_sch_d_capital_gains": values},
+            {"non_sch_d_capital_gains": weights},
+        )
+        assert not result.passed
+        failure = result.failures[0]
+        assert "non_sch_d_capital_gains" in failure
+        assert "top 100" in failure
+        share = result.details["top_share"]["non_sch_d_capital_gains"]
+        assert share == pytest.approx(0.89, abs=0.02)
+
+    def test_dispersed_mass_passes(self) -> None:
+        rng = np.random.default_rng(462)
+        values = rng.lognormal(mean=8.0, sigma=1.0, size=2_295)
+        weights = np.full(2_295, 1_400.0)
+        result = tail_concentration_gate(
+            {"non_sch_d_capital_gains": values},
+            {"non_sch_d_capital_gains": weights},
+        )
+        assert result.passed
+        share = result.details["top_share"]["non_sch_d_capital_gains"]
+        assert share < 0.5
+
+    def test_share_at_threshold_passes(self) -> None:
+        # 10 records of mass 3 and 90 of mass 1: top-10 share is exactly 0.25.
+        values = np.concatenate([np.full(10, 3.0), np.full(90, 1.0)])
+        weights = np.ones(100)
+        result = tail_concentration_gate(
+            {"column": values},
+            {"column": weights},
+            top_k=10,
+            max_top_share=0.25,
+            min_nonzero_records=50,
+        )
+        assert result.passed
+
+    def test_thin_columns_are_skipped_and_reported(self) -> None:
+        values = np.concatenate([np.full(10, 594_484.0), np.zeros(90)])
+        weights = np.ones(100)
+        result = tail_concentration_gate(
+            {"thin": values},
+            {"thin": weights},
+            top_k=5,
+            min_nonzero_records=50,
+        )
+        assert result.passed
+        assert result.details["thin_columns"] == {"thin": 10}
+
+    def test_all_zero_column_is_thin_not_failing(self) -> None:
+        result = tail_concentration_gate(
+            {"empty": np.zeros(1_000)},
+            {"empty": np.ones(1_000)},
+        )
+        assert result.passed
+        assert result.details["thin_columns"] == {"empty": 0}
+
+    def test_zero_weight_records_carry_no_mass(self) -> None:
+        # Nonzero values on zero-weight records are not weighted carriers: 40
+        # weighted carriers is under the floor, so the column is thin.
+        values = np.concatenate([np.full(40, 100.0), np.full(160, 100.0)])
+        weights = np.concatenate([np.ones(40), np.zeros(160)])
+        result = tail_concentration_gate(
+            {"column": values},
+            {"column": weights},
+            top_k=5,
+            min_nonzero_records=50,
+        )
+        assert result.passed
+        assert result.details["thin_columns"] == {"column": 40}
+
+    def test_signed_values_use_absolute_mass(self) -> None:
+        values, weights = self._build_m_signature()
+        result = tail_concentration_gate(
+            {"signed": -values},
+            {"signed": weights},
+        )
+        assert not result.passed
+
+    def test_missing_weights_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="weights"):
+            tail_concentration_gate({"column": np.ones(600)}, {})
+
+    def test_misaligned_weights_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="align"):
+            tail_concentration_gate(
+                {"column": np.ones(600)},
+                {"column": np.ones(599)},
+            )
+
+    def test_top_k_must_sit_inside_the_support_floor(self) -> None:
+        with pytest.raises(ValueError, match="min_nonzero_records"):
+            tail_concentration_gate(
+                {"column": np.ones(600)},
+                {"column": np.ones(600)},
+                top_k=100,
+                min_nonzero_records=100,
+            )
+
+    def test_share_threshold_bounds_are_validated(self) -> None:
+        with pytest.raises(ValueError, match="max_top_share"):
+            tail_concentration_gate(
+                {"column": np.ones(600)},
+                {"column": np.ones(600)},
+                max_top_share=1.0,
+            )
+        with pytest.raises(ValueError, match="top_k"):
+            tail_concentration_gate(
+                {"column": np.ones(600)},
+                {"column": np.ones(600)},
+                top_k=0,
+            )
+
+    def test_reviewed_exclusion_passes_and_is_recorded(self) -> None:
+        values, weights = self._build_m_signature()
+        result = tail_concentration_gate(
+            {"non_sch_d_capital_gains": values},
+            {"non_sch_d_capital_gains": weights},
+            reviewed_exclusions={
+                "non_sch_d_capital_gains": "populace#462: Build N QRF fix owns this."
+            },
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "non_sch_d_capital_gains": "populace#462: Build N QRF fix owns this."
+        }
+
+    def test_reviewed_exclusion_requires_reason(self) -> None:
+        values, weights = self._build_m_signature()
+        with pytest.raises(ValueError, match="reason"):
+            tail_concentration_gate(
+                {"non_sch_d_capital_gains": values},
+                {"non_sch_d_capital_gains": weights},
+                reviewed_exclusions={"non_sch_d_capital_gains": ""},
+            )
+
+    def test_stale_reviewed_exclusion_fails(self) -> None:
+        values = np.ones(2_295)
+        weights = np.full(2_295, 1_400.0)
+        result = tail_concentration_gate(
+            {"column": values},
+            {"column": weights},
+            reviewed_exclusions={"column": "was concentrated once."},
+        )
+        assert not result.passed
+        assert any("Stale reviewed exclusion" in line for line in result.failures)
+
+    def test_exclusion_for_absent_column_is_dormant_not_failing(self) -> None:
+        result = tail_concentration_gate(
+            {"column": np.ones(600)},
+            {"column": np.ones(600)},
+            reviewed_exclusions={"other_column": "different release line."},
+        )
+        assert result.passed
+        assert result.details["dormant_exclusions"] == ["other_column"]
+
+    def test_details_are_json_ready(self) -> None:
+        import json as json_module
+
+        values, weights = self._build_m_signature()
+        result = tail_concentration_gate(
+            {"non_sch_d_capital_gains": values},
+            {"non_sch_d_capital_gains": weights},
+        )
+        json_module.dumps(dict(result.details))

@@ -32,6 +32,7 @@ import pytest
 import populace.build.us_runtime.reform_coverage_smoke as smoke_module
 from populace.build.us_runtime import (
     SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_CGD_ROUTE_REQUIRED_INPUTS,
     US_QBI_OUTPUT_COLUMNS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ReformCoverageProbe,
@@ -1307,3 +1308,56 @@ class TestManifestGeneratorSync:
         # trip the live-tree guard it mirrors (test_us_plan does the same).
         assert ("policyengine-" + "us-data") not in rendered
         assert ("policyengine_" + "us_data") not in rendered
+
+
+class TestCapitalGainDistributionRouteGuarantee:
+    """populace#462 / #361 remedy: BOTH capital-gain-distribution route legs
+    are export-guarded. The Build M live default shipped the direct-route leg
+    (``non_sch_d_capital_gains``) 7.3x over its SOI dollar target while the
+    Schedule-D route (``schedule_d_capital_gain_distributions``) was absent
+    from the export entirely — and the coverage manifest guarded neither
+    against demotion."""
+
+    def test_route_constant_names_both_legs(self) -> None:
+        assert US_CGD_ROUTE_REQUIRED_INPUTS == (
+            "non_sch_d_capital_gains",
+            "schedule_d_capital_gain_distributions",
+        )
+
+    def test_both_route_variables_are_required_without_exclusion(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for column in US_CGD_ROUTE_REQUIRED_INPUTS:
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+
+    @pytest.mark.parametrize(
+        "column",
+        [
+            "non_sch_d_capital_gains",
+            "schedule_d_capital_gain_distributions",
+        ],
+    )
+    def test_route_variable_cannot_regress_to_reviewed_exclusion(
+        self, column: str
+    ) -> None:
+        manifest = load_release_input_coverage_manifest()
+        assert column in manifest.declared_columns
+        demoted = ReleaseInputCoverageManifest(
+            reference=manifest.reference,
+            columns=tuple(
+                ReleaseInputColumn(
+                    name=entry.name,
+                    status="reviewed_exclusion",
+                    reason="regression attempt",
+                    issue="PolicyEngine/populace#462",
+                )
+                if entry.name == column
+                else entry
+                for entry in manifest.columns
+            ),
+            probes=manifest.probes,
+            schema_version=manifest.schema_version,
+        )
+
+        with pytest.raises(ValueError, match=column):
+            assert_release_input_coverage_manifest_current(manifest=demoted)
