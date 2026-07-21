@@ -991,12 +991,14 @@ def _run_all(
     arrays = _read_h5_arrays(args.puf_h5)
     donor = puf_tax_unit_donor_from_arrays(arrays)
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
+    tail_bound_diagnostics: list[dict[str, object]] = []
     if boundary_observer is None:
         imputed, weights_audit = impute_and_audit_us_puf_support(
             expanded,
             donor,
             seed=args.seed,
             n_estimators=args.n_estimators,
+            tail_bound_diagnostics=tail_bound_diagnostics,
         )
     else:
         imputed, weights_audit = impute_and_audit_us_puf_support(
@@ -1007,6 +1009,7 @@ def _run_all(
             raw_predictions_callback=lambda predictions: (
                 boundary_observer.observe_primary_qrf(expanded, predictions)
             ),
+            tail_bound_diagnostics=tail_bound_diagnostics,
         )
     _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
     imputed, _ = _capital_gain_distributions_stage(args, imputed)
@@ -1383,6 +1386,7 @@ def _run_all(
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
         "weights_audit": weights_audit,
+        "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
         "qbi_inputs_signal": {
             "passed": qbi_inputs_gate.passed,
             "failures": list(qbi_inputs_gate.failures),
@@ -1859,8 +1863,11 @@ def _qrf_finalization_stage(
     args: argparse.Namespace,
     expanded: Frame,
 ) -> tuple[Frame, dict[str, object]]:
+    tail_bound_diagnostics: list[dict[str, object]] = []
     imputed, weight_kind = finalize_primary_puf_qrf_chain(
-        expanded, args.checkpoint_dir / "primary_qrf"
+        expanded,
+        args.checkpoint_dir / "primary_qrf",
+        tail_bound_diagnostics=tail_bound_diagnostics,
     )
     report = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)])
     if not report.passed:
@@ -1870,7 +1877,8 @@ def _qrf_finalization_stage(
             "passed": report.passed,
             "failures": list(report.failures),
             "details": dict(report.details),
-        }
+        },
+        "puf_tax_detail_tail_bounds": tail_bound_diagnostics,
     }
 
 
@@ -2368,6 +2376,7 @@ def _export_staged_result(
         "puf_donor_rows": clone["puf_donor_rows"],
         "puf_donor_columns": clone["puf_donor_columns"],
         "weights_audit": qrf["weights_audit"],
+        "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
         **{name: signals[name] for name in required_signals},
         "congressional_district_assignment": stage_metadata[
             "congressional_district_assignment"
@@ -2409,6 +2418,7 @@ def impute_and_audit_us_puf_support(
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
 ) -> tuple[Frame, dict]:
     """Impute the PUF support channel and audit the fit's resolved weight kind.
 
@@ -2437,6 +2447,8 @@ def impute_and_audit_us_puf_support(
             unchanged.
         raw_predictions_callback: Optional test-only observer for complete raw
             chained draws before finalization.
+        tail_bound_diagnostics: Optional output sink for publishable per-target
+            tail-bound finalization records.
 
     Returns:
         ``(imputed_frame, weights_audit)`` where ``weights_audit`` is the gate's
@@ -2459,6 +2471,7 @@ def impute_and_audit_us_puf_support(
         n_estimators=n_estimators,
         fit_records=fit_records,
         raw_predictions_callback=raw_predictions_callback,
+        tail_bound_diagnostics=tail_bound_diagnostics,
     )
     report = weights_audit_gate(fit_records)
     if not report.passed:

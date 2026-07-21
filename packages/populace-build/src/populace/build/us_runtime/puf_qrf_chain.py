@@ -336,6 +336,8 @@ def load_primary_puf_qrf_predictions(
 def finalize_primary_puf_qrf_chain(
     frame: Frame,
     checkpoint_dir: str | Path,
+    *,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
 ) -> tuple[Frame, str]:
     """Finalize all raw checkpoints onto ``frame`` and return fit weight kind."""
 
@@ -358,6 +360,7 @@ def finalize_primary_puf_qrf_chain(
         predictions,
         person_outputs=_manifest_strings(manifest, "person_outputs"),
         tax_unit_outputs=_manifest_strings(manifest, "tax_unit_outputs"),
+        tail_bound_diagnostics=tail_bound_diagnostics,
     )
     initial_state = manifest.get("initial_state")
     if not isinstance(initial_state, dict):
