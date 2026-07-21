@@ -375,23 +375,26 @@ class TestRegeneration:
         )
 
         facts, _ = generator._load_feed(feed_path)
-        # Mirror the generator's N-regime compile (populace#449): the CD
-        # surface is on, so parity is declared and checked against the CD-on
-        # registry with the packaged vintage crosswalk.
+        # Mirror the generator's declared regime (CD_SURFACE_REGIME): parity
+        # is declared and checked against the registry compiled the same way,
+        # so flipping the regime constant updates both sides together.
         from populace.build.us_runtime import (
             default_congressional_district_vintage_crosswalk_path,
             load_congressional_district_vintage_crosswalk,
         )
 
+        cd_on = generator.CD_SURFACE_REGIME == "on"
         registry = compile_us_fiscal_target_registry(
             facts,
             target_period=2024,
             age_targets=True,
-            include_congressional_district_targets=True,
+            include_congressional_district_targets=cd_on,
             congressional_district_vintage_crosswalk=(
                 load_congressional_district_vintage_crosswalk(
                     default_congressional_district_vintage_crosswalk_path()
                 )
+                if cd_on
+                else None
             ),
         )
         registry, _ = apply_us_medicaid_enrollment_substitutions(registry)

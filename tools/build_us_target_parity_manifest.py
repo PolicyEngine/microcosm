@@ -21,9 +21,9 @@ Derivation (from the sha-pinned feed + the deterministic registry compile):
 - **Feed-family inventory** = every ``namespace.concept`` family id the feed
   carries, with fact counts (``target_parity_feed_families.json``).
 - **Compiled families** = the families the registry compiles today
-  (``compile_us_fiscal_target_registry(age_targets=True, CD surface ON)`` +
-  the reviewed CMS
-  Medicaid enrollment substitution). Status ``compiled``.
+  (``compile_us_fiscal_target_registry(age_targets=True)`` under the
+  declared ``CD_SURFACE_REGIME`` + the reviewed CMS Medicaid enrollment
+  substitution). Status ``compiled``.
 - **Reviewed exclusions** = every non-compiling feed family, each with a fence.
   A feed family with neither a compile nor a fenced exclusion HALTS generation.
 - **Source-absent us-data families** = us-data targets with no feed fact.
@@ -71,6 +71,16 @@ DEFAULT_FEED_PATH = (
 DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_2.jsonl"
 EXPECTED_FEED_SHA256_PREFIX = "61b115c0"
 TARGET_PERIOD = 2024
+
+# The parity declaration's congressional-district regime. Flipping this is a
+# DELIBERATE release decision, never a side effect: "on" compiles the CD
+# surface into parity; "off" fences irs_soi.congressional_district_2022 as
+# off_by_default. Generation fails closed (both directions) if the compiled
+# registry disagrees with the declared regime. #449 verdict 2026-07-21: the
+# first full-scale CD-on run (27,148 CD rows) halved within-10% (90.2% ->
+# 54.5%) and broke the SS-benefits critical row (-14.7%), so the surface
+# stays OFF until the CD loss architecture is reworked.
+CD_SURFACE_REGIME = "off"
 
 
 def _fence(origin: str, purpose: str, verdict_basis: str) -> dict[str, str]:
@@ -442,6 +452,30 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             ),
         ),
     ),
+    "irs_soi.congressional_district_2022": (
+        "off_by_default",
+        "IRS SOI congressional-district table. CD-level targets are opt-in "
+        "(include_congressional_district_targets=False for the national release); "
+        "the national and state SOI surfaces are compiled instead.",
+        "test_soi_congressional_district_targets_are_opt_in + the "
+        "include_congressional_district_targets gate in "
+        "fiscal_targets._soi_reference_from_fact",
+        _fence(
+            origin=(
+                "us-data CD targets serve the regional/local H5 outputs "
+                "(build_outputs/target_universe.py), not the national build."
+            ),
+            purpose=(
+                "distributional shape within a congressional district for local "
+                "H5 outputs."
+            ),
+            verdict_basis=(
+                "off_by_default: CD targets are opt-in for the national release; "
+                "enabling include_congressional_district_targets compiles them. "
+                "The national and state SOI surfaces are compiled."
+            ),
+        ),
+    ),
     "irs_soi.form_w2_401k_elective_deferrals": _RETIREMENT_CONTRIBUTION_EXCLUSION,
     "irs_soi.form_w2_designated_roth_401k_contributions": (
         _RETIREMENT_CONTRIBUTION_EXCLUSION
@@ -556,26 +590,39 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
 
 
 def _compiled_families(facts: list[dict]) -> set[str]:
-    # The N regime compiles the congressional-district surface (populace#449:
-    # CD targets ON for Build N's timed A/B), so parity is declared against
-    # the CD-on registry with the packaged vintage crosswalk.
+    # Parity is declared against the registry compiled under the declared
+    # CD regime (see CD_SURFACE_REGIME); the packaged vintage crosswalk rides
+    # only when the surface is on.
+    cd_on = CD_SURFACE_REGIME == "on"
     registry = compile_us_fiscal_target_registry(
         facts,
         target_period=TARGET_PERIOD,
         age_targets=True,
-        include_congressional_district_targets=True,
+        include_congressional_district_targets=cd_on,
         congressional_district_vintage_crosswalk=(
             load_congressional_district_vintage_crosswalk(
                 default_congressional_district_vintage_crosswalk_path()
             )
+            if cd_on
+            else None
         ),
     )
     registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
-    return {
+    families = {
         us_target_family_id(spec.name)
         for spec in registry.specs
         if us_target_family_id(spec.name)
     }
+    cd_compiled = "irs_soi.congressional_district_2022" in families
+    if cd_compiled != cd_on:
+        raise SystemExit(
+            "CD regime mismatch: CD_SURFACE_REGIME="
+            f"{CD_SURFACE_REGIME!r} but the compiled registry "
+            f"{'carries' if cd_compiled else 'lacks'} the CD family. Flip the "
+            "regime constant deliberately or fix the compile; parity "
+            "generation never demotes or promotes the CD surface silently."
+        )
+    return families
 
 
 def _exclusion_for(family: str) -> tuple[str, str, str, dict[str, str]]:
@@ -641,10 +688,9 @@ def build_manifest(
             "target_period": str(TARGET_PERIOD),
             "registry_compile": (
                 "compile_us_fiscal_target_registry(age_targets=True, "
-                "include_congressional_district_targets=True, "
-                "congressional_district_vintage_crosswalk=packaged) + "
-                "apply_us_medicaid_enrollment_substitutions (N regime, "
-                "populace#449)"
+                f"include_congressional_district_targets={CD_SURFACE_REGIME == 'on'}) "
+                "+ apply_us_medicaid_enrollment_substitutions "
+                f"(CD_SURFACE_REGIME={CD_SURFACE_REGIME!r}, populace#449)"
             ),
             "us_data_source": (
                 "retired us-data pipeline (archived): utils/loss.py (eCPS loss "
