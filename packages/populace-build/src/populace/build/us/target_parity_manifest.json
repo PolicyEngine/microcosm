@@ -1,15 +1,15 @@
 {
  "schema_version": 1,
  "reference": {
-  "feed": "consumer_facts_buildh_v8.jsonl",
-  "feed_sha256": "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669",
+  "feed": "consumer_facts_buildn_v9_2.jsonl",
+  "feed_sha256": "61b115c0d642282e7b990bf70d119c4f67f1ca7903048a1f6ef2dabb2a9d268f",
   "target_period": "2024",
   "registry_compile": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions",
   "us_data_source": "retired us-data pipeline (archived): utils/loss.py (eCPS loss matrix), db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
   "family_granularity": "namespace.concept of the ledger source_record_id (us_target_family_id)",
   "governing_rule": "us-data-targeted => compiled unless source-absent; every reviewed exclusion carries a Chesterton's-fence {origin, purpose, verdict_basis}",
-  "compiled_families": "30",
-  "reviewed_exclusions": "50"
+  "compiled_families": "32",
+  "reviewed_exclusions": "51"
  },
  "families": {
   "bea_nipa.business_current_transfer_receipts": {
@@ -446,6 +446,28 @@
   "cms_medicare.part_b_premium_income": {
    "status": "compiled"
   },
+  "cms_nhe.esi_employer_contribution_premiums": {
+   "status": "reviewed_exclusion",
+   "classification": "not_modeled",
+   "reason": "NHE employer-contribution ESI premium aggregate, banked in the v9.2 feed (2026-07-21) as the external anchor for populace#454's future ESI input gate. The pe-us input it would anchor (employer_sponsored_insurance_premiums, the employer-paid share per the variable's own documentation) has no live producer in the hermetic lineage, so a target would bind against a structural zero. The all-employer series is the future anchor (pe-us covers government and private employees alike); the private-employer subset rides as its cross-check.",
+   "evidence": "ecps_parity_known_gaps.json entry employer_sponsored_insurance_premiums (NOW_* source-unavailability evidence); populace#454 descope comment 2026-07-21",
+   "fence": {
+    "origin": "not a us-data calibration target: the retired eCPS IMPUTED employer premiums as an input (MEPS-IC priors over ASEC NOW_* policyholder fields, archived 42ed5d45 cps.py L197-271/L1575-1581); no loss.py or etl_national_targets.py target existed. The feed facts are the banked anchor for a future gate, entered deliberately ahead of the producer.",
+    "purpose": "anchor a validation gate for the CBO market-income ESI component once the column has a live producer: NIPA 7.8 employer contributions for group health insurance and the NHEA sponsor-of-funds employer share are same-concept estimates (~4 percent apart, CY2024).",
+    "verdict_basis": "source-absent for the PRODUCER, not the anchor: the declared meps_esi_premiums stage cannot execute because all three required NOW_* fields are missing from the sha-pinned 2022-2024 ASEC h5 inputs (recorded parity known-gap). Compiles when populace#454 restores the source fields or lands a validated PHIP_VAL+MEPS re-derivation."
+   }
+  },
+  "cms_nhe.esi_private_employer_contribution_premiums": {
+   "status": "reviewed_exclusion",
+   "classification": "not_modeled",
+   "reason": "NHE employer-contribution ESI premium aggregate, banked in the v9.2 feed (2026-07-21) as the external anchor for populace#454's future ESI input gate. The pe-us input it would anchor (employer_sponsored_insurance_premiums, the employer-paid share per the variable's own documentation) has no live producer in the hermetic lineage, so a target would bind against a structural zero. The all-employer series is the future anchor (pe-us covers government and private employees alike); the private-employer subset rides as its cross-check.",
+   "evidence": "ecps_parity_known_gaps.json entry employer_sponsored_insurance_premiums (NOW_* source-unavailability evidence); populace#454 descope comment 2026-07-21",
+   "fence": {
+    "origin": "not a us-data calibration target: the retired eCPS IMPUTED employer premiums as an input (MEPS-IC priors over ASEC NOW_* policyholder fields, archived 42ed5d45 cps.py L197-271/L1575-1581); no loss.py or etl_national_targets.py target existed. The feed facts are the banked anchor for a future gate, entered deliberately ahead of the producer.",
+    "purpose": "anchor a validation gate for the CBO market-income ESI component once the column has a live producer: NIPA 7.8 employer contributions for group health insurance and the NHEA sponsor-of-funds employer share are same-concept estimates (~4 percent apart, CY2024).",
+    "verdict_basis": "source-absent for the PRODUCER, not the anchor: the declared meps_esi_premiums stage cannot execute because all three required NOW_* fields are missing from the sha-pinned 2022-2024 ASEC h5 inputs (recorded parity known-gap). Compiles when populace#454 restores the source fields or lands a validated PHIP_VAL+MEPS re-derivation."
+   }
+  },
   "cms_nhe.medicaid_title_xix_expenditures": {
    "status": "reviewed_exclusion",
    "classification": "non_linear",
@@ -500,15 +522,7 @@
    }
   },
   "irs_soi.congressional_district_2022": {
-   "status": "reviewed_exclusion",
-   "classification": "off_by_default",
-   "reason": "IRS SOI congressional-district table. CD-level targets are opt-in (include_congressional_district_targets=False for the national release); the national and state SOI surfaces are compiled instead.",
-   "evidence": "test_soi_congressional_district_targets_are_opt_in + the include_congressional_district_targets gate in fiscal_targets._soi_reference_from_fact",
-   "fence": {
-    "origin": "us-data CD targets serve the regional/local H5 outputs (build_outputs/target_universe.py), not the national build.",
-    "purpose": "distributional shape within a congressional district for local H5 outputs.",
-    "verdict_basis": "off_by_default: CD targets are opt-in for the national release; enabling include_congressional_district_targets compiles them. The national and state SOI surfaces are compiled."
-   }
+   "status": "compiled"
   },
   "irs_soi.filing_season_week47": {
    "status": "compiled"
@@ -597,6 +611,9 @@
     "purpose": "n/a \u2014 a secondary compilation of the same CMS data.",
     "verdict_basis": "superseded by compiled cms_aca.oep2024 (the primary CMS administrative source); avoids a duplicate target."
    }
+  },
+  "ssa_ssi_monthly.ssi_federal_payment_recipients": {
+   "status": "compiled"
   },
   "ssa_supplement.oasdi_ssi_payments": {
    "status": "compiled"

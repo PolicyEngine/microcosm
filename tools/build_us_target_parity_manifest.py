@@ -38,6 +38,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from populace.build.us_runtime import (
+    default_congressional_district_vintage_crosswalk_path,
+    load_congressional_district_vintage_crosswalk,
+)
 from populace.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from populace.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -61,10 +65,10 @@ DEFAULT_FEED_PATH = (
     / "PolicyEngine"
     / "_buildh-runtime"
     / "inputs"
-    / "consumer_facts_buildh_v8.jsonl"
+    / "consumer_facts_buildn_v9_2.jsonl"
 )
-DEFAULT_FEED_NAME = "consumer_facts_buildh_v8.jsonl"
-EXPECTED_FEED_SHA256_PREFIX = "94b7155f"
+DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_2.jsonl"
+EXPECTED_FEED_SHA256_PREFIX = "61b115c0"
 TARGET_PERIOD = 2024
 
 
@@ -184,7 +188,50 @@ _SNAP_PERSONS_EXCLUSION = (
 )
 
 # (classification, reason, evidence, fence) keyed by exact family id.
+_ESI_ANCHOR_EXCLUSION = (
+    "not_modeled",
+    "NHE employer-contribution ESI premium aggregate, banked in the v9.2 "
+    "feed (2026-07-21) as the external anchor for populace#454's future "
+    "ESI input gate. The pe-us input it would anchor "
+    "(employer_sponsored_insurance_premiums, the employer-paid share per "
+    "the variable's own documentation) has no live producer in the "
+    "hermetic lineage, so a target would bind against a structural zero. "
+    "The all-employer series is the future anchor (pe-us covers government "
+    "and private employees alike); the private-employer subset rides as its "
+    "cross-check.",
+    "ecps_parity_known_gaps.json entry employer_sponsored_insurance_"
+    "premiums (NOW_* source-unavailability evidence); populace#454 "
+    "descope comment 2026-07-21",
+    _fence(
+        origin=(
+            "not a us-data calibration target: the retired eCPS IMPUTED "
+            "employer premiums as an input (MEPS-IC priors over ASEC "
+            "NOW_* policyholder fields, archived 42ed5d45 cps.py "
+            "L197-271/L1575-1581); no loss.py or etl_national_targets.py "
+            "target existed. The feed facts are the banked anchor for a "
+            "future gate, entered deliberately ahead of the producer."
+        ),
+        purpose=(
+            "anchor a validation gate for the CBO market-income ESI "
+            "component once the column has a live producer: NIPA 7.8 "
+            "employer contributions for group health insurance and the "
+            "NHEA sponsor-of-funds employer share are same-concept "
+            "estimates (~4 percent apart, CY2024)."
+        ),
+        verdict_basis=(
+            "source-absent for the PRODUCER, not the anchor: the declared "
+            "meps_esi_premiums stage cannot execute because all three "
+            "required NOW_* fields are missing from the sha-pinned "
+            "2022-2024 ASEC h5 inputs (recorded parity known-gap). "
+            "Compiles when populace#454 restores the source fields or "
+            "lands a validated PHIP_VAL+MEPS re-derivation."
+        ),
+    ),
+)
+
 _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
+    "cms_nhe.esi_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
+    "cms_nhe.esi_private_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
     "bea_nipa.personal_interest_income": (
         "macro_control_total",
         "BEA NIPA personal interest income. Briefly a direct target (PR #994), "
@@ -520,8 +567,19 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
 
 
 def _compiled_families(facts: list[dict]) -> set[str]:
+    # The N regime compiles the congressional-district surface (populace#449:
+    # CD targets ON for Build N's timed A/B), so parity is declared against
+    # the CD-on registry with the packaged vintage crosswalk.
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=TARGET_PERIOD, age_targets=True
+        facts,
+        target_period=TARGET_PERIOD,
+        age_targets=True,
+        include_congressional_district_targets=True,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
     )
     registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
     return {

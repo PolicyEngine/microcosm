@@ -375,11 +375,30 @@ class TestRegeneration:
         )
 
         facts, _ = generator._load_feed(feed_path)
+        # Mirror the generator's N-regime compile (populace#449): the CD
+        # surface is on, so parity is declared and checked against the CD-on
+        # registry with the packaged vintage crosswalk.
+        from populace.build.us_runtime import (
+            default_congressional_district_vintage_crosswalk_path,
+            load_congressional_district_vintage_crosswalk,
+        )
+
         registry = compile_us_fiscal_target_registry(
-            facts, target_period=2024, age_targets=True
+            facts,
+            target_period=2024,
+            age_targets=True,
+            include_congressional_district_targets=True,
+            congressional_district_vintage_crosswalk=(
+                load_congressional_district_vintage_crosswalk(
+                    default_congressional_district_vintage_crosswalk_path()
+                )
+            ),
         )
         registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
         result = us_release_target_parity_gate(registry)
         assert result.passed, result.failures
         assert_target_parity_manifest_current(registry=registry)
         assert "ssa_supplement.ssi_recipients" in registry_target_family_ids(registry)
+        assert "ssa_ssi_monthly.ssi_federal_payment_recipients" in (
+            registry_target_family_ids(registry)
+        )
