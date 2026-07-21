@@ -803,6 +803,17 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--qrf-tail-concentration-exclusions",
+        type=Path,
+        help=(
+            "Optional JSON object of export column -> reason for sparse "
+            "QRF-imputed columns allowed past the tail-concentration "
+            "top-share threshold (populace#464 gate). Stale entries fail the "
+            "gate; the file sha and entries are recorded in the release "
+            "diagnostics."
+        ),
+    )
+    parser.add_argument(
         "--selection-mass-protection",
         action="append",
         default=[],
@@ -4799,6 +4810,8 @@ def _qrf_imputed_source_outputs() -> frozenset[str]:
 
 def _qrf_tail_concentration_gate(
     export_frame: Frame,
+    *,
+    reviewed_exclusions: Mapping[str, str] | None = None,
 ) -> tuple[GateResult, dict[str, object]]:
     """Tail-concentration gate over the sparse QRF-imputed export columns.
 
@@ -4844,6 +4857,7 @@ def _qrf_tail_concentration_gate(
         top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
         max_top_share=US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+        reviewed_exclusions=reviewed_exclusions,
     )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
@@ -4984,6 +4998,90 @@ def _with_social_security_component_value_repair(
         "applied": applied,
         "reason": US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON,
         "components": component_payload,
+    }
+
+
+US_NON_SCH_D_CGD_REPAIR_REASON = (
+    "The PUF E01100-lineage donor carries $24.31B across 4.67M weighted "
+    "carriers (weighted mean $5,206) against the SOI Pub 1304 Table 1.4 "
+    "TY2023 direct-route concept of $10.16B across 3.21M returns (mean "
+    "$3,165) - 2.39x on mass, measured on the sha-pinned puf_2024.h5 donor "
+    "via puf_tax_unit_donor_from_arrays. The eCPS-era pipeline produced "
+    "$13.69B from the same lineage, so the current 2024-level uprating "
+    "overstates a mean-reverting distribution series. Until the donor "
+    "uprating is variable-specific (root issue filed on the #462 thread), "
+    "the level is pinned to the ledger-fed aged Table 1.4 dollar fact - the "
+    "same repair class as the Social Security component rescale above; the "
+    "returns-count row is an indicator and is unaffected."
+)
+
+
+def _with_non_sch_d_cgd_value_repair(
+    frame: Frame,
+    target_specs: Iterable[object],
+) -> tuple[Frame, dict[str, object]]:
+    """Rescale non_sch_d_capital_gains to the aged SOI Table 1.4 dollar fact."""
+
+    column = "non_sch_d_capital_gains"
+    matching = [
+        spec
+        for spec in target_specs
+        if str(getattr(spec, "name", "")).startswith("irs_soi.")
+        and ".table_1_4." in str(getattr(spec, "name", ""))
+        and str(getattr(spec, "name", "")).endswith(
+            f"capital_gain_distributions_amount@{PERIOD}"
+        )
+    ]
+    if len(matching) != 1:
+        raise RuntimeError(
+            "non_sch_d capital-gain-distributions repair requires exactly one "
+            f"aged Table 1.4 dollar target; found {len(matching)}."
+        )
+    target = float(matching[0].value)
+    if not math.isfinite(target) or target <= 0.0:
+        raise RuntimeError(
+            "non_sch_d capital-gain-distributions repair target must be "
+            f"finite and positive; got {target!r}."
+        )
+
+    person = frame.table("person").copy()
+    if column not in person.columns:
+        raise RuntimeError(
+            f"non_sch_d capital-gain-distributions repair requires person "
+            f"column {column!r}."
+        )
+    person_weights = pd.Series(
+        frame.resolve_weights("person").values, index=person.index
+    )
+    values = pd.to_numeric(person[column], errors="coerce").fillna(0.0)
+    initial = float((values * person_weights).sum())
+    if not math.isfinite(initial) or initial <= 0.0:
+        raise RuntimeError(
+            "non_sch_d capital-gain-distributions repair requires positive "
+            f"finite support; got {initial!r}."
+        )
+    factor = target / initial
+    applied = not math.isclose(factor, 1.0, rel_tol=1e-12, abs_tol=0.0)
+    if applied:
+        person[column] = values.to_numpy(dtype=np.float64) * factor
+
+    tables_out = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables_out["person"] = person
+    repaired = Frame(
+        tables_out,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    return repaired, {
+        "method": "rescale_non_sch_d_capital_gains_to_aged_soi_table_1_4_fact",
+        "applied": applied,
+        "reason": US_NON_SCH_D_CGD_REPAIR_REASON,
+        "target": target,
+        "initial_estimate": initial,
+        "factor": factor,
+        "repaired_estimate": initial * factor,
     }
 
 
@@ -6542,6 +6640,36 @@ def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
     return exclusions
 
 
+def _load_qrf_tail_concentration_exclusions(path: Path | None) -> dict[str, str]:
+    """Load a per-run QRF tail-concentration exclusion mapping.
+
+    JSON object of ``column -> reason``: sparse QRF-imputed export columns
+    allowed to stay concentrated past the #464 top-share threshold, each with
+    a non-empty reason naming the tracked defect (the #481 weighted-leaf-draw
+    root fix) or the genuinely concentrated instrument. The gate itself
+    reports dormant entries and FAILS stale ones (a column now under the
+    threshold), so the register cannot rot. Returns an empty mapping when no
+    path is given.
+    """
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"QRF tail-concentration exclusions file {path} must be a JSON "
+            "object of column -> reason."
+        )
+    exclusions: dict[str, str] = {}
+    for column, reason in payload.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                "Every QRF tail-concentration exclusion needs a non-empty "
+                f"reason; {column!r} in {path} has {reason!r}."
+            )
+        exclusions[str(column)] = reason
+    return exclusions
+
+
 def _reviewed_exclusions(active_aliases: Iterable[str]) -> dict[str, str]:
     active = set(active_aliases)
     hard = set(hard_target_package_aliases())
@@ -6936,6 +7064,9 @@ def main() -> None:
     base_frame, social_security_component_repair = (
         _with_social_security_component_value_repair(base_frame, target_specs)
     )
+    base_frame, non_sch_d_cgd_repair = _with_non_sch_d_cgd_value_repair(
+        base_frame, target_specs
+    )
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
@@ -6950,6 +7081,17 @@ def main() -> None:
             message="Repaired Social Security component value support.",
             applied=social_security_component_repair.get("applied"),
             components=social_security_component_repair.get("components"),
+        )
+        telemetry.stage(
+            "non_sch_d_cgd_repair",
+            message=(
+                "Pinned non_sch_d_capital_gains to the aged SOI Table 1.4 "
+                "dollar fact (populace#462 donor-uprating interim repair)."
+            ),
+            applied=non_sch_d_cgd_repair.get("applied"),
+            factor=non_sch_d_cgd_repair.get("factor"),
+            target=non_sch_d_cgd_repair.get("target"),
+            initial_estimate=non_sch_d_cgd_repair.get("initial_estimate"),
         )
     base_population_gate = _base_population_scale_gate(
         base_frame,
@@ -8553,7 +8695,8 @@ def main() -> None:
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         support_value_repairs={
-            "social_security_components": social_security_component_repair
+            "social_security_components": social_security_component_repair,
+            "non_sch_d_capital_gains": non_sch_d_cgd_repair,
         },
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
@@ -8751,7 +8894,27 @@ def main() -> None:
     # parity (column excluded from the reference band), but is unmistakable as
     # top-k weighted-mass share.
     try:
-        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(export_frame)
+        qrf_tail_exclusions = _load_qrf_tail_concentration_exclusions(
+            args.qrf_tail_concentration_exclusions
+        )
+        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(
+            export_frame,
+            reviewed_exclusions=qrf_tail_exclusions,
+        )
+        qrf_tail_surface = {
+            **qrf_tail_surface,
+            "reviewed_exclusions_file": (
+                str(args.qrf_tail_concentration_exclusions)
+                if args.qrf_tail_concentration_exclusions is not None
+                else None
+            ),
+            "reviewed_exclusions_sha256": (
+                _sha256(args.qrf_tail_concentration_exclusions)
+                if args.qrf_tail_concentration_exclusions is not None
+                else None
+            ),
+            "reviewed_exclusions": dict(qrf_tail_exclusions),
+        }
     except Exception as exc:
         # Same degraded-mode contract as the coverage gate above.
         if not terminal_gate_failures:
