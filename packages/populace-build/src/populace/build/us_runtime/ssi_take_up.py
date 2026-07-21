@@ -1,4 +1,4 @@
-"""Reporter-anchored SSI take-up calibrated to SSA recipient counts.
+"""Reporter-anchored Bernoulli SSI take-up at documented age-band priors.
 
 The retired eCPS exported ``takes_up_ssi_if_eligible`` after preserving every
 CPS ASEC ``SSI_VAL > 0`` reporter and filling additional people to a scalar
@@ -7,21 +7,24 @@ participation among adults age 65 or older, while the retired code applied it
 to children and working-age disabled people too.
 
 This stage keeps the source-backed half of that method (the reporter anchor)
-and replaces the scope-invalid rate with SSA's December 2024 counts of people
-receiving a *federal payment*, split into the three published age bands.  It
-uses PolicyEngine-US ``uncapped_ssi > 0`` as the current-benefit candidate
-domain, makes one stable decision per ``person_source_id``, and fans that
-decision to every actual support row for the source person.  A target above
-modeled capacity saturates at capacity and records the shortfall; eligibility
-is never broadened to manufacture recipients.
+and replaces the scope-invalid rate with per-band priors derived from SSA's
+December 2024 counts of people receiving a *federal payment*, split into the
+three published age bands.  Each prior is the band target over the weighted
+PolicyEngine-US ``uncapped_ssi > 0`` candidate capacity — falling back to the
+observed reporter share of capacity when that ratio reaches one, so the flag
+never degenerates to a constant.  Every source person draws once against the
+band prior, seeded and stable per ``person_source_id``, with the decision
+fanned to every actual support row; direct ASEC reporters stay true
+unconditionally.  There is no count matching here (populace#469): the SSA
+band counts bind only as ordinary calibration registry targets
+(populace#470), the caller passes those same registry values in as
+``targets``, and any post-calibration miss ships in the release scorecard
+like every other program's.
 
 The caller supplies December ``uncapped_ssi`` because the fiscal builder owns
-PolicyEngine simulations and batching.  Assignment is always recomputed from
-the supplied frame weights.  The builder fixes it on an initial calibrated
-weight surface, replays dependent health inputs and fiscal targets, then
-refits on the unchanged support.  Returned release weights are diagnosed
-without rewriting the persisted assignment; only those final diagnostics are
-published.
+PolicyEngine simulations and batching.  Assignment is recomputed from the
+supplied frame weights, fixed once before target materialization, and later
+diagnosed on release weights without rewriting the persisted decisions.
 """
 
 from __future__ import annotations
@@ -107,12 +110,17 @@ _DIAGNOSTICS_SCHEMA_VERSION = 1
 
 @dataclass(frozen=True)
 class SSITakeUpAgeTarget:
-    """One disjoint SSA federal-payment recipient age stratum."""
+    """One disjoint SSA federal-payment recipient age stratum.
+
+    Band structure only: the recipient counts themselves live in the ledger
+    (``ssa_ssi...by_age`` facts) and reach this stage as caller-supplied
+    ``targets`` read from the calibration registry (populace#469/#470), never
+    as module constants.
+    """
 
     key: str
     minimum_age: int | None
     maximum_age: int | None
-    person_count: float
     label: str
 
     def contains(self, age: np.ndarray) -> np.ndarray:
@@ -125,12 +133,10 @@ class SSITakeUpAgeTarget:
 
 
 US_SSI_TAKE_UP_AGE_TARGETS: tuple[SSITakeUpAgeTarget, ...] = (
-    SSITakeUpAgeTarget("under_18", None, 17, 1_001_922.0, "Under 18"),
-    SSITakeUpAgeTarget("18_64", 18, 64, 3_905_779.0, "Ages 18–64"),
-    SSITakeUpAgeTarget("65_plus", 65, None, 2_382_142.0, "Ages 65+"),
+    SSITakeUpAgeTarget("under_18", None, 17, "Under 18"),
+    SSITakeUpAgeTarget("18_64", 18, 64, "Ages 18–64"),
+    SSITakeUpAgeTarget("65_plus", 65, None, "Ages 65+"),
 )
-_TARGETS_BY_KEY = {target.key: target for target in US_SSI_TAKE_UP_AGE_TARGETS}
-_TARGET_TOTAL = float(sum(target.person_count for target in US_SSI_TAKE_UP_AGE_TARGETS))
 
 _READ_PARAMETERS: dict[str, object] = {
     "table": "person",
@@ -144,28 +150,20 @@ _ASSIGN_PARAMETERS: dict[str, object] = {
     "reported_true_anchor": "SSI_VAL > 0",
     "assignment_unit": _SOURCE_ID,
     "fan_to_support_clones": True,
-}
-_CALIBRATE_PARAMETERS: dict[str, object] = {
-    "variable": _OUTPUT,
-    "targets": [US_SSI_TAKE_UP_TARGET_TABLE_NAME],
-    "preserve_true_anchors": True,
-    "preserve_true_anchor": "SSI_VAL > 0",
-    "domain": "uncapped_ssi > 0",
-    "weight": "person_weight",
-    "draw": "stable_source_person_draw",
-    "calibration_unit": _SOURCE_ID,
     "age_bands": {
         "under_18": "age < 18",
         "18_64": "18 <= age < 65",
         "65_plus": "age >= 65",
     },
+    "rate_derivation": (
+        "band_target / weighted_candidate_capacity(uncapped_ssi > 0); "
+        "min(reporter_candidate_floor / capacity, 1) once that ratio "
+        "reaches one"
+    ),
+    "rate_target_role": "ssa_ssi_age_band_recipients",
     "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,
     "target_period": _TARGET_PERIOD,
     "target_measure": _TARGET_MEASURE,
-    "target_values": {
-        target.key: int(target.person_count) for target in US_SSI_TAKE_UP_AGE_TARGETS
-    },
-    "aggregate_target": int(_TARGET_TOTAL),
 }
 
 
@@ -188,17 +186,16 @@ def us_ssi_take_up_stage_spec() -> SourceStageSpec:
     expected_kinds = [
         "read_table",
         "assign_binary_from_rate",
-        "calibrate_binary_assignment",
     ]
     if [operation.kind for operation in spec.operations] != expected_kinds:
         raise ValueError(
-            "US SSI take-up stage must declare read, assignment, then age-count "
-            "calibration."
+            "US SSI take-up stage must declare read then one seeded Bernoulli "
+            "assignment; the SSA band counts bind only as calibration registry "
+            "targets (populace#469/#470)."
         )
     expected_parameters = (
         _READ_PARAMETERS,
         _ASSIGN_PARAMETERS,
-        _CALIBRATE_PARAMETERS,
     )
     for operation, expected in zip(spec.operations, expected_parameters, strict=True):
         if dict(operation.parameters) != expected:
@@ -211,17 +208,14 @@ def us_ssi_take_up_stage_spec() -> SourceStageSpec:
         if artifact.get("source") == SSI_TAKE_UP_SSA_SOURCE_URL
     ]
     if len(target_artifacts) != 1:
-        raise ValueError("US SSI take-up stage must pin exactly one SSA target table.")
-    values = target_artifacts[0].get("target_values")
-    expected_values = {
-        **{
-            target.key: int(target.person_count)
-            for target in US_SSI_TAKE_UP_AGE_TARGETS
-        },
-        "total": int(_TARGET_TOTAL),
-    }
-    if values != expected_values:
-        raise ValueError("US SSI take-up SSA target cells drifted from runtime.")
+        raise ValueError("US SSI take-up stage must pin exactly one SSA table.")
+    if target_artifacts[0].get("vintage") != _TARGET_PERIOD:
+        raise ValueError("US SSI take-up SSA table vintage drifted from runtime.")
+    if "target_values" in target_artifacts[0]:
+        raise ValueError(
+            "US SSI take-up must not hardcode SSA recipient counts; they enter "
+            "as ledger-fed calibration registry targets (populace#469/#470)."
+        )
     return spec
 
 
@@ -242,13 +236,8 @@ def _age_band_values(age: np.ndarray) -> np.ndarray:
     return bands
 
 
-def _normalize_targets(targets: Mapping[str, float] | None) -> dict[str, float]:
+def _normalize_targets(targets: Mapping[str, float]) -> dict[str, float]:
     expected_keys = tuple(target.key for target in US_SSI_TAKE_UP_AGE_TARGETS)
-    if targets is None:
-        return {
-            target.key: float(target.person_count)
-            for target in US_SSI_TAKE_UP_AGE_TARGETS
-        }
     actual = {str(key): float(value) for key, value in targets.items()}
     if set(actual) != set(expected_keys):
         raise ValueError(
@@ -442,6 +431,25 @@ def _source_table(
     return rows, source
 
 
+def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
+    """Return the documented Bernoulli prior for one SSA age band.
+
+    The target/capacity ratio is a meaningful take-up propensity only while
+    it subsamples (capacity > target). Once it reaches one it would flag the
+    whole band — a constant, signal-free output — so the prior falls back to
+    the observed take-up rate among today's candidates: reporter mass over
+    candidate capacity. Reform-created eligibles then take up at the rate
+    today's modeled eligibles are observed reporting.
+    """
+
+    if capacity <= 0:
+        return 0.0
+    count_ratio = target / capacity
+    if count_ratio < 1.0:
+        return count_ratio
+    return min(reporter_floor / capacity, 1.0)
+
+
 def _age_band_diagnostics(
     source: pd.DataFrame,
     selected: pd.Series,
@@ -461,7 +469,6 @@ def _age_band_diagnostics(
         reporter_floor = float(
             source.loc[candidate & anchored, "candidate_weight"].sum()
         )
-        reachable_goal = min(max(target, reporter_floor), capacity)
         selected_recipient_weight = float(
             source.loc[candidate & selected, "candidate_weight"].sum()
         )
@@ -480,15 +487,12 @@ def _age_band_diagnostics(
                 "reporter_source_identity_count": int(anchored.sum()),
                 "candidate_capacity": capacity,
                 "reporter_candidate_floor": reporter_floor,
-                "reachable_goal": reachable_goal,
                 "selected_recipient_weight": selected_recipient_weight,
                 "signed_target_error": selected_recipient_weight - target,
                 "target_shortfall": max(target - selected_recipient_weight, 0.0),
                 "anchor_excess": max(reporter_floor - target, 0.0),
                 "saturated": bool(capacity < target),
-                "assignment_prior": (
-                    min(target / capacity, 1.0) if capacity > 0 else 0.0
-                ),
+                "assignment_prior": _band_prior(target, capacity, reporter_floor),
                 "max_source_candidate_weight": max_source_weight,
             }
         )
@@ -513,53 +517,16 @@ def _assign_sources(
         reporter_floor = float(
             source.loc[candidate & anchored, "candidate_weight"].sum()
         )
-        reachable_goal = min(max(target, reporter_floor), capacity)
-        # The count-matching ratio is a meaningful reform propensity only
-        # while it subsamples (capacity >= target). Under saturation it
-        # degenerates to 1.0 and Bernoulli(1.0) flags the entire band — with
-        # candidates in every band (the restored disability battery), that is
-        # a constant, signal-free output and the take-up gate fails. Fall
-        # back to the observed take-up rate among today's candidates
-        # (reporter mass over candidate capacity): if a reform makes a
-        # household eligible, it takes up at the rate today's modeled
-        # eligibles are observed reporting. Current-law recipiency is
-        # unchanged either way — only the candidate domain below is ever
-        # paid, and the saturated branch still flags every candidate.
-        if capacity > 0:
-            count_ratio = target / capacity
-            prior = (
-                count_ratio
-                if count_ratio < 1.0
-                else min(reporter_floor / capacity, 1.0)
-            )
-        else:
-            prior = 0.0
+        prior = _band_prior(target, capacity, reporter_floor)
 
-        # Keep reform propensities off today's candidate domain. Candidate
-        # decisions are then greedily count-calibrated below.
+        # Seeded Bernoulli at the documented band prior for everyone in the
+        # band — candidates and reform-created eligibles alike — with survey
+        # reporters anchored unconditionally (populace#469). No count
+        # matching: the SSA band counts are ordinary calibration targets
+        # (populace#470) and the post-calibration miss ships in the
+        # scorecard like every other program's.
         selected.loc[in_band] = source.loc[in_band, "draw"].to_numpy() < prior
         selected.loc[anchored] = True
-        selectable = candidate & ~anchored
-        selected.loc[selectable] = False
-
-        current = reporter_floor
-        if capacity < target:
-            # Select the saturated domain explicitly instead of depending on
-            # floating-point accumulation reaching the same capacity sum.
-            selected.loc[candidate] = True
-        else:
-            ordered = sorted(
-                source.index[selectable],
-                key=lambda source_id: (
-                    float(source.at[source_id, "draw"]),
-                    str(source_id),
-                ),
-            )
-            for source_id in ordered:
-                if current >= reachable_goal:
-                    break
-                selected.at[source_id] = True
-                current += float(source.at[source_id, "candidate_weight"])
 
     return selected, _age_band_diagnostics(source, selected, targets=targets)
 
@@ -637,10 +604,16 @@ def with_us_ssi_take_up(
     *,
     uncapped_ssi: np.ndarray,
     seed: int,
-    targets: Mapping[str, float] | None = None,
+    targets: Mapping[str, float],
     reporter_source_ids: Collection[str] | None = None,
 ) -> tuple[Frame, dict[str, object]]:
-    """Recompute SSI take-up and return the frame plus count diagnostics."""
+    """Recompute SSI take-up and return the frame plus band diagnostics.
+
+    ``targets`` carries the SSA band recipient counts the caller read from
+    the calibration registry (role ``ssa_ssi_age_band_recipients``); they set
+    the Bernoulli priors here and bind as ordinary calibration targets
+    downstream (populace#469/#470).
+    """
 
     us_ssi_take_up_stage_spec()
     normalized_targets = _normalize_targets(targets)
@@ -692,17 +665,16 @@ def us_ssi_take_up_diagnostics(
     *,
     uncapped_ssi: np.ndarray,
     seed: int,
-    targets: Mapping[str, float] | None = None,
+    targets: Mapping[str, float],
     reporter_source_ids: Collection[str] | None = None,
 ) -> dict[str, object]:
     """Diagnose a persisted assignment without changing its decisions.
 
-    The fiscal builder uses this to measure the pre-refit (frozen) flags on the
-    returned weights for the reconciliation swap delta. Count-faithfulness on the
-    returned weights is no longer assumed by freezing the flags: the builder
-    re-assigns take-up under the returned weights and verifies by measurement
-    that the fresh pair moved aggregate recipient mass within one source-identity
-    weight per age band before publishing it.
+    The fiscal builder assigns take-up once before target materialization and
+    publishes these measurements of the frozen flags on the final release
+    weights. Any gap between the measured recipient mass and the SSA band
+    targets is calibration's residual and ships in the scorecard — it is
+    reported here, never corrected here.
     """
 
     us_ssi_take_up_stage_spec()
@@ -745,9 +717,9 @@ def us_ssi_take_up_diagnostics(
 def us_ssi_take_up_gate(
     diagnostics: Mapping[str, object],
     *,
-    targets: Mapping[str, float] | None = None,
+    targets: Mapping[str, float],
 ) -> GateResult:
-    """Require source-faithful anchors and count calibration by age."""
+    """Require source-faithful anchors and documented Bernoulli priors by age."""
 
     expected_targets = _normalize_targets(targets)
     failures: list[str] = []
@@ -835,7 +807,6 @@ def us_ssi_take_up_gate(
             continue
         capacity = float(row.get("candidate_capacity", np.nan))
         floor = float(row.get("reporter_candidate_floor", np.nan))
-        reachable = float(row.get("reachable_goal", np.nan))
         selected = float(row.get("selected_recipient_weight", np.nan))
         signed_error = float(row.get("signed_target_error", np.nan))
         shortfall = float(row.get("target_shortfall", np.nan))
@@ -845,7 +816,6 @@ def us_ssi_take_up_gate(
         numeric_values = (
             capacity,
             floor,
-            reachable,
             selected,
             signed_error,
             shortfall,
@@ -866,22 +836,13 @@ def us_ssi_take_up_gate(
                 f"SSI take-up age band {key!r} has an invalid anchor floor."
             )
             continue
-        goal = min(max(target, floor), capacity)
-        epsilon = max(1e-6, np.finfo(np.float64).eps * max(goal, 1.0) * 16.0)
-        allowance = max(max_weight, epsilon)
-        if abs(reachable - goal) > epsilon:
+        epsilon = max(1e-6, np.finfo(np.float64).eps * max(capacity, 1.0) * 16.0)
+        if selected < floor - epsilon or selected > capacity + epsilon:
+            # Anchored reporters are always selected, so the selected weight
+            # can never fall below the reporter floor nor exceed capacity.
             failures.append(
-                f"SSI take-up age band {key!r} carries the wrong reachable goal."
-            )
-        if selected < -epsilon or selected > capacity + epsilon:
-            failures.append(
-                f"SSI take-up age band {key!r} selected count is outside capacity."
-            )
-        if abs(selected - goal) > allowance + epsilon:
-            failures.append(
-                f"SSI take-up age band {key!r} selected weight {selected:.3f} "
-                f"misses reachable goal {goal:.3f} by more than one source-"
-                f"identity weight ({allowance:.3f})."
+                f"SSI take-up age band {key!r} selected weight is outside "
+                "the [reporter floor, capacity] envelope."
             )
         if abs(signed_error - (selected - target)) > epsilon:
             failures.append(
@@ -895,8 +856,12 @@ def us_ssi_take_up_gate(
             failures.append(
                 f"SSI take-up age band {key!r} carries the wrong anchor excess."
             )
-        expected_prior = min(target / capacity, 1.0)
-        if abs(prior - expected_prior) > epsilon:
+        # The seeded Bernoulli prior is documented per band: target over
+        # capacity while subsampling, the observed reporter rate under
+        # saturation (populace#469). The band-count MISS is calibration's
+        # to close (#470 targets) and ships in the scorecard — it is no
+        # longer a gate failure here.
+        if abs(prior - _band_prior(target, capacity, floor)) > epsilon:
             failures.append(
                 f"SSI take-up age band {key!r} carries the wrong assignment prior."
             )
@@ -905,16 +870,6 @@ def us_ssi_take_up_gate(
             failures.append(
                 f"SSI take-up age band {key!r} saturation status is inconsistent."
             )
-        if saturated:
-            if abs(selected - capacity) > epsilon:
-                failures.append(
-                    f"SSI take-up saturated age band {key!r} did not select "
-                    "every candidate."
-                )
-            if shortfall <= 0:
-                failures.append(
-                    f"SSI take-up saturated age band {key!r} hides its shortfall."
-                )
 
     expected_total = float(sum(expected_targets.values()))
     recorded_total = float(diagnostics.get("target_total", np.nan))

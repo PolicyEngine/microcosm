@@ -43,7 +43,6 @@ from populace.build.us_runtime import (
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
     US_SSI_TAKE_UP_ANCHOR,
     US_SSI_TAKE_UP_STAGE_NAME,
-    US_SSI_TAKE_UP_TARGET_TABLE_NAME,
     US_STAGE_NAMES,
     US_SUPPORT_SPINE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
@@ -331,7 +330,9 @@ class TestUsSources:
         assert "AEDHEADST" in stage.notes
         assert "measured" in stage.notes.lower()
 
-    def test_ssi_take_up_stage_pins_reporter_and_ssa_count_contract(self) -> None:
+    def test_ssi_take_up_stage_pins_reporter_and_bernoulli_prior_contract(
+        self,
+    ) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_SSI_TAKE_UP_STAGE_NAME]
         donor = US_DONORS[US_SSI_TAKE_UP_STAGE_NAME]
 
@@ -347,7 +348,6 @@ class TestUsSources:
         assert [operation.kind for operation in stage.operations] == [
             "read_table",
             "assign_binary_from_rate",
-            "calibrate_binary_assignment",
         ]
         assert dict(stage.operations[0].parameters) == {
             "table": "person",
@@ -361,30 +361,20 @@ class TestUsSources:
             "reported_true_anchor": f"{US_SSI_TAKE_UP_ANCHOR} > 0",
             "assignment_unit": "person_source_id",
             "fan_to_support_clones": True,
-        }
-        assert dict(stage.operations[2].parameters) == {
-            "variable": "takes_up_ssi_if_eligible",
-            "targets": [US_SSI_TAKE_UP_TARGET_TABLE_NAME],
-            "preserve_true_anchors": True,
-            "preserve_true_anchor": f"{US_SSI_TAKE_UP_ANCHOR} > 0",
-            "domain": "uncapped_ssi > 0",
-            "weight": "person_weight",
-            "draw": "stable_source_person_draw",
-            "calibration_unit": "person_source_id",
             "age_bands": {
                 "under_18": "age < 18",
                 "18_64": "18 <= age < 65",
                 "65_plus": "age >= 65",
             },
+            "rate_derivation": (
+                "band_target / weighted_candidate_capacity(uncapped_ssi > 0); "
+                "min(reporter_candidate_floor / capacity, 1) once that ratio "
+                "reaches one"
+            ),
+            "rate_target_role": "ssa_ssi_age_band_recipients",
             "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,
             "target_period": "2024-12",
             "target_measure": "Total with—Federal payment",
-            "target_values": {
-                "under_18": 1_001_922,
-                "18_64": 3_905_779,
-                "65_plus": 2_382_142,
-            },
-            "aggregate_target": 7_289_843,
         }
         ssa_artifacts = [
             artifact
@@ -392,6 +382,9 @@ class TestUsSources:
             if artifact.get("source") == SSI_TAKE_UP_SSA_SOURCE_URL
         ]
         assert len(ssa_artifacts) == 1
+        # The SSA recipient counts bind only through the ledger-fed
+        # calibration registry (populace#469/#470) — never hardcoded here.
+        assert all("target_values" not in artifact for artifact in stage.artifacts)
         evidence = next(
             artifact
             for artifact in stage.artifacts

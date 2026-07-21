@@ -1229,13 +1229,7 @@
           "vintage": "2024-12",
           "locator": "SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by age",
           "source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
-          "measure": "Total with—Federal payment",
-          "target_values": {
-            "under_18": 1001922,
-            "18_64": 3905779,
-            "65_plus": 2382142,
-            "total": 7289843
-          }
+          "measure": "Total with—Federal payment"
         },
         {
           "kind": "archived_derivation_evidence",
@@ -1284,40 +1278,23 @@
           "rate_column": "ssi_take_up_assignment_prior",
           "reported_true_anchor": "SSI_VAL > 0",
           "assignment_unit": "person_source_id",
-          "fan_to_support_clones": true
-        },
-        {
-          "kind": "calibrate_binary_assignment",
-          "variable": "takes_up_ssi_if_eligible",
-          "targets": [
-            "ssa_ssi_federal_payment_recipients_by_age"
-          ],
-          "preserve_true_anchors": true,
-          "preserve_true_anchor": "SSI_VAL > 0",
-          "domain": "uncapped_ssi > 0",
-          "weight": "person_weight",
-          "draw": "stable_source_person_draw",
-          "calibration_unit": "person_source_id",
+          "fan_to_support_clones": true,
           "age_bands": {
             "under_18": "age < 18",
             "18_64": "18 <= age < 65",
             "65_plus": "age >= 65"
           },
+          "rate_derivation": "band_target / weighted_candidate_capacity(uncapped_ssi > 0); min(reporter_candidate_floor / capacity, 1) once that ratio reaches one",
+          "rate_target_role": "ssa_ssi_age_band_recipients",
           "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
           "target_period": "2024-12",
-          "target_measure": "Total with—Federal payment",
-          "target_values": {
-            "under_18": 1001922,
-            "18_64": 3905779,
-            "65_plus": 2382142
-          },
-          "aggregate_target": 7289843
+          "target_measure": "Total with—Federal payment"
         }
       ],
       "outputs": [
         "takes_up_ssi_if_eligible"
       ],
-      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. Instead, utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment: 1,001,922 recipients under 18, 3,905,779 ages 18-64, and 2,382,142 ages 65+, totaling 7,289,843. Direct SSI_VAL reporters remain true. Remaining source-person identities are assigned deterministically within the uncapped_ssi > 0 domain and fanned identically to both support clones; an age band whose modeled eligible support cannot reach its SSA count saturates without assigning outside the eligibility domain, and the diagnostic records the irreducible shortfall."
+      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, populace#469 and populace#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the band target over weighted uncapped_ssi > 0 candidate capacity, falling back to the observed reporter share of capacity when that ratio reaches one — seeded and stable per person_source_id, with the decision fanned identically to both support clones. Any gap between selected recipient mass and the SSA counts is calibration's residual and ships in the release scorecard."
     },
     {
       "stage": "sipp_tips",

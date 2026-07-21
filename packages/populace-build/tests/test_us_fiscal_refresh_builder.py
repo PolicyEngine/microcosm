@@ -182,489 +182,69 @@ def test_ssi_candidate_amount_uses_december_person_values() -> None:
     np.testing.assert_array_equal(values, np.asarray([0.0, 125.0, -2.0]))
 
 
-def _ssi_diag_with_bands(selected, allowance):
-    """Minimal SSI take-up diagnostics carrying the swap-delta fields per band."""
-    return {
-        "age_bands": [
-            {
-                "age_band": key,
-                "selected_recipient_weight": float(selected[key]),
-                "max_source_candidate_weight": float(allowance),
-            }
-            for key in ("under_18", "18_64", "65_plus")
-        ]
+def _band_spec(value, lower, upper, name, *, role=None, extra=None):
+    """A minimal registry target spec carrying first-class age bounds."""
+    metadata = {
+        "target_role": role,
+        "age_lower_bound": lower,
+        "age_upper_bound": upper,
+        **(extra or {}),
     }
+    return SimpleNamespace(value=value, metadata=metadata, name=name)
 
 
-def _count_faithful_ssi_gate(builder):
-    """Gate fake implementing the real per-band count-faithful band on fakes.
-
-    Fails a band when the selected recipient weight misses its (rescaled) goal
-    by more than one source-identity weight -- the same test the release gate
-    applies, so the stale pair (which overshoots) is rejected while the fresh
-    re-assigned pair (which hits the goal) passes.
-    """
-
-    def gate(diagnostics, *, targets):
-        failures = []
-        for band in diagnostics["age_bands"]:
-            key = band["age_band"]
-            selected = float(band["selected_recipient_weight"])
-            allowance = float(band["max_source_candidate_weight"])
-            goal = float(targets[key])
-            if abs(selected - goal) > allowance:
-                failures.append(f"{key} selected {selected:.0f} misses {goal:.0f}")
-        return builder.GateResult(
-            name="ssi", passed=not failures, failures=tuple(failures)
-        )
-
-    return gate
-
-
-@pytest.mark.parametrize(
-    ("sparse_selection_arm", "expected_cap_ratio"),
-    [
-        pytest.param(False, 0.12, id="dense-arm"),
-        # The leak regression: the sparse rmloss100 script ALSO passes
-        # --dense-default-dataset (an export-mode flag), so the arm
-        # discriminator must be the frozen-selection identity — a sparse-arm
-        # reconcile gates at 0.10 even in dense export mode.
-        pytest.param(True, 0.10, id="sparse-arm-dense-export-mode"),
-    ],
-)
-def test_ssi_reconciliation_returns_fresh_pair_the_stale_gate_would_reject(
-    monkeypatch,
-    small_frame,
-    sparse_selection_arm,
-    expected_cap_ratio,
-) -> None:
-    """The fresh pair is published where the stale pair the old loop gated fails.
-
-    The refit drifts the weights the pass-head flags were fixed on, shifting
-    recipient mass between age bands (the calibration target is age-blind) while
-    preserving the national total. The frozen flags (the stale pair) overshoot a
-    band by more than one source-identity weight, so the retired stale-pair gate
-    would reject the run. Re-assigning under the returned weights restores
-    per-band count-faithfulness at the same national total, so the swap delta is
-    within bound and the fresh pair -- not the stale pair -- is published.
-    """
+def test_ssi_band_targets_from_registry_read_the_ledger_band_specs() -> None:
     builder = _load_builder_module()
-    national_spec = SimpleNamespace(
-        value=7_404_820.0,
-        metadata={"target_role": builder.SSA_SSI_RECIPIENTS_TARGET_ROLE},
-        name="ssa-ssi-recipients-national",
-    )
-    target_specs = (national_spec,)
-    band_targets, _ = builder._aligned_ssi_take_up_band_targets(target_specs)
-
-    initial_result = SimpleNamespace(
-        weights=np.asarray([1_100.0, 1_900.0]),
-        initial_weights=np.asarray([1_000.0, 2_000.0]),
-    )
-    reconciled_result = SimpleNamespace(
-        weights=np.asarray([1_250.0, 1_750.0]),
-        initial_weights=np.asarray([1_000.0, 2_000.0]),
-        final_loss=0.25,
-    )
-
-    allowance = 100.0
-    fresh_selected = dict(band_targets)
-    # The refit shifted 1,000 of recipient mass from under_18 into 18_64: the
-    # national total is unchanged, but 18_64 now overshoots its goal by 1,000.
-    stale_selected = {
-        "under_18": band_targets["under_18"] - 1_000.0,
-        "18_64": band_targets["18_64"] + 1_000.0,
-        "65_plus": band_targets["65_plus"],
-    }
-
-    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
-    monkeypatch.setattr(
-        builder, "us_ssi_take_up_reporter_source_ids", lambda frame: frozenset({"r"})
-    )
-    monkeypatch.setattr(
-        builder,
-        "_ssi_person_uncapped_amount",
-        lambda frame, **kwargs: np.zeros(frame.n("person")),
-    )
-
-    def fake_assign(frame, *, uncapped_ssi, seed, targets, reporter_source_ids):
-        assert targets == band_targets
-        return frame, _ssi_diag_with_bands(fresh_selected, allowance)
-
-    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
-
-    def fake_stale_diagnostics(
-        frame, *, uncapped_ssi, seed, targets, reporter_source_ids
-    ):
-        assert targets == band_targets
-        return _ssi_diag_with_bands(stale_selected, allowance)
-
-    monkeypatch.setattr(builder, "us_ssi_take_up_diagnostics", fake_stale_diagnostics)
-    monkeypatch.setattr(
-        builder, "us_ssi_take_up_gate", _count_faithful_ssi_gate(builder)
-    )
-
-    monkeypatch.setattr(
-        builder, "_with_aca_marketplace_source_outputs", lambda frame, *a, **k: frame
-    )
-    monkeypatch.setattr(
-        builder,
-        "_health_input_signal_gate",
-        lambda frame: builder.GateResult(name="health", passed=True),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_with_medicaid_take_up_outputs",
-        lambda frame, *a, **k: (
-            frame,
-            {"states": [{"state_fips": "06", "enrolled_weight": 10.0}]},
-        ),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_medicaid_diagnostics_for_existing_output",
-        lambda *a, **k: {"states": [{"state_fips": "06", "enrolled_weight": 12.0}]},
-    )
-    monkeypatch.setattr(
-        builder,
-        "us_medicaid_take_up_gate",
-        lambda diagnostics: builder.GateResult(name="medicaid", passed=True),
-    )
-    monkeypatch.setattr(
-        builder, "with_us_other_health_insurance_inputs", lambda frame, **k: frame
-    )
-    monkeypatch.setattr(
-        builder,
-        "us_other_health_insurance_signal_gate",
-        lambda frame: builder.GateResult(name="other_health", passed=True),
-    )
-
-    class FakeRegistry:
-        specs = (SimpleNamespace(),)
-
-        def to_target_set(self):
-            return "targets"
-
-    monkeypatch.setattr(
-        builder,
-        "_materialize_target_frame",
-        lambda frame, *a, **k: (frame, FakeRegistry(), {"declared_targets": 1}),
-    )
-    monkeypatch.setattr(
-        builder, "_fiscal_target_loss_weights", lambda registry: np.ones(1)
-    )
-    monkeypatch.setattr(builder, "calibrate", lambda *a, **k: reconciled_result)
-
-    reconciliation = builder._reconcile_ssi_take_up_and_refit(
-        small_frame,
-        initial_result,
-        target_specs,
-        dense_default_dataset=True,
-        sparse_selection_arm=sparse_selection_arm,
-        seed=3,
-        epochs=5,
-        learning_rate=0.01,
-        max_weight_ratio=10.0,
-        l2_lambda=0.0,
-        target_loss_cap=1.0,
-    )
-
-    # Teeth: the stale pair the retired loop gated FAILS that gate, yet the
-    # reconciliation succeeds by publishing the fresh re-assigned pair.
-    stale_diagnostics = _ssi_diag_with_bands(stale_selected, allowance)
-    fresh_diagnostics = _ssi_diag_with_bands(fresh_selected, allowance)
-    assert not builder.us_ssi_take_up_gate(
-        stale_diagnostics, targets=band_targets
-    ).passed
-    assert builder.us_ssi_take_up_gate(fresh_diagnostics, targets=band_targets).passed
-
-    assert reconciliation.passes == 1
-    assert reconciliation.ssi_diagnostics == fresh_diagnostics
-    np.testing.assert_array_equal(
-        reconciliation.export_frame.weights_for("household").values,
-        reconciled_result.weights,
-    )
-    record = reconciliation.compilation["ssi_take_up_reconciliation"]
-    assert record["exit_policy"] == "fresh_pair_under_returned_weights"
-    assert (
-        record["ssi_swap_delta"]["national_swap_sanity_cap_ratio"] == expected_cap_ratio
-    )
-    assert [entry["pass"] for entry in record["pass_history"]] == list(
-        range(1, len(record["pass_history"]) + 1)
-    )
-    assert all(
-        "national_swap_delta" in entry and "within_bound" in entry
-        for entry in record["pass_history"]
-    )
-    assert record["target_alignment"][
-        "registry_national_recipients_total"
-    ] == pytest.approx(7_404_820.0)
-    swap = record["ssi_swap_delta"]
-    assert swap["within_bound"] is True
-    # The refit preserved the national total, so the national swap delta is ~0
-    # even though the per-band re-assignment moved 1,000 of mass in two bands.
-    assert swap["national_swap_delta"] == pytest.approx(0.0, abs=1e-6)
-    assert swap["age_bands"]["under_18"]["swap_delta"] == pytest.approx(1_000.0)
-    assert swap["age_bands"]["18_64"]["swap_delta"] == pytest.approx(-1_000.0)
-    # Medicaid enrolled-mass swap recorded per state (fresh 10 - stale 12).
-    med_state = record["medicaid_enrollment_swap_delta"]["states"]["06"]
-    assert med_state["swap_delta"] == pytest.approx(-2.0)
-
-
-def test_ssi_reconciliation_fails_closed_when_reassignment_swap_exceeds_bound(
-    monkeypatch,
-    small_frame,
-) -> None:
-    """A runaway swap delta still fails closed after the bounded passes.
-
-    When re-assigning under the returned weights moves the aggregate recipient
-    mass by more than a tenth of the national total (the solve effectively
-    abandoned the SSI family), the fresh pair's own gates pass but the sanity
-    cap does not, so the pass fails and the loop raises after ``max_passes``
-    with the swap value in the message.
-    """
-    builder = _load_builder_module()
-    national_spec = SimpleNamespace(
-        value=7_404_820.0,
-        metadata={"target_role": builder.SSA_SSI_RECIPIENTS_TARGET_ROLE},
-        name="ssa-ssi-recipients-national",
-    )
-    target_specs = (national_spec,)
-    band_targets, _ = builder._aligned_ssi_take_up_band_targets(target_specs)
-
-    initial_result = SimpleNamespace(
-        weights=np.asarray([1_100.0, 1_900.0]),
-        initial_weights=np.asarray([1_000.0, 2_000.0]),
-    )
-    returned_result = SimpleNamespace(
-        weights=np.asarray([1_100.0, 1_900.0]),
-        initial_weights=np.asarray([1_000.0, 2_000.0]),
-        final_loss=1.0,
-    )
-
-    counts = {"assign": 0, "calibrate": 0, "stale": 0}
-    allowance = 100.0
-    fresh_selected = dict(band_targets)
-    # The frozen flags overshoot the national total by 1,100,000 (in under_18);
-    # the fresh re-assignment removes it, so the national swap delta exceeds
-    # the runaway sanity cap on BOTH arms (0.10 sparse / 0.12 dense of the
-    # ~7.4M fresh total; populace#447) — the solve
-    # abandoned the SSI family, which must still fail closed.
-    stale_selected = {
-        "under_18": band_targets["under_18"] + 1_100_000.0,
-        "18_64": band_targets["18_64"],
-        "65_plus": band_targets["65_plus"],
-    }
-
-    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
-    monkeypatch.setattr(
-        builder, "us_ssi_take_up_reporter_source_ids", lambda frame: frozenset({"r"})
-    )
-    monkeypatch.setattr(
-        builder,
-        "_ssi_person_uncapped_amount",
-        lambda frame, **kwargs: np.zeros(frame.n("person")),
-    )
-
-    def fake_assign(frame, **kwargs):
-        counts["assign"] += 1
-        return frame, _ssi_diag_with_bands(fresh_selected, allowance)
-
-    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_assign)
-
-    def fake_stale(*args, **kwargs):
-        counts["stale"] += 1
-        return _ssi_diag_with_bands(stale_selected, allowance)
-
-    monkeypatch.setattr(builder, "us_ssi_take_up_diagnostics", fake_stale)
-    monkeypatch.setattr(
-        builder, "us_ssi_take_up_gate", _count_faithful_ssi_gate(builder)
-    )
-
-    monkeypatch.setattr(
-        builder, "_with_aca_marketplace_source_outputs", lambda frame, *a, **k: frame
-    )
-    monkeypatch.setattr(
-        builder,
-        "_health_input_signal_gate",
-        lambda frame: builder.GateResult(name="health", passed=True),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_with_medicaid_take_up_outputs",
-        lambda frame, *a, **k: (frame, {"states": []}),
-    )
-    monkeypatch.setattr(
-        builder,
-        "_medicaid_diagnostics_for_existing_output",
-        lambda *a, **k: {"states": []},
-    )
-    monkeypatch.setattr(
-        builder,
-        "us_medicaid_take_up_gate",
-        lambda diagnostics: builder.GateResult(name="medicaid", passed=True),
-    )
-    monkeypatch.setattr(
-        builder, "with_us_other_health_insurance_inputs", lambda frame, **k: frame
-    )
-    monkeypatch.setattr(
-        builder,
-        "us_other_health_insurance_signal_gate",
-        lambda frame: builder.GateResult(name="other_health", passed=True),
-    )
-
-    class FakeRegistry:
-        specs = (SimpleNamespace(),)
-
-        def to_target_set(self):
-            return "targets"
-
-    monkeypatch.setattr(
-        builder,
-        "_materialize_target_frame",
-        lambda frame, *a, **k: (frame, FakeRegistry(), {}),
-    )
-    monkeypatch.setattr(
-        builder, "_fiscal_target_loss_weights", lambda registry: np.ones(1)
-    )
-
-    def fake_calibrate(*args, **kwargs):
-        counts["calibrate"] += 1
-        return returned_result
-
-    monkeypatch.setattr(builder, "calibrate", fake_calibrate)
-
-    with pytest.raises(RuntimeError, match="after 2 pass") as excinfo:
-        builder._reconcile_ssi_take_up_and_refit(
-            small_frame,
-            initial_result,
-            target_specs,
-            dense_default_dataset=True,
-            seed=0,
-            epochs=1,
-            learning_rate=0.01,
-            max_weight_ratio=10.0,
-            l2_lambda=0.0,
-            target_loss_cap=1.0,
-            max_passes=2,
-        )
-
-    message = str(excinfo.value)
-    assert "swap delta" in message
-    assert "1100000.000" in message
-    # populace#447: the per-pass trajectory must survive the terminal raise —
-    # converging-but-over-cap vs oscillating is the adjudication evidence.
-    assert "Pass trajectory: pass 1: delta=" in message
-    assert "pass 2: delta=" in message
-    assert "within_bound=False" in message
-    # Two passes: a stage assign and an exit assign each pass, one stale diag
-    # each pass, one refit each pass.
-    assert counts == {"assign": 4, "calibrate": 2, "stale": 2}
-
-
-def test_registry_national_ssi_recipients_total_sums_national_specs() -> None:
-    builder = _load_builder_module()
-    role = builder.SSA_SSI_RECIPIENTS_TARGET_ROLE
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
     specs = (
-        SimpleNamespace(
-            value=7_000_000.0, metadata={"target_role": role}, name="nat-a"
-        ),
-        SimpleNamespace(value=404_820.0, metadata={"target_role": role}, name="nat-b"),
-        SimpleNamespace(
-            value=123.0,
-            metadata={"target_role": role, "state_fips": "06"},
-            name="state-row",
-        ),
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(3_905_779.0, "18", "65", "18-64", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
         SimpleNamespace(value=9.0, metadata={"target_role": "other"}, name="unrelated"),
     )
-    assert builder._registry_national_ssi_recipients_total(specs) == pytest.approx(
-        7_404_820.0
-    )
+    assert builder._ssi_take_up_band_targets_from_registry(specs) == {
+        "under_18": pytest.approx(1_001_922.0),
+        "18_64": pytest.approx(3_905_779.0),
+        "65_plus": pytest.approx(2_382_142.0),
+    }
 
 
-def test_registry_national_ssi_recipients_total_fails_closed_without_national() -> None:
+def test_ssi_band_targets_fail_closed_when_a_band_is_missing() -> None:
     builder = _load_builder_module()
-    role = builder.SSA_SSI_RECIPIENTS_TARGET_ROLE
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
     specs = (
-        SimpleNamespace(
-            value=123.0,
-            metadata={"target_role": role, "state_fips": "06"},
-            name="state-row",
-        ),
-        SimpleNamespace(
-            value=9.0, metadata={"target_role": "medicaid_enrollment"}, name="medicaid"
-        ),
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
     )
-    with pytest.raises(RuntimeError, match="could not find a national"):
-        builder._registry_national_ssi_recipients_total(specs)
+    with pytest.raises(RuntimeError, match=r"missing band\(s\) \['18_64'\]"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
 
 
-def test_aligned_ssi_take_up_band_targets_applies_shares_to_national_total() -> None:
+def test_ssi_band_targets_reject_unrecognized_bounds() -> None:
     builder = _load_builder_module()
-    role = builder.SSA_SSI_RECIPIENTS_TARGET_ROLE
-    national = 7_404_820.0
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (_band_spec(1_001_922.0, "-inf", "19", "off-by-one", role=role),)
+    with pytest.raises(RuntimeError, match="unrecognized age bounds"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
+
+
+def test_ssi_band_targets_reject_duplicate_bands() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
     specs = (
-        SimpleNamespace(
-            value=national, metadata={"target_role": role}, name="national"
-        ),
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(999_999.0, "-inf", "18", "under-18-again", role=role),
     )
-    band_targets, record = builder._aligned_ssi_take_up_band_targets(specs)
-
-    ssa_total = sum(t.person_count for t in builder.US_SSI_TAKE_UP_AGE_TARGETS)
-    for target in builder.US_SSI_TAKE_UP_AGE_TARGETS:
-        expected = target.person_count / ssa_total * national
-        assert band_targets[target.key] == pytest.approx(expected)
-    # The rescaled band goals sum to the national total the refit enforces --
-    # not to the ~115k-larger SSA federal-payment-by-age band total.
-    assert sum(band_targets.values()) == pytest.approx(national)
-    assert record["registry_national_recipients_total"] == pytest.approx(national)
-    assert record["ssa_federal_payment_recipient_band_total"] == pytest.approx(
-        ssa_total
-    )
-    assert sum(record["band_shares"].values()) == pytest.approx(1.0)
+    with pytest.raises(RuntimeError, match="duplicate registry targets"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
 
 
-def test_ssi_take_up_swap_delta_records_solve_residual_within_sanity_cap() -> None:
-    """The delta is the solve's SSI-family residual: recorded, sanity-capped.
-
-    Attempt 8 proved the delta tracks the age-blind solve's equilibrium miss
-    on the SSI-recipient family (~419k on 7.4M), not assignment granularity —
-    gating it at one source-identity weight per band demanded solve precision
-    no other target faces. A residual well beyond granularity but under a
-    tenth of the fresh national total is therefore recorded and passes; the
-    granularity sum ships as a reference quantity only.
-    """
-
+def test_ssi_band_targets_reject_nonpositive_values() -> None:
     builder = _load_builder_module()
-    stale = _ssi_diag_with_bands(
-        {"under_18": 1_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
-    )
-    # Fresh restores +400 nationally: far beyond the 150 granularity sum,
-    # within the 10% sanity cap (703 on a 7,030 fresh total).
-    fresh = _ssi_diag_with_bands(
-        {"under_18": 1_030.0, "18_64": 4_300.0, "65_plus": 1_700.0}, allowance=50.0
-    )
-    swap = builder._ssi_take_up_swap_delta(stale, fresh)
-    assert swap["national_swap_delta"] == pytest.approx(30.0)
-    assert swap["assignment_granularity_reference"] == pytest.approx(150.0)
-    assert swap["national_swap_sanity_cap"] == pytest.approx(703.0)
-    assert swap["within_bound"] is True
-    assert swap["age_bands"]["18_64"]["swap_delta"] == pytest.approx(300.0)
-    assert swap["age_bands"]["65_plus"]["swap_delta"] == pytest.approx(-300.0)
-
-
-def test_ssi_take_up_swap_delta_flags_runaway_beyond_sanity_cap() -> None:
-    builder = _load_builder_module()
-    stale = _ssi_diag_with_bands(
-        {"under_18": 1_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
-    )
-    fresh = _ssi_diag_with_bands(
-        {"under_18": 2_000.0, "18_64": 4_000.0, "65_plus": 2_000.0}, allowance=50.0
-    )
-    swap = builder._ssi_take_up_swap_delta(stale, fresh)
-    assert swap["national_swap_delta"] == pytest.approx(1_000.0)
-    assert swap["national_swap_sanity_cap"] == pytest.approx(800.0)
-    assert swap["within_bound"] is False
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (_band_spec(0.0, "-inf", "18", "under-18", role=role),)
+    with pytest.raises(RuntimeError, match="finite and positive"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
 
 
 def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
@@ -3226,28 +2806,46 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["ssi_uncapped_batch_size"] = maximum_microsim_batch_size
         return np.zeros(4, dtype=np.float64)
 
+    fake_band_targets = {
+        "under_18": 1_001_922.0,
+        "18_64": 3_905_779.0,
+        "65_plus": 2_382_142.0,
+    }
+
+    def fake_band_targets_from_registry(specs):
+        captured["ssi_band_targets_specs"] = specs
+        return dict(fake_band_targets)
+
     def fake_with_ssi_take_up(
         frame,
         *,
         uncapped_ssi,
         seed,
+        targets,
         reporter_source_ids,
     ):
         captured["ssi_take_up_stage_called"] = True
         captured["ssi_take_up_seed"] = seed
         captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
+        captured["ssi_take_up_targets"] = dict(targets)
         captured["ssi_reporter_source_ids"] = reporter_source_ids
         return frame, {"checked": True}
 
-    def fake_ssi_take_up_gate(diagnostics):
+    def fake_ssi_take_up_gate(diagnostics, *, targets):
         captured["ssi_take_up_gate_called"] = True
         captured["ssi_take_up_gate_diagnostics"] = diagnostics
+        captured["ssi_take_up_gate_targets"] = dict(targets)
         return builder.GateResult(
             name="ssi_take_up",
             passed=True,
             details=diagnostics,
         )
 
+    monkeypatch.setattr(
+        builder,
+        "_ssi_take_up_band_targets_from_registry",
+        fake_band_targets_from_registry,
+    )
     monkeypatch.setattr(
         builder,
         "_ssi_person_uncapped_amount",
@@ -3505,35 +3103,44 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
 
-    def fake_reconcile(frame, initial_result, specs, **kwargs):
-        captured["ssi_reconciliation_called"] = True
-        captured["ssi_reconciliation_reporter_source_ids"] = kwargs[
-            "reporter_source_ids"
-        ]
-        return builder._SSITakeUpReconciliationResult(
-            export_frame=frame,
-            calibration_result=initial_result,
-            registry=registry,
-            compilation={"dropped_target_names": []},
-            ssi_diagnostics={"checked": True},
-            medicaid_diagnostics={},
-            health_input_gate=builder.GateResult(
-                name="health_input_signal",
-                passed=True,
-                details={"checked": True},
-            ),
-            other_health_insurance_gate=builder.GateResult(
-                name="other_health_insurance_premiums_signal",
-                passed=True,
-                details={"checked": True},
-            ),
-            passes=1,
-        )
+    def fake_l0_refit_weights(frame, refit_result):
+        captured["export_frame_from_l0_refit"] = True
+        return frame
 
+    def fake_final_ssi_diagnostics(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        targets,
+        reporter_source_ids,
+    ):
+        captured["final_ssi_diagnostics_called"] = True
+        captured["final_ssi_diagnostics_targets"] = dict(targets)
+        captured["final_ssi_diagnostics_reporter_source_ids"] = reporter_source_ids
+        return {"checked": True}
+
+    def fake_final_medicaid_diagnostics(
+        frame,
+        specs,
+        *,
+        seed,
+        substitutions,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["final_medicaid_diagnostics_called"] = True
+        return {}
+
+    monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
     monkeypatch.setattr(
         builder,
-        "_reconcile_ssi_take_up_and_refit",
-        fake_reconcile,
+        "us_ssi_take_up_diagnostics",
+        fake_final_ssi_diagnostics,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        fake_final_medicaid_diagnostics,
     )
     monkeypatch.setattr(
         builder,
@@ -3581,8 +3188,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "selection_final_loss": 1.5,
         "refit_initial_loss": 2.0,
         "refit_final_loss": 1.0,
-        "pre_ssi_reconciliation_final_loss": 1.0,
-        "ssi_take_up_reconciliation_passes": 1,
         "final_loss": 1.0,
     }
     assert captured["l0_kwargs"]["l0_lambda"] == 0.2
@@ -3665,12 +3270,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_take_up_stage_called"] is True
     assert captured["ssi_take_up_seed"] == 0
     assert captured["ssi_take_up_uncapped"].shape == (4,)
+    assert captured["ssi_take_up_targets"] == fake_band_targets
     assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
-    assert captured["ssi_reconciliation_reporter_source_ids"] == frozenset(
-        {"asec-reporter"}
-    )
     assert captured["ssi_take_up_gate_called"] is True
     assert captured["ssi_take_up_gate_diagnostics"] == {"checked": True}
+    assert captured["ssi_take_up_gate_targets"] == fake_band_targets
+    # One-shot regime (populace#469): the frozen flags are measured on the
+    # release weights, never reassigned or reconciled.
+    assert captured["export_frame_from_l0_refit"] is True
+    assert captured["final_ssi_diagnostics_called"] is True
+    assert captured["final_ssi_diagnostics_targets"] == fake_band_targets
+    assert captured["final_ssi_diagnostics_reporter_source_ids"] == frozenset(
+        {"asec-reporter"}
+    )
+    assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
         captured["voluntary_filing_donor_sha256"]
@@ -3710,6 +3323,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "medicaid",
         "medicaid_gate",
         "other_health",
+        "other_health_gate",
+        # The export-frame signal re-check (one-shot regime, populace#469).
         "other_health_gate",
     ]
 
@@ -7324,45 +6939,6 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
         is None
-    )
-
-
-def test_ssi_swap_delta_dense_cap_ratio_admits_measured_dense_equilibrium() -> None:
-    """populace#447: the dense arm's reconcile equilibrium (measured trajectory
-    11.97% -> 11.64% -> 11.38%, decelerating toward ~10.6%) sits above the
-    sparse 10% runaway cap. The dense-specific 0.12 ratio admits the measured
-    equilibrium while both ratios still refuse a genuine runaway, and the
-    ratio used is recorded in the payload."""
-    builder = _load_builder_module()
-    fresh = {"under_18": 1_000_000.0, "18_64": 4_000_000.0, "65_plus": 2_400_000.0}
-    stale = dict(fresh)
-    # 11.42% of the 7.4M fresh national: inside 0.12, outside 0.10.
-    stale["18_64"] += 845_000.0
-
-    sparse = builder._ssi_take_up_swap_delta(
-        _ssi_diag_with_bands(stale, 40_000.0),
-        _ssi_diag_with_bands(fresh, 40_000.0),
-    )
-    dense = builder._ssi_take_up_swap_delta(
-        _ssi_diag_with_bands(stale, 40_000.0),
-        _ssi_diag_with_bands(fresh, 40_000.0),
-        sanity_cap_ratio=builder.SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE,
-    )
-
-    assert sparse["within_bound"] is False
-    assert sparse["national_swap_sanity_cap_ratio"] == 0.10
-    assert dense["within_bound"] is True
-    assert dense["national_swap_sanity_cap_ratio"] == 0.12
-    # A genuine runaway (>12%) is still refused on the dense ratio.
-    runaway = dict(fresh)
-    runaway["18_64"] += 1_000_000.0
-    assert (
-        builder._ssi_take_up_swap_delta(
-            _ssi_diag_with_bands(runaway, 40_000.0),
-            _ssi_diag_with_bands(fresh, 40_000.0),
-            sanity_cap_ratio=builder.SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE,
-        )["within_bound"]
-        is False
     )
 
 

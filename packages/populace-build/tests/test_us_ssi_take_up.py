@@ -1,4 +1,4 @@
-"""Reporter-anchored, SSA count-calibrated SSI take-up tests."""
+"""Reporter-anchored, Bernoulli-at-documented-prior SSI take-up tests."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from populace.build.us_runtime.fiscal_targets import (
+    SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+)
 from populace.build.us_runtime.ssi_take_up import (
     SSI_TAKE_UP_ARCHIVED_DERIVATION_URL,
     SSI_TAKE_UP_ARCHIVED_RANDOMNESS_URL,
@@ -21,7 +24,7 @@ from populace.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_ANCHOR,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     US_SSI_TAKE_UP_STAGE_NAME,
-    US_SSI_TAKE_UP_TARGET_TABLE_NAME,
+    _stable_source_draw,
     us_ssi_take_up_diagnostics,
     us_ssi_take_up_gate,
     us_ssi_take_up_reporter_source_ids,
@@ -34,6 +37,22 @@ from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 _TARGETS = {target.key: 50.0 for target in US_SSI_TAKE_UP_AGE_TARGETS}
 _AGES = {"under_18": 12.0, "18_64": 40.0, "65_plus": 72.0}
+# Fixture arithmetic per band: six dual-channel candidates weigh 20.0 each
+# and the PUF-only candidate weighs 10.0 (capacity 130.0); the sole anchored
+# candidate is source 0 (reporter floor 20.0).
+_BAND_CAPACITY = 130.0
+_REPORTER_FLOOR = 20.0
+_ANCHORED_SOURCE_NUMBERS = {"0", "6"}
+
+
+def _expected_bernoulli_flag(source_id: str, prior: float, *, seed: int = 17) -> bool:
+    """The selection law: anchors unconditionally, else draw below prior."""
+
+    if source_id.split(":")[1] in _ANCHORED_SOURCE_NUMBERS:
+        return True
+    return _stable_source_draw(source_id, seed=seed) < prior
+
+
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -129,21 +148,29 @@ def _assigned(
     return frame, result, potential, diagnostics
 
 
-def test_stage_contract_pins_archived_method_and_official_age_targets() -> None:
+def test_stage_contract_pins_archived_method_and_band_structure() -> None:
     spec = us_ssi_take_up_stage_spec()
     assert spec.stage == US_SSI_TAKE_UP_STAGE_NAME
     assert spec.source == SSI_TAKE_UP_SSA_SOURCE_URL
     assert spec.outputs == (_OUTPUT,)
-    assert US_SSI_TAKE_UP_TARGET_TABLE_NAME in spec.operations[2].parameters["targets"]
+    assert [operation.kind for operation in spec.operations] == [
+        "read_table",
+        "assign_binary_from_rate",
+    ]
+    assignment = dict(spec.operations[1].parameters)
+    assert assignment["rate_target_role"] == SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    assert "uncapped_ssi > 0" in assignment["rate_derivation"]
+    # Recipient counts live in the ledger and bind via the calibration
+    # registry (populace#469/#470) — the stage may never hardcode them.
+    assert all("target_values" not in artifact for artifact in spec.artifacts)
     assert "42ed5d45" in SSI_TAKE_UP_ARCHIVED_DERIVATION_URL
     assert "cps.py#L650-L657" in SSI_TAKE_UP_ARCHIVED_DERIVATION_URL
     assert "takeup.py#L10-L35" in SSI_TAKE_UP_ARCHIVED_RANDOMNESS_URL
     assert "ssi_targets.py#L41-L74" in SSI_TAKE_UP_ARCHIVED_TARGETS_URL
-    assert [target.person_count for target in US_SSI_TAKE_UP_AGE_TARGETS] == [
-        1_001_922.0,
-        3_905_779.0,
-        2_382_142.0,
-    ]
+    assert [
+        (band.key, band.minimum_age, band.maximum_age)
+        for band in US_SSI_TAKE_UP_AGE_TARGETS
+    ] == [("under_18", None, 17), ("18_64", 18, 64), ("65_plus", 65, None)]
 
 
 def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None:
@@ -215,29 +242,38 @@ def test_non_candidate_reporter_remains_anchored_but_not_in_recipient_count() ->
         assert band["reporter_candidate_floor"] == 20.0
 
 
-def test_reachable_targets_hit_within_one_source_identity_weight() -> None:
-    _, _, _, diagnostics = _assigned()
+def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> None:
+    _, result, _, diagnostics = _assigned()
+    priors = {
+        band["age_band"]: band["assignment_prior"] for band in diagnostics["age_bands"]
+    }
+    by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
+    for source_id, flagged in by_source.items():
+        prior = priors[source_id.split(":")[0]]
+        assert bool(flagged) == _expected_bernoulli_flag(source_id, prior)
     for band in diagnostics["age_bands"]:
         assert not band["saturated"]
-        assert (
-            abs(band["selected_recipient_weight"] - band["target"])
-            <= band["max_source_candidate_weight"]
-        )
+        assert band["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
 
-def test_unreachable_target_saturates_only_the_counted_candidate_domain() -> None:
+def test_saturated_band_prior_falls_back_to_the_observed_reporter_rate() -> None:
     targets = {"under_18": 1_000.0, "18_64": 50.0, "65_plus": 50.0}
-    _, result, potential, diagnostics = _assigned(targets=targets)
-    flag = result.table("person")[_OUTPUT].to_numpy(dtype=bool)
-    child_rows = result.table("person")["age"].lt(18).to_numpy()
-    assert flag[child_rows & (potential > 0)].all()
+    _, result, _, diagnostics = _assigned(targets=targets)
     child, adult, aged = diagnostics["age_bands"]
     assert child["saturated"]
-    assert child["selected_recipient_weight"] == child["candidate_capacity"]
+    assert child["assignment_prior"] == pytest.approx(_REPORTER_FLOOR / _BAND_CAPACITY)
     assert child["target_shortfall"] > 0
     assert not adult["saturated"]
+    assert adult["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
     assert not aged["saturated"]
+    by_source = result.table("person").groupby("person_source_id")[_OUTPUT].first()
+    for source_id, flagged in by_source.items():
+        if not source_id.startswith("under_18:"):
+            continue
+        assert bool(flagged) == _expected_bernoulli_flag(
+            source_id, _REPORTER_FLOOR / _BAND_CAPACITY
+        )
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
@@ -246,23 +282,36 @@ def test_every_band_saturated_stays_nonconstant_and_passes_the_gate() -> None:
 
     Build M's first sparse run died here: the restored disability battery put
     SSI candidates in every age band, every band's candidate capacity fell
-    short of its SSA target, the count-matching ratio degenerated to 1.0, and
-    Bernoulli(1.0) flagged the entire pool — a constant output the gate
-    rejects. Under saturation the reform-domain propensity now falls back to
-    the observed take-up rate among candidates (reporter mass over capacity),
-    so candidates stay fully selected (current-law recipiency unchanged)
-    while the pool-wide flag keeps signal.
+    short of its SSA target, and a raw target/capacity prior degenerates to
+    Bernoulli(1.0) — a constant, signal-free flag. The prior therefore falls
+    back to the observed reporter rate (reporter mass over capacity) and the
+    pool keeps signal. Candidates are no longer force-selected to chase the
+    count (populace#469): the SSA-count miss is calibration's to close
+    (populace#470) and ships in the scorecard.
     """
 
     targets = {"under_18": 1e6, "18_64": 1e6, "65_plus": 1e6}
     _, result, potential, diagnostics = _assigned(targets=targets)
     person = result.table("person")
     flag = person[_OUTPUT].to_numpy(dtype=bool)
-    assert flag[potential > 0].all()
+    anchored = (
+        person["person_source_id"]
+        .str.split(":")
+        .str[1]
+        .isin(_ANCHORED_SOURCE_NUMBERS)
+        .to_numpy()
+    )
+    assert flag[anchored].all()
+    assert not flag[potential > 0].all()
     assert not flag.all()
+    fallback = _REPORTER_FLOOR / _BAND_CAPACITY
+    by_source = person.groupby("person_source_id")[_OUTPUT].first()
+    for source_id, flagged in by_source.items():
+        assert bool(flagged) == _expected_bernoulli_flag(source_id, fallback)
     for band in diagnostics["age_bands"]:
         assert band["saturated"]
-        assert band["selected_recipient_weight"] == band["candidate_capacity"]
+        assert band["assignment_prior"] == pytest.approx(fallback)
+        assert band["target_shortfall"] > 0
     assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
@@ -274,8 +323,11 @@ def test_reporter_floor_above_target_never_drops_an_anchor() -> None:
         US_SSI_TAKE_UP_ANCHOR
     ].gt(0)
     assert person.loc[direct_reporter, _OUTPUT].all()
+    assert diagnostics["reporter_anchor_lost_count"] == 0
     for band in diagnostics["age_bands"]:
-        assert band["reachable_goal"] == band["reporter_candidate_floor"]
+        assert band["anchor_excess"] == pytest.approx(_REPORTER_FLOOR - 5.0)
+        assert band["selected_recipient_weight"] >= band["reporter_candidate_floor"]
+    assert us_ssi_take_up_gate(diagnostics, targets=targets).passed
 
 
 def test_assignment_is_deterministic_source_keyed_and_seed_sensitive() -> None:
@@ -378,7 +430,7 @@ def test_gate_rejects_tampered_top_level_diagnostics(
     assert any(failure_fragment in failure for failure in gate.failures)
 
 
-def test_gate_rejects_hidden_saturation_and_large_reachable_miss() -> None:
+def test_gate_rejects_hidden_saturation_and_corrupted_band_arithmetic() -> None:
     _, _, _, diagnostics = _assigned()
     hidden = copy.deepcopy(diagnostics)
     hidden["age_bands"][0]["saturated"] = True
@@ -386,11 +438,17 @@ def test_gate_rejects_hidden_saturation_and_large_reachable_miss() -> None:
     assert not hidden_gate.passed
     assert any("saturation status" in failure for failure in hidden_gate.failures)
 
-    missed = copy.deepcopy(diagnostics)
-    missed["age_bands"][0]["selected_recipient_weight"] = 0.0
-    missed_gate = us_ssi_take_up_gate(missed, targets=_TARGETS)
-    assert not missed_gate.passed
-    assert any("misses reachable goal" in failure for failure in missed_gate.failures)
+    escaped = copy.deepcopy(diagnostics)
+    escaped["age_bands"][0]["selected_recipient_weight"] = 0.0
+    escaped_gate = us_ssi_take_up_gate(escaped, targets=_TARGETS)
+    assert not escaped_gate.passed
+    assert any("envelope" in failure for failure in escaped_gate.failures)
+
+    undocumented = copy.deepcopy(diagnostics)
+    undocumented["age_bands"][0]["assignment_prior"] = 0.9
+    undocumented_gate = us_ssi_take_up_gate(undocumented, targets=_TARGETS)
+    assert not undocumented_gate.passed
+    assert any("assignment prior" in failure for failure in undocumented_gate.failures)
 
 
 def test_gate_rejects_duplicate_age_band_diagnostics() -> None:
@@ -426,7 +484,12 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
         targets=_TARGETS,
     )
     np.testing.assert_array_equal(reweighted.table("person")[_OUTPUT], original)
-    assert not us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
+    # Weight drift pushes the measured recipient mass far off target, and the
+    # gate still passes: the count miss is calibration's residual
+    # (populace#469/#470), reported in the scorecard, never a module failure.
+    for band in diagnostics["age_bands"]:
+        assert band["selected_recipient_weight"] > band["target"]
+    assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
     recomputed, _ = with_us_ssi_take_up(
         reweighted,
