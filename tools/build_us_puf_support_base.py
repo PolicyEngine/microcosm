@@ -34,6 +34,7 @@ from populace.build.outer_stage_runtime import (
     assert_unchanged_identity,
 )
 from populace.build.source_manifest import SupportSpineSpec, load_support_spine_manifest
+from populace.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from populace.build.stage_profile import profile_stage
 from populace.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
@@ -47,6 +48,7 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_FIT_NAME,
+    US_SOURCE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
     AsecSource,
     build_pooled_asec_unit_frame,
@@ -92,6 +94,7 @@ from populace.build.us_runtime import (
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
+    us_source_operation_handlers,
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
@@ -130,6 +133,7 @@ PERIOD = 2024
 DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 SUMMARY_FILENAME = "base_populace_us_2024_puf_support.summary.json"
 ALL_STAGE_CHECKPOINT_FILENAME = "stage_all.frame.h5"
+CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME = "capital_gain_distributions"
 LEGACY_STAGE_ALIASES = ("a", "b", "c", "d")
 PIPELINE_STEPS = (
     "source_construction",
@@ -137,6 +141,7 @@ PIPELINE_STEPS = (
     "clone_feature_extraction",
     "primary_qrf_chain",
     "qrf_finalization",
+    CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
     "qbi_reconciliation",
     "wic_post_clone",
     "housing_assistance",
@@ -191,6 +196,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("primary_qrf_chain", ("run_primary_puf_qrf_chain[target_subprocesses]",)),
     ("qrf_finalization", ("finalize_primary_puf_qrf_chain",)),
+    (
+        CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
+        ("run_source_stage[capital_gain_distributions]",),
+    ),
     ("qbi_reconciliation", ("with_us_qbi_input_reconciliation",)),
     ("wic_post_clone", ("with_us_wic_claim_input",)),
     (
@@ -1000,6 +1009,12 @@ def _run_all(
             ),
         )
     _observe_frame_boundary(boundary_observer, "qrf_finalization", imputed)
+    imputed, _ = _capital_gain_distributions_stage(args, imputed)
+    _observe_frame_boundary(
+        boundary_observer,
+        CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
+        imputed,
+    )
     imputed = with_us_qbi_input_reconciliation(imputed)
     _observe_frame_boundary(boundary_observer, "qbi_reconciliation", imputed)
     imputed = with_us_wic_claim_input(
@@ -1587,6 +1602,9 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         elif args.stage == "qrf_finalization":
             after, metadata = _qrf_finalization_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME:
+            after, metadata = _capital_gain_distributions_stage(args, before)
+            assert_unchanged_identity(before, after, stage=args.stage)
         elif args.stage == "final_export":
             after = before
             metadata = _export_staged_result(args, after, stage_metadata)
@@ -1854,6 +1872,118 @@ def _qrf_finalization_stage(
             "details": dict(report.details),
         }
     }
+
+
+def _capital_gain_distributions_stage(
+    args: argparse.Namespace,
+    frame: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    """Run the declared tax-unit memo split and restore person placement."""
+
+    stage = US_SOURCE_MANIFEST.stage_map()[CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME]
+    if stage.grain != "tax_unit":
+        raise ValueError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} must run at tax_unit "
+            f"grain, got {stage.grain!r}."
+        )
+    split_operations = [
+        operation
+        for operation in stage.operations
+        if operation.kind == "split_component_by_share"
+    ]
+    if len(split_operations) != 1:
+        raise ValueError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} must declare exactly "
+            "one split_component_by_share operation."
+        )
+    split_parameters = split_operations[0].parameters
+    source_column = split_parameters.get("source_column")
+    exclusive_with = split_parameters.get("exclusive_with")
+    output = split_parameters.get("output")
+    if (
+        not isinstance(source_column, str)
+        or not isinstance(exclusive_with, (list, tuple))
+        or not all(isinstance(column, str) for column in exclusive_with)
+        or not isinstance(output, str)
+        or stage.outputs != (output,)
+    ):
+        raise ValueError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} has a malformed "
+            "source/output contract."
+        )
+
+    # The PUF QRF materializes these PolicyEngine inputs on people, while the
+    # source-stage contract computes once per tax unit. Frame.place is the
+    # kernel's entity-grain seam; the working frame is disposable so the
+    # original person inputs remain byte-for-byte untouched.
+    staged = frame.place(source_column, stage.grain, how="sum")
+    for column in exclusive_with:
+        staged = staged.place(column, stage.grain, how="sum")
+    if any(output in frame.table(entity).columns for entity in frame.entities):
+        # Surface an existing person-grain output to the executor so its
+        # contract-owned overwrite refusal remains the rerun failure.
+        staged = staged.place(output, stage.grain, how="sum")
+
+    read_operations = [
+        operation for operation in stage.operations if operation.kind == "read_table"
+    ]
+    if len(read_operations) != 1:
+        raise ValueError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} must declare exactly "
+            "one read_table operation."
+        )
+    read_parameters = read_operations[0].parameters
+    table_name = read_parameters.get("table")
+    weight_column = read_parameters.get("weight")
+    if table_name != stage.grain or not isinstance(weight_column, str):
+        raise ValueError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} read_table contract "
+            "must name its tax_unit table and weight."
+        )
+    stage_data = staged.table(stage.grain).copy(deep=True)
+    stage_data[weight_column] = frame.resolve_weights(stage.grain).values
+    source_output = run_source_stage(
+        stage,
+        tables={table_name: stage_data},
+        operation_handlers=us_source_operation_handlers(),
+        config=SourceRuntimeConfig(
+            seed=args.seed,
+            target_year=args.target_year,
+        ),
+    )
+
+    id_column = frame.schema.entity_id_column(stage.grain)
+    if id_column not in source_output or output not in source_output:
+        raise RuntimeError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} executor output is "
+            f"missing {id_column!r} or {output!r}."
+        )
+    output_by_id = source_output.set_index(id_column)[output]
+    tax_unit = frame.table(stage.grain)
+    aligned_output = output_by_id.reindex(tax_unit[id_column])
+    if aligned_output.isna().any():
+        raise RuntimeError(
+            f"{CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME!r} executor output does "
+            "not cover every tax unit."
+        )
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables[stage.grain][output] = aligned_output.to_numpy(dtype=np.float64)
+    result = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    # policyengine-us defines the memo leg as a person input; the stage
+    # derives it once per tax unit (LTCG x SOCA share), so any within-unit
+    # placement that preserves the unit sum is equivalent for filing-unit
+    # tax outcomes. Deterministic first-person carry does that without
+    # inventing a filer/spouse allocation; the QRF path's basis-share
+    # distribution is for person-consumed outputs and does not apply to a
+    # unit-derived memo.
+    return result.place(output, frame.schema.person_entity, how="head"), {}
 
 
 def _post_qrf_frame_stage(
