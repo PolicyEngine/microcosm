@@ -6,7 +6,8 @@ Populace #462 fix 3b is in progress on `qrf-tail-bound-462`, starting from the
 clean `origin/main` commit that includes #477, #478, #479, and #480. The settled
 design is a per-target weighted-donor-quantile clip at the PUF tax-detail
 finalizer seam; no manifest, `populace-fit`, or other pipeline stage changes are
-in scope.
+in scope. The mechanism and focused tests are implemented; full-suite
+verification remains.
 
 ## Done
 
@@ -29,22 +30,32 @@ in scope.
   carried through both the monolithic imputation helper and checkpointed QRF
   finalization into the `qrf_finalization` stage metadata and final build
   summary, alongside the existing weights-audit record.
-- Resolved targeted-test compatibility without weakening production drift
-  checks: configuration keys are validated against the canonical production
-  output universe, while a custom subset finalization applies only configured
-  keys present in that subset. Requiring every global key in each custom subset
-  would break the unchanged snapping, pruning, signed-calibration, educator,
-  and checkpoint-equivalence fixtures.
+- Resolved targeted-test compatibility without weakening fail-loud validation:
+  the canonical production chain always activates the module configuration;
+  deliberately reduced/custom chains remain isolated unless they explicitly
+  supply a tail-bound mapping, which is then validated against their actual
+  output surface. This preserves the unchanged snapping, pruning,
+  signed-calibration, educator, and checkpoint-equivalence fixtures.
 - Verified the exact pinned local PUF exists at the requested path and SHA. Its
   actual positive tax-unit donor support has weighted inverse-CDF p99.9
   `211500.84797884867`, finite and positive and below the required `594483.0`
   ceiling; the design-block condition is not triggered.
+- Added the `non_sch_d_capital_gains` p99.9 configuration, positive-support
+  weighted-donor quantile wrapper, atomic entry validation, strict upper clip
+  before person allocation, and JSON-native per-target diagnostics.
+- Required an active bound to have a diagnostics sink, then carried those
+  records through both monolithic and checkpointed finalization into
+  `qrf_finalization` metadata and the final build summary; caps cannot be
+  silent.
+- Added focused tests for inverse-CDF boundaries, exact clipping/count/bit
+  behavior, unaffected outputs, every fail-loud case, atomic validation,
+  telemetry serialization, and the real donor pin.
+- Ran Ruff on all touched implementation/test files. The new tail-bound file,
+  unchanged PUF-support behavior file, QRF checkpoint-chain file, and base
+  builder telemetry file are green.
 
 ## Next
 
-- Add the weighted inverse-CDF helper, settled configuration, fail-loud entry
-  validation, tax-unit clipping, and per-target diagnostics.
-- Add the requested focused, regression, failure, and real-donor pin tests.
-- Run Ruff, focused tests, and the full `packages/populace-build/tests` suite;
-  commit every coherent step and keep the branch unpushed.
+- Run the full `packages/populace-build/tests` suite and perform the final
+  diff/impact review; keep the branch unpushed.
 - Write the completed verification report to the designated output file.

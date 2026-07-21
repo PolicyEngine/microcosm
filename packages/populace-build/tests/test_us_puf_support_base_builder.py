@@ -154,6 +154,41 @@ class TestBaseBuildWeightsAudit:
             US_PUF_SUPPORT_FIT_NAME: "design"
         }
 
+    def test_qrf_finalization_stage_records_tail_bound_diagnostics(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        builder = _load_support_builder_module()
+        record = {
+            "output": "non_sch_d_capital_gains",
+            "quantile": 0.999,
+            "bound_value": 100.0,
+            "clipped_row_count": 2,
+            "clipped_mass_before": 501.0,
+            "clipped_mass_after": 200.0,
+        }
+
+        def fake_finalize(frame, _checkpoint_dir, *, tail_bound_diagnostics=None):
+            assert tail_bound_diagnostics is not None
+            tail_bound_diagnostics.append(record)
+            return frame, "design"
+
+        monkeypatch.setattr(
+            builder,
+            "finalize_primary_puf_qrf_chain",
+            fake_finalize,
+        )
+        _frame, metadata = builder._qrf_finalization_stage(
+            SimpleNamespace(checkpoint_dir=tmp_path),
+            _minimal_us_frame(),
+        )
+
+        assert metadata["puf_tax_detail_tail_bounds"] == [record]
+        assert json.loads(json.dumps(metadata))["puf_tax_detail_tail_bounds"] == [
+            record
+        ]
+
     def test_base_build_aborts_when_the_audit_fails(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
