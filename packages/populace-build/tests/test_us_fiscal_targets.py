@@ -3008,6 +3008,77 @@ def test_age_targets_chains_w2_tips_through_soi_wages_bridge() -> None:
     assert abs(spec.value - 26_786_522_000 * expected_factor) < 1.0
 
 
+def test_ssa_ssi_age_band_counts_bind_as_person_age_indicator_targets() -> None:
+    # populace#470: the SSA SSI Monthly age-band recipient counts bind as
+    # national indicator counts of engine ssi receipt sliced by the fact's
+    # first-class age constraints; the all-ages row never binds (it would
+    # duplicate the by-area all_areas_total national count).
+    band_id = (
+        "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
+        "by_age.under_18.recipient_count"
+    )
+    all_ages_id = (
+        "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
+        "by_age.all_ages.recipient_count"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=band_id,
+                source_name="ssa",
+                measure_id="recipient_count",
+                value=1_001_922,
+                period_value=2024,
+                layout_record_set_id=(
+                    "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age"
+                ),
+                groupby_value_id="under_18",
+                universe_constraints=[
+                    {
+                        "operator": ">=",
+                        "role": "filter",
+                        "unit": "years",
+                        "value": 0,
+                        "variable": "age",
+                    },
+                    {
+                        "operator": "<",
+                        "role": "filter",
+                        "unit": "years",
+                        "value": 18,
+                        "variable": "age",
+                    },
+                ],
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=all_ages_id,
+                source_name="ssa",
+                measure_id="recipient_count",
+                value=7_289_843,
+                period_value=2024,
+                layout_record_set_id=(
+                    "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age"
+                ),
+                groupby_value_id="all_ages",
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[band_id]
+    assert spec.family == "ssa"
+    assert spec.metadata["materializer"] == "policyengine_variable"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["base_variable"] == "ssi"
+    assert spec.metadata["target_role"] == "ssa_ssi_age_band_recipients"
+    assert spec.metadata["age_lower_bound"] == "0"
+    assert spec.metadata["age_upper_bound"] == "18"
+    assert spec.value == 1_001_922
+    assert all_ages_id not in specs
+
+
 def test_soi_itemized_deduction_targets_require_itemizing() -> None:
     medical_source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns"

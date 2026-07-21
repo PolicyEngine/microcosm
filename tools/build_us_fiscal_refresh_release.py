@@ -4003,9 +4003,48 @@ def _materialize_target_frame(
     direct_value_cache: dict[
         tuple[tuple[str, ...], str, str, str, str], np.ndarray
     ] = {}
+    person_age_for_bands: np.ndarray | None = None
     for spec in direct_target_specs:
         base_variables = _base_variables_from_metadata(spec.metadata)
         mode = spec.metadata.get("measure_mode", "sum")
+        age_lower = spec.metadata.get("age_lower_bound")
+        age_upper = spec.metadata.get("age_upper_bound")
+        if age_lower is not None or age_upper is not None:
+            # Age-banded person-variable targets (populace#470, the SSA SSI
+            # recipients-by-age counts): mask the person-entity base variable
+            # by the fact's age constraints BEFORE the household collapse —
+            # the state/CD masks below act on household values and cannot
+            # express person-age slices.
+            if any(variable not in system.variables for variable in base_variables):
+                continue
+            for variable in base_variables:
+                if _variable_entity(system, variable) != "person":
+                    raise ValueError(
+                        "Age-banded target "
+                        f"{spec.name!r} requires person-entity base "
+                        f"variables; {variable!r} is "
+                        f"{_variable_entity(system, variable)!r}."
+                    )
+            if person_age_for_bands is None:
+                person_age_for_bands = np.asarray(
+                    _calculate_array(simulation, "age"), dtype=np.float64
+                )
+            person_values = np.zeros_like(person_age_for_bands)
+            for variable in base_variables:
+                person_values = person_values + np.asarray(
+                    _calculate_array(simulation, variable), dtype=np.float64
+                )
+            if mode == "indicator_sum":
+                person_values = (person_values > 0.0).astype(np.float64)
+            band_lower = _as_bound(str(age_lower if age_lower is not None else "-inf"))
+            band_upper = _as_bound(str(age_upper if age_upper is not None else "inf"))
+            band_mask = (person_age_for_bands >= band_lower) & (
+                person_age_for_bands < band_upper
+            )
+            hh[spec.measure] = _collapse_person(
+                base_frame, person_values * band_mask.astype(np.float64)
+            )
+            continue
         map_to = spec.metadata.get("indicator_map_to")
         filter_variable = spec.metadata.get("indicator_filter_variable")
         less_than = _less_than_from_metadata(spec.metadata)
