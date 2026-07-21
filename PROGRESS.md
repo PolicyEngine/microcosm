@@ -18,11 +18,30 @@ in scope.
   impact analysis.
 - Preserved the prior fix-3a history in Git; this file now tracks the new fix-3b
   work from its starting commit.
+- Located the existing public inverse-CDF implementation,
+  `populace.frame.wquantile`, including its hand-computed uneven-weight tests at
+  and above an exact cumulative boundary; the finalizer will reuse it.
+- Mapped the finalizer ordering: raw tax-unit draws are normalized/snapped,
+  reconciled, placed on tax units or people, sparsified, then signed-mass
+  calibrated. The new bound belongs before this loop and is constrained to
+  passthrough outputs, so it cannot interact with those later transforms.
+- Mapped the publishable telemetry seam: optional finalizer diagnostics can be
+  carried through both the monolithic imputation helper and checkpointed QRF
+  finalization into the `qrf_finalization` stage metadata and final build
+  summary, alongside the existing weights-audit record.
+- Resolved targeted-test compatibility without weakening production drift
+  checks: configuration keys are validated against the canonical production
+  output universe, while a custom subset finalization applies only configured
+  keys present in that subset. Requiring every global key in each custom subset
+  would break the unchanged snapping, pruning, signed-calibration, educator,
+  and checkpoint-equivalence fixtures.
+- Verified the exact pinned local PUF exists at the requested path and SHA. Its
+  actual positive tax-unit donor support has weighted inverse-CDF p99.9
+  `211500.84797884867`, finite and positive and below the required `594483.0`
+  ceiling; the design-block condition is not triggered.
 
 ## Next
 
-- Inspect `puf_support.py`, its finalizer telemetry pattern, all neighboring
-  snapping/pruning/calibration sets, and existing finalizer fixtures.
 - Add the weighted inverse-CDF helper, settled configuration, fail-loud entry
   validation, tax-unit clipping, and per-target diagnostics.
 - Add the requested focused, regression, failure, and real-donor pin tests.
