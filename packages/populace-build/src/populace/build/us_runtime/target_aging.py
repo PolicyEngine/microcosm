@@ -131,6 +131,10 @@ _TARGET_ROLE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
     "nipa_wages_and_salaries": "wages_and_salaries",
     "bea_state_wages": "wages_and_salaries",
     "nipa_proprietors_income": "net_business_income",
+    # W-2 Box 7 social security tips (populace#451 item 3): tips are a wage
+    # component, and the fact's TY2020 vintage predates the CBO projection
+    # span, so the wages series' SOI actuals provide the chained bridge.
+    "w2_social_security_tips_total": "wages_and_salaries",
 }
 
 
@@ -512,9 +516,7 @@ def _soi_national_chain_series(
 
     wanted = {
         (table, measure): income_source
-        for income_source, (table, measure) in (
-            _CBO_INCOME_SOURCE_TO_SOI_CHAIN.items()
-        )
+        for income_source, (table, measure) in (_CBO_INCOME_SOURCE_TO_SOI_CHAIN.items())
     }
     series: dict[str, dict[int, tuple[float, str]]] = {}
     for fact in facts:

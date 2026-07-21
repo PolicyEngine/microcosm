@@ -2663,6 +2663,19 @@ def _references_for_target_period(
 
 
 def _soi_target_role(fact: object, measure_id: str) -> str:
+    # W-2 item facts (generic "amount" measure id, layout-routed via the
+    # form_w2_item override) get a named role so target aging can pin them
+    # to the wages series: tips are a W-2 wage component, and the feed's
+    # TY2020 vintage needs the SOI wages actuals as its chain bridge into
+    # the CBO projection years (populace#451 item 3).
+    if (
+        measure_id == "amount"
+        and _str_at(fact, "layout", "groupby_dimension")
+        == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+        and _str_at(fact, "layout", "groupby_value_id")
+        in _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS
+    ):
+        return "w2_social_security_tips_total"
     if _is_all_income_range(fact):
         if measure_id == "premium_tax_credit_amount":
             return "aca_spending"
