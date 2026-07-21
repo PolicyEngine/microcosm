@@ -1,11 +1,15 @@
-# Blocked: populace#462 fix 3
+# Contract findings: populace#462 fix 3
 
-## State
+## Original stop state (subsequently adjudicated)
 
 Implementation stopped at the task's explicit contract-safety condition. The
 declared `capital_gain_distributions` stage and its registered executor cannot
 produce the requested conserved split or reduce the verified $30.27B
 `non_sch_d_capital_gains` total into the $10–14B direct-route class.
+
+The user has since adjudicated these findings as correct and withdrawn the
+conservation requirement. The executor's existing memo-component behavior is
+now the authoritative contract for scope 3a.
 
 ## Contract findings
 
@@ -78,7 +82,7 @@ No production, test, or generated manifest files were changed. The requested
 test commands were not run because the mandated stop condition was reached
 before an implementable change existed.
 
-## Needed to unblock
+## Original questions resolved by adjudication
 
 The source-stage contract needs an approved clarification or revision that
 defines:
@@ -90,5 +94,6 @@ defines:
 3. the approved, provenance-backed parameter for dividing the $30.27B total if
    that total is the intended source.
 
-Once those points are part of the declared contract, the stage can be wired at
-the identified post-QRF insertion point and tested without inventing semantics.
+The adjudication resolves these questions for scope 3a by directing the stage
+to be wired unchanged at the identified post-QRF insertion point, using the
+existing executor semantics and neighboring outer-stage grain handling.
