@@ -2475,6 +2475,37 @@ def test_uprated_row_with_unparseable_effective_period_fails_closed() -> None:
     else:
         raise AssertionError("malformed uprating_to_period must fail closed")
 
+    # The guard covers count rows too — they never age, but their stamps
+    # must still parse (round-2 finding 1).
+    malformed_count = TargetSpec(
+        name="bad_stamp_count",
+        entity="household",
+        measure="bad_stamp_count",
+        value=1_000.0,
+        period=2024,
+        source="irs_soi",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "indicator_sum",
+            "source_period": "2022",
+            "source_measure_id": "net_capital_gains_returns",
+            "ledger_source_record_id": "bad_stamp_count",
+            "uprating_factor": "1.1",
+            "uprating_from_period": "2022",
+            "uprating_to_period": "banana",
+        },
+    )
+    try:
+        age_us_dollar_targets(
+            TargetRegistry([malformed_count], country="us"),
+            facts,
+            target_period=2024,
+        )
+    except ValueError as exc:
+        assert "unparseable" in str(exc)
+    else:
+        raise AssertionError("count rows with malformed stamps must fail closed")
+
 
 def test_rebased_interest_rows_age_the_remaining_links_to_build() -> None:
     # The taxable-interest pass shares the chain-completion law: a row

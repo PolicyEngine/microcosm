@@ -318,6 +318,17 @@ def _age_spec(
     build_period_key: int | None,
 ) -> TargetSpec:
     aged_to = str(target_period)
+    if "uprating_factor" in spec.metadata:
+        stamped = spec.metadata.get("uprating_to_period")
+        if stamped is not None and _period_year(str(stamped)) is None:
+            # Applies to EVERY uprated row — counts and non-USD rows
+            # included: they never age, but a populace-authored stamp that
+            # does not parse is a code bug and must not pass silently
+            # (PR #488 round-2 finding 1).
+            raise ValueError(
+                f"Uprated target {spec.name!r} carries an unparseable "
+                f"uprating_to_period {stamped!r}."
+            )
     not_ageable_reason = _not_ageable_reason(spec)
     if not_ageable_reason is not None:
         # Counts, non-USD rows, and rows already period-aligned upstream are
@@ -346,14 +357,6 @@ def _age_spec(
         else spec.metadata.get("source_period", "")
     )
     source_period_key = _period_year(source_period)
-    if "uprating_factor" in spec.metadata and source_period_key is None:
-        # The within-surface uprating stamps are populace-authored; a
-        # malformed effective period is a code bug and must never fail open
-        # into a silent factor-one pass (PR #488 review finding 1).
-        raise ValueError(
-            f"Uprated target {spec.name!r} carries an unparseable "
-            f"uprating_to_period {source_period!r}."
-        )
     if (
         source_period_key is None
         or build_period_key is None
