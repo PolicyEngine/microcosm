@@ -268,6 +268,7 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
         "clone_feature_extraction",
         "primary_qrf_chain",
         "qrf_finalization",
+        "capital_gain_distributions",
         "qbi_reconciliation",
         "wic_post_clone",
         "housing_assistance",
@@ -651,7 +652,7 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     tmp_path: Path,
 ) -> None:
     builder = _load_support_builder_module()
-    checkpoint = tmp_path / "020_final_export.frame.h5"
+    checkpoint = tmp_path / "021_final_export.frame.h5"
     checkpoint.write_bytes(b"valid-checkpoint")
     output = tmp_path / "output.h5"
     summary = tmp_path / "summary.json"
@@ -1009,6 +1010,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     prior_year_income_calls: list[tuple[object, int, int]] = []
     prior_year_income_gate_frames: list[object] = []
     prior_year_income_reconciliation_frames: list[object] = []
+    capital_gain_distributions_calls: list[object] = []
+    qbi_reconciliation_calls: list[object] = []
 
     monkeypatch.setattr(
         builder,
@@ -1237,10 +1240,25 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "impute_and_audit_us_puf_support",
         lambda expanded, donor, **kwargs: ("puf-imputed", {"passed": True}),
     )
+
+    def fake_capital_gain_distributions(args, frame):
+        capital_gain_distributions_calls.append(frame)
+        return "capital-gain-distributions", {}
+
+    monkeypatch.setattr(
+        builder,
+        "_capital_gain_distributions_stage",
+        fake_capital_gain_distributions,
+    )
+
+    def fake_qbi_reconciliation(frame):
+        qbi_reconciliation_calls.append(frame)
+        return "qbi-reconciled"
+
     monkeypatch.setattr(
         builder,
         "with_us_qbi_input_reconciliation",
-        lambda frame: "qbi-reconciled",
+        fake_qbi_reconciliation,
     )
     monkeypatch.setattr(
         builder,
@@ -1488,6 +1506,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     with pytest.raises(SystemExit, match=failure_message):
         builder.main()
 
+    assert capital_gain_distributions_calls == ["puf-imputed"]
+    assert qbi_reconciliation_calls == ["capital-gain-distributions"]
     if failing_gate == "wic_claim":
         assert child_support_calls == [("housing-direct", 7, 2024)]
         assert prior_year_income_calls == [("cps", 7, 2024)]
