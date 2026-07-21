@@ -41,9 +41,8 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -210,7 +209,9 @@ from populace.build.us_runtime.demographics import (
     write_demographics,
 )
 from populace.build.us_runtime.engine_lifecycle import release_engine_simulation
-from populace.build.us_runtime.fiscal_targets import SSA_SSI_RECIPIENTS_TARGET_ROLE
+from populace.build.us_runtime.fiscal_targets import (
+    SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+)
 from populace.build.us_runtime.input_mass import us_input_mass_totals
 from populace.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
@@ -300,30 +301,14 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 6: the official-ASEC sidecar restores 2022 LKWEEKS before target
 # materialization. The source is external to the on-disk base hash, so old
 # checkpoints must not survive the new measured input.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 6
+# 7: SSI take-up became a one-shot seeded Bernoulli at registry band priors
+# (populace#469) — checkpoints materialized from count-matched flags must
+# not survive, or the solve would run on old SSI rows while the frame
+# carries the new assignment (PR #477 review finding 2).
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 7
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
-SSI_TAKE_UP_RECONCILIATION_MAX_PASSES = 3
-
-#: Runaway sanity caps on the SSI swap delta, as a share of the fresh national
-#: recipient total (#431: the delta is the solve's equilibrium residual on the
-#: SSI family, recorded in the manifest; the cap exists only to catch a solve
-#: that abandoned the family). The dense arm's equilibrium is structurally
-#: larger than the sparse arm's on the same #424-undercounted candidate
-#: universe: measured sparse deltas run 7.1-8.0% (attempts 9-16) while the
-#: dense trajectory converges monotonically 11.97% -> 11.64% -> 11.38% with
-#: decelerating decrements (asymptote ~10.6%), so 0.10 is unreachable there
-#: while remaining the right bar for sparse (populace#447 adjudication,
-#: 2026-07-18; trajectory recorded in the reconciliation pass_history). Both
-#: caps converge back to one number when #424 restores the candidate universe.
-#: ARM IDENTITY: the dense arm is the run WITHOUT a frozen selection manifest.
-#: ``--dense-default-dataset`` is an EXPORT-MODE flag that the sparse
-#: rmloss100 script also sets, and must never be used as the arm
-#: discriminator (a 32605c9-era sparse rerun gated at 0.12 through exactly
-#: that confusion; caught by its recorded cap ratio before anything shipped).
-SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO = 0.10
-SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE = 0.12
 
 
 def _collect_batch_garbage() -> None:
@@ -5169,711 +5154,108 @@ def _fiscal_target_loss_weights(
     return weights / weights.mean()
 
 
-class _SSITakeUpReconciliationResult:
-    """Fixed assignments and calibration state after SSI dependency replay."""
+def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, float]:
+    """SSA age-band recipient counts as compiled into the calibration registry.
 
-    __slots__ = (
-        "export_frame",
-        "calibration_result",
-        "registry",
-        "compilation",
-        "ssi_diagnostics",
-        "medicaid_diagnostics",
-        "health_input_gate",
-        "other_health_insurance_gate",
-        "passes",
-    )
-
-    def __init__(
-        self,
-        *,
-        export_frame: Frame,
-        calibration_result: Any,
-        registry: TargetRegistry,
-        compilation: Mapping[str, object],
-        ssi_diagnostics: Mapping[str, object],
-        medicaid_diagnostics: Mapping[str, object],
-        health_input_gate: GateResult,
-        other_health_insurance_gate: GateResult,
-        passes: int,
-    ) -> None:
-        self.export_frame = export_frame
-        self.calibration_result = calibration_result
-        self.registry = registry
-        self.compilation = compilation
-        self.ssi_diagnostics = ssi_diagnostics
-        self.medicaid_diagnostics = medicaid_diagnostics
-        self.health_input_gate = health_input_gate
-        self.other_health_insurance_gate = other_health_insurance_gate
-        self.passes = passes
-
-
-def _frame_with_reconciliation_weight_basis(
-    frame: Frame,
-    household_weights: np.ndarray,
-) -> Frame:
-    """Copy input tables onto the fixed pre-refit household weight basis."""
-
-    values = np.asarray(household_weights, dtype=np.float64)
-    if values.shape != (frame.n("household"),):
-        raise ValueError(
-            "SSI take-up reconciliation weight basis must align to households: "
-            f"{values.shape} != {(frame.n('household'),)}."
-        )
-    if not np.isfinite(values).all() or (values <= 0).any():
-        raise ValueError(
-            "SSI take-up reconciliation requires finite strictly positive "
-            "prior weights."
-        )
-    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
-    weights["household"] = Weights(values, WeightKind.CALIBRATED)
-    return Frame(
-        {entity: frame.table(entity).copy() for entity in frame.entities},
-        frame.schema,
-        weights,
-        frame.strata,
-        mass_log=frame.mass_log,
-    )
-
-
-def _assert_reconciliation_support_unchanged(
-    reference: Frame,
-    candidate: Frame,
-) -> None:
-    """Fail if a dependency replay changes selected entity IDs or order."""
-
-    if reference.schema != candidate.schema or reference.entities != candidate.entities:
-        raise RuntimeError("SSI take-up reconciliation changed the support schema.")
-    for entity in reference.entities:
-        id_column = (
-            reference.schema.person_id_column
-            if entity == reference.schema.person_entity
-            else reference.schema.id_column(entity)
-        )
-        expected = reference.table(entity)[id_column].to_numpy()
-        actual = candidate.table(entity)[id_column].to_numpy()
-        if not np.array_equal(expected, actual):
-            raise RuntimeError(
-                "SSI take-up reconciliation changed selected support IDs or "
-                f"order for {entity!r}."
-            )
-
-
-def _registry_national_ssi_recipients_total(target_specs: tuple) -> float:
-    """Sum the registry's national ``ssi_recipients`` calibration target(s).
-
-    The reconciliation refit drives household weights to the SSA
-    ``ssi_recipients`` administrative family (an indicator sum of engine ``ssi``
-    receipt; role :data:`SSA_SSI_RECIPIENTS_TARGET_ROLE`, national and state
-    grain). The take-up assignment must aim at the *same* recipient measure the
-    solve enforces, so its age-band goals are the SSA recipient age shares
-    applied to this national total rather than the raw SSA
-    federal-payment-by-age counts — a distinct official measure roughly 115k
-    larger. Enforced simultaneously to one-unit precision the two totals have no
-    common fixed point, which is what stalled the pre-alignment reconciliation.
-
-    National specs carry the role with no ``state_fips`` (state rows carry one).
-    Only the all-category ``total`` compiles upstream
-    (``fiscal_targets._ssa_ssi_reference_from_fact``); summing is defensive
-    against a future per-category national split. Fails closed when the registry
-    carries no national ``ssi_recipients`` target.
+    The SSI take-up stage derives its Bernoulli priors from the same
+    ledger-fed band targets the weight solve enforces (role
+    :data:`SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE`, populace#469/#470): one
+    official measure, bound once, never hardcoded in the module. Bands are
+    matched on the facts' first-class age constraints. Fails closed when the
+    feed does not carry all three SSA age bands.
     """
 
-    national_values = [
-        float(spec.value)
-        for spec in target_specs
-        if spec.metadata.get("target_role") == SSA_SSI_RECIPIENTS_TARGET_ROLE
-        and not spec.metadata.get("state_fips")
+    expected_bounds: dict[tuple[float, float], str] = {}
+    for band in US_SSI_TAKE_UP_AGE_TARGETS:
+        lower = float("-inf") if band.minimum_age is None else float(band.minimum_age)
+        upper = (
+            float("inf") if band.maximum_age is None else float(band.maximum_age) + 1.0
+        )
+        expected_bounds[(lower, upper)] = band.key
+    band_targets: dict[str, float] = {}
+    for spec in target_specs:
+        if spec.metadata.get("target_role") != SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE:
+            continue
+        raw_bounds = (
+            spec.metadata.get("age_lower_bound"),
+            spec.metadata.get("age_upper_bound"),
+        )
+        key = None
+        try:
+            lower_value = float(raw_bounds[0])
+            upper_value = float(raw_bounds[1])
+        except (TypeError, ValueError):
+            lower_value = upper_value = float("nan")
+        else:
+            # Ages are nonnegative, so an explicit "age >= 0" floor is the
+            # same stratum as an unbounded lower edge — the real feed's
+            # under-18 fact carries one (PR #477 review finding 1).
+            if lower_value <= 0:
+                lower_value = float("-inf")
+            key = expected_bounds.get((lower_value, upper_value))
+        if key is None:
+            raise RuntimeError(
+                "SSI take-up found a registry "
+                f"{SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE!r} target with "
+                f"unrecognized age bounds {raw_bounds!r}; expected one of "
+                f"{sorted(expected_bounds)}."
+            )
+        if key in band_targets:
+            raise RuntimeError(
+                "SSI take-up found duplicate registry targets for SSA age "
+                f"band {key!r}."
+            )
+        value = float(spec.value)
+        if not np.isfinite(value) or value <= 0:
+            raise RuntimeError(
+                f"SSI take-up registry target for age band {key!r} must be "
+                f"finite and positive; got {value!r}."
+            )
+        band_targets[key] = value
+    missing = [
+        band.key for band in US_SSI_TAKE_UP_AGE_TARGETS if band.key not in band_targets
     ]
-    if not national_values:
+    if missing:
         raise RuntimeError(
-            "SSI take-up reconciliation could not find a national "
-            f"{SSA_SSI_RECIPIENTS_TARGET_ROLE!r} target in the fiscal registry; "
-            "the age-band take-up goals cannot be aligned to the calibration "
-            "total the refit enforces."
+            "SSI take-up requires the ledger-fed SSA age-band recipient "
+            f"targets (role {SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE!r}) in "
+            f"the fiscal registry; missing band(s) {missing}. The consumer "
+            "facts feed must carry the ssa ssi_federal_payment_recipients "
+            "by_age rows (populace#470)."
         )
-    total = float(sum(national_values))
-    if not np.isfinite(total) or total <= 0:
+    return band_targets
+
+
+def _ssi_assignment_priors_from_diagnostics(
+    diagnostics: Mapping[str, object],
+) -> dict[str, float]:
+    """The per-band Bernoulli priors the gated assignment stage documented.
+
+    The final release-weight measurement republishes these verbatim and
+    re-verifies every frozen flag against the seeded law they define
+    (populace#469) — recomputing priors from release weights would
+    misdocument the one-shot assignment.
+    """
+
+    bands = diagnostics.get("age_bands")
+    if not isinstance(bands, list) or not bands:
         raise RuntimeError(
-            "SSI take-up reconciliation found a nonpositive national "
-            f"{SSA_SSI_RECIPIENTS_TARGET_ROLE!r} target ({total!r})."
+            "SSI take-up stage diagnostics carry no age-band rows to read "
+            "assignment priors from."
         )
-    return total
-
-
-def _aligned_ssi_take_up_band_targets(
-    target_specs: tuple,
-) -> tuple[dict[str, float], dict[str, object]]:
-    """Age-band take-up goals rescaled onto the registry's national SSI total.
-
-    Returns ``(band_targets, alignment_record)``. ``band_targets`` applies the
-    SSA federal-payment recipient age *shares* to the registry's national
-    ``ssi_recipients`` total, so the greedy count-match and the reconciliation
-    refit pursue one shared recipient measure and a fixed point exists. The band
-    counts are federal-payment recipients by age; the registry total is the
-    recipient measure the solve enforces; the shares reconcile the two official
-    measures. ``alignment_record`` carries both raw totals and the rescale for
-    the reconciliation compilation.
-    """
-
-    registry_national = _registry_national_ssi_recipients_total(target_specs)
-    ssa_band_total = float(
-        sum(target.person_count for target in US_SSI_TAKE_UP_AGE_TARGETS)
-    )
-    band_shares = {
-        target.key: target.person_count / ssa_band_total
-        for target in US_SSI_TAKE_UP_AGE_TARGETS
-    }
-    band_targets = {
-        key: share * registry_national for key, share in band_shares.items()
-    }
-    alignment_record = {
-        "ssa_federal_payment_recipient_band_total": ssa_band_total,
-        "registry_national_recipients_total": registry_national,
-        "band_shares": band_shares,
-        "rescaled_band_targets": {
-            key: float(value) for key, value in band_targets.items()
-        },
-    }
-    return band_targets, alignment_record
-
-
-def _replay_ssi_dependent_inputs(
-    support: Frame,
-    target_specs: tuple,
-    *,
-    seed: int,
-    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]],
-    maximum_microsim_batch_size: int | None,
-    selected_support: Frame,
-) -> tuple[Frame, dict[str, object]]:
-    """Replay the ACA/Medicaid/other-health inputs that depend on SSI receipt.
-
-    SSI recipient status can alter Marketplace eligibility, Medicaid
-    eligibility/take-up, and the ASEC private-premium residual. Both the
-    pre-calibration pass head (before any target vector is materialized) and the
-    post-refit fresh-pair exit replay this identical dependency tail, then assert
-    the selected support IDs are unchanged. Returns the replayed support and the
-    Medicaid take-up diagnostics; callers gate the results.
-    """
-
-    support = _with_aca_marketplace_source_outputs(
-        support,
-        target_specs,
-        seed=seed,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
-    support, medicaid_diagnostics = _with_medicaid_take_up_outputs(
-        support,
-        target_specs,
-        seed=seed,
-        substitutions=medicaid_enrollment_substitutions,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
-    support = with_us_other_health_insurance_inputs(
-        support,
-        seed=seed,
-        time_period=PERIOD,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
-    _assert_reconciliation_support_unchanged(selected_support, support)
-    return support, dict(medicaid_diagnostics)
-
-
-def _ssi_take_up_swap_delta(
-    stale_diagnostics: Mapping[str, object],
-    fresh_diagnostics: Mapping[str, object],
-    *,
-    sanity_cap_ratio: float = SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO,
-) -> dict[str, object]:
-    """National SSI-recipient mass moved by the post-refit re-assignment.
-
-    The retired freeze invariant assumed the flags materialized into the SSI
-    and Medicaid target vectors must not change after optimization. The
-    fresh-pair exit replaces that assumption with a measurement — and what the
-    measurement turns out to capture is the SOLVE'S residual on the
-    SSI-recipient target family: the age-blind, loss-balanced calibration
-    leaves an equilibrium miss on that one family (attempt 8: ~419k on 7.4M,
-    ~5.7%), and the fresh assignment resolves recipiency back to the official
-    counts. That residual is already published as the family's target error in
-    the calibration diagnostics; demanding it fit within assignment
-    granularity (one source-identity weight per age band, ~112k) was a
-    calibration-quality bar no other target faces, dressed as a consistency
-    check. The delta is therefore RECORDED for the manifest — alongside the
-    granularity reference — and gated only against runaway at one tenth of the
-    fresh national total, which still catches a solve that abandoned the
-    family entirely. Per-band deltas are recorded, never gated: per-band
-    faithfulness of the shipped pair holds by construction.
-    """
-
-    stale_bands = {
-        str(band["age_band"]): band for band in stale_diagnostics["age_bands"]
-    }
-    per_band: dict[str, dict[str, float]] = {}
-    stale_total = 0.0
-    fresh_total = 0.0
-    national_bound = 0.0
-    for fresh_band in fresh_diagnostics["age_bands"]:
-        key = str(fresh_band["age_band"])
-        fresh_selected = float(fresh_band["selected_recipient_weight"])
-        stale_selected = float(stale_bands[key]["selected_recipient_weight"])
-        band_allowance = float(fresh_band["max_source_candidate_weight"])
-        per_band[key] = {
-            "stale_selected_recipient_weight": stale_selected,
-            "fresh_selected_recipient_weight": fresh_selected,
-            "swap_delta": fresh_selected - stale_selected,
-            "max_source_candidate_weight": band_allowance,
-        }
-        stale_total += stale_selected
-        fresh_total += fresh_selected
-        national_bound += band_allowance
-    national_delta = abs(fresh_total - stale_total)
-    sanity_cap = sanity_cap_ratio * fresh_total
-    return {
-        "national_swap_sanity_cap_ratio": sanity_cap_ratio,
-        "stale_selected_recipient_weight_total": stale_total,
-        "fresh_selected_recipient_weight_total": fresh_total,
-        "national_swap_delta": national_delta,
-        "assignment_granularity_reference": national_bound,
-        "national_swap_sanity_cap": sanity_cap,
-        "within_bound": bool(national_delta <= sanity_cap),
-        "age_bands": per_band,
-    }
-
-
-def _medicaid_enrollment_swap_deltas(
-    stale_diagnostics: Mapping[str, object],
-    fresh_diagnostics: Mapping[str, object],
-) -> dict[str, object]:
-    """Per-state Medicaid enrolled-mass moved by the fresh replay under W'.
-
-    Recorded, not gated: the fresh Medicaid diagnostics are gated directly. This
-    captures how much enrolled mass each state's re-assignment moved so the
-    reconciliation record stays auditable alongside the SSI swap delta.
-    """
-
-    def _by_state(diagnostics: Mapping[str, object]) -> dict[str, float]:
-        return {
-            str(row["state_fips"]): float(row["enrolled_weight"])
-            for row in diagnostics.get("states", [])
-        }
-
-    stale_states = _by_state(stale_diagnostics)
-    fresh_states = _by_state(fresh_diagnostics)
-    per_state: dict[str, dict[str, float]] = {}
-    for state in sorted(set(stale_states) | set(fresh_states)):
-        stale_enrolled = stale_states.get(state, 0.0)
-        fresh_enrolled = fresh_states.get(state, 0.0)
-        per_state[state] = {
-            "stale_enrolled_weight": stale_enrolled,
-            "fresh_enrolled_weight": fresh_enrolled,
-            "swap_delta": fresh_enrolled - stale_enrolled,
-        }
-    return {"states": per_state}
-
-
-class _SSITakeUpFreshPairExit:
-    """Fresh post-refit SSI/health assignment plus its gates and swap deltas."""
-
-    __slots__ = (
-        "support",
-        "ssi_diagnostics",
-        "medicaid_diagnostics",
-        "ssi_gate",
-        "health_gate",
-        "medicaid_gate",
-        "other_health_gate",
-        "ssi_swap_delta",
-        "medicaid_swap_delta",
-    )
-
-    def __init__(
-        self,
-        *,
-        support: Frame,
-        ssi_diagnostics: dict[str, object],
-        medicaid_diagnostics: dict[str, object],
-        ssi_gate: GateResult,
-        health_gate: GateResult,
-        medicaid_gate: GateResult,
-        other_health_gate: GateResult,
-        ssi_swap_delta: dict[str, object],
-        medicaid_swap_delta: dict[str, object],
-    ) -> None:
-        self.support = support
-        self.ssi_diagnostics = ssi_diagnostics
-        self.medicaid_diagnostics = medicaid_diagnostics
-        self.ssi_gate = ssi_gate
-        self.health_gate = health_gate
-        self.medicaid_gate = medicaid_gate
-        self.other_health_gate = other_health_gate
-        self.ssi_swap_delta = ssi_swap_delta
-        self.medicaid_swap_delta = medicaid_swap_delta
-
-    @property
-    def gates_passed(self) -> bool:
-        """All fresh-pair gates pass and the national swap delta is in bound."""
-
-        return (
-            self.ssi_gate.passed
-            and self.health_gate.passed
-            and self.medicaid_gate.passed
-            and self.other_health_gate.passed
-            and bool(self.ssi_swap_delta["within_bound"])
-        )
-
-    def failures(self) -> tuple[str, ...]:
-        """Prefixed gate failures plus a swap-delta breach message when over."""
-
-        failures = (
-            [f"SSI: {failure}" for failure in self.ssi_gate.failures]
-            + [f"ACA: {failure}" for failure in self.health_gate.failures]
-            + [f"Medicaid: {failure}" for failure in self.medicaid_gate.failures]
-            + [
-                f"Other health: {failure}"
-                for failure in self.other_health_gate.failures
-            ]
-        )
-        if not self.ssi_swap_delta["within_bound"]:
-            failures.append(
-                "SSI take-up swap delta "
-                f"{float(self.ssi_swap_delta['national_swap_delta']):.3f} exceeds "
-                "the runaway sanity cap "
-                f"{float(self.ssi_swap_delta['national_swap_sanity_cap']):.3f} "
-                "(the solve moved recipient mass more than a tenth of the "
-                "national total away from the official counts)."
-            )
-        return tuple(failures)
-
-
-def _ssi_take_up_fresh_pair_exit(
-    export_frame: Frame,
-    target_specs: tuple,
-    *,
-    band_targets: Mapping[str, float],
-    seed: int,
-    reporter_source_ids: Collection[str],
-    final_uncapped_ssi: np.ndarray,
-    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]],
-    maximum_microsim_batch_size: int | None,
-    selected_support: Frame,
-    sanity_cap_ratio: float = SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO,
-) -> _SSITakeUpFreshPairExit:
-    """Re-assign SSI take-up under the returned weights and gate the fresh pair.
-
-    ``export_frame`` carries the pass head's frozen flags on the refit weights
-    (the stale pair the pre-alignment loop gated). This measures that stale pair
-    for the swap delta, then re-runs the assignment under the returned weights so
-    the published flags are count-faithful by construction, replays the SSI
-    dependency tail on the fresh flags, and gates the fresh pair. The SSI swap
-    delta bounds how far the re-assignment moved aggregate recipient mass; the
-    Medicaid enrolled-mass deltas are recorded per state.
-    """
-
-    stale_ssi_diagnostics = us_ssi_take_up_diagnostics(
-        export_frame,
-        uncapped_ssi=final_uncapped_ssi,
-        seed=seed,
-        targets=band_targets,
-        reporter_source_ids=reporter_source_ids,
-    )
-    stale_medicaid_diagnostics = _medicaid_diagnostics_for_existing_output(
-        export_frame,
-        target_specs,
-        seed=seed,
-        substitutions=medicaid_enrollment_substitutions,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
-    exit_support, exit_ssi_diagnostics = with_us_ssi_take_up(
-        export_frame,
-        uncapped_ssi=final_uncapped_ssi,
-        seed=seed,
-        targets=band_targets,
-        reporter_source_ids=reporter_source_ids,
-    )
-    exit_support, exit_medicaid_diagnostics = _replay_ssi_dependent_inputs(
-        exit_support,
-        target_specs,
-        seed=seed,
-        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-        selected_support=selected_support,
-    )
-    return _SSITakeUpFreshPairExit(
-        support=exit_support,
-        ssi_diagnostics=exit_ssi_diagnostics,
-        medicaid_diagnostics=exit_medicaid_diagnostics,
-        ssi_gate=us_ssi_take_up_gate(exit_ssi_diagnostics, targets=band_targets),
-        health_gate=_health_input_signal_gate(exit_support),
-        medicaid_gate=us_medicaid_take_up_gate(dict(exit_medicaid_diagnostics)),
-        other_health_gate=us_other_health_insurance_signal_gate(exit_support),
-        ssi_swap_delta=_ssi_take_up_swap_delta(
-            stale_ssi_diagnostics,
-            exit_ssi_diagnostics,
-            sanity_cap_ratio=sanity_cap_ratio,
-        ),
-        medicaid_swap_delta=_medicaid_enrollment_swap_deltas(
-            stale_medicaid_diagnostics, exit_medicaid_diagnostics
-        ),
-    )
-
-
-def _reconcile_ssi_take_up_and_refit(
-    base_frame: Frame,
-    initial_result,
-    target_specs: tuple,
-    *,
-    dense_default_dataset: bool,
-    sparse_selection_arm: bool = True,
-    seed: int,
-    epochs: int,
-    learning_rate: float,
-    max_weight_ratio: float | None,
-    l2_lambda: float,
-    target_loss_cap: float,
-    reporter_source_ids: Collection[str] | None = None,
-    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
-    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    gate_congressional_district_targets: bool = True,
-    progress_callback=None,
-    max_passes: int = SSI_TAKE_UP_RECONCILIATION_MAX_PASSES,
-) -> _SSITakeUpReconciliationResult:
-    """Reconcile SSI on final weights before replaying dependent target inputs.
-
-    The initial dense/L0 fit supplies an actual release-weight surface. Each
-    bounded pass fixes SSI on those weights, replays ACA, Medicaid, and
-    other-health inputs that can depend on SSI, rematerializes every fiscal
-    target from those exact fixed inputs, and performs an ordinary refit on the
-    already-selected support.
-
-    Two facts make the fixed point reachable. First, the age-band take-up goals
-    are rescaled onto the registry's national ``ssi_recipients`` total (the
-    measure the refit enforces), so the greedy count-match and the calibration
-    pursue one recipient total instead of two official measures ~115k apart.
-    Second, the refit moves the weights the assignment was fixed on, so rather
-    than gate the frozen flags on the drifted weights (a stale pair the loop can
-    never make self-consistent) each pass re-assigns take-up under the returned
-    weights — the fresh pair, count-faithful by construction — and a bounded
-    swap delta caps how far the re-assignment moved aggregate recipient mass from
-    the pre-refit flags. That measured bound is the honest replacement for the
-    retired "never rewrite the flags after optimization" freeze invariant.
-    """
-
-    if max_passes <= 0:
-        raise ValueError("SSI take-up reconciliation requires at least one pass.")
-    reporter_source_ids = (
-        us_ssi_take_up_reporter_source_ids(base_frame)
-        if reporter_source_ids is None
-        else frozenset(str(value) for value in reporter_source_ids)
-    )
-    if dense_default_dataset:
-        current_support = _with_calibrated_weights(
-            base_frame,
-            np.asarray(initial_result.weights, dtype=np.float64),
-        )
-    else:
-        current_support = _with_l0_refit_weights(base_frame, initial_result)
-    prior_weights = np.asarray(initial_result.initial_weights, dtype=np.float64)
-    if prior_weights.shape != (current_support.n("household"),):
-        raise RuntimeError(
-            "SSI take-up reconciliation prior weights do not align to the "
-            "selected release support."
-        )
-    selected_support = current_support
-
-    band_targets, ssi_target_alignment = _aligned_ssi_take_up_band_targets(target_specs)
-
-    last_failures: tuple[str, ...] = ()
-    # populace#447: the per-pass swap-delta trajectory must survive a terminal
-    # raise (converging-but-over-cap vs oscillating is the whole adjudication)
-    # and ride the success record.
-    pass_history: list[dict[str, object]] = []
-    for pass_number in range(1, max_passes + 1):
-        uncapped_ssi = _ssi_person_uncapped_amount(
-            current_support,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-        )
-        assigned_support, stage_diagnostics = with_us_ssi_take_up(
-            current_support,
-            uncapped_ssi=uncapped_ssi,
-            seed=seed,
-            targets=band_targets,
-            reporter_source_ids=reporter_source_ids,
-        )
-        stage_gate = us_ssi_take_up_gate(stage_diagnostics, targets=band_targets)
-        if not stage_gate.passed:
+    priors: dict[str, float] = {}
+    for row in bands:
+        if not isinstance(row, Mapping):
+            raise RuntimeError("SSI take-up stage diagnostics band row is invalid.")
+        key = str(row.get("age_band"))
+        prior = float(row.get("assignment_prior", np.nan))
+        if not np.isfinite(prior) or not 0.0 <= prior <= 1.0:
             raise RuntimeError(
-                "SSI take-up reconciliation assignment failed: "
-                + "; ".join(stage_gate.failures)
+                f"SSI take-up stage diagnostics band {key!r} carries an "
+                f"invalid assignment prior {prior!r}."
             )
-
-        # SSI recipient status can alter Marketplace eligibility, Medicaid
-        # eligibility/take-up, and the ASEC private-premium residual. Replay
-        # that full dependency tail before any target vector is materialized.
-        assigned_support, medicaid_diagnostics = _replay_ssi_dependent_inputs(
-            assigned_support,
-            target_specs,
-            seed=seed,
-            medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-            selected_support=selected_support,
-        )
-        health_gate = _health_input_signal_gate(assigned_support)
-        if not health_gate.passed:
-            raise RuntimeError(
-                "SSI take-up reconciliation ACA input gate failed: "
-                + "; ".join(health_gate.failures)
-            )
-        medicaid_gate = us_medicaid_take_up_gate(dict(medicaid_diagnostics))
-        if not medicaid_gate.passed:
-            raise RuntimeError(
-                "SSI take-up reconciliation Medicaid gate failed: "
-                + "; ".join(medicaid_gate.failures)
-            )
-        other_health_gate = us_other_health_insurance_signal_gate(assigned_support)
-        if not other_health_gate.passed:
-            raise RuntimeError(
-                "SSI take-up reconciliation other-health gate failed: "
-                + "; ".join(other_health_gate.failures)
-            )
-
-        calibration_input = _frame_with_reconciliation_weight_basis(
-            assigned_support,
-            prior_weights,
-        )
-        target_frame, registry, compilation = _materialize_target_frame(
-            calibration_input,
-            target_specs,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-            gate_congressional_district_targets=gate_congressional_district_targets,
-        )
-        current_weights = np.asarray(
-            assigned_support.weights_for("household").values,
-            dtype=np.float64,
-        )
-        reconciled_result = calibrate(
-            target_frame,
-            registry.to_target_set(),
-            epochs=epochs,
-            learning_rate=learning_rate,
-            max_weight_ratio=max_weight_ratio,
-            seed=seed,
-            mass="conserve",
-            l2_lambda=l2_lambda,
-            target_loss_weights=_fiscal_target_loss_weights(registry),
-            target_loss_cap=target_loss_cap,
-            warm_start_weights=current_weights,
-            progress_callback=progress_callback,
-        )
-        export_frame = _with_calibrated_weights(
-            calibration_input,
-            np.asarray(reconciled_result.weights, dtype=np.float64),
-        )
-        _assert_reconciliation_support_unchanged(selected_support, export_frame)
-        final_uncapped_ssi = _ssi_person_uncapped_amount(
-            export_frame,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-        )
-
-        # The refit moves the household weights the assignment was fixed on, so
-        # the frozen flags on the returned weights (the stale pair) are not
-        # count-faithful and the loop can never make them so. Re-assign take-up
-        # under the returned weights (the fresh pair, count-faithful by
-        # construction), gate it, and bound how far the re-assignment moved
-        # aggregate recipient mass with the swap delta.
-        exit_result = _ssi_take_up_fresh_pair_exit(
-            export_frame,
-            target_specs,
-            band_targets=band_targets,
-            seed=seed,
-            reporter_source_ids=reporter_source_ids,
-            final_uncapped_ssi=final_uncapped_ssi,
-            medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-            selected_support=selected_support,
-            sanity_cap_ratio=(
-                SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO
-                if sparse_selection_arm
-                else SSI_TAKE_UP_SWAP_SANITY_CAP_RATIO_DENSE
-            ),
-        )
-        pass_history.append(
-            {
-                "pass": pass_number,
-                "national_swap_delta": exit_result.ssi_swap_delta.get(
-                    "national_swap_delta"
-                ),
-                "national_swap_sanity_cap": exit_result.ssi_swap_delta.get(
-                    "national_swap_sanity_cap"
-                ),
-                "within_bound": exit_result.ssi_swap_delta.get("within_bound"),
-            }
-        )
-        if exit_result.gates_passed:
-            reconciliation_compilation = {
-                **dict(compilation),
-                "target_frame_checkpoint": {
-                    "enabled": False,
-                    "status": "recomputed_after_ssi_take_up_reconciliation",
-                },
-                "ssi_take_up_reconciliation": {
-                    "passes": pass_number,
-                    "max_passes": max_passes,
-                    "reporter_source_identity_count": len(reporter_source_ids),
-                    "exit_policy": "fresh_pair_under_returned_weights",
-                    "dependency_replay": [
-                        "aca_marketplace",
-                        "medicaid_take_up",
-                        "other_health_insurance",
-                        "fiscal_target_materialization",
-                        "ordinary_refit",
-                    ],
-                    "target_alignment": ssi_target_alignment,
-                    "ssi_swap_delta": exit_result.ssi_swap_delta,
-                    "medicaid_enrollment_swap_delta": exit_result.medicaid_swap_delta,
-                    "pass_history": pass_history,
-                },
-            }
-            calibration_result = (
-                reconciled_result
-                if dense_default_dataset
-                else replace(initial_result, refit=reconciled_result)
-            )
-            return _SSITakeUpReconciliationResult(
-                export_frame=exit_result.support,
-                calibration_result=calibration_result,
-                registry=registry,
-                compilation=reconciliation_compilation,
-                ssi_diagnostics=exit_result.ssi_diagnostics,
-                medicaid_diagnostics=exit_result.medicaid_diagnostics,
-                health_input_gate=exit_result.health_gate,
-                other_health_insurance_gate=exit_result.other_health_gate,
-                passes=pass_number,
-            )
-        last_failures = exit_result.failures()
-        current_support = export_frame
-        # populace#456: each pass rematerializes every fiscal target through
-        # the batched engine paths above; sweep the pass's cyclic residue so
-        # a multi-pass reconcile stays at single-pass footprint.
-        del target_frame, calibration_input, export_frame, exit_result
-        _collect_family_garbage()
-
-    trajectory = "; ".join(
-        "pass {pass_number}: delta={delta:,.3f} cap={cap:,.3f} "
-        "within_bound={within}".format(
-            pass_number=entry["pass"],
-            delta=float(entry["national_swap_delta"] or 0.0),
-            cap=float(entry["national_swap_sanity_cap"] or 0.0),
-            within=entry["within_bound"],
-        )
-        for entry in pass_history
-    )
-    raise RuntimeError(
-        "SSI take-up reconciliation did not remain count-faithful on returned "
-        f"weights after {max_passes} pass(es): "
-        + "; ".join(last_failures)
-        + (f" Pass trajectory: {trajectory}." if pass_history else "")
-    )
+        priors[key] = prior
+    return priors
 
 
 def _fiscal_target_concept_budget_weights(registry: TargetRegistry) -> np.ndarray:
@@ -8391,10 +7773,16 @@ def main() -> None:
         telemetry.stage(
             "ssi_take_up",
             message=(
-                "Assigning SSI take-up from ASEC reporter anchors and SSA "
-                "December 2024 federal-payment recipient counts by age."
+                "Assigning SSI take-up once (populace#469): ASEC reporter "
+                "anchors plus a seeded Bernoulli draw at the registry's SSA "
+                "age-band priors."
             ),
         )
+    # One-shot assignment before any target materialization (populace#469).
+    # The priors derive from the same ledger-fed SSA band counts the weight
+    # solve enforces as ordinary targets (populace#470); the flags are frozen
+    # from here and the post-calibration count miss ships in the scorecard.
+    ssi_band_targets = _ssi_take_up_band_targets_from_registry(target_specs)
     ssi_uncapped_amount = _ssi_person_uncapped_amount(
         base_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
@@ -8403,15 +7791,18 @@ def main() -> None:
         base_frame,
         uncapped_ssi=ssi_uncapped_amount,
         seed=args.seed,
+        targets=ssi_band_targets,
         reporter_source_ids=ssi_reporter_source_ids,
     )
-    ssi_take_up_gate = us_ssi_take_up_gate(ssi_take_up_stage_diagnostics)
+    ssi_take_up_gate = us_ssi_take_up_gate(
+        ssi_take_up_stage_diagnostics, targets=ssi_band_targets
+    )
     if not ssi_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
                 "ssi_take_up_gate",
                 status="failed",
-                message="SSI take-up count-calibration gate failed.",
+                message="SSI take-up assignment gate failed.",
                 failures=list(ssi_take_up_gate.failures),
                 force_upload=True,
             )
@@ -8422,6 +7813,9 @@ def main() -> None:
                 for failure in ssi_take_up_gate.failures
             )
         )
+    ssi_assignment_priors = _ssi_assignment_priors_from_diagnostics(
+        ssi_take_up_stage_diagnostics
+    )
     if telemetry is not None:
         telemetry.stage(
             "scf_auto_loan_inputs",
@@ -8996,47 +8390,85 @@ def main() -> None:
         }
     if telemetry is not None:
         telemetry.stage(
-            "ssi_take_up_reconciliation",
+            "take_up_final_diagnostics",
             message=(
-                "Reconciling SSI on release weights, replaying dependent health "
-                "inputs, and rematerializing fiscal targets before final refit."
+                "Applying release weights and measuring the frozen take-up "
+                "assignments (report-only; populace#469)."
             ),
-            max_passes=SSI_TAKE_UP_RECONCILIATION_MAX_PASSES,
         )
-    pre_reconciliation_final_loss = float(result.final_loss)
-    reconciliation_l2_lambda = float(
-        args.l2_lambda
-        if args.dense_default_dataset or args.refit_l2_lambda is None
-        else args.refit_l2_lambda
-    )
-    reconciliation = _reconcile_ssi_take_up_and_refit(
-        base_frame,
-        result,
-        target_specs,
-        dense_default_dataset=bool(args.dense_default_dataset),
-        sparse_selection_arm=args.selection_source_manifest is not None,
-        seed=args.seed,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        max_weight_ratio=args.max_weight_ratio,
-        l2_lambda=reconciliation_l2_lambda,
-        target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
-        reporter_source_ids=ssi_reporter_source_ids,
-        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+    # SSI take-up was assigned once before target materialization
+    # (populace#469): apply the release weights to the same support, measure
+    # the frozen flags for the published diagnostics, and let the gap to the
+    # SSA band counts ship in the scorecard as calibration's residual on the
+    # #470 registry targets — like every other program's take-up miss.
+    if args.dense_default_dataset:
+        export_frame = _with_calibrated_weights(
+            base_frame,
+            np.asarray(result.weights, dtype=np.float64),
+        )
+    else:
+        export_frame = _with_l0_refit_weights(base_frame, result)
+    compilation = dict(compilation)
+    final_uncapped_ssi = _ssi_person_uncapped_amount(
+        export_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        gate_congressional_district_targets=args.gate_congressional_district_targets,
-        progress_callback=(
-            telemetry.calibration_progress if telemetry is not None else None
-        ),
     )
-    export_frame = reconciliation.export_frame
-    result = reconciliation.calibration_result
-    registry = reconciliation.registry
-    compilation = dict(reconciliation.compilation)
-    ssi_take_up_diagnostics = dict(reconciliation.ssi_diagnostics)
-    medicaid_take_up_diagnostics = dict(reconciliation.medicaid_diagnostics)
-    health_input_gate = reconciliation.health_input_gate
-    other_health_insurance_gate = reconciliation.other_health_insurance_gate
+    ssi_take_up_diagnostics = dict(
+        us_ssi_take_up_diagnostics(
+            export_frame,
+            uncapped_ssi=final_uncapped_ssi,
+            seed=args.seed,
+            targets=ssi_band_targets,
+            assignment_priors=ssi_assignment_priors,
+            reporter_source_ids=ssi_reporter_source_ids,
+        )
+    )
+    # Gate the persisted flags on the export frame, not just the stage
+    # output: the Bernoulli-law recheck and anchor/envelope laws are
+    # weight-safe, so any downstream transform that corrupted the frozen
+    # decisions fails the build here instead of shipping (PR #477 review
+    # finding 3). The SSA-count miss itself stays scorecard-only.
+    final_ssi_take_up_gate = us_ssi_take_up_gate(
+        ssi_take_up_diagnostics, targets=ssi_band_targets
+    )
+    if not final_ssi_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_take_up_final_gate",
+                status="failed",
+                message="SSI take-up final export-frame gate failed.",
+                failures=list(final_ssi_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SSI take-up final measurement failed: {failure}"
+                for failure in final_ssi_take_up_gate.failures
+            )
+        )
+    medicaid_take_up_diagnostics = dict(
+        _medicaid_diagnostics_for_existing_output(
+            export_frame,
+            target_specs,
+            seed=args.seed,
+            substitutions=medicaid_enrollment_substitutions,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        )
+    )
+    # Signal gates re-check the exported support: sparse selection can drop
+    # rows, and a column nonconstant on the candidate base can flatten on the
+    # selected support.
+    health_input_gate = _health_input_signal_gate(export_frame)
+    other_health_insurance_gate = us_other_health_insurance_signal_gate(export_frame)
+    if not other_health_insurance_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Other health insurance signal failed on the export frame: {failure}"
+                for failure in other_health_insurance_gate.failures
+            )
+        )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
             **compilation,
@@ -9046,13 +8478,8 @@ def main() -> None:
         }
     default_dataset = {
         **default_dataset,
-        "pre_ssi_reconciliation_final_loss": pre_reconciliation_final_loss,
-        "ssi_take_up_reconciliation_passes": reconciliation.passes,
         "final_loss": float(result.final_loss),
     }
-    if default_dataset["sparse"]:
-        default_dataset["refit_initial_loss"] = float(result.initial_loss)
-        default_dataset["refit_final_loss"] = float(result.final_loss)
     timing["calibration_seconds"] = time.perf_counter() - calibration_started
     timing["elapsed_through_calibration_seconds"] = time.perf_counter() - build_started
     if telemetry is not None:

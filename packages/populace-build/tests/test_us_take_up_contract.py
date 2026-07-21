@@ -51,39 +51,34 @@ class TestContractLoads:
                 "near_universal",
             }
 
-    def test_ssi_uses_reporter_anchored_ssa_age_count_calibration(self) -> None:
+    def test_ssi_uses_reporter_anchored_registry_band_targets(self) -> None:
         program = load_take_up_contract().program_map()["takes_up_ssi_if_eligible"]
         calibration = program.raw["calibration"]
 
         assert program in count_calibrated_take_up_programs()
-        assert calibration == {
-            "anchor": "SSI_VAL",
-            "targets": ["ssa_ssi_federal_payment_recipients_by_age"],
-            "target_table": "ssa_ssi_federal_payment_recipients_by_age",
-            "target_source": (
-                "https://www.ssa.gov/policy/docs/statcomps/"
-                "ssi_monthly/2024-12/table01.html"
-            ),
-            "target_period": "2024-12",
-            "target_measure": "Total with—Federal payment",
-            "target_values": {
-                "under_18": 1_001_922,
-                "18_64": 3_905_779,
-                "65_plus": 2_382_142,
-            },
-            "aggregate_target": 7_289_843,
-            "age_bands": {
-                "under_18": "age < 18",
-                "18_64": "18 <= age < 65",
-                "65_plus": "age >= 65",
-            },
-            "semantics": (
-                "SSA SSI Monthly Statistics December 2024 Table 1 recipients "
-                "in the Total with—Federal payment row, calibrated within "
-                "uncapped_ssi > 0 by source-person identity; unreachable age "
-                "bands saturate without assigning outside modeled eligibility"
-            ),
+        assert calibration["anchor"] == "SSI_VAL"
+        assert calibration["targets"] == ["ssa_ssi_federal_payment_recipients_by_age"]
+        assert calibration["target_source"] == (
+            "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html"
+        )
+        assert calibration["target_period"] == "2024-12"
+        assert calibration["target_measure"] == "Total with—Federal payment"
+        assert calibration["target_role"] == "ssa_ssi_age_band_recipients"
+        assert calibration["age_bands"] == {
+            "under_18": "age < 18",
+            "18_64": "18 <= age < 65",
+            "65_plus": "age >= 65",
         }
+        # The SSA recipient counts live in the ledger and bind through the
+        # calibration registry (populace#469/#470) — the contract must not
+        # carry a hardcoded copy, and the semantics must describe seeded
+        # Bernoulli priors, not flag count-matching.
+        assert "target_values" not in calibration
+        assert "aggregate_target" not in calibration
+        semantics = calibration["semantics"]
+        assert "populace#469" in semantics
+        assert "never count-matches" in semantics
+        assert "saturate" not in semantics
         assert program.raw["scope_owner"] == (
             "ssi_take_up source stage (eCPS exported-input coverage)"
         )
