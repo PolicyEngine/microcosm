@@ -1976,9 +1976,13 @@ def _capital_gain_distributions_stage(
         frame.strata,
         mass_log=frame.mass_log,
     )
-    # PolicyEngine owns the memo variable on Person and sums it to the filing
-    # unit. Neighboring PUF tax-unit leaves use the same deterministic
-    # first-person carry instead of inventing a filer/spouse allocation.
+    # policyengine-us defines the memo leg as a person input; the stage
+    # derives it once per tax unit (LTCG x SOCA share), so any within-unit
+    # placement that preserves the unit sum is equivalent for filing-unit
+    # tax outcomes. Deterministic first-person carry does that without
+    # inventing a filer/spouse allocation; the QRF path's basis-share
+    # distribution is for person-consumed outputs and does not apply to a
+    # unit-derived memo.
     return result.place(output, frame.schema.person_entity, how="head"), {}
 
 
