@@ -2,11 +2,11 @@
 
 ## State
 
-Implementation is wired under the adjudicated 3a-only contract. The declared
-`capital_gain_distributions` executor now runs in both PUF support base paths
-after `qrf_finalization` and before `qbi_reconciliation`; focused end-to-end
-stage-record, semantic, and rerun coverage is green. Full-suite verification
-is next.
+Scope 3a is complete. The declared `capital_gain_distributions` executor now
+runs in both PUF support base paths after `qrf_finalization` and before
+`qbi_reconciliation`; focused end-to-end stage-record, semantic, rerun, and
+release-coverage tests are green. The branch is fully committed and remains
+unpushed.
 
 ## Done
 
@@ -45,8 +45,17 @@ is next.
   both capital-gain route legs are required independently of builder stage
   presence, and its focused six-test sync/route guarantee suite passes. No
   generated manifest rewrite is needed.
+- Ran the full suite through 100%. It reported the two declared pre-existing
+  release-parity `TestRegeneration` failures and two unrelated UK reference
+  regeneration failures caused by licensed artifacts being present in the
+  user cache while this worktree's virtual environment lacks
+  `policyengine_uk`; no failure traces to the scope-3a changes.
+- Confirmed the third declared pre-existing failure, educator `FakeQRF`, is
+  skipped in this environment because the `policyengine_us` optional
+  dependency is absent. This branch still predates its main-branch fix, so the
+  skip does not imply that the known issue disappeared.
 
 ## Next
 
-- Run focused tests and the full suite, accounting only for the three declared
-  pre-existing failures, then write the final report to the output file.
+- No scope-3a implementation work remains. Keep the committed branch unpushed
+  for review/integration.
