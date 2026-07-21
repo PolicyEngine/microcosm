@@ -260,6 +260,10 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
             band["assignment_prior"]
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
+    # Schema 2 = the populace#469 shape (assignment/recomputed prior split,
+    # law count, no reachable_goal); pin the literal so reverting the
+    # constant alone cannot pass.
+    assert diagnostics["schema_version"] == 2
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
 

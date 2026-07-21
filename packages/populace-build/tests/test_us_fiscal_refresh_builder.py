@@ -2860,8 +2860,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
         captured["ssi_take_up_gate_called"] = True
-        captured["ssi_take_up_gate_diagnostics"] = diagnostics
-        captured["ssi_take_up_gate_targets"] = dict(targets)
+        captured.setdefault("ssi_take_up_gate_calls", []).append(
+            {"diagnostics": diagnostics, "targets": dict(targets)}
+        )
         return builder.GateResult(
             name="ssi_take_up",
             passed=True,
@@ -3302,8 +3303,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_take_up_targets"] == fake_band_targets
     assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
     assert captured["ssi_take_up_gate_called"] is True
-    assert captured["ssi_take_up_gate_diagnostics"] == fake_stage_diagnostics
-    assert captured["ssi_take_up_gate_targets"] == fake_band_targets
+    # The gate binds twice: the fresh stage diagnostics at assignment time,
+    # then the persisted-flag measurement on the export frame (PR #477
+    # review finding 3) — both against the registry band targets.
+    gate_calls = captured["ssi_take_up_gate_calls"]
+    assert [call["diagnostics"] for call in gate_calls] == [
+        fake_stage_diagnostics,
+        {"checked": True},
+    ]
+    assert all(call["targets"] == fake_band_targets for call in gate_calls)
     # One-shot regime (populace#469): the frozen flags are measured on the
     # release weights, never reassigned or reconciled, and the final
     # measurement republishes the stage's assignment priors verbatim.

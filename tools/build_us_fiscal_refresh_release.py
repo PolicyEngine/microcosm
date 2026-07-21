@@ -8423,6 +8423,30 @@ def main() -> None:
             reporter_source_ids=ssi_reporter_source_ids,
         )
     )
+    # Gate the persisted flags on the export frame, not just the stage
+    # output: the Bernoulli-law recheck and anchor/envelope laws are
+    # weight-safe, so any downstream transform that corrupted the frozen
+    # decisions fails the build here instead of shipping (PR #477 review
+    # finding 3). The SSA-count miss itself stays scorecard-only.
+    final_ssi_take_up_gate = us_ssi_take_up_gate(
+        ssi_take_up_diagnostics, targets=ssi_band_targets
+    )
+    if not final_ssi_take_up_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "ssi_take_up_final_gate",
+                status="failed",
+                message="SSI take-up final export-frame gate failed.",
+                failures=list(final_ssi_take_up_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SSI take-up final measurement failed: {failure}"
+                for failure in final_ssi_take_up_gate.failures
+            )
+        )
     medicaid_take_up_diagnostics = dict(
         _medicaid_diagnostics_for_existing_output(
             export_frame,
