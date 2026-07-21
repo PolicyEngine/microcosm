@@ -2381,6 +2381,8 @@ _SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
 #: are its dollar sum — the same variable the national ``ssi_total`` payment
 #: target already materializes.
 _SSA_SSI_BASE_VARIABLE = "ssi"
+_SSA_SSI_BY_AGE_RECORD_SET_TOKEN = ".ssi_federal_payment_recipients.by_age"
+SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE = "ssa_ssi_age_band_recipients"
 SSA_SSI_RECIPIENTS_TARGET_ROLE = "ssi_recipients"
 SSA_SSI_STATE_PAYMENTS_TARGET_ROLE = "ssi_state_payments"
 
@@ -2428,6 +2430,44 @@ def _ssa_ssi_reference_from_fact(
     record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
     if _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN in record_set_id:
         return _direct_reference_from_fact(fact, target_period=target_period)
+
+    if _SSA_SSI_BY_AGE_RECORD_SET_TOKEN in record_set_id:
+        # SSA SSI Monthly Statistics Table 1: federal-payment recipients by
+        # age group (populace#470). The age-band rows bind as national
+        # indicator counts of engine ``ssi`` receipt sliced by the fact's
+        # first-class age constraints — the ordinary-target replacement for
+        # the retired take-up assignment goals (#469/#473). The all-ages row
+        # never binds: it duplicates the by-area ``all_areas_total`` national
+        # count already compiled under role ``ssi_recipients``.
+        if _measure_id(fact) != "recipient_count":
+            return None
+        if _geography_level(fact) != "country":
+            return None
+        lower, upper = _age_bounds(fact)
+        if lower == "-inf" and upper == "inf":
+            return None
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            return None
+        return LedgerTargetReference(
+            name=source_record_id,
+            ledger_source_record_id=source_record_id,
+            entity="household",
+            measure=source_record_id,
+            period=target_period,
+            family="ssa",
+            metadata={
+                "materializer": "policyengine_variable",
+                "measure_mode": "indicator_sum",
+                "base_variable": _SSA_SSI_BASE_VARIABLE,
+                "target_role": SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+                "source_measure_id": "recipient_count",
+                "source_period": str(_period_value(fact)),
+                "target_period": str(target_period),
+                "age_lower_bound": lower,
+                "age_upper_bound": upper,
+            },
+        )
 
     measure_id = _measure_id(fact)
     if measure_id == "recipient_count":
