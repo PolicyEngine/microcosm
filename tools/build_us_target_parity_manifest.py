@@ -21,7 +21,8 @@ Derivation (from the sha-pinned feed + the deterministic registry compile):
 - **Feed-family inventory** = every ``namespace.concept`` family id the feed
   carries, with fact counts (``target_parity_feed_families.json``).
 - **Compiled families** = the families the registry compiles today
-  (``compile_us_fiscal_target_registry(age_targets=True)`` + the reviewed CMS
+  (``compile_us_fiscal_target_registry(age_targets=True, CD surface ON)`` +
+  the reviewed CMS
   Medicaid enrollment substitution). Status ``compiled``.
 - **Reviewed exclusions** = every non-compiling feed family, each with a fence.
   A feed family with neither a compile nor a fenced exclusion HALTS generation.
@@ -38,6 +39,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from populace.build.us_runtime import (
+    default_congressional_district_vintage_crosswalk_path,
+    load_congressional_district_vintage_crosswalk,
+)
 from populace.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from populace.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -61,10 +66,10 @@ DEFAULT_FEED_PATH = (
     / "PolicyEngine"
     / "_buildh-runtime"
     / "inputs"
-    / "consumer_facts_buildh_v8.jsonl"
+    / "consumer_facts_buildn_v9_2.jsonl"
 )
-DEFAULT_FEED_NAME = "consumer_facts_buildh_v8.jsonl"
-EXPECTED_FEED_SHA256_PREFIX = "94b7155f"
+DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_2.jsonl"
+EXPECTED_FEED_SHA256_PREFIX = "61b115c0"
 TARGET_PERIOD = 2024
 
 
@@ -184,7 +189,58 @@ _SNAP_PERSONS_EXCLUSION = (
 )
 
 # (classification, reason, evidence, fence) keyed by exact family id.
+_ESI_ANCHOR_EXCLUSION = (
+    "not_modeled",
+    "NHE employer-contribution ESI premium aggregate: a retired us-data "
+    "calibration target (loss.py 1_002.9e9, removed at 9f320d2c) whose "
+    "anchor v9.2 re-banks (2026-07-21) for populace#454's future gate. The pe-us input it would anchor "
+    "(employer_sponsored_insurance_premiums, the employer-paid share per "
+    "the variable's own documentation) has no live producer in the "
+    "hermetic lineage, so a target would bind against a structural zero. "
+    "The all-employer series is the future anchor (pe-us covers government "
+    "and private employees alike); the private-employer subset rides as its "
+    "cross-check.",
+    "ecps_parity_known_gaps.json entry employer_sponsored_insurance_"
+    "premiums (NOW_* source-unavailability evidence); populace#454 "
+    "descope comment 2026-07-21",
+    _fence(
+        origin=(
+            "a REAL us-data calibration target: utils/loss.py pinned "
+            "employer_sponsored_insurance_premiums at 1_002.9e9 (the NIPA "
+            "7.8 employer-contribution aggregate; verified at archived "
+            "commit 2e044571, loss.py line 33, with etl_national_targets "
+            "carrying the row), removed at 9f320d2c ('Remove survey-based "
+            "national calibration targets', PR #831). The input itself was "
+            "imputed by the retired eCPS (MEPS-IC priors over ASEC NOW_* "
+            "policyholder fields, archived 42ed5d45 cps.py "
+            "L197-271/L1575-1581). The v9.2 feed facts re-bank that same "
+            "anchor for the future gate, entered deliberately ahead of the "
+            "producer."
+        ),
+        purpose=(
+            "anchor a validation gate for the CBO market-income ESI "
+            "component once the column has a live producer: NIPA 7.8 "
+            "employer contributions for group health insurance and the "
+            "NHEA sponsor-of-funds employer share are same-concept "
+            "estimates (~4 percent apart, CY2024)."
+        ),
+        verdict_basis=(
+            "us-data-targeted, so under the absolute rule this compiles "
+            "UNLESS source-absent — and the producer source is absent: the "
+            "declared meps_esi_premiums stage cannot execute because all "
+            "three required NOW_* fields are missing from the sha-pinned "
+            "2022-2024 ASEC h5 inputs (recorded parity known-gap), so a "
+            "target would bind against a structural zero. Compiles when "
+            "populace#454 restores the source fields or lands a validated "
+            "PHIP_VAL+MEPS re-derivation; the anchor value is already "
+            "banked in the feed."
+        ),
+    ),
+)
+
 _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
+    "cms_nhe.esi_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
+    "cms_nhe.esi_private_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
     "bea_nipa.personal_interest_income": (
         "macro_control_total",
         "BEA NIPA personal interest income. Briefly a direct target (PR #994), "
@@ -310,9 +366,13 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             ),
             purpose="n/a nationally — survey-derived CD detail, not a national fence.",
             verdict_basis=(
-                "off_by_default + survey_derived: excluded by principle (ACS is a "
-                "sample survey) and only relevant at CD grain "
-                "(include_congressional_district_targets, off here)."
+                "survey_derived, and mechanically inert in this feed even under "
+                "the CD-on N regime: the compiler admits census_acs only at "
+                "congressional-district geography (fiscal_targets source gate "
+                "returns None otherwise) and every acs1_2023 fact in the feed "
+                "is state-grain (468/468 verified), so nothing compiles. "
+                "Excluded by principle regardless: ACS is a sample survey, not "
+                "an administrative universe."
             ),
         ),
     ),
@@ -379,30 +439,6 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             verdict_basis=(
                 "deferred: no TANF-receipt indicator wired; the dollar target is "
                 "compiled via cash_assistance."
-            ),
-        ),
-    ),
-    "irs_soi.congressional_district_2022": (
-        "off_by_default",
-        "IRS SOI congressional-district table. CD-level targets are opt-in "
-        "(include_congressional_district_targets=False for the national release); "
-        "the national and state SOI surfaces are compiled instead.",
-        "test_soi_congressional_district_targets_are_opt_in + the "
-        "include_congressional_district_targets gate in "
-        "fiscal_targets._soi_reference_from_fact",
-        _fence(
-            origin=(
-                "us-data CD targets serve the regional/local H5 outputs "
-                "(build_outputs/target_universe.py), not the national build."
-            ),
-            purpose=(
-                "distributional shape within a congressional district for local "
-                "H5 outputs."
-            ),
-            verdict_basis=(
-                "off_by_default: CD targets are opt-in for the national release; "
-                "enabling include_congressional_district_targets compiles them. "
-                "The national and state SOI surfaces are compiled."
             ),
         ),
     ),
@@ -520,8 +556,19 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
 
 
 def _compiled_families(facts: list[dict]) -> set[str]:
+    # The N regime compiles the congressional-district surface (populace#449:
+    # CD targets ON for Build N's timed A/B), so parity is declared against
+    # the CD-on registry with the packaged vintage crosswalk.
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=TARGET_PERIOD, age_targets=True
+        facts,
+        target_period=TARGET_PERIOD,
+        age_targets=True,
+        include_congressional_district_targets=True,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
     )
     registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
     return {
@@ -593,8 +640,11 @@ def build_manifest(
             "feed_sha256": feed_sha256,
             "target_period": str(TARGET_PERIOD),
             "registry_compile": (
-                "compile_us_fiscal_target_registry(age_targets=True) + "
-                "apply_us_medicaid_enrollment_substitutions"
+                "compile_us_fiscal_target_registry(age_targets=True, "
+                "include_congressional_district_targets=True, "
+                "congressional_district_vintage_crosswalk=packaged) + "
+                "apply_us_medicaid_enrollment_substitutions (N regime, "
+                "populace#449)"
             ),
             "us_data_source": (
                 "retired us-data pipeline (archived): utils/loss.py (eCPS loss "
