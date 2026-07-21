@@ -61,7 +61,7 @@ def _expanded_recipient_frame() -> Frame:
             US_SCHEMA,
             {
                 "household": Weights(
-                    np.full(4, 2.0, dtype=np.float64),
+                    np.asarray([2.0, 4.0, 6.0, 8.0], dtype=np.float64),
                     WeightKind.DESIGN,
                 )
             },
@@ -101,7 +101,6 @@ def _finalize(
         person_outputs=person_outputs,
         tax_unit_outputs=(),
         tail_bound_diagnostics=diagnostics,
-        tail_bound_quantiles=(puf_support_module._PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES),
     )
 
 
@@ -154,8 +153,8 @@ def test_finalizer_clips_tail_without_changing_participation_or_lower_bits() -> 
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,
-            "clipped_mass_before": 501.0,
-            "clipped_mass_after": 200.0,
+            "clipped_mass_before": 1_903.0,
+            "clipped_mass_after": 700.0,
         }
     ]
 

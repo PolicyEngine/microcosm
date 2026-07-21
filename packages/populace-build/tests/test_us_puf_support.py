@@ -964,7 +964,14 @@ def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
         == PUF_TAX_DETAIL_SUPPORT_CHANNEL
     ]
     assert puf_people["taxable_interest_income"].tolist() == [0.0, 0.0, 10.0]
-    assert puf_people["qualified_dividend_income"].tolist() == [0.25, 0.0, 9.6]
+    qualified_dividends = puf_people["qualified_dividend_income"].to_numpy(
+        dtype=np.float64
+    )
+    expected_qualified_dividends = np.asarray([0.25, 0.0, 9.6], dtype=np.float64)
+    np.testing.assert_array_equal(
+        qualified_dividends.view(np.uint64),
+        expected_qualified_dividends.view(np.uint64),
+    )
 
 
 def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(

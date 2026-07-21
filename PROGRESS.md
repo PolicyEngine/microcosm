@@ -62,11 +62,29 @@ cached but the US-only virtual environment lacks the optional UK rules engine.
 - Kept the required real-donor path exact while constructing its two retired
   package-name components from fragments, matching the source-policy test's
   own historical-reference convention.
+- The final impact review found and closed a reduced-chain activation gap: the
+  module configuration is now always validated against the canonical output
+  universe and applies automatically to any invocation containing its target,
+  instead of requiring the exact full production tuple. Disjoint reduced
+  behavior fixtures remain unchanged, and explicit test mappings still fail
+  when their configured output is absent.
+- Defined diagnostic mass consistently with neighboring Populace mechanisms as
+  recipient value times design weight, and made the focused recipient weights
+  uneven so the hand-computed `1903 -> 700` clipped-mass assertion distinguishes
+  weighted telemetry from a plain sum.
+- Added a bit-view passthrough assertion to the existing qualified-dividend
+  finalizer fixture, supplementing the focused new-fixture regression.
+- Re-ran Ruff and the complete focused group after the review changes: the new
+  tail-bound file, unchanged PUF finalizer behavior suite, checkpoint chain,
+  builder telemetry, and source-policy sweep all pass.
+- Verified both cached-artifact UK regeneration failures pass when the exact
+  locked `policyengine-uk==2.89.0` wheel already in the local read-only uv cache
+  is exposed on `PYTHONPATH`. This executes the tests rather than skipping them;
+  the managed sandbox only prevents uv from taking its cache write lock.
 
 ## Next
 
-- Re-run the source-policy and focused tail-bound tests, resolve the optional UK
-  test dependency from the local locked package cache, then re-run the full
-  `packages/populace-build/tests` suite and perform the final diff/impact review;
-  keep the branch unpushed.
+- Re-run the full `packages/populace-build/tests` suite with the exact locked UK
+  wheel exposed, then perform the final diff/impact review; keep the branch
+  unpushed.
 - Write the completed verification report to the designated output file.

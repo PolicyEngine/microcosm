@@ -165,8 +165,8 @@ class TestBaseBuildWeightsAudit:
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,
-            "clipped_mass_before": 501.0,
-            "clipped_mass_after": 200.0,
+            "clipped_mass_before": 1_903.0,
+            "clipped_mass_after": 700.0,
         }
 
         def fake_finalize(frame, _checkpoint_dir, *, tail_bound_diagnostics=None):
