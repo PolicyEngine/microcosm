@@ -412,33 +412,14 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     ),
     "irs_soi.roth_ira_contributions": _RETIREMENT_CONTRIBUTION_EXCLUSION,
     "irs_soi.traditional_ira_contributions": _RETIREMENT_CONTRIBUTION_EXCLUSION,
-    "irs_soi.form_w2_social_security_tips": (
-        "not_modeled",
-        "IRS W-2 Social Security tips — a real us-data target (PR #220) the model "
-        "cannot yet satisfy: PolicyEngine-US produces a structural zero for "
-        "tip_income in the populace base microdata (no tip source column), so the "
-        "target is unsatisfiable until the tip-imputation source stage is ported.",
-        "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS entry "
-        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips."
-        "return_count",
-        _fence(
-            origin="us-data PR #220 (Impute tips, fixes #215)",
-            purpose=(
-                "\"Proposals such as 'No Tax on Tips' require a clean tip_income "
-                "field distinct from regular wages ... Tipped workers skew "
-                "lower-income; omitting tips biases poverty, EITC/CTC, and "
-                'payroll-tax results" (issue #215)'
-            ),
-            verdict_basis=(
-                "deferred (not source-absent — the feed carries a tip amount): "
-                "PolicyEngine-US yields a structural zero for tip_income in the "
-                "populace base microdata (US_FISCAL_TARGET_SUPPORT_EXCLUSIONS), so "
-                "the target is unsatisfiable until the SIPP/ORG tip-imputation "
-                "source stage (us-data #220) is ported. Wiring it now would ship a "
-                "0-vs-target gap, not a fit."
-            ),
-        ),
-    ),
+    # irs_soi.form_w2_social_security_tips was a reviewed exclusion while
+    # tip_income was a structural zero. The SIPP tips source stage now
+    # populates it and #465/#474 wired the amount target (named role,
+    # wages-series aging), so the family compiles and the gate promotes it.
+    # The return_count sub-row alone remains a support exclusion
+    # (US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: tip support is under 1% of the
+    # 6.04M-return Box 7 class; the count target waits for support widening,
+    # populace#451 item 3).
     "kff.marketplace_effectuated_enrollment": (
         "superseded",
         "Kaiser Family Foundation state marketplace enrollment — a secondary "

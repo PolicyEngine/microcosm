@@ -8,8 +8,8 @@
   "us_data_source": "retired us-data pipeline (archived): utils/loss.py (eCPS loss matrix), db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
   "family_granularity": "namespace.concept of the ledger source_record_id (us_target_family_id)",
   "governing_rule": "us-data-targeted => compiled unless source-absent; every reviewed exclusion carries a Chesterton's-fence {origin, purpose, verdict_basis}",
-  "compiled_families": "29",
-  "reviewed_exclusions": "51"
+  "compiled_families": "30",
+  "reviewed_exclusions": "50"
  },
  "families": {
   "bea_nipa.business_current_transfer_receipts": {
@@ -536,15 +536,7 @@
    }
   },
   "irs_soi.form_w2_social_security_tips": {
-   "status": "reviewed_exclusion",
-   "classification": "not_modeled",
-   "reason": "IRS W-2 Social Security tips \u2014 a real us-data target (PR #220) the model cannot yet satisfy: PolicyEngine-US produces a structural zero for tip_income in the populace base microdata (no tip source column), so the target is unsatisfiable until the tip-imputation source stage is ported.",
-   "evidence": "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS entry irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
-   "fence": {
-    "origin": "us-data PR #220 (Impute tips, fixes #215)",
-    "purpose": "\"Proposals such as 'No Tax on Tips' require a clean tip_income field distinct from regular wages ... Tipped workers skew lower-income; omitting tips biases poverty, EITC/CTC, and payroll-tax results\" (issue #215)",
-    "verdict_basis": "deferred (not source-absent \u2014 the feed carries a tip amount): PolicyEngine-US yields a structural zero for tip_income in the populace base microdata (US_FISCAL_TARGET_SUPPORT_EXCLUSIONS), so the target is unsatisfiable until the SIPP/ORG tip-imputation source stage (us-data #220) is ported. Wiring it now would ship a 0-vs-target gap, not a fit."
-   }
+   "status": "compiled"
   },
   "irs_soi.historic_table_2": {
    "status": "compiled"
