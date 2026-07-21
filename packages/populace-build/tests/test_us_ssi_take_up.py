@@ -254,6 +254,12 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
     for band in diagnostics["age_bands"]:
         assert not band["saturated"]
         assert band["assignment_prior"] == pytest.approx(50.0 / _BAND_CAPACITY)
+        # At assignment time the stored prior and the current-weight
+        # recomputation coincide by construction.
+        assert band["prior_recomputed_from_current_weights"] == pytest.approx(
+            band["assignment_prior"]
+        )
+    assert diagnostics["bernoulli_law_violation_count"] == 0
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
 
@@ -417,6 +423,7 @@ def test_source_provenance_failures_are_rejected(mutation: str, message: str) ->
         ("unique_count", 1, "constant"),
         ("reporter_anchor_lost_count", 1, "reporter anchors"),
         ("source_identity_mismatch_count", 1, "source identity"),
+        ("bernoulli_law_violation_count", 2, "Bernoulli law"),
     ],
 )
 def test_gate_rejects_tampered_top_level_diagnostics(
@@ -444,11 +451,17 @@ def test_gate_rejects_hidden_saturation_and_corrupted_band_arithmetic() -> None:
     assert not escaped_gate.passed
     assert any("envelope" in failure for failure in escaped_gate.failures)
 
-    undocumented = copy.deepcopy(diagnostics)
-    undocumented["age_bands"][0]["assignment_prior"] = 0.9
-    undocumented_gate = us_ssi_take_up_gate(undocumented, targets=_TARGETS)
-    assert not undocumented_gate.passed
-    assert any("assignment prior" in failure for failure in undocumented_gate.failures)
+    miscomputed = copy.deepcopy(diagnostics)
+    miscomputed["age_bands"][0]["prior_recomputed_from_current_weights"] = 0.9
+    miscomputed_gate = us_ssi_take_up_gate(miscomputed, targets=_TARGETS)
+    assert not miscomputed_gate.passed
+    assert any("recomputed prior" in failure for failure in miscomputed_gate.failures)
+
+    invalid_probability = copy.deepcopy(diagnostics)
+    invalid_probability["age_bands"][0]["assignment_prior"] = 1.5
+    invalid_gate = us_ssi_take_up_gate(invalid_probability, targets=_TARGETS)
+    assert not invalid_gate.passed
+    assert any("outside [0, 1]" in failure for failure in invalid_gate.failures)
 
 
 def test_gate_rejects_duplicate_age_band_diagnostics() -> None:
@@ -461,7 +474,11 @@ def test_gate_rejects_duplicate_age_band_diagnostics() -> None:
 
 
 def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
-    _, result, potential, _ = _assigned()
+    _, result, potential, stage_diagnostics = _assigned()
+    stage_priors = {
+        band["age_band"]: band["assignment_prior"]
+        for band in stage_diagnostics["age_bands"]
+    }
     original = result.table("person")[_OUTPUT].to_numpy(dtype=bool).copy()
     candidate_selected = original & (potential > 0)
     drifted_weights = np.where(candidate_selected, 100.0, 1.0)
@@ -482,13 +499,23 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
+        assignment_priors=stage_priors,
     )
     np.testing.assert_array_equal(reweighted.table("person")[_OUTPUT], original)
     # Weight drift pushes the measured recipient mass far off target, and the
     # gate still passes: the count miss is calibration's residual
     # (populace#469/#470), reported in the scorecard, never a module failure.
+    # The published assignment prior stays the one that generated the frozen
+    # flags — never recomputed from the drifted weights — while the
+    # current-weight recomputation is reported separately and the flags
+    # re-verify against the seeded law exactly.
+    assert diagnostics["bernoulli_law_violation_count"] == 0
     for band in diagnostics["age_bands"]:
         assert band["selected_recipient_weight"] > band["target"]
+        assert band["assignment_prior"] == pytest.approx(stage_priors[band["age_band"]])
+        assert band["prior_recomputed_from_current_weights"] != pytest.approx(
+            band["assignment_prior"]
+        )
     assert us_ssi_take_up_gate(diagnostics, targets=_TARGETS).passed
 
     recomputed, _ = with_us_ssi_take_up(
@@ -498,6 +525,35 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
         targets=_TARGETS,
     )
     assert not np.array_equal(recomputed.table("person")[_OUTPUT], original)
+
+
+def test_gate_rejects_persisted_flags_that_break_the_bernoulli_law() -> None:
+    _, result, potential, stage_diagnostics = _assigned()
+    stage_priors = {
+        band["age_band"]: band["assignment_prior"]
+        for band in stage_diagnostics["age_bands"]
+    }
+    person = result.table("person").copy()
+    # A non-anchored, non-candidate source with both support clones: flipping
+    # its flag keeps source-identity consistency and every anchor intact,
+    # so only the seeded-law recheck can catch the corruption.
+    flipped = person["person_source_id"].eq("18_64:8")
+    assert flipped.sum() == 2
+    person.loc[flipped, _OUTPUT] = ~person.loc[flipped, _OUTPUT].astype(bool)
+    corrupted = _replace_person(result, person)
+    diagnostics = us_ssi_take_up_diagnostics(
+        corrupted,
+        uncapped_ssi=potential,
+        seed=17,
+        targets=_TARGETS,
+        assignment_priors=stage_priors,
+    )
+    assert diagnostics["bernoulli_law_violation_count"] == 1
+    assert diagnostics["reporter_anchor_lost_count"] == 0
+    assert diagnostics["source_identity_mismatch_count"] == 0
+    gate = us_ssi_take_up_gate(diagnostics, targets=_TARGETS)
+    assert not gate.passed
+    assert any("Bernoulli law" in failure for failure in gate.failures)
 
 
 def test_writer_emits_strict_json_and_refuses_nan(tmp_path: Path) -> None:

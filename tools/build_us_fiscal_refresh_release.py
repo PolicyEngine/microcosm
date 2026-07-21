@@ -301,7 +301,11 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 6: the official-ASEC sidecar restores 2022 LKWEEKS before target
 # materialization. The source is external to the on-disk base hash, so old
 # checkpoints must not survive the new measured input.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 6
+# 7: SSI take-up became a one-shot seeded Bernoulli at registry band priors
+# (populace#469) — checkpoints materialized from count-matched flags must
+# not survive, or the solve would run on old SSI rows while the frame
+# carries the new assignment (PR #477 review finding 2).
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 7
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -5161,25 +5165,39 @@ def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, fl
     feed does not carry all three SSA age bands.
     """
 
-    expected_bounds: dict[tuple[str, str], str] = {}
+    expected_bounds: dict[tuple[float, float], str] = {}
     for band in US_SSI_TAKE_UP_AGE_TARGETS:
-        lower = "-inf" if band.minimum_age is None else str(int(band.minimum_age))
-        upper = "inf" if band.maximum_age is None else str(int(band.maximum_age) + 1)
+        lower = float("-inf") if band.minimum_age is None else float(band.minimum_age)
+        upper = (
+            float("inf") if band.maximum_age is None else float(band.maximum_age) + 1.0
+        )
         expected_bounds[(lower, upper)] = band.key
     band_targets: dict[str, float] = {}
     for spec in target_specs:
         if spec.metadata.get("target_role") != SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE:
             continue
-        bounds = (
-            str(spec.metadata.get("age_lower_bound")),
-            str(spec.metadata.get("age_upper_bound")),
+        raw_bounds = (
+            spec.metadata.get("age_lower_bound"),
+            spec.metadata.get("age_upper_bound"),
         )
-        key = expected_bounds.get(bounds)
+        key = None
+        try:
+            lower_value = float(raw_bounds[0])
+            upper_value = float(raw_bounds[1])
+        except (TypeError, ValueError):
+            lower_value = upper_value = float("nan")
+        else:
+            # Ages are nonnegative, so an explicit "age >= 0" floor is the
+            # same stratum as an unbounded lower edge — the real feed's
+            # under-18 fact carries one (PR #477 review finding 1).
+            if lower_value <= 0:
+                lower_value = float("-inf")
+            key = expected_bounds.get((lower_value, upper_value))
         if key is None:
             raise RuntimeError(
                 "SSI take-up found a registry "
                 f"{SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE!r} target with "
-                f"unrecognized age bounds {bounds!r}; expected one of "
+                f"unrecognized age bounds {raw_bounds!r}; expected one of "
                 f"{sorted(expected_bounds)}."
             )
         if key in band_targets:
@@ -5206,6 +5224,38 @@ def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, fl
             "by_age rows (populace#470)."
         )
     return band_targets
+
+
+def _ssi_assignment_priors_from_diagnostics(
+    diagnostics: Mapping[str, object],
+) -> dict[str, float]:
+    """The per-band Bernoulli priors the gated assignment stage documented.
+
+    The final release-weight measurement republishes these verbatim and
+    re-verifies every frozen flag against the seeded law they define
+    (populace#469) — recomputing priors from release weights would
+    misdocument the one-shot assignment.
+    """
+
+    bands = diagnostics.get("age_bands")
+    if not isinstance(bands, list) or not bands:
+        raise RuntimeError(
+            "SSI take-up stage diagnostics carry no age-band rows to read "
+            "assignment priors from."
+        )
+    priors: dict[str, float] = {}
+    for row in bands:
+        if not isinstance(row, Mapping):
+            raise RuntimeError("SSI take-up stage diagnostics band row is invalid.")
+        key = str(row.get("age_band"))
+        prior = float(row.get("assignment_prior", np.nan))
+        if not np.isfinite(prior) or not 0.0 <= prior <= 1.0:
+            raise RuntimeError(
+                f"SSI take-up stage diagnostics band {key!r} carries an "
+                f"invalid assignment prior {prior!r}."
+            )
+        priors[key] = prior
+    return priors
 
 
 def _fiscal_target_concept_budget_weights(registry: TargetRegistry) -> np.ndarray:
@@ -7763,6 +7813,9 @@ def main() -> None:
                 for failure in ssi_take_up_gate.failures
             )
         )
+    ssi_assignment_priors = _ssi_assignment_priors_from_diagnostics(
+        ssi_take_up_stage_diagnostics
+    )
     if telemetry is not None:
         telemetry.stage(
             "scf_auto_loan_inputs",
@@ -8366,6 +8419,7 @@ def main() -> None:
             uncapped_ssi=final_uncapped_ssi,
             seed=args.seed,
             targets=ssi_band_targets,
+            assignment_priors=ssi_assignment_priors,
             reporter_source_ids=ssi_reporter_source_ids,
         )
     )

@@ -116,7 +116,9 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    assert identity["materializer_version"] == 6
+    # 7 = one-shot Bernoulli SSI take-up (populace#469): checkpoints
+    # materialized from count-matched flags must not survive the cutover.
+    assert identity["materializer_version"] == 7
     assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
     path = tmp_path / "target_frame_checkpoint.h5"
 
@@ -196,8 +198,11 @@ def _band_spec(value, lower, upper, name, *, role=None, extra=None):
 def test_ssi_band_targets_from_registry_read_the_ledger_band_specs() -> None:
     builder = _load_builder_module()
     role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    # The real feed's under-18 fact carries an explicit "age >= 0"
+    # constraint, so its lower bound compiles as "0", not "-inf"; ages are
+    # nonnegative, so both mean the same stratum (PR #477 review finding 1).
     specs = (
-        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(1_001_922.0, "0", "18", "under-18", role=role),
         _band_spec(3_905_779.0, "18", "65", "18-64", role=role),
         _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
         SimpleNamespace(value=9.0, metadata={"target_role": "other"}, name="unrelated"),
@@ -207,6 +212,19 @@ def test_ssi_band_targets_from_registry_read_the_ledger_band_specs() -> None:
         "18_64": pytest.approx(3_905_779.0),
         "65_plus": pytest.approx(2_382_142.0),
     }
+
+
+def test_ssi_band_targets_accept_unbounded_lower_edge_spelling() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(3_905_779.0, "18", "65", "18-64", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
+    )
+    assert builder._ssi_take_up_band_targets_from_registry(specs)[
+        "under_18"
+    ] == pytest.approx(1_001_922.0)
 
 
 def test_ssi_band_targets_fail_closed_when_a_band_is_missing() -> None:
@@ -2816,6 +2834,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["ssi_band_targets_specs"] = specs
         return dict(fake_band_targets)
 
+    fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
+    fake_stage_diagnostics = {
+        "checked": True,
+        "age_bands": [
+            {"age_band": key, "assignment_prior": prior}
+            for key, prior in fake_stage_priors.items()
+        ],
+    }
+
     def fake_with_ssi_take_up(
         frame,
         *,
@@ -2829,7 +2856,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
         captured["ssi_take_up_targets"] = dict(targets)
         captured["ssi_reporter_source_ids"] = reporter_source_ids
-        return frame, {"checked": True}
+        return frame, dict(fake_stage_diagnostics)
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
         captured["ssi_take_up_gate_called"] = True
@@ -3113,10 +3140,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         uncapped_ssi,
         seed,
         targets,
+        assignment_priors,
         reporter_source_ids,
     ):
         captured["final_ssi_diagnostics_called"] = True
         captured["final_ssi_diagnostics_targets"] = dict(targets)
+        captured["final_ssi_diagnostics_assignment_priors"] = dict(assignment_priors)
         captured["final_ssi_diagnostics_reporter_source_ids"] = reporter_source_ids
         return {"checked": True}
 
@@ -3273,13 +3302,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["ssi_take_up_targets"] == fake_band_targets
     assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
     assert captured["ssi_take_up_gate_called"] is True
-    assert captured["ssi_take_up_gate_diagnostics"] == {"checked": True}
+    assert captured["ssi_take_up_gate_diagnostics"] == fake_stage_diagnostics
     assert captured["ssi_take_up_gate_targets"] == fake_band_targets
     # One-shot regime (populace#469): the frozen flags are measured on the
-    # release weights, never reassigned or reconciled.
+    # release weights, never reassigned or reconciled, and the final
+    # measurement republishes the stage's assignment priors verbatim.
     assert captured["export_frame_from_l0_refit"] is True
     assert captured["final_ssi_diagnostics_called"] is True
     assert captured["final_ssi_diagnostics_targets"] == fake_band_targets
+    assert captured["final_ssi_diagnostics_assignment_priors"] == fake_stage_priors
     assert captured["final_ssi_diagnostics_reporter_source_ids"] == frozenset(
         {"asec-reporter"}
     )

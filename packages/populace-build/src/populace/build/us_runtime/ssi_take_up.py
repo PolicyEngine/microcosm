@@ -105,7 +105,11 @@ _TARGET_PERIOD = "2024-12"
 _TARGET_MEASURE = "Total with—Federal payment"
 _CANDIDATE_DEFINITION = "uncapped_ssi > 0 at 2024-12"
 _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
-_DIAGNOSTICS_SCHEMA_VERSION = 1
+# Version 2 (populace#469): count-matching-era fields (reachable_goal) are
+# gone, band rows split the prior into assignment_prior (the value that
+# generated the frozen flags) and prior_recomputed_from_current_weights, and
+# the top level carries bernoulli_law_violation_count.
+_DIAGNOSTICS_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -455,8 +459,16 @@ def _age_band_diagnostics(
     selected: pd.Series,
     *,
     targets: Mapping[str, float],
+    assignment_priors: Mapping[str, float],
 ) -> list[dict[str, object]]:
-    """Summarize one existing source-grain assignment on current weights."""
+    """Summarize one existing source-grain assignment on current weights.
+
+    ``assignment_priors`` are the Bernoulli priors that generated the
+    persisted flags. Each band row publishes them verbatim next to
+    ``prior_recomputed_from_current_weights`` so release-weight measurements
+    never misdocument the one-shot assignment (populace#469; PR #477 review
+    finding 4).
+    """
 
     bands: list[dict[str, object]] = []
     for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
@@ -492,21 +504,68 @@ def _age_band_diagnostics(
                 "target_shortfall": max(target - selected_recipient_weight, 0.0),
                 "anchor_excess": max(reporter_floor - target, 0.0),
                 "saturated": bool(capacity < target),
-                "assignment_prior": _band_prior(target, capacity, reporter_floor),
+                "assignment_prior": float(assignment_priors[key]),
+                "prior_recomputed_from_current_weights": _band_prior(
+                    target, capacity, reporter_floor
+                ),
                 "max_source_candidate_weight": max_source_weight,
             }
         )
     return bands
 
 
+def _bernoulli_law_violations(
+    source: pd.DataFrame,
+    selected: pd.Series,
+    assignment_priors: Mapping[str, float],
+) -> int:
+    """Count source identities whose flag breaks the seeded Bernoulli law.
+
+    The law is exact and weight-free: a source person is selected iff
+    anchored or its stable draw fell below the band's assignment-time prior.
+    Recomputing it against persisted flags catches any post-assignment
+    corruption of the frozen decisions (populace#469; PR #477 review
+    finding 3).
+    """
+
+    priors = source["age_band"].map(dict(assignment_priors)).to_numpy(dtype=np.float64)
+    expected = source["anchor"].to_numpy(dtype=bool) | (
+        source["draw"].to_numpy(dtype=np.float64) < priors
+    )
+    return int(np.count_nonzero(expected != selected.to_numpy(dtype=bool)))
+
+
+def _normalize_assignment_priors(
+    assignment_priors: Mapping[str, float],
+) -> dict[str, float]:
+    expected_keys = tuple(band.key for band in US_SSI_TAKE_UP_AGE_TARGETS)
+    actual = {str(key): float(value) for key, value in assignment_priors.items()}
+    if set(actual) != set(expected_keys):
+        raise ValueError(
+            "US SSI take-up assignment priors require exactly age bands "
+            f"{list(expected_keys)}; got {sorted(actual)}."
+        )
+    invalid = {
+        key: value
+        for key, value in actual.items()
+        if not np.isfinite(value) or not 0.0 <= value <= 1.0
+    }
+    if invalid:
+        raise ValueError(
+            f"US SSI take-up assignment priors must lie in [0, 1]: {invalid}."
+        )
+    return {key: actual[key] for key in expected_keys}
+
+
 def _assign_sources(
     source: pd.DataFrame,
     *,
     targets: Mapping[str, float],
-) -> tuple[pd.Series, list[dict[str, object]]]:
-    """Assign one flag per source identity and return age-band diagnostics."""
+) -> tuple[pd.Series, list[dict[str, object]], dict[str, float]]:
+    """Assign one flag per source identity; return diagnostics and priors."""
 
     selected = pd.Series(False, index=source.index, dtype=bool)
+    priors: dict[str, float] = {}
     for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
         key = target_definition.key
         target = float(targets[key])
@@ -518,6 +577,7 @@ def _assign_sources(
             source.loc[candidate & anchored, "candidate_weight"].sum()
         )
         prior = _band_prior(target, capacity, reporter_floor)
+        priors[key] = prior
 
         # Seeded Bernoulli at the documented band prior for everyone in the
         # band — candidates and reform-created eligibles alike — with survey
@@ -528,7 +588,10 @@ def _assign_sources(
         selected.loc[in_band] = source.loc[in_band, "draw"].to_numpy() < prior
         selected.loc[anchored] = True
 
-    return selected, _age_band_diagnostics(source, selected, targets=targets)
+    bands = _age_band_diagnostics(
+        source, selected, targets=targets, assignment_priors=priors
+    )
+    return selected, bands, priors
 
 
 def _diagnostics(
@@ -539,6 +602,7 @@ def _diagnostics(
     assigned: np.ndarray,
     bands: list[dict[str, object]],
     targets: Mapping[str, float],
+    law_violation_count: int,
 ) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     reporter_lost = int(np.count_nonzero(rows["anchor"].to_numpy() & ~assigned))
@@ -594,6 +658,7 @@ def _diagnostics(
         "missing_or_invalid_count": 0,
         "reporter_anchor_lost_count": reporter_lost,
         "source_identity_mismatch_count": mismatches,
+        "bernoulli_law_violation_count": int(law_violation_count),
         "channel_diagnostics": channel_diagnostics,
         "age_bands": bands,
     }
@@ -623,7 +688,7 @@ def with_us_ssi_take_up(
         seed=int(seed),
         reporter_source_ids=reporter_source_ids,
     )
-    selected, bands = _assign_sources(source, targets=normalized_targets)
+    selected, bands, priors = _assign_sources(source, targets=normalized_targets)
     assigned = rows["source_id"].map(selected).to_numpy(dtype=bool)
     diagnostics = _diagnostics(
         frame,
@@ -632,6 +697,7 @@ def with_us_ssi_take_up(
         assigned=assigned,
         bands=bands,
         targets=normalized_targets,
+        law_violation_count=_bernoulli_law_violations(source, selected, priors),
     )
 
     person = frame.table("person")
@@ -666,19 +732,25 @@ def us_ssi_take_up_diagnostics(
     uncapped_ssi: np.ndarray,
     seed: int,
     targets: Mapping[str, float],
+    assignment_priors: Mapping[str, float],
     reporter_source_ids: Collection[str] | None = None,
 ) -> dict[str, object]:
     """Diagnose a persisted assignment without changing its decisions.
 
     The fiscal builder assigns take-up once before target materialization and
     publishes these measurements of the frozen flags on the final release
-    weights. Any gap between the measured recipient mass and the SSA band
-    targets is calibration's residual and ships in the scorecard — it is
-    reported here, never corrected here.
+    weights. ``assignment_priors`` are the per-band priors the assignment
+    stage documented (its diagnostics' ``assignment_prior`` fields): they are
+    republished verbatim and every persisted flag is re-verified against the
+    seeded Bernoulli law they define, so silent post-assignment corruption
+    fails the gate. Any gap between the measured recipient mass and the SSA
+    band targets is calibration's residual and ships in the scorecard — it
+    is reported here, never corrected here.
     """
 
     us_ssi_take_up_stage_spec()
     normalized_targets = _normalize_targets(targets)
+    normalized_priors = _normalize_assignment_priors(assignment_priors)
     person = frame.table("person")
     if _OUTPUT not in person:
         raise ValueError(f"US SSI take-up diagnostics require person.{_OUTPUT}.")
@@ -703,6 +775,7 @@ def us_ssi_take_up_diagnostics(
         source,
         source_assignment,
         targets=normalized_targets,
+        assignment_priors=normalized_priors,
     )
     return _diagnostics(
         frame,
@@ -711,6 +784,9 @@ def us_ssi_take_up_diagnostics(
         assigned=assigned,
         bands=bands,
         targets=normalized_targets,
+        law_violation_count=_bernoulli_law_violations(
+            source, source_assignment, normalized_priors
+        ),
     )
 
 
@@ -753,6 +829,11 @@ def us_ssi_take_up_gate(
         failures.append("SSI take-up lost one or more direct ASEC reporter anchors.")
     if int(diagnostics.get("source_identity_mismatch_count", -1)) != 0:
         failures.append("SSI take-up support rows disagree within a source identity.")
+    if int(diagnostics.get("bernoulli_law_violation_count", -1)) != 0:
+        failures.append(
+            "SSI take-up persisted flags violate the seeded Bernoulli law "
+            "(anchored, or draw below the documented assignment prior)."
+        )
 
     channels = diagnostics.get("channel_diagnostics")
     if not isinstance(channels, Mapping):
@@ -812,6 +893,9 @@ def us_ssi_take_up_gate(
         shortfall = float(row.get("target_shortfall", np.nan))
         anchor_excess = float(row.get("anchor_excess", np.nan))
         prior = float(row.get("assignment_prior", np.nan))
+        recomputed_prior = float(
+            row.get("prior_recomputed_from_current_weights", np.nan)
+        )
         max_weight = float(row.get("max_source_candidate_weight", np.nan))
         numeric_values = (
             capacity,
@@ -821,6 +905,7 @@ def us_ssi_take_up_gate(
             shortfall,
             anchor_excess,
             prior,
+            recomputed_prior,
             max_weight,
         )
         if not all(np.isfinite(value) for value in numeric_values):
@@ -856,14 +941,21 @@ def us_ssi_take_up_gate(
             failures.append(
                 f"SSI take-up age band {key!r} carries the wrong anchor excess."
             )
-        # The seeded Bernoulli prior is documented per band: target over
-        # capacity while subsampling, the observed reporter rate under
-        # saturation (populace#469). The band-count MISS is calibration's
-        # to close (#470 targets) and ships in the scorecard — it is no
-        # longer a gate failure here.
-        if abs(prior - _band_prior(target, capacity, floor)) > epsilon:
+        # The assignment prior is the value that generated the frozen flags;
+        # on release weights it will differ from target/capacity and its
+        # integrity is enforced by the Bernoulli-law recheck above, so the
+        # gate only requires a valid probability here. The recomputed prior
+        # is defined on THIS row's capacity/floor and must match that
+        # arithmetic exactly. The band-count MISS is calibration's to close
+        # (#470 targets) and ships in the scorecard — never a failure here.
+        if not 0.0 <= prior <= 1.0:
             failures.append(
-                f"SSI take-up age band {key!r} carries the wrong assignment prior."
+                f"SSI take-up age band {key!r} assignment prior {prior} is "
+                "outside [0, 1]."
+            )
+        if abs(recomputed_prior - _band_prior(target, capacity, floor)) > epsilon:
+            failures.append(
+                f"SSI take-up age band {key!r} carries the wrong recomputed prior."
             )
         saturated = bool(row.get("saturated"))
         if saturated != (capacity < target):
