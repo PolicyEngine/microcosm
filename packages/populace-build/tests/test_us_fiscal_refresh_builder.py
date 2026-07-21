@@ -1392,20 +1392,39 @@ def test_non_sch_d_cgd_value_repair_pins_the_aged_soi_fact(small_frame) -> None:
         small_frame.schema,
         {"household": small_frame.weights_for("household")},
     )
+    # The REAL compiled spec name is the unsuffixed ledger source_record_id
+    # (verified against a live v9.2 compile; PR #486 review finding 1).
     spec = TargetSpec(
-        name=(
-            "irs_soi.ty2023.table_1_4.all."
-            f"capital_gain_distributions_amount@{builder.PERIOD}"
-        ),
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
         entity="household",
         value=500.0,
         measure="unused",
         period=builder.PERIOD,
         source="IRS SOI",
-        metadata={"source_measure_id": "payment_amount"},
+        metadata={"source_measure_id": "payment_amount", "aged_to": "2024"},
+    )
+    returns_decoy = TargetSpec(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+        entity="household",
+        value=3_209_131.0,
+        measure="unused",
+        period=builder.PERIOD,
+        source="IRS SOI",
+        metadata={"source_measure_id": "return_count"},
+    )
+    state_decoy = TargetSpec(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+        entity="household",
+        value=9.0,
+        measure="unused",
+        period=builder.PERIOD,
+        source="IRS SOI",
+        metadata={"source_measure_id": "payment_amount", "state_fips": "06"},
     )
 
-    repaired, repair = builder._with_non_sch_d_cgd_value_repair(frame, (spec,))
+    repaired, repair = builder._with_non_sch_d_cgd_value_repair(
+        frame, (returns_decoy, spec, state_decoy)
+    )
 
     assert repair["applied"]
     weights = pd.Series(repaired.resolve_weights("person").values)
@@ -1413,6 +1432,7 @@ def test_non_sch_d_cgd_value_repair_pins_the_aged_soi_fact(small_frame) -> None:
     assert np.isclose(total, 500.0)
     assert np.isclose(repair["repaired_estimate"], 500.0)
     assert np.isclose(repair["factor"], repair["target"] / repair["initial_estimate"])
+    assert repair["target_aged_to"] == "2024"
     assert "mean-reverting" in repair["reason"]
 
     with pytest.raises(RuntimeError, match="exactly one aged Table 1.4"):
@@ -2277,7 +2297,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda frame, specs: (frame, ss_repair_payload),
     )
     cgd_repair_payload = {
-        "method": "rescale_non_sch_d_capital_gains_to_aged_soi_table_1_4_fact",
+        "method": "rescale_non_sch_d_capital_gains_to_soi_table_1_4_fact",
         "applied": True,
     }
     monkeypatch.setattr(

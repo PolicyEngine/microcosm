@@ -5023,14 +5023,17 @@ def _with_non_sch_d_cgd_value_repair(
     """Rescale non_sch_d_capital_gains to the aged SOI Table 1.4 dollar fact."""
 
     column = "non_sch_d_capital_gains"
+    # TargetSpec names are the unsuffixed ledger source_record_ids (the
+    # @period suffix exists only on diagnostic names); the national row is
+    # the .all. filing-status segment with no state fips (PR #486 review
+    # finding 1 — the suffixed matcher matched nothing on a real compile).
     matching = [
         spec
         for spec in target_specs
         if str(getattr(spec, "name", "")).startswith("irs_soi.")
-        and ".table_1_4." in str(getattr(spec, "name", ""))
-        and str(getattr(spec, "name", "")).endswith(
-            f"capital_gain_distributions_amount@{PERIOD}"
-        )
+        and ".table_1_4.all." in str(getattr(spec, "name", ""))
+        and str(getattr(spec, "name", "")).endswith("capital_gain_distributions_amount")
+        and not spec.metadata.get("state_fips")
     ]
     if len(matching) != 1:
         raise RuntimeError(
@@ -5075,10 +5078,11 @@ def _with_non_sch_d_cgd_value_repair(
         mass_log=frame.mass_log,
     )
     return repaired, {
-        "method": "rescale_non_sch_d_capital_gains_to_aged_soi_table_1_4_fact",
+        "method": "rescale_non_sch_d_capital_gains_to_soi_table_1_4_fact",
         "applied": applied,
         "reason": US_NON_SCH_D_CGD_REPAIR_REASON,
         "target": target,
+        "target_aged_to": matching[0].metadata.get("aged_to"),
         "initial_estimate": initial,
         "factor": factor,
         "repaired_estimate": initial * factor,
@@ -7085,10 +7089,12 @@ def main() -> None:
         telemetry.stage(
             "non_sch_d_cgd_repair",
             message=(
-                "Pinned non_sch_d_capital_gains to the aged SOI Table 1.4 "
-                "dollar fact (populace#462 donor-uprating interim repair)."
+                "Pinned non_sch_d_capital_gains to the registry's SOI Table "
+                "1.4 dollar fact (populace#462 donor-uprating interim "
+                "repair; aging recorded in target_aged_to)."
             ),
             applied=non_sch_d_cgd_repair.get("applied"),
+            target_aged_to=non_sch_d_cgd_repair.get("target_aged_to"),
             factor=non_sch_d_cgd_repair.get("factor"),
             target=non_sch_d_cgd_repair.get("target"),
             initial_estimate=non_sch_d_cgd_repair.get("initial_estimate"),
@@ -8901,6 +8907,18 @@ def main() -> None:
             export_frame,
             reviewed_exclusions=qrf_tail_exclusions,
         )
+        register_dormant = sorted(
+            set(qrf_tail_exclusions)
+            - set(qrf_tail_gate.details.get("reviewed_exclusions", ()))
+        )
+        if register_dormant:
+            raise RuntimeError(
+                "QRF tail-concentration exclusion register carries entries "
+                "the checked surface did not use (column dense, thin, "
+                f"absent, or below threshold): {register_dormant}. The "
+                "per-run register must exactly match the concentrated "
+                "columns — remove the stale entries."
+            )
         qrf_tail_surface = {
             **qrf_tail_surface,
             "reviewed_exclusions_file": (
