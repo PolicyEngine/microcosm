@@ -5010,7 +5010,8 @@ US_NON_SCH_D_CGD_REPAIR_REASON = (
     "$13.69B from the same lineage, so the current 2024-level uprating "
     "overstates a mean-reverting distribution series. Until the donor "
     "uprating is variable-specific (root issue filed on the #462 thread), "
-    "the level is pinned to the ledger-fed aged Table 1.4 dollar fact - the "
+    "the level is pinned to the ledger-fed Table 1.4 dollar fact (aging "
+    "provenance in target_aged_to) - the "
     "same repair class as the Social Security component rescale above; the "
     "returns-count row is an indicator and is unaffected."
 )
