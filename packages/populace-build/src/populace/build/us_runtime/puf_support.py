@@ -22,7 +22,7 @@ from populace.build.us_runtime.qbi_inputs import (
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
 )
-from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
+from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from populace.frame.schema import EntitySchema
 
 QRF: Any | None = None
@@ -184,6 +184,15 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
         "salt_refund_income",
     }
 )
+
+# Interim weight-reintroduction at the finalize seam: the root fix
+# (weight-aware leaf draws) is #481, and the dead manifest support_clip is
+# #482. Tail bounds are defined only for passthrough outputs, which removes all
+# snapping, sparse-pruning, and signed-calibration ordering interactions by
+# construction.
+_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES: dict[str, float] = {
+    "non_sch_d_capital_gains": 0.999
+}
 
 # ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
 # only the cloned PUF half for this leaf; pruning the ASEC half would discard
@@ -557,6 +566,7 @@ def impute_us_puf_tax_detail_support(
     n_estimators: int = 100,
     fit_records: list[FitWeightRecord] | None = None,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -582,6 +592,9 @@ def impute_us_puf_tax_detail_support(
         raw_predictions_callback: Test-only observer called synchronously with
             the complete raw chained draws before any clipping, snapping, or
             finalization. Production callers leave it unset.
+        tail_bound_diagnostics: Optional output sink for the per-target tail-bound
+            records produced during finalization. Build callers publish these
+            records with the QRF-finalization telemetry.
     """
 
     if frame.schema != US_SCHEMA:
@@ -652,6 +665,7 @@ def impute_us_puf_tax_detail_support(
         predictions,
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
+        tail_bound_diagnostics=tail_bound_diagnostics,
     )
 
 
@@ -726,6 +740,8 @@ def finalize_us_puf_tax_detail_predictions(
     *,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    tail_bound_quantiles: Mapping[str, float] | None = None,
 ) -> Frame:
     """Finalize a complete raw PUF QRF chain onto its support channel.
 
@@ -733,11 +749,39 @@ def finalize_us_puf_tax_detail_predictions(
     retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
     placement, and sparsification happen only here, after every target has
     drawn; later targets therefore always condition on raw predecessor draws.
+
+    The module tail-bound configuration is validated against the canonical
+    production surface and applies whenever a configured target is present.
+    Deliberately reduced chains disjoint from every configured target remain
+    isolated. Explicit test configurations are instead validated against the
+    invocation's exact output surface. Diagnostics report recipient-design-
+    weighted mass over the affected raw tax-unit draws before and after
+    clipping; build callers must provide the sink and publish every active cap.
     """
 
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
+    if tail_bound_quantiles is None:
+        canonical_outputs = (
+            *PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+            *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        )
+        configured_tail_bounds = _validated_tail_bound_quantiles(
+            canonical_outputs,
+            _PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES,
+        )
+        requested_outputs = set(outputs)
+        active_tail_bounds = {
+            output: quantile
+            for output, quantile in configured_tail_bounds.items()
+            if output in requested_outputs
+        }
+    else:
+        active_tail_bounds = _validated_tail_bound_quantiles(
+            outputs,
+            tail_bound_quantiles,
+        )
     if tuple(predictions.columns) != outputs:
         raise ValueError(
             "PUF raw prediction columns must match the exact target order: "
@@ -746,6 +790,26 @@ def finalize_us_puf_tax_detail_predictions(
     missing_donor = [column for column in (*outputs, "weight") if column not in donor]
     if missing_donor:
         raise ValueError(f"PUF finalization donor missing column(s): {missing_donor}.")
+
+    resolved_tail_bounds: dict[str, tuple[float, float]] = {}
+    for output, quantile in active_tail_bounds.items():
+        try:
+            bound = _weighted_positive_donor_quantile(
+                donor[output], donor["weight"], quantile
+            )
+        except ValueError as exc:
+            if "no positive donor support" not in str(exc):
+                raise
+            raise ValueError(
+                f"PUF tax-detail tail-bound output {output!r} has no positive "
+                "donor support."
+            ) from None
+        resolved_tail_bounds[output] = (quantile, bound)
+    if resolved_tail_bounds and tail_bound_diagnostics is None:
+        raise ValueError(
+            "PUF tax-detail tail-bound finalization requires a diagnostics sink; "
+            "tail bounds must not be silent."
+        )
 
     tax_unit_channel = support_channel_column("tax_unit")
     person_channel = support_channel_column("person")
@@ -759,6 +823,36 @@ def finalize_us_puf_tax_detail_predictions(
             "PUF raw predictions changed recipient row order or index before "
             "finalization."
         )
+    if resolved_tail_bounds:
+        recipient_tax_unit_ids = frame.table("tax_unit").loc[puf_mask, "tax_unit_id"]
+        recipient_weights = _tax_unit_household_weights(
+            frame,
+            recipient_tax_unit_ids,
+        )
+
+        for output, (quantile, bound) in resolved_tail_bounds.items():
+            values = predictions[output].to_numpy(dtype=np.float64, copy=False)
+            clipped = values > bound
+            clipped_mass_before = float(
+                (values[clipped] * recipient_weights[clipped]).sum()
+            )
+            predictions.loc[clipped, output] = bound
+            clipped_mass_after = float(
+                (
+                    predictions.loc[clipped, output].to_numpy(dtype=np.float64)
+                    * recipient_weights[clipped]
+                ).sum()
+            )
+            tail_bound_diagnostics.append(
+                {
+                    "output": output,
+                    "quantile": quantile,
+                    "bound_value": bound,
+                    "clipped_row_count": int(clipped.sum()),
+                    "clipped_mass_before": clipped_mass_before,
+                    "clipped_mass_after": clipped_mass_after,
+                }
+            )
 
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
@@ -1072,6 +1166,119 @@ def _tax_unit_model_frame(donor: pd.DataFrame) -> Frame:
             )
         },
     )
+
+
+def _validated_tail_bound_quantiles(
+    outputs: Sequence[str],
+    configured: Mapping[str, float],
+) -> dict[str, float]:
+    """Validate tail-bound configuration against this finalization surface."""
+
+    transformed_outputs = (
+        _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS
+        | _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
+        | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
+        | _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS
+        | _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+    )
+    requested = set(outputs)
+    active: dict[str, float] = {}
+    for output, configured_quantile in configured.items():
+        if output not in requested:
+            raise ValueError(
+                f"PUF tax-detail tail-bound configured output {output!r} is "
+                "missing from outputs."
+            )
+        try:
+            quantile = float(configured_quantile)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"PUF tax-detail tail-bound quantile for {output!r} must be in "
+                f"(0, 1), got {configured_quantile!r}."
+            ) from exc
+        if not np.isfinite(quantile) or not 0.0 < quantile < 1.0:
+            raise ValueError(
+                f"PUF tax-detail tail-bound quantile for {output!r} must be in "
+                f"(0, 1), got {configured_quantile!r}."
+            )
+        if output in transformed_outputs:
+            raise ValueError(
+                f"PUF tax-detail output {output!r}: tail bound is defined for "
+                "passthrough outputs only."
+            )
+        active[output] = quantile
+    return active
+
+
+def _weighted_positive_donor_quantile(
+    values: Sequence[Any],
+    weights: Sequence[Any],
+    quantile: float,
+) -> float:
+    """Return an inverse-CDF quantile over positive, weighted donor support."""
+
+    numeric_values = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    numeric_weights = pd.to_numeric(pd.Series(weights), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    if len(numeric_values) != len(numeric_weights):
+        raise ValueError(
+            "PUF tail-bound donor values and weights must align, got "
+            f"{len(numeric_values)} values and {len(numeric_weights)} weights."
+        )
+    positive = numeric_values > 0.0
+    if not (positive & (numeric_weights > 0.0)).any():
+        raise ValueError("PUF tail-bound donor has no positive donor support.")
+    positive_donor = pd.DataFrame(
+        {
+            "tail_bound_value": numeric_values[positive],
+            "weight": numeric_weights[positive],
+        }
+    )
+    positive_frame = _tax_unit_model_frame(positive_donor)
+    return float(
+        wquantile(
+            positive_frame,
+            "tail_bound_value",
+            quantile,
+            entity="tax_unit",
+        )
+    )
+
+
+def _tax_unit_household_weights(
+    frame: Frame,
+    tax_unit_ids: Sequence[Any],
+) -> np.ndarray:
+    """Resolve household design weights for tax units in the requested order."""
+
+    household = frame.table("household")
+    household_weights = frame.weights_for("household").values
+    if len(household_weights) != len(household):
+        raise ValueError(
+            "Household weights must align with household rows, got "
+            f"{len(household_weights)} weights for {len(household)} households."
+        )
+    weight_by_household_id = pd.Series(
+        np.asarray(household_weights, dtype=np.float64),
+        index=household["household_id"].to_numpy(),
+    )
+    household_id_by_tax_unit_id = (
+        frame.table("person")
+        .groupby("person_tax_unit_id", sort=False)["person_household_id"]
+        .first()
+    )
+    requested = pd.Series(np.asarray(tax_unit_ids), dtype=object)
+    resolved = requested.map(household_id_by_tax_unit_id).map(weight_by_household_id)
+    if resolved.isna().any():
+        missing = requested.loc[resolved.isna()].tolist()
+        raise ValueError(
+            "Could not resolve household weights for PUF recipient tax unit(s): "
+            f"{missing}."
+        )
+    return resolved.to_numpy(dtype=np.float64)
 
 
 def _formula_owned_engine() -> Any | None:
