@@ -1,5 +1,14 @@
 """UK build helpers for Populace-owned local-geography artifacts."""
 
+from populace.build.uk_runtime.cgt_calibration import (
+    UK_CGT_ANNUAL_EXEMPT_AMOUNTS,
+    UK_CGT_GAINS_AMOUNT_COLUMN,
+    UK_CGT_SOURCE_COLUMN,
+    UK_CGT_TAXPAYER_COUNT_COLUMN,
+    UKCGTTargetMaterialization,
+    materialize_uk_cgt_calibration_frame,
+    uk_cgt_annual_exempt_amount,
+)
 from populace.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -31,6 +40,12 @@ from populace.build.uk_runtime.firm_generation import (
     uk_firm_source_data_from_ledger_facts,
     validate_uk_firm_population,
     write_uk_firm_population,
+)
+from populace.build.uk_runtime.fiscal_targets import (
+    UK_CGT_REQUIRED_COLUMNS,
+    UK_CGT_TARGET_COVERAGE_REQUIREMENTS,
+    UK_CGT_TARGET_SPECS,
+    UK_FISCAL_TARGET_REGISTRY,
 )
 from populace.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_INCPBEN_COLUMN,
@@ -299,6 +314,17 @@ from populace.build.uk_runtime.spi_support import (
 )
 
 __all__ = [
+    "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_CGT_GAINS_AMOUNT_COLUMN",
+    "UK_CGT_SOURCE_COLUMN",
+    "UK_CGT_TAXPAYER_COUNT_COLUMN",
+    "UKCGTTargetMaterialization",
+    "materialize_uk_cgt_calibration_frame",
+    "uk_cgt_annual_exempt_amount",
+    "UK_CGT_REQUIRED_COLUMNS",
+    "UK_CGT_TARGET_COVERAGE_REQUIREMENTS",
+    "UK_CGT_TARGET_SPECS",
+    "UK_FISCAL_TARGET_REGISTRY",
     "AGE_BANDS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",
