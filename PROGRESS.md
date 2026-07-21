@@ -2,16 +2,31 @@
 
 ## State
 
-Investigating the declared capital-gain-distributions source stage and the established base-builder orchestration contract for populace#462 fix 3.
+Blocked by the task's explicit contract-safety condition. The declared stage
+adds a Schedule-D memo component from long-term gains but never reduces
+`non_sch_d_capital_gains`, so it cannot satisfy the requested conserved split
+or direct-route range. Full findings are in `BLOCKED.md`.
 
 ## Done
 
 - Confirmed the worktree is on `cgd-split-462` and starts clean.
-- Began tracing source-stage ordering, gates, and build-manifest recording.
+- Read the complete stage declaration, share resource, executor, runtime, base
+  builders, outer-stage manifest recorder, and relevant tests.
+- Confirmed the declared 9.8526% parameter is a Schedule-D share of eligible
+  long-term gains, not a partition share for the existing CGD total.
+- Confirmed the executor adds only the Schedule-D output, leaves the direct
+  route untouched, and fails loudly when the output already exists.
+- Located the otherwise-correct builder insertion point after PUF QRF
+  finalization and before QBI reconciliation, and confirmed how an outer stage
+  would be recorded in `stage_run_context.json`.
+- Documented the blocking semantic, magnitude, conservation, and grain
+  conflicts in `BLOCKED.md` without changing implementation or tests.
 
 ## Next
 
-- Read the stage declaration, executor, builder tools, and relevant tests.
-- Verify that the declared split parameters produce the required SOI-consistent direct-route range.
-- Wire the stage into the correct base build path and add regression coverage.
-- Run formatting, focused tests, and the full `packages/populace-build/tests` suite.
+- Obtain an approved stage-contract revision or clarification covering the
+  conserved route split, person/tax-unit placement, and provenance-backed
+  parameter.
+- After that contract exists, wire the stage after QRF finalization, add the
+  requested orchestration and semantic tests, then run the focused and full
+  suites.
