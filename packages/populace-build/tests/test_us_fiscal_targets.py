@@ -2435,6 +2435,87 @@ def test_rebased_capital_gains_rows_age_the_remaining_links_to_build() -> None:
     assert spec.metadata["source_period"] == "2023"
 
 
+def test_uprated_row_with_unparseable_effective_period_fails_closed() -> None:
+    # populace-authored uprating stamps must parse; a malformed one must
+    # never fail open into a silent factor-one pass (PR #488 finding 1).
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    malformed = TargetSpec(
+        name="bad_stamp",
+        entity="household",
+        measure="bad_stamp",
+        value=1_000.0,
+        period=2024,
+        source="irs_soi",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_period": "2022",
+            "source_measure_id": "net_capital_gains_amount",
+            "ledger_source_record_id": "bad_stamp",
+            "uprating_factor": "1.1",
+            "uprating_from_period": "2022",
+            "uprating_to_period": "banana",
+        },
+    )
+    registry = TargetRegistry([malformed], country="us")
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "net_capital_gain", value=981_400_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "net_capital_gain", value=1_290_900_000_000
+        ),
+    )
+    try:
+        age_us_dollar_targets(registry, facts, target_period=2024)
+    except ValueError as exc:
+        assert "unparseable" in str(exc)
+    else:
+        raise AssertionError("malformed uprating_to_period must fail closed")
+
+
+def test_rebased_interest_rows_age_the_remaining_links_to_build() -> None:
+    # The taxable-interest pass shares the chain-completion law: a row
+    # rebased to a TY2023 control receives the remaining CBO AGI link
+    # (PR #488 finding 2 — 467 real-feed specs were mask-stamped to 2024).
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+    from populace.calibrate import TargetRegistry, TargetSpec
+
+    rebased = TargetSpec(
+        name="state_interest_slice",
+        entity="household",
+        measure="state_interest_slice",
+        value=10_000_000_000.0,
+        period=2024,
+        source="irs_soi",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_period": "2022",
+            "source_measure_id": "taxable_interest_amount",
+            "ledger_source_record_id": "state_interest_slice",
+            "uprating_factor": "1.05",
+            "uprating_from_period": "2022",
+            "uprating_to_period": "2023",
+        },
+    )
+    registry = TargetRegistry([rebased], country="us")
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+    )
+    aged = age_us_dollar_targets(registry, facts, target_period=2024)
+    spec = aged.specs[0]
+    assert abs(spec.value - 10_000_000_000.0 * 1.1) < 1e-3
+    assert spec.metadata["source_period"] == "2023"
+
+
 def test_stale_soi_capital_gains_rebases_when_source_national_row_is_not_kept() -> None:
     facts = [
         *packaged_reference_facts(),

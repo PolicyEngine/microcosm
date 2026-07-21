@@ -1144,7 +1144,8 @@ def _uprate_cross_period_eitc_decompositions(
                     **dict(spec.metadata),
                     "uprating_index": _eitc_uprating_index(kind),
                     "uprating_from_period": source_period,
-                    "uprating_to_period": str(spec.period),
+                    # Value lands at the CONTROL's period; aging owns the rest.
+                    "uprating_to_period": target_total.source_period,
                     "uprating_index_source_period": target_total.source_period,
                     "uprating_index_source_record_id": target_total.source_record_id,
                     "uprating_factor": _format_float(factor),
@@ -1377,7 +1378,9 @@ def _uprate_cross_period_soi_decompositions(
                     **dict(spec.metadata),
                     "uprating_index": _soi_total_uprating_index(measure_id),
                     "uprating_from_period": source_period,
-                    "uprating_to_period": str(spec.period),
+                    # The rebase lands the value at the CONTROL's period;
+                    # target aging completes any remaining links from there.
+                    "uprating_to_period": active_total.source_period,
                     "uprating_index_source_period": active_total.source_period,
                     "uprating_index_source_record_id": active_total.source_record_id,
                     "uprating_factor": _format_float(factor),

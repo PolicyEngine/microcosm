@@ -73,7 +73,7 @@ __all__ = [
 # Bump the version whenever the factor policy changes; no Ledger fact and no
 # consumer-artifact hash changes when it does — only Populace build outputs.
 AGING_MODEL_ID = "cbo_growth_factor_aging"
-AGING_MODEL_VERSION = "1.1.0"
+AGING_MODEL_VERSION = "1.2.0"
 
 
 # CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
@@ -346,6 +346,14 @@ def _age_spec(
         else spec.metadata.get("source_period", "")
     )
     source_period_key = _period_year(source_period)
+    if "uprating_factor" in spec.metadata and source_period_key is None:
+        # The within-surface uprating stamps are populace-authored; a
+        # malformed effective period is a code bug and must never fail open
+        # into a silent factor-one pass (PR #488 review finding 1).
+        raise ValueError(
+            f"Uprated target {spec.name!r} carries an unparseable "
+            f"uprating_to_period {source_period!r}."
+        )
     if (
         source_period_key is None
         or build_period_key is None
