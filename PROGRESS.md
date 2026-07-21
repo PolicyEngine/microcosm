@@ -2,14 +2,12 @@
 
 ## State
 
-Populace #462 fix 3b is in progress on `qrf-tail-bound-462`, starting from the
-clean `origin/main` commit that includes #477, #478, #479, and #480. The settled
-design is a per-target weighted-donor-quantile clip at the PUF tax-detail
-finalizer seam; no manifest, `populace-fit`, or other pipeline stage changes are
-in scope. The mechanism and focused tests are implemented. The first full-suite
-run found one new-test source-policy violation, now corrected, plus two
-environment-only UK regeneration failures because licensed UK artifacts are
-cached but the US-only virtual environment lacks the optional UK rules engine.
+Populace #462 fix 3b is complete on `qrf-tail-bound-462`, starting from the clean
+`origin/main` commit that includes #477, #478, #479, and #480. The settled
+per-target weighted-donor-quantile clip is implemented at the PUF tax-detail
+finalizer seam, telemetry is published, focused and full-suite tests are green,
+and the branch remains unpushed. No manifest, `populace-fit`, or unrelated
+pipeline stage was changed.
 
 ## Done
 
@@ -32,12 +30,13 @@ cached but the US-only virtual environment lacks the optional UK rules engine.
   carried through both the monolithic imputation helper and checkpointed QRF
   finalization into the `qrf_finalization` stage metadata and final build
   summary, alongside the existing weights-audit record.
-- Resolved targeted-test compatibility without weakening fail-loud validation:
-  the canonical production chain always activates the module configuration;
-  deliberately reduced/custom chains remain isolated unless they explicitly
-  supply a tail-bound mapping, which is then validated against their actual
-  output surface. This preserves the unchanged snapping, pruning,
-  signed-calibration, educator, and checkpoint-equivalence fixtures.
+- Resolved targeted-test compatibility without weakening the production path:
+  the module configuration is validated against the canonical output universe
+  and activates whenever its target is present; deliberately reduced chains
+  disjoint from configured targets remain isolated. Explicit test mappings are
+  validated against their invocation's exact surface. This preserves the
+  snapping, pruning, signed-calibration, educator, and checkpoint-equivalence
+  behavior fixtures.
 - Verified the exact pinned local PUF exists at the requested path and SHA. Its
   actual positive tax-unit donor support has weighted inverse-CDF p99.9
   `211500.84797884867`, finite and positive and below the required `594483.0`
@@ -81,10 +80,17 @@ cached but the US-only virtual environment lacks the optional UK rules engine.
   locked `policyengine-uk==2.89.0` wheel already in the local read-only uv cache
   is exposed on `PYTHONPATH`. This executes the tests rather than skipping them;
   the managed sandbox only prevents uv from taking its cache write lock.
+- Ran the complete `packages/populace-build/tests` suite with that exact locked
+  wheel exposed: pytest reached 100% and exited 0. The two pre-existing runtime
+  warnings and macOS temporary-directory cleanup warnings were non-failing.
+- Re-ran `ruff check --fix` and `ruff format` on every touched Python file; all
+  checks pass and formatting is unchanged.
+- Audited `origin/main...HEAD`: changes are limited to the finalizer and its QRF
+  caller, finalization telemetry in the base builder, focused/existing tests,
+  and the two requested progress/report documents. `git diff --check` passes.
+- Wrote the completed handoff to `FINAL_REPORT.md`. No push was performed.
 
 ## Next
 
-- Re-run the full `packages/populace-build/tests` suite with the exact locked UK
-  wheel exposed, then perform the final diff/impact review; keep the branch
-  unpushed.
-- Write the completed verification report to the designated output file.
+- No implementation work remains. The local, unpushed branch is ready for
+  review.
