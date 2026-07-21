@@ -277,8 +277,11 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
             assert weights == "design"
             return self
 
-        def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
             assert len(features) == 2
+            assert release_models is True
             # Sparse snapping maps these to observed donor values 600 and 0.
             return pd.DataFrame(
                 {"educator_expense": [500.0, 100.0]},
