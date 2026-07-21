@@ -2938,6 +2938,74 @@ def test_soi_form_w2_social_security_tips_amount_targets_tip_income() -> None:
     assert spec.metadata["variable"] == "tip_income"
     assert spec.metadata["base_variable"] == "tip_income"
     assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["target_role"] == "w2_social_security_tips_total"
+
+
+def test_age_targets_chains_w2_tips_through_soi_wages_bridge() -> None:
+    # The tips dollar fact is TY2020 — before the CBO projection span — so
+    # aging must chain: SOI wages actuals bridge 2020 -> 2023 (the earliest
+    # CBO year supplied), then the CBO wages series carries 2023 -> 2024.
+    source_record_id = (
+        "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        _dynamic_ledger_fact(
+            source_record_id=source_record_id,
+            source_name="irs_soi",
+            measure_id="amount",
+            value=26_786_522_000,
+            period_value=2020,
+            layout_record_set_id="irs_soi.ty2020.form_w2_social_security_tips",
+            groupby_dimension="irs_soi.form_w2_item",
+            groupby_value_id="box_7_social_security_tips",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id="irs_soi.ty2020.table_1_4.all.wages_salaries_amount",
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=8_416_495_535_000,
+            period_value=2020,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2020.table_1_4",
+            groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+            groupby_value_id="all",
+        ),
+        _dynamic_ledger_fact(
+            source_record_id="irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=10_000_000_000_000,
+            period_value=2023,
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+            groupby_value_id="all",
+        ),
+        _cbo_income_source_projection_fact(
+            2023, "wages_and_salaries", value=10_200_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "wages_and_salaries", value=10_700_000_000_000
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        age_targets=True,
+        allow_unaged_dollar_targets=True,
+    )
+
+    spec = _aged_spec_by_source_record_id(registry, source_record_id)
+    expected_factor = (10_000_000_000_000 / 8_416_495_535_000) * (
+        10_700_000_000_000 / 10_200_000_000_000
+    )
+    assert spec.metadata["basis"] == "projection"
+    assert abs(float(spec.metadata["aging_factor"]) - expected_factor) < 1e-9
+    assert spec.metadata["aging_factor_source"].startswith("chained:")
+    assert "wages_salaries_amount" in spec.metadata["aging_factor_source"]
+    assert abs(spec.value - 26_786_522_000 * expected_factor) < 1.0
 
 
 def test_soi_itemized_deduction_targets_require_itemizing() -> None:
