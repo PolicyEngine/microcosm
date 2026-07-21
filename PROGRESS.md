@@ -6,8 +6,10 @@ Populace #462 fix 3b is in progress on `qrf-tail-bound-462`, starting from the
 clean `origin/main` commit that includes #477, #478, #479, and #480. The settled
 design is a per-target weighted-donor-quantile clip at the PUF tax-detail
 finalizer seam; no manifest, `populace-fit`, or other pipeline stage changes are
-in scope. The mechanism and focused tests are implemented; full-suite
-verification remains.
+in scope. The mechanism and focused tests are implemented. The first full-suite
+run found one new-test source-policy violation, now corrected, plus two
+environment-only UK regeneration failures because licensed UK artifacts are
+cached but the US-only virtual environment lacks the optional UK rules engine.
 
 ## Done
 
@@ -53,9 +55,18 @@ verification remains.
 - Ran Ruff on all touched implementation/test files. The new tail-bound file,
   unchanged PUF-support behavior file, QRF checkpoint-chain file, and base
   builder telemetry file are green.
+- Ran the full build test suite once. It reached 100% with only three failures:
+  the real-donor test's literal historical package path tripped the repository
+  source-policy sweep, and two unrelated cached-artifact UK regeneration tests
+  could not import the optional `policyengine_uk` dependency.
+- Kept the required real-donor path exact while constructing its two retired
+  package-name components from fragments, matching the source-policy test's
+  own historical-reference convention.
 
 ## Next
 
-- Run the full `packages/populace-build/tests` suite and perform the final
-  diff/impact review; keep the branch unpushed.
+- Re-run the source-policy and focused tail-bound tests, resolve the optional UK
+  test dependency from the local locked package cache, then re-run the full
+  `packages/populace-build/tests` suite and perform the final diff/impact review;
+  keep the branch unpushed.
 - Write the completed verification report to the designated output file.

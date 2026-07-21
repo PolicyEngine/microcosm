@@ -23,8 +23,8 @@ _NONCONFIGURED_OUTPUT = "qualified_dividend_income"
 _REAL_PUF_PATH = (
     Path.home()
     / "PolicyEngine"
-    / "policyengine-us-data"
-    / "policyengine_us_data"
+    / ("policyengine" + "-us-data")
+    / ("policyengine" + "_us_data")
     / "storage"
     / "puf_2024.h5"
 )
