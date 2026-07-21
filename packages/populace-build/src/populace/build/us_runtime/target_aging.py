@@ -332,7 +332,19 @@ def _age_spec(
             aging_factor_source=not_ageable_reason,
         )
 
-    source_period = spec.metadata.get("source_period", "")
+    # An uprated row's value sits wherever the uprating pass landed it
+    # (``uprating_to_period`` — the rebase control's period, not the build
+    # period); age the remaining links from there. A row uprated all the way
+    # to the build period falls through to source_equals_build with factor
+    # one, and a row stopped at an earlier control (the Build N
+    # net-capital-gains cross-vintage defect) receives exactly the missing
+    # links. Unrebased rows age from their source period as before.
+    source_period = str(
+        spec.metadata.get("uprating_to_period")
+        or spec.metadata.get("source_period", "")
+        if "uprating_factor" in spec.metadata
+        else spec.metadata.get("source_period", "")
+    )
     source_period_key = _period_year(source_period)
     if (
         source_period_key is None
@@ -408,9 +420,14 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
     """Why a spec is not an ageable nominal dollar amount, or ``None``.
 
     Ageable rows are USD ``sum`` measures. Counts (``indicator_sum``) stay
-    raw. Rows already period-aligned within-surface by an uprating pass carry
-    ``uprating_factor`` and must not be re-aged (double counting). The returned
-    string is the ``aging_factor_source`` diagnostic recorded for the skip.
+    raw. Rows rebased within-surface by an uprating pass carry
+    ``uprating_factor`` and are aged FROM their control period (recorded as
+    ``uprating_index_source_period``), never from the original source period
+    — the rebase covered source->control, aging covers control->build, so no
+    link is double-counted and none is dropped (the Build N net-capital-gains
+    cross-vintage defect: the states' chain stopped at the TY2023 control
+    while the national row continued to TY2024). The returned string is the
+    ``aging_factor_source`` diagnostic recorded for the skip.
     """
 
     metadata = spec.metadata
@@ -419,8 +436,6 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
     unit = metadata.get("ledger_measure_unit", "")
     if unit and unit != "usd":
         return "not_usd_unit"
-    if "uprating_factor" in metadata:
-        return "already_period_aligned"
     if metadata.get("ledger_assertion") == "source_projection":
         # A publisher projection is consumed at its published level whatever
         # period it describes; re-projecting it here would silently compound

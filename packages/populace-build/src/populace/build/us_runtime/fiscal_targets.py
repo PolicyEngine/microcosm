@@ -1208,7 +1208,10 @@ def _rebase_stale_soi_capital_gains_distributions(
                     **dict(spec.metadata),
                     "uprating_index": _soi_capital_gains_uprating_index(kind),
                     "uprating_from_period": spec.metadata["source_period"],
-                    "uprating_to_period": str(spec.period),
+                    # The rebase lands the value at the CONTROL's period —
+                    # NOT the build period; target aging completes the
+                    # remaining links from there.
+                    "uprating_to_period": control.source_period,
                     "uprating_index_source_period": control.source_period,
                     "uprating_index_source_record_id": control.source_record_id,
                     "uprating_factor": _format_float(factor),
