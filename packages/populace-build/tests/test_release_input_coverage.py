@@ -1211,6 +1211,34 @@ class TestShippedManifest:
             "gov.irs.deductions.overtime_income.cap.SEPARATE",
         }
 
+    def test_shipped_overtime_probes_cite_the_jct_ledger_anchor(self) -> None:
+        by_id = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        for probe_id in (
+            "obbba_no_tax_on_overtime",
+            "fsla_overtime_premium_neutralization",
+        ):
+            reason = by_id[probe_id].reason
+            assert "JCX-35-25" in reason
+            assert (
+                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
+                in reason
+            )
+        neutralization = by_id["fsla_overtime_premium_neutralization"].reason
+        assert "certified Build N" in neutralization
+        assert "over 29 million" in neutralization
+
+    def test_shipped_tips_probes_cite_the_jct_ledger_anchor(self) -> None:
+        by_id = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+        for probe_id in ("obbba_no_tax_on_tips", "tip_income_neutralization"):
+            reason = by_id[probe_id].reason
+            assert "JCX-35-25" in reason
+            assert (
+                "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
+            )
+        neutralization = by_id["tip_income_neutralization"].reason
+        assert "certified Build N" in neutralization
+        assert "over 7.5 million" in neutralization
+
     def test_shipped_auto_loan_probe_has_2026_period_sign_and_input(self) -> None:
         auto = next(
             probe

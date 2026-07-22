@@ -791,6 +791,43 @@ def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:
         assert result.passed
 
 
+def test_jct_obbba_no_tax_facts_do_not_compile_at_the_2024_target_period() -> None:
+    # The JCX-35-25 no-tax anchors (ledger jct-obbba-revenue-estimates-2025,
+    # populace#451 items 3-4) ride the feed ahead of any binding: both
+    # provisions are effective tyba 12/31/24, so a neutralize-variable
+    # income-tax delta is structurally zero at 2024 law and the facts must
+    # stay out of the compiled registry until a build targets TY2025-TY2028
+    # law. Their live surfaces today are the 2026-law reform-coverage probes
+    # and the fenced parity reviewed-exclusion for jct.obbba_title_vii.
+    overtime_fact = _dynamic_ledger_fact(
+        source_record_id=(
+            "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
+        ),
+        source_name="jct",
+        measure_id="revenue_effect",
+        value=-32_806_000_000,
+        period_value=2026,
+        groupby_dimension="jct.provision",
+        groupby_value_id="no_tax_on_overtime",
+        layout_record_set_id="jct.obbba_title_vii.fy2026",
+    )
+    tips_fact = _dynamic_ledger_fact(
+        source_record_id="jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect",
+        source_name="jct",
+        measure_id="revenue_effect",
+        value=-10_121_000_000,
+        period_value=2026,
+        groupby_dimension="jct.provision",
+        groupby_value_id="no_tax_on_tips",
+        layout_record_set_id="jct.obbba_title_vii.fy2026",
+    )
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), overtime_fact, tips_fact]
+    )
+
+    assert not [spec for spec in registry.specs if "obbba_title_vii" in spec.name]
+
+
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
     result = target_profile_coverage_gate(
         complete_coverage_targets(),

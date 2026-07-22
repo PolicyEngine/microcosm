@@ -2079,6 +2079,14 @@ def _reference_from_ledger_fact(
     if source_name == "bea":
         return _bea_reference_from_fact(fact, target_period=target_period)
     if source_name == "jct":
+        # JCT facts never bind through dynamic dispatch: tax-expenditure rows
+        # compile only as declared SimpleTaxExpenditureReform references
+        # (fiscal_target_references.json), and the OBBBA Title VII
+        # no-tax-provision projections (jct.obbba_title_vii.*, JCX-35-25)
+        # are a fenced parity reviewed-exclusion until a build's target
+        # period sits inside TY2025-TY2028 law — at 2024 law both channels
+        # score exactly $0, and the 2026-law reform-coverage probes carry
+        # the anchors (populace#451 items 3-4).
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
 

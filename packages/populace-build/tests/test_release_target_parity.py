@@ -339,6 +339,47 @@ def _load_generator():
     return module
 
 
+class TestJctObbbaAdjudication:
+    """populace#451 items 3-4: the JCX-35-25 no-tax anchors' parity disposition.
+
+    The jct.obbba_title_vii facts (ledger jct-obbba-revenue-estimates-2025)
+    ride a future feed cut; the generator must already carry their fenced
+    reviewed exclusion or regeneration hard-fails on the new family.
+    """
+
+    def test_obbba_fact_ids_familize_to_the_adjudicated_family(self) -> None:
+        from populace.build.us_runtime.release_target_parity import (
+            us_target_family_id,
+        )
+
+        assert (
+            us_target_family_id(
+                "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
+            )
+            == "jct.obbba_title_vii"
+        )
+        assert (
+            us_target_family_id(
+                "jct.obbba_title_vii.fy2029.no_tax_on_tips.revenue_effect"
+            )
+            == "jct.obbba_title_vii"
+        )
+
+    def test_jct_obbba_family_has_fenced_deferred_exclusion(self) -> None:
+        generator = _load_generator()
+        classification, reason, evidence, fence = generator._exclusion_for(
+            "jct.obbba_title_vii"
+        )
+        assert classification == "deferred"
+        assert "JCX-35-25" in reason
+        assert "structurally zero at 2024 law" in reason
+        assert "fsla_overtime_premium_neutralization" in reason
+        assert "-$32.806B" in evidence
+        for key in ("origin", "purpose", "verdict_basis"):
+            assert fence[key]
+        assert "TY2025-TY2028" in fence["purpose"]
+
+
 class TestRegeneration:
     """Feed-dependent reproduction — guarded on the pinned feed being present."""
 
