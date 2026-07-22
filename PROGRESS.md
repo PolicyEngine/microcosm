@@ -2,57 +2,42 @@
 
 ## State
 
-Populace #462 split-PR remediation is in progress on
-`loss-contract-alignment`. The target outcome is register alignment only: the
-critical-row loss multiplier is removed per populace#492, the builder and
-publisher share one congressional-district classifier, and all four Sol
-round-1 findings are closed with behavioral containment tests.
+Populace #462 split-PR remediation is complete on
+`loss-contract-alignment`, based on `origin/main` at `7b6e10b`. The outcome is
+register alignment only: the multiplier is removed per populace#492, both
+consumers share CD classification, and all four Sol round-1 findings are fixed
+with behavioral containment coverage. Nothing was pushed.
 
 ## Done
 
-- Confirmed the worktree is clean at `068854d` and tracks the pushed branch;
-  this remediation will not be pushed.
-- Read `/Users/maxghenis/PolicyEngine/_reviews/sol-491-out.md` and accepted its
-  three HIGH reproductions plus the MEDIUM anti-drift gap as the oracle.
-- Confirmed the existing shared register still contains the #490 medical 0.25
-  adjudication block; that tolerance and comment will remain untouched.
-- Located every current Python reference to the critical-target loss
-  multiplier across tools, tests, and historical experiment entry points.
-- Removed the critical-row loss multiplier constant, CLI/validation, final
-  overlay, telemetry, diagnostics, scorer provenance, experiment pins, and
-  multiplier-specific tests per populace#492.
-- Restored `_fiscal_target_loss_weights` source-identically to `origin/main`;
-  both scorer files and both historical experiment files also match main.
-- Confirmed the required multiplier grep has zero Python hits and the focused
-  loss/diagnostics test selection passes (8 passed).
-- Fixed Sol finding 1 by removing the builder adapter's `irs_soi.` prefix
-  narrowing; the supplied `other.table_1_4.all.bad_amount@2024` reproduction
-  now fails the builder gate at relative error 1 versus the 0.25 cap.
-- Added and passed focused selector-parity/reproduction coverage (2 passed).
-- Fixed Sol finding 2 with one dependency-light exported CD classifier that
-  unions all six owner-approved evidence signals; publisher and builder are
-  thin adapters over it.
-- Gave the builder's exact/semantic, Table 1.4, and zero-support paths the same
-  registry-backed metadata surface, closing both directions of CD drift.
-- Compiled a real CD Ledger reference, isolated each evidence key into its own
-  registry row, and proved equal six-row excluded name sets/counts plus full
-  gate exclusion on both consumers (3 focused tests passed).
-- Fixed Sol finding 3 by making every matched fit row require a recorded
-  numeric `relative_error`; missing/`None` now emits the owner-specified
-  publish-contract failure instead of silently relying on recomputation.
-- Added the supplied adversarial Table 1.4 regression and updated the generic
-  gate contract test; the full gate test file and focused builder tests pass.
-- Replaced field-only anti-drift assurance with behavioral containment across
-  exact-name, family+role, Table substring/suffix, missing/non-finite row
-  shapes, and a disallowed incumbent escape at the 0.25 hard stop.
-- Kept fast field checks but made Table selectors exact and proved that adding
-  any conjunctive name prefix trips the anti-drift guard.
-- The six individual CD evidence rows now serve as the exclusion half of the
-  behavioral battery: publisher and builder exclude identical names/counts,
-  and both full critical gates ignore their deliberately failing fits.
-- Reran the complete fiscal-refresh builder test file successfully.
+- Read the Sol round-1 report and used its three HIGH reproductions plus the
+  MEDIUM anti-drift gap as the acceptance oracle.
+- Removed every critical-row multiplier surface and restored the loss helper,
+  scorer calls, and historical experiment calls to their `origin/main` shape.
+- Fixed the Table 1.4 prefix narrowing and captured the exact builder failure
+  for `other.table_1_4.all.bad_amount@2024`.
+- Added the exported six-signal shared CD classifier, converted both consumers
+  to thin wrappers, and passed registry metadata through all builder gate
+  paths that classify target rows.
+- Compiled a real CD Ledger reference and proved equal six-row excluded name
+  sets/counts and full-gate exclusion builder-side and publisher-side.
+- Made missing/`None` recorded relative error a builder failure with the
+  required publish-contract message; stale and non-numeric checks remain.
+- Added behavioral containment for exact, semantic, Table-pattern,
+  missing/non-finite, incumbent-escape, and every CD evidence class, including
+  an explicit guard against any accepted-name-prefix narrowing.
+- Preserved the #490 medical 0.25 adjudication block and comment byte-for-byte.
+- Reran the requested combined suite: 264 passed and 3 skipped (267 collected).
+- Reran the three Sol scenarios: the two malformed rows are builder-rejected
+  with exact failure strings, while the CD row is symmetrically excluded by
+  both consumers as required.
+- Confirmed zero multiplier grep hits, Ruff check/format-check cleanliness on
+  all applicable touched files, and a clean `git diff --check`.
+- Replaced `FINAL_REPORT.md` with the complete split-PR outcome and receipts.
+- Attempted `/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md`; the
+  sandbox rejected the write with `Operation not permitted`, so the full
+  report will be printed to stdout per the requested fallback.
 
 ## Next
 
-- Run the full requested suites and static checks, then update this file and
-  `FINAL_REPORT.md` with final receipts.
+- None. Commit this prose handoff and do not push the branch.

@@ -1,101 +1,110 @@
-# Final report: populace #462 critical-row loss alignment
+# Final report: populace #462 register alignment
 
 ## Outcome
 
-Built `loss-contract-alignment` from `origin/main` at `c3e378a`. The US
-release builder now fails on every row class enforced by the populace-data
-publish contract, and the calibration objective gives those same critical rows
-a configurable final loss-weight overlay. Target values, tolerances, and
-unrelated gate semantics are unchanged.
+Completed the split-PR remediation on `loss-contract-alignment`, based on
+`origin/main` at `7b6e10b`. The change is now register alignment only: one
+shared critical-target register, one shared congressional-district classifier,
+two consumers, builder contract-row gating, and behavioral containment of the
+publish contract.
 
-The change addresses the observed stable equilibrium: Build N attempt 5 passed
-the builder gates with national medical/dental expense at +21.2% against the
-publish contract's 15% limit, while attempt 6 reduced overall loss from
-0.03009 to 0.02824 but moved that row only to +20.78%.
+The critical-row loss multiplier was removed entirely per
+[populace#492](https://github.com/PolicyEngine/populace/issues/492). There is no
+constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
+provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
+source-identical to `origin/main`, and its output therefore preserves main's
+bit-level behavior for the same registry and family multipliers.
 
-## Register alignment
+## Sol round-1 findings
 
-Before this branch, the builder had 13 exact critical requirement classes plus
-the existing Table 1.4 blanket. The publish contract had 16 exact/semantic
-classes plus that blanket. The builder was missing:
+1. **Table 1.4 selector parity:** removed the builder-only
+   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
+   exactly the shared requirement's substring and suffix selectors. The
+   outside-prefix reproduction is builder-rejected.
+2. **Congressional-district parity:** added exported, stdlib-only
+   `is_congressional_district_target(name, metadata)` and made the publisher
+   and builder classifiers thin wrappers. It ORs layout dimension, source-id
+   token, geography level, geography scope, truthy CD GEOID, and name token.
+   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
+   same registry metadata.
+3. **Recorded relative-error shape:** a matched row with missing/`None`
+   `relative_error` now fails with the publish-contract message instead of
+   silently passing after recomputation. Existing non-numeric and stale-value
+   checks remain.
+4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
+   through both consumers for exact-name, family+role, Table pattern,
+   missing/non-finite values, and a disallowed incumbent escape at the 0.25
+   hard stop. A production Ledger compile supplies six separate CD evidence
+   rows; builder and publisher exclude identical six-name sets and counts.
+   Field comparisons remain as fast checks, and any added conjunctive prefix
+   is proven to trip the guard.
 
-| Requirement class | Newly builder-gated exact rows | Maximum absolute relative error |
-| --- | ---: | ---: |
-| Itemized deduction amount | 2 | 0.15 |
-| State and local tax deduction amount | 2 | 0.10 |
-| Medical expense deduction amount | 1 | 0.25 (adjudicated #490; restores to 0.15 once a boosted run holds it) |
+The [#490](https://github.com/PolicyEngine/populace/issues/490) medical 0.25
+adjudication tolerance and its adjacent comment in `us_critical_targets.py`
+remain byte-for-byte unchanged, as required.
 
-The complete register now lives in
-`populace.data.us_critical_targets` as dependency-light frozen data and is
-imported by both the builder and publication contract. This preserves the
-existing 0.15 credit class and the existing 0.25 Table 1.4 blanket as well as
-the other established tolerances.
+## Reproduction receipts
 
-Matching is aligned across both gates:
+The Table 1.4 prefix reproduction now returns:
 
-- exact compiled row identity, including `@2024`;
-- `family + target_role` aliases for live Table 1.2, 2.1, and 4.3 variants;
-- the existing Table 1.4 name-pattern blanket;
-- congressional-district layouts excluded;
-- no incumbent-improvement escape for itemized, SALT, medical, or Table 1.4
-  rows.
+```text
+SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
+```
 
-The builder's US extra now declares its cycle-free `populace-data` workspace
-dependency. The anti-drift test compares the actual builder and publish
-registers by requirement ID, tolerance, selectors, and incumbent strictness; a
-new publisher requirement without at least equally strict builder coverage
-fails the test.
+The missing-relative-error reproduction now returns:
 
-## Loss pipeline
+```text
+SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
+```
 
-`_fiscal_target_loss_weights` applies weighting in this order:
+The CD reproduction has the owner-mandated exclusion result:
 
-1. derive the existing square-root target-value basis weights;
-2. normalize expanded rows to their concept budgets;
-3. balance amount/count basis budgets and normalize the vector to mean 1;
-4. apply optional family multipliers and renormalize to mean 1;
-5. apply `US_CRITICAL_TARGET_LOSS_MULTIPLIER` to rows matching the shared
-   critical register.
+```text
+builder_excluded=True
+publisher_excluded=True
+builder_failures=[]
+```
 
-The final critical overlay defaults to `5.0`, is applied once even if
-selectors overlap, excludes congressional-district rows, and is deliberately
-not renormalized. Non-critical weights therefore remain bit-for-bit unchanged
-and each critical weight is exactly the configured multiple of its normalized
-base weight. The solver already divides weighted loss by the final weight sum,
-so this changes relative priority without introducing a second loss
-definition.
-
-Adjudication runs can set
-`--critical-target-loss-multiplier MULTIPLIER`; non-positive and non-finite
-values fail argument validation. The effective value is recorded in
-calibration-stage telemetry and the failure-safe calibration diagnostics build
-record. Current fiscal/state score-only diagnostics also record it in solver
-options, build provenance, and summaries. Historical Build H/J replay scripts
-explicitly use `1.0` so their old objectives remain reproducible.
+Calling that row "rejected" would contradict the required OR-union exclusion
+semantics. The two malformed critical rows are rejected; the CD row is
+symmetrically excluded by both consumers.
 
 ## Verification
 
-- `packages/populace-data/tests/test_contract.py`: 65 passed.
-- Complete `packages/populace-data/tests`: 132 passed, 1 optional-engine skip.
-- Focused builder register/release-gate group: 18 passed.
-- Focused loss/CLI/diagnostics/orchestration group: 15 passed.
-- Complete fiscal refresh builder plus state-file scorer tests: 135 passed.
-- `ruff check --fix`, `ruff format`, final `ruff check`, lockfile
-  consistency, and `git diff --check`: passed.
-- Independent reviews covered register semantics, loss placement/determinism,
-  CLI propagation, diagnostics provenance, package dependency direction, and
-  downstream call sites.
+The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
+environment in the network-restricted sandbox:
 
-Pytest emitted non-failing macOS temporary-directory cleanup warnings in the
-builder run; no test failed.
+```text
+uv run --package populace-build --extra us --group dev python -m pytest packages/populace-data/tests packages/populace-build/tests/test_us_fiscal_refresh_builder.py packages/populace-build/tests/test_us_state_files_scorer.py -q
+264 passed, 3 skipped (267 collected)
+```
 
-## Implementation commits
+Additional receipts:
 
-- `3b51e22` — start and commit the #462 progress record.
-- `6a2ffb9` — share and align builder/publish critical requirements.
-- `f3e5dfc` — add the post-normalization critical-row loss priority.
-- `c1b794d` — keep manifest test registries faithful to production.
-- `92951f6` — declare the shared-register package dependency.
-- `323b58a` — make scorer provenance and historical replay behavior explicit.
+- Complete `test_gates.py`: passed.
+- Required multiplier grep: zero Python hits.
+- Ruff check: clean on all ten touched Python files.
+- Ruff format check: clean on the eight non-exempt touched Python files; the
+  two historical experiment files were not reformatted, as instructed.
+- `git diff --check`: clean.
+- The medical adjudication block compares byte-for-byte equal to pre-fix
+  commit `068854d`.
+- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
+  test failed.
+
+## Remediation commits
+
+- `5077f95` — start populace#462 Sol remediation progress.
+- `c48ba37` — remove the populace#462 loss multiplier per populace#492.
+- `afa910a` — fix Sol finding 1 selector parity.
+- `89f74f4` — fix Sol finding 2 CD classifier parity.
+- `77040fb` — fix Sol finding 3 relative-error shape.
+- `bad7145` — fix Sol finding 4 behavioral containment.
+- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
 
 Nothing was pushed.
+
+The sandbox rejected writing
+`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
+permitted`; the full completion report is therefore committed here and will be
+printed to stdout as the requested fallback.
