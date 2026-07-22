@@ -37,10 +37,14 @@ round-1 findings are closed with behavioral containment tests.
 - Compiled a real CD Ledger reference, isolated each evidence key into its own
   registry row, and proved equal six-row excluded name sets/counts plus full
   gate exclusion on both consumers (3 focused tests passed).
+- Fixed Sol finding 3 by making every matched fit row require a recorded
+  numeric `relative_error`; missing/`None` now emits the owner-specified
+  publish-contract failure instead of silently relying on recomputation.
+- Added the supplied adversarial Table 1.4 regression and updated the generic
+  gate contract test; the full gate test file and focused builder tests pass.
 
 ## Next
 
-- Fix Sol finding 3: reject missing recorded relative error builder-side.
 - Add the finding-4 behavioral containment battery and rerun the three
   round-1 reproductions.
 - Run the full requested suites and static checks, then update this file and

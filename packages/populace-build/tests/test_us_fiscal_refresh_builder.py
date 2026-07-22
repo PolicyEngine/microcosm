@@ -7533,6 +7533,35 @@ def test_release_gate_failures_block_table_1_4_row_outside_irs_prefix() -> None:
     ]
 
 
+def test_release_gate_failures_require_recorded_table_1_4_relative_error() -> None:
+    builder = _load_builder_module()
+    adversarial = SimpleNamespace(
+        name=(
+            "irs_soi.ty2023.table_1_4.all."
+            f"adversarial_amount@{builder.PERIOD}"
+        ),
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: "
+        "missing recorded relative_error; the publish contract requires a "
+        "numeric value."
+    ]
+
+
 def test_release_gate_failures_ignore_table_1_4_returns_rows() -> None:
     builder = _load_builder_module()
     # A wildly-missed returns (count) row is outside the dollar blanket: the

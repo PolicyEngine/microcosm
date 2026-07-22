@@ -2156,9 +2156,8 @@ def target_fit_gate(
         target_rows: Per-target diagnostics rows. Each row may be a mapping or
             an attribute object (both the calibrate ``TargetDiagnostic`` shape
             and the published ``calibration_diagnostics.json`` row shape work)
-            carrying ``name``, ``target``, and ``final_estimate``, plus an
-            optional recorded ``relative_error`` that is cross-checked for
-            staleness when present.
+            carrying ``name``, ``target``, ``final_estimate``, and a numeric
+            recorded ``relative_error`` that is cross-checked for staleness.
         requirements: The row classes to block on.
         reviewed_exclusions: Row name -> REASON for rows allowed to breach
             their class tolerance (an adjudicated, tracked defect). An entry
@@ -2219,6 +2218,12 @@ def target_fit_gate(
     relative_errors: dict[str, float] = {}
     for row_name in sorted(matched_names):
         row = rows[row_name]
+        recorded = _coverage_field(row, "relative_error", None)
+        if recorded is None:
+            failures.append(
+                f"{row_name}: missing recorded relative_error; "
+                "the publish contract requires a numeric value."
+            )
         target_value = _finite_number(_coverage_field(row, "target", None))
         final_estimate = _finite_number(_coverage_field(row, "final_estimate", None))
         if target_value is None or final_estimate is None:
@@ -2243,7 +2248,6 @@ def target_fit_gate(
         else:
             computed = (final_estimate - target_value) / target_value
         relative_errors[row_name] = float(computed)
-        recorded = _coverage_field(row, "relative_error", None)
         if recorded is not None:
             recorded_number = _finite_number(recorded)
             if recorded_number is None:

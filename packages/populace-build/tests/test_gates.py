@@ -1636,14 +1636,18 @@ class TestTargetFitGate:
         assert not result.passed
         assert any("stale relative_error" in line for line in result.failures)
 
-    def test_missing_recorded_relative_error_is_not_stale(self) -> None:
+    def test_missing_recorded_relative_error_fails_publish_contract(self) -> None:
         row = {
             "name": _BUILD_M_WAGES_ROW["name"],
             "target": _BUILD_M_WAGES_ROW["target"],
             "final_estimate": _BUILD_M_WAGES_ROW["final_estimate"],
         }
         result = target_fit_gate((row,), (_TABLE_1_4_REQUIREMENT,))
-        assert result.passed
+        assert not result.passed
+        assert result.failures == (
+            f"{_BUILD_M_WAGES_ROW['name']}: missing recorded relative_error; "
+            "the publish contract requires a numeric value.",
+        )
 
     def test_non_numeric_target_fails(self) -> None:
         row = dict(_BUILD_M_WAGES_ROW)
