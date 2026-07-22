@@ -34,6 +34,9 @@ from populace.data.us_critical_targets import (
 from populace.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR as _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
 )
+from populace.data.us_critical_targets import (
+    is_congressional_district_target,
+)
 
 __all__ = [
     "RELEASE_MANIFEST_SCHEMA_VERSION",
@@ -858,20 +861,10 @@ def _target_registry_family(target: Mapping) -> str:
 
 
 def _is_congressional_district_layout_target(target: Mapping) -> bool:
-    metadata = target.get("metadata")
-    if not isinstance(metadata, Mapping):
-        return False
-    groupby_dimension = metadata.get("ledger_layout_groupby_dimension")
-    if str(groupby_dimension) == "irs_soi.congressional_district":
-        return True
-    source_record_id = metadata.get("ledger_source_record_id")
-    if (
-        isinstance(source_record_id, str)
-        and ".congressional_district_" in source_record_id
-    ):
-        return True
-    name = target.get("name")
-    return isinstance(name, str) and ".congressional_district_" in name
+    return is_congressional_district_target(
+        target.get("name"),
+        target.get("metadata"),
+    )
 
 
 def _check_source_coverage_diagnostics(

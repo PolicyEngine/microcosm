@@ -8,6 +8,7 @@ weaker hand-copied register than the publisher later enforces (populace#462).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS",
     "US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT",
     "USCriticalTargetFitRequirement",
+    "is_congressional_district_target",
 ]
 
 
@@ -61,6 +63,26 @@ class USCriticalTargetFitRequirement:
             and target_role in self.target_roles
         )
         return exact_match or pattern_match or semantic_match
+
+
+def is_congressional_district_target(
+    name: object,
+    metadata: Mapping | None,
+) -> bool:
+    """Return whether any shared evidence identifies a US CD target."""
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    return (
+        str(metadata.get("ledger_layout_groupby_dimension") or "")
+        == "irs_soi.congressional_district"
+        or ".congressional_district_"
+        in str(metadata.get("ledger_source_record_id") or "")
+        or str(metadata.get("ledger_geography_level") or "")
+        == "congressional_district"
+        or str(metadata.get("geography_scope") or "")
+        == "congressional_district"
+        or bool(metadata.get("congressional_district_geoid"))
+        or ".congressional_district_" in str(name or "")
+    )
 
 
 US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15

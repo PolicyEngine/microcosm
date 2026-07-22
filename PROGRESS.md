@@ -29,11 +29,18 @@ round-1 findings are closed with behavioral containment tests.
   narrowing; the supplied `other.table_1_4.all.bad_amount@2024` reproduction
   now fails the builder gate at relative error 1 versus the 0.25 cap.
 - Added and passed focused selector-parity/reproduction coverage (2 passed).
+- Fixed Sol finding 2 with one dependency-light exported CD classifier that
+  unions all six owner-approved evidence signals; publisher and builder are
+  thin adapters over it.
+- Gave the builder's exact/semantic, Table 1.4, and zero-support paths the same
+  registry-backed metadata surface, closing both directions of CD drift.
+- Compiled a real CD Ledger reference, isolated each evidence key into its own
+  registry row, and proved equal six-row excluded name sets/counts plus full
+  gate exclusion on both consumers (3 focused tests passed).
 
 ## Next
 
-- Fix Sol findings 2-3 in separate commits: shared CD classification and
-  missing recorded-relative-error rejection.
+- Fix Sol finding 3: reject missing recorded relative error builder-side.
 - Add the finding-4 behavioral containment battery and rerun the three
   round-1 reproductions.
 - Run the full requested suites and static checks, then update this file and

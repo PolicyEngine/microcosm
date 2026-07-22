@@ -252,6 +252,7 @@ from populace.calibrate.diagnostics import (
 from populace.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
     US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
+    is_congressional_district_target,
 )
 from populace.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
@@ -5380,11 +5381,9 @@ def _target_family(target: object | None) -> str:
 
 
 def _target_is_congressional_district(target: object | None) -> bool:
-    metadata = _target_metadata(target)
-    return (
-        metadata.get("ledger_geography_level") == "congressional_district"
-        or metadata.get("geography_scope") == "congressional_district"
-        or bool(metadata.get("congressional_district_geoid"))
+    return is_congressional_district_target(
+        _target_row_name(target) if target is not None else "",
+        _target_metadata(target),
     )
 
 
@@ -5546,7 +5545,10 @@ def _release_gate_failures(
         failures.append(f"{len(skipped)} fiscal targets were skipped by calibration.")
     if not result.diagnostics:
         failures.append("No fiscal targets were compiled.")
-    diagnostic_targets = _diagnostic_targets_by_name(result)
+    diagnostic_targets = {
+        **_diagnostic_targets_by_name(result),
+        **_critical_target_specs_by_row_name(target_registry),
+    }
     zero_support = [
         diagnostic.name
         for diagnostic in result.diagnostics
@@ -5580,7 +5582,13 @@ def _release_gate_failures(
     # capital-gain-distributions defect) cannot certify. No incumbent-
     # improvement escape: a national dollar row beyond broad fit never ships.
     soi_table_1_4_gate = target_fit_gate(
-        getattr(result, "diagnostics", ()) or (),
+        tuple(
+            diagnostic
+            for diagnostic in (getattr(result, "diagnostics", ()) or ())
+            if not _target_is_congressional_district(
+                diagnostic_targets.get(str(getattr(diagnostic, "name", "")))
+            )
+        ),
         (US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,),
         name="soi_table_1_4_national_dollar_fit",
     )

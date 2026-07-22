@@ -1580,6 +1580,230 @@ def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
     ]
 
 
+def test_shared_cd_classifier_matches_real_registry_compile() -> None:
+    from collections import UserDict
+    from dataclasses import replace
+
+    from populace.build.ledger_targets import (
+        LedgerTargetReference,
+        compile_ledger_target_references,
+    )
+    from populace.data.contract import (
+        _check_us_critical_target_fit,
+        _is_congressional_district_layout_target,
+    )
+    from populace.data.us_critical_targets import is_congressional_district_target
+
+    builder = _load_builder_module()
+    source_record_id = (
+        "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+        "medical_expense_amount"
+    )
+    fact = {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:cd-fixture",
+        "legacy_fact_key": "ledger.fact.v1:cd-fixture",
+        "lineage": {
+            "source_record_id": source_record_id,
+            "source_cell_keys": ["ledger.source_cell.v1:cd-fixture"],
+            "source_row_keys": [],
+        },
+        "value": 100.0,
+        "period": {"type": "tax_year", "value": 2023},
+        "geography": {
+            "level": "congressional_district",
+            "id": "5001700US0101",
+            "name": "Alabama District 1",
+            "vintage": "2022",
+        },
+        "entity": {"name": "tax_unit", "role": "filing_unit"},
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_measure_id": "medical_expense_amount",
+            "source_concept": "irs_soi.medical_expense_amount",
+            "unit": "usd",
+        },
+        "concept_alignment": {
+            "source_concept": "irs_soi.medical_expense_amount",
+            "canonical_concept": "irs_soi.medical_expense_amount",
+            "relation": "exact",
+            "authority": "policyengine-ledger",
+            "legal_vintage": "tax_year_2023",
+        },
+        "aggregation": {"method": "sum"},
+        "source": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_file": "fixture.xlsx",
+            "url": "https://www.irs.gov/",
+            "vintage": "tax_year_2023",
+        },
+        "dimensions": {},
+        "universe_constraints": {
+            "domain": "all_individual_income_tax_returns"
+        },
+        "layout": {
+            "record_set_id": "irs_soi.ty2023.table_1_4.cd_fixture",
+            "groupby_dimension": "irs_soi.congressional_district",
+            "groupby_value_id": "al_01",
+            "measure_id": "medical_expense_amount",
+        },
+    }
+    reference = LedgerTargetReference(
+        name=(
+            "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+            "medical_expense_amount"
+        ),
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure="medical_expense",
+        period=builder.PERIOD,
+        family="irs_soi",
+        metadata={
+            "target_role": "medical_expense_deduction_total",
+            "geography_scope": "congressional_district",
+            "congressional_district_geoid": "0101",
+        },
+    )
+    compiled = compile_ledger_target_references([fact], [reference], country="us")
+    (compiled_spec,) = compiled.specs
+
+    evidence = {
+        "layout": (
+            "ledger_layout_groupby_dimension",
+            "irs_soi.congressional_district",
+        ),
+        "source": (
+            "ledger_source_record_id",
+            "fixture.congressional_district_01",
+        ),
+        "level": ("ledger_geography_level", "congressional_district"),
+        "scope": ("geography_scope", "congressional_district"),
+        "geoid": ("congressional_district_geoid", "0101"),
+        "name": (None, None),
+    }
+    metadata_evidence_keys = {
+        key for key, _ in evidence.values() if key is not None
+    }
+    assert {
+        key: compiled_spec.metadata[key] for key in metadata_evidence_keys
+    } == {
+        "ledger_layout_groupby_dimension": "irs_soi.congressional_district",
+        "ledger_source_record_id": source_record_id,
+        "ledger_geography_level": "congressional_district",
+        "geography_scope": "congressional_district",
+        "congressional_district_geoid": "0101",
+    }
+
+    cd_specs = []
+    for label, (metadata_key, metadata_value) in evidence.items():
+        metadata = {
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        }
+        if metadata_key is not None:
+            metadata[metadata_key] = metadata_value
+        name = f"other.table_1_4.all.cd_{label}_amount"
+        if label == "name":
+            name = "other.table_1_4.congressional_district_name.bad_amount"
+        cd_specs.append(replace(compiled_spec, name=name, metadata=metadata))
+
+    control = replace(
+        compiled_spec,
+        name="other.table_1_4.all.non_cd_control_amount",
+        metadata={
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        },
+    )
+    registry = TargetRegistry((*cd_specs, control), country="us")
+    publisher_rows = [
+        {"name": builder._target_row_name(spec), "metadata": spec.metadata}
+        for spec in registry.specs
+    ]
+    builder_excluded = {
+        builder._target_row_name(spec)
+        for spec in registry.specs
+        if builder._target_is_congressional_district(spec)
+    }
+    publisher_excluded = {
+        str(row["name"])
+        for row in publisher_rows
+        if _is_congressional_district_layout_target(row)
+    }
+    expected_excluded = {builder._target_row_name(spec) for spec in cd_specs}
+
+    assert builder_excluded == publisher_excluded == expected_excluded
+    assert len(builder_excluded) == len(publisher_excluded) == 6
+    assert not builder._target_is_congressional_district(control)
+    assert not _is_congressional_district_layout_target(publisher_rows[-1])
+    assert not is_congressional_district_target(123, None)
+    assert is_congressional_district_target(
+        "ordinary",
+        UserDict({"geography_scope": "congressional_district"}),
+    )
+
+    diagnostics = tuple(
+        SimpleNamespace(
+            name=builder._target_row_name(spec),
+            target=100.0,
+            initial_estimate=100.0,
+            final_estimate=100.0 if spec is control else 200.0,
+            relative_error=0.0 if spec is control else 1.0,
+        )
+        for spec in registry.specs
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + diagnostics,
+        problem=SimpleNamespace(
+            names=tuple(builder._target_row_name(spec) for spec in registry.specs),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+    ) == []
+
+    diagnostics_by_name = {
+        diagnostic.name: diagnostic
+        for diagnostic in (*_passing_critical_diagnostics(builder), *diagnostics)
+    }
+    specs_by_name = {
+        builder._target_row_name(spec): spec for spec in registry.specs
+    }
+    publisher_diagnostics = {
+        "targets": [
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(
+                    getattr(specs_by_name.get(diagnostic.name), "metadata", {})
+                ),
+                "registry": {
+                    "family": getattr(
+                        specs_by_name.get(diagnostic.name),
+                        "family",
+                        "",
+                    )
+                },
+            }
+            for diagnostic in diagnostics_by_name.values()
+        ]
+    }
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(publisher_diagnostics, publisher_failures)
+    assert publisher_failures == []
+
+
 def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
