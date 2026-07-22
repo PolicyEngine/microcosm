@@ -56,6 +56,7 @@ Six declared options, each a real feature (and each its own test):
 from __future__ import annotations
 
 import math
+import os
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -113,6 +114,31 @@ _DEFAULT_BUDGET_ITERS = 10
 # Per-target contribution cap for weighted MAPE. A target can contribute at most
 # a 1000% scaled miss to the objective.
 _DEFAULT_TARGET_LOSS_CAP = 10.0
+
+# --- populace#492 loss-shape experiment (branch-local; NOT for merge) ---
+# POPULACE_LOSS_SHAPE selects the TRAINING objective's per-row shape over the
+# scaled absolute miss r = abs((estimate - target) / scale):
+#   "cap"      (default) the production flat cap: min(r, cap). Zero gradient
+#              past the knee — the free-dumping-ground shape under study.
+#   "leaky"    min(r, cap) + eps * max(r - cap, 0). Identical to "cap" below
+#              the knee; a constant small tail gradient eps
+#              (POPULACE_LOSS_LEAK, default 0.02) past it.
+#   "rational" cap-normalized bounded rational cap*(1+c)*u/(c+u), u = r/cap,
+#              c = POPULACE_LOSS_RATIONAL_C (default 3.0). Slope (1+c)/c at
+#              r=0, exactly cap at the knee r=cap, shoulder slope
+#              c*(1+c)/(c+1)^2 (= 0.75 at c=3) at the knee, polynomial tail
+#              (~0.24 at r=4cap), asymptote cap*(1+c).
+# ONLY the torch training loss changes. The numpy relative_error_loss —
+# closing loss, acceptance gates, and scorers — remains the canonical capped
+# weighted MAPE, so every run is measured on the same yardstick.
+_LOSS_SHAPE = os.environ.get("POPULACE_LOSS_SHAPE", "cap")
+_LOSS_LEAK_EPS = float(os.environ.get("POPULACE_LOSS_LEAK", "0.02"))
+_LOSS_RATIONAL_C = float(os.environ.get("POPULACE_LOSS_RATIONAL_C", "3.0"))
+if _LOSS_SHAPE not in ("cap", "leaky", "rational"):
+    raise ValueError(
+        f"POPULACE_LOSS_SHAPE must be 'cap', 'leaky', or 'rational', "
+        f"got {_LOSS_SHAPE!r}."
+    )
 
 
 @dataclass(frozen=True)
@@ -502,12 +528,24 @@ def _relative_error_loss(
     target_loss_scales: torch.Tensor,
     target_loss_cap: float,
 ) -> torch.Tensor:
-    """The capped weighted-MAPE target loss, optionally averaged with row weights."""
+    """The capped weighted-MAPE target loss, optionally averaged with row weights.
+
+    populace#492 experiment: ``POPULACE_LOSS_SHAPE`` swaps the per-row shape
+    (flat cap / leaky cap / bounded rational) in this TRAINING objective only;
+    the numpy yardstick is untouched.
+    """
     scaled_error = (estimate - targets) / target_loss_scales
-    loss = torch.clamp(
-        torch.abs(scaled_error),
-        max=_validate_target_loss_cap(target_loss_cap),
-    )
+    r = torch.abs(scaled_error)
+    cap = _validate_target_loss_cap(target_loss_cap)
+    if _LOSS_SHAPE == "leaky":
+        loss = torch.clamp(r, max=cap) + _LOSS_LEAK_EPS * torch.clamp(
+            r - cap, min=0.0
+        )
+    elif _LOSS_SHAPE == "rational":
+        u = r / cap
+        loss = cap * (1.0 + _LOSS_RATIONAL_C) * u / (_LOSS_RATIONAL_C + u)
+    else:
+        loss = torch.clamp(r, max=cap)
     if target_loss_weights is None:
         return loss.mean()
     return (loss * target_loss_weights).sum() / target_loss_weights.sum()
@@ -1664,6 +1702,15 @@ def calibrate(
                 else "mean_uniform_pre_gate_weight_ratio_squared"
             ),
             "seed": seed,
+            # populace#492 experiment provenance: which training-loss shape
+            # this solve actually ran (the yardstick loss stays capped MAPE).
+            "training_loss_shape": {
+                "shape": _LOSS_SHAPE,
+                "leak_eps": _LOSS_LEAK_EPS if _LOSS_SHAPE == "leaky" else None,
+                "rational_c": (
+                    _LOSS_RATIONAL_C if _LOSS_SHAPE == "rational" else None
+                ),
+            },
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
             "target_loss_scales": _target_loss_scale_options(
                 target_loss_scales_np,
