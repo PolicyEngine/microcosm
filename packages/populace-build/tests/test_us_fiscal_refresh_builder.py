@@ -569,6 +569,33 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             24_475_100.0,
             26_000_000.0,
         ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "total_itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+            80_000_000_000.0,
+            79_000_000_000.0,
+        ),
         # The SOI Table 1.4 national dollar blanket (populace#462) needs at
         # least one Table 1.4 amount row on the surface, within tolerance.
         diagnostic(
@@ -1606,6 +1633,130 @@ def test_release_gate_failures_reject_missing_critical_targets() -> None:
         "(federal income tax liability amount) is missing from calibration "
         "diagnostics."
     ]
+
+
+def test_builder_critical_register_covers_publish_contract() -> None:
+    from populace.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    publish_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    builder_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in builder.US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+
+    assert set(builder_by_id) >= set(publish_by_id) - {table_builder.requirement_id}
+    for requirement_id, publish in publish_by_id.items():
+        if requirement_id == table_builder.requirement_id:
+            assert table_builder.max_abs_relative_error <= (
+                publish.max_abs_relative_error
+            )
+            assert set(table_builder.accepted_names) >= set(publish.names)
+            assert set(table_builder.accepted_name_substrings) >= set(
+                publish.name_substrings
+            )
+            assert set(table_builder.accepted_name_suffixes) >= set(
+                publish.name_suffixes
+            )
+            continue
+        built = builder_by_id[requirement_id]
+        assert built.max_abs_relative_error <= publish.max_abs_relative_error
+        assert set(built.names) >= set(publish.names)
+        assert set(built.families) >= set(publish.families)
+        assert set(built.target_roles) >= set(publish.target_roles)
+        assert set(built.name_substrings) >= set(publish.name_substrings)
+        assert set(built.name_suffixes) >= set(publish.name_suffixes)
+        if not publish.allow_incumbent_improvement:
+            assert not built.allow_incumbent_improvement
+
+
+def test_builder_critical_gate_matches_publish_role_aliases() -> None:
+    builder = _load_builder_module()
+    alias_spec = TargetSpec(
+        name="irs_soi.ty2023.table_1_2.all_returns.all."
+        "total_itemized_deductions_amount",
+        entity="household",
+        measure="itemized_deductions",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "itemized_deduction_total"},
+    )
+    alias_diagnostic = SimpleNamespace(
+        name=f"{alias_spec.name}@{alias_spec.period}",
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=150.0,
+        relative_error=0.5,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (alias_diagnostic,),
+        problem=SimpleNamespace(
+            names=(alias_diagnostic.name,),
+            targets=(alias_spec.to_target(),),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    registry = TargetRegistry((alias_spec,), country="us")
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+    )
+
+    assert len(failures) == 1
+    assert "total_itemized_deductions_amount@2024" in failures[0]
+    assert "relative_error=0.5" in failures[0]
+    assert "exceeding 0.15" in failures[0]
+
+
+def test_builder_critical_gate_rejects_medical_incumbent_escape() -> None:
+    builder = _load_builder_module()
+    medical_name = (
+        "irs_soi.ty2022.historic_table_2.us.all."
+        f"medical_dental_expense_amount@{builder.PERIOD}"
+    )
+    diagnostics = tuple(
+        SimpleNamespace(
+            **{
+                **vars(diagnostic),
+                "final_estimate": 96_000_000_000.0,
+                "relative_error": 0.2,
+            }
+        )
+        if diagnostic.name == medical_name
+        else diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=diagnostics,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics={
+            medical_name: {
+                "target": 80_000_000_000.0,
+                "final_estimate": 240_000_000_000.0,
+            }
+        },
+    )
+
+    assert len(failures) == 1
+    assert "medical_dental_expense_amount@2024" in failures[0]
+    assert "relative_error=0.2" in failures[0]
 
 
 def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
