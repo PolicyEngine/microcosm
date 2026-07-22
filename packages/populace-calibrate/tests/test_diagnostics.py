@@ -10,16 +10,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from populace.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     Target,
+    TargetDiagnostic,
     TargetRegistry,
     TargetSet,
     TargetSpec,
     calibrate,
     calibrate_l0_refit,
     diagnostics_payload,
+    past_cap_census,
+    score_targets,
     write_calibration_diagnostics,
 )
 
@@ -195,4 +199,135 @@ def test_payload_accepts_l0_refit_result(feasible_frame) -> None:
     assert payload["options"]["post_l0_refit"] is True
     assert payload["fraction_within_10pct"] == result.refit.fraction_within_10pct
     assert payload["effective_sample_size"] == result.refit.effective_sample_size
+    # The census reads the cap through the L0RefitResult's merged options.
+    assert payload["past_cap_census"]["cap"] == 10.0
+    json.dumps(payload, allow_nan=False)
+
+
+def _census_stub(rows, options):
+    """A duck-typed result for the census: (name, target, initial, final) rows."""
+    diagnostics = tuple(
+        TargetDiagnostic(
+            name=name,
+            target=target,
+            initial_estimate=initial,
+            final_estimate=final,
+            relative_error=(final - target) / target if target else final - target,
+            within_tolerance=None,
+        )
+        for name, target, initial, final in rows
+    )
+    return SimpleNamespace(diagnostics=diagnostics, options=options)
+
+
+def test_past_cap_census_classifies_every_row_class() -> None:
+    """Exact classification against the loss's own scale rule max(|t|, 1)."""
+    result = _census_stub(
+        [
+            ("inside@2024", 100.0, 90.0, 100.0),  # never past
+            ("escaped@2024", 100.0, 250.0, 105.0),  # 1.5 -> 0.05
+            ("frozen@2024", 100.0, 350.0, 320.0),  # 2.5 -> 2.2
+            ("pushed@2024", 100.0, 150.0, 240.0),  # 0.5 -> 1.4
+            ("zero_target@2024", 0.0, 0.0, 1.2),  # scale 1: 0.0 -> 1.2
+            # |target| < 1 uses scale 1, not the raw relative error (which
+            # would be 0.8 -> 3.2 against the 0.5 target).
+            ("small_target@2024", 0.5, 0.9, 2.1),  # 0.4 -> 1.6
+            ("boundary@2024", 100.0, 100.0, 200.0),  # 0.0 -> exactly 1.0
+        ],
+        options={"target_loss_scales": {"cap": 1.0}},
+    )
+    census = past_cap_census(result)
+
+    assert census["cap"] == 1.0
+    assert census["n_targets"] == 7
+    assert census["initial_past_cap"] == 2  # escaped, frozen
+    assert census["final_past_cap"] == 5  # frozen + the four pushed out
+    assert census["escaped"] == 1
+    assert census["frozen"] == 1
+    assert census["pushed_out"] == 4
+    # Worst final miss first; the boundary row (exactly at the cap) counts.
+    assert [row["name"] for row in census["pushed_out_rows"]] == [
+        "small_target@2024",
+        "pushed@2024",
+        "zero_target@2024",
+        "boundary@2024",
+    ]
+    pushed = census["pushed_out_rows"][1]
+    assert pushed["init_rel"] == 0.5
+    assert pushed["final_rel"] == 1.4
+    # The identities every census must satisfy.
+    assert census["initial_past_cap"] == census["escaped"] + census["frozen"]
+    assert census["final_past_cap"] == census["frozen"] + census["pushed_out"]
+
+
+def test_past_cap_census_without_a_recorded_cap_is_none() -> None:
+    result = _census_stub([("row@2024", 100.0, 100.0, 100.0)], options={})
+    assert past_cap_census(result) is None
+
+
+def test_past_cap_census_reads_score_targets_options_shape(feasible_frame) -> None:
+    """score_targets records a top-level target_loss_cap; a score has no motion."""
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                # The current weights overshoot this tiny target by far more
+                # than the cap, so the row scores past-cap (frozen).
+                value=truths["income"] * 0.001,
+                measure="income",
+            ),
+            Target(
+                name="population",
+                entity="household",
+                value=truths["population"],
+                measure="household_count",
+            ),
+        )
+    )
+    result = score_targets(frame, targets, target_loss_cap=1.0)
+    census = past_cap_census(result)
+
+    assert census["cap"] == 1.0
+    # Score-only results carry initial == final estimates: nothing moves.
+    assert census["escaped"] == 0
+    assert census["pushed_out"] == 0
+    assert census["frozen"] == 1
+    assert census["initial_past_cap"] == census["final_past_cap"] == 1
+    payload = diagnostics_payload(result)
+    assert payload["past_cap_census"] == census
+
+
+def test_payload_census_from_a_real_solve(feasible_frame) -> None:
+    """A hopeless row stays past the cap and the payload censuses it."""
+    frame, truths = feasible_frame()
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                # ~1000x below the starting estimate: past the cap at
+                # initialization and unreachable in a short solve.
+                value=truths["income"] * 0.001,
+                measure="income",
+            ),
+            Target(
+                name="population",
+                entity="household",
+                value=truths["population"] * 1.05,
+                measure="household_count",
+            ),
+        )
+    )
+    result = calibrate(frame, targets, epochs=30, seed=0, target_loss_cap=1.0)
+    payload = diagnostics_payload(result)
+    census = payload["past_cap_census"]
+
+    assert census["cap"] == 1.0
+    assert census["n_targets"] == 2
+    assert census["frozen"] >= 1
+    assert census["initial_past_cap"] == census["escaped"] + census["frozen"]
+    assert census["final_past_cap"] == census["frozen"] + census["pushed_out"]
+    assert census == past_cap_census(result)
     json.dumps(payload, allow_nan=False)

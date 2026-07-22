@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from populace.calibrate.solve import CalibrationResult
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "diagnostics_payload",
+    "past_cap_census",
     "write_calibration_diagnostics",
 ]
 
@@ -35,7 +37,10 @@ __all__ = [
 #: their readers on it; bump it with any shape change.
 #: v4 added the weight-concentration scalars (``effective_sample_size``,
 #: ``realized_max_weight_ratio``, ``top_1pct_weight_share``).
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 4
+#: v5 added the ``past_cap_census`` block (rows past the loss cap at
+#: initialization and at final, escaped/frozen/pushed-out counts, and the
+#: pushed-out row list).
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 5
 
 
 def _finite(value: float) -> float | None:
@@ -185,6 +190,108 @@ def _target_row(
     return row
 
 
+def _result_target_loss_cap(options: object) -> float | None:
+    """The per-row loss cap recorded in a result's options, if any.
+
+    :func:`~populace.calibrate.solve.calibrate` records the cap inside its
+    ``target_loss_scales`` options summary;
+    :func:`~populace.calibrate.score.score_targets` records a top-level
+    ``target_loss_cap``. Accept both shapes so every result that knows its
+    cap can be censused.
+    """
+    if not isinstance(options, Mapping):
+        return None
+    scales = options.get("target_loss_scales")
+    if isinstance(scales, Mapping):
+        cap = scales.get("cap")
+        if isinstance(cap, (int, float)) and math.isfinite(float(cap)):
+            return float(cap)
+    cap = options.get("target_loss_cap")
+    if isinstance(cap, (int, float)) and math.isfinite(float(cap)):
+        return float(cap)
+    return None
+
+
+def past_cap_census(result: CalibrationResult) -> dict[str, object] | None:
+    """Census of target rows past the loss cap at the solve's start and end.
+
+    Under the capped weighted-MAPE objective, a row whose scaled absolute
+    miss ``abs(estimate - target) / max(abs(target), 1)`` reaches
+    ``target_loss_cap`` contributes a constant to the loss: its gradient is
+    zero, so the solver is neither rewarded for improving it nor charged for
+    making it worse. Past-cap rows are therefore potential dumping grounds —
+    mass moved to satisfy live targets can push an in-cap row past the cap
+    and abandon it there at zero marginal cost. The census makes that triage
+    first-class release evidence:
+
+    - ``initial_past_cap`` / ``final_past_cap``: rows at or past the cap
+      under the initial / final estimates.
+    - ``escaped``: past at initialization, back inside at final (recovered
+      via shared carriers despite carrying no gradient of their own).
+    - ``frozen``: past at initialization and still past at final.
+    - ``pushed_out``: inside at initialization, past the cap at final — the
+      rows the solve wrote off. Each is listed in ``pushed_out_rows`` with
+      its scaled misses, worst final miss first.
+
+    ``init_rel`` / ``final_rel`` are scaled absolute misses on the default
+    scale rule ``max(abs(target), 1)`` — the units the cap applies to. A run
+    that supplied custom ``target_loss_scales`` is censused on the default
+    rule (the custom scales do not travel with the result); its options
+    record that the scales were provided. Rows with a non-finite target or
+    estimate are excluded from every count. Returns ``None`` when the
+    result's options record no cap — there is nothing to census against.
+    """
+    cap = _result_target_loss_cap(getattr(result, "options", None))
+    if cap is None:
+        return None
+    initial_past = 0
+    final_past = 0
+    escaped = 0
+    frozen = 0
+    pushed_out_rows: list[dict[str, object]] = []
+    for diagnostic in result.diagnostics:
+        target = float(diagnostic.target)
+        initial = float(diagnostic.initial_estimate)
+        final = float(diagnostic.final_estimate)
+        if not (
+            math.isfinite(target) and math.isfinite(initial) and math.isfinite(final)
+        ):
+            continue
+        scale = max(abs(target), 1.0)
+        init_rel = abs(initial - target) / scale
+        final_rel = abs(final - target) / scale
+        init_past = init_rel >= cap
+        fin_past = final_rel >= cap
+        if init_past:
+            initial_past += 1
+        if fin_past:
+            final_past += 1
+        if init_past and not fin_past:
+            escaped += 1
+        elif init_past and fin_past:
+            frozen += 1
+        elif fin_past:
+            pushed_out_rows.append(
+                {
+                    "name": diagnostic.name,
+                    "init_rel": init_rel,
+                    "final_rel": final_rel,
+                }
+            )
+    pushed_out_rows.sort(key=lambda row: (-row["final_rel"], row["name"]))
+    return {
+        "cap": cap,
+        "scale_basis": "max(abs(target), 1)",
+        "n_targets": len(result.diagnostics),
+        "initial_past_cap": initial_past,
+        "final_past_cap": final_past,
+        "escaped": escaped,
+        "frozen": frozen,
+        "pushed_out": len(pushed_out_rows),
+        "pushed_out_rows": pushed_out_rows,
+    }
+
+
 def diagnostics_payload(
     result: CalibrationResult,
     *,
@@ -225,6 +332,7 @@ def diagnostics_payload(
         "skipped": [
             {"name": skip.target.name, "reason": skip.reason} for skip in result.skipped
         ],
+        "past_cap_census": past_cap_census(result),
         "targets": [
             _target_row(
                 diagnostic,
