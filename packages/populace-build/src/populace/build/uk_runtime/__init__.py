@@ -171,6 +171,13 @@ from populace.build.uk_runtime.hmrc_source_contract import (
     UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE,
     assert_uk_hmrc_income_source_contract_current,
 )
+from populace.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_MAX_WEIGHT_RATIO,
+    UK_LOCAL_SOLVE_DOCTRINE,
+    UK_LOCAL_TARGET_LOSS_CAP,
+    UKLocalSolveDoctrine,
+    solve_uk_local_weights_under_doctrine,
+)
 from populace.build.uk_runtime.local_geography import (
     LONG_GEOGRAPHY_COLUMNS,
     StackedLocalMatrix,
@@ -198,6 +205,7 @@ from populace.build.uk_runtime.local_runner import (
 )
 from populace.build.uk_runtime.local_solver import (
     StackedLocalSolveResult,
+    past_cap_census,
     solve_stacked_local_weights,
 )
 from populace.build.uk_runtime.local_target_census import (
@@ -332,6 +340,9 @@ from populace.build.uk_runtime.spi_support import (
 
 __all__ = [
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_LOCAL_MAX_WEIGHT_RATIO",
+    "UK_LOCAL_SOLVE_DOCTRINE",
+    "UK_LOCAL_TARGET_LOSS_CAP",
     "UK_CGT_GAINS_AMOUNT_COLUMN",
     "UK_CGT_SOURCE_COLUMN",
     "UK_CGT_TAXPAYER_COUNT_COLUMN",
@@ -469,6 +480,7 @@ __all__ = [
     "UKFRSHMRCRetainedLeavesResult",
     "UKFRSHMRCRetainedLeavesStageTransform",
     "UKLocalCandidateResult",
+    "UKLocalSolveDoctrine",
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKCertifiedCandidateIdentity",
     "UKHMRCIncomeCalibration",
@@ -580,7 +592,9 @@ __all__ = [
     "restore_uk_hmrc_income_family",
     "set_simulation_area_group",
     "solve_firm_weights",
+    "past_cap_census",
     "solve_stacked_local_weights",
+    "solve_uk_local_weights_under_doctrine",
     "sort_households_by_id",
     "stacked_design_weights",
     "stacked_weights_to_long",
