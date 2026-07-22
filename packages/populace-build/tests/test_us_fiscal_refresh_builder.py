@@ -7283,6 +7283,32 @@ def test_release_gate_failures_block_table_1_4_dollar_breaches() -> None:
     assert "6.3475" in joined
 
 
+def test_release_gate_failures_block_table_1_4_row_outside_irs_prefix() -> None:
+    builder = _load_builder_module()
+    adversarial = _table_1_4_diagnostic(
+        builder,
+        "other.table_1_4.all.bad_amount",
+        100.0,
+        200.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 "
+        "for SOI Pub 1304 Table 1.4 national dollar rows "
+        "(soi_table_1_4_national_dollar_rows); target=100.0, "
+        "final_estimate=200.0."
+    ]
+
+
 def test_release_gate_failures_ignore_table_1_4_returns_rows() -> None:
     builder = _load_builder_module()
     # A wildly-missed returns (count) row is outside the dollar blanket: the

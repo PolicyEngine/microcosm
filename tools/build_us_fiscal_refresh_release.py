@@ -427,7 +427,6 @@ US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT = TargetFitRequirement(
         SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.requirement_id
     ),
     label=SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.label,
-    accepted_name_prefixes=("irs_soi.",),
     accepted_name_substrings=(
         SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.name_substrings
     ),

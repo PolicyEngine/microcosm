@@ -25,11 +25,15 @@ round-1 findings are closed with behavioral containment tests.
   both scorer files and both historical experiment files also match main.
 - Confirmed the required multiplier grep has zero Python hits and the focused
   loss/diagnostics test selection passes (8 passed).
+- Fixed Sol finding 1 by removing the builder adapter's `irs_soi.` prefix
+  narrowing; the supplied `other.table_1_4.all.bad_amount@2024` reproduction
+  now fails the builder gate at relative error 1 versus the 0.25 cap.
+- Added and passed focused selector-parity/reproduction coverage (2 passed).
 
 ## Next
 
-- Fix Sol findings 1-3 in separate commits: selector parity, shared CD
-  classification, and missing recorded-relative-error rejection.
+- Fix Sol findings 2-3 in separate commits: shared CD classification and
+  missing recorded-relative-error rejection.
 - Add the finding-4 behavioral containment battery and rerun the three
   round-1 reproductions.
 - Run the full requested suites and static checks, then update this file and
