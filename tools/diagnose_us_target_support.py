@@ -14,10 +14,14 @@ modifies any artifact, never runs PolicyEngine, and never touches calibration:
 it decomposes what a shipped solve already saw, so support defects can be
 adjudicated to their owning stage with named records.
 
-The checkpoint's compiled columns are verified byte-consistent with the
-release two ways before any decomposition is reported: household-id order must
-match the published dataset exactly, and the recomputed final-weight aggregate
-must reproduce the diagnostics' recorded ``final_estimate``.
+The checkpoint's compiled columns are verified consistent with the release
+before any decomposition is reported: household ids must be integral, match
+the published dataset's order exactly (compared losslessly as integers), every
+vector must be household-length, and the recomputed final-weight aggregate
+must reproduce the diagnostics' recorded ``final_estimate`` to within float
+summation noise. Carriers are ranked by absolute weighted contribution with a
+household-id tiebreak, so signed columns report their dominant carriers rather
+than whichever positive rows sort first.
 """
 
 from __future__ import annotations
@@ -31,14 +35,20 @@ import h5py
 import numpy as np
 import pandas as pd
 
-#: Relative disagreement between the recomputed final aggregate and the
-#: diagnostics' recorded final_estimate above which the checkpoint/dataset
-#: pairing is rejected as inconsistent.
-FINAL_ESTIMATE_RTOL = 1e-6
+#: Refusal bounds for the recomputed-vs-recorded final aggregate. Measured
+#: float64 re-summation noise on the Build N release is <= 7e-15 relative /
+#: $0.41 absolute across 400 sampled targets; these sit orders of magnitude
+#: above that while still rejecting any real cross-release pairing.
+FINAL_ESTIMATE_RTOL = 1e-9
+FINAL_ESTIMATE_ATOL = 0.5
 
 #: Carriers whose final/design weight ratio exceeds this fraction of the
 #: solve's realized maximum ratio are reported as pinned near the cap.
 NEAR_CAP_FRACTION = 0.9
+
+#: Float household ids at or above 2**53 cannot round-trip integers exactly;
+#: refuse rather than compare lossy values.
+_MAX_EXACT_FLOAT_ID = float(2**53)
 
 _HOUSEHOLD_PROVENANCE_COLUMNS = (
     "household_support_channel",
@@ -118,7 +128,11 @@ def _checkpoint_household_columns(checkpoint: h5py.File) -> dict[str, str]:
 
 
 def _read_checkpoint_column(
-    checkpoint: h5py.File, columns: dict[str, str], name: str
+    checkpoint: h5py.File,
+    columns: dict[str, str],
+    name: str,
+    *,
+    n_households: int,
 ) -> np.ndarray:
     try:
         path = columns[name]
@@ -126,7 +140,34 @@ def _read_checkpoint_column(
         raise TargetSupportError(
             f"Checkpoint has no compiled household column named {name!r}."
         ) from error
-    return np.asarray(checkpoint[path][:], dtype=np.float64)
+    values = np.asarray(checkpoint[path][:])
+    if values.ndim != 1 or values.shape[0] != n_households:
+        raise TargetSupportError(
+            f"Checkpoint column {name!r} has shape {values.shape}; expected "
+            f"({n_households},) to match the dataset's household count."
+        )
+    return values
+
+
+def _integral_ids(values: np.ndarray, *, source: str) -> np.ndarray:
+    """Return household ids as exact int64, refusing lossy representations."""
+
+    array = np.asarray(values)
+    if array.ndim != 1:
+        raise TargetSupportError(f"{source} household ids must be one-dimensional.")
+    if np.issubdtype(array.dtype, np.integer):
+        return array.astype(np.int64)
+    as_float = array.astype(np.float64)
+    if (
+        not np.all(np.isfinite(as_float))
+        or np.any(np.abs(as_float) >= _MAX_EXACT_FLOAT_ID)
+        or np.any(as_float != np.trunc(as_float))
+    ):
+        raise TargetSupportError(
+            f"{source} household ids are not exactly representable integers; "
+            "refusing a lossy id comparison."
+        )
+    return as_float.astype(np.int64)
 
 
 def diagnose_target_support(
@@ -137,6 +178,8 @@ def diagnose_target_support(
     target_patterns: list[str],
     top: int = 10,
 ) -> dict[str, object]:
+    if top < 1:
+        raise TargetSupportError(f"--top must be at least 1, got {top}.")
     diagnostics = json.loads(Path(diagnostics_path).read_text())
     rows = _load_household_target_rows(diagnostics)
     matched = _match_targets(rows, list(target_patterns))
@@ -146,20 +189,35 @@ def diagnose_target_support(
         raise TargetSupportError(
             "Dataset household table must carry household_id and household_weight."
         )
+    n_households = len(household)
     final_weights = household["household_weight"].to_numpy(dtype=np.float64)
+    if not np.all(np.isfinite(final_weights)):
+        raise TargetSupportError("Dataset household weights are not all finite.")
 
     realized_max_ratio = diagnostics.get("realized_max_weight_ratio")
     near_cap_ratio = (
         float(realized_max_ratio) * NEAR_CAP_FRACTION
         if isinstance(realized_max_ratio, (int, float))
+        and math.isfinite(realized_max_ratio)
         else None
     )
+
+    missing_provenance = [
+        column for column in _HOUSEHOLD_PROVENANCE_COLUMNS if column not in household
+    ]
 
     reports: list[dict[str, object]] = []
     with h5py.File(checkpoint_path, "r") as checkpoint:
         columns = _checkpoint_household_columns(checkpoint)
-        checkpoint_ids = _read_checkpoint_column(checkpoint, columns, "household_id")
-        dataset_ids = household["household_id"].to_numpy(dtype=np.float64)
+        checkpoint_ids = _integral_ids(
+            _read_checkpoint_column(
+                checkpoint, columns, "household_id", n_households=n_households
+            ),
+            source="Checkpoint",
+        )
+        dataset_ids = _integral_ids(
+            household["household_id"].to_numpy(), source="Dataset"
+        )
         if not np.array_equal(checkpoint_ids, dataset_ids):
             raise TargetSupportError(
                 "Checkpoint household_id order does not match the dataset; "
@@ -168,11 +226,24 @@ def diagnose_target_support(
         design_weights = np.asarray(
             checkpoint["weights/household/values"][:], dtype=np.float64
         )
+        if design_weights.ndim != 1 or design_weights.shape[0] != n_households:
+            raise TargetSupportError(
+                f"Checkpoint design weights have shape {design_weights.shape}; "
+                f"expected ({n_households},)."
+            )
+        if not np.all(np.isfinite(design_weights)):
+            raise TargetSupportError("Checkpoint design weights are not all finite.")
 
         for name in matched:
             row = rows[name]
-            compiled = _read_checkpoint_column(
-                checkpoint, columns, name.split("@", 1)[0]
+            compiled = np.asarray(
+                _read_checkpoint_column(
+                    checkpoint,
+                    columns,
+                    name.split("@", 1)[0],
+                    n_households=n_households,
+                ),
+                dtype=np.float64,
             )
             reports.append(
                 _diagnose_one(
@@ -187,14 +258,17 @@ def diagnose_target_support(
                 )
             )
 
-    return {
+    payload: dict[str, object] = {
         "diagnostics": str(diagnostics_path),
         "checkpoint": str(checkpoint_path),
         "dataset": str(dataset_path),
-        "n_households": int(len(household)),
+        "n_households": int(n_households),
         "realized_max_weight_ratio": realized_max_ratio,
         "targets": reports,
     }
+    if missing_provenance:
+        payload["missing_provenance_columns"] = missing_provenance
+    return payload
 
 
 def _diagnose_one(
@@ -211,11 +285,15 @@ def _diagnose_one(
     target_value = float(row["target"])
     recorded_final = float(row["final_estimate"])
     final_estimate = float((final_weights * compiled).sum())
-    if not math.isclose(
-        final_estimate,
-        recorded_final,
-        rel_tol=FINAL_ESTIMATE_RTOL,
-        abs_tol=1.0,
+    if (
+        not math.isfinite(recorded_final)
+        or not math.isfinite(final_estimate)
+        or not math.isclose(
+            final_estimate,
+            recorded_final,
+            rel_tol=FINAL_ESTIMATE_RTOL,
+            abs_tol=FINAL_ESTIMATE_ATOL,
+        )
     ):
         raise TargetSupportError(
             f"Recomputed final for {name!r} ({final_estimate!r}) does not "
@@ -226,14 +304,19 @@ def _diagnose_one(
 
     carrier_mask = compiled != 0.0
     contributions = final_weights * compiled
-    order = np.argsort(contributions)[::-1]
-    top_order = order[: max(top, 0)]
+    # Rank carriers by absolute weighted contribution (household-id order as
+    # the deterministic tiebreak via stable sort), so signed columns surface
+    # their dominant carriers instead of whichever positive rows sort first.
+    carrier_indices = np.flatnonzero(carrier_mask)
+    ranked = carrier_indices[
+        np.argsort(-np.abs(contributions[carrier_indices]), kind="stable")
+    ]
     total = contributions.sum()
 
     def _share(count: int) -> float | None:
         if total == 0.0:
             return None
-        return float(contributions[order[:count]].sum() / total)
+        return float(contributions[ranked[:count]].sum() / total)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         ratios = np.where(design_weights > 0.0, final_weights / design_weights, np.nan)
@@ -241,9 +324,7 @@ def _diagnose_one(
     carrier_ratios = carrier_ratios[np.isfinite(carrier_ratios)]
 
     carriers: list[dict[str, object]] = []
-    for index in top_order:
-        if compiled[index] == 0.0:
-            continue
+    for index in ranked[:top]:
         entry: dict[str, object] = {
             "household_id": int(household["household_id"].iloc[index]),
             "compiled_value": float(compiled[index]),
@@ -275,6 +356,9 @@ def _diagnose_one(
             final_estimate / target_value - 1.0 if target_value else None
         ),
         "carrier_count": int(carrier_mask.sum()),
+        "carriers_with_nonpositive_design_weight": int(
+            (design_weights[carrier_mask] <= 0.0).sum()
+        ),
         "top_1_share": _share(1),
         "top_5_share": _share(5),
         f"top_{top}_share": _share(top),
@@ -297,29 +381,41 @@ def _diagnose_one(
     return report
 
 
+def _percent_or_na(value: float | None, *, signed: bool = False) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:+.1%}" if signed else f"{value:.1%}"
+
+
 def _format_report(payload: dict[str, object]) -> str:
     lines: list[str] = []
     for report in payload["targets"]:
         lines.append(f"== {report['name']} ==")
         lines.append(
-            "target {target:,.0f} | design {design_estimate:,.0f} "
-            "({design_relative_error:+.1%}) | final {final_estimate:,.0f} "
-            "({final_relative_error:+.1%})".format(
+            "target {target:,.0f} | design {design:,.0f} ({design_rel}) | "
+            "final {final:,.0f} ({final_rel})".format(
                 target=report["target"],
-                design_estimate=report["design_estimate"],
-                design_relative_error=report["design_relative_error"] or 0.0,
-                final_estimate=report["final_estimate"],
-                final_relative_error=report["final_relative_error"] or 0.0,
+                design=report["design_estimate"],
+                design_rel=_percent_or_na(report["design_relative_error"], signed=True),
+                final=report["final_estimate"],
+                final_rel=_percent_or_na(report["final_relative_error"], signed=True),
             )
         )
         shares = [
-            f"top-1 {report['top_1_share']:.1%}"
-            if report["top_1_share"] is not None
-            else "top-1 n/a",
-            f"top-5 {report['top_5_share']:.1%}"
-            if report["top_5_share"] is not None
-            else "top-5 n/a",
+            f"top-1 {_percent_or_na(report['top_1_share'])}",
+            f"top-5 {_percent_or_na(report['top_5_share'])}",
         ]
+        for key, value in report.items():
+            if (
+                key.startswith("top_")
+                and key.endswith("_share")
+                and key not in ("top_1_share", "top_5_share")
+            ):
+                shares.append(f"top-{key[4:-6]} {_percent_or_na(value)}")
+        if "carrier_share_near_cap" in report:
+            shares.append(
+                f"near-cap {_percent_or_na(report['carrier_share_near_cap'])}"
+            )
         lines.append(f"carriers {report['carrier_count']:,} | " + " | ".join(shares))
         for carrier in report["top_carriers"]:
             provenance = ", ".join(
@@ -353,6 +449,14 @@ def _format_report(payload: dict[str, object]) -> str:
 
 def main() -> None:
     args = _parse_args()
+    if args.json_output is not None:
+        json_target = args.json_output.resolve()
+        for input_path in (args.diagnostics, args.checkpoint, args.dataset):
+            if json_target == Path(input_path).resolve():
+                raise TargetSupportError(
+                    f"--json-output {args.json_output} resolves to input "
+                    f"{input_path}; refusing to overwrite a forensics input."
+                )
     payload = diagnose_target_support(
         diagnostics_path=args.diagnostics,
         checkpoint_path=args.checkpoint,

@@ -31,16 +31,22 @@ def _write_fixture(
     tmp_path: Path,
     *,
     checkpoint_ids: np.ndarray = HOUSEHOLD_IDS,
-    recorded_final: float = FINAL_ESTIMATE,
+    dataset_ids: np.ndarray = HOUSEHOLD_IDS,
+    compiled: np.ndarray = COMPILED,
+    design_weights: np.ndarray = DESIGN_WEIGHTS,
+    recorded_final: float | None = None,
+    target_value: float = TARGET_VALUE,
 ) -> dict[str, Path]:
     pytest.importorskip("tables")  # pandas HDF backend
+    if recorded_final is None:
+        recorded_final = float((FINAL_WEIGHTS * compiled).sum())
     diagnostics = {
         "realized_max_weight_ratio": 5.0,
         "targets": [
             {
                 "name": f"{TARGET_NAME}@2024",
                 "entity": "household",
-                "target": TARGET_VALUE,
+                "target": target_value,
                 "final_estimate": recorded_final,
             },
             {
@@ -57,18 +63,18 @@ def _write_fixture(
     checkpoint_path = tmp_path / "target_frame_checkpoint.h5"
     with h5py.File(checkpoint_path, "w") as checkpoint:
         for key, name, values in (
-            ("00000", "household_id", checkpoint_ids.astype(np.float64)),
-            ("00001", TARGET_NAME, COMPILED),
+            ("00000", "household_id", checkpoint_ids),
+            ("00001", TARGET_NAME, compiled),
         ):
             group = checkpoint.create_group(f"tables/household/columns/{key}")
             group.attrs["name"] = name
             group.create_dataset("values", data=values)
-        checkpoint.create_dataset("weights/household/values", data=DESIGN_WEIGHTS)
+        checkpoint.create_dataset("weights/household/values", data=design_weights)
 
     dataset_path = tmp_path / "populace_us_2024.h5"
     household = pd.DataFrame(
         {
-            "household_id": HOUSEHOLD_IDS,
+            "household_id": dataset_ids,
             "household_weight": FINAL_WEIGHTS,
             "household_support_channel": [
                 "asec",
@@ -91,13 +97,15 @@ def _write_fixture(
     }
 
 
-def _diagnose(module, paths: dict[str, Path], patterns: list[str]) -> dict:
+def _diagnose(
+    module, paths: dict[str, Path], patterns: list[str], *, top: int = 3
+) -> dict:
     return module.diagnose_target_support(
         diagnostics_path=paths["diagnostics"],
         checkpoint_path=paths["checkpoint"],
         dataset_path=paths["dataset"],
         target_patterns=patterns,
-        top=3,
+        top=top,
     )
 
 
@@ -112,6 +120,7 @@ def test__given_aligned_release_triple__then_concentration_and_provenance_report
 
     assert report["name"] == f"{TARGET_NAME}@2024"
     assert report["carrier_count"] == 2
+    assert report["carriers_with_nonpositive_design_weight"] == 0
     assert report["final_estimate"] == pytest.approx(FINAL_ESTIMATE)
     assert report["design_estimate"] == pytest.approx(11_000.0)
     assert report["final_relative_error"] == pytest.approx(
@@ -119,6 +128,7 @@ def test__given_aligned_release_triple__then_concentration_and_provenance_report
     )
     assert report["design_relative_error"] == pytest.approx(-0.45)
     assert report["top_1_share"] == pytest.approx(50_000.0 / 51_000.0)
+    assert "missing_provenance_columns" not in payload
 
     top = report["top_carriers"][0]
     assert top["household_id"] == 15
@@ -134,6 +144,8 @@ def test__given_aligned_release_triple__then_concentration_and_provenance_report
     formatted = module._format_report(payload)
     assert "hh 15" in formatted
     assert "puf_tax_detail" in formatted
+    assert "top-3" in formatted
+    assert "near-cap 50.0%" in formatted
 
 
 def test__given_period_suffixed_or_substring_pattern__then_same_target_matches(
@@ -167,6 +179,42 @@ def test__given_misaligned_household_ids__then_decomposition_refuses(
         _diagnose(module, paths, [TARGET_NAME])
 
 
+def test__given_reversed_ids_beyond_float_precision__then_still_refuses(
+    tmp_path,
+) -> None:
+    # 2**53 and its neighbors collapse to the same float64; the id comparison
+    # must stay lossless (int64) so the order refusal still fires.
+    module = _load_tool_module()
+    big = np.array([2**53 + i for i in range(5)], dtype=np.int64)
+    paths = _write_fixture(tmp_path, checkpoint_ids=big[::-1].copy(), dataset_ids=big)
+
+    with pytest.raises(module.TargetSupportError, match="household_id order"):
+        _diagnose(module, paths, [TARGET_NAME])
+
+
+def test__given_lossy_float_ids__then_refuses_rather_than_compares(
+    tmp_path,
+) -> None:
+    module = _load_tool_module()
+    big = np.array([2**53 + i for i in range(5)], dtype=np.int64)
+    paths = _write_fixture(
+        tmp_path,
+        checkpoint_ids=big.astype(np.float64),
+        dataset_ids=big,
+    )
+
+    with pytest.raises(module.TargetSupportError, match="lossy"):
+        _diagnose(module, paths, [TARGET_NAME])
+
+
+def test__given_small_integral_float_ids__then_accepted(tmp_path) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path, checkpoint_ids=HOUSEHOLD_IDS.astype(np.float64))
+
+    payload = _diagnose(module, paths, [TARGET_NAME])
+    assert payload["targets"][0]["carrier_count"] == 2
+
+
 def test__given_foreign_checkpoint_final_mismatch__then_decomposition_refuses(
     tmp_path,
 ) -> None:
@@ -175,3 +223,119 @@ def test__given_foreign_checkpoint_final_mismatch__then_decomposition_refuses(
 
     with pytest.raises(module.TargetSupportError, match="does not reproduce"):
         _diagnose(module, paths, [TARGET_NAME])
+
+
+def test__given_dollar_scale_final_drift__then_decomposition_refuses(
+    tmp_path,
+) -> None:
+    # A $10 drift on a $51k aggregate is far beyond float re-summation noise
+    # (measured <= $0.41 absolute on the Build N release) and must refuse.
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path, recorded_final=FINAL_ESTIMATE + 10.0)
+
+    with pytest.raises(module.TargetSupportError, match="does not reproduce"):
+        _diagnose(module, paths, [TARGET_NAME])
+
+
+def test__given_wrong_length_design_weights__then_refuses(tmp_path) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path, design_weights=np.array([10.0]))
+
+    with pytest.raises(module.TargetSupportError, match="design weights"):
+        _diagnose(module, paths, [TARGET_NAME])
+
+
+def test__given_negative_dominant_carrier__then_ranked_by_magnitude(
+    tmp_path,
+) -> None:
+    compiled = np.array([-1000.0, 0.0, 0.0, 0.0, 10.0])
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path, compiled=compiled)
+
+    payload = _diagnose(module, paths, [TARGET_NAME])
+    (report,) = payload["targets"]
+
+    # total = -10,000 + 500 = -9,500; the negative household dominates and
+    # must lead the carrier list rather than the small positive row.
+    assert report["carrier_count"] == 2
+    assert report["top_carriers"][0]["household_id"] == 11
+    assert report["top_carriers"][0]["weighted_contribution"] == pytest.approx(
+        -10_000.0
+    )
+    assert report["top_1_share"] == pytest.approx((-10_000.0) / (-9_500.0))
+
+
+def test__given_zero_target__then_relative_errors_report_na(tmp_path) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path, target_value=0.0)
+
+    payload = _diagnose(module, paths, [TARGET_NAME])
+    (report,) = payload["targets"]
+    assert report["final_relative_error"] is None
+
+    formatted = module._format_report(payload)
+    assert "(n/a)" in formatted
+    assert "+0.0%" not in formatted
+
+
+def test__given_nonpositive_top__then_refuses(tmp_path) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path)
+
+    with pytest.raises(module.TargetSupportError, match="--top"):
+        _diagnose(module, paths, [TARGET_NAME], top=0)
+
+
+def test__given_json_output_aliasing_an_input__then_main_refuses(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path)
+    argv = [
+        "diagnose_us_target_support.py",
+        "--diagnostics",
+        str(paths["diagnostics"]),
+        "--checkpoint",
+        str(paths["checkpoint"]),
+        "--dataset",
+        str(paths["dataset"]),
+        "--target",
+        TARGET_NAME,
+        "--json-output",
+        str(paths["dataset"]),
+    ]
+    monkeypatch.setattr("sys.argv", argv)
+
+    with pytest.raises(module.TargetSupportError, match="refusing to overwrite"):
+        module.main()
+
+    dataset_bytes = paths["dataset"].read_bytes()
+    assert len(dataset_bytes) > 0  # input untouched
+
+
+def test__given_fresh_json_output__then_main_writes_payload(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    module = _load_tool_module()
+    paths = _write_fixture(tmp_path)
+    out = tmp_path / "payload.json"
+    argv = [
+        "diagnose_us_target_support.py",
+        "--diagnostics",
+        str(paths["diagnostics"]),
+        "--checkpoint",
+        str(paths["checkpoint"]),
+        "--dataset",
+        str(paths["dataset"]),
+        "--target",
+        TARGET_NAME,
+        "--json-output",
+        str(out),
+    ]
+    monkeypatch.setattr("sys.argv", argv)
+
+    module.main()
+
+    payload = json.loads(out.read_text())
+    assert payload["targets"][0]["carrier_count"] == 2
+    assert "hh 15" in capsys.readouterr().out
