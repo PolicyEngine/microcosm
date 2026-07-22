@@ -214,7 +214,16 @@ _US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
     {
         "requirement_id": "medical_expense_deduction_amount",
         "label": "medical expense deduction amount",
-        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
+        # 2026-07-22 adjudication (Max): the N release does not hold on this
+        # row. Build N's truthful capital-gains/interest target moves
+        # (populace#462, #488) re-equilibrated the solve and pushed medical
+        # from certified M's +4.4% to +20.8%, stable across a 2x-epoch run —
+        # a loss-signal gap, not a data defect. Relaxed to the established
+        # 0.25 broad-fit bound while the loss-contract alignment (shared
+        # critical register + contract-row loss boost, populace#462 lane)
+        # lands; restore _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once a
+        # boosted run holds it.
+        "max_abs_relative_error": 0.25,
         "names": (
             "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
         ),

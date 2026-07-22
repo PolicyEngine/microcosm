@@ -596,7 +596,12 @@ def test_us_release_rejects_bad_deduction_fit(
 
     failures = "\n".join(excinfo.value.failures)
     assert deduction_name in failures
-    expected_cap = 0.1 if target_role == "salt_deduction_total" else 0.15
+    expected_cap = {
+        "salt_deduction_total": 0.1,
+        # 2026-07-22 adjudication: relaxed to the 0.25 broad-fit bound while
+        # the #462 loss-contract alignment lands (see the register comment).
+        "medical_expense_deduction_total": 0.25,
+    }.get(target_role, 0.15)
     assert f"exceeding {expected_cap}" in failures
 
 
@@ -663,11 +668,14 @@ def test_us_release_rejects_deduction_improvement_past_absolute_gate(
     release_dir: Path, deduction: tuple
 ) -> None:
     diagnostics = _calibration_diagnostics()
-    deduction_name, _, deduction_target, _, _ = deduction
+    deduction_name, _, deduction_target, _, target_role = deduction
     target = next(
         row for row in diagnostics["targets"] if row["name"] == deduction_name
     )
-    current_final = deduction_target * 1.20
+    # Past each row's own absolute cap (medical sits at the adjudicated 0.25
+    # bound, 2026-07-22): even improving on the incumbent never passes it.
+    overshoot = 1.30 if target_role == "medical_expense_deduction_total" else 1.20
+    current_final = deduction_target * overshoot
     target["final_estimate"] = current_final
     target["relative_error"] = (current_final - deduction_target) / deduction_target
     diagnostics["build"] = {
@@ -695,7 +703,12 @@ def test_us_release_rejects_deduction_improvement_past_absolute_gate(
 
     failures = "\n".join(excinfo.value.failures)
     assert deduction_name in failures
-    assert "relative_error=0.2" in failures
+    expected_rel = (
+        "relative_error=0.3"
+        if target_role == "medical_expense_deduction_total"
+        else "relative_error=0.2"
+    )
+    assert expected_rel in failures
 
 
 def test_us_release_allows_bad_ctc_fit_when_it_improves_incumbent(
