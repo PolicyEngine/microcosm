@@ -118,6 +118,23 @@ def test_banded_fence_carries_the_national_authority() -> None:
         assert FULL_FRS_TI_BAND_FENCE_ID in family["adjudications"]
 
 
+def test_fences_declare_enforcement_and_gate_reviewed_families() -> None:
+    census = build_uk_local_target_census()
+    for fence in census["binding_fences"]:
+        assert fence["enforcement"] == "review_required_before_binding"
+    assert "review_required_before_binding" in census["status_definitions"], (
+        "fence enforcement status must be defined, not implied"
+    )
+
+    adjudications = {
+        row["family"]: set(row.get("adjudications", [])) for row in census["families"]
+    }
+    assert "uc_unit_vs_household_grain" in adjudications["uc_households"]
+    assert "ons_bhc_ahc_noncomparable" in adjudications["equivalised_income"]
+    assert "population_universe_private_households" in adjudications["age_structure"]
+    assert census["scope"], "census must declare its metric-surface scope"
+
+
 def test_unclassified_metric_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     from populace.build.uk_runtime import local_target_census as module
 
@@ -130,6 +147,72 @@ def test_unclassified_metric_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(module, "metric_names", with_mystery)
     with pytest.raises(ValueError, match="mystery/unclassified_metric"):
         build_uk_local_target_census()
+
+
+def test_near_miss_metric_names_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from populace.build.uk_runtime import local_target_census as module
+
+    real_metric_names = module.metric_names
+    for near_miss in ("uc_householdsX", "rent/private_rent_typo", "agex/0_10"):
+
+        def with_near_miss(area_type: str, *, _name=near_miss, **kwargs):
+            return (*real_metric_names(area_type, **kwargs), _name)
+
+        monkeypatch.setattr(module, "metric_names", with_near_miss)
+        with pytest.raises(ValueError, match="census family classification"):
+            build_uk_local_target_census()
+
+
+def test_area_metric_order_pins_order_and_duplicates_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    census = build_uk_local_target_census()
+    for area_type in ("constituency", "la"):
+        assert census["area_metric_order"][area_type] == list(metric_names(area_type))
+
+    from populace.build.uk_runtime import local_target_census as module
+
+    real_metric_names = module.metric_names
+
+    def with_duplicate(area_type: str, **kwargs):
+        names = real_metric_names(area_type, **kwargs)
+        return (*names, names[0])
+
+    monkeypatch.setattr(module, "metric_names", with_duplicate)
+    with pytest.raises(ValueError, match="duplicate metric name"):
+        build_uk_local_target_census()
+
+
+def test_currency_assertion_catches_json_type_drift(tmp_path) -> None:
+    path = tmp_path / "census.json"
+    write_uk_local_target_census(path)
+    tampered = load_uk_local_target_census(path)
+    # Python equality would accept True == 1; canonical JSON must not.
+    assert tampered["schema_version"] == 1
+    tampered["schema_version"] = True
+    path.write_text(json.dumps(tampered, indent=2, sort_keys=True) + "\n")
+    with pytest.raises(ValueError, match="stale"):
+        assert_uk_local_target_census_current(path)
+
+
+def test_returned_census_is_isolated_from_module_registers() -> None:
+    first = build_uk_local_target_census()
+    first["families"][0]["sources"].append("poisoned_source")
+    first["sources"][0]["geographies"].append("poisoned_geography")
+    first["binding_fences"][0]["rule"] = "poisoned"
+    second = build_uk_local_target_census()
+    assert "poisoned_source" not in second["families"][0]["sources"]
+    assert "poisoned_geography" not in second["sources"][0]["geographies"]
+    assert second["binding_fences"][0]["rule"] != "poisoned"
+
+
+def test_duplicate_registry_ids_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from populace.build.uk_runtime import local_target_census as module
+
+    duplicated = (*module._SOURCES, dict(module._SOURCES[0]))
+    monkeypatch.setattr(module, "_SOURCES", duplicated)
+    with pytest.raises(ValueError, match="duplicate source id"):
+        module.build_uk_local_target_census()
 
 
 def test_census_round_trips_and_currency_assertion(tmp_path) -> None:
@@ -175,3 +258,7 @@ def test_census_driver_check_and_write(tmp_path) -> None:
     tampered["schema_version"] = 999
     out.write_text(json.dumps(tampered, indent=2, sort_keys=True) + "\n")
     assert driver.main(["--out", str(out), "--check"]) == 1
+
+    # The no-out default resolves to the committed artifact; the check-only
+    # route must pass against it without writing anything.
+    assert driver.main(["--check"]) == 0
