@@ -19,7 +19,13 @@ dependencies = [
 # The US extra adds the rules engine for formula-owned export checks. Source
 # content is declared in packaged manifests and interpreted by shared Populace
 # runtimes; country source loaders must not depend on incumbent data packages.
-us = ["policyengine-us>=1.745.0,<2", "h5py>=3", "microunit>=0.1.0", "tables>=3"]
+us = [
+    "policyengine-us>=1.745.0,<2",
+    "populace-data>=0.1,<0.2",
+    "h5py>=3",
+    "microunit>=0.1.0",
+    "tables>=3",
+]
 # The UK extra adds the rules engine for local metric generation from a
 # Populace UK H5. Target tables remain explicit inputs, and the base package
 # still does not import policyengine-uk at import time.
@@ -52,3 +58,4 @@ packages = ["src/populace"]
 populace-frame = { workspace = true }
 populace-fit = { workspace = true }
 populace-calibrate = { workspace = true }
+populace-data = { workspace = true }

@@ -1181,6 +1181,7 @@ us = [
     { name = "h5py" },
     { name = "microunit" },
     { name = "policyengine-us" },
+    { name = "populace-data" },
     { name = "tables" },
 ]
 
@@ -1199,6 +1200,7 @@ requires-dist = [
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
     { name = "populace-calibrate", editable = "packages/populace-calibrate" },
+    { name = "populace-data", marker = "extra == 'us'", editable = "packages/populace-data" },
     { name = "populace-fit", editable = "packages/populace-fit" },
     { name = "populace-frame", editable = "packages/populace-frame" },
     { name = "scipy", specifier = ">=1.13" },

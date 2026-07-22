@@ -48,8 +48,12 @@ and failure-safe calibration diagnostics. No target values have changed.
   doubles omitted the real registry's `.specs` surface. Updated those test
   doubles for the new registry-aware gate signature and reran the file: 131
   passed.
+- An independent final review caught that the US builder's new shared-register
+  import was not declared by `populace-build[us]`. Added the cycle-free
+  `populace-data` workspace dependency and validated the updated lockfile.
 
 ## Next
 
-- Run the required final Ruff fix/format pass and diff audit.
-- Write `FINAL_REPORT.md` and perform the final clean-worktree audit.
+- Complete the remaining independent reviews and final diff audit.
+- Write `FINAL_REPORT.md`, rerun the affected checks, and perform the final
+  clean-worktree audit.
