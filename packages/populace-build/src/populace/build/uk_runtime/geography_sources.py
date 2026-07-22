@@ -357,6 +357,11 @@ def load_scotland_oa_households(
     )
     if (postcode["OutputArea2022Code"] == "").any():
         raise ValueError("Scotland postcode index has blank OA codes.")
+    if postcode["HouseholdCount"].isna().any():
+        raise ValueError(
+            "Scotland postcode index has missing HouseholdCount value(s); a "
+            "blank count would silently sum as zero."
+        )
     postcode["HouseholdCount"] = pd.to_numeric(
         postcode["HouseholdCount"],
         errors="raise",
@@ -766,6 +771,18 @@ def infer_ni_dz_constituencies_from_postcodes(
     pcon = pcon[pcon["pconcd"].astype(str).str.startswith("N", na=False)]
     if pcon.empty:
         raise ValueError("postcode_constituency did not include NI postcodes.")
+
+    # Duplicate normalized keys would Cartesian-expand the merge below and
+    # could flip a Data Zone's modal constituency without ever tripping the
+    # unmatched-postcode fence — refuse them in either source.
+    for label, frame in (("postcode_oa", oa), ("postcode_constituency", pcon)):
+        duplicated = frame["pcd_key"].duplicated()
+        if duplicated.any():
+            examples = sorted(frame.loc[duplicated, "pcd_key"].unique()[:5])
+            raise ValueError(
+                f"{label} contains {int(duplicated.sum())} duplicate "
+                f"normalized postcode key(s); examples {examples}."
+            )
 
     pcon_keys = set(pcon["pcd_key"])
     matched_mask = oa["pcd_key"].isin(pcon_keys)

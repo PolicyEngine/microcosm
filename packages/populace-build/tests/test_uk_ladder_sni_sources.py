@@ -288,3 +288,198 @@ def test_ward_pattern_accepts_split_ward_part_codes() -> None:
     # Every non-ward layer stays strict: part codes are refused by default.
     with pytest.raises(ValueError, match="GSS"):
         _gss_code_array(np.array(["E05R14284"]), label="constituency_code")
+
+
+def _uk_gate_household() -> pd.DataFrame:
+    rows = [
+        ("E00000001", "LONDON", "E12000007", "E05014284", "E14000001", "TLI31"),
+        ("E00000002", "LONDON", "E12000007", "E05R14284", "E14000001", "TLI31"),
+        ("W00000001", "WALES", "W99999999", "W05001517", "W07000041", "TLL11"),
+        ("S00000001", "SCOTLAND", "S99999999", "S13002835", "S14000001", "TLM50"),
+        (
+            "N20000001",
+            "NORTHERN_IRELAND",
+            "N99999999",
+            "N10000104",
+            "N05000001",
+            "TLN0A",
+        ),
+    ]
+    return pd.DataFrame(
+        [
+            {
+                "oa_code": oa,
+                "lsoa_code": oa,
+                "msoa_code": oa,
+                "local_authority_code": "E06000001"
+                if oa.startswith("E")
+                else oa[:1] + "09000001",
+                "ward_code": ward,
+                "constituency_code": constituency,
+                "region_code": region_code,
+                "itl3_code": itl3,
+                "itl2_code": itl3[:4],
+                "itl1_code": itl3[:3],
+                "region": region,
+            }
+            for oa, region, region_code, ward, constituency, itl3 in rows
+        ]
+    )
+
+
+def test_gate_accepts_full_uk_assignment_with_part_codes() -> None:
+    import numpy as np
+
+    from populace.build.uk_runtime import uk_geography_ladder_gate
+
+    household = _uk_gate_household()
+    weights = np.array([3.0, 3.0, 10.0, 10.0, 10.0])
+    result = uk_geography_ladder_gate(
+        household,
+        weights,
+        london_share_bounds=(0.08, 0.20),
+    )
+    assert result.passed, result.failures
+
+
+def test_gate_rejects_region_code_inconsistency() -> None:
+    import numpy as np
+
+    from populace.build.uk_runtime import uk_geography_ladder_gate
+
+    household = _uk_gate_household()
+    # A Scottish household mislabelled with a valid English region code must
+    # fail the rowwise consistency fence, not pass on structural validity.
+    household.loc[household["region"] == "SCOTLAND", "region_code"] = "E12000007"
+    weights = np.array([3.0, 3.0, 10.0, 10.0, 10.0])
+    result = uk_geography_ladder_gate(household, weights)
+    assert not result.passed
+    assert any(
+        "disagree with the household's declared region" in f for f in result.failures
+    )
+
+
+def test_tightened_patterns_reject_invented_families() -> None:
+    import numpy as np
+
+    from populace.build.uk_runtime.geography_ladder import (
+        _ITL_CODE_PATTERN,
+        _WARD_CODE_PATTERN,
+        _itl_code_array,
+    )
+
+    assert _ITL_CODE_PATTERN.match("TLZZ") is None
+    assert _ITL_CODE_PATTERN.match("TLN0A") is not None
+    with pytest.raises(ValueError, match="ITL"):
+        _itl_code_array(np.array(["TLZZ"]), label="itl3")
+    assert _WARD_CODE_PATTERN.match("E05A14284") is None
+    assert _WARD_CODE_PATTERN.match("S13Z00000") is None
+    assert _WARD_CODE_PATTERN.match("E05R14284") is not None
+    assert _WARD_CODE_PATTERN.match("E05S14284") is not None
+
+
+def test_concat_refuses_cross_country_code_mixing() -> None:
+    scotland = _ladder_frame("S", "S12000033", "S13002835", "TLM50")
+    mixed = scotland.copy()
+    mixed["constituency_code"] = "E14000001"
+    ni = _ladder_frame("N", "N09000001", "N10000104", "TLN0A")
+    with pytest.raises(ValueError, match="mixes countries"):
+        concat_uk_ladder_frames(mixed, ni)
+
+
+def test_scotland_households_rejects_missing_counts(monkeypatch) -> None:
+    monkeypatch.setattr(geography_sources, "SCOTLAND_OA2022_COUNT", 1)
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda url: zipped_files_bytes(
+            {
+                "Postcode_To_OA.csv": (
+                    "Postcode,OutputArea2022Code,HouseholdCount,PopulationCount\n"
+                    "AB1 1AA,S0001,,25\n"
+                )
+            }
+        ),
+    )
+    with pytest.raises(ValueError, match="missing HouseholdCount"):
+        load_scotland_oa_households("memory://census-index.zip")
+
+
+def test_ni_postcode_inference_rejects_duplicate_keys() -> None:
+    from populace.build.uk_runtime import infer_ni_dz_constituencies_from_postcodes
+
+    postcode_oa = pd.DataFrame(
+        {
+            "pcds": ["BT1 1AA", "BT1 1AA", "BT1 1AB"],
+            "doterm": ["", "", ""],
+            "oa21cd": ["N20000001", "N20000001", "N20000001"],
+        }
+    )
+    postcode_pcon = pd.DataFrame(
+        {
+            "pcd": ["BT1 1AA", "BT1 1AB"],
+            "pconcd": ["N05000001", "N05000001"],
+        }
+    )
+    with pytest.raises(ValueError, match="duplicate normalized postcode"):
+        infer_ni_dz_constituencies_from_postcodes(postcode_oa, postcode_pcon)
+
+
+def test_full_uk_assemble_load_round_trip(tmp_path) -> None:
+    import numpy as np
+
+    from populace.build.uk_runtime import assemble_uk_oa_ladder, load_uk_oa_ladder
+
+    frames = concat_uk_ladder_frames(
+        _ladder_frame("E", "E06000001", "E05014284", "TLI31"),
+        _ladder_frame("S", "S12000033", "S13002835", "TLM50"),
+        _ladder_frame("N", "N09000001", "N10000104", "TLN0A"),
+    )
+    frames["oa_code"] = ["E00000001", "S00000001", "N20000001"]
+    frames["lsoa_code"] = frames["oa_code"]
+    frames["msoa_code"] = frames["oa_code"]
+    frames["constituency_code"] = ["E14000001", "S14000001", "N05000001"]
+
+    def layer(vintage: str) -> dict[str, object]:
+        return {
+            "vintage": vintage,
+            "source": "synthetic test source",
+            "countries": {
+                "england_and_wales": {"vintage": vintage, "source": "synthetic"},
+                "scotland": {"vintage": vintage, "source": "synthetic"},
+                "northern_ireland": {"vintage": vintage, "source": "synthetic"},
+            },
+        }
+
+    metadata = {
+        "schema_version": 1,
+        "kind": "uk_oa_ladder",
+        "coverage": "uk",
+        "oa_vintage": "ew:2021;scotland:2022;ni:2021",
+        "constituency_sampling_basis": "synthetic household counts",
+        "oa_sampling_basis": "synthetic population",
+        "layers": {
+            "constituency": layer("2024_pcon"),
+            "lsoa": layer("composite"),
+            "msoa": layer("composite"),
+            "local_authority": layer("composite"),
+            "ward": layer("composite"),
+            "itl": {"vintage": "2021_itl", "source": "synthetic"},
+            "region": layer("composite"),
+        },
+    }
+    payload = assemble_uk_oa_ladder(frames, metadata)
+    path = tmp_path / "uk_ladder.npz"
+    np.savez_compressed(path, **payload)
+    ladder = load_uk_oa_ladder(path)
+    assert len(ladder) == 3
+    assert ladder.layer_vintages["constituency"] == "2024_pcon"
+
+    # A countries submap missing its vintage must refuse to load.
+    bad_metadata = json.loads(json.dumps(metadata))
+    bad_metadata["layers"]["ward"]["countries"]["scotland"] = {"vintage": ""}
+    bad_payload = assemble_uk_oa_ladder(frames, bad_metadata)
+    bad_path = tmp_path / "bad_ladder.npz"
+    np.savez_compressed(bad_path, **bad_payload)
+    with pytest.raises(ValueError, match="scotland"):
+        load_uk_oa_ladder(bad_path)

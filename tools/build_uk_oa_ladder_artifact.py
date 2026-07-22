@@ -1,5 +1,8 @@
 """Build the UK OA-ladder artifact from primary ONS/Nomis sources.
 
+Builds the full-UK ladder by default: England & Wales at 2021 Census OA
+grain, Scotland at 2022 Census OA grain, and Northern Ireland at DZ2021
+grain (--coverage england_and_wales preserves the original milestone).
 Downloads (with a local cache) the England-&-Wales 2021 Census output-area
 sources — the OA -> LSOA -> MSOA -> LAD structural hierarchy, OA -> LAD (April
 2023), OA -> PCON24 constituency best-fit, OA usual-resident population (Nomis
@@ -13,10 +16,12 @@ The artifact is self-checked by loading it back through
 ``populace.build.uk_runtime.load_uk_oa_ladder`` before the summary is written,
 so a published ladder is by construction a loadable ladder.
 
-England & Wales is the first milestone (populace #349). Scotland and Northern
-Ireland follow once their lookup vintages are pinned — the assignment refuses a
-household whose region is absent from the ladder, so a GB/UK build cannot
-silently ship partial coverage.
+Scotland and Northern Ireland vintages were pinned on populace#495
+(increment 3): both Scotland ladder-only layers come from the NRS Census
+2022 index zip, NI households from the NISRA table builder, and the NI ward
+analogue (DEA2014) from the pinned DZ2021 GeoJSON. The assignment still
+refuses a household whose region is absent from the ladder, so a partial
+build cannot silently ship.
 
 Example:
     uv run python tools/build_uk_oa_ladder_artifact.py \
@@ -383,42 +388,62 @@ def _uk_layer_metadata(
 
     ew = _layer_metadata(fetched)
 
+    def country_entry(key: str) -> dict[str, object]:
+        return {
+            "vintage": fetched[key]["vintage"],
+            "source": fetched[key]["citation"],
+            "url": fetched[key]["url"],
+            "sha256": fetched[key]["sha256"],
+        }
+
     def composite(
         layer: str,
         scotland_key: str,
         ni_key: str,
         vintage: str,
+        *,
+        ni_entry: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        entry = dict(ew[layer])
-        entry["vintage"] = vintage
-        entry["source"] = (
-            f"{ew[layer]['source']}; Scotland: "
-            f"{fetched[scotland_key]['citation']}; NI: "
-            f"{fetched[ni_key]['citation']}"
-        )
-        entry["countries"] = {
-            "england_and_wales": ew[layer],
-            "scotland": {
-                "vintage": fetched[scotland_key]["vintage"],
-                "source": fetched[scotland_key]["citation"],
-                "url": fetched[scotland_key]["url"],
-                "sha256": fetched[scotland_key]["sha256"],
-            },
-            "northern_ireland": {
-                "vintage": fetched[ni_key]["vintage"],
-                "source": fetched[ni_key]["citation"],
-                "url": fetched[ni_key]["url"],
-                "sha256": fetched[ni_key]["sha256"],
+        # No top-level url/sha256 on composite layers: a single conventional
+        # identity would go stale when only Scotland/NI inputs change. The
+        # per-country identities below and source_files carry every sha.
+        entry = {
+            "vintage": vintage,
+            "source": (
+                f"{ew[layer]['source']}; Scotland: "
+                f"{fetched[scotland_key]['citation']}; NI: "
+                f"{fetched[ni_key]['citation']}"
+            ),
+            "countries": {
+                "england_and_wales": ew[layer],
+                "scotland": country_entry(scotland_key),
+                "northern_ireland": (
+                    country_entry(ni_key) if ni_entry is None else ni_entry
+                ),
             },
         }
         return entry
 
+    ni_constituency_entry = {
+        "vintage": "2024_pcon",
+        "source": (
+            "Reviewed active-postcode modal inference "
+            "(infer_ni_dz_constituencies_from_postcodes) joining the ONS "
+            "postcode->OA (May 2025) and postcode->PCON24 (May 2024) lookups; "
+            "fenced by the max-unmatched-active-postcode share."
+        ),
+        "sources": {
+            "postcode_oa": country_entry("postcode_oa"),
+            "postcode_constituency": country_entry("postcode_pcon"),
+        },
+    }
     return {
         "constituency": composite(
             "constituency",
             "scotland_constituency",
             "postcode_pcon",
             "2024_pcon",
+            ni_entry=ni_constituency_entry,
         ),
         "lsoa": composite(
             "lsoa",

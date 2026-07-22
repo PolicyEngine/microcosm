@@ -164,15 +164,18 @@ _REQUIRED_ARRAY_KEYS = (
 )
 
 _GSS_CODE_PATTERN = re.compile(r"^[ENSWK]\d{8}$")
-# ONS publishes split-ward *part* codes with a letter in the fourth
+# ONS publishes split-ward *part* codes with an R or S in the fourth
 # position (e.g. E05R14284 / E05S14284, "Hunmanby & Sherburn (part
 # Ryedale)") where a boundary change splits a ward across districts.
-# Only the ward layer may carry them; every other layer stays strict.
-_WARD_CODE_PATTERN = re.compile(r"^[ENSWK]\d{2}[0-9A-Z]\d{5}$")
+# Only the ward layer may carry them, and only the observed R/S part
+# families are admitted; every other layer stays strict.
+_WARD_CODE_PATTERN = re.compile(r"^[ENSWK]\d{2}[0-9RS]\d{5}$")
 # ITL3 suffixes are alphanumeric outside England: Northern Ireland runs
 # TLN01..TLN0G (letters in the final position), Scotland TLM50-style
-# digits. Two uppercase alphanumerics after the ITL1 letter cover ITL1/2/3.
-_ITL_CODE_PATTERN = re.compile(r"^TL[A-Z][0-9A-Z]{0,2}$")
+# digits. The ITL1 letter is bounded to the published UK range TLC..TLN
+# (North East through Northern Ireland), so invented families like TLZZ
+# stay refused; two uppercase alphanumerics cover the ITL2/ITL3 suffix.
+_ITL_CODE_PATTERN = re.compile(r"^TL[C-N][0-9A-Z]{0,2}$")
 
 
 @dataclass(frozen=True)
@@ -523,7 +526,7 @@ def uk_geography_ladder_gate(
         ("lsoa_code", _GSS_CODE_PATTERN),
         ("msoa_code", _GSS_CODE_PATTERN),
         ("local_authority_code", _GSS_CODE_PATTERN),
-        ("ward_code", _GSS_CODE_PATTERN),
+        ("ward_code", _WARD_CODE_PATTERN),
         ("constituency_code", _GSS_CODE_PATTERN),
         ("region_code", _GSS_CODE_PATTERN),
     ):
@@ -552,14 +555,39 @@ def uk_geography_ladder_gate(
             )
 
     region = household["region_code"].astype(str).to_numpy()
-    unknown_region = np.array(
-        [value not in UK_ENGLAND_WALES_REGION_CODES for value in region]
-    )
+    recognised_regions = frozenset(FRS_REGION_TO_REGION_CODE.values())
+    unknown_region = np.array([value not in recognised_regions for value in region])
     if unknown_region.any():
         failures.append(
             f"region_code: {int(unknown_region.sum())}/{len(region)} row(s) are "
-            "not England & Wales region codes; "
+            "not recognised UK region codes; "
             f"examples {sorted(set(region[unknown_region]))[:5]}"
+        )
+
+    # Rowwise consistency fence: the assigned region_code must agree with the
+    # household's own pre-assigned region enum, so a mislabelled assignment
+    # (e.g. Scottish households collapsed into English codes) cannot pass on
+    # structural validity alone.
+    declared_codes = _household_region_codes(
+        household[region_column],
+        label=region_column,
+    ).to_numpy()
+    inconsistent = declared_codes != region
+    if inconsistent.any():
+        examples = sorted(
+            {
+                f"{declared}!={assigned}"
+                for declared, assigned in zip(
+                    declared_codes[inconsistent],
+                    region[inconsistent],
+                    strict=True,
+                )
+            }
+        )[:5]
+        failures.append(
+            f"region_code: {int(inconsistent.sum())}/{len(region)} row(s) "
+            "disagree with the household's declared region; "
+            f"examples {examples}"
         )
 
     total = float(weights.sum())
@@ -734,6 +762,21 @@ def _validate_ladder_metadata(metadata: Mapping[str, Any]) -> None:
             raise ValueError(
                 f"UK OA ladder layer {layer!r} must record a non-empty source citation."
             )
+        countries = spec.get("countries")
+        if countries is not None:
+            if not isinstance(countries, Mapping) or not countries:
+                raise ValueError(
+                    f"UK OA ladder layer {layer!r} countries submap must be a "
+                    "non-empty mapping when present."
+                )
+            for country, entry in countries.items():
+                if not isinstance(entry, Mapping) or not (
+                    str(entry.get("vintage") or "") and str(entry.get("source") or "")
+                ):
+                    raise ValueError(
+                        f"UK OA ladder layer {layer!r} country {country!r} "
+                        "must record a non-empty vintage and source."
+                    )
 
 
 def _gss_code_array(

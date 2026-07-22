@@ -191,6 +191,24 @@ def concat_uk_ladder_frames(*frames: pd.DataFrame) -> pd.DataFrame:
         missing = sorted(set(LADDER_OA_COLUMNS) - set(frame.columns))
         if missing:
             raise ValueError(f"ladder frame {index} is missing column(s): {missing}.")
+    for index, frame in enumerate(frames):
+        allowed = {str(code)[:1] for code in frame["oa_code"]}
+        for column in (
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+        ):
+            prefixes = {str(code)[:1] for code in frame[column]}
+            foreign = sorted(prefixes - allowed)
+            if foreign:
+                raise ValueError(
+                    f"ladder frame {index} mixes countries: {column} carries "
+                    f"prefix(es) {foreign} while its oa_code prefixes are "
+                    f"{sorted(allowed)}."
+                )
     combined = pd.concat(
         [frame.loc[:, list(LADDER_OA_COLUMNS)] for frame in frames],
         ignore_index=True,
