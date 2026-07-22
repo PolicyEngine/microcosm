@@ -63,6 +63,19 @@ NI_DZ_GEOJSON_ZIP_URL = (
 NI_DZ_POPULATION_CSV_URL = (
     "https://build.nisra.gov.uk/en/custom/table.csv?d=PEOPLE&v=DZ21"
 )
+NI_DZ_HOUSEHOLDS_CSV_URL = (
+    "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21"
+)
+
+#: NRS Census 2022 index (2022 Census Geography Products register). One zip
+#: carries both Scotland OA-ladder layers: OA_TO_HIGHER_AREAS.csv maps every
+#: OA2022 to its 2022 Electoral Ward (EW2022, point-in-polygon centroid per
+#: the in-zip index file specification), and Postcode_To_OA.csv carries the
+#: spec-defined 2022 Census occupied household count per postcode (cell-key
+#: perturbed), summed to the OA for the ladder's stage-one draw weight.
+SCOTLAND_CENSUS_INDEX_ZIP_URL = (
+    "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip"
+)
 
 UK_POSTCODE_OA_MAY25_ZIP_URL = (
     "https://www.arcgis.com/sharing/rest/content/items/"
@@ -276,6 +289,180 @@ def load_ni_dz_hierarchy(url: str = NI_DZ_GEOJSON_ZIP_URL) -> pd.DataFrame:
         pd.DataFrame(rows),
         expected_count=NI_DZ2021_COUNT,
     )
+
+
+def load_scotland_oa_ward_lookup(
+    url: str = SCOTLAND_CENSUS_INDEX_ZIP_URL,
+) -> pd.DataFrame:
+    """Load the OA2022 -> Electoral Ward 2022 lookup from the NRS census index."""
+
+    frame = _read_zip_csv_url(
+        url,
+        filename_contains="oa_to_higher_areas",
+        dtype=str,
+        encoding="utf-8-sig",
+    )
+    rename = {}
+    for column in frame.columns:
+        key = str(column).strip().lower()
+        if key == "oa2022":
+            rename[column] = "oa_code"
+        elif key == "ew2022":
+            rename[column] = "ward_code"
+    frame = frame.rename(columns=rename)
+    missing = sorted({"oa_code", "ward_code"} - set(frame.columns))
+    if missing:
+        raise ValueError(f"Scotland OA ward lookup is missing column(s): {missing}.")
+    lookup = frame.loc[:, ["oa_code", "ward_code"]].copy()
+    for column in ("oa_code", "ward_code"):
+        lookup[column] = lookup[column].fillna("").astype(str).str.strip()
+        blank = lookup[column] == ""
+        if blank.any():
+            raise ValueError(
+                f"Scotland OA ward lookup has {int(blank.sum())} blank "
+                f"{column} value(s)."
+            )
+    if lookup["oa_code"].duplicated().any():
+        duplicates = lookup.loc[lookup["oa_code"].duplicated(), "oa_code"]
+        raise ValueError(
+            "Scotland OA ward lookup OA codes must be unique; duplicate "
+            f"value(s): {list(map(str, duplicates.unique()[:5]))}."
+        )
+    _validate_expected_count(
+        lookup,
+        expected_count=SCOTLAND_OA2022_COUNT,
+        label="Scotland OA ward lookup",
+        unit_label="OA2022",
+    )
+    return lookup.sort_values("oa_code", kind="mergesort").reset_index(drop=True)
+
+
+def load_scotland_oa_households(
+    url: str = SCOTLAND_CENSUS_INDEX_ZIP_URL,
+) -> pd.DataFrame:
+    """Sum census occupied households per OA2022 from the NRS postcode index."""
+
+    frame = _read_zip_csv_url(
+        url,
+        filename_contains="postcode_to_oa",
+        dtype=str,
+        encoding="utf-8-sig",
+    )
+    missing = sorted({"OutputArea2022Code", "HouseholdCount"} - set(frame.columns))
+    if missing:
+        raise ValueError(f"Scotland postcode index is missing column(s): {missing}.")
+    postcode = frame.loc[:, ["OutputArea2022Code", "HouseholdCount"]].copy()
+    postcode["OutputArea2022Code"] = (
+        postcode["OutputArea2022Code"].fillna("").astype(str).str.strip()
+    )
+    if (postcode["OutputArea2022Code"] == "").any():
+        raise ValueError("Scotland postcode index has blank OA codes.")
+    if postcode["HouseholdCount"].isna().any():
+        raise ValueError(
+            "Scotland postcode index has missing HouseholdCount value(s); a "
+            "blank count would silently sum as zero."
+        )
+    postcode["HouseholdCount"] = pd.to_numeric(
+        postcode["HouseholdCount"],
+        errors="raise",
+    )
+    if (postcode["HouseholdCount"] < 0).any():
+        raise ValueError(
+            "Scotland postcode index household counts must be non-negative."
+        )
+    households = (
+        postcode.groupby("OutputArea2022Code", sort=True)["HouseholdCount"]
+        .sum()
+        .reset_index()
+        .rename(
+            columns={
+                "OutputArea2022Code": "oa_code",
+                "HouseholdCount": "households",
+            }
+        )
+    )
+    _validate_expected_count(
+        households,
+        expected_count=SCOTLAND_OA2022_COUNT,
+        label="Scotland OA households",
+        unit_label="OA2022",
+    )
+    return households.reset_index(drop=True)
+
+
+def load_ni_dz_ward_lookup(url: str = NI_DZ_GEOJSON_ZIP_URL) -> pd.DataFrame:
+    """Load the DZ2021 -> DEA2014 (ward analogue) lookup from the NI GeoJSON."""
+
+    data = _read_geojson_zip_url(url)
+    rows = []
+    for feature in data.get("features", []):
+        props = feature.get("properties", {})
+        rows.append(
+            {
+                "oa_code": props.get("DZ2021_cd"),
+                "ward_code": props.get("DEA2014_cd"),
+            }
+        )
+    lookup = pd.DataFrame(rows)
+    if lookup.empty:
+        raise ValueError("NI DZ ward lookup has no features.")
+    for column in ("oa_code", "ward_code"):
+        lookup[column] = lookup[column].fillna("").astype(str).str.strip()
+        blank = lookup[column] == ""
+        if blank.any():
+            raise ValueError(
+                f"NI DZ ward lookup has {int(blank.sum())} blank {column} value(s)."
+            )
+    if lookup["oa_code"].duplicated().any():
+        duplicates = lookup.loc[lookup["oa_code"].duplicated(), "oa_code"]
+        raise ValueError(
+            "NI DZ ward lookup DZ codes must be unique; duplicate value(s): "
+            f"{list(map(str, duplicates.unique()[:5]))}."
+        )
+    _validate_expected_count(
+        lookup,
+        expected_count=NI_DZ2021_COUNT,
+        label="NI DZ ward lookup",
+    )
+    return lookup.sort_values("oa_code", kind="mergesort").reset_index(drop=True)
+
+
+def load_ni_dz_households(url: str = NI_DZ_HOUSEHOLDS_CSV_URL) -> pd.DataFrame:
+    """Load NISRA Census 2021 Data Zone occupied household counts."""
+
+    frame = _read_csv_url(url, dtype=str)
+    rename = {}
+    for column in frame.columns:
+        lower = str(column).lower()
+        if "data zone code" in lower or lower.strip() == "oa_code":
+            rename[column] = "oa_code"
+        elif lower.strip() in {"count", "households"}:
+            rename[column] = "households"
+    households = frame.rename(columns=rename)
+    missing = sorted({"oa_code", "households"} - set(households.columns))
+    if missing:
+        raise ValueError(f"NI households is missing column(s): {missing}.")
+    households = households[["oa_code", "households"]].copy()
+    households["oa_code"] = households["oa_code"].astype(str).str.strip()
+    households = households[households["oa_code"].str.startswith("N2")]
+    if households["oa_code"].duplicated().any():
+        duplicates = households.loc[households["oa_code"].duplicated(), "oa_code"]
+        raise ValueError(
+            "NI household DZ codes must be unique; duplicate value(s): "
+            f"{list(map(str, duplicates.unique()[:5]))}."
+        )
+    households["households"] = pd.to_numeric(
+        households["households"],
+        errors="raise",
+    )
+    if (households["households"] < 0).any():
+        raise ValueError("NI household counts must be non-negative.")
+    _validate_expected_count(
+        households,
+        expected_count=NI_DZ2021_COUNT,
+        label="NI DZ households",
+    )
+    return households.sort_values("oa_code", kind="mergesort").reset_index(drop=True)
 
 
 def load_ni_dz_population(url: str = NI_DZ_POPULATION_CSV_URL) -> pd.DataFrame:
@@ -584,6 +771,18 @@ def infer_ni_dz_constituencies_from_postcodes(
     pcon = pcon[pcon["pconcd"].astype(str).str.startswith("N", na=False)]
     if pcon.empty:
         raise ValueError("postcode_constituency did not include NI postcodes.")
+
+    # Duplicate normalized keys would Cartesian-expand the merge below and
+    # could flip a Data Zone's modal constituency without ever tripping the
+    # unmatched-postcode fence — refuse them in either source.
+    for label, frame in (("postcode_oa", oa), ("postcode_constituency", pcon)):
+        duplicated = frame["pcd_key"].duplicated()
+        if duplicated.any():
+            examples = sorted(frame.loc[duplicated, "pcd_key"].unique()[:5])
+            raise ValueError(
+                f"{label} contains {int(duplicated.sum())} duplicate "
+                f"normalized postcode key(s); examples {examples}."
+            )
 
     pcon_keys = set(pcon["pcd_key"])
     matched_mask = oa["pcd_key"].isin(pcon_keys)
