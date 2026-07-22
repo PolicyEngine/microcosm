@@ -82,6 +82,7 @@ _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 from populace.calibrate.diagnostics import (  # noqa: E402 - after the compat gate
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     diagnostics_payload,
+    past_cap_census,
     write_calibration_diagnostics,
 )
 from populace.calibrate.matrix import (  # noqa: E402 - after the compat gate
@@ -135,6 +136,7 @@ __all__ = [
     "effective_sample_size",
     "refit_l0_selection",
     "diagnostics_payload",
+    "past_cap_census",
     "relative_error_loss",
     "score_targets",
     "specs_from_pe_surface",

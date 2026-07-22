@@ -61,7 +61,11 @@ REQUIRED_RELEASE_FILES = (
     "calibration_diagnostics.json",
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 4
+# Lockstep with populace.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+# (schema 5 = the #492 past_cap_census block). populace-data cannot import
+# populace-calibrate (dependency direction), so the builder test suite pins the
+# two constants equal — see test_calibration_diagnostics_schema_lockstep.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 5
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
