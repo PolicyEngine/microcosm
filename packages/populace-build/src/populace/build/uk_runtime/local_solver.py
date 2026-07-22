@@ -57,7 +57,7 @@ def past_cap_census(
     target_loss_cap: float,
     target_loss_scales: np.ndarray | None = None,
     target_frame: pd.DataFrame | None = None,
-    max_listed_rows: int = 100,
+    max_listed_rows: int | None = None,
 ) -> dict[str, Any]:
     """Census of target rows relative to the loss cap (populace#492).
 
@@ -65,8 +65,9 @@ def past_cap_census(
     rows off. The census counts rows past the cap at initialization and at
     the final estimates, the rows that escaped back inside, the rows frozen
     past the cap throughout, and — the dumping-ground class — the rows
-    pushed out during the solve, listing each with its before/after scaled
-    absolute errors (labelled from ``target_frame`` when supplied).
+    pushed out during the solve, listing every one with its before/after
+    scaled absolute errors (labelled from ``target_frame`` when supplied;
+    pass ``max_listed_rows`` to bound the list, flagged as truncated).
     """
 
     initial = np.asarray(initial_estimates, dtype=np.float64)
@@ -79,6 +80,12 @@ def past_cap_census(
         )
     if not np.isfinite(target_loss_cap) or target_loss_cap <= 0:
         raise ValueError("target_loss_cap must be a positive finite number.")
+    # Mirror the canonical loss's refusals: a NaN estimate or a degenerate
+    # scale is a harness bug, never a row silently classified inside the cap.
+    if not np.isfinite(initial).all() or not np.isfinite(final).all():
+        raise ValueError("census estimates must be finite.")
+    if not np.isfinite(target_values).all():
+        raise ValueError("census targets must be finite.")
     scales = (
         default_target_loss_scales(target_values)
         if target_loss_scales is None
@@ -89,22 +96,10 @@ def past_cap_census(
             "target_loss_scales must align with targets, got "
             f"{scales.shape} vs {target_values.shape}."
         )
-    initial_errors = np.abs(
-        np.divide(
-            initial - target_values,
-            scales,
-            out=np.zeros_like(target_values),
-            where=scales != 0,
-        )
-    )
-    final_errors = np.abs(
-        np.divide(
-            final - target_values,
-            scales,
-            out=np.zeros_like(target_values),
-            where=scales != 0,
-        )
-    )
+    if not np.isfinite(scales).all() or (scales <= 0).any():
+        raise ValueError("target_loss_scales must be finite and positive.")
+    initial_errors = np.abs((initial - target_values) / scales)
+    final_errors = np.abs((final - target_values) / scales)
     past_init = initial_errors > target_loss_cap
     past_final = final_errors > target_loss_cap
     pushed_out = ~past_init & past_final
@@ -131,9 +126,16 @@ def past_cap_census(
         "frozen": int((past_init & past_final).sum()),
         "pushed_out": int(pushed_out.sum()),
         "pushed_out_rows": [
-            _row(index) for index in pushed_indices[:max_listed_rows].tolist()
+            _row(index)
+            for index in (
+                pushed_indices
+                if max_listed_rows is None
+                else pushed_indices[:max_listed_rows]
+            ).tolist()
         ],
-        "pushed_out_rows_truncated": bool(len(pushed_indices) > max_listed_rows),
+        "pushed_out_rows_truncated": bool(
+            max_listed_rows is not None and len(pushed_indices) > max_listed_rows
+        ),
     }
 
 

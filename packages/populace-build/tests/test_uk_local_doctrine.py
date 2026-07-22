@@ -130,7 +130,7 @@ def test_doctrine_rejects_tampered_bounds() -> None:
         UKLocalSolveDoctrine(target_weight_rule="per_target")
 
 
-def test_doctrine_solve_exposes_no_per_target_knobs() -> None:
+def test_doctrine_solve_exposes_no_knobs_and_no_injection_point() -> None:
     import inspect
 
     parameters = inspect.signature(solve_uk_local_weights_under_doctrine).parameters
@@ -138,6 +138,9 @@ def test_doctrine_solve_exposes_no_per_target_knobs() -> None:
     assert "target_loss_scales" not in parameters
     assert "target_loss_cap" not in parameters
     assert "max_weight_ratio" not in parameters
+    # No doctrine parameter either: a caller cannot mint a locally revised
+    # contract and route it through the release path.
+    assert "doctrine" not in parameters
 
     problem = _toy_problem()
     with pytest.raises(TypeError):
@@ -145,6 +148,12 @@ def test_doctrine_solve_exposes_no_per_target_knobs() -> None:
             problem,
             [1.0, 1.0],
             target_loss_weights=[1.0, 2.0],
+        )
+    with pytest.raises(TypeError):
+        solve_uk_local_weights_under_doctrine(
+            problem,
+            [1.0, 1.0],
+            doctrine=UKLocalSolveDoctrine(target_loss_cap=77.0),
         )
 
 
@@ -157,16 +166,124 @@ def test_doctrine_solve_applies_declared_bounds() -> None:
         learning_rate=0.2,
         seed=1,
     )
-    assert result.final_loss <= result.initial_loss
+    assert np.isfinite(result.final_loss)
     assert result.past_cap_census is not None
     assert result.past_cap_census["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP
-    # The declared stretch bound holds on the solved weights.
+    # The declared stretch bound holds on the solved weights (the optimizer
+    # applies a hard closing cap against the same initial weights).
+    assert np.isfinite(result.weights).all()
     stretched = result.weights / result.initial_weights
-    assert float(np.nanmax(stretched)) <= UK_LOCAL_MAX_WEIGHT_RATIO * (1 + 1e-6)
+    assert float(np.max(stretched)) <= UK_LOCAL_MAX_WEIGHT_RATIO * (1 + 1e-6)
 
-    with pytest.raises(TypeError, match="UKLocalSolveDoctrine"):
-        solve_uk_local_weights_under_doctrine(
-            problem,
-            [1.0, 1.0],
-            doctrine="loose",
+
+def test_doctrine_solve_refuses_duplicate_target_surface() -> None:
+    import dataclasses
+
+    problem = _toy_problem()
+    doctored_frame = pd.concat(
+        [problem.target_frame, problem.target_frame.iloc[[0]]],
+        ignore_index=True,
+    )
+    doctored = dataclasses.replace(problem, target_frame=doctored_frame)
+    with pytest.raises(ValueError, match="per-target weights"):
+        solve_uk_local_weights_under_doctrine(doctored, [1.0, 1.0], epochs=1)
+
+
+def test_census_boundary_and_scale_refusals() -> None:
+    targets = np.array([100.0, 100.0])
+    # A row exactly AT the cap is not past it: strictly-greater semantics
+    # match the torch loss, where a tie still carries gradient.
+    census = past_cap_census(
+        np.array([200.0, 100.0]),
+        np.array([200.0, 100.0]),
+        targets,
+        target_loss_cap=1.0,
+    )
+    assert census["past_at_init"] == 0
+    assert census["past_at_final"] == 0
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        past_cap_census(
+            np.array([1.0, 1.0]),
+            np.array([1.0, 1.0]),
+            targets,
+            target_loss_cap=1.0,
+            target_loss_scales=np.array([1.0, 0.0]),
         )
+    with pytest.raises(ValueError, match="estimates must be finite"):
+        past_cap_census(
+            np.array([np.nan, 1.0]),
+            np.array([1.0, 1.0]),
+            targets,
+            target_loss_cap=1.0,
+        )
+
+
+def test_census_lists_every_pushed_out_row_unless_bounded() -> None:
+    n = 130
+    targets = np.full(n, 100.0)
+    initial = np.full(n, 100.0)
+    final = np.full(n, 100.0 + 100.0 * 5.0)
+    unbounded = past_cap_census(initial, final, targets, target_loss_cap=1.0)
+    assert unbounded["pushed_out"] == n
+    assert len(unbounded["pushed_out_rows"]) == n
+    assert unbounded["pushed_out_rows_truncated"] is False
+
+    bounded = past_cap_census(
+        initial, final, targets, target_loss_cap=1.0, max_listed_rows=100
+    )
+    assert len(bounded["pushed_out_rows"]) == 100
+    assert bounded["pushed_out_rows_truncated"] is True
+
+
+def test_runner_under_doctrine_refuses_knobs_and_persists_census(tmp_path) -> None:
+    from populace.build.uk_runtime import (
+        build_local_candidate,
+        summarize_local_candidate,
+        write_local_candidate_outputs,
+    )
+
+    areas = pd.DataFrame({"code": ["E001", "S001"], "country": ["England", "Scotland"]})
+    targets = pd.DataFrame({"code": ["E001", "S001"], "population": [2.0, 2.0]})
+    metrics = {
+        "England": pd.DataFrame({"population": [1.0, 0.0]}, index=[101, 102]),
+        "Scotland": pd.DataFrame({"population": [0.0, 1.0]}, index=[101, 102]),
+    }
+    households = pd.DataFrame(
+        {
+            "household_id": [101, 102],
+            "household_weight": [1.0, 2.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="under_doctrine refuses"):
+        build_local_candidate(
+            area_type="constituency",
+            area_frame=areas,
+            targets=targets,
+            metrics=metrics,
+            household_frame=households,
+            solver_options={"target_loss_cap": 2.0},
+            under_doctrine=True,
+        )
+
+    result = build_local_candidate(
+        area_type="constituency",
+        area_frame=areas,
+        targets=targets,
+        metrics=metrics,
+        household_frame=households,
+        solver_options={"epochs": 40, "learning_rate": 0.2, "seed": 1},
+        under_doctrine=True,
+    )
+    census = result.solve_result.past_cap_census
+    assert census is not None
+    assert census["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP
+
+    summary = write_local_candidate_outputs(result, tmp_path)
+    assert summary == summarize_local_candidate(result)
+    assert summary["past_cap"]["n_targets"] == census["n_targets"]
+    import json
+
+    persisted = json.loads((tmp_path / "past_cap_census.json").read_text())
+    assert persisted["target_loss_cap"] == UK_LOCAL_TARGET_LOSS_CAP

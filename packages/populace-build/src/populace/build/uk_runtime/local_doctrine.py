@@ -114,7 +114,6 @@ def solve_uk_local_weights_under_doctrine(
     problem: StackedLocalMatrix,
     base_weights: Sequence[float],
     *,
-    doctrine: UKLocalSolveDoctrine = UK_LOCAL_SOLVE_DOCTRINE,
     epochs: int = 512,
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
@@ -127,17 +126,17 @@ def solve_uk_local_weights_under_doctrine(
     """Solve UK local weights as one uniform operator with declared bounds.
 
     Structurally knob-free: there are no per-target weight or scale
-    parameters on this signature. Scales follow the doctrine's canonical
-    rule (applied by the underlying solver's default), target weights are
-    uniform, and the loss cap and stretch bound come from the doctrine
-    instance — whose fields validate themselves, so a tampered contract
-    fails before any solve runs.
+    parameters on this signature, and **no doctrine parameter either** — the
+    bounds always come from the reviewed module constant
+    ``UK_LOCAL_SOLVE_DOCTRINE``, so a caller cannot mint a locally revised
+    contract and route it through the release path (experiments belong on
+    the research solver). The target surface itself is validated as one
+    uniform grid — duplicate (area, metric) rows would be implicit
+    per-target weighting and are refused.
     """
 
-    if not isinstance(doctrine, UKLocalSolveDoctrine):
-        raise TypeError(
-            f"doctrine must be a UKLocalSolveDoctrine instance, got {doctrine!r}."
-        )
+    doctrine = UK_LOCAL_SOLVE_DOCTRINE
+    _require_uniform_target_surface(problem)
     return solve_stacked_local_weights(
         problem,
         base_weights,
@@ -152,3 +151,32 @@ def solve_uk_local_weights_under_doctrine(
         budget_iters=budget_iters,
         seed=seed,
     )
+
+
+def _require_uniform_target_surface(problem: StackedLocalMatrix) -> None:
+    """Refuse a target surface whose rows repeat an (area, metric) cell.
+
+    ``build_stacked_local_matrix`` constructs unique rows by design; a
+    hand-built matrix that duplicates a row would double that cell's weight
+    in the uniform loss — a per-target knob smuggled through the surface.
+    """
+
+    frame = problem.target_frame
+    required = {"area_type", "area_code", "metric"}
+    if not required <= set(frame.columns):
+        missing = sorted(required - set(frame.columns))
+        raise ValueError(
+            f"doctrine solve requires target_frame column(s) {missing} to "
+            "verify surface uniqueness."
+        )
+    duplicated = frame.duplicated(["area_type", "area_code", "metric"])
+    if duplicated.any():
+        rows = frame.loc[
+            duplicated, ["area_type", "area_code", "metric"]
+        ].drop_duplicates()
+        examples = [tuple(map(str, row)) for row in rows.head(5).to_numpy()]
+        raise ValueError(
+            "doctrine solve refuses a non-uniform target surface: duplicate "
+            f"(area_type, area_code, metric) row(s) {examples} would act as "
+            "implicit per-target weights."
+        )

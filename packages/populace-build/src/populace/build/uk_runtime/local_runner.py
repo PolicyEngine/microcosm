@@ -17,6 +17,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from populace.build.uk_runtime.local_doctrine import (
+    solve_uk_local_weights_under_doctrine,
+)
 from populace.build.uk_runtime.local_geography import (
     StackedLocalMatrix,
     area_support_summary,
@@ -261,8 +264,14 @@ def build_local_candidate(
     source_year: int | None = None,
     weight_source: str = "populace_uk_local",
     solver_options: Mapping[str, Any] | None = None,
+    under_doctrine: bool = False,
 ) -> UKLocalCandidateResult:
-    """Build, solve, and export a UK local candidate in longwise form."""
+    """Build, solve, and export a UK local candidate in longwise form.
+
+    ``under_doctrine=True`` is the release path: the solve routes through
+    :func:`solve_uk_local_weights_under_doctrine`, so the declared bounds
+    apply and per-target solver options are refused rather than forwarded.
+    """
 
     areas = prepare_area_frame(
         area_frame,
@@ -293,11 +302,34 @@ def build_local_candidate(
         area_type=area_type,
         code_column=code_column,
     )
-    solve_result = solve_stacked_local_weights(
-        problem,
-        base_weights,
-        **dict(solver_options or {}),
-    )
+    options = dict(solver_options or {})
+    if under_doctrine:
+        forbidden = sorted(
+            {
+                "target_loss_weights",
+                "target_loss_scales",
+                "target_loss_cap",
+                "max_weight_ratio",
+            }
+            & set(options)
+        )
+        if forbidden:
+            raise ValueError(
+                "under_doctrine refuses per-target/bound solver option(s) "
+                f"{forbidden}; the doctrine's declared bounds are not "
+                "caller-adjustable."
+            )
+        solve_result = solve_uk_local_weights_under_doctrine(
+            problem,
+            base_weights,
+            **options,
+        )
+    else:
+        solve_result = solve_stacked_local_weights(
+            problem,
+            base_weights,
+            **options,
+        )
     long_weights = stacked_weights_to_long(
         solve_result.weights,
         area_codes,
@@ -336,6 +368,7 @@ def build_local_candidate_from_dataset(
     simulation_factory: Callable[[Any], Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
     solver_options: Mapping[str, Any] | None = None,
+    under_doctrine: bool = False,
 ) -> UKLocalCandidateResult:
     """Build a UK local candidate from a Populace UK H5 or dataset object."""
 
@@ -380,6 +413,7 @@ def build_local_candidate_from_dataset(
         source_year=source_year,
         weight_source=weight_source,
         solver_options=solver_options,
+        under_doctrine=under_doctrine,
     )
 
 
@@ -387,7 +421,25 @@ def summarize_local_candidate(result: UKLocalCandidateResult) -> dict[str, Any]:
     """Return a compact JSON-serializable summary for candidate run logs."""
 
     support = result.support_summary
+    census = result.solve_result.past_cap_census
+    past_cap = (
+        None
+        if census is None
+        else {
+            key: census[key]
+            for key in (
+                "target_loss_cap",
+                "n_targets",
+                "past_at_init",
+                "past_at_final",
+                "escaped",
+                "frozen",
+                "pushed_out",
+            )
+        }
+    )
     return {
+        "past_cap": past_cap,
         "area_type": (
             None
             if result.solve_result.diagnostics.empty
@@ -443,6 +495,14 @@ def write_local_candidate_outputs(
     write_long_geography_weights(result.long_weights, out / weights_filename)
     result.solve_result.diagnostics.to_csv(out / "solve_diagnostics.csv", index=False)
     result.support_summary.to_csv(out / "area_support_summary.csv", index=False)
+    if result.solve_result.past_cap_census is not None:
+        (out / "past_cap_census.json").write_text(
+            json.dumps(
+                dict(result.solve_result.past_cap_census),
+                indent=2,
+                sort_keys=True,
+            )
+        )
     summary = summarize_local_candidate(result)
     (out / "solve_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True)
