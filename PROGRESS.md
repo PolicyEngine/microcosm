@@ -42,8 +42,14 @@ and failure-safe calibration diagnostics. No target values have changed.
   were normalized before the overlay. Added CLI, diagnostics-record, and main
   orchestration assertions.
 - Verified the focused loss/CLI/diagnostics/orchestration group (15 passed).
+- Ran the complete populace-data package: 132 passed, with one pre-existing
+  optional-engine skip.
+- The first complete builder run exposed four manifest tests whose registry
+  doubles omitted the real registry's `.specs` surface. Updated those test
+  doubles for the new registry-aware gate signature and reran the file: 131
+  passed.
 
 ## Next
 
-- Run the requested complete builder and populace-data suites plus Ruff.
+- Run the required final Ruff fix/format pass and diff audit.
 - Write `FINAL_REPORT.md` and perform the final clean-worktree audit.

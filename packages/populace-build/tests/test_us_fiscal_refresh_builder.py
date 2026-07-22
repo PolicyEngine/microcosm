@@ -5810,6 +5810,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
@@ -5964,6 +5965,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
@@ -6173,6 +6175,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
