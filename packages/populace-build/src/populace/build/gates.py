@@ -38,6 +38,7 @@ minimizes is exactly what the gates and scorers measure.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -2254,7 +2255,12 @@ def target_fit_gate(
                 failures.append(
                     f"{row_name}: non-numeric recorded relative_error {recorded!r}."
                 )
-            elif not np.isclose(recorded_number, computed, rtol=1e-9, atol=1e-9):
+            # math.isclose with the publish contract's exact arguments — NOT
+            # np.isclose, whose additive rtol+atol formula admits recorded
+            # values (delta ~1.05e-9 at |computed|=0.1) the publisher rejects.
+            elif not math.isclose(
+                recorded_number, computed, rel_tol=1e-9, abs_tol=1e-9
+            ):
                 failures.append(
                     f"{row_name}: stale relative_error {recorded_number!r}; "
                     f"computed {computed:.6g} from target and final_estimate."

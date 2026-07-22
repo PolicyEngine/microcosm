@@ -2062,6 +2062,30 @@ def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
             "final_estimate": 300.0,
         }
     }
+    # Round-2 boundary: np.isclose's additive rtol+atol formula accepts this
+    # 1.05e-9 stale delta at |computed|=0.1; math.isclose (the publish
+    # contract's predicate) rejects it. Both gates must reject.
+    narrowly_stale = row(
+        "other.table_1_4.all.round2_stale_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.10000000105000001,
+    )
+    # allow_incumbent_improvement=True requirement pushed just past the 0.25
+    # improvement hard stop: improving on the incumbent must not save it.
+    beyond_hard_stop_final = 125.0000001
+    beyond_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=beyond_hard_stop_final,
+        relative_error=(beyond_hard_stop_final - 100.0) / 100.0,
+    )
+    beyond_hard_stop_incumbent = {
+        beyond_hard_stop.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
     cases = (
         ("exact name", exact, (), None),
         ("family and role alias", semantic_alias, (alias_spec,), None),
@@ -2070,7 +2094,14 @@ def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
         ("non-finite target", nonfinite_target, (), None),
         ("non-finite final estimate", nonfinite_final, (), None),
         ("non-finite recorded error", nonfinite_recorded, (), None),
-        ("incumbent escape at hard cap", incumbent_escape, (), incumbent),
+        ("incumbent improvement disallowed by law", incumbent_escape, (), incumbent),
+        ("narrowly stale recorded error", narrowly_stale, (), None),
+        (
+            "improvement past the 0.25 hard stop",
+            beyond_hard_stop,
+            (),
+            beyond_hard_stop_incumbent,
+        ),
     )
 
     baseline_builder, baseline_publisher = _critical_contract_failures(
@@ -2088,6 +2119,42 @@ def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
         )
         assert any(adversarial.name in failure for failure in publisher_failures), label
         assert any(adversarial.name in failure for failure in builder_failures), label
+
+    # Pass-side boundaries, asserted on BOTH consumers so drift in either
+    # direction trips the battery:
+    # a 0.9e-9 stale delta is inside math.isclose tolerance;
+    within_tolerance = row(
+        "other.table_1_4.all.round2_within_tolerance_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.1000000009,
+    )
+    # an allow-enabled row exactly AT the 0.25 hard stop, improving on a 2.0
+    # incumbent, legitimately passes via incumbent improvement on both sides.
+    at_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    at_hard_stop_incumbent = {
+        at_hard_stop.name: {"target": 100.0, "final_estimate": 300.0}
+    }
+    for label, passing, incumbent_rows in (
+        ("narrowly stale within shared tolerance", within_tolerance, None),
+        (
+            "improvement exactly at the 0.25 hard stop",
+            at_hard_stop,
+            at_hard_stop_incumbent,
+        ),
+    ):
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, passing),
+            incumbent=incumbent_rows,
+        )
+        assert not any(passing.name in failure for failure in publisher_failures), label
+        assert not any(passing.name in failure for failure in builder_failures), label
 
 
 def test_builder_critical_gate_matches_publish_role_aliases() -> None:
