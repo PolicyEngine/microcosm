@@ -102,7 +102,12 @@ def main():
     log(f"checkpoint HIT: frame n(household)={frame.n('household')} "
         f"n_targets={len(registry)}")
 
-    tlw = release._fiscal_target_loss_weights(registry)
+    # Preserve the historical objective for a faithful replay. The current
+    # release builder adds the populace#462 critical-row overlay.
+    tlw = release._fiscal_target_loss_weights(
+        registry,
+        critical_target_loss_multiplier=1.0,
+    )
     if args.verify_only:
         log("verify-only: frame + registry loaded from checkpoint OK. "
             "Ready for the solve; stopping.")

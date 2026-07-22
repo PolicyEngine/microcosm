@@ -51,9 +51,15 @@ and failure-safe calibration diagnostics. No target values have changed.
 - An independent final review caught that the US builder's new shared-register
   import was not declared by `populace-build[us]`. Added the cycle-free
   `populace-data` workspace dependency and validated the updated lockfile.
+- Independent loss/provenance reviews caught two downstream effects of the
+  new default: score-only tools used 5x without recording it, and historical
+  Build H/J replay scripts inherited it. Made current score options, build
+  records, and summaries explicit, and pinned both historical replays to 1.0.
+- Reran the complete builder test file plus the state-file scorer tests after
+  those corrections: 135 passed. Ruff check and the diff whitespace check
+  passed on every newly touched Python file.
 
 ## Next
 
-- Complete the remaining independent reviews and final diff audit.
-- Write `FINAL_REPORT.md`, rerun the affected checks, and perform the final
-  clean-worktree audit.
+- Write `FINAL_REPORT.md`, run the final required suites and Ruff/lock/diff
+  checks, and perform the clean-worktree audit.

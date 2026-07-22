@@ -908,7 +908,8 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Multiply every publish-contract-critical target row's loss weight "
             "after concept-budget, amount/count, and family normalization. "
-            "The default is 5.0; adjudication runs may override it. The "
+            f"The default is {US_CRITICAL_TARGET_LOSS_MULTIPLIER:g}; "
+            "adjudication runs may override it. The "
             "effective value is recorded in staging telemetry and calibration "
             "diagnostics."
         ),

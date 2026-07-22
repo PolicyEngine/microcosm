@@ -399,11 +399,19 @@ def score_state_files(
     result = score_targets(
         target_frame,
         registry.to_target_set(),
-        target_loss_weights=release._fiscal_target_loss_weights(registry),
+        target_loss_weights=release._fiscal_target_loss_weights(
+            registry,
+            critical_target_loss_multiplier=(
+                release.US_CRITICAL_TARGET_LOSS_MULTIPLIER
+            ),
+        ),
         target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
         options={
             "mass": "existing_weights",
             "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "critical_target_loss_multiplier": (
+                release.US_CRITICAL_TARGET_LOSS_MULTIPLIER
+            ),
             "maximum_microsim_batch_size": maximum_microsim_batch_size,
         },
     )
@@ -466,6 +474,7 @@ def _summary_payload(
         "ledger_facts_sha256": release._sha256(ledger_facts),
         "final_loss": result.final_loss,
         "initial_loss": result.initial_loss,
+        "critical_target_loss_multiplier": (release.US_CRITICAL_TARGET_LOSS_MULTIPLIER),
         "fraction_within_10pct": result.fraction_within_10pct,
         "n_records": int(result.weights.shape[0]),
         "n_nonzero": int(result.n_nonzero),
@@ -518,6 +527,9 @@ def main() -> None:
             ],
             "target_compilation": compilation,
             "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "critical_target_loss_multiplier": (
+                release.US_CRITICAL_TARGET_LOSS_MULTIPLIER
+            ),
             "target_loss_cap": release.US_FISCAL_TARGET_LOSS_CAP,
             "gates": gates,
         },
