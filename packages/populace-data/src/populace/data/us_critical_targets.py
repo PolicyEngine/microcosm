@@ -76,10 +76,8 @@ def is_congressional_district_target(
         == "irs_soi.congressional_district"
         or ".congressional_district_"
         in str(metadata.get("ledger_source_record_id") or "")
-        or str(metadata.get("ledger_geography_level") or "")
-        == "congressional_district"
-        or str(metadata.get("geography_scope") or "")
-        == "congressional_district"
+        or str(metadata.get("ledger_geography_level") or "") == "congressional_district"
+        or str(metadata.get("geography_scope") or "") == "congressional_district"
         or bool(metadata.get("congressional_district_geoid"))
         or ".congressional_district_" in str(name or "")
     )
