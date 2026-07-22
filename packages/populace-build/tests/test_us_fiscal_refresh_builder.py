@@ -606,6 +606,81 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
     )
 
 
+def _critical_surface(builder, *rows) -> tuple[SimpleNamespace, ...]:
+    replacement_names = {row.name for row in rows}
+    return tuple(
+        diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+        if diagnostic.name not in replacement_names
+    ) + tuple(rows)
+
+
+def _critical_contract_failures(
+    builder,
+    diagnostics,
+    *,
+    specs: tuple[TargetSpec, ...] = (),
+    incumbent: dict[str, dict[str, float]] | None = None,
+) -> tuple[list[str], list[str]]:
+    from populace.data.contract import _check_us_critical_target_fit
+
+    incumbent = incumbent or {}
+    registry = TargetRegistry(specs, country="us")
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        problem=SimpleNamespace(
+            names=tuple(specs_by_name),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    builder_failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+        incumbent_diagnostics=incumbent,
+    )
+    publisher_rows = []
+    for diagnostic in diagnostics:
+        spec = specs_by_name.get(diagnostic.name)
+        publisher_rows.append(
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(spec.metadata) if spec is not None else {},
+                "registry": {
+                    "family": spec.family if spec is not None else "",
+                },
+            }
+        )
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(
+        {
+            "targets": publisher_rows,
+            "build": {
+                "incumbent_diagnostics": {
+                    "critical_targets": incumbent,
+                }
+            },
+        },
+        publisher_failures,
+    )
+    return builder_failures, publisher_failures
+
+
+def _assert_table_requirement_matches_shared(builder_requirement, shared) -> None:
+    assert builder_requirement.max_abs_relative_error == (shared.max_abs_relative_error)
+    assert builder_requirement.accepted_names == shared.names
+    assert builder_requirement.accepted_name_prefixes == ()
+    assert builder_requirement.accepted_name_substrings == shared.name_substrings
+    assert builder_requirement.accepted_name_suffixes == shared.name_suffixes
+
+
 def test_soi_component_amounts_use_source_specific_signs() -> None:
     builder = _load_builder_module()
 
@@ -1580,7 +1655,7 @@ def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
     ]
 
 
-def test_shared_cd_classifier_matches_real_registry_compile() -> None:
+def test_builder_contains_publisher_cd_exclusions_from_real_registry() -> None:
     from collections import UserDict
     from dataclasses import replace
 
@@ -1639,9 +1714,7 @@ def test_shared_cd_classifier_matches_real_registry_compile() -> None:
             "vintage": "tax_year_2023",
         },
         "dimensions": {},
-        "universe_constraints": {
-            "domain": "all_individual_income_tax_returns"
-        },
+        "universe_constraints": {"domain": "all_individual_income_tax_returns"},
         "layout": {
             "record_set_id": "irs_soi.ty2023.table_1_4.cd_fixture",
             "groupby_dimension": "irs_soi.congressional_district",
@@ -1682,12 +1755,8 @@ def test_shared_cd_classifier_matches_real_registry_compile() -> None:
         "geoid": ("congressional_district_geoid", "0101"),
         "name": (None, None),
     }
-    metadata_evidence_keys = {
-        key for key, _ in evidence.values() if key is not None
-    }
-    assert {
-        key: compiled_spec.metadata[key] for key in metadata_evidence_keys
-    } == {
+    metadata_evidence_keys = {key for key, _ in evidence.values() if key is not None}
+    assert {key: compiled_spec.metadata[key] for key in metadata_evidence_keys} == {
         "ledger_layout_groupby_dimension": "irs_soi.congressional_district",
         "ledger_source_record_id": source_record_id,
         "ledger_geography_level": "congressional_district",
@@ -1765,19 +1834,20 @@ def test_shared_cd_classifier_matches_real_registry_compile() -> None:
         initial_loss=10.0,
         final_loss=5.0,
     )
-    assert builder._release_gate_failures(
-        result,
-        {"dropped_target_names": []},
-        target_registry=registry,
-    ) == []
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            target_registry=registry,
+        )
+        == []
+    )
 
     diagnostics_by_name = {
         diagnostic.name: diagnostic
         for diagnostic in (*_passing_critical_diagnostics(builder), *diagnostics)
     }
-    specs_by_name = {
-        builder._target_row_name(spec): spec for spec in registry.specs
-    }
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
     publisher_diagnostics = {
         "targets": [
             {
@@ -1876,16 +1946,7 @@ def test_builder_critical_register_covers_publish_contract() -> None:
     assert set(builder_by_id) >= set(publish_by_id) - {table_builder.requirement_id}
     for requirement_id, publish in publish_by_id.items():
         if requirement_id == table_builder.requirement_id:
-            assert table_builder.max_abs_relative_error <= (
-                publish.max_abs_relative_error
-            )
-            assert set(table_builder.accepted_names) >= set(publish.names)
-            assert set(table_builder.accepted_name_substrings) >= set(
-                publish.name_substrings
-            )
-            assert set(table_builder.accepted_name_suffixes) >= set(
-                publish.name_suffixes
-            )
+            _assert_table_requirement_matches_shared(table_builder, publish)
             continue
         built = builder_by_id[requirement_id]
         assert built.max_abs_relative_error <= publish.max_abs_relative_error
@@ -1896,6 +1957,137 @@ def test_builder_critical_register_covers_publish_contract() -> None:
         assert set(built.name_suffixes) >= set(publish.name_suffixes)
         if not publish.allow_incumbent_improvement:
             assert not built.allow_incumbent_improvement
+
+
+def test_builder_anti_drift_guard_rejects_any_prefix_narrowing() -> None:
+    from dataclasses import replace
+
+    from populace.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+    shared = next(
+        requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+        if requirement.requirement_id == table_builder.requirement_id
+    )
+    narrowed = replace(
+        table_builder,
+        accepted_name_prefixes=("any-prefix-narrows-a-conjunctive-selector.",),
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_table_requirement_matches_shared(narrowed, shared)
+
+
+def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
+    builder = _load_builder_module()
+
+    def row(
+        name: str,
+        *,
+        target: float,
+        final_estimate: float,
+        relative_error: float | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=relative_error,
+        )
+
+    exact = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    alias_spec = TargetSpec(
+        name="adversarial_income_tax_alias",
+        entity="household",
+        measure="income_tax",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "federal_income_tax_total"},
+    )
+    semantic_alias = row(
+        builder._target_row_name(alias_spec),
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    table_pattern = row(
+        "other.table_1_4.all.bad_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    missing_error = row(
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    nonfinite_target = row(
+        "other.table_1_4.all.nonfinite_target_amount@2024",
+        target=float("nan"),
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    nonfinite_final = row(
+        "other.table_1_4.all.nonfinite_final_amount@2024",
+        target=100.0,
+        final_estimate=float("inf"),
+        relative_error=float("inf"),
+    )
+    nonfinite_recorded = row(
+        "other.table_1_4.all.nonfinite_recorded_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    incumbent_escape = row(
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    incumbent = {
+        incumbent_escape.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
+    cases = (
+        ("exact name", exact, (), None),
+        ("family and role alias", semantic_alias, (alias_spec,), None),
+        ("Table 1.4 substring and suffix", table_pattern, (), None),
+        ("missing recorded relative error", missing_error, (), None),
+        ("non-finite target", nonfinite_target, (), None),
+        ("non-finite final estimate", nonfinite_final, (), None),
+        ("non-finite recorded error", nonfinite_recorded, (), None),
+        ("incumbent escape at hard cap", incumbent_escape, (), incumbent),
+    )
+
+    baseline_builder, baseline_publisher = _critical_contract_failures(
+        builder,
+        _passing_critical_diagnostics(builder),
+    )
+    assert baseline_publisher == baseline_builder == []
+
+    for label, adversarial, specs, incumbent_rows in cases:
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, adversarial),
+            specs=specs,
+            incumbent=incumbent_rows,
+        )
+        assert any(adversarial.name in failure for failure in publisher_failures), label
+        assert any(adversarial.name in failure for failure in builder_failures), label
 
 
 def test_builder_critical_gate_matches_publish_role_aliases() -> None:
@@ -7536,10 +7728,7 @@ def test_release_gate_failures_block_table_1_4_row_outside_irs_prefix() -> None:
 def test_release_gate_failures_require_recorded_table_1_4_relative_error() -> None:
     builder = _load_builder_module()
     adversarial = SimpleNamespace(
-        name=(
-            "irs_soi.ty2023.table_1_4.all."
-            f"adversarial_amount@{builder.PERIOD}"
-        ),
+        name=(f"irs_soi.ty2023.table_1_4.all.adversarial_amount@{builder.PERIOD}"),
         target=100.0,
         initial_estimate=100.0,
         final_estimate=100.0,

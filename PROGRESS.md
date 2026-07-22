@@ -42,10 +42,17 @@ round-1 findings are closed with behavioral containment tests.
   publish-contract failure instead of silently relying on recomputation.
 - Added the supplied adversarial Table 1.4 regression and updated the generic
   gate contract test; the full gate test file and focused builder tests pass.
+- Replaced field-only anti-drift assurance with behavioral containment across
+  exact-name, family+role, Table substring/suffix, missing/non-finite row
+  shapes, and a disallowed incumbent escape at the 0.25 hard stop.
+- Kept fast field checks but made Table selectors exact and proved that adding
+  any conjunctive name prefix trips the anti-drift guard.
+- The six individual CD evidence rows now serve as the exclusion half of the
+  behavioral battery: publisher and builder exclude identical names/counts,
+  and both full critical gates ignore their deliberately failing fits.
+- Reran the complete fiscal-refresh builder test file successfully.
 
 ## Next
 
-- Add the finding-4 behavioral containment battery and rerun the three
-  round-1 reproductions.
 - Run the full requested suites and static checks, then update this file and
   `FINAL_REPORT.md` with final receipts.
