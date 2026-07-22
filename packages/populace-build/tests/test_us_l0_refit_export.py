@@ -58,6 +58,10 @@ def _us_frame(**person_extra: object) -> Frame:
             "would_claim_wic": [True, False, True],
             "educator_expense": [0.0, 300.0, 150.0],
             "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
+            "health_insurance_premiums": [1_200.0, 0.0, 800.0],
+            "is_self_employed": [True, False, True],
+            "is_incapable_of_self_care": [False, True, False],
+            "pre_subsidy_care_expenses": [0.0, 0.0, 900.0],
             # Keep both signs without making the fixture's signed weighted
             # total nearly cancel; the mass-parity tests reweight household 20.
             "farm_operations_income": [4_000.0, 2_500.0, -600.0],
