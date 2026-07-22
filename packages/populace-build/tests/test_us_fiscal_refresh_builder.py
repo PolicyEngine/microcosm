@@ -3413,8 +3413,50 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
-        "fetch_sipp_2023_vehicle_donor",
-        lambda *args, **kwargs: Path("pu2023.csv"),
+        "resolve_sipp_2023_child_disability_donor",
+        lambda path=None: Path("pu2023.csv"),
+    )
+
+    def fake_load_child_disability_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["child_disability_donor_path"] = path
+        captured["child_disability_donor_sha256"] = expected_sha256
+        captured["child_disability_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_child_disability_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["child_disability_stage_called"] = True
+        captured["child_disability_seed"] = seed
+        captured["child_disability_period"] = time_period
+        return frame
+
+    def fake_child_disability_signal_gate(frame, *, input_frame=None):
+        captured["child_disability_gate_called"] = True
+        captured["child_disability_input_frame"] = input_frame
+        return builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_child_disability_donor",
+        fake_load_child_disability_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_child_disability_inputs",
+        fake_with_child_disability_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_child_disability_signal_gate",
+        fake_child_disability_signal_gate,
     )
 
     def fake_load_sipp_vehicle_donor(
@@ -3988,6 +4030,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["child_disability_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["child_disability_donor_sha256"]
+        == builder.SIPP_2023_CHILD_DISABILITY_DONOR_SHA256
+    )
+    assert (
+        captured["child_disability_donor_size_bytes"]
+        == builder.SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES
+    )
+    assert captured["child_disability_stage_called"] is True
+    assert captured["child_disability_seed"] == 0
+    assert captured["child_disability_period"] == builder.PERIOD
+    assert captured["child_disability_gate_called"] is True
+    assert captured["child_disability_input_frame"] is not None
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256

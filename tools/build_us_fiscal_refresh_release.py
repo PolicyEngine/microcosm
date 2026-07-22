@@ -70,6 +70,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
+    SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
     SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -99,21 +101,23 @@ from populace.build.us_runtime import (
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
     fetch_sipp_2023_tip_donor,
-    fetch_sipp_2023_vehicle_donor,
     hard_target_package_aliases,
     load_asec_2023_weeks_unemployed_source,
     load_congressional_district_vintage_crosswalk,
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_child_disability_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
     load_sipp_2023_voluntary_filing_donor,
+    resolve_sipp_2023_child_disability_donor,
     us_alimony_signal_gate,
     us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
+    us_child_disability_signal_gate,
     us_child_support_signal_gate,
     us_childcare_signal_gate,
     us_disability_benefits_signal_gate,
@@ -166,6 +170,7 @@ from populace.build.us_runtime import (
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
+    with_us_child_disability_inputs,
     with_us_childcare_inputs,
     with_us_education_inputs,
     with_us_eligibility_inputs,
@@ -1040,8 +1045,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds SSI disability criteria, household vehicle "
-            "count/value, and measured voluntary tax filing. When omitted the "
+            "file that feeds child disability, SSI disability criteria, "
+            "household vehicle count/value, and measured voluntary tax filing. "
+            "When omitted the issue-453 local path is checked before the "
             "immutable donor revision is fetched and verified."
         ),
     )
@@ -7681,6 +7687,53 @@ def main() -> None:
         )
     if telemetry is not None:
         telemetry.stage(
+            "child_disability_inputs",
+            message=(
+                "Imputing SIPP-observed qualifying disability for ages 5--14 "
+                "and the explicit SSA-anchored rate for ages 0--4."
+            ),
+        )
+    # The child stage is deliberately adjacent to eligibility_inputs: it only
+    # augments that stage's ASEC is_disabled output below age 15. Resolve the
+    # shared immutable SIPP file here (explicit CLI path, requested local path,
+    # then verified remote cache) and reuse it for the later SIPP families.
+    sipp_vehicle_donor_path = resolve_sipp_2023_child_disability_donor(
+        args.sipp_vehicle_donor
+    )
+    child_disability_donor = load_sipp_2023_child_disability_donor(
+        sipp_vehicle_donor_path,
+        expected_sha256=SIPP_2023_CHILD_DISABILITY_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES,
+    )
+    child_disability_input_frame = base_frame
+    base_frame = with_us_child_disability_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        sipp_donor=child_disability_donor,
+    )
+    child_disability_gate = us_child_disability_signal_gate(
+        base_frame,
+        input_frame=child_disability_input_frame,
+    )
+    if not child_disability_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "child_disability_inputs_gate",
+                status="failed",
+                message="Child-disability signal gate failed.",
+                failures=list(child_disability_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Child-disability signal failed: {failure}"
+                for failure in child_disability_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
             "education_inputs",
             message=(
                 "Carrying ASEC educational assistance and deriving AOTC "
@@ -7836,14 +7889,8 @@ def main() -> None:
                 for failure in scf_wealth_gate.failures
             )
         )
-    # The SSI criterion, Head Start, vehicle, and filing families share one
-    # immutable full SIPP artifact. Resolve it once here because the criterion's
-    # receiver also needs the SCF asset leaves materialized immediately above.
-    sipp_vehicle_donor_path = (
-        Path(args.sipp_vehicle_donor)
-        if args.sipp_vehicle_donor is not None
-        else fetch_sipp_2023_vehicle_donor()
-    )
+    # Reuse the immutable full SIPP path resolved by child_disability above;
+    # this criterion still waits until SCF asset leaves are materialized.
     if telemetry is not None:
         telemetry.stage(
             "ssi_disability_criteria",
