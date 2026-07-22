@@ -141,6 +141,14 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "self_employed_pension_contributions_desired",
         "schedule_d_capital_gain_distributions",
         *US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
+        # PolicyEngine/populace#451 items 1-2: the CDCC adult-care leg
+        # (base-builder adult_care_inputs stage) and the section 162(l)
+        # self-employed premium attribution (other_health_insurance_premiums
+        # release stage). Structural zeros before these stages exist.
+        "pre_subsidy_care_expenses",
+        "is_incapable_of_self_care",
+        "health_insurance_premiums",
+        "is_self_employed",
     }
 )
 

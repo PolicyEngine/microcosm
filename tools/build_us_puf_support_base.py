@@ -67,6 +67,7 @@ from populace.build.us_runtime import (
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
+    us_adult_care_signal_gate,
     us_alimony_signal_gate,
     us_capital_gain_details_signal_gate,
     us_casualty_loss_signal_gate,
@@ -100,6 +101,7 @@ from populace.build.us_runtime import (
     us_workers_compensation_signal_gate,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
+    with_us_adult_care_inputs,
     with_us_child_support_inputs,
     with_us_childcare_inputs,
     with_us_disability_benefits,
@@ -151,6 +153,7 @@ PIPELINE_STEPS = (
     "workers_compensation_post_clone",
     "weeks_unemployed_post_clone",
     "childcare_post_clone",
+    "adult_care_post_clone",
     "energy_subsidy_post_clone",
     "retirement_contributions_post_clone",
     "retirement_distributions_post_clone",
@@ -215,6 +218,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("workers_compensation_post_clone", ("with_us_workers_compensation",)),
     ("weeks_unemployed_post_clone", ("with_us_weeks_unemployed",)),
     ("childcare_post_clone", ("with_us_childcare_inputs",)),
+    ("adult_care_post_clone", ("with_us_adult_care_inputs",)),
     ("energy_subsidy_post_clone", ("with_us_energy_subsidy_input",)),
     (
         "retirement_contributions_post_clone",
@@ -1175,6 +1179,18 @@ def _run_all(
             + "\n  ".join(childcare_gate.failures)
         )
     _observe_frame_boundary(boundary_observer, "childcare_post_clone", imputed)
+    imputed = with_us_adult_care_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    adult_care_gate = us_adult_care_signal_gate(imputed)
+    if not adult_care_gate.passed:
+        raise SystemExit(
+            "Adult-care input signal gate failed:\n  "
+            + "\n  ".join(adult_care_gate.failures)
+        )
+    _observe_frame_boundary(boundary_observer, "adult_care_post_clone", imputed)
     imputed = with_us_energy_subsidy_input(
         imputed,
         seed=args.seed,
@@ -1461,6 +1477,11 @@ def _run_all(
             "passed": childcare_gate.passed,
             "failures": list(childcare_gate.failures),
             "details": dict(childcare_gate.details),
+        },
+        "adult_care_inputs_signal": {
+            "passed": adult_care_gate.passed,
+            "failures": list(adult_care_gate.failures),
+            "details": dict(adult_care_gate.details),
         },
         "energy_subsidy_signal": {
             "passed": energy_subsidy_gate.passed,
@@ -2128,6 +2149,15 @@ def _post_qrf_frame_stage(
         signals["childcare_inputs_signal"] = _checked_gate_payload(
             us_childcare_signal_gate(frame), "Childcare-input signal gate failed"
         )
+    elif stage == "adult_care_post_clone":
+        frame = with_us_adult_care_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+        )
+        signals["adult_care_inputs_signal"] = _checked_gate_payload(
+            us_adult_care_signal_gate(frame), "Adult-care input signal gate failed"
+        )
     elif stage == "energy_subsidy_post_clone":
         frame = with_us_energy_subsidy_input(
             frame,
@@ -2327,6 +2357,7 @@ def _export_staged_result(
         "salt_refund_income_signal",
         "capital_gain_details_signal",
         "childcare_inputs_signal",
+        "adult_care_inputs_signal",
         "energy_subsidy_signal",
         "alimony_inputs_signal",
         "casualty_loss_signal",
