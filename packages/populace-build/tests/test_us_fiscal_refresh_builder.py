@@ -569,6 +569,33 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             24_475_100.0,
             26_000_000.0,
         ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "total_itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+            80_000_000_000.0,
+            79_000_000_000.0,
+        ),
         # The SOI Table 1.4 national dollar blanket (populace#462) needs at
         # least one Table 1.4 amount row on the surface, within tolerance.
         diagnostic(
@@ -577,6 +604,81 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             10_774_383_029_502.0,
         ),
     )
+
+
+def _critical_surface(builder, *rows) -> tuple[SimpleNamespace, ...]:
+    replacement_names = {row.name for row in rows}
+    return tuple(
+        diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+        if diagnostic.name not in replacement_names
+    ) + tuple(rows)
+
+
+def _critical_contract_failures(
+    builder,
+    diagnostics,
+    *,
+    specs: tuple[TargetSpec, ...] = (),
+    incumbent: dict[str, dict[str, float]] | None = None,
+) -> tuple[list[str], list[str]]:
+    from populace.data.contract import _check_us_critical_target_fit
+
+    incumbent = incumbent or {}
+    registry = TargetRegistry(specs, country="us")
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        problem=SimpleNamespace(
+            names=tuple(specs_by_name),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    builder_failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+        incumbent_diagnostics=incumbent,
+    )
+    publisher_rows = []
+    for diagnostic in diagnostics:
+        spec = specs_by_name.get(diagnostic.name)
+        publisher_rows.append(
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(spec.metadata) if spec is not None else {},
+                "registry": {
+                    "family": spec.family if spec is not None else "",
+                },
+            }
+        )
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(
+        {
+            "targets": publisher_rows,
+            "build": {
+                "incumbent_diagnostics": {
+                    "critical_targets": incumbent,
+                }
+            },
+        },
+        publisher_failures,
+    )
+    return builder_failures, publisher_failures
+
+
+def _assert_table_requirement_matches_shared(builder_requirement, shared) -> None:
+    assert builder_requirement.max_abs_relative_error == (shared.max_abs_relative_error)
+    assert builder_requirement.accepted_names == shared.names
+    assert builder_requirement.accepted_name_prefixes == ()
+    assert builder_requirement.accepted_name_substrings == shared.name_substrings
+    assert builder_requirement.accepted_name_suffixes == shared.name_suffixes
 
 
 def test_soi_component_amounts_use_source_specific_signs() -> None:
@@ -1553,6 +1655,225 @@ def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
     ]
 
 
+def test_builder_contains_publisher_cd_exclusions_from_real_registry() -> None:
+    from collections import UserDict
+    from dataclasses import replace
+
+    from populace.build.ledger_targets import (
+        LedgerTargetReference,
+        compile_ledger_target_references,
+    )
+    from populace.data.contract import (
+        _check_us_critical_target_fit,
+        _is_congressional_district_layout_target,
+    )
+    from populace.data.us_critical_targets import is_congressional_district_target
+
+    builder = _load_builder_module()
+    source_record_id = (
+        "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+        "medical_expense_amount"
+    )
+    fact = {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:cd-fixture",
+        "legacy_fact_key": "ledger.fact.v1:cd-fixture",
+        "lineage": {
+            "source_record_id": source_record_id,
+            "source_cell_keys": ["ledger.source_cell.v1:cd-fixture"],
+            "source_row_keys": [],
+        },
+        "value": 100.0,
+        "period": {"type": "tax_year", "value": 2023},
+        "geography": {
+            "level": "congressional_district",
+            "id": "5001700US0101",
+            "name": "Alabama District 1",
+            "vintage": "2022",
+        },
+        "entity": {"name": "tax_unit", "role": "filing_unit"},
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_measure_id": "medical_expense_amount",
+            "source_concept": "irs_soi.medical_expense_amount",
+            "unit": "usd",
+        },
+        "concept_alignment": {
+            "source_concept": "irs_soi.medical_expense_amount",
+            "canonical_concept": "irs_soi.medical_expense_amount",
+            "relation": "exact",
+            "authority": "policyengine-ledger",
+            "legal_vintage": "tax_year_2023",
+        },
+        "aggregation": {"method": "sum"},
+        "source": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_file": "fixture.xlsx",
+            "url": "https://www.irs.gov/",
+            "vintage": "tax_year_2023",
+        },
+        "dimensions": {},
+        "universe_constraints": {"domain": "all_individual_income_tax_returns"},
+        "layout": {
+            "record_set_id": "irs_soi.ty2023.table_1_4.cd_fixture",
+            "groupby_dimension": "irs_soi.congressional_district",
+            "groupby_value_id": "al_01",
+            "measure_id": "medical_expense_amount",
+        },
+    }
+    reference = LedgerTargetReference(
+        name=(
+            "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+            "medical_expense_amount"
+        ),
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure="medical_expense",
+        period=builder.PERIOD,
+        family="irs_soi",
+        metadata={
+            "target_role": "medical_expense_deduction_total",
+            "geography_scope": "congressional_district",
+            "congressional_district_geoid": "0101",
+        },
+    )
+    compiled = compile_ledger_target_references([fact], [reference], country="us")
+    (compiled_spec,) = compiled.specs
+
+    evidence = {
+        "layout": (
+            "ledger_layout_groupby_dimension",
+            "irs_soi.congressional_district",
+        ),
+        "source": (
+            "ledger_source_record_id",
+            "fixture.congressional_district_01",
+        ),
+        "level": ("ledger_geography_level", "congressional_district"),
+        "scope": ("geography_scope", "congressional_district"),
+        "geoid": ("congressional_district_geoid", "0101"),
+        "name": (None, None),
+    }
+    metadata_evidence_keys = {key for key, _ in evidence.values() if key is not None}
+    assert {key: compiled_spec.metadata[key] for key in metadata_evidence_keys} == {
+        "ledger_layout_groupby_dimension": "irs_soi.congressional_district",
+        "ledger_source_record_id": source_record_id,
+        "ledger_geography_level": "congressional_district",
+        "geography_scope": "congressional_district",
+        "congressional_district_geoid": "0101",
+    }
+
+    cd_specs = []
+    for label, (metadata_key, metadata_value) in evidence.items():
+        metadata = {
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        }
+        if metadata_key is not None:
+            metadata[metadata_key] = metadata_value
+        name = f"other.table_1_4.all.cd_{label}_amount"
+        if label == "name":
+            name = "other.table_1_4.congressional_district_name.bad_amount"
+        cd_specs.append(replace(compiled_spec, name=name, metadata=metadata))
+
+    control = replace(
+        compiled_spec,
+        name="other.table_1_4.all.non_cd_control_amount",
+        metadata={
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        },
+    )
+    registry = TargetRegistry((*cd_specs, control), country="us")
+    publisher_rows = [
+        {"name": builder._target_row_name(spec), "metadata": spec.metadata}
+        for spec in registry.specs
+    ]
+    builder_excluded = {
+        builder._target_row_name(spec)
+        for spec in registry.specs
+        if builder._target_is_congressional_district(spec)
+    }
+    publisher_excluded = {
+        str(row["name"])
+        for row in publisher_rows
+        if _is_congressional_district_layout_target(row)
+    }
+    expected_excluded = {builder._target_row_name(spec) for spec in cd_specs}
+
+    assert builder_excluded == publisher_excluded == expected_excluded
+    assert len(builder_excluded) == len(publisher_excluded) == 6
+    assert not builder._target_is_congressional_district(control)
+    assert not _is_congressional_district_layout_target(publisher_rows[-1])
+    assert not is_congressional_district_target(123, None)
+    assert is_congressional_district_target(
+        "ordinary",
+        UserDict({"geography_scope": "congressional_district"}),
+    )
+
+    diagnostics = tuple(
+        SimpleNamespace(
+            name=builder._target_row_name(spec),
+            target=100.0,
+            initial_estimate=100.0,
+            final_estimate=100.0 if spec is control else 200.0,
+            relative_error=0.0 if spec is control else 1.0,
+        )
+        for spec in registry.specs
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + diagnostics,
+        problem=SimpleNamespace(
+            names=tuple(builder._target_row_name(spec) for spec in registry.specs),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            target_registry=registry,
+        )
+        == []
+    )
+
+    diagnostics_by_name = {
+        diagnostic.name: diagnostic
+        for diagnostic in (*_passing_critical_diagnostics(builder), *diagnostics)
+    }
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
+    publisher_diagnostics = {
+        "targets": [
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(
+                    getattr(specs_by_name.get(diagnostic.name), "metadata", {})
+                ),
+                "registry": {
+                    "family": getattr(
+                        specs_by_name.get(diagnostic.name),
+                        "family",
+                        "",
+                    )
+                },
+            }
+            for diagnostic in diagnostics_by_name.values()
+        ]
+    }
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(publisher_diagnostics, publisher_failures)
+    assert publisher_failures == []
+
+
 def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
     builder = _load_builder_module()
     result = SimpleNamespace(
@@ -1606,6 +1927,321 @@ def test_release_gate_failures_reject_missing_critical_targets() -> None:
         "(federal income tax liability amount) is missing from calibration "
         "diagnostics."
     ]
+
+
+def test_builder_critical_register_covers_publish_contract() -> None:
+    from populace.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    publish_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    builder_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in builder.US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+
+    assert set(builder_by_id) >= set(publish_by_id) - {table_builder.requirement_id}
+    for requirement_id, publish in publish_by_id.items():
+        if requirement_id == table_builder.requirement_id:
+            _assert_table_requirement_matches_shared(table_builder, publish)
+            continue
+        built = builder_by_id[requirement_id]
+        assert built.max_abs_relative_error <= publish.max_abs_relative_error
+        assert set(built.names) >= set(publish.names)
+        assert set(built.families) >= set(publish.families)
+        assert set(built.target_roles) >= set(publish.target_roles)
+        assert set(built.name_substrings) >= set(publish.name_substrings)
+        assert set(built.name_suffixes) >= set(publish.name_suffixes)
+        if not publish.allow_incumbent_improvement:
+            assert not built.allow_incumbent_improvement
+
+
+def test_builder_anti_drift_guard_rejects_any_prefix_narrowing() -> None:
+    from dataclasses import replace
+
+    from populace.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+    shared = next(
+        requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+        if requirement.requirement_id == table_builder.requirement_id
+    )
+    narrowed = replace(
+        table_builder,
+        accepted_name_prefixes=("any-prefix-narrows-a-conjunctive-selector.",),
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_table_requirement_matches_shared(narrowed, shared)
+
+
+def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
+    builder = _load_builder_module()
+
+    def row(
+        name: str,
+        *,
+        target: float,
+        final_estimate: float,
+        relative_error: float | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=relative_error,
+        )
+
+    exact = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    alias_spec = TargetSpec(
+        name="adversarial_income_tax_alias",
+        entity="household",
+        measure="income_tax",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "federal_income_tax_total"},
+    )
+    semantic_alias = row(
+        builder._target_row_name(alias_spec),
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    table_pattern = row(
+        "other.table_1_4.all.bad_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    missing_error = row(
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    nonfinite_target = row(
+        "other.table_1_4.all.nonfinite_target_amount@2024",
+        target=float("nan"),
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    nonfinite_final = row(
+        "other.table_1_4.all.nonfinite_final_amount@2024",
+        target=100.0,
+        final_estimate=float("inf"),
+        relative_error=float("inf"),
+    )
+    nonfinite_recorded = row(
+        "other.table_1_4.all.nonfinite_recorded_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    incumbent_escape = row(
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    incumbent = {
+        incumbent_escape.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
+    # Round-2 boundary: np.isclose's additive rtol+atol formula accepts this
+    # 1.05e-9 stale delta at |computed|=0.1; math.isclose (the publish
+    # contract's predicate) rejects it. Both gates must reject.
+    narrowly_stale = row(
+        "other.table_1_4.all.round2_stale_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.10000000105000001,
+    )
+    # allow_incumbent_improvement=True requirement pushed just past the 0.25
+    # improvement hard stop: improving on the incumbent must not save it.
+    beyond_hard_stop_final = 125.0000001
+    beyond_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=beyond_hard_stop_final,
+        relative_error=(beyond_hard_stop_final - 100.0) / 100.0,
+    )
+    beyond_hard_stop_incumbent = {
+        beyond_hard_stop.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
+    cases = (
+        ("exact name", exact, (), None),
+        ("family and role alias", semantic_alias, (alias_spec,), None),
+        ("Table 1.4 substring and suffix", table_pattern, (), None),
+        ("missing recorded relative error", missing_error, (), None),
+        ("non-finite target", nonfinite_target, (), None),
+        ("non-finite final estimate", nonfinite_final, (), None),
+        ("non-finite recorded error", nonfinite_recorded, (), None),
+        ("incumbent improvement disallowed by law", incumbent_escape, (), incumbent),
+        ("narrowly stale recorded error", narrowly_stale, (), None),
+        (
+            "improvement past the 0.25 hard stop",
+            beyond_hard_stop,
+            (),
+            beyond_hard_stop_incumbent,
+        ),
+    )
+
+    baseline_builder, baseline_publisher = _critical_contract_failures(
+        builder,
+        _passing_critical_diagnostics(builder),
+    )
+    assert baseline_publisher == baseline_builder == []
+
+    for label, adversarial, specs, incumbent_rows in cases:
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, adversarial),
+            specs=specs,
+            incumbent=incumbent_rows,
+        )
+        assert any(adversarial.name in failure for failure in publisher_failures), label
+        assert any(adversarial.name in failure for failure in builder_failures), label
+
+    # Pass-side boundaries, asserted on BOTH consumers so drift in either
+    # direction trips the battery:
+    # a 0.9e-9 stale delta is inside math.isclose tolerance;
+    within_tolerance = row(
+        "other.table_1_4.all.round2_within_tolerance_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.1000000009,
+    )
+    # an allow-enabled row exactly AT the 0.25 hard stop, improving on a 2.0
+    # incumbent, legitimately passes via incumbent improvement on both sides.
+    at_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    at_hard_stop_incumbent = {
+        at_hard_stop.name: {"target": 100.0, "final_estimate": 300.0}
+    }
+    for label, passing, incumbent_rows in (
+        ("narrowly stale within shared tolerance", within_tolerance, None),
+        (
+            "improvement exactly at the 0.25 hard stop",
+            at_hard_stop,
+            at_hard_stop_incumbent,
+        ),
+    ):
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, passing),
+            incumbent=incumbent_rows,
+        )
+        assert not any(passing.name in failure for failure in publisher_failures), label
+        assert not any(passing.name in failure for failure in builder_failures), label
+
+
+def test_builder_critical_gate_matches_publish_role_aliases() -> None:
+    builder = _load_builder_module()
+    alias_spec = TargetSpec(
+        name="irs_soi.ty2023.table_1_2.all_returns.all."
+        "total_itemized_deductions_amount",
+        entity="household",
+        measure="itemized_deductions",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "itemized_deduction_total"},
+    )
+    alias_diagnostic = SimpleNamespace(
+        name=f"{alias_spec.name}@{alias_spec.period}",
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=150.0,
+        relative_error=0.5,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (alias_diagnostic,),
+        problem=SimpleNamespace(
+            names=(alias_diagnostic.name,),
+            targets=(alias_spec.to_target(),),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    registry = TargetRegistry((alias_spec,), country="us")
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+    )
+
+    assert len(failures) == 1
+    assert "total_itemized_deductions_amount@2024" in failures[0]
+    assert "relative_error=0.5" in failures[0]
+    assert "exceeding 0.15" in failures[0]
+
+
+def test_builder_critical_gate_rejects_medical_incumbent_escape() -> None:
+    builder = _load_builder_module()
+    medical_name = (
+        "irs_soi.ty2022.historic_table_2.us.all."
+        f"medical_dental_expense_amount@{builder.PERIOD}"
+    )
+    # Past the row's own absolute cap (medical sits at the adjudicated 0.25
+    # bound, 2026-07-22): even improving on the incumbent never passes it.
+    diagnostics = tuple(
+        SimpleNamespace(
+            **{
+                **vars(diagnostic),
+                "final_estimate": 104_000_000_000.0,
+                "relative_error": 0.3,
+            }
+        )
+        if diagnostic.name == medical_name
+        else diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=diagnostics,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics={
+            medical_name: {
+                "target": 80_000_000_000.0,
+                "final_estimate": 240_000_000_000.0,
+            }
+        },
+    )
+
+    assert len(failures) == 1
+    assert "medical_dental_expense_amount@2024" in failures[0]
+    assert "relative_error=0.3" in failures[0]
 
 
 def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
@@ -5526,6 +6162,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
@@ -5680,6 +6317,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
@@ -5889,6 +6527,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
 
     class FakeRegistry:
         version = "registry-sha"
+        specs = ()
 
         def __len__(self):
             return 1
@@ -7125,6 +7764,58 @@ def test_release_gate_failures_block_table_1_4_dollar_breaches() -> None:
     assert "capital_gain_distributions_amount@2024" in joined
     assert "net_capital_gains_amount@2024" in joined
     assert "6.3475" in joined
+
+
+def test_release_gate_failures_block_table_1_4_row_outside_irs_prefix() -> None:
+    builder = _load_builder_module()
+    adversarial = _table_1_4_diagnostic(
+        builder,
+        "other.table_1_4.all.bad_amount",
+        100.0,
+        200.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 "
+        "for SOI Pub 1304 Table 1.4 national dollar rows "
+        "(soi_table_1_4_national_dollar_rows); target=100.0, "
+        "final_estimate=200.0."
+    ]
+
+
+def test_release_gate_failures_require_recorded_table_1_4_relative_error() -> None:
+    builder = _load_builder_module()
+    adversarial = SimpleNamespace(
+        name=(f"irs_soi.ty2023.table_1_4.all.adversarial_amount@{builder.PERIOD}"),
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: "
+        "missing recorded relative_error; the publish contract requires a "
+        "numeric value."
+    ]
 
 
 def test_release_gate_failures_ignore_table_1_4_returns_rows() -> None:

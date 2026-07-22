@@ -249,6 +249,14 @@ from populace.calibrate.diagnostics import (
     diagnostics_payload,
     write_calibration_diagnostics,
 )
+from populace.data.us_critical_targets import (
+    US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
+    US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
+    is_congressional_district_target,
+)
+from populace.data.us_critical_targets import (
+    US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
+)
 from populace.frame import Frame, MassChange, WeightKind, Weights
 from populace.frame.adapters.policyengine_us import PolicyEngineUSEngine
 from populace.frame.units import US_SCHEMA
@@ -393,107 +401,13 @@ US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS = frozenset(
         "state_fips",
     }
 )
-US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
-US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
 US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
     "ssa_retirement_total": "social_security_retirement",
     "ssa_disability_total": "social_security_disability",
     "ssa_dependents_total": "social_security_dependents",
     "ssa_survivors_total": "social_security_survivors",
 }
-US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
-    {
-        "name": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            f"income_tax_liability_amount@{PERIOD}"
-        ),
-        "label": "federal income tax liability amount",
-        "max_abs_relative_error": 0.05,
-    },
-    {
-        "name": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            f"income_tax_liability_returns@{PERIOD}"
-        ),
-        "label": "income tax liability returns",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "ssa_supplement.cy2024.oasdi_ssi_payments."
-            f"social_security_benefits.payment_amount@{PERIOD}"
-        ),
-        "label": "Social Security benefits",
-        "max_abs_relative_error": 0.05,
-    },
-    {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{PERIOD}"),
-        "label": "Child Tax Credit amount",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.ctc_claims@{PERIOD}"),
-        "label": "Child Tax Credit claims",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_amount@{PERIOD}"),
-        "label": "Additional Child Tax Credit amount",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (f"irs_soi.ty2022.historic_table_2.us.all.actc_claims@{PERIOD}"),
-        "label": "Additional Child Tax Credit claims",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            f"earned_income_credit.total_earned_income_credit_amount@{PERIOD}"
-        ),
-        "label": "Earned Income Tax Credit amount",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            f"earned_income_credit.total_earned_income_credit_returns@{PERIOD}"
-        ),
-        "label": "Earned Income Tax Credit claims",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            f"irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@{PERIOD}"
-        ),
-        "label": "Premium Tax Credit amount",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            f"premium_tax_credit_returns@{PERIOD}"
-        ),
-        "label": "Premium Tax Credit returns",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            f"taxable_social_security_amount@{PERIOD}"
-        ),
-        "label": "taxable Social Security amount",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-    {
-        "name": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            f"taxable_social_security_returns@{PERIOD}"
-        ),
-        "label": "taxable Social Security returns",
-        "max_abs_relative_error": US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-    },
-)
+US_CRITICAL_TARGET_FIT_REQUIREMENTS = US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS
 
 #: Blanket within-tolerance blocking for every national SOI Pub 1304 Table 1.4
 #: dollar row (populace#462). The exact-name register above only blocks rows
@@ -506,13 +420,20 @@ US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
 #: Table 1.4 dollar rows (worst passer: taxable_social_security_amount at
 #: -10.9%). Deliberately no incumbent-improvement escape — a national dollar
 #: row beyond broad fit is never certifiable.
-US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR = 0.25
+US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR = (
+    SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.max_abs_relative_error
+)
 US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT = TargetFitRequirement(
-    requirement_id="soi_table_1_4_national_dollar_rows",
-    label="SOI Pub 1304 Table 1.4 national dollar rows",
-    accepted_name_prefixes=("irs_soi.",),
-    accepted_name_substrings=(".table_1_4.",),
-    accepted_name_suffixes=(f"_amount@{PERIOD}",),
+    requirement_id=(
+        SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.requirement_id
+    ),
+    label=SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.label,
+    accepted_name_substrings=(
+        SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.name_substrings
+    ),
+    accepted_name_suffixes=(
+        SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT.name_suffixes
+    ),
     max_abs_relative_error=US_SOI_TABLE_1_4_NATIONAL_DOLLAR_MAX_ABS_RELATIVE_ERROR,
     notes=(
         "populace#462: the Build M live default shipped non_sch_d_capital_gains "
@@ -5440,12 +5361,29 @@ def _fiscal_target_value_basis(spec) -> str:
     return "amount"
 
 
-def _target_is_congressional_district(target: object) -> bool:
-    metadata = getattr(target, "metadata", {}) or {}
-    return (
-        metadata.get("ledger_geography_level") == "congressional_district"
-        or metadata.get("geography_scope") == "congressional_district"
-        or bool(metadata.get("congressional_district_geoid"))
+def _target_metadata(target: object | None) -> Mapping[str, object]:
+    if isinstance(target, Mapping):
+        metadata = target.get("metadata")
+    else:
+        metadata = getattr(target, "metadata", None)
+    return metadata if isinstance(metadata, Mapping) else {}
+
+
+def _target_family(target: object | None) -> str:
+    family = getattr(target, "family", None)
+    if family is not None:
+        return str(family)
+    if isinstance(target, Mapping):
+        registry = target.get("registry")
+        if isinstance(registry, Mapping) and registry.get("family") is not None:
+            return str(registry["family"])
+    return ""
+
+
+def _target_is_congressional_district(target: object | None) -> bool:
+    return is_congressional_district_target(
+        _target_row_name(target) if target is not None else "",
+        _target_metadata(target),
     )
 
 
@@ -5471,6 +5409,30 @@ def _diagnostic_targets_by_name(result) -> dict[str, object]:
     return {_target_row_name(target): target for target in targets}
 
 
+def _critical_requirement_matches_target(
+    requirement,
+    *,
+    row_name: str,
+    target: object | None,
+) -> bool:
+    if _target_is_congressional_district(target):
+        return False
+    metadata = _target_metadata(target)
+    return requirement.matches(
+        name=row_name,
+        family=_target_family(target),
+        target_role=str(metadata.get("target_role") or ""),
+    )
+
+
+def _critical_target_specs_by_row_name(
+    target_registry: TargetRegistry | None,
+) -> dict[str, TargetSpec]:
+    if target_registry is None:
+        return {}
+    return {_target_row_name(spec): spec for spec in target_registry.specs}
+
+
 def _congressional_district_release_gates_enabled(
     compilation: Mapping[str, object],
 ) -> bool:
@@ -5493,6 +5455,7 @@ def _release_gate_failures(
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
+    target_registry: TargetRegistry | None = None,
 ) -> list[str]:
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
@@ -5582,7 +5545,10 @@ def _release_gate_failures(
         failures.append(f"{len(skipped)} fiscal targets were skipped by calibration.")
     if not result.diagnostics:
         failures.append("No fiscal targets were compiled.")
-    diagnostic_targets = _diagnostic_targets_by_name(result)
+    diagnostic_targets = {
+        **_diagnostic_targets_by_name(result),
+        **_critical_target_specs_by_row_name(target_registry),
+    }
     zero_support = [
         diagnostic.name
         for diagnostic in result.diagnostics
@@ -5607,6 +5573,7 @@ def _release_gate_failures(
         _critical_target_fit_failures(
             result,
             incumbent_diagnostics=incumbent_diagnostics,
+            target_registry=target_registry,
         )
     )
     # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is
@@ -5615,7 +5582,13 @@ def _release_gate_failures(
     # capital-gain-distributions defect) cannot certify. No incumbent-
     # improvement escape: a national dollar row beyond broad fit never ships.
     soi_table_1_4_gate = target_fit_gate(
-        getattr(result, "diagnostics", ()) or (),
+        tuple(
+            diagnostic
+            for diagnostic in (getattr(result, "diagnostics", ()) or ())
+            if not _target_is_congressional_district(
+                diagnostic_targets.get(str(getattr(diagnostic, "name", "")))
+            )
+        ),
         (US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,),
         name="soi_table_1_4_national_dollar_fit",
     )
@@ -5638,76 +5611,97 @@ def _critical_target_fit_failures(
     result,
     *,
     incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    target_registry: TargetRegistry | None = None,
 ) -> list[str]:
     incumbent_diagnostics = incumbent_diagnostics or {}
     diagnostics_by_name = {
         getattr(diagnostic, "name", None): diagnostic
         for diagnostic in getattr(result, "diagnostics", ())
     }
+    problem_targets = _diagnostic_targets_by_name(result)
+    specs_by_name = _critical_target_specs_by_row_name(target_registry)
     failures: list[str] = []
     for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
-        diagnostic = diagnostics_by_name.get(requirement["name"])
-        if diagnostic is None:
+        matches = [
+            diagnostic
+            for row_name, diagnostic in diagnostics_by_name.items()
+            if isinstance(row_name, str)
+            and _critical_requirement_matches_target(
+                requirement,
+                row_name=row_name,
+                target=specs_by_name.get(row_name, problem_targets.get(row_name)),
+            )
+        ]
+        if not matches:
+            missing_identity = (
+                repr(requirement.names[0])
+                if len(requirement.names) == 1
+                else f"requirement {requirement.requirement_id!r}"
+            )
             failures.append(
-                "Critical fiscal target "
-                f"{requirement['name']!r} ({requirement['label']}) is missing "
+                f"Critical fiscal target {missing_identity} "
+                f"({requirement.label}) is missing "
                 "from calibration diagnostics."
             )
             continue
-        relative_error = getattr(diagnostic, "relative_error", None)
-        computed_relative_error = _diagnostic_relative_error(diagnostic, failures)
-        if computed_relative_error is None:
-            continue
-        if not isinstance(relative_error, int | float):
-            failures.append(
-                "Critical fiscal target "
-                f"{requirement['name']!r} ({requirement['label']}) has "
-                f"non-numeric relative_error {relative_error!r}."
-            )
-        elif not math.isclose(
-            float(relative_error),
-            computed_relative_error,
-            rel_tol=1e-9,
-            abs_tol=1e-9,
-        ):
-            failures.append(
-                "Critical fiscal target "
-                f"{requirement['name']!r} ({requirement['label']}) has "
-                f"stale relative_error {relative_error!r}; computed "
-                f"{computed_relative_error:.6g} from target and final_estimate."
-            )
-        max_abs = float(requirement["max_abs_relative_error"])
-        if abs(computed_relative_error) > max_abs:
-            incumbent_relative_error = _incumbent_relative_error(
-                incumbent_diagnostics.get(requirement["name"]),
-                current_target=float(getattr(diagnostic, "target", 0.0)),
-            )
-            improved_over_incumbent = incumbent_relative_error is not None and abs(
-                computed_relative_error
-            ) < abs(incumbent_relative_error)
-            if (
-                improved_over_incumbent
-                and abs(computed_relative_error)
-                <= US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
-            ):
+        for diagnostic in matches:
+            row_name = str(getattr(diagnostic, "name", ""))
+            relative_error = getattr(diagnostic, "relative_error", None)
+            computed_relative_error = _diagnostic_relative_error(diagnostic, failures)
+            if computed_relative_error is None:
                 continue
-            failures.append(
-                "Critical fiscal target "
-                f"{requirement['name']!r} ({requirement['label']}) has "
-                f"relative_error={computed_relative_error:.6g}, exceeding "
-                f"{max_abs:.6g}; target={getattr(diagnostic, 'target', None)!r}, "
-                "final_estimate="
-                f"{getattr(diagnostic, 'final_estimate', None)!r}"
-                + (
-                    "."
-                    if incumbent_relative_error is None
-                    else (
-                        f"; incumbent_relative_error={incumbent_relative_error:.6g}; "
-                        "improvement_hard_stop="
-                        f"{US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR:.6g}."
+            if not isinstance(relative_error, int | float):
+                failures.append(
+                    "Critical fiscal target "
+                    f"{row_name!r} ({requirement.label}) has "
+                    f"non-numeric relative_error {relative_error!r}."
+                )
+            elif not math.isclose(
+                float(relative_error),
+                computed_relative_error,
+                rel_tol=1e-9,
+                abs_tol=1e-9,
+            ):
+                failures.append(
+                    "Critical fiscal target "
+                    f"{row_name!r} ({requirement.label}) has "
+                    f"stale relative_error {relative_error!r}; computed "
+                    f"{computed_relative_error:.6g} from target and final_estimate."
+                )
+            max_abs = float(requirement.max_abs_relative_error)
+            if abs(computed_relative_error) > max_abs:
+                incumbent_relative_error = _incumbent_relative_error(
+                    incumbent_diagnostics.get(row_name),
+                    current_target=float(getattr(diagnostic, "target", 0.0)),
+                )
+                improved_over_incumbent = incumbent_relative_error is not None and abs(
+                    computed_relative_error
+                ) < abs(incumbent_relative_error)
+                if (
+                    requirement.allow_incumbent_improvement
+                    and improved_over_incumbent
+                    and abs(computed_relative_error)
+                    <= US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
+                ):
+                    continue
+                failures.append(
+                    "Critical fiscal target "
+                    f"{row_name!r} ({requirement.label}) has "
+                    f"relative_error={computed_relative_error:.6g}, exceeding "
+                    f"{max_abs:.6g}; target="
+                    f"{getattr(diagnostic, 'target', None)!r}, final_estimate="
+                    f"{getattr(diagnostic, 'final_estimate', None)!r}"
+                    + (
+                        "."
+                        if incumbent_relative_error is None
+                        else (
+                            "; incumbent_relative_error="
+                            f"{incumbent_relative_error:.6g}; "
+                            "improvement_hard_stop="
+                            f"{US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR:.6g}."
+                        )
                     )
                 )
-            )
     return failures
 
 
@@ -5744,10 +5738,15 @@ def _incumbent_critical_target_payload(
     incumbent_diagnostics: Mapping[str, Mapping[str, object]],
 ) -> dict[str, dict[str, float]]:
     payload: dict[str, dict[str, float]] = {}
-    for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS:
-        name = requirement["name"]
-        row = incumbent_diagnostics.get(name)
-        if row is None:
+    for name, row in incumbent_diagnostics.items():
+        if not any(
+            _critical_requirement_matches_target(
+                requirement,
+                row_name=name,
+                target=row,
+            )
+            for requirement in US_CRITICAL_TARGET_FIT_REQUIREMENTS
+        ):
             continue
         target_value = row.get("target")
         final_estimate = row.get("final_estimate")
@@ -5803,6 +5802,7 @@ def _assert_release_gates(
     immigration_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    target_registry: TargetRegistry | None = None,
 ) -> None:
     failures = _release_gate_failures(
         result,
@@ -5814,6 +5814,7 @@ def _assert_release_gates(
         immigration_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
+        target_registry=target_registry,
     )
     if failures:
         raise RuntimeError("Release gates failed: " + "; ".join(failures))
@@ -6247,6 +6248,7 @@ def _build_manifests(
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+        target_registry=registry,
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -8684,6 +8686,7 @@ def main() -> None:
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+        target_registry=registry,
     )
     _write_release_calibration_diagnostics(
         result=result,

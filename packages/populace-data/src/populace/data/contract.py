@@ -28,6 +28,16 @@ from pathlib import Path
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
+from populace.data.us_critical_targets import (
+    US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
+)
+from populace.data.us_critical_targets import (
+    US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR as _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
+)
+from populace.data.us_critical_targets import (
+    is_congressional_district_target,
+)
+
 __all__ = [
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
@@ -56,204 +66,6 @@ US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-_US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR = 0.15
-_US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR = 0.15
-_US_CRITICAL_TARGET_FIT_REQUIREMENTS = (
-    {
-        "requirement_id": "federal_income_tax_amount",
-        "label": "federal income tax liability amount",
-        "max_abs_relative_error": 0.05,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("federal_income_tax_total",),
-    },
-    {
-        "requirement_id": "income_tax_liability_returns",
-        "label": "income tax liability returns",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "social_security_benefits",
-        "label": "Social Security benefits",
-        "max_abs_relative_error": 0.05,
-        "names": (
-            "ssa_supplement.cy2024.oasdi_ssi_payments."
-            "social_security_benefits.payment_amount@2024",
-        ),
-        "families": ("ssa",),
-        "target_roles": ("social_security_total",),
-    },
-    {
-        "requirement_id": "ctc_amount",
-        "label": "Child Tax Credit amount",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
-        "families": ("irs_soi",),
-        "target_roles": ("ctc_total",),
-    },
-    {
-        "requirement_id": "ctc_claims",
-        "label": "Child Tax Credit claims",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "actc_amount",
-        "label": "Additional Child Tax Credit amount",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "actc_claims",
-        "label": "Additional Child Tax Credit claims",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": ("irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "eitc_amount",
-        "label": "Earned Income Tax Credit amount",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "eitc_claims",
-        "label": "Earned Income Tax Credit claims",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_returns@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "premium_tax_credit_amount",
-        "label": "Premium Tax Credit amount",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "premium_tax_credit_returns",
-        "label": "Premium Tax Credit returns",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "taxable_social_security_amount",
-        "label": "taxable Social Security amount",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "taxable_social_security_returns",
-        "label": "taxable Social Security returns",
-        "max_abs_relative_error": _US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": (),
-    },
-    {
-        "requirement_id": "itemized_deduction_amount",
-        "label": "itemized deduction amount",
-        "max_abs_relative_error": _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-            "total_itemized_deductions_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("itemized_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    {
-        "requirement_id": "salt_deduction_amount",
-        "label": "state and local tax deduction amount",
-        "max_abs_relative_error": 0.10,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all."
-            "limited_state_local_taxes_amount@2024",
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-            "limited_state_local_taxes_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("salt_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    {
-        "requirement_id": "medical_expense_deduction_amount",
-        "label": "medical expense deduction amount",
-        # 2026-07-22 adjudication (Max): the N release does not hold on this
-        # row. Build N's truthful capital-gains/interest target moves
-        # (populace#462, #488) re-equilibrated the solve and pushed medical
-        # from certified M's +4.4% to +20.8%, stable across a 2x-epoch run —
-        # a loss-signal gap, not a data defect. Relaxed to the established
-        # 0.25 broad-fit bound while the loss-contract alignment (shared
-        # critical register + contract-row loss boost, populace#462 lane)
-        # lands; restore _US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once a
-        # boosted run holds it.
-        "max_abs_relative_error": 0.25,
-        "names": (
-            "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
-        ),
-        "families": ("irs_soi",),
-        "target_roles": ("medical_expense_deduction_total",),
-        "allow_incumbent_improvement": False,
-    },
-    # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is
-    # within-tolerance-blocking by NAME PATTERN, not enumeration. The Build M
-    # live default shipped the Table 1.4 capital-gain-distributions dollar row
-    # at +634.8% relative error — recorded in its own diagnostics — because no
-    # exact-name entry above covered it. 0.25 is the established broad-fit
-    # bound (the incumbent-improvement hard stop): on the live Build M surface
-    # it fails exactly the two defect rows (capital_gain_distributions_amount
-    # +634.8%, net_capital_gains_amount -25.6%) and passes the other nine
-    # Table 1.4 dollar rows. No incumbent-improvement escape: a national
-    # dollar row beyond broad fit never certifies.
-    {
-        "requirement_id": "soi_table_1_4_national_dollar_rows",
-        "label": "SOI Pub 1304 Table 1.4 national dollar rows",
-        "max_abs_relative_error": 0.25,
-        "names": (),
-        "families": (),
-        "target_roles": (),
-        "name_substrings": (".table_1_4.",),
-        "name_suffixes": ("_amount@2024",),
-        "allow_incumbent_improvement": False,
-    },
-)
-_US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR = 0.25
 
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
@@ -869,58 +681,32 @@ def _check_calibration_diagnostics(diagnostics: Mapping, failures: list[str]) ->
                 )
 
 
-def _matches_requirement_name_pattern(name: str, requirement: Mapping) -> bool:
-    """Whether a row name matches a requirement's name-shape selectors.
-
-    Pattern selectors (``name_substrings`` / ``name_suffixes``) are
-    conjunctive across fields and disjunctive within a field, so a
-    requirement can name a row *class* — every national SOI Table 1.4 dollar
-    row (substring ``.table_1_4.`` AND suffix ``_amount@2024``) — instead of
-    enumerating rows one by one (the populace#462 gap: the enumerated
-    register cannot block a row nobody listed).
-    """
-    substrings = tuple(requirement.get("name_substrings", ()))
-    suffixes = tuple(requirement.get("name_suffixes", ()))
-    if not substrings and not suffixes:
-        return False
-    if substrings and not any(substring in name for substring in substrings):
-        return False
-    if suffixes and not any(name.endswith(suffix) for suffix in suffixes):
-        return False
-    return True
-
-
 def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> None:
     targets = diagnostics.get("targets")
     if not isinstance(targets, list):
         return
     incumbent_targets = _incumbent_critical_targets(diagnostics)
     for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS:
-        names = set(requirement["names"])
-        target_roles = set(requirement["target_roles"])
-        families = set(requirement["families"])
         matches = [
             target
             for target in targets
             if isinstance(target, Mapping)
             and not _is_congressional_district_layout_target(target)
-            and (
-                target.get("name") in names
-                or _matches_requirement_name_pattern(
-                    str(target.get("name") or ""), requirement
-                )
-                or (
-                    isinstance(target.get("metadata"), Mapping)
-                    and target["metadata"].get("target_role") in target_roles
-                    and _target_registry_family(target) in families
-                )
+            and requirement.matches(
+                name=str(target.get("name") or ""),
+                family=_target_registry_family(target),
+                target_role=(
+                    str(target["metadata"].get("target_role") or "")
+                    if isinstance(target.get("metadata"), Mapping)
+                    else ""
+                ),
             )
         ]
         if not matches:
             failures.append(
                 "calibration_diagnostics.json is missing required US critical "
-                f"target {requirement['requirement_id']!r} "
-                f"({requirement['label']})."
+                f"target {requirement.requirement_id!r} "
+                f"({requirement.label})."
             )
             continue
         for target in matches:
@@ -947,7 +733,7 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                     f"{computed_relative_error:.6g} from target and "
                     "final_estimate."
                 )
-            max_abs = float(requirement["max_abs_relative_error"])
+            max_abs = float(requirement.max_abs_relative_error)
             if abs(computed_relative_error) > max_abs:
                 incumbent_relative_error = _incumbent_relative_error_for_target(
                     target,
@@ -958,7 +744,7 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                     computed_relative_error
                 ) < abs(incumbent_relative_error)
                 if (
-                    requirement.get("allow_incumbent_improvement", True)
+                    requirement.allow_incumbent_improvement
                     and improved_over_incumbent
                     and abs(computed_relative_error)
                     <= _US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR
@@ -966,7 +752,7 @@ def _check_us_critical_target_fit(diagnostics: Mapping, failures: list[str]) -> 
                     continue
                 failures.append(
                     "calibration_diagnostics.json critical target "
-                    f"{target.get('name')!r} ({requirement['label']}) has "
+                    f"{target.get('name')!r} ({requirement.label}) has "
                     f"relative_error={computed_relative_error:.6g}, exceeding "
                     f"{max_abs:.6g}; target={target.get('target')!r}, "
                     f"final_estimate={target.get('final_estimate')!r}"
@@ -1075,20 +861,10 @@ def _target_registry_family(target: Mapping) -> str:
 
 
 def _is_congressional_district_layout_target(target: Mapping) -> bool:
-    metadata = target.get("metadata")
-    if not isinstance(metadata, Mapping):
-        return False
-    groupby_dimension = metadata.get("ledger_layout_groupby_dimension")
-    if str(groupby_dimension) == "irs_soi.congressional_district":
-        return True
-    source_record_id = metadata.get("ledger_source_record_id")
-    if (
-        isinstance(source_record_id, str)
-        and ".congressional_district_" in source_record_id
-    ):
-        return True
-    name = target.get("name")
-    return isinstance(name, str) and ".congressional_district_" in name
+    return is_congressional_district_target(
+        target.get("name"),
+        target.get("metadata"),
+    )
 
 
 def _check_source_coverage_diagnostics(
