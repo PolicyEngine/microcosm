@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -30,7 +31,13 @@ from populace.calibrate.solve import (
 
 @dataclass(frozen=True)
 class StackedLocalSolveResult:
-    """Solved stacked local weights and diagnostics."""
+    """Solved stacked local weights and diagnostics.
+
+    ``past_cap_census`` is the populace#492 observability diagnostic: which
+    target rows sat past the loss cap at initialization and at the final
+    weights, which escaped back inside, and — the silent-triage class —
+    which were pushed out during the solve, listed row by row.
+    """
 
     weights: np.ndarray
     initial_weights: np.ndarray
@@ -39,6 +46,95 @@ class StackedLocalSolveResult:
     initial_loss: float
     final_loss: float
     n_nonzero: int
+    past_cap_census: Mapping[str, Any] | None = None
+
+
+def past_cap_census(
+    initial_estimates: np.ndarray,
+    final_estimates: np.ndarray,
+    targets: np.ndarray,
+    *,
+    target_loss_cap: float,
+    target_loss_scales: np.ndarray | None = None,
+    target_frame: pd.DataFrame | None = None,
+    max_listed_rows: int = 100,
+) -> dict[str, Any]:
+    """Census of target rows relative to the loss cap (populace#492).
+
+    Past the cap a row's gradient is zero, so the solve can silently write
+    rows off. The census counts rows past the cap at initialization and at
+    the final estimates, the rows that escaped back inside, the rows frozen
+    past the cap throughout, and — the dumping-ground class — the rows
+    pushed out during the solve, listing each with its before/after scaled
+    absolute errors (labelled from ``target_frame`` when supplied).
+    """
+
+    initial = np.asarray(initial_estimates, dtype=np.float64)
+    final = np.asarray(final_estimates, dtype=np.float64)
+    target_values = np.asarray(targets, dtype=np.float64)
+    if not (initial.shape == final.shape == target_values.shape):
+        raise ValueError(
+            "initial_estimates, final_estimates, and targets must align, got "
+            f"shapes {initial.shape}, {final.shape}, {target_values.shape}."
+        )
+    if not np.isfinite(target_loss_cap) or target_loss_cap <= 0:
+        raise ValueError("target_loss_cap must be a positive finite number.")
+    scales = (
+        default_target_loss_scales(target_values)
+        if target_loss_scales is None
+        else np.asarray(target_loss_scales, dtype=np.float64)
+    )
+    if scales.shape != target_values.shape:
+        raise ValueError(
+            "target_loss_scales must align with targets, got "
+            f"{scales.shape} vs {target_values.shape}."
+        )
+    initial_errors = np.abs(
+        np.divide(
+            initial - target_values,
+            scales,
+            out=np.zeros_like(target_values),
+            where=scales != 0,
+        )
+    )
+    final_errors = np.abs(
+        np.divide(
+            final - target_values,
+            scales,
+            out=np.zeros_like(target_values),
+            where=scales != 0,
+        )
+    )
+    past_init = initial_errors > target_loss_cap
+    past_final = final_errors > target_loss_cap
+    pushed_out = ~past_init & past_final
+    pushed_indices = np.flatnonzero(pushed_out)
+
+    def _row(index: int) -> dict[str, Any]:
+        row: dict[str, Any] = {"target_index": int(index)}
+        if target_frame is not None and index < len(target_frame):
+            frame_row = target_frame.iloc[index]
+            for column in ("area_type", "area_code", "metric"):
+                if column in target_frame.columns:
+                    row[column] = str(frame_row[column])
+        row["target"] = float(target_values[index])
+        row["initial_abs_relative_error"] = float(initial_errors[index])
+        row["final_abs_relative_error"] = float(final_errors[index])
+        return row
+
+    return {
+        "target_loss_cap": float(target_loss_cap),
+        "n_targets": int(len(target_values)),
+        "past_at_init": int(past_init.sum()),
+        "past_at_final": int(past_final.sum()),
+        "escaped": int((past_init & ~past_final).sum()),
+        "frozen": int((past_init & past_final).sum()),
+        "pushed_out": int(pushed_out.sum()),
+        "pushed_out_rows": [
+            _row(index) for index in pushed_indices[:max_listed_rows].tolist()
+        ],
+        "pushed_out_rows_truncated": bool(len(pushed_indices) > max_listed_rows),
+    }
 
 
 def solve_stacked_local_weights(
@@ -188,6 +284,14 @@ def solve_stacked_local_weights(
     )
     diagnostics["abs_relative_error"] = np.abs(diagnostics["relative_error"])
     prune_atol = 1e-6 * float(np.mean(initial_weights))
+    census = past_cap_census(
+        initial_estimates,
+        final_estimates,
+        targets,
+        target_loss_cap=target_loss_cap,
+        target_loss_scales=scales,
+        target_frame=problem.target_frame,
+    )
     return StackedLocalSolveResult(
         weights=weights,
         initial_weights=initial_weights,
@@ -196,4 +300,5 @@ def solve_stacked_local_weights(
         initial_loss=float(initial_loss),
         final_loss=float(final_loss),
         n_nonzero=int((weights > prune_atol).sum()),
+        past_cap_census=census,
     )
