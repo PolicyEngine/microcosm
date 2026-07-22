@@ -164,7 +164,15 @@ _REQUIRED_ARRAY_KEYS = (
 )
 
 _GSS_CODE_PATTERN = re.compile(r"^[ENSWK]\d{8}$")
-_ITL_CODE_PATTERN = re.compile(r"^TL[A-Z](\d)?(\d)?$")
+# ONS publishes split-ward *part* codes with a letter in the fourth
+# position (e.g. E05R14284 / E05S14284, "Hunmanby & Sherburn (part
+# Ryedale)") where a boundary change splits a ward across districts.
+# Only the ward layer may carry them; every other layer stays strict.
+_WARD_CODE_PATTERN = re.compile(r"^[ENSWK]\d{2}[0-9A-Z]\d{5}$")
+# ITL3 suffixes are alphanumeric outside England: Northern Ireland runs
+# TLN01..TLN0G (letters in the final position), Scotland TLM50-style
+# digits. Two uppercase alphanumerics after the ITL1 letter cover ITL1/2/3.
+_ITL_CODE_PATTERN = re.compile(r"^TL[A-Z][0-9A-Z]{0,2}$")
 
 
 @dataclass(frozen=True)
@@ -284,7 +292,11 @@ def load_uk_oa_ladder(path: str | Path) -> UkOaLadder:
     local_authority = _gss_code_array(
         arrays["local_authority_code"], label="local_authority_code"
     )
-    ward = _gss_code_array(arrays["ward_code"], label="ward_code")
+    ward = _gss_code_array(
+        arrays["ward_code"],
+        label="ward_code",
+        pattern=_WARD_CODE_PATTERN,
+    )
     itl3 = _itl_code_array(arrays["itl3_code"], label="itl3_code")
 
     # Every region that hosts households must carry at least one household to
@@ -724,7 +736,12 @@ def _validate_ladder_metadata(metadata: Mapping[str, Any]) -> None:
             )
 
 
-def _gss_code_array(values: np.ndarray, *, label: str) -> np.ndarray:
+def _gss_code_array(
+    values: np.ndarray,
+    *,
+    label: str,
+    pattern: re.Pattern[str] = _GSS_CODE_PATTERN,
+) -> np.ndarray:
     array = np.asarray(values)
     if array.dtype.kind not in ("U", "S", "O"):
         raise ValueError(f"{label} must be a string array, got dtype {array.dtype}.")
@@ -733,9 +750,7 @@ def _gss_code_array(values: np.ndarray, *, label: str) -> np.ndarray:
     blank = stripped == ""
     if blank.any():
         raise ValueError(f"{label} contains {int(blank.sum())} blank code(s).")
-    bad = np.array(
-        [_GSS_CODE_PATTERN.match(value) is None for value in stripped.tolist()]
-    )
+    bad = np.array([pattern.match(value) is None for value in stripped.tolist()])
     if bad.any():
         raise ValueError(
             f"{label} codes must be 9-character GSS codes; invalid: "
