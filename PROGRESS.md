@@ -2,12 +2,13 @@
 
 ## State
 
-Populace #462 critical-row loss alignment is in progress on
+Populace #462 critical-row loss alignment is complete on
 `loss-contract-alignment`, starting from clean `origin/main` at `c3e378a`.
 The builder and publisher consume one shared critical-target register, and the
 solver now applies a configurable critical-row loss boost after all existing
 normalization. The default and CLI override are recorded in staging telemetry
-and failure-safe calibration diagnostics. No target values have changed.
+and failure-safe calibration diagnostics. No target values or unrelated gate
+semantics changed.
 
 ## Done
 
@@ -58,8 +59,13 @@ and failure-safe calibration diagnostics. No target values have changed.
 - Reran the complete builder test file plus the state-file scorer tests after
   those corrections: 135 passed. Ruff check and the diff whitespace check
   passed on every newly touched Python file.
+- Wrote `FINAL_REPORT.md` with the register delta, exact loss-pipeline
+  placement, provenance behavior, verification, and implementation commits.
+- Final verification passed: populace-data 132 passed / 1 optional-engine
+  skip; builder plus state scorer 135 passed; Ruff fix/format/check, offline
+  lock consistency, and `git diff --check` all passed.
 
 ## Next
 
-- Write `FINAL_REPORT.md`, run the final required suites and Ruff/lock/diff
-  checks, and perform the clean-worktree audit.
+- None. The implementation, tests, committed handoff, and final branch audit
+  are complete; do not push this branch.
