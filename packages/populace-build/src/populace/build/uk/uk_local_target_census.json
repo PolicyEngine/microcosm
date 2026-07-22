@@ -1,0 +1,474 @@
+{
+  "area_metric_order": {
+    "constituency": [
+      "hmrc/self_employment_income/amount",
+      "hmrc/self_employment_income/count",
+      "hmrc/employment_income/amount",
+      "hmrc/employment_income/count",
+      "age/0_10",
+      "age/10_20",
+      "age/20_30",
+      "age/30_40",
+      "age/40_50",
+      "age/50_60",
+      "age/60_70",
+      "age/70_80",
+      "uc_households",
+      "uc_hh_0_children",
+      "uc_hh_1_child",
+      "uc_hh_2_children",
+      "uc_hh_3plus_children"
+    ],
+    "la": [
+      "hmrc/self_employment_income/amount",
+      "hmrc/self_employment_income/count",
+      "hmrc/employment_income/amount",
+      "hmrc/employment_income/count",
+      "age/0_10",
+      "age/10_20",
+      "age/20_30",
+      "age/30_40",
+      "age/40_50",
+      "age/50_60",
+      "age/60_70",
+      "age/70_80",
+      "uc_households",
+      "ons/equiv_net_income_bhc",
+      "ons/equiv_net_income_ahc",
+      "ons/equiv_housing_costs",
+      "tenure/owned_outright",
+      "tenure/owned_mortgage",
+      "tenure/private_rent",
+      "tenure/social_rent",
+      "rent/private_rent"
+    ]
+  },
+  "area_types": [
+    "constituency",
+    "la"
+  ],
+  "binding_fences": [
+    {
+      "authority": "UK_COVERAGE_PROGRESS.md real-donor HMRC replay (2026-07-13); canonical fences in populace.build.uk_runtime.hmrc_replay.",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "full_frs_tei_band_unavailable",
+      "fenced_fact_count": 208,
+      "rule": "No local target family may bind facts banded by SPI Total Income: the FRS instrument cannot materialize complete Total Income, so band membership is unassignable. This is the census's application of the national adjudication that holds all 208 published banded facts as fenced exclusions (the canonical fence text lives with the national constants); minting banded local variants is forbidden."
+    },
+    {
+      "authority": "populace.build.uk_runtime.local_targets.compute_household_metrics (in_spi_frame definition); populace#495 scoping.",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "hmrc_spi_frame_model_proxy",
+      "fenced_fact_count": null,
+      "rule": "The in-code HMRC area metrics gate frame membership on modeled income_tax > 0 \u2014 a model-output proxy for 'taxpayer in the SPI frame', not a source-faithful frame. Binding any HMRC area family requires an explicit adjudication accepting or replacing that proxy before targets enter a solve."
+    },
+    {
+      "authority": "ONS income estimates for small areas QMI (FRS-based method); populace#495 scoping.",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "frs_model_based_target_circularity",
+      "fenced_fact_count": null,
+      "rule": "ONS income estimates for small areas are model-based outputs built from the Family Resources Survey. Calibrating FRS-derived microdata to them feeds the instrument back into itself; binding requires an explicit adjudication of that circularity (accept with documented rationale, or reject the family)."
+    },
+    {
+      "authority": "ONS income estimates for small areas, England and Wales, financial year ending 2023 (comparability guidance); populace#495 scoping (cross-family review finding).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "ons_bhc_ahc_noncomparable",
+      "fenced_fact_count": null,
+      "rule": "The runtime's ons/equiv_housing_costs metric has no declared supplier: ONS states its small-area BHC and AHC income estimates are independently modelled and should not be directly compared, so their difference is not a publishable housing-costs target. Binding the equivalised-income family must target the published BHC and AHC measures separately or document a different housing-costs source."
+    },
+    {
+      "authority": "DWP Universal Credit official statistics Stat-Xplore user guide (household definition); populace.build.uk_runtime.local_targets.compute_household_metrics (benunit-to-household mapping); populace#495 scoping (cross-family review finding).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "uc_unit_vs_household_grain",
+      "fenced_fact_count": null,
+      "rule": "The runtime maps benefit-unit-level UC receipt to household grain: a physical household containing two UC benefit units contributes 2 to uc_households but 1 to a child band. DWP UC statistics count UC claim households, which align with benefit units rather than physical FRS households. Binding must declare the grain crosswalk (or change the runtime metric) before either UC family enters a solve."
+    },
+    {
+      "authority": "FRS background and methodology (private-household universe); ONS population estimates methodology (communal-establishment population); populace#495 scoping (cross-family review finding).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "population_universe_private_households",
+      "fenced_fact_count": null,
+      "rule": "The FRS covers private households, while ONS mid-year population estimates cover the total usual-resident population including communal establishments (care homes, student halls, barracks, prisons). Binding age-structure targets must declare the universe treatment (communal-establishment adjustment or documented acceptance) per area type."
+    }
+  ],
+  "census_kind": "uk_local_target_census",
+  "families": [
+    {
+      "adjudications": [
+        "hmrc_spi_frame_model_proxy",
+        "full_frs_tei_band_unavailable"
+      ],
+      "description": "SPI-frame employment and self-employment income amounts and taxpayer counts by area.",
+      "family": "hmrc_income_by_area",
+      "sources": [
+        "hmrc_personal_incomes_constituency_la"
+      ]
+    },
+    {
+      "adjudications": [
+        "population_universe_private_households"
+      ],
+      "description": "Household members by ten-year age band.",
+      "family": "age_structure",
+      "sources": [
+        "ons_pcon_population_by_age",
+        "nomis_lad_population_single_year_age"
+      ]
+    },
+    {
+      "adjudications": [
+        "uc_unit_vs_household_grain"
+      ],
+      "description": "Households on Universal Credit, and (constituency only, in code today) the split by number of children.",
+      "family": "uc_households",
+      "sources": [
+        "dwp_stat_xplore_uc"
+      ]
+    },
+    {
+      "adjudications": [
+        "frs_model_based_target_circularity",
+        "ons_bhc_ahc_noncomparable"
+      ],
+      "description": "Equivalised household disposable income before/after housing costs and implied housing costs (local-authority metrics).",
+      "family": "equivalised_income",
+      "sources": [
+        "ons_small_area_income_msoa"
+      ]
+    },
+    {
+      "adjudications": [],
+      "description": "Households by tenure class (local-authority metrics).",
+      "family": "tenure",
+      "sources": [
+        "census2021_ts054_tenure"
+      ]
+    },
+    {
+      "adjudications": [],
+      "description": "Private rent paid by privately renting households (local-authority metric).",
+      "family": "private_rent",
+      "sources": [
+        "ons_pipr_private_rents"
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/0_10",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/10_20",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/20_30",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/30_40",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/40_50",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/50_60",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/60_70",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "age_structure",
+      "name": "age/70_80",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/employment_income/amount",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/employment_income/count",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/self_employment_income/amount",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/self_employment_income/count",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "equivalised_income",
+      "name": "ons/equiv_housing_costs",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "equivalised_income",
+      "name": "ons/equiv_net_income_ahc",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "equivalised_income",
+      "name": "ons/equiv_net_income_bhc",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "private_rent",
+      "name": "rent/private_rent",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "tenure",
+      "name": "tenure/owned_mortgage",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "tenure",
+      "name": "tenure/owned_outright",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "tenure",
+      "name": "tenure/private_rent",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "la"
+      ],
+      "family": "tenure",
+      "name": "tenure/social_rent",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency"
+      ],
+      "family": "uc_households",
+      "name": "uc_hh_0_children",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency"
+      ],
+      "family": "uc_households",
+      "name": "uc_hh_1_child",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency"
+      ],
+      "family": "uc_households",
+      "name": "uc_hh_2_children",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency"
+      ],
+      "family": "uc_households",
+      "name": "uc_hh_3plus_children",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "uc_households",
+      "name": "uc_households",
+      "status": "bound_in_code"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "This census covers the default in-code metric surface returned by local_targets.metric_names(area_type) with no target profile. Ledger target-profile-driven metric surfaces are governed by their profile contract and are out of census scope.",
+  "sources": [
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
+      "latest_vintage": "tax year 2023 to 2024 (published 2026-04-29)",
+      "notes": "Unbanded area statistics \u2014 a different surface from the 208 banded Total Income facts held fenced by the national adjudication. The constituency vintage used by each table edition must be pinned at binding time (2024 boundaries vs earlier). Historical table layouts publish taxpayer counts with mean/median amounts; whether published amount totals exist, or the amount metric needs a declared count-times-mean construction with rounding-error bounds, must be verified when the exact tables are pinned.",
+      "product": "Personal incomes statistics, tables 3.12 to 3.15a: income and tax by county and region, by borough/district/unitary authority, and by Parliamentary constituency (Survey of Personal Incomes).",
+      "publisher": "HM Revenue & Customs",
+      "source_id": "hmrc_personal_incomes_constituency_la",
+      "status": "documented_unpinned",
+      "url": "https://www.gov.uk/government/collections/personal-incomes-statistics",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency"
+      ],
+      "latest_vintage": "mid-2022 on this page; estimates for 2012 onwards now released via Nomis (ONS notice dated 2024-11-25)",
+      "notes": "Binding must pin the Nomis release carrying 2024-constituency (PCON24) estimates to match the geography ladder's constituency vintage, plus the Scotland/Northern Ireland equivalents. Mid-year estimates cover the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
+      "product": "Parliamentary constituency mid-year population estimates (England and Wales), by year of age.",
+      "publisher": "Office for National Statistics",
+      "source_id": "ons_pcon_population_by_age",
+      "status": "documented_unpinned",
+      "url": "https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/parliamentaryconstituencymidyearpopulationestimates",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "la"
+      ],
+      "latest_vintage": "mid-2024",
+      "notes": "UK-wide coverage at local-authority grain. Covers the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
+      "product": "Mid-year population estimates by single year of age, local authority and above (UK), rebased to Census 2021/2022.",
+      "publisher": "Office for National Statistics (via Nomis)",
+      "source_id": "nomis_lad_population_single_year_age",
+      "status": "documented_unpinned",
+      "url": "https://www.nomisweb.co.uk/datasets/pestsyoala",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
+      "latest_vintage": "UC statistics release cadence per DWP schedule (next noted release 2026-08-18 at verification)",
+      "notes": "Exact table definitions (households vs people, child-count bands, constituency vintage) are chosen inside the tool and must be pinned per tabulation at binding time. DWP UC official statistics cover Great Britain: Northern Ireland Universal Credit statistics are published separately by the NI Department for Communities and are not yet documented here, so NI has no declared supplier for this family. DWP counts UC claim households \u2014 see the uc_unit_vs_household_grain adjudication.",
+      "product": "Stat-Xplore Universal Credit statistics: households and people on UC, tabulated by Westminster parliamentary constituency or local authority, with family-type/child breakdowns built as custom tabulations.",
+      "publisher": "Department for Work and Pensions",
+      "source_id": "dwp_stat_xplore_uc",
+      "status": "documented_unpinned",
+      "url": "https://stat-xplore.dwp.gov.uk/webapi/jsf/dataCatalogueExplorer.xhtml",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "msoa"
+      ],
+      "latest_vintage": "financial year ending 2023",
+      "notes": "Model-based estimates built from the Family Resources Survey \u2014 see the frs_model_based_target_circularity adjudication. The BHC and AHC measures are independently modelled and not directly comparable \u2014 see the ons_bhc_ahc_noncomparable adjudication. MSOA-to-local-authority aggregation method must be declared at binding time; England and Wales only.",
+      "product": "Income estimates for small areas, England and Wales: mean household income at MSOA grain for four measures, including net equivalised disposable income before and after housing costs.",
+      "publisher": "Office for National Statistics",
+      "source_id": "ons_small_area_income_msoa",
+      "status": "documented_unpinned",
+      "url": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/bulletins/smallareamodelbasedincomeestimates/financialyearending2023",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
+      "latest_vintage": "Census Day 2021-03-21",
+      "notes": "England and Wales only; Scotland's Census 2022 and Northern Ireland's Census 2021 tenure tables need separate pinning for full-UK coverage. Census tenure classes must be crosswalked to the runtime's four tenure metrics explicitly.",
+      "product": "Census 2021 table TS054 (tenure of household), England and Wales, OA best-fit to higher geographies.",
+      "publisher": "Office for National Statistics (via Nomis)",
+      "source_id": "census2021_ts054_tenure",
+      "status": "documented_unpinned",
+      "url": "https://www.nomisweb.co.uk/datasets/c2021ts054",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "la"
+      ],
+      "latest_vintage": "release of 2026-07-22 at verification",
+      "notes": "The dataset landing page was verified. PIPR publishes average rent price levels, not additive rent totals, and per the PIPR QMI its local-authority granularity applies to England and Wales with different geographies for Scotland and Northern Ireland \u2014 so the runtime's additive private-rent metric needs a declared count-times-mean construction and a declared Scotland/NI treatment when the exact table is pinned.",
+      "product": "Price Index of Private Rents (PIPR), UK: monthly price statistics \u2014 rent indices, annual change, and price levels.",
+      "publisher": "Office for National Statistics",
+      "source_id": "ons_pipr_private_rents",
+      "status": "documented_unpinned",
+      "url": "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics",
+      "verified_on": "2026-07-22"
+    }
+  ],
+  "status_definitions": {
+    "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
+    "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
+    "review_required_before_binding": "The fence is a reviewed adjudication requirement recorded for binding work; execution-time enforcement in the local solve configuration lands with the solve-doctrine increment of populace#495."
+  }
+}

@@ -244,6 +244,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_source_stages.json",
             "national_staging_build_record.json",
             "release_input_coverage_manifest.json",
+            "uk_local_target_census.json",
         )
 
 
