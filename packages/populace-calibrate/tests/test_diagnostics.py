@@ -241,16 +241,17 @@ def test_past_cap_census_classifies_every_row_class() -> None:
     assert census["cap"] == 1.0
     assert census["n_targets"] == 7
     assert census["initial_past_cap"] == 2  # escaped, frozen
-    assert census["final_past_cap"] == 5  # frozen + the four pushed out
+    assert census["final_past_cap"] == 4  # frozen + the three pushed out
     assert census["escaped"] == 1
     assert census["frozen"] == 1
-    assert census["pushed_out"] == 4
-    # Worst final miss first; the boundary row (exactly at the cap) counts.
+    assert census["pushed_out"] == 3
+    # Worst final miss first. The boundary row (exactly AT the cap) is NOT
+    # past cap: torch.clamp keeps gradient at the boundary, so the row still
+    # pulls — "past cap" means strictly greater (zero gradient).
     assert [row["name"] for row in census["pushed_out_rows"]] == [
         "small_target@2024",
         "pushed@2024",
         "zero_target@2024",
-        "boundary@2024",
     ]
     pushed = census["pushed_out_rows"][1]
     assert pushed["init_rel"] == 0.5

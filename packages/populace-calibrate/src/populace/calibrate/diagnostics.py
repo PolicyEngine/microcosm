@@ -260,8 +260,11 @@ def past_cap_census(result: CalibrationResult) -> dict[str, object] | None:
         scale = max(abs(target), 1.0)
         init_rel = abs(initial - target) / scale
         final_rel = abs(final - target) / scale
-        init_past = init_rel >= cap
-        fin_past = final_rel >= cap
+        # Strictly past the cap: torch.clamp keeps gradient AT the boundary
+        # (verified: d/dx clamp(x, max=cap) at x == cap is 1), so a row
+        # exactly at the cap still pulls. "Past cap" == zero gradient.
+        init_past = init_rel > cap
+        fin_past = final_rel > cap
         if init_past:
             initial_past += 1
         if fin_past:
