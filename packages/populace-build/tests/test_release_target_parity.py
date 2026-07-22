@@ -385,11 +385,15 @@ class TestJctObbbaAdjudication:
             assert fence[key]
         assert "TY2025-TY2028" in fence["purpose"]
         # The activation path is fenced with explicit conversion caveats.
-        # Pin the operative sentences, not just topic phrases: the sign
-        # relationship (neutralization deltas are positive while the facts
-        # are negative under an identity-only value-operation contract) and
-        # the unmodeled tips 45B bundle.
-        assert "positive when a deduction is removed" in fence["purpose"]
+        # Pin the complete operative sign contrast as ONE span — negative
+        # facts bound to positive neutralization deltas — so a negated or
+        # reversed rewrite cannot satisfy fragmentary substrings.
+        assert (
+            "these facts are signed budget effects (negative = revenue "
+            "loss) while a neutralize_variable "
+            "reform_minus_baseline_income_tax row is positive when a "
+            "deduction is removed" in fence["purpose"]
+        )
         assert "allows only the identity value operation" in fence["purpose"]
         assert "section 45B employer-credit expansion" in fence["purpose"]
         assert (

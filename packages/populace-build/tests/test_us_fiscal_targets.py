@@ -863,9 +863,8 @@ def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
     # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
     # a [us]-extra environment to re-verify the TY2025-TY2028 window.
     lock_text = (Path(__file__).parents[3] / "uv.lock").read_text()
-    match = re.search(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
-    assert match, "policyengine-us is not pinned in uv.lock"
-    assert match.group(1) == "1.764.6"
+    versions = re.findall(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
+    assert versions == ["1.764.6"], versions
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
