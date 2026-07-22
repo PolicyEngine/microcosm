@@ -1478,6 +1478,11 @@ def _run_all(
             "failures": list(childcare_gate.failures),
             "details": dict(childcare_gate.details),
         },
+        "adult_care_inputs_signal": {
+            "passed": adult_care_gate.passed,
+            "failures": list(adult_care_gate.failures),
+            "details": dict(adult_care_gate.details),
+        },
         "energy_subsidy_signal": {
             "passed": energy_subsidy_gate.passed,
             "failures": list(energy_subsidy_gate.failures),
@@ -2352,6 +2357,7 @@ def _export_staged_result(
         "salt_refund_income_signal",
         "capital_gain_details_signal",
         "childcare_inputs_signal",
+        "adult_care_inputs_signal",
         "energy_subsidy_signal",
         "alimony_inputs_signal",
         "casualty_loss_signal",

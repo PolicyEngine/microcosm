@@ -18,11 +18,14 @@ Source decision, with the survey dictionaries read as receipts
   self-care", and is already ingested by the eligibility stage.  SIPP's
   ``ESELFCARE`` is the identical instrument item, corroborating the concept
   without adding a donor artifact.
-* Neither instrument measures in-household adult-care expenditures.  ASEC's
-  only care-expense items are childcare (``HCHCARE_VAL``,
-  ``SPM_CHILDCAREXPNS``); SIPP's only adult-care payment amount
-  (``TDPCAREAMT``) covers care of a *former* household member, which fails
-  section 21's same-principal-abode requirement.
+* Neither instrument's current public-use release carries in-household
+  adult-care expenditures.  ASEC's only care-expense items are childcare
+  (``HCHCARE_VAL``, ``SPM_CHILDCAREXPNS``).  The 2018 SIPP panel's Child &
+  Dependent Care topical module did collect paid dependent-care fields
+  (``ECREPAYANYON``, ``TDEPNDNTEXP``), but they are absent from the 2023
+  SIPP PUF dictionary — the pinned donor vintage — whose only adult-care
+  payment amount (``TDPCAREAMT``) covers care of a *former* household
+  member, failing section 21's same-principal-abode requirement.
 
 The dollar leg is therefore an explicitly documented same-instrument proxy:
 the measured ASEC work-related childcare expense distribution — the same

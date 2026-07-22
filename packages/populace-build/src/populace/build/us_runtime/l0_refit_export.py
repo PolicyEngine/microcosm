@@ -13,6 +13,9 @@ from typing import Any
 import numpy as np
 
 from populace.build.gates import input_mass_parity_gate
+from populace.build.us_runtime.adult_care import (
+    US_ADULT_CARE_OUTPUT_COLUMNS,
+)
 from populace.build.us_runtime.alimony import US_ALIMONY_NONCONSTANT_PERSON_COLUMNS
 from populace.build.us_runtime.capital_gain_details import (
     US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,
@@ -77,6 +80,7 @@ from populace.build.us_runtime.org_wages import (
 )
 from populace.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+    US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.pregnancy import (
     US_PREGNANCY_NONCONSTANT_PERSON_COLUMNS,
@@ -176,6 +180,8 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_QBI_NONCONSTANT_PERSON_COLUMNS,
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
     *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+    *US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
+    *US_ADULT_CARE_OUTPUT_COLUMNS,
     *US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
     *US_FORM_4952_NONCONSTANT_PERSON_COLUMNS,
     *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,

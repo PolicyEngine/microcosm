@@ -578,7 +578,11 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
 #: #249 for the work-program family). They are not
 #: persisted columns, so the degenerate-input gate cannot see them; this
 #: register makes the assumption visible in every release manifest instead.
-#: is_pregnant is NOT here: the pregnancy stage seeds it.
+#: is_pregnant is NOT here: the pregnancy stage seeds it. Likewise
+#: is_incapable_of_self_care left this register with populace#451 item 1:
+#: the adult_care_inputs base stage seeds it from the measured ASEC
+#: PEDISDRS self-care difficulty item, which is the direct instrument
+#: operationalization the original entry believed absent.
 #: Scope note (per #340): this register is for the NO-SURVEY-SOURCE class —
 #: structurally unfixable from ASEC. The #340 column families (tips,
 #: overtime, education credits, ...) have a source and were merely never
@@ -594,11 +598,6 @@ US_DOCUMENTED_ABSENT_INPUTS = {
     "was_in_foster_care": (
         "No ASEC item for foster-care history, so the pre-HR1 former-"
         "foster-youth ABAWD exemption (7 CFR 273.24(c)(9)) cannot fire "
-        "(PolicyEngine/populace#351)."
-    ),
-    "is_incapable_of_self_care": (
-        "No direct ASEC item; the incapacity/caregiving work-registration "
-        "exemptions rely on the disability battery only "
         "(PolicyEngine/populace#351)."
     ),
     "is_snap_work_program_participant": (

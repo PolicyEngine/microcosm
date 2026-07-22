@@ -2012,6 +2012,21 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "archived first-person reduction places predictions on SPM units."
         ),
     ),
+    US_ADULT_CARE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Section 21 CDCC adult-care inputs (populace#451 item 1): the "
+            "qualifying flag is the measured PEDISDRS self-care difficulty "
+            "item; the expense leg is a seeded, weight-targeted draw from "
+            "the measured ASEC childcare-expense distribution (the same "
+            "section 21 expense class), restricted to tax units where the "
+            "statute can bind, with the 21(d)(2) spouse deeming honored. "
+            "Neither ASEC nor the SIPP 2023 PUF releases an in-household "
+            "adult-care expenditure amount, so the level proxy is declared "
+            "in the stage manifest."
+        ),
+    ),
     US_ENERGY_SUBSIDY_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -2159,6 +2174,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SNAP_DISCRETIONARY_EXEMPTION_STAGE_NAME,
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME,
     US_CHILDCARE_STAGE_NAME,
+    US_ADULT_CARE_STAGE_NAME,
     US_ENERGY_SUBSIDY_STAGE_NAME,
     US_PUF_SUPPORT_STAGE_NAME,
     "puf_tax_detail",

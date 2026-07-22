@@ -966,18 +966,44 @@ def _se_attribution_summary(
     premiums = pd.to_numeric(person[_SE_PREMIUMS_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    flag = person[_SE_FLAG_OUTPUT].astype(bool).to_numpy()
+    # A malformed flag column (nulls, or values outside {0, 1}) must fail the
+    # gate rather than be silently coerced: .astype(bool) maps NaN to True.
+    flag_numeric = pd.to_numeric(person[_SE_FLAG_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    invalid_flag_values = int(
+        np.count_nonzero(
+            ~np.isfinite(flag_numeric) | ~np.isin(flag_numeric, (0.0, 1.0))
+        )
+    )
+    flag = flag_numeric == 1.0
+
+    # The identity sources are release-required inputs; a nonfinite value in
+    # any of them makes the recomputed identity meaningless, so it is a
+    # failure in its own right, not a silently not-self-employed person.
+    nonfinite_sources: dict[str, int] = {}
     self_employment = np.zeros(len(person), dtype=np.float64)
     for column in US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES:
-        self_employment += pd.to_numeric(person[column], errors="coerce").to_numpy(
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
             dtype=np.float64
         )
+        bad = int(np.count_nonzero(~np.isfinite(values)))
+        if bad:
+            nonfinite_sources[column] = bad
+        self_employment += values
     age = pd.to_numeric(person[_SE_MEDICARE_AGE_SOURCE], errors="coerce").to_numpy(
         dtype=np.float64
     )
     ssdi = pd.to_numeric(person[_SE_MEDICARE_SSDI_SOURCE], errors="coerce").to_numpy(
         dtype=np.float64
     )
+    for column, values in (
+        (_SE_MEDICARE_AGE_SOURCE, age),
+        (_SE_MEDICARE_SSDI_SOURCE, ssdi),
+    ):
+        bad = int(np.count_nonzero(~np.isfinite(values)))
+        if bad:
+            nonfinite_sources[column] = bad
     self_employed = self_employment > 0.0
     medicare_proxy = (age >= float(US_SE_HEALTH_MEDICARE_AGE_THRESHOLD)) | (ssdi > 0.0)
     expected = np.where(
@@ -1003,6 +1029,8 @@ def _se_attribution_summary(
         "flag_share": (
             float(weights[flag].sum()) / total_weight if total_weight > 0.0 else 0.0
         ),
+        "invalid_flag_values": invalid_flag_values,
+        "nonfinite_sources": nonfinite_sources,
         "identity_violations": identity_violations,
         "flag_violations": flag_violations,
     }
@@ -1079,6 +1107,16 @@ def us_other_health_insurance_signal_gate(frame: Frame) -> GateResult:
             f"se_attribution identity sources missing: {attribution['missing']}."
         )
     else:
+        if attribution["invalid_flag_values"]:
+            failures.append(
+                f"{_SE_FLAG_OUTPUT}: {int(attribution['invalid_flag_values'])} "
+                "null or non-boolean value(s)."
+            )
+        if attribution["nonfinite_sources"]:
+            failures.append(
+                "se_attribution identity sources carry nonfinite values: "
+                f"{dict(attribution['nonfinite_sources'])}."
+            )
         if attribution["nonfinite"]:
             failures.append(
                 f"{_SE_PREMIUMS_OUTPUT}: {int(attribution['nonfinite'])} "

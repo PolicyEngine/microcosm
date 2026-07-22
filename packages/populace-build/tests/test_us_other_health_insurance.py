@@ -616,6 +616,35 @@ def test_signal_gate_rejects_broken_or_absent_se_attribution(
     assert not gate.passed
 
 
+def test_signal_gate_rejects_malformed_flag_and_nonfinite_identity_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", _ZeroPremiumEngine)
+
+    # A null in the flag column must fail rather than coerce (astype(bool)
+    # would silently read NaN as True).
+    nan_flag = with_us_other_health_insurance_inputs(_frame(), seed=0, time_period=2024)
+    person = nan_flag.table("person")
+    person[_FLAG_OUTPUT] = person[_FLAG_OUTPUT].astype(object)
+    carrier_row = person.index[person[_FLAG_OUTPUT].astype(bool)][0]
+    person.loc[carrier_row, _FLAG_OUTPUT] = np.nan
+    gate = us_other_health_insurance_signal_gate(nan_flag)
+    assert not gate.passed
+    assert any("non-boolean" in failure for failure in gate.failures)
+
+    # A nonfinite identity source on a noncarrier must fail rather than be
+    # silently read as not-self-employed.
+    nan_income = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    person = nan_income.table("person")
+    noncarrier_row = person.index[~person[_FLAG_OUTPUT]][0]
+    person.loc[noncarrier_row, "self_employment_income_before_lsr"] = np.nan
+    gate = us_other_health_insurance_signal_gate(nan_income)
+    assert not gate.passed
+    assert any("nonfinite" in failure for failure in gate.failures)
+
+
 def test_legacy_two_column_surface_is_rebuilt_or_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
