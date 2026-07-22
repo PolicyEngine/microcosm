@@ -395,12 +395,14 @@ def expected_uk_rowwise_area_support(
     """Exact expected per-area row support of :func:`assign_household_geography`.
 
     Reuses the sampler's own household preparation and per-(country, region)
-    sampling distributions, so the expectation cannot drift from the
-    assignment it describes: the expected rows for an area are the sum over
-    its crosswalk rows of ``sample_probability x households_in_group x
-    n_clones``. The value is exact for the collision-free sampler;
-    ``avoid_constituency_collisions`` perturbs it only at the order of the
-    per-household collision probability.
+    sampling distributions, so this expectation cannot drift from the
+    distributions it describes. It is the **collision-free** expectation:
+    with ``avoid_constituency_collisions`` (the sampler's default) realized
+    support can differ substantially whenever ``n_clones`` is comparable to
+    the number of sampleable constituencies in a group, because resampling
+    pushes same-source clones into distinct constituencies. For exact
+    planning use the dry-run's realized assignment, which runs the real
+    sampler at the build seed.
 
     Returns a long frame with ``area_type`` (``constituency``/``la``),
     ``area_code``, and ``expected_rows``, covering every sampleable area of
@@ -852,7 +854,15 @@ def _remap_ids(
     values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
+    offset = clone_index * id_multiplier
+    max_value = int(values.max()) if len(values) else 0
+    if max_value > 0 and offset > np.iinfo(np.int64).max - max_value:
+        raise ValueError(
+            "clone ID remapping would overflow int64: clone_index "
+            f"{clone_index} x id_multiplier {id_multiplier} + max id "
+            f"{max_value} exceeds the representable range."
+        )
+    return values + offset
 
 
 def _source_household_keys(

@@ -7,6 +7,7 @@ frames or H5 files and does not import an incumbent data package.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,11 @@ from populace.frame import MassChangeRecord, WeightKind
 #: total only by float summation error, so anything beyond this relative
 #: tolerance is a defect, never an acceptable drift.
 MASS_CONSERVATION_RELATIVE_TOLERANCE = 1e-9
+
+#: Pool-grain lineage layer derived by ``apply_uk_source_lineage_modulus``.
+#: Distinct from the immediate-layer ``source_household_id`` the national
+#: staging H5 already carries.
+POOL_SOURCE_LINEAGE_COLUMN = "pool_source_household_id"
 
 PERSON_ID_COLUMNS = (
     "person_id",
@@ -118,6 +124,21 @@ def clone_uk_dataset_tables_with_rowwise_geography(
             modulus=source_lineage_modulus,
             household_id_column=household_id_column,
         )
+    input_total = float(
+        np.asarray(
+            pd.to_numeric(household_frame[household_weight_column], errors="raise"),
+            dtype=np.float64,
+        ).sum()
+    )
+    if not np.isfinite(input_total):
+        raise ValueError("household weight total must be finite before cloning.")
+    if input_total <= 0.0:
+        raise ValueError(
+            "household weights must carry positive total mass before cloning; "
+            "an all-zero pool would clone to a dataset the national loader "
+            "rejects."
+        )
+    _assert_mass_log_current(mass_log, input_total)
 
     if id_multiplier is None:
         id_multiplier = id_multiplier_for_values(
@@ -159,10 +180,12 @@ def clone_uk_dataset_tables_with_rowwise_geography(
         id_multiplier=assignment.id_multiplier,
         clone_index_column=clone_index_column,
     )
-    input_total = float(
-        pd.to_numeric(household_frame[household_weight_column], errors="raise").sum()
+    output_total = float(
+        np.asarray(
+            assignment.household["household_weight"],
+            dtype=np.float64,
+        ).sum()
     )
-    output_total = float(assignment.household["household_weight"].sum())
     _assert_household_mass_conserved(input_total, output_total)
     clone_record = MassChangeRecord(
         entity="household",
@@ -260,23 +283,42 @@ def write_uk_rowwise_dataset(
 ) -> Path:
     """Write cloned UK row-wise tables as a valid single-year H5 dataset."""
 
+    # A frozen dataclass does not freeze DataFrames: re-verify the mass log
+    # against the tables actually being written, so a post-clone mutation
+    # cannot ship under a stale conservation record.
+    _assert_mass_log_current(
+        result.mass_log,
+        float(np.asarray(result.household["household_weight"], dtype=np.float64).sum()),
+    )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.unlink(missing_ok=True)
-    with pd.HDFStore(path) as store:
-        store.put("person", result.person, format="table", data_columns=True)
-        store.put("benunit", result.benunit, format="table", data_columns=True)
-        store.put("household", result.household, format="table", data_columns=True)
-        store.put(
-            "time_period",
-            pd.Series([result.time_period]),
-            format="table",
-            data_columns=True,
-        )
-    # Write the national weight-kind/mass-log attrs through the seam's own
-    # writer so the rowwise output is self-describing under
-    # ``load_uk_national_dataset`` and the fence chain survives the clone.
-    _write_weight_metadata(path, result)
+    # Tables and the weight-kind/mass-log attrs must land together: writing
+    # them into a temporary file and renaming keeps a metadata failure from
+    # leaving a complete-looking attr-less H5 that would silently default to
+    # DESIGN semantics on the next read.
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
+    try:
+        with pd.HDFStore(temporary_path) as store:
+            store.put("person", result.person, format="table", data_columns=True)
+            store.put("benunit", result.benunit, format="table", data_columns=True)
+            store.put(
+                "household",
+                result.household,
+                format="table",
+                data_columns=True,
+            )
+            store.put(
+                "time_period",
+                pd.Series([result.time_period]),
+                format="table",
+                data_columns=True,
+            )
+        # The national seam's own writer supplies the attrs so the rowwise
+        # output is self-describing under ``load_uk_national_dataset``.
+        _write_weight_metadata(temporary_path, result)
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     return path
 
 
@@ -346,7 +388,13 @@ def _dataset_tables(
         raise ValueError(f"dataset is missing table attribute(s): {missing}.")
     time_period = getattr(dataset, "time_period", None)
     weight_kind = getattr(dataset, "household_weight_kind", WeightKind.DESIGN)
-    mass_log = tuple(getattr(dataset, "mass_log", ()) or ())
+    mass_log = getattr(dataset, "mass_log", ())
+    if mass_log is None:
+        raise TypeError(
+            "dataset.mass_log must be a tuple of MassChangeRecord, not None; "
+            "omit the attribute entirely for an empty history."
+        )
+    mass_log = tuple(mass_log)
     return {
         "person": dataset.person.copy(),
         "benunit": dataset.benunit.copy(),
@@ -418,6 +466,11 @@ def _assert_household_mass_conserved(
 ) -> None:
     """Require the clone's exact mass-conservation bound to hold."""
 
+    if not (np.isfinite(input_total) and np.isfinite(output_total)):
+        raise ValueError(
+            "rowwise clone mass totals must be finite, got "
+            f"{input_total!r} vs {output_total!r}."
+        )
     if not np.isclose(
         output_total,
         input_total,
@@ -435,31 +488,47 @@ def apply_uk_source_lineage_modulus(
     household: pd.DataFrame,
     *,
     modulus: int,
-    household_id_column: str,
+    household_id_column: str = "household_id",
 ) -> pd.DataFrame:
-    """Derive pool-grain lineage as ``household_id mod modulus``.
+    """Derive pool-grain lineage as ``pool_source_household_id``.
 
     The certified UK pool encodes its 10x clone tiers as
     ``household_id = tier * 10**8 + base``, so a modulus of ``10**8`` recovers
-    the enhanced-FRS source household. The mapping is refused when it would be
-    ambiguous (a lineage column already exists) or vacuous (no id reaches the
-    modulus, making it the identity).
+    the enhanced-FRS pool source. The derived column is a *distinct lineage
+    layer*: any immediate-layer ``source_household_id``/``source_household_key``
+    the input carries (the national staging H5 does) is left untouched. The
+    modulus is only meaningful for rows whose ids follow the pool's tier
+    scheme — on a seam output, channel-rebuilt households (e.g. the rebuilt
+    SPI channel) carry ids outside that scheme, so pool-lineage diagnostics
+    must be read per support channel.
+
+    The mapping is refused when it would be ambiguous (the pool column
+    already exists) or vacuous (no id reaches the modulus, making it the
+    identity), and household ids must be finite non-negative integers —
+    validated on the numeric values, not after a lossy integer cast.
     """
 
     if not isinstance(modulus, int) or isinstance(modulus, bool) or modulus <= 0:
         raise ValueError("source_lineage_modulus must be a positive integer.")
-    if "source_household_id" in household.columns:
+    if POOL_SOURCE_LINEAGE_COLUMN in household.columns:
         raise ValueError(
-            "household already carries source_household_id; applying "
-            "source_lineage_modulus would be ambiguous."
+            f"household already carries {POOL_SOURCE_LINEAGE_COLUMN!r}; "
+            "applying source_lineage_modulus would be ambiguous."
         )
+    numeric = pd.to_numeric(household[household_id_column], errors="raise").to_numpy(
+        dtype=np.float64
+    )
+    if not np.isfinite(numeric).all():
+        raise ValueError("source_lineage_modulus requires finite household ids.")
+    if (numeric < 0).any():
+        raise ValueError("source_lineage_modulus requires non-negative household ids.")
+    if (numeric != np.floor(numeric)).any():
+        raise ValueError("source_lineage_modulus requires integral household ids.")
     ids = (
         pd.to_numeric(household[household_id_column], errors="raise")
         .astype("int64")
         .to_numpy()
     )
-    if (ids < 0).any():
-        raise ValueError("source_lineage_modulus requires non-negative household ids.")
     if (ids // modulus == 0).all():
         raise ValueError(
             f"source_lineage_modulus={modulus} exceeds every household_id and "
@@ -467,8 +536,35 @@ def apply_uk_source_lineage_modulus(
             "offset."
         )
     frame = household.copy()
-    frame["source_household_id"] = ids % modulus
+    frame[POOL_SOURCE_LINEAGE_COLUMN] = ids % modulus
     return frame
+
+
+def _assert_mass_log_current(
+    mass_log: tuple[MassChangeRecord, ...],
+    household_total: float,
+) -> None:
+    """Refuse a household mass log whose latest record disagrees with reality.
+
+    Without this, a stale incoming chain would be hidden by the clone's own
+    self-consistent appended record and pass downstream validation.
+    """
+
+    household_records = [record for record in mass_log if record.entity == "household"]
+    if not household_records:
+        return
+    latest = household_records[-1]
+    if not np.isclose(
+        latest.new_total,
+        household_total,
+        rtol=MASS_CONSERVATION_RELATIVE_TOLERANCE,
+        atol=0.0,
+    ):
+        raise ValueError(
+            "household mass log is stale: latest household record new_total "
+            f"{latest.new_total!r} disagrees with the actual household weight "
+            f"total {household_total!r}; refusing to extend a broken chain."
+        )
 
 
 def _require_columns(
