@@ -1775,12 +1775,14 @@ def test_builder_critical_gate_rejects_medical_incumbent_escape() -> None:
         "irs_soi.ty2022.historic_table_2.us.all."
         f"medical_dental_expense_amount@{builder.PERIOD}"
     )
+    # Past the row's own absolute cap (medical sits at the adjudicated 0.25
+    # bound, 2026-07-22): even improving on the incumbent never passes it.
     diagnostics = tuple(
         SimpleNamespace(
             **{
                 **vars(diagnostic),
-                "final_estimate": 96_000_000_000.0,
-                "relative_error": 0.2,
+                "final_estimate": 104_000_000_000.0,
+                "relative_error": 0.3,
             }
         )
         if diagnostic.name == medical_name
@@ -1807,7 +1809,7 @@ def test_builder_critical_gate_rejects_medical_incumbent_escape() -> None:
 
     assert len(failures) == 1
     assert "medical_dental_expense_amount@2024" in failures[0]
-    assert "relative_error=0.2" in failures[0]
+    assert "relative_error=0.3" in failures[0]
 
 
 def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:

@@ -23,7 +23,7 @@ classes plus that blanket. The builder was missing:
 | --- | ---: | ---: |
 | Itemized deduction amount | 2 | 0.15 |
 | State and local tax deduction amount | 2 | 0.10 |
-| Medical expense deduction amount | 1 | 0.15 |
+| Medical expense deduction amount | 1 | 0.25 (adjudicated #490; restores to 0.15 once a boosted run holds it) |
 
 The complete register now lives in
 `populace.data.us_critical_targets` as dependency-light frozen data and is
