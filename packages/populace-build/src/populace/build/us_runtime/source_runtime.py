@@ -14,6 +14,9 @@ from populace.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from populace.build.us_runtime.adult_care import (
+    derive_us_adult_care_from_manifest,
+)
 from populace.build.us_runtime.capital_gain_distributions import (
     split_us_component_by_share_from_manifest,
 )
@@ -49,6 +52,7 @@ from populace.build.us_runtime.medicare_take_up import (
     derive_us_medicare_take_up_from_manifest,
 )
 from populace.build.us_runtime.other_health_insurance import (
+    attribute_us_se_health_premiums_from_manifest,
     derive_us_other_health_insurance_from_manifest,
     impute_us_other_health_insurance_to_puf_support_from_manifest,
 )
@@ -94,7 +98,9 @@ from populace.build.us_runtime.workers_compensation import (
 __all__ = [
     "aggregate_us_person_to_tax_unit_from_manifest",
     "assign_us_binary_from_rate_from_manifest",
+    "attribute_us_se_health_premiums_from_manifest",
     "calibrate_us_binary_assignment_from_manifest",
+    "derive_us_adult_care_from_manifest",
     "calibrate_us_binary_assignment_joint_targets_from_manifest",
     "compute_us_ratio_from_manifest",
     "derive_us_childcare_from_manifest",
@@ -289,11 +295,15 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
     return {
         "aggregate_person_to_tax_unit": aggregate_us_person_to_tax_unit_from_manifest,
         "assign_binary_from_rate": assign_us_binary_from_rate_from_manifest,
+        "attribute_self_employed_health_premiums": (
+            attribute_us_se_health_premiums_from_manifest
+        ),
         "calibrate_binary_assignment": (calibrate_us_binary_assignment_from_manifest),
         "calibrate_binary_assignment_joint_targets": (
             calibrate_us_binary_assignment_joint_targets_from_manifest
         ),
         "compute_ratio": compute_us_ratio_from_manifest,
+        "derive_adult_care_inputs": derive_us_adult_care_from_manifest,
         "derive_childcare_inputs": derive_us_childcare_from_manifest,
         "derive_child_support_inputs": derive_us_child_support_from_manifest,
         "derive_disability_benefits": derive_us_disability_benefits_from_manifest,

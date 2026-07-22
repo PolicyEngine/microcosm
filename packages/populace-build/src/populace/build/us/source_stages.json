@@ -413,6 +413,50 @@
       "notes": "Measured ASEC SPM_CHILDCAREXPNS carries directly to spm_unit_pre_subsidy_childcare_expenses (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 1612-1622). After support expansion, the archived second-stage method uses the eight declared predictors and at most 5,000 ASEC rows to QRF-impute the PUF half, then reduces non-person output with value_from_first_person (extended_cps.py lines 234-248, 639-739, and 1014-1069). Populace deliberately strengthens the archived unweighted fit by using typed person weights."
     },
     {
+      "stage": "adult_care_inputs",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "hermetic ASEC pool years",
+          "source": "https://www.census.gov/programs-surveys/cps/data/datasets.html",
+          "locator": "Census CPS ASEC person PEDISDRS self-care difficulty item and the measured SPM-unit childcare expense distribution"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person",
+          "weight": "person_weight"
+        },
+        {
+          "kind": "derive_adult_care_inputs",
+          "self_care_difficulty_source": "PEDISDRS",
+          "childcare_expense_source": "spm_unit_pre_subsidy_childcare_expenses",
+          "child_qualifying_age_limit": 13,
+          "earned_income_sources": [
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr"
+          ],
+          "seed_from_build_config": true,
+          "output_flag": "is_incapable_of_self_care",
+          "output_expenses": "pre_subsidy_care_expenses"
+        }
+      ],
+      "outputs": [
+        "is_incapable_of_self_care",
+        "pre_subsidy_care_expenses"
+      ],
+      "nonnegative_outputs": [
+        "pre_subsidy_care_expenses"
+      ],
+      "notes": "Section 21 CDCC adult/disabled-dependent care inputs (PolicyEngine/populace#451 item 1), previously structural zeros in both the retired eCPS and every Populace base. Source decision receipts (Census API variable dictionaries, ASEC 2024 and SIPP 2023, read 2026-07-22): ASEC carries the qualifying concept directly - person item PEDISDRS ('difficulty dressing or bathing') operationalizes 'physically or mentally incapable of self-care', with SIPP's identical ESELFCARE item corroborating; NEITHER instrument measures in-household adult-care expenditures (ASEC's only care-expense items are childcare HCHCARE_VAL/SPM_CHILDCAREXPNS; SIPP's only adult-care payment amount TDPCAREAMT covers care of a former household member, failing section 21's same-principal-abode requirement). The dollar leg is therefore an explicitly documented same-instrument proxy: the measured ASEC work-related childcare expense distribution (the same section 21 employment-related expense class, subject to the same 26 USC 21(c) per-person cap) supplies the paid-care usage rate (weighted share of positive-childcare SPM units among units with a child under the 21(d)(1)(A) age limit and positive earnings, on the measured ASEC channel) and the positive level distribution (weighted quantiles). Recipient support is restricted to tax units where the statute can bind: a measured disabled qualifying individual under 21(b)(1)(B) (dependent) or 21(b)(1)(C) (married head or spouse), plus the 21(d) earnings structure honoring the 21(d)(2) deeming rule for an incapacitated spouse. Selection is a seeded weight-targeted permutation prefix at the measured usage rate; levels are a distribution-preserving weighted-quantile draw placed on the first qualifying person. PolicyEngine-US 1.764.6 owns all downstream CDCC formulas; is_incapable_of_self_care is also read by SNAP/Medicaid work-requirement exemptions and state CDCC analogs, which move those programs from flag-off defaults toward the measured disability structure."
+    },
+    {
       "stage": "energy_subsidy",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",
@@ -2605,17 +2649,33 @@
           "n_estimators": 100,
           "seed_from_build_config": true,
           "weight": "person_weight"
+        },
+        {
+          "kind": "attribute_self_employed_health_premiums",
+          "reported_source": "health_insurance_premiums_without_medicare_part_b",
+          "self_employment_income_sources": [
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr"
+          ],
+          "medicare_age_source": "age",
+          "medicare_age_threshold": 65,
+          "medicare_ssdi_source": "social_security_disability",
+          "output_premiums": "health_insurance_premiums",
+          "output_self_employed_flag": "is_self_employed"
         }
       ],
       "outputs": [
         "health_insurance_premiums_without_medicare_part_b",
-        "other_health_insurance_premiums"
+        "other_health_insurance_premiums",
+        "health_insurance_premiums",
+        "is_self_employed"
       ],
       "nonnegative_outputs": [
         "health_insurance_premiums_without_medicare_part_b",
-        "other_health_insurance_premiums"
+        "other_health_insurance_premiums",
+        "health_insurance_premiums"
       ],
-      "notes": "After ACA and Medicaid take-up inputs are materialized, the retired annual residual is max(PHIP_VAL - chip_premium - marketplace_net_premium - medicaid_premium, 0), with tax-unit modeled premiums assigned to the first person (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 828-944). The archived CPS-only output list and exact eight-predictor, at-most-5,000-person joint QRF are extended_cps.py lines 135-194, 234-248, and 639-745, with only the PUF support half replaced at lines 1014-1076. Because the archive predicted the two PUF leaves jointly without clipping one to the other, PUF-only residual-order exceedances remain diagnostics; measured ASEC rows must preserve the exact residual identity. The archive did not explicitly pin tree count or weights; Populace pins 100 trees and typed person weights as reproducibility hardening."
+      "notes": "After ACA and Medicaid take-up inputs are materialized, the retired annual residual is max(PHIP_VAL - chip_premium - marketplace_net_premium - medicaid_premium, 0), with tax-unit modeled premiums assigned to the first person (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py lines 828-944). The archived CPS-only output list and exact eight-predictor, at-most-5,000-person joint QRF are extended_cps.py lines 135-194, 234-248, and 639-745, with only the PUF support half replaced at lines 1014-1076. Because the archive predicted the two PUF leaves jointly without clipping one to the other, PUF-only residual-order exceedances remain diagnostics; measured ASEC rows must preserve the exact residual identity. The archive did not explicitly pin tree count or weights; Populace pins 100 trees and typed person weights as reproducibility hardening. The final attribution operation (PolicyEngine/populace#451 item 2) is deterministic: it copies the finished reported non-Part-B premium onto the person health_insurance_premiums input exactly where combined Schedule C income (self_employment_income_before_lsr + sstb_self_employment_income_before_lsr) is strictly positive and the person is outside the Medicare proxy (age 65+ or any Social Security disability income), and marks is_self_employed for every strictly-positive Schedule C person. PolicyEngine-US 1.764.6 then computes self_employed_health_insurance_premiums (a formula-owned adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the section 162(l) ALD as min(total_self_employment_income, premiums). The Medicare proxy keeps the statutory medical-expense premium concept numerically invariant because the direct input equals the decomposed reported premium whenever the modeled Part B add-on is zero. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed health insurance deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed)."
     }
   ]
 }

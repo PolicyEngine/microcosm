@@ -52,6 +52,12 @@ __all__ = [
     "US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS",
     "US_OTHER_HEALTH_INSURANCE_REQUIRED_SOURCE_COLUMNS",
     "US_OTHER_HEALTH_INSURANCE_STAGE_NAME",
+    "US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS",
+    "US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS",
+    "US_SE_HEALTH_MEDICARE_AGE_THRESHOLD",
+    "US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES",
+    "attribute_us_se_health_premiums",
+    "attribute_us_se_health_premiums_from_manifest",
     "derive_us_other_health_insurance_from_asec",
     "derive_us_other_health_insurance_from_manifest",
     "impute_us_other_health_insurance_to_puf_support_from_manifest",
@@ -102,8 +108,37 @@ US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES: tuple[str, ...] = (
     "marketplace_net_premium",
     "medicaid_premium",
 )
+# Self-employed premium attribution (PolicyEngine/populace#451 item 2): the
+# section 162(l) ALD chain in PolicyEngine-US 1.764.6 reads person inputs
+# health_insurance_premiums (via the self_employed_health_insurance_premiums
+# adds-aggregation, gated by is_self_employed) and caps the deduction at
+# total_self_employment_income = self_employment_income +
+# sstb_self_employment_income. self_employed_health_insurance_premiums itself
+# is formula-owned (adds) and cannot ship as a column, so the stage ships the
+# two pure inputs the engine intends.
+US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS: tuple[str, ...] = (
+    "health_insurance_premiums",
+    "is_self_employed",
+)
+US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES: tuple[str, ...] = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+# Attribution is withheld from people on the Medicare proxy (age 65+ or any
+# Social Security disability income) so the statutory medical-expense premium
+# concept stays numerically invariant: for everyone attributed, the direct
+# premium input equals the decomposed reported premium because the modeled
+# Part B add-on is zero for non-enrollees.
+US_SE_HEALTH_MEDICARE_AGE_THRESHOLD = 65
+US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS: tuple[str, ...] = (
+    *US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS,
+    *US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
+)
 
 _REPORTED_OUTPUT, _OTHER_OUTPUT = US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS
+_SE_PREMIUMS_OUTPUT, _SE_FLAG_OUTPUT = US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS
+_SE_MEDICARE_AGE_SOURCE = "age"
+_SE_MEDICARE_SSDI_SOURCE = "social_security_disability"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
@@ -153,11 +188,11 @@ def us_other_health_insurance_stage_spec() -> SourceStageSpec:
             f"{US_OTHER_HEALTH_INSURANCE_STAGE_NAME!r} stage."
         )
     spec = stage_map[US_OTHER_HEALTH_INSURANCE_STAGE_NAME]
-    if tuple(spec.outputs) != US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS:
+    if tuple(spec.outputs) != US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS:
         raise ValueError(
             f"{US_OTHER_HEALTH_INSURANCE_STAGE_NAME!r} outputs must preserve "
-            "the archived target order "
-            f"{list(US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS)}; got "
+            "the archived target order followed by the attribution outputs "
+            f"{list(US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS)}; got "
             f"{list(spec.outputs)}."
         )
     return spec
@@ -404,6 +439,110 @@ def impute_us_other_health_insurance_to_puf_support_from_manifest(
             )
         result.loc[puf_mask, output] = predicted
     return result
+
+
+def _finite_values(person: pd.DataFrame, column: str) -> np.ndarray:
+    if column not in person.columns:
+        raise SourceRuntimeError(
+            f"US self-employed premium attribution requires source column {column!r}."
+        )
+    values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    nonfinite = int(np.count_nonzero(~np.isfinite(values)))
+    if nonfinite:
+        raise SourceRuntimeError(
+            f"US self-employed premium attribution source {column!r} contains "
+            f"{nonfinite} nonnumeric or nonfinite value(s)."
+        )
+    return values
+
+
+def attribute_us_se_health_premiums(
+    person: pd.DataFrame,
+    *,
+    reported_source_column: str = _REPORTED_OUTPUT,
+    self_employment_income_source_columns: tuple[str, ...] = (
+        US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
+    ),
+    medicare_age_source_column: str = _SE_MEDICARE_AGE_SOURCE,
+    medicare_age_threshold: int = US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
+    medicare_ssdi_source_column: str = _SE_MEDICARE_SSDI_SOURCE,
+    output_premiums_column: str = _SE_PREMIUMS_OUTPUT,
+    output_flag_column: str = _SE_FLAG_OUTPUT,
+) -> pd.DataFrame:
+    """Attribute reported premiums to self-employed people deterministically.
+
+    The premium output copies the reported non-Part-B premium exactly for
+    people with strictly positive combined Schedule C income who are outside
+    the Medicare proxy, and is zero elsewhere: attribution never invents
+    premium mass. The flag marks every strictly-positive Schedule C person so
+    the engine's ``defined_for`` gate opens exactly where the section 162(l)
+    earned-income cap can bind. Schedule C losses are legitimate measured
+    signal and simply leave the flag off.
+    """
+
+    reported = _strict_nonnegative_values(person, reported_source_column)
+    self_employment = np.zeros(len(person), dtype=np.float64)
+    for column in self_employment_income_source_columns:
+        self_employment += _finite_values(person, column)
+    age = _finite_values(person, medicare_age_source_column)
+    ssdi = _strict_nonnegative_values(person, medicare_ssdi_source_column)
+
+    self_employed = self_employment > 0.0
+    medicare_proxy = (age >= float(medicare_age_threshold)) | (ssdi > 0.0)
+
+    result = person.copy(deep=True)
+    result[output_premiums_column] = np.where(
+        self_employed & ~medicare_proxy, reported, 0.0
+    )
+    result[output_flag_column] = self_employed
+    return result
+
+
+def attribute_us_se_health_premiums_from_manifest(
+    frame: pd.DataFrame | None,
+    operation: SourceOperationSpec,
+    _context: SourceRuntimeContext | None,
+) -> pd.DataFrame:
+    """Interpret the manifest's self-employed premium attribution operation."""
+
+    if operation.kind != "attribute_self_employed_health_premiums":
+        raise SourceRuntimeError(
+            "US self-employed premium attribution received unexpected "
+            f"operation {operation.kind!r}."
+        )
+    if frame is None:
+        raise SourceRuntimeError(
+            "US self-employed premium attribution requires the person table first."
+        )
+    expected = {
+        "reported_source": _REPORTED_OUTPUT,
+        "self_employment_income_sources": list(
+            US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
+        ),
+        "medicare_age_source": _SE_MEDICARE_AGE_SOURCE,
+        "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
+        "medicare_ssdi_source": _SE_MEDICARE_SSDI_SOURCE,
+        "output_premiums": _SE_PREMIUMS_OUTPUT,
+        "output_self_employed_flag": _SE_FLAG_OUTPUT,
+    }
+    parameters = dict(operation.parameters)
+    if parameters != expected:
+        raise SourceRuntimeError(
+            "US self-employed premium attribution drifted from the pinned "
+            f"method: expected {expected}, got {parameters}."
+        )
+    return attribute_us_se_health_premiums(
+        frame,
+        reported_source_column=parameters["reported_source"],
+        self_employment_income_source_columns=tuple(
+            parameters["self_employment_income_sources"]
+        ),
+        medicare_age_source_column=parameters["medicare_age_source"],
+        medicare_age_threshold=int(parameters["medicare_age_threshold"]),
+        medicare_ssdi_source_column=parameters["medicare_ssdi_source"],
+        output_premiums_column=parameters["output_premiums"],
+        output_flag_column=parameters["output_self_employed_flag"],
+    )
 
 
 def _person_other_health_insurance_predictors(frame: Frame) -> pd.DataFrame:
@@ -706,11 +845,14 @@ def with_us_other_health_insurance_inputs(
             "impute_other_health_insurance_premiums_to_puf_support": (
                 impute_us_other_health_insurance_to_puf_support_from_manifest
             ),
+            "attribute_self_employed_health_premiums": (
+                attribute_us_se_health_premiums_from_manifest
+            ),
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
-    for column in US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS:
+    for column in US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS:
         if aligned[column].isna().any():
             raise ValueError(
                 "US other-health-insurance stage output "
@@ -718,8 +860,9 @@ def with_us_other_health_insurance_inputs(
             )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for column in US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS:
+    for column in (*US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS, _SE_PREMIUMS_OUTPUT):
         tables["person"][column] = aligned[column].to_numpy(dtype=np.float64)
+    tables["person"][_SE_FLAG_OUTPUT] = aligned[_SE_FLAG_OUTPUT].astype(bool).to_numpy()
     return Frame(
         tables,
         frame.schema,
@@ -796,7 +939,73 @@ def us_other_health_insurance_summary(frame: Frame) -> dict[str, object]:
             name: int(np.count_nonzero(residual_violation & (channel == name)))
             for name in (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL)
         }
+    result["se_attribution"] = _se_attribution_summary(person, weights, reported)
     return result
+
+
+def _se_attribution_summary(
+    person: pd.DataFrame,
+    weights: np.ndarray,
+    reported: np.ndarray,
+) -> dict[str, object]:
+    """Recompute the deterministic attribution identity from shipped columns."""
+
+    missing = [
+        column
+        for column in (
+            *US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
+            *US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES,
+            _SE_MEDICARE_AGE_SOURCE,
+            _SE_MEDICARE_SSDI_SOURCE,
+        )
+        if column not in person.columns
+    ]
+    if missing:
+        return {"missing": missing}
+
+    premiums = pd.to_numeric(person[_SE_PREMIUMS_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    flag = person[_SE_FLAG_OUTPUT].astype(bool).to_numpy()
+    self_employment = np.zeros(len(person), dtype=np.float64)
+    for column in US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES:
+        self_employment += pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+    age = pd.to_numeric(person[_SE_MEDICARE_AGE_SOURCE], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    ssdi = pd.to_numeric(person[_SE_MEDICARE_SSDI_SOURCE], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    self_employed = self_employment > 0.0
+    medicare_proxy = (age >= float(US_SE_HEALTH_MEDICARE_AGE_THRESHOLD)) | (ssdi > 0.0)
+    expected = np.where(
+        self_employed & ~medicare_proxy & np.isfinite(reported), reported, 0.0
+    )
+
+    finite = np.isfinite(premiums)
+    positive = finite & (premiums > 0.0)
+    total_weight = float(weights.sum())
+    identity_violations = int(
+        np.count_nonzero(~np.isclose(premiums, expected, rtol=0.0, atol=1e-9))
+    )
+    flag_violations = int(np.count_nonzero(flag != self_employed))
+    return {
+        "positive_rows": int(np.count_nonzero(positive)),
+        "positive_share": (
+            float(weights[positive].sum()) / total_weight if total_weight > 0.0 else 0.0
+        ),
+        "weighted_total": float((np.nan_to_num(premiums) * weights).sum()),
+        "nonfinite": int(np.count_nonzero(~finite)),
+        "negative": int(np.count_nonzero(finite & (premiums < 0.0))),
+        "flag_rows": int(np.count_nonzero(flag)),
+        "flag_share": (
+            float(weights[flag].sum()) / total_weight if total_weight > 0.0 else 0.0
+        ),
+        "identity_violations": identity_violations,
+        "flag_violations": flag_violations,
+    }
 
 
 def us_other_health_insurance_signal_gate(frame: Frame) -> GateResult:
@@ -805,7 +1014,7 @@ def us_other_health_insurance_signal_gate(frame: Frame) -> GateResult:
     person = frame.table("person")
     missing = [
         output
-        for output in US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS
+        for output in US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS
         if output not in person
     ]
     if missing:
@@ -862,6 +1071,36 @@ def us_other_health_insurance_signal_gate(frame: Frame) -> GateResult:
             f"{_OTHER_OUTPUT}: {identity_violations} measured ASEC value(s) "
             f"exceed {_REPORTED_OUTPUT}."
         )
+    attribution = summary.get("se_attribution")
+    if not isinstance(attribution, dict):
+        failures.append("se_attribution diagnostics missing from summary.")
+    elif "missing" in attribution:
+        failures.append(
+            f"se_attribution identity sources missing: {attribution['missing']}."
+        )
+    else:
+        if attribution["nonfinite"]:
+            failures.append(
+                f"{_SE_PREMIUMS_OUTPUT}: {int(attribution['nonfinite'])} "
+                "nonfinite values."
+            )
+        if attribution["negative"]:
+            failures.append(
+                f"{_SE_PREMIUMS_OUTPUT}: {int(attribution['negative'])} "
+                "negative values."
+            )
+        if attribution["identity_violations"] or attribution["flag_violations"]:
+            failures.append(
+                "se_attribution identity broken: "
+                f"{int(attribution['identity_violations'])} premium and "
+                f"{int(attribution['flag_violations'])} flag value(s) diverge "
+                "from the deterministic reported-premium attribution."
+            )
+        if not attribution["positive_rows"]:
+            failures.append(
+                f"{_SE_PREMIUMS_OUTPUT}: no positive attributed premiums; the "
+                "self-employed health ALD surface would be a structural zero."
+            )
     return GateResult(
         name="other_health_insurance_premiums_signal",
         passed=not failures,
@@ -873,7 +1112,7 @@ def us_other_health_insurance_signal_gate(frame: Frame) -> GateResult:
 def _other_health_insurance_surface_carries_signal(frame: Frame) -> bool:
     if any(
         output not in frame.table("person")
-        for output in US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS
+        for output in US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS
     ):
         return False
     return us_other_health_insurance_signal_gate(frame).passed

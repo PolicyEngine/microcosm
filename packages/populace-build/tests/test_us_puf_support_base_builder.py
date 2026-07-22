@@ -313,6 +313,7 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
         "workers_compensation_post_clone",
         "weeks_unemployed_post_clone",
         "childcare_post_clone",
+        "adult_care_post_clone",
         "energy_subsidy_post_clone",
         "retirement_contributions_post_clone",
         "retirement_distributions_post_clone",
@@ -1238,6 +1239,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     )
     monkeypatch.setattr(
         builder,
+        "with_us_adult_care_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "with_us_energy_subsidy_input",
         lambda frame, *, seed, time_period: frame,
     )
@@ -1475,6 +1481,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(
         builder,
         "us_childcare_signal_gate",
+        lambda frame: passing_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_adult_care_signal_gate",
         lambda frame: passing_gate,
     )
 

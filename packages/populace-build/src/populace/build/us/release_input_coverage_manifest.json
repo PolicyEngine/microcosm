@@ -156,6 +156,10 @@
   "has_va_health_coverage_at_interview": {
    "status": "required"
   },
+  "health_insurance_premiums": {
+   "note": "Self-employed premium attribution leaf (PolicyEngine/populace#451 item 2): the deterministic attribution operation of the other_health_insurance_premiums release stage copies the reported non-Part-B premium onto this person input for strictly-positive Schedule C people outside the Medicare proxy, which is the only channel populating the section 162(l) self-employed health ALD (SOI Pub 1304 Table 1.4 TY2023: 3,595,764 returns / $31.23B, ledger#105). Absent on pre-attribution artifacts by construction; any new release produces it.",
+   "status": "required"
+  },
   "health_insurance_premiums_without_medicare_part_b": {
    "status": "required"
   },
@@ -221,6 +225,10 @@
   "is_household_head": {
    "status": "required"
   },
+  "is_incapable_of_self_care": {
+   "note": "Section 21 qualifying-individual flag for the CDCC adult-care leg (PolicyEngine/populace#451 item 1), derived from the measured ASEC self-care difficulty item PEDISDRS by the adult_care_inputs base-builder stage. Also read by SNAP/Medicaid work-requirement exemptions and state CDCC analogs in PolicyEngine-US 1.764.6. Currently absent — the intended red gate until the next base rebuild carries the stage through.",
+   "status": "required"
+  },
   "is_military": {
    "status": "required"
   },
@@ -231,6 +239,10 @@
    "status": "required"
   },
   "is_pursuing_credential_for_american_opportunity_credit": {
+   "status": "required"
+  },
+  "is_self_employed": {
+   "note": "Gate flag for the self-employed premium attribution (PolicyEngine/populace#451 item 2): opens the defined_for gate on the engine's self_employed_health_insurance_premiums adds-aggregation for every strictly-positive Schedule C person. Written by the same attribution operation as health_insurance_premiums.",
    "status": "required"
   },
   "is_separated": {
@@ -289,6 +301,10 @@
    "status": "required"
   },
   "partnership_s_corp_income_would_be_qualified": {
+   "status": "required"
+  },
+  "pre_subsidy_care_expenses": {
+   "note": "Adult/disabled-dependent care expense leaf of the section 21 CDCC (PolicyEngine/populace#451 item 1), written by the adult_care_inputs base-builder stage: without it every CDCC reform binding through adult care scores exactly $0 (the #368 absent-input class). Currently absent — the intended red gate until the next base rebuild carries the stage through.",
    "status": "required"
   },
   "pre_subsidy_rent": {
@@ -523,9 +539,9 @@
   }
  },
  "counts": {
-  "required": 159,
+  "required": 163,
   "reviewed_exclusion": 8,
-  "total": 167
+  "total": 171
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/populace#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/populace#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (populace.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
@@ -619,6 +635,40 @@
    "parameter_changes": {},
    "period": 2024,
    "reason": "PolicyEngine-US uses is_household_head to identify whose earnings cap SPM work-childcare expenses when an SPM unit contains multiple tax units. Neutralizing only the measured head flag falls back to tax-unit roles and changes the cap. On the 865,046-person staged Build-J artifact, baseline-minus-neutralized capped expenses are -$265.50 million. Without the restored P_SEQ input the neutralization is a structural zero."
+  },
+  {
+   "binding_inputs": [
+    "health_insurance_premiums",
+    "is_self_employed"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "self_employed_health_premium_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 1000000000.0,
+   "name": "Self-employed health premium neutralization",
+   "neutralized_variable": "health_insurance_premiums",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US computes the section 162(l) self-employed health ALD as min(total_self_employment_income, self_employed_health_insurance_premiums), where the premium aggregation adds the person health_insurance_premiums input under the is_self_employed gate — the two leaves the deterministic attribution operation of the other_health_insurance_premiums release stage populates. The Medicare-proxy guard keeps the statutory medical-expense premium concept numerically invariant, so this neutralization isolates exactly the ALD channel on federal income tax. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0): $48.09 billion attributed to 12,186,288 weighted carriers, baseline ALD $31.24 billion against the SOI Pub 1304 Table 1.4 TY2023 fact of $31.23 billion (ledger#105, buildn v9.2 feed), baseline-minus-reform -$4.58 billion. A structural zero means the attribution operation was dropped or the defined_for gate never opened."
+  },
+  {
+   "binding_inputs": [
+    "is_incapable_of_self_care",
+    "pre_subsidy_care_expenses"
+   ],
+   "budget_measure": "income_tax",
+   "effect_direction": "baseline_minus_reform",
+   "expected_sign": "negative",
+   "id": "cdcc_adult_care_expense_neutralization",
+   "issue": "PolicyEngine/populace#451",
+   "min_abs_effect": 40000000.0,
+   "name": "CDCC adult-care expense neutralization",
+   "neutralized_variable": "pre_subsidy_care_expenses",
+   "parameter_changes": {},
+   "period": 2024,
+   "reason": "PolicyEngine-US sums pre_subsidy_care_expenses (via care_expenses) into cdcc_relevant_expenses as the section 21 adult/disabled-dependent care leg; the is_incapable_of_self_care flag supplies the 21(b)(1) qualifying individuals and the 21(d)(2) spouse deeming, and stays active in both arms so the neutralization isolates exactly the dollar leg. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0) after the adult_care_inputs stage: 2,067 measured PEDISDRS carriers (5.998 million weighted, a 1.76% person share consistent with the published self-care difficulty prevalence), $4.14 billion of donor-matched expenses on 147 carrier rows, baseline-minus-reform -$193.3 million on federal income tax. A structural zero means the base rebuild dropped the stage or the CDCC adult-care channel broke."
   },
   {
    "binding_inputs": [
