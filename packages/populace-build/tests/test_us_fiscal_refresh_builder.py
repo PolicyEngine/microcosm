@@ -7282,10 +7282,10 @@ def test_calibration_diagnostics_schema_lockstep() -> None:
     in the one suite that imports both (the #494 cross-package break class:
     calibrate moved to schema 5 while the contract still rejected != 4)."""
     from populace.calibrate.diagnostics import (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as writer_version,
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as WRITER_SCHEMA_VERSION,
     )
     from populace.data.contract import (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as contract_version,
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION,
     )
 
-    assert writer_version == contract_version
+    assert WRITER_SCHEMA_VERSION == CONTRACT_SCHEMA_VERSION
