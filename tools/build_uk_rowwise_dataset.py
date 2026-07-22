@@ -20,9 +20,17 @@ from typing import Any
 import pandas as pd
 
 from populace.build.uk_runtime import (
+    MASS_CONSERVATION_RELATIVE_TOLERANCE,
+    PERSON_ID_COLUMNS,
+    POOL_SOURCE_LINEAGE_COLUMN,
+    apply_uk_source_lineage_modulus,
+    assign_household_geography,
     build_official_uk_geography_crosswalk,
     clone_uk_dataset_with_rowwise_geography,
+    expected_uk_rowwise_area_support,
     geography_coverage_summary,
+    id_multiplier_for_values,
+    read_uk_single_year_weight_metadata,
     validate_geography_coverage,
     write_geography_crosswalk,
 )
@@ -31,6 +39,8 @@ CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
 DATASET_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise.h5"
 MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
+DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
+EXPECTED_SUPPORT_BOTTOM_AREAS = 15
 
 
 def _parse_args() -> argparse.Namespace:
@@ -98,6 +108,31 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow the same source household to be assigned to the same constituency across clones.",
     )
+    parser.add_argument(
+        "--source-lineage-modulus",
+        type=int,
+        help=(
+            "Derive pool_source_household_id as household_id mod this value "
+            "before cloning, recovering pool-grain lineage as a distinct "
+            "layer (the certified UK pool encodes its 10x clone tiers with a "
+            "10**8 id offset; the staging H5's immediate-layer "
+            "source_household_id is left untouched). Refused when the pool "
+            "column already exists or the modulus would be an identity "
+            "mapping."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Compute and write the clone plan (row/byte math, weight-kind "
+            "chain, the realized per-area support of the real sampler at "
+            "this seed, and the analytic collision-free expectation) as "
+            f"{DRY_RUN_PLAN_FILENAME} without cloning or writing a dataset. "
+            "When no --crosswalk is supplied, the freshly built crosswalk "
+            "cache is still written to --out."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -106,6 +141,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     input_h5 = args.input_h5.resolve()
+    input_artifact = _artifact_info(input_h5)
     base_summary = _h5_summary(input_h5)
     source_year = _source_year(args.source_year, base_summary=base_summary)
     output_h5 = _dataset_output_path(
@@ -120,6 +156,23 @@ def main() -> int:
     area_codes_by_type = _area_codes_by_type(args)
     coverage = _validate_optional_coverage(crosswalk, area_codes_by_type)
 
+    if args.dry_run:
+        plan = _dry_run_plan(
+            args,
+            input_h5=input_h5,
+            input_artifact=input_artifact,
+            output_h5=output_h5,
+            crosswalk=crosswalk,
+            crosswalk_source=crosswalk_source,
+            base_summary=base_summary,
+            source_year=source_year,
+            coverage=coverage,
+        )
+        plan_path = args.out / DRY_RUN_PLAN_FILENAME
+        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        return 0
+
     result = clone_uk_dataset_with_rowwise_geography(
         input_h5,
         crosswalk,
@@ -131,8 +184,13 @@ def main() -> int:
         require_constituency=not args.allow_blank_constituency,
         constrain_to_region=not args.allow_cross_region_assignment,
         avoid_constituency_collisions=not args.allow_constituency_collisions,
+        source_lineage_modulus=args.source_lineage_modulus,
     )
-    rowwise_summary = _rowwise_summary(result, base_summary=base_summary)
+    rowwise_summary = _rowwise_summary(
+        result,
+        base_summary=base_summary,
+        source_lineage_modulus=args.source_lineage_modulus,
+    )
     coverage_path = args.out / COVERAGE_FILENAME
     coverage_artifact = None
     if not coverage.empty:
@@ -146,17 +204,9 @@ def main() -> int:
         "build_kind": "uk_rowwise_local_geography_dataset",
         "created_at": datetime.now(UTC).isoformat(),
         "git_commit": _git_commit(),
-        "parameters": {
-            "n_clones": args.n_clones,
-            "seed": args.seed,
-            "source_year": source_year,
-            "require_all_countries": not args.allow_missing_country,
-            "require_constituency": not args.allow_blank_constituency,
-            "constrain_to_region": not args.allow_cross_region_assignment,
-            "avoid_constituency_collisions": not args.allow_constituency_collisions,
-        },
+        "parameters": _parameters(args, source_year=source_year),
         "inputs": {
-            "dataset": _artifact_info(input_h5),
+            "dataset": input_artifact,
             "crosswalk": _artifact_info(crosswalk_path),
         },
         "outputs": {
@@ -195,7 +245,12 @@ def _dataset_output_path(
     path = Path(filename)
     if path.is_absolute() or path.name != filename or path.name in {"", ".", ".."}:
         raise ValueError("--dataset-filename must be a filename, not a path.")
-    reserved = {CROSSWALK_FILENAME, MANIFEST_FILENAME, COVERAGE_FILENAME}
+    reserved = {
+        CROSSWALK_FILENAME,
+        MANIFEST_FILENAME,
+        COVERAGE_FILENAME,
+        DRY_RUN_PLAN_FILENAME,
+    }
     if path.name in reserved:
         raise ValueError(
             f"--dataset-filename must not use reserved name {path.name!r}."
@@ -212,6 +267,7 @@ def _validate_output_paths(
     output_sidecars = {
         (args.out / MANIFEST_FILENAME).resolve(),
         (args.out / COVERAGE_FILENAME).resolve(),
+        (args.out / DRY_RUN_PLAN_FILENAME).resolve(),
     }
     generated_crosswalk_path = (args.out / CROSSWALK_FILENAME).resolve()
     reserved_paths = {
@@ -249,7 +305,11 @@ def _load_or_build_crosswalk(args: argparse.Namespace) -> CrosswalkSource:
     if args.crosswalk is not None:
         path = args.crosswalk.resolve()
         generated_crosswalk_path = args.out / CROSSWALK_FILENAME
-        if path != generated_crosswalk_path.resolve():
+        if path != generated_crosswalk_path.resolve() and not getattr(
+            args, "dry_run", False
+        ):
+            # A dry run must not delete build artifacts, including a
+            # previously generated crosswalk cache.
             generated_crosswalk_path.unlink(missing_ok=True)
         return CrosswalkSource(_read_crosswalk(path), path, generated=False)
     crosswalk = build_official_uk_geography_crosswalk()
@@ -303,7 +363,21 @@ def _validate_optional_coverage(
     return geography_coverage_summary(crosswalk, area_codes_by_type)
 
 
+def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
+    return {
+        "n_clones": args.n_clones,
+        "seed": args.seed,
+        "source_year": source_year,
+        "require_all_countries": not args.allow_missing_country,
+        "require_constituency": not args.allow_blank_constituency,
+        "constrain_to_region": not args.allow_cross_region_assignment,
+        "avoid_constituency_collisions": not args.allow_constituency_collisions,
+        "source_lineage_modulus": args.source_lineage_modulus,
+    }
+
+
 def _h5_summary(path: Path) -> dict[str, Any]:
+    weight_kind, mass_log = read_uk_single_year_weight_metadata(path)
     with pd.HDFStore(path, mode="r") as store:
         household = store["household"]
         return {
@@ -311,10 +385,312 @@ def _h5_summary(path: Path) -> dict[str, Any]:
             "tables": {key.strip("/"): list(store[key].shape) for key in store.keys()},
             "household_weight_sum": float(household["household_weight"].sum()),
             "time_period": str(store["time_period"].iloc[0]),
+            "household_weight_kind": weight_kind.value,
+            "mass_log_records": len(mass_log),
+            "distinct_source_households": (
+                int(household["source_household_id"].nunique())
+                if "source_household_id" in household.columns
+                else None
+            ),
         }
 
 
-def _rowwise_summary(result, *, base_summary: dict[str, Any]) -> dict[str, Any]:
+def _dry_run_plan(
+    args: argparse.Namespace,
+    *,
+    input_h5: Path,
+    input_artifact: dict[str, Any],
+    output_h5: Path,
+    crosswalk: pd.DataFrame,
+    crosswalk_source: CrosswalkSource,
+    base_summary: dict[str, Any],
+    source_year: int,
+    coverage: pd.DataFrame,
+) -> dict[str, Any]:
+    """Compute the clone plan without cloning or writing a dataset."""
+
+    with pd.HDFStore(input_h5, mode="r") as store:
+        household = store["household"]
+        person_ids = _select_h5_columns(store, "person", list(PERSON_ID_COLUMNS))
+        benunit_ids = _select_h5_columns(store, "benunit", ["benunit_id"])
+    _validate_dry_run_input(
+        input_h5,
+        household=household,
+        person_ids=person_ids,
+        benunit_ids=benunit_ids,
+    )
+    id_multiplier = id_multiplier_for_values(
+        household["household_id"],
+        person_ids["person_id"],
+        person_ids["person_household_id"],
+        person_ids["person_benunit_id"],
+        benunit_ids["benunit_id"],
+    )
+    if args.source_lineage_modulus is not None:
+        household = apply_uk_source_lineage_modulus(
+            household,
+            modulus=args.source_lineage_modulus,
+        )
+    # The realized assignment IS the real build's: the sampler consumes only
+    # the household table, and identical inputs, flags, id multiplier, and
+    # seed produce identical draws — so these per-area counts are exact for
+    # the build this plan describes, collision avoidance included.
+    assignment = assign_household_geography(
+        household,
+        crosswalk,
+        n_clones=args.n_clones,
+        seed=args.seed,
+        id_multiplier=id_multiplier,
+        source_year=source_year,
+        require_all_countries=not args.allow_missing_country,
+        require_constituency=not args.allow_blank_constituency,
+        constrain_to_region=not args.allow_cross_region_assignment,
+        avoid_constituency_collisions=not args.allow_constituency_collisions,
+    )
+    realized = _realized_area_support(assignment.household, crosswalk)
+    collision_free = expected_uk_rowwise_area_support(
+        household,
+        crosswalk,
+        n_clones=args.n_clones,
+        source_year=source_year,
+        require_all_countries=not args.allow_missing_country,
+        require_constituency=not args.allow_blank_constituency,
+        constrain_to_region=not args.allow_cross_region_assignment,
+    )
+    table_rows = {
+        name: base_summary["tables"][name][0]
+        for name in ("person", "benunit", "household")
+    }
+    input_bytes = input_h5.stat().st_size
+    return {
+        "schema_version": 1,
+        "build_kind": "uk_rowwise_local_geography_dry_run",
+        "created_at": datetime.now(UTC).isoformat(),
+        "git_commit": _git_commit(),
+        "parameters": _parameters(args, source_year=source_year),
+        "input": {
+            "dataset": input_artifact,
+            "crosswalk": _artifact_info(crosswalk_source.path),
+            "tables": base_summary["tables"],
+            "household_weight_sum": base_summary["household_weight_sum"],
+            "time_period": base_summary["time_period"],
+            "household_weight_kind": base_summary["household_weight_kind"],
+            "mass_log_records": base_summary["mass_log_records"],
+        },
+        "plan": {
+            "n_clones": args.n_clones,
+            "id_multiplier": id_multiplier,
+            "output_h5": str(output_h5),
+            "rows": {name: rows * args.n_clones for name, rows in table_rows.items()},
+            "output_bytes_estimate": input_bytes * args.n_clones,
+            "output_bytes_estimate_basis": (
+                "lower-bound estimate: linear scaling of the input H5 byte "
+                "size by n_clones; added geography/lineage columns and HDF "
+                "table overhead increase the actual size"
+            ),
+        },
+        "realized_support": {
+            "basis": (
+                f"realized assignment at seed {args.seed} — identical draws "
+                "to the real build under these parameters; zero-row "
+                "sampleable areas included"
+            ),
+            **{
+                area_type: _support_summary(realized, area_type)
+                for area_type in ("constituency", "la")
+            },
+        },
+        "collision_free_expected_support": {
+            "basis": (
+                "analytic collision-free expectation; diverges from realized "
+                "support when n_clones is comparable to a group's sampleable "
+                "constituency count"
+            ),
+            **{
+                area_type: _support_summary(collision_free, area_type)
+                for area_type in ("constituency", "la")
+            },
+        },
+        "source_lineage": _source_lineage_report(
+            household,
+            modulus=args.source_lineage_modulus,
+        ),
+        "coverage": coverage.to_dict("records") if not coverage.empty else [],
+    }
+
+
+def _validate_dry_run_input(
+    input_h5: Path,
+    *,
+    household: pd.DataFrame,
+    person_ids: pd.DataFrame,
+    benunit_ids: pd.DataFrame,
+) -> None:
+    """Mirror the real build's input refusals so a plan cannot bless an
+    input the build would reject."""
+
+    if input_h5.suffix != ".h5":
+        raise ValueError("UK single-year dataset path must end with '.h5'.")
+    for frame, column, label in (
+        (household, "household_id", "household"),
+        (person_ids, "person_id", "person"),
+        (benunit_ids, "benunit_id", "benunit"),
+    ):
+        if frame[column].isna().any():
+            raise ValueError(f"{label}.{column} contains missing values.")
+        if frame[column].duplicated().any():
+            duplicates = frame.loc[frame[column].duplicated(), column].unique()
+            raise ValueError(
+                f"{label}.{column} must be unique; duplicate value(s): "
+                f"{list(map(str, duplicates[:5]))}."
+            )
+    household_ids = set(household["household_id"])
+    missing_households = sorted(set(person_ids["person_household_id"]) - household_ids)
+    if missing_households:
+        raise ValueError(
+            "person.person_household_id contains value(s) absent from "
+            f"household: {missing_households[:5]}."
+        )
+    missing_benunits = sorted(
+        set(person_ids["person_benunit_id"]) - set(benunit_ids["benunit_id"])
+    )
+    if missing_benunits:
+        raise ValueError(
+            "person.person_benunit_id contains value(s) absent from benunit: "
+            f"{missing_benunits[:5]}."
+        )
+
+
+def _realized_area_support(
+    assigned_household: pd.DataFrame,
+    crosswalk: pd.DataFrame,
+) -> pd.DataFrame:
+    """Realized rows per sampleable area, zeros included."""
+
+    sampleable = crosswalk[pd.to_numeric(crosswalk["population"]) > 0]
+    rows: list[dict[str, Any]] = []
+    for assigned_column, crosswalk_column, area_type in (
+        ("constituency_code_oa", "constituency_code", "constituency"),
+        ("la_code_oa", "la_code", "la"),
+    ):
+        assigned = assigned_household[assigned_column].astype(str).str.strip()
+        counts = assigned[assigned != ""].value_counts()
+        codes = sorted(
+            {
+                str(code).strip()
+                for code in sampleable[crosswalk_column]
+                if str(code).strip()
+            }
+            | set(counts.index)
+        )
+        rows.extend(
+            {
+                "area_type": area_type,
+                "area_code": code,
+                "expected_rows": float(counts.get(code, 0)),
+            }
+            for code in codes
+        )
+    return pd.DataFrame(rows)
+
+
+def _select_h5_columns(
+    store: pd.HDFStore,
+    key: str,
+    columns: list[str],
+) -> pd.DataFrame:
+    try:
+        return store.select(key, columns=columns)
+    except (TypeError, ValueError, KeyError):
+        return store[key][columns]
+
+
+def _support_summary(
+    support: pd.DataFrame,
+    area_type: str,
+    *,
+    bottom: int = EXPECTED_SUPPORT_BOTTOM_AREAS,
+) -> dict[str, Any]:
+    subset = support[support["area_type"] == area_type]
+    if subset.empty:
+        return {
+            "n_areas": 0,
+            "min_rows": 0.0,
+            "median_rows": 0.0,
+            "mean_rows": 0.0,
+            "max_rows": 0.0,
+            "bottom": [],
+        }
+    values = subset["expected_rows"]
+    ordered = subset.sort_values(
+        ["expected_rows", "area_code"],
+        kind="mergesort",
+    ).head(bottom)
+    return {
+        "n_areas": int(len(subset)),
+        "min_rows": float(values.min()),
+        "median_rows": float(values.median()),
+        "mean_rows": float(values.mean()),
+        "max_rows": float(values.max()),
+        "bottom": [
+            {
+                "area_code": str(row.area_code),
+                "rows": float(row.expected_rows),
+            }
+            for row in ordered.itertuples(index=False)
+        ],
+    }
+
+
+def _pool_lineage_block(household: pd.DataFrame) -> dict[str, Any] | None:
+    if POOL_SOURCE_LINEAGE_COLUMN not in household.columns:
+        return None
+    counts = household.groupby(POOL_SOURCE_LINEAGE_COLUMN).size()
+    block = {
+        "distinct_pool_source_households": int(counts.size),
+        "pool_copies_per_source": {
+            "min": int(counts.min()),
+            "median": float(counts.median()),
+            "max": int(counts.max()),
+        },
+    }
+    if "household_support_channel" in household.columns:
+        block["distinct_by_support_channel"] = {
+            str(channel): int(group[POOL_SOURCE_LINEAGE_COLUMN].nunique())
+            for channel, group in household.groupby("household_support_channel")
+        }
+    return block
+
+
+def _source_lineage_report(
+    household: pd.DataFrame,
+    *,
+    modulus: int | None,
+) -> dict[str, Any]:
+    """Report both lineage layers honestly: the derived pool layer (when a
+    modulus was applied) and any immediate layer the input already carries."""
+
+    pool = _pool_lineage_block(household)
+    immediate = None
+    if "source_household_id" in household.columns:
+        immediate = {
+            "distinct_source_households": int(
+                household["source_household_id"].nunique()
+            ),
+        }
+    return {
+        "pool_modulus": modulus,
+        "pool": pool,
+        "immediate": immediate,
+    }
+
+
+def _rowwise_summary(
+    result,
+    *,
+    base_summary: dict[str, Any],
+    source_lineage_modulus: int | None = None,
+) -> dict[str, Any]:
     household = result.household
     geo_columns = (
         "oa_code",
@@ -340,7 +716,39 @@ def _rowwise_summary(result, *, base_summary: dict[str, Any]) -> dict[str, Any]:
     weight_sum = float(household["household_weight"].sum())
     constituency_rows = _area_row_summary(by_constituency)
     la_rows = _area_row_summary(by_la)
+    input_total = float(base_summary["household_weight_sum"])
+    abs_delta = abs(weight_sum - input_total)
+    clone0 = household
+    if "clone_index" in household.columns:
+        clone0 = household[household["clone_index"] == 0]
+    lineage = {
+        "pool_modulus": source_lineage_modulus,
+        "pool": _pool_lineage_block(clone0),
+        "immediate": (
+            {
+                "distinct_source_households": base_summary[
+                    "distinct_source_households"
+                ],
+            }
+            if base_summary.get("distinct_source_households") is not None
+            else None
+        ),
+    }
     return {
+        "weights": {
+            "household_weight_kind": result.household_weight_kind.value,
+            "mass_log_records": len(result.mass_log),
+            "mass_conservation": {
+                "input_total": input_total,
+                "output_total": weight_sum,
+                "abs_delta": abs_delta,
+                "relative_tolerance": MASS_CONSERVATION_RELATIVE_TOLERANCE,
+                "passed": bool(
+                    abs_delta <= MASS_CONSERVATION_RELATIVE_TOLERANCE * abs(input_total)
+                ),
+            },
+        },
+        "source_lineage": lineage,
         "tables": {
             "person": list(result.person.shape),
             "benunit": list(result.benunit.shape),
