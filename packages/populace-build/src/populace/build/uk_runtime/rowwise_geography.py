@@ -138,8 +138,7 @@ def prepare_geography_crosswalk(
             frame.loc[frame["constituency_code"] == "", "country"].unique()
         )
         raise ValueError(
-            "crosswalk has blank constituency_code values for: "
-            + ", ".join(countries)
+            "crosswalk has blank constituency_code values for: " + ", ".join(countries)
         )
 
     population = pd.to_numeric(frame["population"], errors="coerce")
@@ -307,8 +306,7 @@ def assign_household_geography(
     missing_countries = sorted({country for country, _region_code in missing_keys})
     if missing_countries and require_all_countries:
         raise ValueError(
-            "No geography distribution available for: "
-            + ", ".join(missing_countries)
+            "No geography distribution available for: " + ", ".join(missing_countries)
         )
 
     rng = np.random.default_rng(seed)
@@ -376,6 +374,116 @@ def assign_household_geography(
         id_multiplier=id_multiplier,
         original_household_ids=original_ids,
         n_clones=n_clones,
+    )
+
+
+def expected_uk_rowwise_area_support(
+    household: pd.DataFrame,
+    crosswalk: pd.DataFrame,
+    *,
+    n_clones: int = 1,
+    household_id_column: str = "household_id",
+    weight_column: str = "household_weight",
+    country_column: str | None = None,
+    region_column: str = "region",
+    source_year: int | None = None,
+    require_all_countries: bool = True,
+    require_constituency: bool = True,
+    constrain_to_region: bool = True,
+    allow_zero_population_distribution: bool = False,
+) -> pd.DataFrame:
+    """Exact expected per-area row support of :func:`assign_household_geography`.
+
+    Reuses the sampler's own household preparation and per-(country, region)
+    sampling distributions, so the expectation cannot drift from the
+    assignment it describes: the expected rows for an area are the sum over
+    its crosswalk rows of ``sample_probability x households_in_group x
+    n_clones``. The value is exact for the collision-free sampler;
+    ``avoid_constituency_collisions`` perturbs it only at the order of the
+    per-household collision probability.
+
+    Returns a long frame with ``area_type`` (``constituency``/``la``),
+    ``area_code``, and ``expected_rows``, covering every sampleable area of
+    the crosswalk for the represented groups (including zero-support areas).
+    """
+
+    if not isinstance(n_clones, int) or n_clones <= 0:
+        raise ValueError("n_clones must be a positive integer.")
+    households = _prepare_households(
+        household,
+        household_id_column=household_id_column,
+        weight_column=weight_column,
+        country_column=country_column,
+        region_column=region_column,
+        source_year=source_year,
+        constrain_to_region=constrain_to_region,
+    )
+    geography = prepare_geography_crosswalk(
+        crosswalk,
+        require_constituency=require_constituency,
+    )
+    countries = households["_assignment_country"].to_numpy(dtype=object)
+    region_codes = households["_assignment_region_code"].to_numpy(dtype=object)
+    use_region_constraint = constrain_to_region and bool(
+        (households["_assignment_region_code"] != "").any()
+    )
+    distributions = _assignment_distributions(
+        geography,
+        use_region=use_region_constraint,
+        allow_zero_population=allow_zero_population_distribution,
+    )
+    household_keys = _assignment_keys(
+        countries,
+        region_codes,
+        use_region=use_region_constraint,
+    )
+    missing_keys = sorted(set(household_keys) - set(distributions))
+    missing_countries = sorted({country for country, _region_code in missing_keys})
+    if missing_countries and require_all_countries:
+        raise ValueError(
+            "No geography distribution available for: " + ", ".join(missing_countries)
+        )
+
+    expected: dict[tuple[str, str], float] = {}
+    key_counts: dict[tuple[str, str], int] = {}
+    for key in household_keys:
+        key_counts[key] = key_counts.get(key, 0) + 1
+    for key, group_size in sorted(key_counts.items()):
+        if key not in distributions:
+            continue
+        distribution = distributions[key]
+        rows = (
+            distribution["_sample_probability"].to_numpy(dtype=np.float64)
+            * group_size
+            * n_clones
+        )
+        for area_column, area_type in (
+            ("constituency_code", "constituency"),
+            ("la_code", "la"),
+        ):
+            codes = distribution[area_column].to_numpy(dtype=object)
+            for code, value in zip(codes, rows, strict=True):
+                code = str(code)
+                if not code:
+                    continue
+                expected[(area_type, code)] = expected.get(
+                    (area_type, code), 0.0
+                ) + float(value)
+
+    result = pd.DataFrame(
+        [
+            {
+                "area_type": area_type,
+                "area_code": area_code,
+                "expected_rows": value,
+            }
+            for (area_type, area_code), value in expected.items()
+        ]
+    )
+    if result.empty:
+        return pd.DataFrame(columns=["area_type", "area_code", "expected_rows"])
+    return result.sort_values(["area_type", "area_code"], kind="mergesort").reset_index(
+        drop=True
     )
 
 
@@ -719,7 +827,9 @@ def _area_type_column(area_type: str) -> str:
     key = str(area_type).strip().lower()
     if key not in AREA_TYPE_TO_CROSSWALK_COLUMN:
         expected = ", ".join(sorted(AREA_TYPE_TO_CROSSWALK_COLUMN))
-        raise ValueError(f"Unknown area_type {area_type!r}; expected one of {expected}.")
+        raise ValueError(
+            f"Unknown area_type {area_type!r}; expected one of {expected}."
+        )
     return AREA_TYPE_TO_CROSSWALK_COLUMN[key]
 
 
