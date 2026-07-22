@@ -250,6 +250,9 @@ from populace.calibrate.diagnostics import (
     write_calibration_diagnostics,
 )
 from populace.data.us_critical_targets import (
+    US_CRITICAL_TARGET_FIT_REQUIREMENTS as SHARED_US_CRITICAL_TARGET_FIT_REQUIREMENTS,
+)
+from populace.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
     US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
@@ -271,6 +274,11 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
+#: Contract-critical rows receive this multiplier only after the standard
+#: concept-budget, amount/count, and optional family-loss normalization. The
+#: solver divides by the final weight sum, so leaving this overlay
+#: un-renormalized changes relative priority without changing loss semantics.
+US_CRITICAL_TARGET_LOSS_MULTIPLIER = 5.0
 # Bumped 1 -> 2 for #217: the per-reform income-tax cache key now depends only on
 # the inputs that actually determine per-household reform estimates and no longer
 # includes build_commit / seed / target_registry_version. Old (v1) coarse-key
@@ -894,6 +902,18 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--critical-target-loss-multiplier",
+        type=float,
+        default=US_CRITICAL_TARGET_LOSS_MULTIPLIER,
+        help=(
+            "Multiply every publish-contract-critical target row's loss weight "
+            "after concept-budget, amount/count, and family normalization. "
+            "The default is 5.0; adjudication runs may override it. The "
+            "effective value is recorded in staging telemetry and calibration "
+            "diagnostics."
+        ),
+    )
+    parser.add_argument(
         "--l0-refit-lambda-share",
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
@@ -1282,6 +1302,11 @@ def _parse_args() -> argparse.Namespace:
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
+    if not (
+        math.isfinite(args.critical_target_loss_multiplier)
+        and args.critical_target_loss_multiplier > 0.0
+    ):
+        parser.error("--critical-target-loss-multiplier must be positive and finite.")
     multipliers: dict[str, float] = {}
     for entry in args.target_family_loss_multiplier:
         family, separator, raw_value = entry.partition("=")
@@ -5145,7 +5170,17 @@ def _load_warm_start_calibration_npz(
 def _fiscal_target_loss_weights(
     registry: TargetRegistry,
     family_multipliers: Mapping[str, float] | None = None,
+    *,
+    critical_target_loss_multiplier: float = US_CRITICAL_TARGET_LOSS_MULTIPLIER,
 ) -> np.ndarray:
+    critical_target_loss_multiplier = float(critical_target_loss_multiplier)
+    if not math.isfinite(critical_target_loss_multiplier) or (
+        critical_target_loss_multiplier <= 0.0
+    ):
+        raise ValueError(
+            "critical_target_loss_multiplier must be positive and finite, got "
+            f"{critical_target_loss_multiplier!r}."
+        )
     weights = _fiscal_target_concept_budget_weights(registry)
     bases = np.asarray(
         [_fiscal_target_value_basis(spec) for spec in registry.specs],
@@ -5161,21 +5196,44 @@ def _fiscal_target_loss_weights(
         if current_total > 0:
             weights[mask] *= basis_total / current_total
     weights = weights / weights.mean()
-    if not family_multipliers:
-        return weights
-    families = np.asarray(
-        [spec.family for spec in registry.specs],
-        dtype=object,
-    )
-    for family, multiplier in sorted(family_multipliers.items()):
-        mask = families == family
-        if not mask.any():
-            raise ValueError(
-                f"--target-family-loss-multiplier family {family!r} matches "
-                "no compiled target."
+    if family_multipliers:
+        families = np.asarray(
+            [spec.family for spec in registry.specs],
+            dtype=object,
+        )
+        for family, multiplier in sorted(family_multipliers.items()):
+            mask = families == family
+            if not mask.any():
+                raise ValueError(
+                    f"--target-family-loss-multiplier family {family!r} matches "
+                    "no compiled target."
+                )
+            weights[mask] *= multiplier
+        weights = weights / weights.mean()
+
+    # Contract-critical priority is deliberately the final overlay. The base
+    # vector above has already allocated concept budgets, balanced amount and
+    # count rows, and normalized any family overrides. Do not renormalize here:
+    # non-critical rows must stay bit-for-bit unchanged while critical rows get
+    # exactly the configured relative boost. The solver itself divides the
+    # weighted loss by the final weight sum.
+    critical_mask = np.asarray(
+        [
+            not _target_is_congressional_district(spec)
+            and any(
+                requirement.matches(
+                    name=_target_row_name(spec),
+                    family=spec.family,
+                    target_role=str(spec.metadata.get("target_role") or ""),
+                )
+                for requirement in SHARED_US_CRITICAL_TARGET_FIT_REQUIREMENTS
             )
-        weights[mask] *= multiplier
-    return weights / weights.mean()
+            for spec in registry.specs
+        ],
+        dtype=bool,
+    )
+    weights[critical_mask] *= critical_target_loss_multiplier
+    return weights
 
 
 def _ssi_take_up_band_targets_from_registry(target_specs: tuple) -> dict[str, float]:
@@ -5843,6 +5901,7 @@ def _write_release_calibration_diagnostics(
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
+    critical_target_loss_multiplier: float = US_CRITICAL_TARGET_LOSS_MULTIPLIER,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -5864,6 +5923,7 @@ def _write_release_calibration_diagnostics(
             "base_dataset_sha256": _sha256(base_h5),
             "target_compilation": compilation,
             "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "critical_target_loss_multiplier": float(critical_target_loss_multiplier),
             "target_loss_family_multipliers": (
                 dict(target_loss_family_multipliers)
                 if target_loss_family_multipliers
@@ -8423,7 +8483,9 @@ def main() -> None:
         else args.l0_refit_lambda_share / float(candidate_households)
     )
     target_loss_weights = _fiscal_target_loss_weights(
-        registry, args.target_family_loss_multipliers
+        registry,
+        args.target_family_loss_multipliers,
+        critical_target_loss_multiplier=args.critical_target_loss_multiplier,
     )
     if telemetry is not None:
         telemetry.stage(
@@ -8442,6 +8504,7 @@ def main() -> None:
             target_family_loss_multipliers=(
                 dict(args.target_family_loss_multipliers) or None
             ),
+            critical_target_loss_multiplier=float(args.critical_target_loss_multiplier),
             n_targets=len(registry),
             n_candidate_households=candidate_households,
             l0_refit_lambda_share=(
@@ -8713,6 +8776,7 @@ def main() -> None:
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
+        critical_target_loss_multiplier=args.critical_target_loss_multiplier,
     )
     if telemetry is not None:
         telemetry.attach_artifact(

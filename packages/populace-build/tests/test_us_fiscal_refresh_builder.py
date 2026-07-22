@@ -867,6 +867,57 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
     assert args.maximum_microsim_batch_size == 0
 
 
+def test_critical_target_loss_multiplier_defaults_and_overrides(monkeypatch) -> None:
+    builder = _load_builder_module()
+    base_argv = [
+        "build_us_fiscal_refresh_release.py",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+    ]
+    monkeypatch.setattr(sys, "argv", base_argv)
+
+    args = builder._parse_args()
+
+    assert (
+        args.critical_target_loss_multiplier
+        == builder.US_CRITICAL_TARGET_LOSS_MULTIPLIER
+        == 5.0
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [*base_argv, "--critical-target-loss-multiplier", "7.5"],
+    )
+
+    assert builder._parse_args().critical_target_loss_multiplier == 7.5
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_critical_target_loss_multiplier_rejects_invalid_values(
+    monkeypatch, value: str
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--critical-target-loss-multiplier",
+            value,
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
@@ -1797,6 +1848,82 @@ def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
     assert np.array_equal(weights, np.ones(3))
 
 
+def test_fiscal_target_loss_weights_boost_contract_rows_after_normalization() -> None:
+    builder = _load_builder_module()
+    critical = TargetSpec(
+        name="irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+        entity="household",
+        measure="medical_expense",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "source_measure_id": "payment_amount",
+            "target_role": "medical_expense_deduction_total",
+        },
+    )
+    ordinary = TargetSpec(
+        name="ordinary_amount",
+        entity="household",
+        measure="ordinary_amount",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="other_family",
+        metadata={"source_measure_id": "payment_amount"},
+    )
+
+    def cd_medical(name: str, geoid: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure="medical_expense",
+            value=100.0,
+            period=builder.PERIOD,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "source_measure_id": "payment_amount",
+                "target_role": "medical_expense_deduction_total",
+                "ledger_geography_level": "congressional_district",
+                "ledger_geography_id": f"5001700US{geoid}",
+                "congressional_district_geoid": geoid,
+                "state_fips": geoid[:2],
+            },
+        )
+
+    registry = TargetRegistry(
+        (
+            critical,
+            ordinary,
+            cd_medical("cd_medical_1", "0101"),
+            cd_medical("cd_medical_2", "0102"),
+        ),
+        country="us",
+    )
+
+    base = builder._fiscal_target_loss_weights(
+        registry,
+        critical_target_loss_multiplier=1.0,
+    )
+    boosted = builder._fiscal_target_loss_weights(registry)
+
+    assert np.isclose(base.mean(), 1.0)
+    assert np.isclose(base[2:].sum(), base[1])
+    assert np.isclose(
+        boosted[0],
+        builder.US_CRITICAL_TARGET_LOSS_MULTIPLIER * base[0],
+    )
+    assert np.array_equal(boosted[1:], base[1:])
+
+    with pytest.raises(ValueError, match="positive and finite"):
+        builder._fiscal_target_loss_weights(
+            registry,
+            critical_target_loss_multiplier=0.0,
+        )
+
+
 def test_fiscal_target_loss_weights_hold_concept_budget_when_geography_expands() -> (
     None
 ):
@@ -2216,12 +2343,14 @@ def test_release_calibration_diagnostics_include_gate_failures(
             "target_compilation_seconds": 1.25,
             "calibration_seconds": 2.5,
         },
+        critical_target_loss_multiplier=7.0,
     )
 
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
     build = captured["build"]
     assert build["base_dataset_sha256"] == "base-sha"
     assert build["target_loss_weighting"].endswith("_cap_100pct")
+    assert build["critical_target_loss_multiplier"] == 7.0
     assert build["target_loss_cap"] == 1.0
     assert build["release_gates"] == {
         "passed": False,
@@ -3444,6 +3573,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
     assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    assert (
+        captured["diagnostics"]["critical_target_loss_multiplier"]
+        == builder.US_CRITICAL_TARGET_LOSS_MULTIPLIER
+    )
     assert (
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload

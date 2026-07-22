@@ -4,10 +4,10 @@
 
 Populace #462 critical-row loss alignment is in progress on
 `loss-contract-alignment`, starting from clean `origin/main` at `c3e378a`.
-The builder and publisher now consume one shared critical-target register,
-including semantic family/role aliases and the deduction classes that exposed
-the Build N gap. The configurable post-normalization loss boost remains to be
-implemented. No target values have changed.
+The builder and publisher consume one shared critical-target register, and the
+solver now applies a configurable critical-row loss boost after all existing
+normalization. The default and CLI override are recorded in staging telemetry
+and failure-safe calibration diagnostics. No target values have changed.
 
 ## Done
 
@@ -28,8 +28,22 @@ implemented. No target values have changed.
   gate regressions.
 - Verified the populace-data contract suite (65 passed) and focused builder
   critical/release-gate tests (18 passed).
+- Added `US_CRITICAL_TARGET_LOSS_MULTIPLIER = 5.0` and applied it once to every
+  shared-contract match after concept-budget, amount/count, and optional family
+  normalization, with no post-overlay renormalization.
+- Matched loss rows by full compiled identity (`name@period`), shared semantic
+  selectors, and the Table 1.4 blanket while excluding congressional-district
+  layouts; overlapping selectors cannot multiply a row twice.
+- Added `--critical-target-loss-multiplier` with positive-finite validation for
+  adjudication runs, and recorded the effective value in calibration-stage
+  telemetry and `calibration_diagnostics.json`'s build record.
+- Added unit coverage proving the critical row is exactly 5x its normalized
+  base weight, non-critical/CD rows are unchanged, and grouped concept budgets
+  were normalized before the overlay. Added CLI, diagnostics-record, and main
+  orchestration assertions.
+- Verified the focused loss/CLI/diagnostics/orchestration group (15 passed).
 
 ## Next
 
-- Implement and test the critical-row loss multiplier.
-- Run the requested targeted tests and Ruff, then write `FINAL_REPORT.md`.
+- Run the requested complete builder and populace-data suites plus Ruff.
+- Write `FINAL_REPORT.md` and perform the final clean-worktree audit.
