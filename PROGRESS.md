@@ -18,11 +18,16 @@ round-1 findings are closed with behavioral containment tests.
   adjudication block; that tolerance and comment will remain untouched.
 - Located every current Python reference to the critical-target loss
   multiplier across tools, tests, and historical experiment entry points.
+- Removed the critical-row loss multiplier constant, CLI/validation, final
+  overlay, telemetry, diagnostics, scorer provenance, experiment pins, and
+  multiplier-specific tests per populace#492.
+- Restored `_fiscal_target_loss_weights` source-identically to `origin/main`;
+  both scorer files and both historical experiment files also match main.
+- Confirmed the required multiplier grep has zero Python hits and the focused
+  loss/diagnostics test selection passes (8 passed).
 
 ## Next
 
-- Remove multiplier machinery and restore the loss-weight call shapes and
-  behavior to `origin/main`.
 - Fix Sol findings 1-3 in separate commits: selector parity, shared CD
   classification, and missing recorded-relative-error rejection.
 - Add the finding-4 behavioral containment battery and rerun the three
