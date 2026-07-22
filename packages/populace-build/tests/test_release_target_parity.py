@@ -378,16 +378,24 @@ class TestJctObbbaAdjudication:
         assert "-$32.806B" in evidence
         assert "-$16.86B" in evidence
         assert "-$10.121B" in evidence
+        assert "-$1.63B" in evidence
         assert "8,748 carriers / $114.79B" in evidence
         assert "549 / $34.28B" in evidence
         for key in ("origin", "purpose", "verdict_basis"):
             assert fence[key]
         assert "TY2025-TY2028" in fence["purpose"]
-        # The activation path is fenced with explicit conversion caveats:
-        # sign (identity-only value operations vs negative budget effects)
-        # and the tips 45B scope bundle.
-        assert "identity value operation" in fence["purpose"]
-        assert "section 45B" in fence["purpose"]
+        # The activation path is fenced with explicit conversion caveats.
+        # Pin the operative sentences, not just topic phrases: the sign
+        # relationship (neutralization deltas are positive while the facts
+        # are negative under an identity-only value-operation contract) and
+        # the unmodeled tips 45B bundle.
+        assert "positive when a deduction is removed" in fence["purpose"]
+        assert "allows only the identity value operation" in fence["purpose"]
+        assert "section 45B employer-credit expansion" in fence["purpose"]
+        assert (
+            "must subtract or separately fence that component"
+            in fence["purpose"]
+        )
 
     def test_build_manifest_adjudicates_an_injected_obbba_fact(self) -> None:
         # End-to-end through build_manifest, not just _exclusion_for: a feed

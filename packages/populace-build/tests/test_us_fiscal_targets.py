@@ -1,6 +1,8 @@
 import json
+import re
 from hashlib import sha256
 from importlib.resources import files
+from pathlib import Path
 
 import pytest
 
@@ -849,6 +851,21 @@ def test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists() -> Non
             for instant in ("2025-01-01", "2026-01-01", "2028-01-01"):
                 assert deduction in node(instant), (list_name, deduction, instant)
             assert deduction not in node("2029-01-01"), (list_name, deduction)
+
+
+def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
+    # Companion to the engine-gated window test above, enforced in the BASE
+    # environment (mandatory CI installs no engine extra, so that test skips
+    # there). The window premise was verified against policyengine-us
+    # 1.764.6, and uv.lock is the only door a different engine can enter
+    # mandatory CI through — so pin it here. Bumping the engine must move
+    # this pin in the same change, after re-running
+    # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
+    # a [us]-extra environment to re-verify the TY2025-TY2028 window.
+    lock_text = (Path(__file__).parents[3] / "uv.lock").read_text()
+    match = re.search(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
+    assert match, "policyengine-us is not pinned in uv.lock"
+    assert match.group(1) == "1.764.6"
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
