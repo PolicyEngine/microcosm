@@ -2086,7 +2086,8 @@ def _reference_from_ledger_fact(
         # are a fenced parity reviewed-exclusion until a build's target
         # period sits inside TY2025-TY2028 law — at 2024 law both channels
         # score exactly $0, and the 2026-law reform-coverage probes carry
-        # the anchors (populace#451 items 3-4).
+        # the anchors (populace#451 items 3-4; sign and 45B-scope conversion
+        # caveats are recorded in that parity fence).
         return None
     return _direct_reference_from_fact(fact, target_period=target_period)
 

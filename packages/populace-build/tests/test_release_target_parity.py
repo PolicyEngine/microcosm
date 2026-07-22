@@ -374,10 +374,65 @@ class TestJctObbbaAdjudication:
         assert "JCX-35-25" in reason
         assert "structurally zero at 2024 law" in reason
         assert "fsla_overtime_premium_neutralization" in reason
+        # Certified-N receipts pinned so a regenerated typo cannot ride.
         assert "-$32.806B" in evidence
+        assert "-$16.86B" in evidence
+        assert "-$10.121B" in evidence
+        assert "8,748 carriers / $114.79B" in evidence
+        assert "549 / $34.28B" in evidence
         for key in ("origin", "purpose", "verdict_basis"):
             assert fence[key]
         assert "TY2025-TY2028" in fence["purpose"]
+        # The activation path is fenced with explicit conversion caveats:
+        # sign (identity-only value operations vs negative budget effects)
+        # and the tips 45B scope bundle.
+        assert "identity value operation" in fence["purpose"]
+        assert "section 45B" in fence["purpose"]
+
+    def test_build_manifest_adjudicates_an_injected_obbba_fact(self) -> None:
+        # End-to-end through build_manifest, not just _exclusion_for: a feed
+        # carrying an obbba_title_vii fact must classify the family as a
+        # reviewed exclusion (deferred) without SystemExit — the exact code
+        # path the v9.3 regeneration will take.
+        fixtures_spec = importlib.util.spec_from_file_location(
+            "_us_fiscal_targets_fixtures",
+            Path(__file__).parent / "test_us_fiscal_targets.py",
+        )
+        fixtures = importlib.util.module_from_spec(fixtures_spec)
+        fixtures_spec.loader.exec_module(fixtures)
+        packaged_reference_facts = fixtures.packaged_reference_facts
+
+        generator = _load_generator()
+        fact = {
+            "lineage": {
+                "source_record_id": (
+                    "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
+                )
+            },
+            "value": -32_806_000_000,
+            "period": {"type": "fiscal_year", "value": 2026},
+            "entity": {"name": "tax_unit"},
+            "aggregation": {"method": "sum"},
+            "geography": {"level": "country", "id": "0100000US"},
+            "observed_measure": {
+                "source_name": "jct",
+                "source_measure_id": "revenue_effect",
+                "unit": "usd",
+            },
+            "source": {"source_name": "jct"},
+        }
+        # The declared tax-expenditure references demand their five facts in
+        # any feed the registry compiles, exactly as the real v9.3 feed will
+        # carry them alongside the new obbba rows.
+        manifest, feed_families = generator.build_manifest(
+            [*packaged_reference_facts(), fact], "test-sha", "test-feed"
+        )
+
+        entry = manifest["families"]["jct.obbba_title_vii"]
+        assert entry["status"] == generator.REVIEWED_EXCLUSION_STATUS
+        assert entry["classification"] == "deferred"
+        assert entry["fence"]["verdict_basis"]
+        assert feed_families["families"]["jct.obbba_title_vii"] == 1
 
 
 class TestRegeneration:

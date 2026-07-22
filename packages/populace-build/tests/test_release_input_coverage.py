@@ -1223,9 +1223,14 @@ class TestShippedManifest:
                 "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
                 in reason
             )
+            assert "-$32.806 billion" in reason
         neutralization = by_id["fsla_overtime_premium_neutralization"].reason
         assert "certified Build N" in neutralization
-        assert "over 29 million" in neutralization
+        assert "-$16.86 billion" in neutralization
+        assert "$114.79 billion weighted" in neutralization
+        assert "over 29 million filers" in neutralization
+        assert "over $3,100" in neutralization
+        assert "sb0517" in neutralization
 
     def test_shipped_tips_probes_cite_the_jct_ledger_anchor(self) -> None:
         by_id = {probe.id: probe for probe in us_release_reform_coverage_probes()}
@@ -1235,9 +1240,14 @@ class TestShippedManifest:
             assert (
                 "jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect" in reason
             )
+            assert "-$10.121" in reason
         neutralization = by_id["tip_income_neutralization"].reason
         assert "certified Build N" in neutralization
-        assert "over 7.5 million" in neutralization
+        assert "-$1.63" in neutralization
+        assert "$34.28 billion weighted" in neutralization
+        assert "over 7.5 million filers" in neutralization
+        assert "over $7,000" in neutralization
+        assert "sb0517" in neutralization
 
     def test_shipped_auto_loan_probe_has_2026_period_sign_and_input(self) -> None:
         auto = next(

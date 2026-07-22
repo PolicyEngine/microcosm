@@ -2,6 +2,8 @@ import json
 from hashlib import sha256
 from importlib.resources import files
 
+import pytest
+
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
 from populace.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
@@ -826,6 +828,27 @@ def test_jct_obbba_no_tax_facts_do_not_compile_at_the_2024_target_period() -> No
     )
 
     assert not [spec for spec in registry.specs if "obbba_title_vii" in spec.name]
+
+
+def test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists() -> None:
+    # The jct.obbba_title_vii parity fence and the inert-compile test above
+    # rest on one engine premise: at the 2024 target period the
+    # qualified-overtime and qualified-tips deductions do not exist in law
+    # (tyba 12/31/24, in force TY2025-TY2028 only), so a neutralize-variable
+    # income-tax delta is structurally zero. Pin that premise to the locked
+    # policyengine-us so a version bump that moves the provision window
+    # breaks this test instead of silently invalidating the fence.
+    pytest.importorskip("policyengine_us")
+    from policyengine_us import CountryTaxBenefitSystem
+
+    parameters = CountryTaxBenefitSystem().parameters
+    for list_name in ("deductions_if_itemizing", "deductions_if_not_itemizing"):
+        node = getattr(parameters.gov.irs.deductions, list_name)
+        for deduction in ("overtime_income_deduction", "tip_income_deduction"):
+            assert deduction not in node("2024-01-01"), (list_name, deduction)
+            for instant in ("2025-01-01", "2026-01-01", "2028-01-01"):
+                assert deduction in node(instant), (list_name, deduction, instant)
+            assert deduction not in node("2029-01-01"), (list_name, deduction)
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
