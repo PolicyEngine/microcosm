@@ -18,6 +18,11 @@ from populace.build.uk_runtime.parity_reference import (
 _UK_PACKAGE = "populace.build.uk"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_efrs_parity_reference.py"
+policyengine_uk_installed = importlib.util.find_spec("policyengine_uk") is not None
+requires_uk = pytest.mark.skipif(
+    not policyengine_uk_installed,
+    reason="requires the policyengine-uk [uk] extra (build environment)",
+)
 _FORMULA_OWNED_PERSISTED_OVERRIDES = {
     "current_education",
     "is_benunit_head",
@@ -173,6 +178,7 @@ class TestEfrsParityReference:
         assert cached.stat().st_size == source.size_bytes
         assert digest == source.sha256
 
+    @requires_uk
     def test_cached_reference_regeneration_matches_committed_surface(self) -> None:
         source = load_efrs_parity_reference().source
         cached = _cached_incumbent_path(source)

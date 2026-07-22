@@ -14,6 +14,11 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GENERATOR = _REPO_ROOT / "tools" / "build_uk_release_input_coverage_manifest.py"
 _UK_PACKAGE = "populace.build.uk"
+policyengine_uk_installed = importlib.util.find_spec("policyengine_uk") is not None
+requires_uk = pytest.mark.skipif(
+    not policyengine_uk_installed,
+    reason="requires the policyengine-uk [uk] extra (build environment)",
+)
 
 
 def _resource(name: str) -> dict:
@@ -98,6 +103,7 @@ def test_committed_manifest_matches_regeneration() -> None:
     assert generator.build_manifest() == committed
 
 
+@requires_uk
 def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
     generator = _load_generator()
     try:
