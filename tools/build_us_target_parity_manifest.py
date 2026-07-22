@@ -199,6 +199,59 @@ _SNAP_PERSONS_EXCLUSION = (
 )
 
 # (classification, reason, evidence, fence) keyed by exact family id.
+_JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION = (
+    "deferred",
+    "JCT OBBBA Title VII no-tax-on-tips / no-tax-on-overtime revenue-effect "
+    "projections (JCX-35-25, FY2026-FY2029), banked as the exact-valued "
+    "official anchors for the OBBBA deduction channels (populace#451 items "
+    "3-4; the only such anchors — no BLS or Census FLSA-premium aggregate "
+    "exists, and Treasury filing-season releases publish claim floors only). "
+    "Not compilable at the 2024 target period: both provisions are effective "
+    "tyba 12/31/24, so a neutralize-variable reform_minus_baseline_income_tax "
+    "matrix row is structurally zero at 2024 law. The 2026-law "
+    "reform-coverage probes carry the anchors today "
+    "(fsla_overtime_premium_neutralization, obbba_no_tax_on_overtime, "
+    "tip_income_neutralization, obbba_no_tax_on_tips).",
+    "reform_coverage_smoke, certified N (c3e378a-20260722T010408Z): overtime "
+    "probes -$16.86B at 2026 law vs JCX-35-25 FY2026 -$32.806B; tips probes "
+    "-$1.63B vs -$10.121B; support oracle 8,748 carriers / $114.79B "
+    "(fsla_overtime_premium), 549 / $34.28B (tip_income)",
+    _fence(
+        origin=(
+            "not a us-data calibration target: OBBBA (P.L. 119-21, July 2025) "
+            "postdates the retired us-data pipeline. The anchors enter with "
+            "the populace#451 quartet sourcing (ledger "
+            "jct-obbba-revenue-estimates-2025 package, JCX-35-25 pinned)."
+        ),
+        purpose=(
+            "exact-valued validation anchors for the OBBBA qualified-tips and "
+            "qualified-overtime deduction channels, and the declared-value "
+            "source for future reform-encoded jct targets (the "
+            "fiscal_target_references.json SimpleTaxExpenditureReform "
+            "pattern) once a build's target period sits inside TY2025-TY2028 "
+            "law. Two conversion requirements are part of this fence so it "
+            "cannot be followed naively: (a) sign — these facts are signed "
+            "budget effects (negative = revenue loss) while a "
+            "neutralize_variable reform_minus_baseline_income_tax row is "
+            "positive when a deduction is removed, and the declared-reference "
+            "contract currently allows only the identity value operation, so "
+            "activation needs an explicit sign-normalizing step (extend "
+            "allowed_value_operations or mint magnitude-normalized companion "
+            "facts); (b) scope — the tips line bundles the section 45B "
+            "employer-credit expansion (its FY2030-2034 remnant), which a "
+            "tax-unit income-tax delta does not model, so tips activation "
+            "must subtract or separately fence that component."
+        ),
+        verdict_basis=(
+            "deferred, not droppable: the channel is modeled "
+            "(overtime_income_deduction, tip_income_deduction) but both "
+            "provisions score exactly $0 at TARGET_PERIOD 2024 law, so a "
+            "compiled 2024-period row cannot bind; the 2026-law probes are "
+            "the live gate surface until the target period advances."
+        ),
+    ),
+)
+
 _ESI_ANCHOR_EXCLUSION = (
     "not_modeled",
     "NHE employer-contribution ESI premium aggregate: a retired us-data "
@@ -251,6 +304,7 @@ _ESI_ANCHOR_EXCLUSION = (
 _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     "cms_nhe.esi_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
     "cms_nhe.esi_private_employer_contribution_premiums": _ESI_ANCHOR_EXCLUSION,
+    "jct.obbba_title_vii": _JCT_OBBBA_NO_TAX_ANCHOR_EXCLUSION,
     "bea_nipa.personal_interest_income": (
         "macro_control_total",
         "BEA NIPA personal interest income. Briefly a direct target (PR #994), "

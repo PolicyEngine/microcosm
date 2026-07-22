@@ -313,13 +313,15 @@ REFORM_COVERAGE_PROBES = [
             "channel is the OBBBA qualified-tips deduction (2025-2028), so "
             "the probe runs at 2026 law and the sign is negative: "
             "neutralizing the column removes the deduction and raises "
-            "reform-side tax. Measured on certified Build M (549 carriers, "
-            "$9.886 billion weighted): baseline-minus-reform -$413.4 "
-            "million. External class: IRS SOI W-2 Table 4.B Box 7 $26.79 "
-            "billion (TY2020); Treasury TY2025 filing-season claims over 6 "
-            "million filers averaging over $7,100. A structural zero means "
-            "the tip attribution column was dropped or the deduction "
-            "channel broke."
+            "reform-side tax. Measured on certified Build N (549 carriers, "
+            "$34.28 billion weighted): baseline-minus-reform -$1.63 "
+            "billion. External class: IRS SOI W-2 Table 4.B Box 7 $26.79 "
+            "billion (TY2020); JCT JCX-35-25 no-tax-on-tips FY2026 "
+            "-$10.121 billion (ledger fact jct.obbba_title_vii.fy2026."
+            "no_tax_on_tips.revenue_effect); Treasury filing-season claims "
+            "over 7.5 million filers averaging over $7,000 (sb0517, June "
+            "2026). A structural zero means the tip attribution column was "
+            "dropped or the deduction channel broke."
         ),
         "issue": "PolicyEngine/populace#451",
     },
@@ -339,12 +341,17 @@ REFORM_COVERAGE_PROBES = [
             "overtime; fsla_overtime_premium is the attribution column "
             "whose only federal tax channel is the OBBBA qualified-overtime "
             "deduction (2025-2028), so the probe runs at 2026 law with a "
-            "negative expected sign. Measured on certified Build M (8,748 "
-            "carriers, $114.25 billion weighted): baseline-minus-reform "
-            "-$16.88 billion. External floor: Treasury TY2025 filing-season "
-            "claims over 25 million filers averaging over $3,100 (~$78 "
-            "billion qualified overtime). A structural zero means the "
-            "attribution column was dropped or the deduction channel broke."
+            "negative expected sign. Measured on certified Build N (8,748 "
+            "carriers, $114.79 billion weighted): baseline-minus-reform "
+            "-$16.86 billion. External anchors: JCT JCX-35-25 "
+            "no-tax-on-overtime FY2026 -$32.806 billion (ledger fact "
+            "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect "
+            "— the only exact-valued official overtime anchor: no BLS or "
+            "Census FLSA-premium aggregate exists); Treasury filing-season "
+            "claims over 29 million filers averaging over $3,100, an "
+            "approximately $90 billion claimed floor (sb0517, June 2026). "
+            "A structural zero means the attribution column was dropped or "
+            "the deduction channel broke."
         ),
         "issue": "PolicyEngine/populace#451",
     },
@@ -1122,7 +1129,10 @@ REFORM_COVERAGE_PROBES = [
             "Setting the OBBBA tip-deduction cap to zero removes the deduction, "
             "so baseline-minus-reform income tax must be negative in 2026. "
             "With tip_income or the Treasury tipped-occupation code absent, "
-            "qualified tip income is zero and the repeal scores exactly $0."
+            "qualified tip income is zero and the repeal scores exactly $0. "
+            "External anchor: JCT JCX-35-25 no-tax-on-tips FY2026 -$10.121 "
+            "billion (ledger fact jct.obbba_title_vii.fy2026.no_tax_on_tips."
+            "revenue_effect); certified Build N measures -$1.63 billion."
         ),
         "issue": "PolicyEngine/populace#38",
     },
@@ -1156,7 +1166,11 @@ REFORM_COVERAGE_PROBES = [
             "Setting every OBBBA overtime-deduction cap to zero removes the "
             "deduction, so reform income tax rises and baseline-minus-reform "
             "must be negative in 2026. With fsla_overtime_premium absent or "
-            "degenerate, qualified overtime is zero and the repeal scores $0."
+            "degenerate, qualified overtime is zero and the repeal scores $0. "
+            "External anchor: JCT JCX-35-25 no-tax-on-overtime FY2026 "
+            "-$32.806 billion (ledger fact jct.obbba_title_vii.fy2026."
+            "no_tax_on_overtime.revenue_effect); certified Build N measures "
+            "-$16.86 billion."
         ),
         "issue": "PolicyEngine/populace#242",
     },

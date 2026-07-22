@@ -1,6 +1,10 @@
 import json
+import re
 from hashlib import sha256
 from importlib.resources import files
+from pathlib import Path
+
+import pytest
 
 from populace.build import nonnegative_columns_gate, target_profile_coverage_gate
 from populace.build.us_runtime import (
@@ -789,6 +793,78 @@ def test_jct_reform_objects_satisfy_their_own_coverage_requirement() -> None:
     for spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         result = target_profile_coverage_gate([spec], [spec.coverage_requirement()])
         assert result.passed
+
+
+def test_jct_obbba_no_tax_facts_do_not_compile_at_the_2024_target_period() -> None:
+    # The JCX-35-25 no-tax anchors (ledger jct-obbba-revenue-estimates-2025,
+    # populace#451 items 3-4) ride the feed ahead of any binding: both
+    # provisions are effective tyba 12/31/24, so a neutralize-variable
+    # income-tax delta is structurally zero at 2024 law and the facts must
+    # stay out of the compiled registry until a build targets TY2025-TY2028
+    # law. Their live surfaces today are the 2026-law reform-coverage probes
+    # and the fenced parity reviewed-exclusion for jct.obbba_title_vii.
+    overtime_fact = _dynamic_ledger_fact(
+        source_record_id=(
+            "jct.obbba_title_vii.fy2026.no_tax_on_overtime.revenue_effect"
+        ),
+        source_name="jct",
+        measure_id="revenue_effect",
+        value=-32_806_000_000,
+        period_value=2026,
+        groupby_dimension="jct.provision",
+        groupby_value_id="no_tax_on_overtime",
+        layout_record_set_id="jct.obbba_title_vii.fy2026",
+    )
+    tips_fact = _dynamic_ledger_fact(
+        source_record_id="jct.obbba_title_vii.fy2026.no_tax_on_tips.revenue_effect",
+        source_name="jct",
+        measure_id="revenue_effect",
+        value=-10_121_000_000,
+        period_value=2026,
+        groupby_dimension="jct.provision",
+        groupby_value_id="no_tax_on_tips",
+        layout_record_set_id="jct.obbba_title_vii.fy2026",
+    )
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), overtime_fact, tips_fact]
+    )
+
+    assert not [spec for spec in registry.specs if "obbba_title_vii" in spec.name]
+
+
+def test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists() -> None:
+    # The jct.obbba_title_vii parity fence and the inert-compile test above
+    # rest on one engine premise: at the 2024 target period the
+    # qualified-overtime and qualified-tips deductions do not exist in law
+    # (tyba 12/31/24, in force TY2025-TY2028 only), so a neutralize-variable
+    # income-tax delta is structurally zero. Pin that premise to the locked
+    # policyengine-us so a version bump that moves the provision window
+    # breaks this test instead of silently invalidating the fence.
+    pytest.importorskip("policyengine_us")
+    from policyengine_us import CountryTaxBenefitSystem
+
+    parameters = CountryTaxBenefitSystem().parameters
+    for list_name in ("deductions_if_itemizing", "deductions_if_not_itemizing"):
+        node = getattr(parameters.gov.irs.deductions, list_name)
+        for deduction in ("overtime_income_deduction", "tip_income_deduction"):
+            assert deduction not in node("2024-01-01"), (list_name, deduction)
+            for instant in ("2025-01-01", "2026-01-01", "2028-01-01"):
+                assert deduction in node(instant), (list_name, deduction, instant)
+            assert deduction not in node("2029-01-01"), (list_name, deduction)
+
+
+def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
+    # Companion to the engine-gated window test above, enforced in the BASE
+    # environment (mandatory CI installs no engine extra, so that test skips
+    # there). The window premise was verified against policyengine-us
+    # 1.764.6, and uv.lock is the only door a different engine can enter
+    # mandatory CI through — so pin it here. Bumping the engine must move
+    # this pin in the same change, after re-running
+    # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
+    # a [us]-extra environment to re-verify the TY2025-TY2028 window.
+    lock_text = (Path(__file__).parents[3] / "uv.lock").read_text()
+    versions = re.findall(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
+    assert versions == ["1.764.6"], versions
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
