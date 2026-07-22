@@ -70,6 +70,8 @@ from populace.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+    SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
     SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -98,14 +100,15 @@ from populace.build.us_runtime import (
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
+    fetch_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_tip_donor,
-    fetch_sipp_2023_vehicle_donor,
     hard_target_package_aliases,
     load_asec_2023_weeks_unemployed_source,
     load_congressional_district_vintage_crosswalk,
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_sipp_2023_financial_asset_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
@@ -1040,9 +1043,9 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
-            "file that feeds SSI disability criteria, household vehicle "
-            "count/value, and measured voluntary tax filing. When omitted the "
-            "immutable donor revision is fetched and verified."
+            "file that feeds financial assets, SSI disability criteria, "
+            "household vehicle count/value, and measured voluntary tax filing. "
+            "When omitted the immutable donor revision is fetched and verified."
         ),
     )
     parser.add_argument(
@@ -7797,29 +7800,46 @@ def main() -> None:
             "scf_wealth_inputs",
             message=(
                 "Imputing signed household net worth and SSI countable-resource "
-                "assets (bank/stock/bond) from the Federal Reserve SCF 2022 "
-                "summary extract."
+                "assets (bank/stock/bond) from the seeded SIPP 2023 / SCF 2022 "
+                "household blend."
             ),
         )
-    # populace#49/#356/#368: restore signed household net_worth plus the three
+    # populace#49/#356/#368/#374: restore signed household net_worth plus the three
     # SSI countable-resource asset inputs (bank_account_assets / stock_assets /
-    # bond_assets) from their direct SCF summary-extract targets. Without the
-    # latter, ssi_countable_resources is 0 for every record and SSI resource-
-    # limit reforms silently score $0. A CLI-supplied extract path is used when
-    # given; otherwise the fixed-vintage public extract is fetched and cached.
+    # bond_assets). One seeded household source draw selects all three leaves
+    # from either the SCF or SIPP donor; SCF still anchors signed net worth.
+    # Without the leaves, ssi_countable_resources is 0 for every record and SSI
+    # resource-limit reforms silently score $0.
     scf_summary_extract_path = (
         Path(args.scf_summary_extract)
         if args.scf_summary_extract is not None
         else fetch_scf_2022_summary_extract()
     )
+    # The asset blend, SSI criterion, Head Start, vehicle, and filing families
+    # share one immutable full SIPP artifact. Resolve it once; the CLI option's
+    # historical name remains stable for existing release invocations.
+    sipp_full_donor_path = (
+        Path(args.sipp_vehicle_donor)
+        if args.sipp_vehicle_donor is not None
+        else fetch_sipp_2023_financial_asset_donor()
+    )
     scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
+    sipp_financial_asset_donor = load_sipp_2023_financial_asset_donor(
+        sipp_full_donor_path,
+        expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    )
     base_frame = with_us_scf_wealth_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
         scf_donor=scf_wealth_donor,
+        sipp_donor=sipp_financial_asset_donor,
     )
-    scf_wealth_gate = us_scf_wealth_signal_gate(base_frame)
+    scf_wealth_gate = us_scf_wealth_signal_gate(
+        base_frame,
+        require_sipp_blend=True,
+    )
     if not scf_wealth_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -7836,14 +7856,7 @@ def main() -> None:
                 for failure in scf_wealth_gate.failures
             )
         )
-    # The SSI criterion, Head Start, vehicle, and filing families share one
-    # immutable full SIPP artifact. Resolve it once here because the criterion's
-    # receiver also needs the SCF asset leaves materialized immediately above.
-    sipp_vehicle_donor_path = (
-        Path(args.sipp_vehicle_donor)
-        if args.sipp_vehicle_donor is not None
-        else fetch_sipp_2023_vehicle_donor()
-    )
+    sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
             "ssi_disability_criteria",

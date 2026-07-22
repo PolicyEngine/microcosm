@@ -3361,19 +3361,53 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "load_scf_2022_financial_asset_donor",
         lambda path: pd.DataFrame(),
     )
+
+    def fake_load_sipp_financial_asset_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_financial_asset_donor_path"] = path
+        captured["sipp_financial_asset_donor_sha256"] = expected_sha256
+        captured["sipp_financial_asset_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
     monkeypatch.setattr(
         builder,
-        "with_us_scf_wealth_inputs",
-        lambda frame, *, seed, time_period, scf_donor: frame,
+        "fetch_sipp_2023_financial_asset_donor",
+        lambda *args, **kwargs: Path("pu2023.csv"),
     )
     monkeypatch.setattr(
         builder,
-        "us_scf_wealth_signal_gate",
-        lambda frame: builder.GateResult(
+        "load_sipp_2023_financial_asset_donor",
+        fake_load_sipp_financial_asset_donor,
+    )
+
+    def fake_with_scf_wealth_inputs(
+        frame, *, seed, time_period, scf_donor, sipp_donor=None
+    ):
+        captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_wealth_inputs",
+        fake_with_scf_wealth_inputs,
+    )
+
+    def fake_scf_wealth_signal_gate(frame, *, require_sipp_blend=False):
+        captured["sipp_scf_wealth_blend_gate_required"] = require_sipp_blend
+        return builder.GateResult(
             name="scf_wealth_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        fake_scf_wealth_signal_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -3410,11 +3444,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             passed=True,
             details={"checked": True},
         ),
-    )
-    monkeypatch.setattr(
-        builder,
-        "fetch_sipp_2023_vehicle_donor",
-        lambda *args, **kwargs: Path("pu2023.csv"),
     )
 
     def fake_load_sipp_vehicle_donor(
@@ -3988,6 +4017,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_financial_asset_donor_sha256"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_financial_asset_donor_size_bytes"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_scf_wealth_blend_called"] is True
+    assert captured["sipp_scf_wealth_blend_gate_required"] is True
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
