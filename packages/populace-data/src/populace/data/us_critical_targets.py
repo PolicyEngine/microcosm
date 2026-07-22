@@ -228,12 +228,17 @@ US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         # 2026-07-22 adjudication (Max): the N release does not hold on this
         # row. Build N's truthful capital-gains/interest target moves
         # (populace#462, #488) re-equilibrated the solve and pushed medical
-        # from certified M's +4.4% to +20.8%, stable across a 2x-epoch run —
-        # a loss-signal gap, not a data defect. Relaxed to the established
-        # 0.25 broad-fit bound while the loss-contract alignment (shared
-        # critical register + contract-row loss boost, populace#462 lane)
-        # lands; restore US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once a
-        # boosted run holds it.
+        # from certified M's +4.4% to +20.8%, stable across a 2x-epoch run.
+        # Post-publish decomposition (populace#462, 2026-07-22): the national
+        # overshoot ($18.68B) is the six states' excess ($18.80B, within
+        # 0.7%) — AR/DC/NV/NY/TN/UT; returns fit everywhere except UT
+        # (+146%), amounts blow out; all six amount rows sit past the loss
+        # cap. A support defect, not a loss-priority problem, and the
+        # owner doctrine (populace#492) forbids per-target loss knobs.
+        # Relaxed to the established 0.25 broad-fit bound; restore
+        # US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once the six-state
+        # carriers are fixed (owners populace#481/#487) and a run holds 0.15
+        # on truthful support.
         max_abs_relative_error=0.25,
         names=(
             "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
