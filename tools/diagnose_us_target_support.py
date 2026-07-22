@@ -19,9 +19,9 @@ before any decomposition is reported: household ids must be integral, match
 the published dataset's order exactly (compared losslessly as integers), every
 vector must be household-length, and the recomputed final-weight aggregate
 must reproduce the diagnostics' recorded ``final_estimate`` to within float
-summation noise. Carriers are ranked by absolute weighted contribution with a
-household-id tiebreak, so signed columns report their dominant carriers rather
-than whichever positive rows sort first.
+summation noise. Carriers are ranked by absolute weighted contribution (input
+row order breaks ties deterministically), so signed columns report their
+dominant carriers rather than whichever positive rows sort first.
 """
 
 from __future__ import annotations
@@ -155,19 +155,31 @@ def _integral_ids(values: np.ndarray, *, source: str) -> np.ndarray:
     array = np.asarray(values)
     if array.ndim != 1:
         raise TargetSupportError(f"{source} household ids must be one-dimensional.")
-    if np.issubdtype(array.dtype, np.integer):
+    kind = array.dtype.kind
+    if kind == "u":
+        if array.size and int(array.max()) > np.iinfo(np.int64).max:
+            raise TargetSupportError(
+                f"{source} household ids exceed int64 range; refusing a lossy "
+                "id comparison."
+            )
         return array.astype(np.int64)
-    as_float = array.astype(np.float64)
+    if kind == "i":
+        return array.astype(np.int64)
+    if array.dtype != np.float64:
+        raise TargetSupportError(
+            f"{source} household ids have unsupported dtype {array.dtype}; "
+            "expected an integer or float64 column."
+        )
     if (
-        not np.all(np.isfinite(as_float))
-        or np.any(np.abs(as_float) >= _MAX_EXACT_FLOAT_ID)
-        or np.any(as_float != np.trunc(as_float))
+        not np.all(np.isfinite(array))
+        or np.any(np.abs(array) >= _MAX_EXACT_FLOAT_ID)
+        or np.any(array != np.trunc(array))
     ):
         raise TargetSupportError(
             f"{source} household ids are not exactly representable integers; "
             "refusing a lossy id comparison."
         )
-    return as_float.astype(np.int64)
+    return array.astype(np.int64)
 
 
 def diagnose_target_support(
@@ -283,6 +295,10 @@ def _diagnose_one(
     near_cap_ratio: float | None,
 ) -> dict[str, object]:
     target_value = float(row["target"])
+    if not math.isfinite(target_value):
+        raise TargetSupportError(
+            f"Diagnostics target value for {name!r} is not finite."
+        )
     recorded_final = float(row["final_estimate"])
     final_estimate = float((final_weights * compiled).sum())
     if (
@@ -301,11 +317,16 @@ def _diagnose_one(
             "checkpoint does not belong to this release."
         )
     design_estimate = float((design_weights * compiled).sum())
+    if not math.isfinite(design_estimate):
+        raise TargetSupportError(
+            f"Design-weight aggregate for {name!r} is not finite; the "
+            "checkpoint column or design weights are corrupt."
+        )
 
     carrier_mask = compiled != 0.0
     contributions = final_weights * compiled
-    # Rank carriers by absolute weighted contribution (household-id order as
-    # the deterministic tiebreak via stable sort), so signed columns surface
+    # Rank carriers by absolute weighted contribution (input row order as the
+    # deterministic tiebreak via stable sort), so signed columns surface
     # their dominant carriers instead of whichever positive rows sort first.
     carrier_indices = np.flatnonzero(carrier_mask)
     ranked = carrier_indices[
@@ -389,6 +410,10 @@ def _percent_or_na(value: float | None, *, signed: bool = False) -> str:
 
 def _format_report(payload: dict[str, object]) -> str:
     lines: list[str] = []
+    missing = payload.get("missing_provenance_columns")
+    if missing:
+        lines.append("NOTE: dataset lacks provenance column(s): " + ", ".join(missing))
+        lines.append("")
     for report in payload["targets"]:
         lines.append(f"== {report['name']} ==")
         lines.append(
@@ -417,6 +442,12 @@ def _format_report(payload: dict[str, object]) -> str:
                 f"near-cap {_percent_or_na(report['carrier_share_near_cap'])}"
             )
         lines.append(f"carriers {report['carrier_count']:,} | " + " | ".join(shares))
+        nonpositive = report["carriers_with_nonpositive_design_weight"]
+        if nonpositive:
+            lines.append(
+                f"NOTE: {nonpositive:,} carrier(s) have nonpositive design "
+                "weight (excluded from ratio statistics)."
+            )
         for carrier in report["top_carriers"]:
             provenance = ", ".join(
                 f"{column}={carrier[column]}"
@@ -447,15 +478,29 @@ def _format_report(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _same_file(candidate: Path, reference: Path) -> bool:
+    """True when two paths name the same inode (hard links, symlinks)."""
+
+    try:
+        left = candidate.stat()
+        right = reference.stat()
+    except OSError:
+        return False
+    return (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
+
+
 def main() -> None:
     args = _parse_args()
     if args.json_output is not None:
         json_target = args.json_output.resolve()
         for input_path in (args.diagnostics, args.checkpoint, args.dataset):
-            if json_target == Path(input_path).resolve():
+            if json_target == Path(input_path).resolve() or _same_file(
+                args.json_output, Path(input_path)
+            ):
                 raise TargetSupportError(
-                    f"--json-output {args.json_output} resolves to input "
-                    f"{input_path}; refusing to overwrite a forensics input."
+                    f"--json-output {args.json_output} names the same file as "
+                    f"input {input_path}; refusing to overwrite a forensics "
+                    "input."
                 )
     payload = diagnose_target_support(
         diagnostics_path=args.diagnostics,
