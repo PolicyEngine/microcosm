@@ -57,6 +57,7 @@ def _frame() -> Frame:
         age: float,
         pedisdrs: float = 2.0,
         employment: float = 0.0,
+        student: bool = False,
     ) -> None:
         rows.append(
             {
@@ -67,6 +68,8 @@ def _frame() -> Frame:
                 "employment_income_before_lsr": employment,
                 "self_employment_income_before_lsr": 0.0,
                 "sstb_self_employment_income_before_lsr": 0.0,
+                "is_full_time_college_student": student,
+                "person_support_channel": "asec",
             }
         )
 
@@ -148,6 +151,8 @@ def test_stage_manifest_pins_measured_flag_and_documented_donor_proxy() -> None:
     assert spec.operations[1].parameters == {
         "self_care_difficulty_source": "PEDISDRS",
         "childcare_expense_source": "spm_unit_pre_subsidy_childcare_expenses",
+        "full_time_student_source": "is_full_time_college_student",
+        "support_channel_source": "person_support_channel",
         "child_qualifying_age_limit": US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT,
         "earned_income_sources": list(US_ADULT_CARE_EARNED_INCOME_SOURCES),
         "seed_from_build_config": True,
@@ -239,6 +244,177 @@ def test_taxpayer_alone_is_never_their_own_qualifying_individual() -> None:
     )
     assert 299 not in expense_units
     assert 201 not in expense_units
+    # The remaining statute-eligible unit must actually receive the expense:
+    # exclusion of the invalid units may not silently zero the surface.
+    assert expense_units == {202}
+
+
+def test_deeming_never_rescues_a_unit_whose_only_earner_is_the_disabled_spouse() -> (
+    None
+):
+    frame = _frame()
+    person = frame.table("person")
+    # Invert unit 201: the incapacitated spouse becomes the sole earner. The
+    # engine deems only the eligible spouse and keeps the healthy spouse's
+    # actual zero, so min_head_spouse_earned stays 0 and the unit cannot
+    # bind; it must not consume the seeded selection prefix.
+    head_row = person.index[
+        (person["person_tax_unit_id"] == 201)
+        & (person["tax_unit_role_input"] == "HEAD")
+    ][0]
+    spouse_row = person.index[
+        (person["person_tax_unit_id"] == 201)
+        & (person["tax_unit_role_input"] == "SPOUSE")
+    ][0]
+    person.loc[head_row, "employment_income_before_lsr"] = 0.0
+    person.loc[spouse_row, "employment_income_before_lsr"] = 40_000.0
+
+    result = with_us_adult_care_inputs(frame, seed=7, time_period=2024)
+    person_out = result.table("person")
+    expense_units = set(
+        person_out.loc[person_out[_EXPENSE] > 0.0, "person_tax_unit_id"].tolist()
+    )
+    assert 201 not in expense_units
+    assert expense_units == {202}
+
+
+def test_student_spouse_deeming_admits_dependent_prong_units() -> None:
+    frame = _frame()
+    person = frame.table("person")
+    # A working head, a non-earning full-time-student spouse, and a disabled
+    # adult dependent: the engine's 21(d)(2) floor covers the student spouse,
+    # so the unit binds and must be selectable.
+    base = int(person["person_id"].max())
+    student_unit = pd.DataFrame(
+        [
+            {
+                "person_id": base + 1,
+                "person_tax_unit_id": 310,
+                "tax_unit_role_input": "HEAD",
+                "age": 40.0,
+                "PEDISDRS": 2.0,
+                "employment_income_before_lsr": 50_000.0,
+                "self_employment_income_before_lsr": 0.0,
+                "sstb_self_employment_income_before_lsr": 0.0,
+                "is_full_time_college_student": False,
+                "person_support_channel": "asec",
+                "person_household_id": 1_110,
+                "person_spm_unit_id": 710,
+                "person_family_id": 910,
+                "person_marital_unit_id": 810,
+            },
+            {
+                "person_id": base + 2,
+                "person_tax_unit_id": 310,
+                "tax_unit_role_input": "SPOUSE",
+                "age": 39.0,
+                "PEDISDRS": 2.0,
+                "employment_income_before_lsr": 0.0,
+                "self_employment_income_before_lsr": 0.0,
+                "sstb_self_employment_income_before_lsr": 0.0,
+                "is_full_time_college_student": True,
+                "person_support_channel": "asec",
+                "person_household_id": 1_110,
+                "person_spm_unit_id": 710,
+                "person_family_id": 910,
+                "person_marital_unit_id": 811,
+            },
+            {
+                "person_id": base + 3,
+                "person_tax_unit_id": 310,
+                "tax_unit_role_input": "DEPENDENT",
+                "age": 24.0,
+                "PEDISDRS": 1.0,
+                "employment_income_before_lsr": 0.0,
+                "self_employment_income_before_lsr": 0.0,
+                "sstb_self_employment_income_before_lsr": 0.0,
+                "is_full_time_college_student": False,
+                "person_support_channel": "asec",
+                "person_household_id": 1_110,
+                "person_spm_unit_id": 710,
+                "person_family_id": 910,
+                "person_marital_unit_id": 812,
+            },
+        ]
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = pd.concat([person, student_unit], ignore_index=True)
+    tables["tax_unit"].loc[len(tables["tax_unit"])] = {"tax_unit_id": 310}
+    tables["spm_unit"].loc[len(tables["spm_unit"])] = {
+        "spm_unit_id": 710,
+        "spm_unit_pre_subsidy_childcare_expenses": 0.0,
+    }
+    tables["family"].loc[len(tables["family"])] = {"family_id": 910}
+    tables["household"].loc[len(tables["household"])] = {
+        "household_id": 1_110,
+        "state_fips": 6,
+    }
+    for extra in (810, 811, 812):
+        tables["marital_unit"].loc[len(tables["marital_unit"])] = {
+            "marital_unit_id": extra
+        }
+    rebuilt = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.ones(len(tables["household"]), dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+    )
+
+    # With three eligible units and the 0.5 measured rate, the prefix takes
+    # two: whichever two are selected, the student-deemed unit must be
+    # selectable, and every carrier must be a qualifying person. Run a few
+    # seeds and require unit 310 to appear for at least one.
+    selected_by_seed = {}
+    for seed in (0, 1, 2, 3):
+        result = with_us_adult_care_inputs(rebuilt, seed=seed, time_period=2024)
+        person_out = result.table("person")
+        positive = person_out[_EXPENSE] > 0.0
+        assert person_out.loc[positive, _FLAG].all()
+        selected_by_seed[seed] = set(
+            person_out.loc[positive, "person_tax_unit_id"].tolist()
+        )
+        assert selected_by_seed[seed] <= {201, 202, 310}
+    assert any(310 in selected for selected in selected_by_seed.values())
+
+
+def test_expense_assignment_is_invariant_to_person_row_order() -> None:
+    baseline = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    source = _frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    order = np.random.default_rng(123).permutation(len(tables["person"]))
+    tables["person"] = tables["person"].iloc[order].reset_index(drop=True)
+    shuffled_frame = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.ones(len(tables["household"]), dtype=np.float64),
+                WeightKind.DESIGN,
+            )
+        },
+    )
+
+    shuffled = with_us_adult_care_inputs(shuffled_frame, seed=7, time_period=2024)
+
+    baseline_by_person = dict(
+        zip(
+            baseline.table("person")["person_id"].tolist(),
+            baseline.table("person")[_EXPENSE].tolist(),
+            strict=True,
+        )
+    )
+    shuffled_by_person = dict(
+        zip(
+            shuffled.table("person")["person_id"].tolist(),
+            shuffled.table("person")[_EXPENSE].tolist(),
+            strict=True,
+        )
+    )
+    assert baseline_by_person == shuffled_by_person
 
 
 def test_fails_closed_without_measured_sources() -> None:
@@ -253,6 +429,20 @@ def test_fails_closed_without_measured_sources() -> None:
     )
     with pytest.raises(ValueError, match="cannot heal"):
         with_us_adult_care_inputs(missing_donor, seed=0, time_period=2024)
+
+    missing_student = _frame()
+    missing_student.table("person").drop(
+        columns=["is_full_time_college_student"], inplace=True
+    )
+    with pytest.raises(ValueError, match="cannot heal"):
+        with_us_adult_care_inputs(missing_student, seed=0, time_period=2024)
+
+    missing_channel = _frame()
+    missing_channel.table("person").drop(
+        columns=["person_support_channel"], inplace=True
+    )
+    with pytest.raises(ValueError, match="cannot heal"):
+        with_us_adult_care_inputs(missing_channel, seed=0, time_period=2024)
 
 
 def test_degenerate_measured_usage_rate_fails_closed() -> None:
@@ -294,6 +484,79 @@ def test_signal_gate_rejects_missing_default_and_invented_surfaces() -> None:
     assert not us_adult_care_signal_gate(flagless).passed
 
 
+def test_signal_gate_certifies_statute_structure_and_value_sanity() -> None:
+    # A null in the flag column must fail rather than coerce.
+    nan_flag = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    person = nan_flag.table("person")
+    person[_FLAG] = person[_FLAG].astype(object)
+    person.loc[person.index[0], _FLAG] = np.nan
+    gate = us_adult_care_signal_gate(nan_flag)
+    assert not gate.passed
+    assert any("non-boolean" in failure for failure in gate.failures)
+
+    # The flag must match the measured PEDISDRS identity while the raw
+    # source is still on the frame.
+    drifted = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    person = drifted.table("person")
+    unflagged_row = person.index[~person[_FLAG]][0]
+    person.loc[unflagged_row, _FLAG] = True
+    gate = us_adult_care_signal_gate(drifted)
+    assert not gate.passed
+    assert any("PEDISDRS" in failure for failure in gate.failures)
+
+    # An expense on a disabled-but-unmarried head is not a section 21
+    # qualifying person and must fail the structure certificate even though
+    # the person carries the flag. (Drop PEDISDRS so only structure judges.)
+    misplaced = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    person = misplaced.table("person")
+    person.drop(columns=["PEDISDRS"], inplace=True)
+    carrier_row = person.index[person[_EXPENSE] > 0.0][0]
+    lone_head_row = person.index[
+        (person["person_tax_unit_id"] >= 205)
+        & (person["tax_unit_role_input"] == "HEAD")
+    ][0]
+    person.loc[lone_head_row, _FLAG] = True
+    person.loc[lone_head_row, _EXPENSE] = person.loc[carrier_row, _EXPENSE]
+    person.loc[carrier_row, _EXPENSE] = 0.0
+    gate = us_adult_care_signal_gate(misplaced)
+    assert not gate.passed
+    assert any("qualifying persons" in failure for failure in gate.failures)
+
+    # Two carriers in one unit break the single-carrier invariant.
+    doubled = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    person = doubled.table("person")
+    carrier_row = person.index[person[_EXPENSE] > 0.0][0]
+    carrier_unit = person.loc[carrier_row, "person_tax_unit_id"]
+    other_row = person.index[
+        (person["person_tax_unit_id"] == carrier_unit) & (person.index != carrier_row)
+    ][0]
+    person.loc[other_row, _FLAG] = True
+    person.loc[other_row, "PEDISDRS"] = 1.0
+    person.loc[other_row, _EXPENSE] = 250.0
+    gate = us_adult_care_signal_gate(doubled)
+    assert not gate.passed
+    assert any("more than one expense carrier" in failure for failure in gate.failures)
+
+    # Corrupted magnitudes fail the plausibility ceiling.
+    corrupt = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    person = corrupt.table("person")
+    carrier_row = person.index[person[_EXPENSE] > 0.0][0]
+    person.loc[carrier_row, _EXPENSE] = 1e300
+    gate = us_adult_care_signal_gate(corrupt)
+    assert not gate.passed
+    assert any("plausibility ceiling" in failure for failure in gate.failures)
+
+    # Without the role column the structure cannot be certified, so a healed
+    # surface cannot pass on bands alone.
+    unstructured = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
+    unstructured.table("person").drop(
+        columns=["tax_unit_role_input", "PEDISDRS"], inplace=True
+    )
+    gate = us_adult_care_signal_gate(unstructured)
+    assert not gate.passed
+    assert any("certificate sources missing" in failure for failure in gate.failures)
+
+
 def test_release_frame_without_raw_source_preserves_valid_surface() -> None:
     built = with_us_adult_care_inputs(_frame(), seed=7, time_period=2024)
     built.table("person").drop(columns=["PEDISDRS"], inplace=True)
@@ -308,10 +571,12 @@ def test_release_frame_without_raw_source_preserves_valid_surface() -> None:
     pd.testing.assert_frame_equal(healed.table("person"), built.table("person"))
 
 
-def test_required_source_columns_are_the_measured_pair() -> None:
+def test_required_source_columns_are_the_measured_set() -> None:
     assert US_ADULT_CARE_REQUIRED_SOURCE_COLUMNS == (
         "PEDISDRS",
         "spm_unit_pre_subsidy_childcare_expenses",
+        "is_full_time_college_student",
+        "person_support_channel",
     )
 
 

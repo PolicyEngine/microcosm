@@ -646,12 +646,12 @@
    "expected_sign": "negative",
    "id": "self_employed_health_premium_neutralization",
    "issue": "PolicyEngine/populace#451",
-   "min_abs_effect": 1000000000.0,
+   "min_abs_effect": 300000000.0,
    "name": "Self-employed health premium neutralization",
    "neutralized_variable": "health_insurance_premiums",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US computes the section 162(l) self-employed health ALD as min(total_self_employment_income, self_employed_health_insurance_premiums), where the premium aggregation adds the person health_insurance_premiums input under the is_self_employed gate — the two leaves the deterministic attribution operation of the other_health_insurance_premiums release stage populates. The Medicare-proxy guard keeps the statutory medical-expense premium concept numerically invariant, so this neutralization isolates exactly the ALD channel on federal income tax. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0): $48.09 billion attributed to 12,186,288 weighted carriers, baseline ALD $31.24 billion against the SOI Pub 1304 Table 1.4 TY2023 fact of $31.23 billion (ledger#105, buildn v9.2 feed), baseline-minus-reform -$4.58 billion. A structural zero means the attribution operation was dropped or the defined_for gate never opened."
+   "reason": "PolicyEngine-US computes the section 162(l) self-employed health ALD as min(total_self_employment_income, self_employed_health_insurance_premiums), where the premium aggregation adds the person health_insurance_premiums input under the is_self_employed gate — the two leaves the deterministic attribution operation of the other_health_insurance_premiums release stage populates for strictly-positive Schedule C people outside the Medicare proxy and outside measured employer-sponsored coverage (the 162(l)(2)(B) subsidized-plan exclusion proxy). The Medicare-proxy guard keeps the statutory medical-expense premium concept numerically invariant, so this neutralization isolates exactly the ALD channel on federal income tax. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0): $16.37 billion attributed to 1,402 carrier rows (3.57 million weighted people, against the SOI Pub 1304 Table 1.4 TY2023 fact of 3,595,764 returns / $31.23 billion, ledger#105, buildn v9.2 feed), baseline ALD $11.97 billion, baseline-minus-reform -$1.45 billion; the level gap to the banked SOI fact is the calibration solve's to close over this support. A structural zero means the attribution operation was dropped or the defined_for gate never opened."
   },
   {
    "binding_inputs": [
@@ -663,12 +663,12 @@
    "expected_sign": "negative",
    "id": "cdcc_adult_care_expense_neutralization",
    "issue": "PolicyEngine/populace#451",
-   "min_abs_effect": 40000000.0,
+   "min_abs_effect": 30000000.0,
    "name": "CDCC adult-care expense neutralization",
    "neutralized_variable": "pre_subsidy_care_expenses",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US sums pre_subsidy_care_expenses (via care_expenses) into cdcc_relevant_expenses as the section 21 adult/disabled-dependent care leg; the is_incapable_of_self_care flag supplies the 21(b)(1) qualifying individuals and the 21(d)(2) spouse deeming, and stays active in both arms so the neutralization isolates exactly the dollar leg. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0) after the adult_care_inputs stage: 2,067 measured PEDISDRS carriers (5.998 million weighted, a 1.76% person share consistent with the published self-care difficulty prevalence), $4.14 billion of donor-matched expenses on 147 carrier rows, baseline-minus-reform -$193.3 million on federal income tax. A structural zero means the base rebuild dropped the stage or the CDCC adult-care channel broke."
+   "reason": "PolicyEngine-US sums pre_subsidy_care_expenses (via care_expenses) into cdcc_relevant_expenses as the section 21 adult/disabled-dependent care leg; the is_incapable_of_self_care flag supplies the 21(b)(1) qualifying individuals and the 21(d)(2) spouse deeming, and stays active in both arms so the neutralization isolates exactly the dollar leg. Measured on the certified Build N frame (c3e378a-20260722T010408Z, seed 0) after the adult_care_inputs stage: 2,067 measured PEDISDRS carriers (5.998 million weighted, a 1.76% person share consistent with the published self-care difficulty prevalence), $3.41 billion of donor-matched expenses on 137 carrier rows, baseline-minus-reform -$153.9 million on federal income tax. A structural zero means the base rebuild dropped the stage or the CDCC adult-care channel broke."
   },
   {
    "binding_inputs": [

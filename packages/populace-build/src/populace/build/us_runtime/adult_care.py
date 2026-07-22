@@ -31,11 +31,20 @@ The dollar leg is therefore an explicitly documented same-instrument proxy:
 the measured ASEC work-related childcare expense distribution — the same
 section 21 employment-related expense class, subject to the same per-person
 statutory cap — supplies both the paid-care usage rate and the positive
-expense level distribution.  Support is restricted to tax units where the
-statute can bind: a measured disabled qualifying individual (dependent, or
-married head/spouse) plus the section 21(d) earnings structure, honoring the
-21(d)(2) deeming rule for an incapacitated spouse.  Assignment is a seeded,
-weight-targeted, distribution-preserving draw; no level or usage number is
+expense level distribution.  The donor universe is measured at SPM-unit
+grain (where the childcare leaf lives): units with any member under the
+qualifying age and any positive member earnings, on the measured ASEC
+channel — an approximation of the binding childcare population at donor
+grain, not a reproduction of the tax-unit minimum-earnings test.  Support
+is restricted to tax units where the statute can bind: a measured disabled
+qualifying individual (dependent, or married head/spouse) plus the section
+21(d) earnings structure computed exactly as the engine's
+``min_head_spouse_earned`` binds — both spouses earning, or a 21(d)(2)
+floor-eligible spouse (incapable of self-care, or the measured full-time
+college student) deemed while the OTHER spouse actually earns.  Assignment
+is a seeded, weight-targeted, distribution-preserving draw over sorted unit
+ids (invariant to person-row order), with the level grid taken from the
+selected units' own cumulative weights; no level or usage number is
 invented outside the measured donor distribution.
 """
 
@@ -79,15 +88,20 @@ US_ADULT_CARE_OUTPUT_COLUMNS: tuple[str, ...] = (
     "is_incapable_of_self_care",
     "pre_subsidy_care_expenses",
 )
-# The measured ASEC self-care difficulty item and the finished childcare
-# donor surface; the childcare column is SPM-unit grain attached per person.
+# The measured ASEC self-care difficulty item, the finished childcare donor
+# surface (SPM-unit grain, attached per person), the measured full-time
+# college indicator for 21(d)(2) student deeming, and the clone-channel
+# provenance column the donor statistics are certified against.
 US_ADULT_CARE_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "PEDISDRS",
     "spm_unit_pre_subsidy_childcare_expenses",
+    "is_full_time_college_student",
+    "person_support_channel",
 )
-# 26 USC 21(d)(1)(A) via gov.irs.credits.cdcc.eligibility.child_age
-# (PolicyEngine-US 1.764.6): a dependent under this age qualifies by age, so
-# the measured childcare-usage donor universe conditions on it.
+# 26 USC 21(b)(1)(A): a dependent under this age qualifies by age (the
+# engine's gov.irs.credits.cdcc.eligibility.child_age parameter carries the
+# same value 13 under a 21(d)(1)(A) citation). The measured childcare-usage
+# donor universe conditions on it.
 US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT = 13
 US_ADULT_CARE_EARNED_INCOME_SOURCES: tuple[str, ...] = (
     "employment_income_before_lsr",
@@ -98,6 +112,7 @@ US_ADULT_CARE_EARNED_INCOME_SOURCES: tuple[str, ...] = (
 _FLAG_OUTPUT, _EXPENSE_OUTPUT = US_ADULT_CARE_OUTPUT_COLUMNS
 _SELF_CARE_SOURCE = "PEDISDRS"
 _CHILDCARE_SOURCE = "spm_unit_pre_subsidy_childcare_expenses"
+_STUDENT_SOURCE = "is_full_time_college_student"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _TAX_UNIT_WEIGHT_COLUMN = "adult_care_tax_unit_weight"
 _SPM_UNIT_WEIGHT_COLUMN = "adult_care_spm_unit_weight"
@@ -106,6 +121,11 @@ _BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _ROLE_COLUMN = "tax_unit_role_input"
 _AGE_COLUMN = "age"
 _FLAG_SHARE_BAND = (0.002, 0.12)
+# Sanity ceiling for a single unit's annual employment-related care expense.
+# Far above any measured childcare donor value (certified N maximum is in the
+# tens of thousands); its only job is refusing corrupted magnitudes such as
+# overflow artifacts on healed surfaces.
+_EXPENSE_PLAUSIBILITY_CEILING = 250_000.0
 
 
 def us_adult_care_stage_spec() -> SourceStageSpec:
@@ -193,6 +213,8 @@ def derive_us_adult_care_from_manifest(
     expected_parameters = {
         "self_care_difficulty_source": _SELF_CARE_SOURCE,
         "childcare_expense_source": _CHILDCARE_SOURCE,
+        "full_time_student_source": _STUDENT_SOURCE,
+        "support_channel_source": _PERSON_SUPPORT_CHANNEL_COLUMN,
         "child_qualifying_age_limit": US_ADULT_CARE_CHILD_QUALIFYING_AGE_LIMIT,
         "earned_income_sources": list(US_ADULT_CARE_EARNED_INCOME_SOURCES),
         "seed_from_build_config": True,
@@ -211,6 +233,14 @@ def derive_us_adult_care_from_manifest(
     # flag. ASEC codes 1 = yes; every other in/out-of-universe code is False.
     self_care = _finite(person, _SELF_CARE_SOURCE)
     flag = self_care == 1.0
+    # 21(d)(2) also deems earnings for a full-time-student spouse; the
+    # measured college indicator (eligibility stage) is what reaches the
+    # engine's is_full_time_student aggregation.
+    if _STUDENT_SOURCE not in person.columns:
+        raise SourceRuntimeError(
+            f"US adult-care derivation requires source column {_STUDENT_SOURCE!r}."
+        )
+    student = _finite(person, _STUDENT_SOURCE) == 1.0
 
     age = _finite(person, _AGE_COLUMN)
     earned = np.zeros(len(person), dtype=np.float64)
@@ -222,6 +252,12 @@ def derive_us_adult_care_from_manifest(
         raise SourceRuntimeError(
             f"US adult-care donor {_CHILDCARE_SOURCE!r} contains "
             f"{negative_childcare} negative value(s)."
+        )
+    if _PERSON_SUPPORT_CHANNEL_COLUMN not in person.columns:
+        raise SourceRuntimeError(
+            "US adult-care derivation requires the support-channel column "
+            f"{_PERSON_SUPPORT_CHANNEL_COLUMN!r}; without provenance the "
+            "measured-ASEC donor statistics cannot be certified."
         )
 
     role = _role(person)
@@ -259,6 +295,8 @@ def derive_us_adult_care_from_manifest(
             "earned": earned,
             "head_earned": np.where(is_head, earned, 0.0),
             "spouse_earned": np.where(is_spouse, earned, 0.0),
+            "head_floor_eligible": is_head & (flag | student),
+            "spouse_floor_eligible": is_spouse & (flag | student),
             "weight": pd.to_numeric(
                 person[_TAX_UNIT_WEIGHT_COLUMN], errors="coerce"
             ).to_numpy(dtype=np.float64),
@@ -272,13 +310,9 @@ def derive_us_adult_care_from_manifest(
                 else person["person_tax_unit_id"].to_numpy()
             ),
             "asec": (
-                (
-                    person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
-                    == _BASE_ASEC_SUPPORT_CHANNEL
-                ).to_numpy()
-                if _PERSON_SUPPORT_CHANNEL_COLUMN in person.columns
-                else np.ones(len(person), dtype=bool)
-            ),
+                person[_PERSON_SUPPORT_CHANNEL_COLUMN].astype(str)
+                == _BASE_ASEC_SUPPORT_CHANNEL
+            ).to_numpy(),
         }
     )
     units = unit_frame.groupby("unit", sort=False).agg(
@@ -287,33 +321,38 @@ def derive_us_adult_care_from_manifest(
         dependent_prong=("flag_dependent", "any"),
         head_earned=("head_earned", "sum"),
         spouse_earned=("spouse_earned", "sum"),
+        head_floor_eligible=("head_floor_eligible", "any"),
+        spouse_floor_eligible=("spouse_floor_eligible", "any"),
         weight=("weight", "first"),
     )
     # 21(b)(1)(C) limits the spouse prong to a married head or spouse;
     # 21(b)(1)(B) covers any disabled dependent.
     units["spouse_prong"] = units["flag_head_or_spouse"] & units["married"]
 
-    # 21(d): both spouses must work unless the 21(d)(2) deeming rule covers
-    # an incapacitated spouse; a single filer needs earnings of the head.
-    joint_min = np.minimum(
-        units["head_earned"].to_numpy(), units["spouse_earned"].to_numpy()
-    )
-    joint_max = np.maximum(
-        units["head_earned"].to_numpy(), units["spouse_earned"].to_numpy()
-    )
+    # 21(d) exactly as the engine computes min_head_spouse_earned: a married
+    # unit binds when both spouses earn, or when a 21(d)(2) floor-eligible
+    # spouse (incapable of self-care, or the measured full-time student) is
+    # deemed while the OTHER spouse actually earns. Deeming never rescues a
+    # unit whose only earner is the floor-eligible spouse. A single filer
+    # needs the head's earnings.
+    head_earned = units["head_earned"].to_numpy()
+    spouse_earned = units["spouse_earned"].to_numpy()
+    head_floor = units["head_floor_eligible"].to_numpy()
+    spouse_floor = units["spouse_floor_eligible"].to_numpy()
     married = units["married"].to_numpy()
-    work_test = np.where(
-        units["spouse_prong"].to_numpy(),
-        joint_max > 0.0,
-        np.where(married, joint_min > 0.0, units["head_earned"].to_numpy() > 0.0),
-    )
+    both_earn = (head_earned > 0.0) & (spouse_earned > 0.0)
+    deemed = (head_floor & (spouse_earned > 0.0)) | (spouse_floor & (head_earned > 0.0))
+    work_test = np.where(married, both_earn | deemed, head_earned > 0.0)
     eligible = (
         units["spouse_prong"].to_numpy() | units["dependent_prong"].to_numpy()
     ) & work_test
 
-    # Measured donor statistics: the paid-childcare usage rate and positive
-    # expense level distribution among units where the childcare leg of the
-    # same section 21 expense class binds, on the measured ASEC channel.
+    # Measured donor statistics on the measured ASEC channel. The donor
+    # universe is SPM-unit grain (the grain the childcare leaf lives at):
+    # units with any member under the qualifying age and any positive member
+    # earnings. This approximates, at donor grain, the population whose
+    # childcare leg of the same section 21 expense class can bind; it does
+    # not reproduce the tax-unit head/spouse minimum-earnings test.
     donor_units = (
         unit_frame[unit_frame["asec"]]
         .groupby("spm_unit", sort=False)
@@ -333,28 +372,40 @@ def derive_us_adult_care_from_manifest(
             "units; the usage rate and level distribution are undefined."
         )
     donor_weight = donor_universe["weight"].to_numpy(dtype=np.float64)
-    donor_positive = donor_universe["childcare"].to_numpy(dtype=np.float64) > 0.0
+    donor_childcare = donor_universe["childcare"].to_numpy(dtype=np.float64)
     total_donor_weight = float(donor_weight.sum())
     if total_donor_weight <= 0.0:
         raise SourceRuntimeError("US adult-care donor universe has zero weight.")
+    donor_positive = donor_childcare > 0.0
     usage_rate = float(donor_weight[donor_positive].sum()) / total_donor_weight
     if not 0.0 < usage_rate < 1.0:
         raise SourceRuntimeError(
             "US adult-care measured paid-care usage rate "
             f"{usage_rate:.4f} is degenerate."
         )
-    level_values = donor_universe.loc[donor_positive, "childcare"].to_numpy(
-        dtype=np.float64
-    )
-    level_weights = donor_weight[donor_positive]
+    # Zero-weight donors carry no measured mass and must not become
+    # interpolation knots.
+    level_mask = donor_positive & (donor_weight > 0.0)
+    level_values = donor_childcare[level_mask]
+    level_weights = donor_weight[level_mask]
+    if not level_values.size:
+        raise SourceRuntimeError(
+            "US adult-care derivation found no positively weighted paid-care donors."
+        )
 
-    # Seeded, weight-targeted selection: a deterministic permutation of the
-    # eligible units, taking the prefix whose weight reaches the measured
-    # usage rate, then a distribution-preserving weighted-quantile draw.
+    # Seeded, weight-targeted selection over the eligible units in sorted
+    # unit-id order (invariant to person-row order), taking the permuted
+    # prefix whose weight reaches the measured usage rate; the level draw is
+    # a weighted-quantile map whose grid is the selected units' own
+    # cumulative-weight midpoints, so the recipient-weighted distribution
+    # reproduces the donor-weighted distribution.
     expenses = np.zeros(len(person), dtype=np.float64)
     eligible_ids = units.index.to_numpy()[eligible]
     if eligible_ids.size:
         eligible_weights = units["weight"].to_numpy(dtype=np.float64)[eligible]
+        id_order = np.argsort(eligible_ids, kind="stable")
+        eligible_ids = eligible_ids[id_order]
+        eligible_weights = eligible_weights[id_order]
         seed = context.config.seed if context is not None else 0
         rng = np.random.default_rng(int(seed))
         order = rng.permutation(eligible_ids.size)
@@ -362,27 +413,37 @@ def derive_us_adult_care_from_manifest(
         target = usage_rate * float(eligible_weights.sum())
         take = int(np.searchsorted(cumulative, target, side="left") + 1)
         take = min(take, eligible_ids.size)
-        selected_positions = order[:take]
-        selected_ids = eligible_ids[selected_positions]
+        selected_ids = eligible_ids[order[:take]]
+        selected_weights = eligible_weights[order[:take]]
 
-        grid = (np.arange(take, dtype=np.float64) + 0.5) / float(take)
-        draws = _weighted_quantile(level_values, level_weights, grid)
-        # Deterministic pairing: the permutation order carries the grid.
-        by_unit = dict(zip(selected_ids.tolist(), draws.tolist(), strict=True))
+        pair_order = np.argsort(selected_ids, kind="stable")
+        paired_ids = selected_ids[pair_order]
+        paired_weights = selected_weights[pair_order]
+        cumulative_selected = (
+            np.cumsum(paired_weights) - 0.5 * paired_weights
+        ) / float(paired_weights.sum())
+        draws = _weighted_quantile(level_values, level_weights, cumulative_selected)
+        by_unit = dict(zip(paired_ids.tolist(), draws.tolist(), strict=True))
 
         person_units = person["person_tax_unit_id"].to_numpy()
+        person_ids = pd.to_numeric(person["person_id"], errors="coerce").to_numpy()
         person_married = (
             pd.Series(person_units).map(units["married"]).fillna(False).to_numpy()
         )
         qualifying_person = flag & (
             is_dependent | ((is_head | is_spouse) & person_married)
         )
-        first_qualifying = (
-            pd.Series(qualifying_person).groupby(person_units).cumsum().eq(1)
-            & qualifying_person
+        # The carrier is the qualifying person with the smallest person_id in
+        # the unit — invariant to person-row order.
+        carrier_ids = (
+            pd.Series(np.where(qualifying_person, person_ids, np.inf))
+            .groupby(person_units)
+            .transform("min")
+            .to_numpy()
         )
+        is_carrier = qualifying_person & (person_ids == carrier_ids)
         mapped = pd.Series(person_units).map(by_unit)
-        place = first_qualifying.to_numpy() & mapped.notna().to_numpy()
+        place = is_carrier & mapped.notna().to_numpy()
         expenses[place] = mapped[place].to_numpy(dtype=np.float64)
 
     result = person.copy(deep=True)
@@ -485,29 +546,91 @@ def with_us_adult_care_inputs(
 
 
 def us_adult_care_summary(frame: Frame) -> dict[str, object]:
-    """Weighted signal diagnostics for the adult-care surface."""
+    """Weighted signal, validity, and statute-structure diagnostics."""
 
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     total_weight = float(weights.sum())
-    flag = person[_FLAG_OUTPUT].astype(bool).to_numpy()
+    # A malformed flag column (nulls, non-{0,1} values, or a string/object
+    # dtype) must surface as invalid rather than be coerced: .astype(bool)
+    # reads NaN, 2, and "0" as True. Only bool and plain numeric dtypes can
+    # carry a trustworthy indicator.
+    flag_numeric = pd.to_numeric(person[_FLAG_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    invalid_flag_values = int(
+        np.count_nonzero(
+            ~np.isfinite(flag_numeric) | ~np.isin(flag_numeric, (0.0, 1.0))
+        )
+    )
+    if getattr(person[_FLAG_OUTPUT].dtype, "kind", "") not in "biuf":
+        invalid_flag_values = max(invalid_flag_values, len(person))
+    flag = flag_numeric == 1.0
     expenses = pd.to_numeric(person[_EXPENSE_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
     finite = np.isfinite(expenses)
     positive = finite & (expenses > 0.0)
-    return {
+
+    result: dict[str, object] = {
         "flag_rows": int(np.count_nonzero(flag)),
         "flag_share": (
             float(weights[flag].sum()) / total_weight if total_weight > 0.0 else 0.0
         ),
         "flag_share_band": list(_FLAG_SHARE_BAND),
+        "invalid_flag_values": invalid_flag_values,
         "expense_rows": int(np.count_nonzero(positive)),
         "expense_weighted_total": float((np.nan_to_num(expenses) * weights).sum()),
         "expense_on_unflagged": int(np.count_nonzero(positive & ~flag)),
+        "expense_above_ceiling": int(
+            np.count_nonzero(finite & (expenses > _EXPENSE_PLAUSIBILITY_CEILING))
+        ),
+        "expense_ceiling": _EXPENSE_PLAUSIBILITY_CEILING,
         "nonfinite": int(np.count_nonzero(~finite)),
         "negative": int(np.count_nonzero(finite & (expenses < 0.0))),
     }
+
+    # Flag identity against the measured source, when it is still present
+    # (base-builder frames and release stores that carry raw ASEC columns).
+    if _SELF_CARE_SOURCE in person.columns:
+        self_care = pd.to_numeric(person[_SELF_CARE_SOURCE], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        result["flag_identity_violations"] = int(
+            np.count_nonzero(flag != (self_care == 1.0))
+        )
+
+    # Statute-structure certificate: every expense carrier must be a
+    # qualifying person of its unit, and units carry at most one carrier.
+    # Without the role/unit columns the structure cannot be certified.
+    if _ROLE_COLUMN not in person.columns or "person_tax_unit_id" not in person.columns:
+        result["structure"] = {
+            "missing": [
+                column
+                for column in (_ROLE_COLUMN, "person_tax_unit_id")
+                if column not in person.columns
+            ]
+        }
+        return result
+    role = _role(person)
+    is_head = (role == "HEAD").to_numpy()
+    is_spouse = (role == "SPOUSE").to_numpy()
+    is_dependent = (role == "DEPENDENT").to_numpy()
+    person_units = person["person_tax_unit_id"].to_numpy()
+    unit_married = (
+        pd.Series(is_spouse).groupby(person_units).transform("any").to_numpy()
+    )
+    qualifying = flag & (is_dependent | ((is_head | is_spouse) & unit_married))
+    carriers_per_unit = (
+        pd.Series(positive.astype(np.int64)).groupby(person_units).transform("sum")
+    ).to_numpy()
+    result["structure"] = {
+        "ineligible_carriers": int(np.count_nonzero(positive & ~qualifying)),
+        "multi_carrier_units": int(
+            len(set(person_units[positive & (carriers_per_unit > 1)]))
+        ),
+    }
+    return result
 
 
 def us_adult_care_signal_gate(frame: Frame) -> GateResult:
@@ -527,6 +650,11 @@ def us_adult_care_signal_gate(frame: Frame) -> GateResult:
 
     summary = us_adult_care_summary(frame)
     failures: list[str] = []
+    if summary["invalid_flag_values"]:
+        failures.append(
+            f"{_FLAG_OUTPUT}: {int(summary['invalid_flag_values'])} null or "
+            "non-boolean value(s)."
+        )
     if summary["nonfinite"]:
         failures.append(
             f"{_EXPENSE_OUTPUT}: {int(summary['nonfinite'])} nonfinite values."
@@ -535,6 +663,37 @@ def us_adult_care_signal_gate(frame: Frame) -> GateResult:
         failures.append(
             f"{_EXPENSE_OUTPUT}: {int(summary['negative'])} negative values."
         )
+    if summary["expense_above_ceiling"]:
+        failures.append(
+            f"{_EXPENSE_OUTPUT}: {int(summary['expense_above_ceiling'])} "
+            "value(s) above the "
+            f"${summary['expense_ceiling']:,.0f} plausibility ceiling."
+        )
+    flag_identity = summary.get("flag_identity_violations")
+    if flag_identity:
+        failures.append(
+            f"{_FLAG_OUTPUT}: {int(flag_identity)} value(s) diverge from the "
+            f"measured {_SELF_CARE_SOURCE} == 1 identity."
+        )
+    structure = summary.get("structure")
+    if not isinstance(structure, dict):
+        failures.append("structure diagnostics missing from summary.")
+    elif "missing" in structure:
+        failures.append(
+            f"statute-structure certificate sources missing: {structure['missing']}."
+        )
+    else:
+        if structure["ineligible_carriers"]:
+            failures.append(
+                f"{_EXPENSE_OUTPUT}: {int(structure['ineligible_carriers'])} "
+                "carrier(s) are not section 21 qualifying persons of their "
+                "unit."
+            )
+        if structure["multi_carrier_units"]:
+            failures.append(
+                f"{_EXPENSE_OUTPUT}: {int(structure['multi_carrier_units'])} "
+                "unit(s) carry more than one expense carrier."
+            )
     if not summary["flag_rows"]:
         failures.append(
             f"{_FLAG_OUTPUT}: no carriers; the CDCC adult-care leg would stay "

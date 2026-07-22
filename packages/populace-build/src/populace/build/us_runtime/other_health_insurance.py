@@ -139,6 +139,10 @@ _REPORTED_OUTPUT, _OTHER_OUTPUT = US_OTHER_HEALTH_INSURANCE_OUTPUT_COLUMNS
 _SE_PREMIUMS_OUTPUT, _SE_FLAG_OUTPUT = US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS
 _SE_MEDICARE_AGE_SOURCE = "age"
 _SE_MEDICARE_SSDI_SOURCE = "social_security_disability"
+# 26 USC 162(l)(2)(B): no deduction for months the taxpayer is eligible to
+# participate in a subsidized employer plan. Measured employer-sponsored
+# coverage is the conservative, incomplete proxy for that eligibility.
+_SE_EMPLOYER_COVERAGE_SOURCE = "has_esi"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
@@ -466,6 +470,7 @@ def attribute_us_se_health_premiums(
     medicare_age_source_column: str = _SE_MEDICARE_AGE_SOURCE,
     medicare_age_threshold: int = US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
     medicare_ssdi_source_column: str = _SE_MEDICARE_SSDI_SOURCE,
+    employer_coverage_source_column: str = _SE_EMPLOYER_COVERAGE_SOURCE,
     output_premiums_column: str = _SE_PREMIUMS_OUTPUT,
     output_flag_column: str = _SE_FLAG_OUTPUT,
 ) -> pd.DataFrame:
@@ -473,8 +478,14 @@ def attribute_us_se_health_premiums(
 
     The premium output copies the reported non-Part-B premium exactly for
     people with strictly positive combined Schedule C income who are outside
-    the Medicare proxy, and is zero elsewhere: attribution never invents
-    premium mass. The flag marks every strictly-positive Schedule C person so
+    the Medicare proxy AND outside measured employer-sponsored coverage, and
+    is zero elsewhere: attribution never invents premium mass. Section
+    162(l)(2)(B) disallows the deduction for months the taxpayer is eligible
+    to participate in a subsidized employer plan; the measured ``has_esi``
+    indicator (actual employer-sponsored coverage) is the conservative,
+    incomplete proxy for that eligibility — eligibility through a spouse's or
+    dependent's employer is not measured and remains documented residual
+    overbreadth. The flag marks every strictly-positive Schedule C person so
     the engine's ``defined_for`` gate opens exactly where the section 162(l)
     earned-income cap can bind. Schedule C losses are legitimate measured
     signal and simply leave the flag off.
@@ -486,16 +497,50 @@ def attribute_us_se_health_premiums(
         self_employment += _finite_values(person, column)
     age = _finite_values(person, medicare_age_source_column)
     ssdi = _strict_nonnegative_values(person, medicare_ssdi_source_column)
+    employer_covered = _boolean_values(person, employer_coverage_source_column)
 
     self_employed = self_employment > 0.0
     medicare_proxy = (age >= float(medicare_age_threshold)) | (ssdi > 0.0)
 
     result = person.copy(deep=True)
     result[output_premiums_column] = np.where(
-        self_employed & ~medicare_proxy, reported, 0.0
+        self_employed & ~medicare_proxy & ~employer_covered, reported, 0.0
     )
     result[output_flag_column] = self_employed
     return result
+
+
+def _is_boolean_like_dtype(series: pd.Series) -> bool:
+    """Whether a column can carry a trustworthy boolean indicator.
+
+    Only bool and plain numeric dtypes qualify: object/string dtypes are
+    rejected outright because the engine parses any nonempty string —
+    including "0" — as True.
+    """
+
+    kind = getattr(series.dtype, "kind", "")
+    return kind in "biuf"
+
+
+def _boolean_values(person: pd.DataFrame, column: str) -> np.ndarray:
+    if column not in person.columns:
+        raise SourceRuntimeError(
+            f"US self-employed premium attribution requires source column {column!r}."
+        )
+    if not _is_boolean_like_dtype(person[column]):
+        raise SourceRuntimeError(
+            f"US self-employed premium attribution source {column!r} carries "
+            f"an object dtype ({person[column].dtype}); a boolean indicator "
+            "is required."
+        )
+    values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    invalid = int(np.count_nonzero(~np.isfinite(values) | ~np.isin(values, (0.0, 1.0))))
+    if invalid:
+        raise SourceRuntimeError(
+            f"US self-employed premium attribution source {column!r} contains "
+            f"{invalid} null or non-boolean value(s)."
+        )
+    return values == 1.0
 
 
 def attribute_us_se_health_premiums_from_manifest(
@@ -522,6 +567,7 @@ def attribute_us_se_health_premiums_from_manifest(
         "medicare_age_source": _SE_MEDICARE_AGE_SOURCE,
         "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
         "medicare_ssdi_source": _SE_MEDICARE_SSDI_SOURCE,
+        "employer_coverage_source": _SE_EMPLOYER_COVERAGE_SOURCE,
         "output_premiums": _SE_PREMIUMS_OUTPUT,
         "output_self_employed_flag": _SE_FLAG_OUTPUT,
     }
@@ -540,6 +586,7 @@ def attribute_us_se_health_premiums_from_manifest(
         medicare_age_source_column=parameters["medicare_age_source"],
         medicare_age_threshold=int(parameters["medicare_age_threshold"]),
         medicare_ssdi_source_column=parameters["medicare_ssdi_source"],
+        employer_coverage_source_column=parameters["employer_coverage_source"],
         output_premiums_column=parameters["output_premiums"],
         output_flag_column=parameters["output_self_employed_flag"],
     )
@@ -957,6 +1004,7 @@ def _se_attribution_summary(
             *US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES,
             _SE_MEDICARE_AGE_SOURCE,
             _SE_MEDICARE_SSDI_SOURCE,
+            _SE_EMPLOYER_COVERAGE_SOURCE,
         )
         if column not in person.columns
     ]
@@ -966,8 +1014,9 @@ def _se_attribution_summary(
     premiums = pd.to_numeric(person[_SE_PREMIUMS_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    # A malformed flag column (nulls, or values outside {0, 1}) must fail the
-    # gate rather than be silently coerced: .astype(bool) maps NaN to True.
+    # A malformed flag column (nulls, values outside {0, 1}, or a string or
+    # object dtype — the engine parses the nonempty string "0" as True) must
+    # fail the gate rather than be silently coerced.
     flag_numeric = pd.to_numeric(person[_SE_FLAG_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -976,6 +1025,8 @@ def _se_attribution_summary(
             ~np.isfinite(flag_numeric) | ~np.isin(flag_numeric, (0.0, 1.0))
         )
     )
+    if not _is_boolean_like_dtype(person[_SE_FLAG_OUTPUT]):
+        invalid_flag_values = max(invalid_flag_values, len(person))
     flag = flag_numeric == 1.0
 
     # The identity sources are release-required inputs; a nonfinite value in
@@ -997,17 +1048,24 @@ def _se_attribution_summary(
     ssdi = pd.to_numeric(person[_SE_MEDICARE_SSDI_SOURCE], errors="coerce").to_numpy(
         dtype=np.float64
     )
+    employer_numeric = pd.to_numeric(
+        person[_SE_EMPLOYER_COVERAGE_SOURCE], errors="coerce"
+    ).to_numpy(dtype=np.float64)
     for column, values in (
         (_SE_MEDICARE_AGE_SOURCE, age),
         (_SE_MEDICARE_SSDI_SOURCE, ssdi),
+        (_SE_EMPLOYER_COVERAGE_SOURCE, employer_numeric),
     ):
         bad = int(np.count_nonzero(~np.isfinite(values)))
         if bad:
             nonfinite_sources[column] = bad
     self_employed = self_employment > 0.0
     medicare_proxy = (age >= float(US_SE_HEALTH_MEDICARE_AGE_THRESHOLD)) | (ssdi > 0.0)
+    employer_covered = employer_numeric == 1.0
     expected = np.where(
-        self_employed & ~medicare_proxy & np.isfinite(reported), reported, 0.0
+        self_employed & ~medicare_proxy & ~employer_covered & np.isfinite(reported),
+        reported,
+        0.0,
     )
 
     finite = np.isfinite(premiums)

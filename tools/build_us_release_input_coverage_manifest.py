@@ -427,7 +427,7 @@ REFORM_COVERAGE_PROBES = [
         "effect_direction": "baseline_minus_reform",
         "expected_sign": "negative",
         "binding_inputs": ["health_insurance_premiums", "is_self_employed"],
-        "min_abs_effect": 1_000_000_000.0,
+        "min_abs_effect": 300_000_000.0,
         "reason": (
             "PolicyEngine-US computes the section 162(l) self-employed health "
             "ALD as min(total_self_employment_income, "
@@ -435,16 +435,21 @@ REFORM_COVERAGE_PROBES = [
             "aggregation adds the person health_insurance_premiums input under "
             "the is_self_employed gate — the two leaves the deterministic "
             "attribution operation of the other_health_insurance_premiums "
-            "release stage populates. The Medicare-proxy guard keeps the "
-            "statutory medical-expense premium concept numerically invariant, "
-            "so this neutralization isolates exactly the ALD channel on "
-            "federal income tax. Measured on the certified Build N frame "
-            "(c3e378a-20260722T010408Z, seed 0): $48.09 billion attributed to "
-            "12,186,288 weighted carriers, baseline ALD $31.24 billion against "
-            "the SOI Pub 1304 Table 1.4 TY2023 fact of $31.23 billion "
-            "(ledger#105, buildn v9.2 feed), baseline-minus-reform "
-            "-$4.58 billion. A structural zero means the attribution operation "
-            "was dropped or the defined_for gate never opened."
+            "release stage populates for strictly-positive Schedule C people "
+            "outside the Medicare proxy and outside measured employer-"
+            "sponsored coverage (the 162(l)(2)(B) subsidized-plan exclusion "
+            "proxy). The Medicare-proxy guard keeps the statutory "
+            "medical-expense premium concept numerically invariant, so this "
+            "neutralization isolates exactly the ALD channel on federal "
+            "income tax. Measured on the certified Build N frame "
+            "(c3e378a-20260722T010408Z, seed 0): $16.37 billion attributed to "
+            "1,402 carrier rows (3.57 million weighted people, against the "
+            "SOI Pub 1304 Table 1.4 TY2023 fact of 3,595,764 returns / "
+            "$31.23 billion, ledger#105, buildn v9.2 feed), baseline ALD "
+            "$11.97 billion, baseline-minus-reform -$1.45 billion; the "
+            "level gap to the banked SOI fact is the calibration solve's to "
+            "close over this support. A structural zero means the attribution "
+            "operation was dropped or the defined_for gate never opened."
         ),
         "issue": "PolicyEngine/populace#451",
     },
@@ -458,7 +463,7 @@ REFORM_COVERAGE_PROBES = [
         "effect_direction": "baseline_minus_reform",
         "expected_sign": "negative",
         "binding_inputs": ["is_incapable_of_self_care", "pre_subsidy_care_expenses"],
-        "min_abs_effect": 40_000_000.0,
+        "min_abs_effect": 30_000_000.0,
         "reason": (
             "PolicyEngine-US sums pre_subsidy_care_expenses (via care_expenses) "
             "into cdcc_relevant_expenses as the section 21 adult/disabled-"
@@ -469,9 +474,9 @@ REFORM_COVERAGE_PROBES = [
             "Build N frame (c3e378a-20260722T010408Z, seed 0) after the "
             "adult_care_inputs stage: 2,067 measured PEDISDRS carriers "
             "(5.998 million weighted, a 1.76% person share consistent with the "
-            "published self-care difficulty prevalence), $4.14 billion of "
-            "donor-matched expenses on 147 carrier rows, baseline-minus-reform "
-            "-$193.3 million on federal income tax. A structural zero means "
+            "published self-care difficulty prevalence), $3.41 billion of "
+            "donor-matched expenses on 137 carrier rows, baseline-minus-reform "
+            "-$153.9 million on federal income tax. A structural zero means "
             "the base rebuild dropped the stage or the CDCC adult-care channel "
             "broke."
         ),

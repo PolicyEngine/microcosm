@@ -1017,6 +1017,7 @@ def test_block_ladder_and_opt_out_are_contradictory() -> None:
         ("educator_expense", "PUF educator-expense channel is default-only"),
         ("form_4952", "PUF Form 4952 channel is default-only"),
         ("salt_refund", "PUF SALT-refund channel is default-only"),
+        ("adult_care", "adult-care expense surface is a structural zero"),
         ("energy_subsidy", "PUF energy-subsidy channel is default-only"),
         ("weeks_unemployed", "PUF weeks-unemployed channel is default-only"),
         (
@@ -1040,6 +1041,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     educator_expense_gate_frames: list[object] = []
     form_4952_gate_frames: list[object] = []
     salt_refund_gate_frames: list[object] = []
+    adult_care_gate_frames: list[object] = []
     energy_subsidy_gate_frames: list[object] = []
     retirement_distribution_calls: list[tuple[object, int, int]] = []
     retirement_distribution_gate_frames: list[object] = []
@@ -1483,10 +1485,27 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         "us_childcare_signal_gate",
         lambda frame: passing_gate,
     )
+
+    def fake_adult_care_signal_gate(frame):
+        adult_care_gate_frames.append(frame)
+        return type(
+            "Gate",
+            (),
+            {
+                "passed": failing_gate != "adult_care",
+                "failures": (
+                    ("adult-care expense surface is a structural zero",)
+                    if failing_gate == "adult_care"
+                    else ()
+                ),
+                "details": {},
+            },
+        )()
+
     monkeypatch.setattr(
         builder,
         "us_adult_care_signal_gate",
-        lambda frame: passing_gate,
+        fake_adult_care_signal_gate,
     )
 
     def fake_energy_subsidy_signal_gate(frame):
@@ -1599,6 +1618,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
             "educator_expense",
             "form_4952",
             "salt_refund",
+            "adult_care",
             "energy_subsidy",
             "retirement_distributions",
         }
@@ -1607,12 +1627,24 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     assert form_4952_gate_frames == (
         ["disability-benefits-puf"]
         if failing_gate
-        in {"form_4952", "salt_refund", "energy_subsidy", "retirement_distributions"}
+        in {
+            "form_4952",
+            "salt_refund",
+            "adult_care",
+            "energy_subsidy",
+            "retirement_distributions",
+        }
         else []
     )
     assert salt_refund_gate_frames == (
         ["disability-benefits-puf"]
-        if failing_gate in {"salt_refund", "energy_subsidy", "retirement_distributions"}
+        if failing_gate
+        in {"salt_refund", "adult_care", "energy_subsidy", "retirement_distributions"}
+        else []
+    )
+    assert adult_care_gate_frames == (
+        ["disability-benefits-puf"]
+        if failing_gate in {"adult_care", "energy_subsidy", "retirement_distributions"}
         else []
     )
     assert energy_subsidy_gate_frames == (

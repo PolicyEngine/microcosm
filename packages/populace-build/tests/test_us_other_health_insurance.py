@@ -81,7 +81,12 @@ def _frame() -> Frame:
             _REPORTED: _REPORTED_VALUES,
             "age": np.arange(30, 30 + count),
             "is_female": np.tile([True, False], count // 2),
-            "has_esi": np.tile([False, True], count // 2),
+            # Person 5 (the self-employment carrier) stays outside measured
+            # employer coverage so the 162(l)(2)(B) guard leaves the frame's
+            # attribution surface nonzero.
+            "has_esi": np.asarray(
+                [False, True, False, True, False, False, False, True, False, True]
+            ),
             "tax_unit_role_input": ["HEAD"] * count,
             "employment_income_before_lsr": np.arange(count) * 5_000.0,
             "self_employment_income_before_lsr": _SELF_EMPLOYMENT_VALUES,
@@ -218,6 +223,7 @@ def test_stage_manifest_pins_residual_and_joint_puf_qrf() -> None:
         "medicare_age_source": "age",
         "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
         "medicare_ssdi_source": "social_security_disability",
+        "employer_coverage_source": "has_esi",
         "output_premiums": US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS[0],
         "output_self_employed_flag": US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS[1],
     }
@@ -474,6 +480,7 @@ def _attribution_source(
     sstb: list[float] | None = None,
     age: list[float] | None = None,
     ssdi: list[float] | None = None,
+    esi: list[bool] | None = None,
 ) -> pd.DataFrame:
     count = len(reported)
     return pd.DataFrame(
@@ -485,33 +492,46 @@ def _attribution_source(
             ),
             "age": age if age is not None else [40.0] * count,
             "social_security_disability": (ssdi if ssdi is not None else [0.0] * count),
+            "has_esi": esi if esi is not None else [False] * count,
         }
     )
 
 
 def test_se_attribution_is_deterministic_reported_identity_with_guards() -> None:
     source = _attribution_source(
-        reported=[5_000.0, 5_000.0, 5_000.0, 5_000.0, 0.0, 5_000.0],
-        self_employment=[30_000.0, 0.0, 30_000.0, 30_000.0, 30_000.0, 0.0],
-        sstb=[0.0, 0.0, 0.0, 0.0, 0.0, 12_000.0],
-        age=[40.0, 40.0, 65.0, 40.0, 40.0, 40.0],
-        ssdi=[0.0, 0.0, 0.0, 9_000.0, 0.0, 0.0],
+        reported=[5_000.0, 5_000.0, 5_000.0, 5_000.0, 0.0, 5_000.0, 5_000.0],
+        self_employment=[30_000.0, 0.0, 30_000.0, 30_000.0, 30_000.0, 0.0, 30_000.0],
+        sstb=[0.0, 0.0, 0.0, 0.0, 0.0, 12_000.0, 0.0],
+        age=[40.0, 40.0, 65.0, 40.0, 40.0, 40.0, 40.0],
+        ssdi=[0.0, 0.0, 0.0, 9_000.0, 0.0, 0.0, 0.0],
+        esi=[False, False, False, False, False, False, True],
     )
     original = source.copy(deep=True)
 
     result = attribute_us_se_health_premiums(source)
 
     # Attribution copies the reported premium exactly for self-employed
-    # people outside the Medicare proxy, and never invents premium mass.
+    # people outside the Medicare proxy and outside measured employer
+    # coverage (the 162(l)(2)(B) subsidized-plan exclusion proxy), and never
+    # invents premium mass.
     assert result[_PREMIUMS_OUTPUT].tolist() == [
-        5_000.0,  # self-employed, under 65, no SSDI
+        5_000.0,  # self-employed, under 65, no SSDI, no employer coverage
         0.0,  # no self-employment income
         0.0,  # Medicare age proxy
         0.0,  # SSDI proxy
         0.0,  # self-employed with no reported premium
         5_000.0,  # SSTB self-employment income binds the same chain
+        0.0,  # measured employer-sponsored coverage excludes the months
     ]
-    assert result[_FLAG_OUTPUT].tolist() == [True, False, True, True, True, True]
+    assert result[_FLAG_OUTPUT].tolist() == [
+        True,
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
     assert result[_FLAG_OUTPUT].dtype == bool
     pd.testing.assert_frame_equal(source, original)
 
@@ -540,6 +560,14 @@ def test_se_attribution_is_deterministic_reported_identity_with_guards() -> None
         (
             lambda source: source.assign(age=[np.inf]),
             "nonnumeric or nonfinite",
+        ),
+        (
+            lambda source: source.drop(columns=["has_esi"]),
+            "has_esi",
+        ),
+        (
+            lambda source: source.assign(has_esi=["True"]),
+            "object dtype",
         ),
     ],
 )
@@ -576,7 +604,11 @@ def test_with_inputs_materializes_se_attribution_and_carries_signal(
     result = with_us_other_health_insurance_inputs(_frame(), seed=0, time_period=2024)
 
     person = result.table("person")
-    expected_premiums = np.where(_SELF_EMPLOYMENT_VALUES > 0.0, _REPORTED_VALUES, 0.0)
+    expected_premiums = np.where(
+        (_SELF_EMPLOYMENT_VALUES > 0.0) & ~person["has_esi"].to_numpy(),
+        _REPORTED_VALUES,
+        0.0,
+    )
     np.testing.assert_allclose(person[_PREMIUMS_OUTPUT], expected_premiums)
     assert person[_FLAG_OUTPUT].tolist() == (_SELF_EMPLOYMENT_VALUES > 0.0).tolist()
     assert person[_FLAG_OUTPUT].dtype == bool
@@ -643,6 +675,18 @@ def test_signal_gate_rejects_malformed_flag_and_nonfinite_identity_sources(
     gate = us_other_health_insurance_signal_gate(nan_income)
     assert not gate.passed
     assert any("nonfinite" in failure for failure in gate.failures)
+
+    # Numeric-string flags coerce cleanly through to_numeric but the engine
+    # parses the nonempty string "0" as True, so a string-typed column on a
+    # healed artifact must fail outright.
+    string_flag = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    person = string_flag.table("person")
+    person[_FLAG_OUTPUT] = np.where(person[_FLAG_OUTPUT], "1", "0")
+    gate = us_other_health_insurance_signal_gate(string_flag)
+    assert not gate.passed
+    assert any("non-boolean" in failure for failure in gate.failures)
 
 
 def test_legacy_two_column_surface_is_rebuilt_or_refused(
