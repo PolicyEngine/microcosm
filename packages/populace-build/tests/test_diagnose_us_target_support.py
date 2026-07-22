@@ -33,6 +33,7 @@ def _write_fixture(
     checkpoint_ids: np.ndarray = HOUSEHOLD_IDS,
     recorded_final: float = FINAL_ESTIMATE,
 ) -> dict[str, Path]:
+    pytest.importorskip("tables")  # pandas HDF backend
     diagnostics = {
         "realized_max_weight_ratio": 5.0,
         "targets": [
