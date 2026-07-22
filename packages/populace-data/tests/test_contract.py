@@ -155,7 +155,7 @@ def _release_manifest(
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {

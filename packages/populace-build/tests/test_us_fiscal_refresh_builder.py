@@ -7273,3 +7273,19 @@ def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
         ],
     )
     assert builder._parse_args().allow_qrf_tail_concentration
+
+
+def test_calibration_diagnostics_schema_lockstep() -> None:
+    """The writer (populace-calibrate) and the publish contract (populace-data)
+    pin the same diagnostics schema version. They cannot share a constant —
+    populace-data must not import populace-calibrate — so drift fails here,
+    in the one suite that imports both (the #494 cross-package break class:
+    calibrate moved to schema 5 while the contract still rejected != 4)."""
+    from populace.calibrate.diagnostics import (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as writer_version,
+    )
+    from populace.data.contract import (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as contract_version,
+    )
+
+    assert writer_version == contract_version
