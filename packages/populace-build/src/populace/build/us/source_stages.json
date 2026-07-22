@@ -1979,6 +1979,102 @@
       "notes": "Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS pipeline's constructions (each cited to the retired pipeline's source files in the stage module): is_disabled <- any PEDIS* difficulty item == 1, aligned with reported SSI (under-65 SSI_VAL > 0 implies disabled \u2014 the retired align_reported_ssi_disability rule from datasets/cps/takeup.py, applied to is_disabled in cps.py); is_blind <- PEDISEYE == 1; is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran the strict form \u2014 the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ; veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels (populace #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (populace #24)."
     },
     {
+      "stage": "child_disability",
+      "survey": "Census SIPP 2023",
+      "source": "https://www.census.gov/programs-surveys/sipp.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "pipe_delimited_csv",
+          "vintage": "2023",
+          "repository_owner": "PolicyEngine",
+          "repository_name_parts": ["policyengine-", "us-data"],
+          "filename": "pu2023.csv",
+          "revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+          "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+          "size_bytes": 3726010471,
+          "locator": "Census SIPP 2023 public-use file; immutable Hugging Face mirror revision"
+        },
+        {
+          "kind": "survey_dictionary",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf"
+        },
+        {
+          "kind": "administrative_calibration_target",
+          "format": "published_table",
+          "vintage": "2024-05",
+          "locator": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html",
+          "under_18_recipient_target": 983176,
+          "age_0_4_caseload_allocation_target": 240000,
+          "target_note": "The age-0-4 value is a modeling allocation required by populace#453, not an observed subtotal in the cited monthly SSA table."
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "sipp_person",
+          "delimiter": "|",
+          "month_column": "MONTHCODE",
+          "month": 12,
+          "source_columns": [
+            "SSUID",
+            "ERESIDENCEID",
+            "PNUM",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "ESEX",
+            "TPTOTINC",
+            "RSSI_YRYN",
+            "ECOGNIT",
+            "EHEARING",
+            "ESEEING",
+            "EAMBULAT",
+            "ESELFCARE"
+          ]
+        },
+        {
+          "kind": "fit_weighted_logistic",
+          "predictors": [
+            "age",
+            "is_female",
+            "household_income_proxy"
+          ],
+          "target": "is_disabled",
+          "target_rule": "any(['ECOGNIT', 'EHEARING', 'ESEEING', 'EAMBULAT', 'ESELFCARE']) == 1",
+          "weight": "sipp_weight",
+          "age_domain": [5, 14],
+          "classifier": "weighted_logistic_irls",
+          "income_proxy": "sum December TPTOTINC for age-15+ members within SSUID + ERESIDENCEID, multiply by 12; recipient analogue is age-15+ household-summed employment_income_before_lsr",
+          "income_transform": "log1p_nonnegative_then_standardize",
+          "calibrate_receiver_intercept_to_sipp_weighted_rate": true,
+          "assignment": "seeded_bernoulli_by_person_source_id",
+          "seed_from_build_config": true
+        },
+        {
+          "kind": "assign_binary_from_rate",
+          "age_domain": [0, 4],
+          "rate": 0.085956967972,
+          "rate_role": "calibration_target_not_survey_observation",
+          "ssa_under_18_recipient_target": 983176,
+          "ssa_age_0_4_caseload_target": 240000,
+          "ssa_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html",
+          "sipp_any_item_rate_age_5_14": 0.110253387732,
+          "sipp_ssi_receipt_rate_age_5_14": 0.017932560598,
+          "sipp_weighted_population_age_0_4": 17166422.19921,
+          "assignment": "seeded_bernoulli_by_person_source_id",
+          "seed_from_build_config": true
+        }
+      ],
+      "outputs": [
+        "is_disabled"
+      ],
+      "notes": "Additive child-disability repair for populace#453. The December SIPP donor observes the five functional-difficulty items for ages 5-14; their weighted any-item rate is 11.0253%. A survey-weighted logistic classifier uses only age, sex, and a residence-level annual-income proxy, summing TPTOTINC only for age-15+ residence members to exclude the under-15 SSI-conditioned personal-income field. Predictions are calibrated to the SIPP rate and assigned by stable seeded Bernoulli. Ages 0-4 use the explicit 8.5957% target obtained by carrying SIPP's age-5-14 any-item/SSI-receipt ratio into the 240,000 youngest-band caseload allocation. That 240,000 allocation is a model target, not an observed SSA monthly-table subtotal. Existing True values are preserved and ages 15+ remain byte-identical to the ASEC eligibility-input stage."
+    },
+    {
       "stage": "pregnancy",
       "survey": "Census CPS ASEC + CDC natality-derived national pregnancy rate",
       "source": "https://www.cdc.gov/nchs/nvss/births.htm",
