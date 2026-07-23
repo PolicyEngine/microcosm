@@ -186,7 +186,15 @@ def publish_release(
         )
     artifact_root = Path(artifact_root) if artifact_root is not None else None
 
-    contract_files = required_release_files(release_id)
+    if role == NATIONAL_DEFAULT_DATASET_ROLE:
+        contract_files = required_release_files(release_id)
+    else:
+        # A non-default release's directory IS its bundle: publishing a
+        # subset would leave a remote release that fails its own role
+        # contract (the checksum ledger and sidecars are required files).
+        contract_files = tuple(
+            sorted(path.name for path in release_dir.iterdir() if path.is_file())
+        )
     release_artifacts = _release_manifest_release_artifacts(release_dir)
     filenames = _ordered_unique((*contract_files, *release_artifacts, *extra_files))
     for filename in filenames:

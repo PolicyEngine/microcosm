@@ -595,10 +595,16 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     # column, so only the SE-earnings leg returns to the plan.
     assert "partnership_self_employment_net_earnings" in itemization
     assert "s_corp_income" not in itemization
-    # The Schedule D capital-gain-distributions memo leg is stage-owned, not
-    # a PUF-detail default output, so it needs its own declared family.
-    assert person["capital_gain_details"] == ("schedule_d_capital_gain_distributions",)
+    # The Schedule D capital-gain-distributions memo leg is DERIVED from its
+    # transferred parents (route exclusivity at the packaged share), never
+    # fitted: an independent fit would break the base's accounting identity.
+    from populace.build.us_runtime.acs_transfer import (
+        ACS_DERIVED_TRANSFER_INPUTS,
+    )
+
+    assert "capital_gain_details" not in person
     assert "schedule_d_capital_gain_distributions" not in itemization
+    assert ACS_DERIVED_TRANSFER_INPUTS == ("schedule_d_capital_gain_distributions",)
     # The CDCC adult-care leg: qualifying-person flag + expense carrier.
     assert person["adult_care"] == (
         "is_incapable_of_self_care",
@@ -1170,3 +1176,91 @@ def test_no_missing_targets_returns_identical_recipient_object(
     assert result.frame is recipient
     assert result.imputed_inputs == ()
     assert result.fit_records == ()
+
+
+def test_schedule_d_cgd_derivation_enforces_route_exclusivity() -> None:
+    from populace.build.us_runtime.acs_transfer import (
+        derive_acs_schedule_d_capital_gain_distributions,
+    )
+    from populace.build.us_runtime.capital_gain_distributions import (
+        load_capital_gain_distribution_shares,
+    )
+
+    share = load_capital_gain_distribution_shares()
+    ratio = float(share.schedule_d_cgd_share_of_lt_net_gains)
+    person = pd.DataFrame(
+        {
+            # eligible / other-route blocks / no gains / negative gains
+            "long_term_capital_gains_before_response": [10_000.0, 8_000.0, 0.0, -5.0],
+            "non_sch_d_capital_gains": [0.0, 1_200.0, 0.0, 0.0],
+        }
+    )
+
+    values, provenance = derive_acs_schedule_d_capital_gain_distributions(person)
+
+    assert values[0] == pytest.approx(ratio * 10_000.0)
+    assert values[1] == 0.0  # mutually exclusive route present
+    assert values[2] == 0.0
+    assert values[3] == 0.0
+    assert provenance["eligible_rows"] == 1
+    # The identities an independent fit cannot guarantee:
+    both_routes = (values > 0) & (person["non_sch_d_capital_gains"].to_numpy() > 0)
+    assert not both_routes.any()
+    assert (
+        values
+        <= ratio
+        * person["long_term_capital_gains_before_response"].clip(lower=0.0).to_numpy()
+        + 1e-9
+    ).all()
+
+
+def test_schedule_d_cgd_derivation_rejects_incomplete_parents() -> None:
+    from populace.build.us_runtime.acs_transfer import (
+        derive_acs_schedule_d_capital_gain_distributions,
+    )
+
+    person = pd.DataFrame(
+        {
+            "long_term_capital_gains_before_response": [1.0, np.nan],
+            "non_sch_d_capital_gains": [0.0, 0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="complete transferred parents"):
+        derive_acs_schedule_d_capital_gain_distributions(person)
+
+
+def test_adult_care_reconciliation_enforces_statute_structure() -> None:
+    from populace.build.us_runtime.acs_transfer import reconcile_acs_adult_care
+
+    person = pd.DataFrame(
+        {
+            "is_incapable_of_self_care": [
+                True,  # dependent carrier, kept
+                True,  # second carrier in unit 1 (smaller), cleared
+                False,  # unflagged expense, cleared
+                True,  # unmarried head, not qualifying, cleared
+                True,  # spouse in married unit, kept
+            ],
+            "pre_subsidy_care_expenses": [900.0, 400.0, 250.0, 800.0, 600.0],
+            "tax_unit_role_input": [
+                "DEPENDENT",
+                "DEPENDENT",
+                "DEPENDENT",
+                "HEAD",
+                "SPOUSE",
+            ],
+            "person_tax_unit_id": [1, 1, 1, 2, 3],
+        }
+    )
+    # Unit 3 married via its spouse row; unit 2 has no spouse row.
+    person.loc[len(person)] = [False, 0.0, "HEAD", 3]
+
+    expenses, counts = reconcile_acs_adult_care(person)
+
+    assert expenses.tolist() == [900.0, 0.0, 0.0, 0.0, 600.0, 0.0]
+    assert counts == {
+        "cleared_ineligible_carriers": 2,
+        "cleared_multi_carrier_rows": 1,
+        "remaining_carriers": 2,
+    }

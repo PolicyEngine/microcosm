@@ -1085,16 +1085,97 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
         coverage = _load_json(coverage_path, failures)
         if coverage is not None:
             for key in LOCAL_AREA_SOURCE_COVERAGE_KEYS:
-                if key not in coverage:
+                if coverage.get(key) is None:
                     failures.append(
-                        f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing the "
-                        f"local-area provenance key {key!r}."
+                        f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing "
+                        f"the local-area provenance key {key!r} (or it is "
+                        "null)."
                     )
+            donor = coverage.get("donor_release")
+            if isinstance(donor, Mapping) and not donor.get("release_id"):
+                failures.append(
+                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} donor_release "
+                    "must pin a non-empty release_id (stage with "
+                    "--donor-release-manifest)."
+                )
 
+    _check_local_area_checksum_ledger(release_dir, release_manifest, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     if failures:
         raise ReleaseContractError(release_dir, failures)
+
+
+def _check_local_area_checksum_ledger(
+    release_dir: Path,
+    release_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Validate sha256sums.txt as a real ledger, not a presence token.
+
+    Every required bundle file (and the manifest-declared artifacts,
+    including the root H5 by name) must appear with a valid digest; entries
+    naming files present in the directory must hash-match; unsafe or
+    duplicate names are rejected.
+    """
+
+    ledger_path = release_dir / "sha256sums.txt"
+    if not ledger_path.is_file():
+        return
+    entries: dict[str, str] = {}
+    for line_number, line in enumerate(ledger_path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2 or not _SHA256_RE.fullmatch(parts[0]):
+            failures.append(
+                f"sha256sums.txt line {line_number} is not '<sha256>  <filename>'."
+            )
+            continue
+        digest, name = parts[0], parts[1].strip()
+        if "/" in name or name.startswith(".."):
+            failures.append(
+                f"sha256sums.txt line {line_number} names an unsafe path {name!r}."
+            )
+            continue
+        if name in entries:
+            failures.append(f"sha256sums.txt lists {name!r} more than once.")
+            continue
+        entries[name] = digest
+
+    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+        if filename == "sha256sums.txt":
+            continue
+        if filename not in entries:
+            failures.append(
+                f"sha256sums.txt does not cover required file {filename!r}."
+            )
+    if isinstance(release_manifest, Mapping):
+        artifacts = release_manifest.get("artifacts")
+        if isinstance(artifacts, Mapping):
+            for key, entry in artifacts.items():
+                if not isinstance(entry, Mapping):
+                    continue
+                path = entry.get("path")
+                declared = entry.get("sha256")
+                if not isinstance(path, str) or not isinstance(declared, str):
+                    continue
+                if path not in entries:
+                    failures.append(
+                        f"sha256sums.txt does not cover manifest artifact "
+                        f"{key!r} ({path!r})."
+                    )
+                elif entries[path] != declared:
+                    failures.append(
+                        f"sha256sums.txt digest for {path!r} disagrees with "
+                        "release_manifest.json."
+                    )
+    for name, digest in entries.items():
+        local = release_dir / name
+        if local.is_file() and _sha256(local) != digest:
+            failures.append(
+                f"sha256sums.txt digest for {name!r} does not match the file's bytes."
+            )
 
 
 def _check_local_area_release_manifest(
@@ -1228,27 +1309,56 @@ def _check_local_area_calibration_diagnostics(
             f"rows but 'n_targets' is {n_targets}."
         )
     required_fields = (
-        "name",
         "target",
         "compiled_target",
         "initial_estimate",
         "final_estimate",
     )
+    seen_names: set[str] = set()
     for index, row in enumerate(targets):
         if not isinstance(row, Mapping):
             failures.append(
                 f"calibration_diagnostics.json target row {index} must be an object."
             )
             continue
+        name = row.get("name")
+        if not isinstance(name, str) or not name:
+            failures.append(
+                f"calibration_diagnostics.json target row {index} is missing "
+                "a non-empty 'name'."
+            )
+        elif name in seen_names:
+            failures.append(
+                f"calibration_diagnostics.json target name {name!r} appears "
+                "more than once."
+            )
+        else:
+            seen_names.add(name)
         for field in required_fields:
+            value = row.get(field)
             if field not in row:
                 failures.append(
                     f"calibration_diagnostics.json target row {index} is "
                     f"missing {field!r}."
                 )
-    for field in ("final_loss", "fraction_within_10pct", "households"):
+            elif not isinstance(value, (int, float)) or not math.isfinite(value):
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} field "
+                    f"{field!r} must be a finite number."
+                )
+    households = diagnostics.get("households")
+    if not isinstance(households, int) or households <= 0:
+        failures.append(
+            "calibration_diagnostics.json must carry a positive integer 'households'."
+        )
+    for field in ("final_loss", "fraction_within_10pct"):
+        value = diagnostics.get(field)
         if field not in diagnostics:
             failures.append(f"calibration_diagnostics.json is missing {field!r}.")
+        elif not isinstance(value, (int, float)) or not math.isfinite(value):
+            failures.append(
+                f"calibration_diagnostics.json {field!r} must be a finite number."
+            )
 
 
 def release_dataset_role(release_dir: Path | str) -> str:
@@ -1307,19 +1417,36 @@ def validate_release_dir(release_dir: Path | str) -> None:
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
 
-    role = release_dataset_role(release_dir)
+    # Role dispatch is strict about a PRESENT dataset_role: only an absent
+    # field gets the legacy national semantics; an explicit null, boolean,
+    # number, empty string, or unknown value is a contract error rather
+    # than a silent fallback.
+    role: str = NATIONAL_DEFAULT_DATASET_ROLE
+    manifest_probe_path = release_dir / "release_manifest.json"
+    if manifest_probe_path.is_file():
+        try:
+            manifest_probe = json.loads(manifest_probe_path.read_text())
+        except (OSError, ValueError):
+            manifest_probe = None
+        if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
+            declared_role = manifest_probe["dataset_role"]
+            if declared_role not in (
+                NATIONAL_DEFAULT_DATASET_ROLE,
+                NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+            ):
+                raise ReleaseContractError(
+                    release_dir,
+                    [
+                        "release_manifest.json declares unknown dataset_role "
+                        f"{declared_role!r}; known roles are "
+                        f"{NATIONAL_DEFAULT_DATASET_ROLE!r} and "
+                        f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}."
+                    ],
+                )
+            role = declared_role
     if role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
         _validate_local_area_release_dir(release_dir, release_id)
         return
-    if role != NATIONAL_DEFAULT_DATASET_ROLE:
-        raise ReleaseContractError(
-            release_dir,
-            [
-                f"release_manifest.json declares unknown dataset_role {role!r}; "
-                f"known roles are {NATIONAL_DEFAULT_DATASET_ROLE!r} and "
-                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}."
-            ],
-        )
 
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None

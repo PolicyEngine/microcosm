@@ -550,14 +550,17 @@ def population_measure_arrays(frame, ladder_populations, geographies: list[str])
 
     Population in a geography = sum over persons-in-geo of household weight;
     every person shares its household's geography, so the household-grain
-    measure is household_size x 1[household geo == value]. No engine involved.
+    measure is household_size x 1[household geo == value]. No engine
+    involved. A ladder cell with no supporting household is DROPPED from the
+    surface and returned in the fourth element — the caller decides whether
+    a shrunken surface is acceptable (a capped smoke) or a defect (release).
     """
 
     households = frame.table("household")
     persons = frame.table("person")
     size = persons.groupby("person_household_id").size()
     household_size = households["household_id"].map(size).fillna(0).to_numpy(np.float32)
-    names, arrays, values = [], [], []
+    names, arrays, values, dropped = [], [], [], []
     column_map = {
         "state": ("state_fips", "state"),
         "cd": ("congressional_district_geoid", "cd"),
@@ -567,13 +570,15 @@ def population_measure_arrays(frame, ladder_populations, geographies: list[str])
         geo_values = pd.to_numeric(households[column]).to_numpy()
         for value, population in sorted(ladder_populations[key].items()):
             present = geo_values == value
-            if not present.any():
-                continue
             width = 2 if geography == "state" else 4
-            names.append(f"pop_{geography}_{value:0{width}d}")
+            name = f"pop_{geography}_{value:0{width}d}"
+            if not present.any():
+                dropped.append(name)
+                continue
+            names.append(name)
             arrays.append((household_size * present).astype(np.float32))
             values.append(float(population))
-    return names, arrays, values
+    return names, arrays, values, dropped
 
 
 def extract_struct_tables(frame):
@@ -732,6 +737,9 @@ def do_materialize(args) -> None:
             "nullable-artifact engine-pass contract requires its "
             "reviewed_engine_input_nulls register."
         )
+    log("hashing staging inputs for the run identity …")
+    staging_sha = _sha256(args.staging_h5)
+    ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
     log(
         f"loaded staging frame households={frame.n('household')} "
@@ -762,11 +770,24 @@ def do_materialize(args) -> None:
     ]
 
     populations = ladder_population(args.ladder, geographies)
-    pop_names, pop_arrays, pop_values = population_measure_arrays(
+    pop_names, pop_arrays, pop_values, pop_dropped = population_measure_arrays(
         frame, populations, geographies
     )
+    if pop_dropped:
+        message = (
+            f"{len(pop_dropped)} ladder population cell(s) have no "
+            f"supporting household (e.g. {pop_dropped[:5]}). The calibrated "
+            "surface would silently shrink."
+        )
+        if not args.allow_partial_geography:
+            raise SystemExit(
+                message + " Refusing for a release build; pass "
+                "--allow-partial-geography only for capped smokes."
+            )
+        log("WARNING " + message + " Continuing (--allow-partial-geography).")
     log(f"population measures: {len(pop_names)} ({geographies})")
     struct = extract_struct_tables(frame)
+    n_households = frame.n("household")
     del frame
     gc.collect()
 
@@ -783,6 +804,23 @@ def do_materialize(args) -> None:
     del matrix, struct, pop_arrays
     gc.collect()
     matrix_path.unlink(missing_ok=True)
+    targets_digest = _sha256(args.checkpoint_dir / "targets.json")
+    (args.checkpoint_dir / "run_identity.json").write_text(
+        json.dumps(
+            {
+                "staging_h5": str(Path(args.staging_h5).resolve()),
+                "staging_sha256": staging_sha,
+                "ladder_sha256": ladder_sha,
+                "households": n_households,
+                "n_targets": len(admin_names) + len(pop_names),
+                "targets_sha256": targets_digest,
+                "declared_admin_specs": len(registry),
+                "compiled_admin_specs": len(admin_names),
+                "population_cells_dropped": pop_dropped,
+            },
+            indent=2,
+        )
+    )
     (args.checkpoint_dir / "materialize_rss.json").write_text(
         json.dumps(
             {
@@ -790,6 +828,7 @@ def do_materialize(args) -> None:
                 "families": families,
                 "n_admin": len(admin_names),
                 "n_population": len(pop_names),
+                "population_cells_dropped": pop_dropped,
                 "hh_chunk": args.hh_chunk,
                 "chunk_stats": chunk_stats,
                 "materialize_peak_rss_gb": round(rss(), 3),
@@ -800,14 +839,48 @@ def do_materialize(args) -> None:
     log(f"materialize stage complete, peak RSS {rss():.2f}GB")
 
 
+def _verify_run_identity(args, *, require: bool = True) -> dict:
+    """Load and re-verify the materialize-time run identity."""
+
+    identity = _load_json(args.checkpoint_dir / "run_identity.json")
+    if not identity:
+        if require:
+            raise SystemExit(
+                f"No run_identity.json under {args.checkpoint_dir}; run "
+                "--stage materialize first."
+            )
+        return {}
+    staging_sha = _sha256(args.staging_h5)
+    if staging_sha != identity.get("staging_sha256"):
+        raise SystemExit(
+            "Staging H5 does not match the materialized checkpoint: "
+            f"{args.staging_h5} is {staging_sha} but the run identity pins "
+            f"{identity.get('staging_sha256')}. Re-run --stage materialize "
+            "against this staging file."
+        )
+    return identity
+
+
 def do_calibrate(args) -> None:
     from populace.calibrate import calibrate
     from populace.calibrate.target import Target, TargetSet
 
+    identity = _verify_run_identity(args)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     targets_json = json.loads((args.checkpoint_dir / "targets.json").read_text())
+    targets_sha = _sha256(args.checkpoint_dir / "targets.json")
+    if targets_sha != identity.get("targets_sha256"):
+        raise SystemExit(
+            "targets.json changed since materialize; the checkpoint and "
+            "surface no longer agree. Re-run --stage materialize."
+        )
     frame, design_weights = load_lean_frame(checkpoint_h5)
     n_households = frame.n("household")
+    if n_households != identity.get("households"):
+        raise SystemExit(
+            f"Lean checkpoint has {n_households} households but the run "
+            f"identity pins {identity.get('households')}."
+        )
     target_set = TargetSet(
         [
             Target(
@@ -830,8 +903,40 @@ def do_calibrate(args) -> None:
     warm, done = None, 0
     if args.resume and resume_npz.exists():
         saved = np.load(resume_npz)
+        saved_identity = (
+            str(saved["staging_sha256"]) if "staging_sha256" in saved else None
+        )
+        if saved_identity is not None and saved_identity != identity.get(
+            "staging_sha256"
+        ):
+            raise SystemExit(
+                "weights_latest.npz was produced against a different staging "
+                "H5; refusing to warm-start from a foreign checkpoint."
+            )
         warm, done = saved["weights"], int(saved["epochs_done"])
+        if len(warm) != n_households:
+            raise SystemExit(
+                f"weights_latest.npz carries {len(warm)} weights but the "
+                f"checkpoint has {n_households} households."
+            )
         log(f"RESUME from {done} epochs")
+    if done >= args.epochs:
+        diagnostics_path = args.checkpoint_dir / "calibration_diagnostics.json"
+        if diagnostics_path.exists():
+            log(
+                f"calibration already complete at {done} epochs and "
+                "diagnostics exist; nothing to do (delete "
+                "weights_latest.npz to recalibrate)."
+            )
+            _write_calibrated_artifact(
+                args, np.asarray(warm, dtype=np.float64), identity
+            )
+            return
+        raise SystemExit(
+            f"weights_latest.npz reports {done} epochs (>= --epochs "
+            f"{args.epochs}) but calibration_diagnostics.json is missing. "
+            "Delete the checkpoint to recalibrate, or raise --epochs."
+        )
     batch = args.epoch_batch if args.epoch_batch > 0 else args.epochs
     result = None
     started = time.time()
@@ -859,6 +964,7 @@ def do_calibrate(args) -> None:
             weights=warm,
             epochs_done=done,
             initial_weights=design_weights,
+            staging_sha256=np.str_(identity["staging_sha256"]),
         )
         log(
             f"batch -> {done}/{args.epochs} ep, "
@@ -868,6 +974,13 @@ def do_calibrate(args) -> None:
             f"ESS={result.effective_sample_size:,.0f}"
         )
 
+    if result.problem.skipped:
+        skipped = [getattr(item, "name", str(item)) for item in result.problem.skipped]
+        raise SystemExit(
+            f"Calibration compiled {len(skipped)} target(s) away "
+            f"(e.g. {skipped[:5]}); the surface silently shrank. Fix the "
+            "measures or the targets before shipping."
+        )
     initial_estimates = result.problem.matrix @ design_weights
     final_estimates = result.problem.matrix @ result.weights
     per_target = [
@@ -919,15 +1032,90 @@ def do_calibrate(args) -> None:
         f"within10%={diagnostics['fraction_within_10pct']:.2%}"
     )
 
-    if args.out_h5 is not None:
-        shutil.copy2(args.staging_h5, args.out_h5)
-        with pd.HDFStore(args.out_h5, mode="a") as store:
-            households = store["household"]
-            households["household_weight"] = result.weights
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-                store.put("household", households, format="fixed")
-        log(f"wrote calibrated weights onto {args.out_h5}")
+    _write_calibrated_artifact(
+        args, np.asarray(result.weights, dtype=np.float64), identity
+    )
+
+
+def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> None:
+    """Write the consumer-ready calibrated H5 with verified attachment.
+
+    The weights attach by verified household-id vector equality between the
+    lean checkpoint and the freshly loaded staging H5 (never positionally to
+    an unverified file), and the engine-pass contract is applied to the
+    artifact bytes — input-schema projection plus reviewed-null default
+    fill — so a plain ``USSingleYearDataset``/``Microsimulation`` consumer
+    loads the published file directly. The nullable staging H5 remains the
+    archival nullable truth; every fill is recorded in the run's consumer
+    manifest.
+    """
+
+    if args.out_h5 is None:
+        return
+    from build_us_acs_multispine_base import _write_dataset
+
+    from populace.frame import Frame, WeightKind, Weights
+
+    frame = _load_staging_frame(args.staging_h5)
+    staging_ids = frame.table("household")["household_id"].to_numpy()
+    with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
+        lean_ids = store["household"]["household_id"].to_numpy()
+    if len(staging_ids) != len(lean_ids) or not np.array_equal(staging_ids, lean_ids):
+        raise SystemExit(
+            "Staging household ids do not match the lean checkpoint's; "
+            "refusing to attach calibrated weights to a different or "
+            "reordered file."
+        )
+    if len(weights) != len(staging_ids):
+        raise SystemExit(
+            f"{len(weights)} calibrated weights cannot attach to "
+            f"{len(staging_ids)} households."
+        )
+
+    projected, dropped = project_input_only(frame, period=PERIOD)
+    del frame
+    gc.collect()
+    fills, _ = fill_reviewed_nulls(
+        projected,
+        _staging_summary_path(args),
+        manifest_path=args.checkpoint_dir / "consumer_reviewed_null_fills.json",
+        period=PERIOD,
+    )
+    calibrated = Frame(
+        {entity: projected.table(entity) for entity in projected.entities},
+        projected.schema,
+        {"household": Weights(weights, WeightKind.CALIBRATED)},
+        projected.strata,
+        mass_log=projected.mass_log,
+    )
+    _write_dataset(
+        calibrated,
+        Path(args.out_h5),
+        period=PERIOD,
+        artifact_kind="calibrated_local_area_artifact",
+    )
+    (args.checkpoint_dir / "consumer_export.json").write_text(
+        json.dumps(
+            {
+                "out_h5": str(Path(args.out_h5).resolve()),
+                "staging_sha256": identity.get("staging_sha256"),
+                "held_back_formula_owned": dropped,
+                "held_back_total": sum(len(v) for v in dropped.values()),
+                "filled_columns": len(fills),
+                "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "note": (
+                    "The engine-pass contract (input-schema projection + "
+                    "reviewed-null default fill) is applied to the published "
+                    "artifact bytes, so plain USSingleYearDataset/"
+                    "Microsimulation consumers load it directly. The "
+                    "nullable staging H5 remains the archival nullable "
+                    "truth."
+                ),
+            },
+            indent=2,
+        )
+    )
+    log(f"wrote consumer-ready calibrated artifact {args.out_h5}")
 
 
 def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
@@ -969,14 +1157,17 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
 
 
 def do_qa(args) -> None:
-    """Chunked engine probe: per-spine SSI incidence on the calibrated artifact."""
+    """Chunked engine probe: per-spine SSI incidence on the calibrated artifact.
+
+    Loads the packaged artifact bytes PLAIN — no private projection or fill —
+    so the probe doubles as the proof that ordinary
+    ``USSingleYearDataset``/``Microsimulation`` consumers can load the file
+    (the engine-pass contract was applied at export).
+    """
 
     from populace.build.us_runtime.base_pool import spine_column
 
-    frame = _load_staging_frame(args.out_h5)
-    summary_path = _staging_summary_path(args)
-    projected, _ = project_input_only(frame, period=PERIOD)
-    fill_reviewed_nulls(projected, summary_path, manifest_path=None, period=PERIOD)
+    projected = _load_staging_frame(args.out_h5)
 
     n_households = projected.n("household")
     household_ids = projected.table("household")["household_id"].to_numpy()
@@ -1037,11 +1228,14 @@ def do_qa(args) -> None:
         "period": PERIOD,
         "variable": "ssi",
         "artifact": str(Path(args.out_h5).resolve()),
+        "artifact_sha256": _sha256(args.out_h5),
+        "plain_consumption": True,
         "per_spine": per_spine,
         "note": (
-            "populace#403 re-measure: per-spine SSI incidence and intensity "
-            "on the calibrated artifact, computed under the same engine-pass "
-            "contract as materialization. Recorded as evidence, not gated."
+            "populace#403 re-measure: per-spine SSI incidence and intensity, "
+            "computed by loading the packaged artifact bytes PLAIN (no "
+            "private projection or fill) — the probe doubles as the "
+            "consumer-loadability proof. Recorded as evidence, not gated."
         ),
     }
     (args.checkpoint_dir / "spine_qa.json").write_text(json.dumps(payload, indent=2))
@@ -1212,9 +1406,18 @@ def do_finalize(args) -> None:
             f"No calibration diagnostics under {args.checkpoint_dir}; run "
             "--stage calibrate first."
         )
+    identity = _verify_run_identity(args)
+    ladder_sha = _sha256(args.ladder)
+    if ladder_sha != identity.get("ladder_sha256"):
+        raise SystemExit(
+            f"--ladder {args.ladder} (sha {ladder_sha[:12]}…) is not the "
+            "ladder the surface was materialized with "
+            f"({str(identity.get('ladder_sha256'))[:12]}…)."
+        )
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
     targets = _load_json(args.checkpoint_dir / "targets.json") or []
     spine_qa = _load_json(args.checkpoint_dir / "spine_qa.json")
+    consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
 
     frame = _load_staging_frame(args.out_h5)
     households = frame.table("household")
@@ -1252,10 +1455,19 @@ def do_finalize(args) -> None:
             "detail": dict(ladder_gate.details),
         },
         "calibration": {
+            # The cap criterion alone is near-tautological (the solver clips
+            # per-row losses at the same cap); the solve must also have
+            # actually improved on the design weights and conserved mass.
+            # Numeric acceptance thresholds beyond that (within-10% floors,
+            # per-target error bars) are maintainer-adjudicated surface
+            # policy (#398-class), recorded here rather than invented.
             "passed": bool(
                 diagnostics.get("final_loss", 1.0) < args.target_loss_cap
+                and diagnostics.get("final_loss", 1.0)
+                < diagnostics.get("initial_loss", 0.0)
                 and abs(mass - 1.0) < 1e-3
             ),
+            "initial_loss": diagnostics.get("initial_loss"),
             "final_loss": diagnostics.get("final_loss"),
             "fraction_within_10pct": diagnostics.get("fraction_within_10pct"),
             "effective_sample_size": diagnostics.get("effective_sample_size"),
@@ -1299,11 +1511,33 @@ def do_finalize(args) -> None:
             "note": spine_qa.get("note"),
             "detail": spine_qa.get("per_spine"),
         }
+    # Consumer-loadability: the export applied the engine-pass contract to
+    # the artifact bytes, and the QA probe loaded those bytes plain.
+    gates["consumer_ready"] = {
+        "passed": bool(consumer_export)
+        and bool(spine_qa.get("plain_consumption"))
+        and spine_qa.get("artifact_sha256") is not None,
+        "consumer_export": {
+            key: consumer_export.get(key)
+            for key in (
+                "held_back_total",
+                "filled_columns",
+                "total_values_filled",
+                "staging_sha256",
+            )
+        }
+        if consumer_export
+        else None,
+        "plain_load_proven_by": "spine_ssi_qa"
+        if spine_qa.get("plain_consumption")
+        else None,
+        "artifact_sha256": spine_qa.get("artifact_sha256"),
+    }
 
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     hard_failures = [
         name
-        for name in ("us_puma_ladder_gate", "calibration")
+        for name in ("us_puma_ladder_gate", "calibration", "consumer_ready")
         if not gates[name]["passed"]
     ]
     updated_summary = dict(staging_summary)
@@ -1343,6 +1577,8 @@ def do_package(args) -> dict:
     null_fills = _load_json(args.checkpoint_dir / "reviewed_null_fills.json")
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
     spine_qa = _load_json(args.checkpoint_dir / "spine_qa.json")
+    consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
+    identity = _verify_run_identity(args)
     if not gate_report:
         raise SystemExit("No gate report; run --stage finalize first.")
     if not final_summary.get("simulation_ready"):
@@ -1361,6 +1597,16 @@ def do_package(args) -> dict:
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
     log("hashing calibrated H5 …")
     h5_sha = _sha256(calibrated_h5)
+    # The gate report certifies specific artifact bytes: the QA probe
+    # recorded the sha it loaded plain. Packaging different bytes (a
+    # recalibrate without re-running qa+finalize) is refused.
+    qa_sha = spine_qa.get("artifact_sha256")
+    if qa_sha is not None and qa_sha != h5_sha:
+        raise SystemExit(
+            "The calibrated H5 does not match the bytes the QA probe "
+            f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
+            "--stage qa and --stage finalize against the current artifact."
+        )
 
     def _version(package: str) -> str:
         try:
@@ -1451,6 +1697,7 @@ def do_package(args) -> dict:
             "reviewed_null_columns_filled": null_fills.get("columns_filled"),
         },
         "gates": gate_report.get("gates", {}),
+        "run_identity": identity,
         "refresh_recipe": refresh_recipe,
     }
 
@@ -1471,9 +1718,12 @@ def do_package(args) -> dict:
         "gate_summary.json": gate_report,
         "held_back_columns.json": held_back,
         "reviewed_null_fills.json": null_fills,
+        "run_identity.json": identity,
     }
     if spine_qa:
         contract_files["spine_qa.json"] = spine_qa
+    if consumer_export:
+        contract_files["consumer_export.json"] = consumer_export
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
 
@@ -1647,6 +1897,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Release root for --stage package (releases/<id>/ lands here).",
     )
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--allow-partial-geography",
+        action="store_true",
+        help=(
+            "Permit ladder population cells with no supporting household "
+            "(a capped smoke shrinks the surface). Never for a release "
+            "build: materialize hard-fails on dropped cells without this."
+        ),
+    )
     args = parser.parse_args(argv)
 
     stages = (

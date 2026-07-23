@@ -65,7 +65,9 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     base = object()
     raw_acs = object()
     mapped_acs = object()
-    transferred_acs = object()
+    # The post-transfer adult-care gate probes the transferred frame's person
+    # table; an empty table means "columns absent", so the gate scopes out.
+    transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
     pooled = object()
     source = AcsPumsSource(
         tmp_path / "csv_hus.zip",
@@ -181,9 +183,12 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "weight_kind": "design",
                 "patterns": [],
                 "unmodeled_recipient_rows": 0,
+                "derivation": None,
+                "reconciliation": None,
             }
         ],
         "deferred_inputs": ["congressional_district_geoid"],
+        "adult_care_recipient_gate": None,
         "fit_records": [
             {
                 "fit_name": "acs_transfer:person:tax_detail",

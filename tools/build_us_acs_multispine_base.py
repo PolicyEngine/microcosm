@@ -42,6 +42,7 @@ from populace.build.us_runtime.acs_transfer import (
     ACS_DONOR_CHANNEL_AUTO,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     TargetFamilies,
+    acs_derived_transfer_expectations,
     acs_transfer_donor_requirements,
     declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
@@ -213,9 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest_file = _manifest_file(args.source_manifest)
     manifest_sha256 = _sha256(manifest_file)
     base_sha256 = _sha256(args.base_h5)
-    donor_release = _donor_release_identity(
-        args.donor_release_manifest, base_sha256
-    )
+    donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
     transfer_plan = declared_acs_transfer_target_families()
@@ -495,6 +494,9 @@ def _require_default_transfer_coverage(
         for targets in entity_families.values():
             for target in targets:
                 expected[target] = entity
+    # Deterministically derived columns are as load-bearing as fitted ones:
+    # a plan carrying the CGD parents owes the derived memo leg too.
+    expected.update(acs_derived_transfer_expectations(plan))
     raw_imputed = result.provenance.get("imputed_inputs", [])
     if not isinstance(raw_imputed, list):
         raise SystemExit("ACS imputed-input provenance must be a JSON list.")
@@ -988,8 +990,14 @@ def _load_base_frame(path: Path) -> Frame:
     )
 
 
-def _write_dataset(frame: Frame, path: Path, *, period: int) -> None:
-    """Write a nullable staging H5 with one-table-at-a-time verification."""
+def _write_dataset(
+    frame: Frame,
+    path: Path,
+    *,
+    period: int,
+    artifact_kind: str = "nullable_precalibration_staging_h5",
+) -> None:
+    """Write a populace US H5 with one-table-at-a-time verification."""
 
     output = Path(path)
     output.unlink(missing_ok=True)
@@ -1018,7 +1026,7 @@ def _write_dataset(frame: Frame, path: Path, *, period: int) -> None:
                     [
                         json.dumps(
                             {
-                                "artifact_kind": "nullable_precalibration_staging_h5",
+                                "artifact_kind": artifact_kind,
                                 "entity_hdf_format": "fixed_nullable",
                                 "household_weight_kind": frame.weights_for(
                                     "household"

@@ -325,14 +325,14 @@ def _assigned_geography_base_frame(
 def test__given_donor_assigned_geography__then_pool_preserves_it_and_derives_puma() -> (
     None
 ):
-    # Given: household 2's assigned district/county pair (102 / 01003) can
-    # never be drawn from its tract's PUMA (0100101 only overlaps district
-    # 101 and county 01001 in the test ladder), so surviving the pool proves
-    # preservation rather than a coincidental draw.
+    # Given: household 2's assigned district (102) can never be drawn from
+    # its tract's PUMA (0100101 only overlaps district 101 in the test
+    # ladder), so surviving the pool proves preservation rather than a
+    # coincidental draw. Counties must cohere with the tract prefix.
     base = _assigned_geography_base_frame(
         tracts=["01001000100", "01001000100"],
         congressional_districts=[101, 102],
-        counties=["01001", "01003"],
+        counties=["01001", "01001"],
     )
     acs = _acs_frame()
 
@@ -350,7 +350,7 @@ def test__given_donor_assigned_geography__then_pool_preserves_it_and_derives_pum
     donor = household[household[spine_column("household")].eq(ASEC_PUF_SPINE)]
     assert donor["puma"].tolist() == ["0100101", "0100101"]
     assert donor["congressional_district_geoid"].tolist() == [101, 102]
-    assert donor["county_fips"].tolist() == ["01001", "01003"]
+    assert donor["county_fips"].tolist() == ["01001", "01001"]
     assert donor["tract_geoid"].tolist() == ["01001000100", "01001000100"]
     acs_row = household[household[spine_column("household")].eq(ACS_2024_1YR_SPINE)]
     assert acs_row["puma"].tolist() == ["0100101"]
@@ -777,3 +777,46 @@ def test__given_non_us_frame__then_schema_validation_fails() -> None:
     # When / Then
     with pytest.raises(ValueError, match="US entity schema"):
         with_optional_acs_spine(non_us, _acs_frame())
+
+
+def test__given_incoherent_donor_tract_county_pair__then_pool_fails() -> None:
+    base = _assigned_geography_base_frame(
+        tracts=["01001000100", "01001000100"],
+        congressional_districts=[101, 102],
+        counties=["01001", "01003"],
+    )
+
+    with pytest.raises(ValueError, match="tract's county prefix"):
+        with_optional_acs_spine(
+            base,
+            _acs_frame(),
+            puma_ladder=_test_puma_ladder(),
+            expected_congressional_district_vintage="119th_congress",
+        )
+
+
+def test__preflight_validates_geography_before_transfer() -> None:
+    from populace.build.us_runtime.base_pool import (
+        preflight_pooled_ladder_geography,
+    )
+
+    ladder = _test_puma_ladder()
+    good_base = _assigned_geography_base_frame().table("household")
+    acs = _acs_frame().table("household")
+    assert (
+        preflight_pooled_ladder_geography(good_base, acs, ladder)
+        == "preserved_assigned"
+    )
+    legacy = _base_frame().table("household")
+    assert preflight_pooled_ladder_geography(legacy, acs, ladder) == "ladder_drawn"
+
+    bad_tract = _assigned_geography_base_frame(
+        tracts=["01001000100", "01005000100"],
+    ).table("household")
+    with pytest.raises(ValueError, match="absent from the US PUMA ladder"):
+        preflight_pooled_ladder_geography(bad_tract, acs, ladder)
+
+    unknown_puma = acs.copy()
+    unknown_puma["puma"] = ["0999901"]
+    with pytest.raises(ValueError, match="absent from the ladder"):
+        preflight_pooled_ladder_geography(good_base, unknown_puma, ladder)

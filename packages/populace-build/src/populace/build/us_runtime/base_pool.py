@@ -33,6 +33,7 @@ __all__ = [
     "DONOR_ASSIGNED_GEOGRAPHY_COLUMNS",
     "donor_assigned_geography_complete",
     "estimate_optional_acs_pool_peak_bytes",
+    "preflight_pooled_ladder_geography",
     "spine_column",
     "with_optional_acs_spine",
 ]
@@ -442,12 +443,17 @@ def _derived_donor_puma(
     """Derive donor PUMAs from assigned tracts via the ladder overlap."""
 
     tracts = pd.to_numeric(household.loc[donor_rows, "tract_geoid"], errors="coerce")
-    invalid = tracts.isna() | ~np.isfinite(tracts) | (tracts <= 0)
+    invalid = (
+        tracts.isna()
+        | ~np.isfinite(tracts)
+        | (tracts <= 0)
+        | (np.mod(tracts.fillna(0.5), 1) != 0)
+    )
     if invalid.any():
         examples = household.loc[donor_rows, "tract_geoid"].loc[invalid].head().tolist()
         raise ValueError(
-            "Donor households must carry parseable 11-digit tract geoids to "
-            f"derive their PUMA; invalid value(s): {examples}."
+            "Donor households must carry parseable integral 11-digit tract "
+            f"geoids to derive their PUMA; invalid value(s): {examples}."
         )
     mapping = _tract_to_puma(ladder)
     derived = tracts.astype(np.int64).map(mapping)
@@ -489,15 +495,16 @@ def _preserved_donor_geography(
         household.loc[donor_rows, "congressional_district_geoid"],
         errors="coerce",
     )
-    if cd.isna().any():
+    cd_invalid = cd.isna() | (np.mod(cd.fillna(0.5), 1) != 0)
+    if cd_invalid.any():
         examples = (
             household.loc[donor_rows, "congressional_district_geoid"]
-            .loc[cd.isna()]
+            .loc[cd_invalid]
             .head()
             .tolist()
         )
         raise ValueError(
-            "Donor congressional_district_geoid values must be numeric "
+            "Donor congressional_district_geoid values must be integral "
             f"state*100+district geoids; invalid value(s): {examples}."
         )
     cd = cd.astype(np.int64)
@@ -507,23 +514,96 @@ def _preserved_donor_geography(
             "with state_fips."
         )
     county = pd.to_numeric(household.loc[donor_rows, "county_fips"], errors="coerce")
-    if county.isna().any():
+    county_invalid = county.isna() | (np.mod(county.fillna(0.5), 1) != 0)
+    if county_invalid.any():
         examples = (
-            household.loc[donor_rows, "county_fips"].loc[county.isna()].head().tolist()
+            household.loc[donor_rows, "county_fips"].loc[county_invalid].head().tolist()
         )
         raise ValueError(
-            "Donor county_fips values must be numeric 5-digit state+county "
+            "Donor county_fips values must be integral 5-digit state+county "
             f"codes; invalid value(s): {examples}."
         )
     county = county.astype(np.int64)
     if ((county // 1_000) != states).any():
         raise ValueError("Donor county_fips state prefixes disagree with state_fips.")
+    # 2020 tracts nest in counties: the assigned county must equal the
+    # tract's own county prefix, or the preserved pair is incoherent.
+    tracts = pd.to_numeric(
+        household.loc[donor_rows, "tract_geoid"], errors="coerce"
+    ).astype(np.int64)
+    mismatched = (tracts // 1_000_000) != county
+    if mismatched.any():
+        examples = sorted(
+            set(
+                zip(
+                    tracts[mismatched].head().tolist(),
+                    county[mismatched].head().tolist(),
+                    strict=True,
+                )
+            )
+        )
+        raise ValueError(
+            "Donor county_fips disagrees with the assigned tract's county "
+            f"prefix: {examples}."
+        )
     county_strings = pd.Series(
         [f"{value:05d}" for value in county.tolist()],
         index=county.index,
         dtype=object,
     )
     return cd, county_strings
+
+
+def preflight_pooled_ladder_geography(
+    base_household: pd.DataFrame,
+    acs_household: pd.DataFrame,
+    ladder: UsPumaLadder,
+) -> str:
+    """Validate everything pooled ladder assignment needs, before transfer.
+
+    The QRF transfer is the expensive stage; geography incompatibilities
+    (an unmapped donor tract, incoherent preserved values, an ACS PUMA the
+    ladder does not know, a donor state without ladder PUMAs) must fail
+    here, not after the fits have run. Returns the donor geography mode
+    (``"preserved_assigned"`` or ``"ladder_drawn"``); raises ``ValueError``
+    on any incompatibility, matching the assignment-time checks.
+    """
+
+    mode = "ladder_drawn"
+    if len(base_household):
+        donor_rows = pd.Series(True, index=base_household.index)
+        if donor_assigned_geography_complete(base_household):
+            _derived_donor_puma(base_household, donor_rows, ladder)
+            _preserved_donor_geography(base_household, donor_rows)
+            mode = "preserved_assigned"
+        else:
+            states = set(pd.to_numeric(base_household["state_fips"]).astype(np.int64))
+            ladder_states = set((ladder.puma // 100_000).astype(int).tolist())
+            missing = sorted(states - ladder_states)
+            if missing:
+                raise ValueError(
+                    "Donor state_fips without any ladder PUMA (state-"
+                    f"conditional draw impossible): {missing}."
+                )
+    if len(acs_household):
+        if "puma" not in acs_household.columns:
+            raise ValueError(
+                "ACS household table must carry canonical seven-digit puma "
+                "geoids before PUMA-ladder assignment."
+            )
+        parsed = pd.to_numeric(acs_household["puma"], errors="coerce")
+        invalid = parsed.isna() | ~np.isfinite(parsed) | (parsed <= 0)
+        if invalid.any():
+            examples = acs_household["puma"].loc[invalid].head().tolist()
+            raise ValueError(
+                "Every ACS household must carry its observed seven-digit "
+                f"PUMA geoid; invalid value(s): {examples}."
+            )
+        known = np.isin(parsed.astype(np.int64).to_numpy(), ladder.puma)
+        if not known.all():
+            examples = sorted(set(parsed.astype(np.int64)[~known].head().tolist()))
+            raise ValueError(f"ACS PUMA geoid(s) absent from the ladder: {examples}.")
+    return mode
 
 
 def _assign_pooled_puma_ladder(

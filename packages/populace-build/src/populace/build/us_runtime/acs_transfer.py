@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import import_module
 from typing import Any
@@ -56,6 +56,9 @@ __all__ = [
     "acs_transfer_donor_requirements",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
+    "ACS_DERIVED_TRANSFER_INPUTS",
+    "derive_acs_schedule_d_capital_gain_distributions",
+    "reconcile_acs_adult_care",
     "required_acs_transfer_inputs",
     "resolve_acs_donor_channel",
     "transfer_acs_inputs",
@@ -234,15 +237,18 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             for target in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
             if target not in ACS_NATIVE_PERSON_INPUTS | {"s_corp_income"}
         ),
-        # Stage-owned inputs the Build M/N/O campaign added to the donor
-        # after the buildl plan froze. schedule_d_capital_gain_distributions
-        # is the Schedule D capital-gain-distributions memo leg (the
-        # non-Schedule-D leg is already a PUF-detail default output);
-        # without it the ACS spine would drop the repaired CGD surface this
-        # rebuild exists to carry.
-        "capital_gain_details": ("schedule_d_capital_gain_distributions",),
+        # The Schedule D capital-gain-distributions memo leg is deliberately
+        # NOT a QRF target: the base derives it deterministically as a
+        # packaged share of positive long-term gains where the non-Schedule-D
+        # route is absent (the reporting routes are mutually exclusive on a
+        # real return), and an independent fit would break that accounting
+        # identity. The transfer re-derives it from the transferred parents
+        # instead — see :func:`derive_acs_schedule_d_capital_gain_distributions`.
+        #
         # CDCC adult-care leg (#451 items 1-2): the qualifying-person flag
-        # and the pre-subsidy care-expense carrier.
+        # and the pre-subsidy care-expense carrier. Post-fit, the expense
+        # surface is reconciled to the statute structure (one qualifying
+        # carrier per tax unit) — see :func:`reconcile_acs_adult_care`.
         "adult_care": (
             "is_incapable_of_self_care",
             "pre_subsidy_care_expenses",
@@ -330,6 +336,12 @@ class AcsImputedInput:
     weight_kind: str
     patterns: tuple[AcsTransferPattern, ...] = ()
     unmodeled_recipient_rows: int = 0
+    #: Non-fit derivation kind for deterministic post-transfer columns
+    #: (e.g. ``"split_component_by_share"``); ``None`` for QRF-fitted ones.
+    derivation: str | None = None
+    #: Post-fit structural reconciliation counts, when the column's surface
+    #: was adjusted to a statute contract after prediction.
+    reconciliation: Mapping[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -384,6 +396,123 @@ def required_acs_transfer_inputs() -> frozenset[str]:
         for targets in entity_families.values()
         for target in targets
     )
+
+
+#: Person columns the default transfer DERIVES deterministically after the
+#: QRF fits (never fitted themselves). Coverage checks require them on the
+#: recipient exactly like declared plan targets.
+ACS_DERIVED_TRANSFER_INPUTS: tuple[str, ...] = (
+    "schedule_d_capital_gain_distributions",
+)
+
+
+def acs_derived_transfer_expectations(
+    target_families: TargetFamilies,
+) -> dict[str, str]:
+    """Derived columns a plan implies, mapped to their entity.
+
+    The Schedule D CGD memo leg is derivable exactly when both of its
+    parents are person targets of the plan — the same condition
+    :func:`_apply_post_transfer_structure` derives under, so coverage
+    expectations and production stay in lockstep (a custom test plan that
+    never transfers the parents owes no derived column).
+    """
+
+    person_targets = {
+        target
+        for targets in target_families.get("person", {}).values()
+        for target in targets
+    }
+    if {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH} <= person_targets:
+        return {_SCHEDULE_D_CGD_COLUMN: "person"}
+    return {}
+
+_SCHEDULE_D_CGD_COLUMN = "schedule_d_capital_gain_distributions"
+_SCHEDULE_D_CGD_SOURCE = "long_term_capital_gains_before_response"
+_SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"
+
+_ADULT_CARE_FLAG = "is_incapable_of_self_care"
+_ADULT_CARE_EXPENSE = "pre_subsidy_care_expenses"
+_ADULT_CARE_ROLE = "tax_unit_role_input"
+_ADULT_CARE_UNIT = "person_tax_unit_id"
+
+
+def derive_acs_schedule_d_capital_gain_distributions(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Re-derive the Schedule D CGD memo leg from transferred parents.
+
+    Mirrors the base's ``split_component_by_share`` operation exactly: the
+    packaged SOCA share of positive long-term gains, eligible only where the
+    mutually exclusive non-Schedule-D route is non-positive. Deterministic —
+    an independent QRF fit of this leaf would break the route-exclusivity
+    and share-of-parent identities the base construction guarantees.
+    """
+
+    from populace.build.us_runtime.capital_gain_distributions import (
+        load_capital_gain_distribution_shares,
+    )
+
+    share = load_capital_gain_distribution_shares()
+    ratio = float(share.schedule_d_cgd_share_of_lt_net_gains)
+    source = pd.to_numeric(person[_SCHEDULE_D_CGD_SOURCE], errors="coerce")
+    other_route = pd.to_numeric(person[_SCHEDULE_D_CGD_EXCLUSIVE_WITH], errors="coerce")
+    if source.isna().any() or other_route.isna().any():
+        raise ValueError(
+            "Schedule D CGD derivation requires complete transferred "
+            f"parents; {_SCHEDULE_D_CGD_SOURCE} has "
+            f"{int(source.isna().sum())} and {_SCHEDULE_D_CGD_EXCLUSIVE_WITH} "
+            f"has {int(other_route.isna().sum())} missing value(s)."
+        )
+    eligible = (source > 0.0) & (other_route <= 0.0)
+    values = np.where(eligible.to_numpy(), ratio * source.to_numpy(), 0.0)
+    provenance = {
+        "share": ratio,
+        "eligible_rows": int(eligible.sum()),
+        "rows": int(len(person)),
+        "derived_total": float(values.sum()),
+    }
+    return values.astype(np.float64), provenance
+
+
+def reconcile_acs_adult_care(
+    person: pd.DataFrame,
+) -> tuple[pd.Series, dict[str, int]]:
+    """Reconcile transferred adult-care expenses to the statute structure.
+
+    The base's construction guarantees every expense carrier is a section 21
+    qualifying person of its tax unit and each unit carries at most one
+    carrier; independent person-grain predictions cannot. Deterministically:
+    clear expenses on non-qualifying people, then keep only the largest
+    carrier per unit (ties broken by row order).
+    """
+
+    flag = person[_ADULT_CARE_FLAG].fillna(False).astype(bool)
+    expenses = pd.to_numeric(person[_ADULT_CARE_EXPENSE], errors="coerce").fillna(0.0)
+    role = person[_ADULT_CARE_ROLE].astype(str)
+    units = person[_ADULT_CARE_UNIT]
+    is_dependent = role.eq("DEPENDENT")
+    is_head = role.eq("HEAD")
+    is_spouse = role.eq("SPOUSE")
+    unit_married = is_spouse.groupby(units).transform("any")
+    qualifying = flag & (is_dependent | ((is_head | is_spouse) & unit_married))
+
+    positive = expenses > 0.0
+    cleared_ineligible = int((positive & ~qualifying).sum())
+    expenses = expenses.where(qualifying, 0.0)
+
+    positive = expenses > 0.0
+    rank = (-expenses).groupby(units).rank(method="first")
+    keep = positive & rank.eq(1.0)
+    cleared_multi_carrier = int((positive & ~keep).sum())
+    expenses = expenses.where(keep, 0.0)
+
+    counts = {
+        "cleared_ineligible_carriers": cleared_ineligible,
+        "cleared_multi_carrier_rows": cleared_multi_carrier,
+        "remaining_carriers": int((expenses > 0.0).sum()),
+    }
+    return expenses, counts
 
 
 def declared_acs_transfer_target_families() -> TargetFamilies:
@@ -623,6 +752,13 @@ def transfer_acs_inputs(
             )
         fit_records.extend(fitted.fit_records)
 
+    _apply_post_transfer_structure(
+        output_tables,
+        provenance,
+        donor_spine=donor_spine,
+        resolved_channel=resolved_channel,
+    )
+
     tables: dict[str, pd.DataFrame] = dict(output_tables)
     tables.update({name: recipient.link(name) for name in recipient.links})
     frame = Frame(
@@ -642,6 +778,78 @@ def transfer_acs_inputs(
         deferred_inputs=deferred_inputs,
         resolved_donor_channel=resolved_channel,
     )
+
+
+def _apply_post_transfer_structure(
+    output_tables: dict[str, pd.DataFrame],
+    provenance: list[AcsImputedInput],
+    *,
+    donor_spine: str,
+    resolved_channel: str | None,
+) -> None:
+    """Apply the deterministic post-fit steps the base's construction implies.
+
+    Both steps key off what THIS transfer produced (the provenance list), so
+    custom test plans that never touch these families are unaffected:
+
+    - The Schedule D CGD memo leg is derived from the two transferred
+      capital-gain parents at the packaged share with route exclusivity.
+    - The adult-care expense surface is reconciled to the statute structure
+      (qualifying carriers only, at most one per tax unit).
+    """
+
+    person = output_tables.get("person")
+    if person is None:
+        return
+    transferred = {item.column for item in provenance if item.entity == "person"}
+
+    cgd_parents = {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
+    if cgd_parents <= transferred:
+        if _SCHEDULE_D_CGD_COLUMN in person.columns:
+            raise ValueError(
+                f"{_SCHEDULE_D_CGD_COLUMN!r} must not be fitted or natively "
+                "present; it is derived from its transferred parents."
+            )
+        values, derivation = derive_acs_schedule_d_capital_gain_distributions(person)
+        person[_SCHEDULE_D_CGD_COLUMN] = values
+        provenance.append(
+            AcsImputedInput(
+                column=_SCHEDULE_D_CGD_COLUMN,
+                entity="person",
+                family="capital_gain_details",
+                donor_spine=donor_spine,
+                donor_channel=resolved_channel,
+                predictors=(
+                    _SCHEDULE_D_CGD_SOURCE,
+                    _SCHEDULE_D_CGD_EXCLUSIVE_WITH,
+                ),
+                seed=0,
+                weight_kind="deterministic",
+                derivation="split_component_by_share",
+                reconciliation={
+                    key: int(value)
+                    for key, value in derivation.items()
+                    if isinstance(value, int)
+                },
+            )
+        )
+
+    adult_care = {_ADULT_CARE_FLAG, _ADULT_CARE_EXPENSE}
+    if adult_care <= transferred:
+        structural = {_ADULT_CARE_ROLE, _ADULT_CARE_UNIT}
+        missing = sorted(structural - set(person.columns))
+        if missing:
+            raise ValueError(
+                "Adult-care reconciliation requires the recipient structural "
+                f"column(s) {missing}; refusing to ship an unreconciled "
+                "expense surface."
+            )
+        expenses, counts = reconcile_acs_adult_care(person)
+        person[_ADULT_CARE_EXPENSE] = expenses
+        for index, item in enumerate(provenance):
+            if item.column == _ADULT_CARE_EXPENSE and item.entity == "person":
+                provenance[index] = replace(item, reconciliation=counts)
+                break
 
 
 def _fit_family_patterns(

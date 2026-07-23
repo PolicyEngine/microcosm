@@ -118,8 +118,14 @@ def _write_local_bundle(
         },
         "reviewed_limitations": [{"id": "cd_population_marginal_vintage_2020"}],
     }
-    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
-    (release_dir / "sha256sums.txt").write_text("")
+    manifest_text = json.dumps(manifest, indent=1)
+    (release_dir / "release_manifest.json").write_text(manifest_text)
+    ledger = {name: _sha256_bytes(payload) for name, payload in payloads.items()}
+    ledger["release_manifest.json"] = _sha256_bytes(manifest_text.encode())
+    ledger["populace_us_2024_acs_local.h5"] = _sha256_bytes(artifact_bytes)
+    (release_dir / "sha256sums.txt").write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
+    )
     return release_dir
 
 
@@ -219,3 +225,45 @@ def test_publish_without_pointer_passes_the_role_guard(tmp_path: Path) -> None:
             artifact_root=tmp_path,
             update_latest=False,
         )
+
+
+def test_empty_checksum_ledger_is_rejected(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path)
+    (release_dir / "sha256sums.txt").write_text("")
+
+    with pytest.raises(ReleaseContractError, match="does not cover required file"):
+        validate_release_dir(release_dir)
+
+
+def test_tampered_checksum_ledger_is_rejected(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path)
+    ledger = (release_dir / "sha256sums.txt").read_text().splitlines()
+    flipped = []
+    for line in ledger:
+        digest, name = line.split(maxsplit=1)
+        if name == "gate_summary.json":
+            digest = ("0" if digest[0] != "0" else "1") + digest[1:]
+        flipped.append(f"{digest}  {name}")
+    (release_dir / "sha256sums.txt").write_text("\n".join(flipped) + "\n")
+
+    with pytest.raises(ReleaseContractError, match="disagrees|does not match"):
+        validate_release_dir(release_dir)
+
+
+def test_unsafe_ledger_path_is_rejected(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path)
+    with (release_dir / "sha256sums.txt").open("a") as handle:
+        handle.write("a" * 64 + "  ../escape.json\n")
+
+    with pytest.raises(ReleaseContractError, match="unsafe path"):
+        validate_release_dir(release_dir)
+
+
+def test_explicit_null_dataset_role_is_rejected(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["dataset_role"] = None
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError, match="unknown dataset_role"):
+        validate_release_dir(release_dir)

@@ -36,7 +36,7 @@ from populace.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from populace.build.us_runtime.base_pool import (
-    donor_assigned_geography_complete,
+    preflight_pooled_ladder_geography,
     with_optional_acs_spine,
 )
 from populace.build.us_runtime.congressional_district_vintage import (
@@ -113,6 +113,17 @@ def build_optional_acs_multispine(
     mapped_frame = mapped.frame
     del mapped
 
+    # Geography preflight BEFORE the expensive transfer: an unmapped donor
+    # tract, incoherent preserved geography, or an unknown ACS PUMA must
+    # fail here, not after the QRF fits have run.
+    donor_geography: str | None = None
+    if puma_ladder is not None:
+        donor_geography = preflight_pooled_ladder_geography(
+            base.table("household"),
+            mapped_frame.table("household"),
+            puma_ladder,
+        )
+
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -124,6 +135,7 @@ def build_optional_acs_multispine(
         max_targets_per_fit=max_targets_per_fit,
     )
     del mapped_frame
+    adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
     fit_records = tuple(transferred.fit_records)
     imputed_provenance = _json_ready_sequence(transferred.imputed_inputs)
     deferred_inputs = tuple(transferred.deferred_inputs)
@@ -140,13 +152,7 @@ def build_optional_acs_multispine(
     del transferred
 
     pool_options: dict[str, Any] = {"acs_share": acs_share}
-    donor_geography: str | None = None
     if puma_ladder is not None:
-        donor_geography = (
-            "preserved_assigned"
-            if donor_assigned_geography_complete(base.table("household"))
-            else "ladder_drawn"
-        )
         pool_options.update(
             {
                 "puma_ladder": puma_ladder,
@@ -166,6 +172,9 @@ def build_optional_acs_multispine(
         "native_inputs": native_provenance,
         "imputed_inputs": imputed_provenance,
         "deferred_inputs": deferred_provenance,
+        "adult_care_recipient_gate": _json_ready(adult_care_gate)
+        if adult_care_gate is not None
+        else None,
         "fit_records": fit_provenance,
         "fit_configuration": {
             "donor_spine": donor_spine,
@@ -212,6 +221,35 @@ def build_optional_acs_multispine(
         fit_records=fit_records,
         provenance=provenance,
     )
+
+
+def _require_recipient_adult_care_structure(
+    frame: Frame,
+) -> dict[str, Any] | None:
+    """Hard-gate the transferred ACS adult-care surface when it exists.
+
+    Runs on the recipient (ACS-only) frame, where the raw ASEC source column
+    is absent by construction so the gate's measured-identity check scopes
+    itself out; the statute-structure certificate and plausibility bands
+    bind. A transfer that never produced the adult-care columns (custom test
+    plans) is not gated.
+    """
+
+    from populace.build.us_runtime.adult_care import (
+        US_ADULT_CARE_OUTPUT_COLUMNS,
+        us_adult_care_signal_gate,
+    )
+
+    person = frame.table("person")
+    if any(column not in person.columns for column in US_ADULT_CARE_OUTPUT_COLUMNS):
+        return None
+    gate = us_adult_care_signal_gate(frame)
+    if not gate.passed:
+        raise ValueError(
+            "Transferred ACS adult-care surface failed the statute-structure "
+            "gate:\n  " + "\n  ".join(gate.failures)
+        )
+    return {"passed": True, "details": dict(gate.details)}
 
 
 def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
