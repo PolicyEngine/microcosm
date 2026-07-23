@@ -39,10 +39,14 @@ from populace.data.us_critical_targets import (
 )
 
 __all__ = [
+    "LOCAL_AREA_REQUIRED_RELEASE_FILES",
+    "NATIONAL_DEFAULT_DATASET_ROLE",
+    "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
+    "release_dataset_role",
     "required_release_files",
     "validate_release_dir",
 ]
@@ -59,6 +63,32 @@ REQUIRED_RELEASE_FILES = (
     "build_manifest.json",
     "release_manifest.json",
     "calibration_diagnostics.json",
+)
+
+# Dataset-role classes (populace#398). The national default keeps the full
+# historical contract; a non-default local-area artifact gets its own
+# contract and can never move the latest.json pointer.
+NATIONAL_DEFAULT_DATASET_ROLE = "national_default"
+NON_DEFAULT_LOCAL_AREA_DATASET_ROLE = "non_default_local_area"
+
+#: Files a non-default local-area release directory must carry. The source
+#: coverage entry matches :data:`US_SOURCE_COVERAGE_DIAGNOSTICS_FILE`.
+LOCAL_AREA_REQUIRED_RELEASE_FILES = (
+    "build_manifest.json",
+    "release_manifest.json",
+    "calibration_diagnostics.json",
+    "gate_summary.json",
+    "us_source_coverage.json",
+    "sha256sums.txt",
+)
+
+#: Provenance-chain keys the local-area source coverage must carry (the
+#: local product's analog of the national fiscal_target_sources map).
+LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
+    "acs_sources",
+    "geography_ladder",
+    "transfer_coverage",
+    "donor_release",
 )
 
 # Lockstep with populace.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
@@ -1003,12 +1033,263 @@ def _check_source_coverage_diagnostics(
                 )
 
 
-def validate_release_dir(release_dir: Path | str) -> None:
-    """Check a local release directory against the release contract.
+def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None:
+    """The non-default local-area release contract (populace#398).
 
-    The directory name is the build id (``populace-us-2024-<sha>-<date>``);
-    its files are what :data:`REQUIRED_RELEASE_FILES` names; and both
-    manifests must agree with the directory about which build this is.
+    The artifact is calibrated to a local surface (population marginals +
+    state administrative families) by design, so the national critical-target
+    checks do not apply. What must hold instead: the declared gates all
+    passed, the per-target diagnostics are complete and consistent, the
+    source coverage carries the local provenance chain, a
+    reviewed-limitations register exists, the manifest claims no default
+    slot, and every artifact is pinned to the immutable release id.
+    """
+
+    failures: list[str] = []
+    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
+
+    release_manifest: Mapping | None = None
+    manifest_path = release_dir / "release_manifest.json"
+    if manifest_path.is_file():
+        release_manifest = _load_json(manifest_path, failures)
+    if release_manifest is not None:
+        _check_local_area_release_manifest(release_manifest, release_id, failures)
+
+    build_manifest_path = release_dir / "build_manifest.json"
+    if build_manifest_path.is_file():
+        build_manifest = _load_json(build_manifest_path, failures)
+        if build_manifest is not None:
+            build_id = build_manifest.get("build_id")
+            if build_id != release_id:
+                failures.append(
+                    f"build_manifest.json 'build_id' is {build_id!r} but the "
+                    f"release directory is named {release_id!r}."
+                )
+
+    gate_path = release_dir / "gate_summary.json"
+    if gate_path.is_file():
+        gate_summary = _load_json(gate_path, failures)
+        if gate_summary is not None:
+            _check_local_area_gates(gate_summary, failures)
+
+    diagnostics_path = release_dir / "calibration_diagnostics.json"
+    if diagnostics_path.is_file():
+        diagnostics = _load_json(diagnostics_path, failures)
+        if diagnostics is not None:
+            _check_local_area_calibration_diagnostics(diagnostics, failures)
+
+    coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
+    if coverage_path.is_file():
+        coverage = _load_json(coverage_path, failures)
+        if coverage is not None:
+            for key in LOCAL_AREA_SOURCE_COVERAGE_KEYS:
+                if key not in coverage:
+                    failures.append(
+                        f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} is missing the "
+                        f"local-area provenance key {key!r}."
+                    )
+
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+
+    if failures:
+        raise ReleaseContractError(release_dir, failures)
+
+
+def _check_local_area_release_manifest(
+    manifest: Mapping, release_id: str, failures: list[str]
+) -> None:
+    schema_version = manifest.get("schema_version")
+    if schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
+        failures.append(
+            f"release_manifest.json 'schema_version' is {schema_version!r}; "
+            f"this library publishes version {RELEASE_MANIFEST_SCHEMA_VERSION}."
+        )
+    build = manifest.get("build")
+    if not isinstance(build, Mapping) or not build.get("build_id"):
+        failures.append("release_manifest.json is missing 'build.build_id'.")
+    elif build["build_id"] != release_id:
+        failures.append(
+            f"release_manifest.json 'build.build_id' is "
+            f"{build['build_id']!r} but the release directory is named "
+            f"{release_id!r}."
+        )
+    _check_release_manifest_package(
+        manifest.get("data_package"),
+        field="data_package",
+        expected_name="populace-data",
+        failures=failures,
+    )
+    default_datasets = manifest.get("default_datasets")
+    if default_datasets != {}:
+        failures.append(
+            "release_manifest.json 'default_datasets' must be an empty "
+            "object for a non-default local-area release; it claims no "
+            f"default slot (got {default_datasets!r})."
+        )
+    if manifest.get("is_default") is not False:
+        failures.append(
+            "release_manifest.json 'is_default' must be false for a "
+            "non-default local-area release."
+        )
+    namespace = manifest.get("namespace")
+    if not isinstance(namespace, str) or not namespace:
+        failures.append(
+            "release_manifest.json must declare a non-empty 'namespace' for "
+            "a non-default local-area release."
+        )
+    limitations = manifest.get("reviewed_limitations")
+    if not isinstance(limitations, list):
+        failures.append(
+            "release_manifest.json must carry a 'reviewed_limitations' list "
+            "(explicitly empty if none) for a non-default local-area release."
+        )
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping) or not artifacts:
+        failures.append(
+            "release_manifest.json must declare a non-empty 'artifacts' map."
+        )
+        return
+    microdata = [
+        name
+        for name, entry in artifacts.items()
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    ]
+    if len(microdata) != 1:
+        failures.append(
+            "release_manifest.json must declare exactly one microdata "
+            f"artifact; found {sorted(microdata)!r}."
+        )
+    for name, entry in artifacts.items():
+        if not isinstance(entry, Mapping):
+            failures.append(
+                f"release_manifest.json artifact {name!r} must be an object."
+            )
+            continue
+        for field in ("kind", "path", "repo_id", "revision", "sha256"):
+            if not entry.get(field):
+                failures.append(
+                    f"release_manifest.json artifact {name!r} is missing {field!r}."
+                )
+        revision = entry.get("revision")
+        if revision is not None and revision != release_id:
+            failures.append(
+                f"release_manifest.json artifact {name!r} revision "
+                f"{revision!r} is not pinned to the release id "
+                f"{release_id!r}; non-default artifacts are discoverable by "
+                "their immutable tag only."
+            )
+        sha = entry.get("sha256")
+        if isinstance(sha, str) and not _SHA256_RE.fullmatch(sha):
+            failures.append(
+                f"release_manifest.json artifact {name!r} sha256 {sha!r} is "
+                "not a 64-hex digest."
+            )
+
+
+def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
+    gates = gate_summary.get("gates")
+    if not isinstance(gates, Mapping) or not gates:
+        failures.append("gate_summary.json must carry a non-empty 'gates' object.")
+        return
+    for name, gate in gates.items():
+        if not isinstance(gate, Mapping) or "passed" not in gate:
+            failures.append(
+                f"gate_summary.json gate {name!r} must be an object with a "
+                "'passed' flag."
+            )
+            continue
+        if gate["passed"] is not True:
+            failures.append(
+                f"gate_summary.json gate {name!r} did not pass; a "
+                "non-default local-area release still publishes only green "
+                "gates."
+            )
+
+
+def _check_local_area_calibration_diagnostics(
+    diagnostics: Mapping, failures: list[str]
+) -> None:
+    n_targets = diagnostics.get("n_targets")
+    targets = diagnostics.get("targets")
+    if not isinstance(n_targets, int) or n_targets <= 0:
+        failures.append(
+            "calibration_diagnostics.json must carry a positive integer 'n_targets'."
+        )
+    if not isinstance(targets, list) or not targets:
+        failures.append(
+            "calibration_diagnostics.json must carry a non-empty 'targets' list."
+        )
+        return
+    if isinstance(n_targets, int) and len(targets) != n_targets:
+        failures.append(
+            f"calibration_diagnostics.json 'targets' has {len(targets)} "
+            f"rows but 'n_targets' is {n_targets}."
+        )
+    required_fields = (
+        "name",
+        "target",
+        "compiled_target",
+        "initial_estimate",
+        "final_estimate",
+    )
+    for index, row in enumerate(targets):
+        if not isinstance(row, Mapping):
+            failures.append(
+                f"calibration_diagnostics.json target row {index} must be an object."
+            )
+            continue
+        for field in required_fields:
+            if field not in row:
+                failures.append(
+                    f"calibration_diagnostics.json target row {index} is "
+                    f"missing {field!r}."
+                )
+    for field in ("final_loss", "fraction_within_10pct", "households"):
+        if field not in diagnostics:
+            failures.append(f"calibration_diagnostics.json is missing {field!r}.")
+
+
+def release_dataset_role(release_dir: Path | str) -> str:
+    """The release's declared dataset role (default: national default).
+
+    Read from ``release_manifest.json``'s ``dataset_role``. An absent field
+    or unreadable manifest is the national default — the pre-role-class
+    shape — so every historical release keeps its meaning; the publish path
+    separately refuses pointer updates for any non-default role.
+    """
+
+    manifest_path = Path(release_dir) / "release_manifest.json"
+    if not manifest_path.is_file():
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    if not isinstance(manifest, Mapping):
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    role = manifest.get("dataset_role", NATIONAL_DEFAULT_DATASET_ROLE)
+    return role if isinstance(role, str) and role else NATIONAL_DEFAULT_DATASET_ROLE
+
+
+def validate_release_dir(release_dir: Path | str) -> None:
+    """Check a local release directory against its dataset-role contract.
+
+    The directory name is the build id (``populace-us-2024-<sha>-<date>``)
+    and both manifests must agree with the directory about which build this
+    is. Which checks apply is keyed off ``release_manifest.json``'s
+    ``dataset_role`` (populace#398):
+
+    - ``national_default`` (or absent — every pre-role release): the full
+      national contract, unchanged — :data:`REQUIRED_RELEASE_FILES`, the
+      US critical-target set, national source-coverage enumeration.
+    - ``non_default_local_area``: the local-area contract — gates object
+      with every gate passed, per-target diagnostics shape, provenance-chain
+      source coverage, a reviewed-limitations register, an empty
+      ``default_datasets`` map, and artifacts pinned to the release id. The
+      national critical-target set deliberately does not apply: the artifact
+      is calibrated to a local surface by design.
 
     Args:
         release_dir: The local ``releases/<build_id>`` directory about to be
@@ -1025,6 +1306,20 @@ def validate_release_dir(release_dir: Path | str) -> None:
 
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
+
+    role = release_dataset_role(release_dir)
+    if role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
+        _validate_local_area_release_dir(release_dir, release_id)
+        return
+    if role != NATIONAL_DEFAULT_DATASET_ROLE:
+        raise ReleaseContractError(
+            release_dir,
+            [
+                f"release_manifest.json declares unknown dataset_role {role!r}; "
+                f"known roles are {NATIONAL_DEFAULT_DATASET_ROLE!r} and "
+                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}."
+            ],
+        )
 
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None

@@ -33,7 +33,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from populace.data.contract import required_release_files, validate_release_dir
+from populace.data.contract import (
+    NATIONAL_DEFAULT_DATASET_ROLE,
+    release_dataset_role,
+    required_release_files,
+    validate_release_dir,
+)
 from populace.data.slack import notify_release
 
 __all__ = [
@@ -168,6 +173,17 @@ def publish_release(
     release_dir = Path(release_dir)
     validate_release_dir(release_dir)
     release_id = release_dir.name
+    role = release_dataset_role(release_dir)
+    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest:
+        # populace#398 defense in depth beyond --no-latest: a non-default
+        # release can never move the global default pointer, even if a
+        # caller asks.
+        raise ValueError(
+            f"release {release_id!r} declares dataset_role {role!r}; "
+            "non-default releases publish immutably (tag only) and can "
+            "never update latest.json. Pass update_latest=False "
+            "(publish CLI: --no-latest)."
+        )
     artifact_root = Path(artifact_root) if artifact_root is not None else None
 
     contract_files = required_release_files(release_id)
