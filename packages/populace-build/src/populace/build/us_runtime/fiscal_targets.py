@@ -911,7 +911,7 @@ def compile_us_fiscal_target_registry(
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
-    registry = _uprate_cross_period_soi_decompositions(
+    registry = _rebase_stale_soi_taxable_interest_distributions(
         registry,
         materialized_facts,
         target_period=target_period,
@@ -1365,75 +1365,135 @@ def _soi_capital_gains_uprating_index(kind: str) -> str:
     return "total_net_capital_gains_amount"
 
 
-def _uprate_cross_period_soi_decompositions(
+#: Control-universe preference for the stale-interest rebase. The family's
+#: own universe (all returns) always outranks the bridge; the bridge admits
+#: ONLY the Pub 1304 all-returns-excluding-dependents total (Table 4.3 —
+#: the sole Pub 1304 interest total in the v9.2 feed). The dependent sliver
+#: it omits is 0.22% of amount / 2.0% of returns at TY2023 (Table 1.4
+#: 23in14ar.xls $313.813B / 55.260M vs Table 4.3 23in43ts.xls $313.120B /
+#: 54.167M), so the bridged control conservatively understates the
+#: all-returns truth and retires automatically when a Table 1.4 interest
+#: fact reaches the feed. The itemized-only universe (Table 2.1) is a
+#: genuinely different population and is never bridgeable.
+_SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES: tuple[str, ...] = (
+    "all_returns",
+    "returns_excluding_dependents",
+)
+
+
+def _rebase_stale_soi_taxable_interest_distributions(
     registry: TargetRegistry,
     facts: tuple[object, ...],
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Scale stale SOI AGI slices to same-scope active SOI totals."""
+    """Use stale HT2 taxable-interest rows as shares, not hard old-year totals.
 
-    source_totals = _soi_total_controls_by_source_period(facts)
-    active_totals = _soi_active_total_controls(facts, target_period=target_period)
+    The populace#489 adjudication, with every value from the official IRS
+    workbooks: HT2 is a correct photo of its own tax year (TY2022 US A00300
+    $133.122B vs Pub 1304 Table 1.4 TY2022 $133.597B, -0.36%; TY2021 the
+    identity holds at -0.13%), but taxable interest grew x2.349 from TY2022
+    to TY2023 ($133.597B -> $313.813B, 22in14ar.xls -> 23in14ar.xls) while
+    interest dollar targets age on the CBO AGI default (x1.1203 over
+    2022->2024) — the aging model has no interest series of its own. The
+    compiled surface therefore carried the same unfiltered model sum at two
+    live values 2.28x apart (HT2-all $149.1B vs Table 4.3 $340.4B) plus an
+    itemized-only sub-target ($180.0B) EXCEEDING the smaller national total
+    — a logical impossibility no solve can satisfy; certified Build N wrote
+    off ~470 HT2/CD-lineage rows past the loss cap (+128% on the national
+    all-row) while sitting exactly on the Table 4.3 truth.
+
+    Remedy (the net-capital-gains doctrine, x0.7719 precedent): every stale
+    HT2 interest row rebases by ONE national realized factor onto the
+    latest Pub 1304-class national actual, preserving TY2022 cross-sectional
+    shares; the stale national all-AGI rows retire because the active
+    control's own compiled row owns the national concept. Congressional-
+    district aggregates are never controls: the CD table is a processing-
+    window subset of the filing universe (US A00300 $123.791B = 92.7% of
+    the same-year Table 1.4 actual) and the feed's ty2023 stamp on
+    22incd.csv is a vintage error — IRS's latest congressional-district
+    publication is tax year 2022. The rebase lands values at the CONTROL's
+    period; target aging owns the remaining links (populace#488).
+    """
+
+    controls = _soi_taxable_interest_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    stale_national_totals = _soi_taxable_interest_stale_national_totals(facts)
     specs: list[TargetSpec] = []
     for spec in registry.specs:
-        if spec.metadata.get("requires_total_soi_uprating") != "true":
+        kind = _soi_taxable_interest_kind(spec)
+        if kind is None or not _is_stale_soi_historic_taxable_interest_spec(spec):
             specs.append(spec)
             continue
 
         measure_id = spec.metadata.get("source_measure_id", "")
-        source_period = spec.metadata.get("source_period", "")
-        key = _soi_total_control_key_from_spec(spec)
-        source_total = source_totals.get((*key, source_period))
-        active_total = active_totals.get(key)
-        if source_total in (None, 0) or active_total is None:
+        status = spec.metadata.get("filing_status", "")
+        control: _SoiTotalControl | None = None
+        control_universe = ""
+        for universe in _SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES:
+            control = controls.get((measure_id, status, universe))
+            if control is not None:
+                control_universe = universe
+                break
+        source_total = stale_national_totals.get(
+            (measure_id, status, spec.metadata["source_period"])
+        )
+        if source_total in (None, 0):
+            # A stale AGI slice whose own family carries no national total
+            # is unverifiable — dropped, never shipped unanchored. The
+            # full-range rows ARE levels of their own and stay.
+            if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
+                continue
+            specs.append(spec)
+            continue
+        if control is None:
+            specs.append(spec)
+            continue
+        if not _period_not_before(
+            control.period_key, _period_key_from_value(spec.metadata["source_period"])
+        ):
+            specs.append(spec)
             continue
 
-        factor = active_total.value / source_total
-        specs.append(
-            replace(
-                spec,
-                value=spec.value * factor,
-                metadata={
-                    **dict(spec.metadata),
-                    "uprating_index": _soi_total_uprating_index(measure_id),
-                    "uprating_from_period": source_period,
-                    # The rebase lands the value at the CONTROL's period;
-                    # target aging completes any remaining links from there.
-                    "uprating_to_period": active_total.source_period,
-                    "uprating_index_source_period": active_total.source_period,
-                    "uprating_index_source_record_id": active_total.source_record_id,
-                    "uprating_factor": _format_float(factor),
-                },
-            )
-        )
+        if _is_national_all_agi_spec(spec):
+            continue
+
+        factor = control.value / source_total
+        metadata = {
+            **dict(spec.metadata),
+            "uprating_index": _soi_total_uprating_index(measure_id),
+            "uprating_from_period": spec.metadata["source_period"],
+            # The rebase lands the value at the CONTROL's period — NOT the
+            # build period; target aging completes the remaining links from
+            # there (populace#488 chain-completion law).
+            "uprating_to_period": control.source_period,
+            "uprating_index_source_period": control.source_period,
+            "uprating_index_source_record_id": control.source_record_id,
+            "uprating_factor": _format_float(factor),
+            "stale_distribution_rebased_to_active_total": "true",
+        }
+        if control_universe != spec.metadata.get("soi_return_universe", "all_returns"):
+            # A bridged control is declared, never silent: the manifest must
+            # show which universe supplied the national level.
+            metadata["soi_return_universe_bridge"] = control_universe
+        specs.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(specs, country=registry.country)
 
 
-def _soi_total_controls_by_source_period(
-    facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str, str], float] = {}
-    for fact in facts:
-        if not _is_soi_total_uprating_control_fact(fact):
-            continue
-        key = (
-            *_soi_total_control_key_from_fact(fact),
-            str(_period_value(fact)),
-        )
-        totals[key] = _numeric_value(fact)
-    return totals
-
-
-def _soi_active_total_controls(
+def _soi_taxable_interest_active_totals(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-) -> dict[tuple[str, str, str, str], _SoiTotalControl]:
-    totals: dict[tuple[str, str, str, str], _SoiTotalControl] = {}
+) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
-        if not _is_soi_total_uprating_control_fact(fact):
+        key = _soi_taxable_interest_control_key_from_fact(fact)
+        if key is None:
+            continue
+        if _is_stale_soi_historic_taxable_interest_fact(fact):
             continue
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
@@ -1441,58 +1501,96 @@ def _soi_active_total_controls(
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        key = _soi_total_control_key_from_fact(fact)
         candidate = _SoiTotalControl(
             value=_numeric_value(fact),
             source_period=str(_period_value(fact)),
             source_record_id=source_record_id,
             period_key=period_key,
         )
-        current = totals.get(key)
+        current = controls.get(key)
         if current is None or _prefer_candidate(
             candidate.period_key,
             current.period_key,
             target_period_key=target_period_key,
         ):
-            totals[key] = candidate
+            controls[key] = candidate
+    return controls
+
+
+def _soi_taxable_interest_stale_national_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str], float]:
+    totals: dict[tuple[str, str, str], float] = {}
+    for fact in facts:
+        if not _is_stale_soi_historic_taxable_interest_fact(fact):
+            continue
+        if _geography_level(fact) != "country":
+            continue
+        if not _is_all_income_range(fact):
+            continue
+        status = _filing_status_label(_dimensions(fact).get("filing_status"))
+        if status is None:
+            continue
+        totals[(_measure_id(fact), status, str(_period_value(fact)))] = _numeric_value(
+            fact
+        )
     return totals
 
 
-def _is_soi_total_uprating_control_fact(fact: object) -> bool:
+def _soi_taxable_interest_kind(spec: TargetSpec) -> str | None:
+    return _soi_taxable_interest_kind_from_measure(
+        spec.metadata.get("source_measure_id", "")
+    )
+
+
+def _soi_taxable_interest_kind_from_measure(measure_id: str) -> str | None:
+    if measure_id in _SOI_TOTAL_UPRATED_AMOUNT_MEASURES:
+        return "amount"
+    if measure_id in _SOI_TOTAL_UPRATED_RETURN_MEASURES:
+        return "returns"
+    return None
+
+
+def _is_stale_soi_historic_taxable_interest_spec(spec: TargetSpec) -> bool:
+    if spec.family != "irs_soi":
+        return False
+    if _soi_taxable_interest_kind(spec) is None:
+        return False
+    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
+
+
+def _is_stale_soi_historic_taxable_interest_fact(fact: object) -> bool:
     if _source_name(fact) != "irs_soi":
         return False
-    if _measure_id(fact) not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+    if _soi_taxable_interest_kind_from_measure(_measure_id(fact)) is None:
         return False
-    if _geography_level(fact) not in {"country", "state"}:
-        return False
-    if not _source_record_id(fact):
-        return False
+    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
+
+
+def _soi_taxable_interest_control_key_from_fact(
+    fact: object,
+) -> tuple[str, str, str] | None:
+    if _source_name(fact) != "irs_soi":
+        return None
+    measure_id = _measure_id(fact)
+    if _soi_taxable_interest_kind_from_measure(measure_id) is None:
+        return None
+    if _geography_level(fact) != "country":
+        return None
+    # Congressional-district aggregates are a processing-window subset of
+    # the filing universe (and the feed's CD vintage stamp is in error —
+    # populace#489); they never anchor the interest family.
+    if _is_soi_congressional_district_record_set(fact):
+        return None
     if not _is_all_income_range(fact):
-        return False
-    lower, upper = _agi_bounds(fact)
-    return lower == "-inf" and upper == "inf"
-
-
-def _soi_total_control_key_from_fact(fact: object) -> tuple[str, str, str, str]:
-    state_fips = _state_fips(fact)
-    geography_key = f"state:{state_fips}" if state_fips else "country"
-    return (
-        _measure_id(fact),
-        geography_key,
-        _filing_status_label(_dimensions(fact).get("filing_status")) or "",
-        _soi_return_universe_from_fact(fact),
-    )
-
-
-def _soi_total_control_key_from_spec(spec: TargetSpec) -> tuple[str, str, str, str]:
-    state_fips = spec.metadata.get("state_fips", "")
-    geography_key = f"state:{state_fips}" if state_fips else "country"
-    return (
-        spec.metadata.get("source_measure_id", ""),
-        geography_key,
-        spec.metadata.get("filing_status", ""),
-        spec.metadata.get("soi_return_universe", "all_returns"),
-    )
+        return None
+    status = _filing_status_label(_dimensions(fact).get("filing_status"))
+    if status is None:
+        return None
+    universe = _soi_return_universe_from_fact(fact)
+    if universe not in _SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES:
+        return None
+    return (measure_id, status, universe)
 
 
 def _soi_total_uprating_index(measure_id: str) -> str:
