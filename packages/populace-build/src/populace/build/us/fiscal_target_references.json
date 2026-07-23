@@ -286,22 +286,6 @@
       "name": "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss",
       "period": 2024,
       "value_operation": "identity"
-    },
-    {
-      "entity": "household",
-      "family": "jct",
-      "ledger_source_record_id": "jct.tax_expenditures.cy2024.auto_loan_interest_deduction.revenue_loss",
-      "measure": "jct.tax_expenditures.cy2024.auto_loan_interest_deduction.revenue_loss",
-      "metadata": {
-        "kind": "neutralize_variable",
-        "matrix_row": "reform_minus_baseline_income_tax",
-        "neutralized_variable": "auto_loan_interest_deduction",
-        "output_variable": "income_tax",
-        "target_role": "jct_tax_expenditure"
-      },
-      "name": "jct.tax_expenditures.cy2024.auto_loan_interest_deduction.revenue_loss",
-      "period": 2024,
-      "value_operation": "identity"
     }
   ]
 }
