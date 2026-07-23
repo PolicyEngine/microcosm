@@ -187,10 +187,13 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # haircut alone was a $27.1B pure concept gap. The capped formula is linear
     # in the first/second_home_mortgage_interest export inputs (balances and
     # origination years only set the deductible share), so calibration keeps
-    # the same pull-through to the export mass that Build H wanted; carriers
-    # are unchanged because a positive-balance unit's deductible share is
-    # always positive. The residual overshoot is the donor-side E19200
-    # total-interest lineage (populace#515, #487-adjacent).
+    # the same pull-through to the export mass that Build H wanted. A
+    # positive-balance unit's deductible share is always positive; gross and
+    # structural carriers are independently imputed, so equality is a data
+    # property, verified on O-1 post-itemizer-mask (identical weighted carrier
+    # totals; the only gross-vs-structural divergent units are non-itemizers).
+    # The residual overshoot is the donor-side E19200 total-interest lineage
+    # (populace#515, #487-adjacent).
     "home_mortgage_interest_amount": "deductible_mortgage_interest",
 }
 
@@ -242,9 +245,10 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     # Build H (populace#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
     # home mortgage interest deduction). populace#511: indicator over the same
-    # capped concept as the amount row; the carrier set matches the gross
-    # column because the deductible share is positive wherever a positive
-    # mortgage balance backs positive interest (0 divergent units on O-1).
+    # capped concept as the amount row. The deductible share is positive
+    # wherever a positive mortgage balance backs positive interest; carrier
+    # equality with the old gross indicator is a data property (independently
+    # imputed columns), verified on O-1 post-itemizer-mask.
     "home_mortgage_interest_returns": "deductible_mortgage_interest",
 }
 

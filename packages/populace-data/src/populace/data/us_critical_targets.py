@@ -247,6 +247,39 @@ US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         target_roles=("medical_expense_deduction_total",),
         allow_incumbent_improvement=False,
     ),
+    USCriticalTargetFitRequirement(
+        requirement_id="home_mortgage_interest_amount",
+        label="home mortgage interest deduction amount",
+        # 2026-07-23 (populace#511 forensics): certified O-1 shipped this row
+        # at +29.5% with no gate in its way because mortgage was never
+        # registered. The +29.5% was two stacked concept gaps: the target
+        # column summed gross home_mortgage_interest (rebound to the
+        # engine-capped deductible concept in the same change as this entry),
+        # and the donor column carries the E19200 total-interest lineage
+        # (populace#515). The capped column measured +15.0% at O-1 final
+        # weights while the solve was still fighting the gross column, and
+        # ~+6.9% once the donor concept scale is removed. Interim 0.20
+        # catches the shipped +29.5% class with margin for solve variance;
+        # ratchet to US_CRITICAL_DEDUCTION_MAX_ABS_RELATIVE_ERROR once
+        # populace#515 lands and a run holds 0.15.
+        max_abs_relative_error=0.20,
+        names=(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_amount@2024",
+        ),
+        allow_incumbent_improvement=False,
+    ),
+    USCriticalTargetFitRequirement(
+        requirement_id="home_mortgage_interest_returns",
+        label="home mortgage interest deduction returns",
+        # Paired count row for the amount entry above (O-1 landed +2.45%).
+        max_abs_relative_error=US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+        names=(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns@2024",
+        ),
+        allow_incumbent_improvement=False,
+    ),
 )
 
 # populace#462: every national SOI Pub 1304 Table 1.4 dollar row is

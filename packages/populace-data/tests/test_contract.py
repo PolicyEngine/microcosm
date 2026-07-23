@@ -30,7 +30,7 @@ DIAGNOSTICS_SHA = "c" * 64
 SOURCE_COVERAGE_SHA = "9" * 64
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 18
+TARGET_COUNT = 20
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -53,6 +53,17 @@ DEDUCTION_CRITICAL_TARGETS = (
         80_000_000_000.0,
         69_000_000_000.0,
         "medical_expense_deduction_total",
+    ),
+    # populace#511: the Table 2.1 mortgage amount row is name-registered (its
+    # production target_role is the generic soi_fiscal_distribution).
+    (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount@2024",
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount",
+        186_310_104_604.0,
+        199_110_000_000.0,
+        "soi_fiscal_distribution",
     ),
 )
 
@@ -314,6 +325,16 @@ def additional_critical_credit_rows() -> list[dict]:
             24_475_100.0,
             24_472_900.0,
         ),
+        # populace#511: paired count row for the registered Table 2.1
+        # mortgage amount target (O-1 landed +2.45%).
+        (
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns@2024",
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns",
+            11_644_348.0,
+            11_929_445.0,
+        ),
     ]
     return [
         _target_row(
@@ -417,7 +438,7 @@ def _source_coverage_diagnostics() -> dict:
             },
             "irs_soi": {
                 "label": "IRS Statistics of Income",
-                "target_count": 16,
+                "target_count": 18,
                 "sources": ["IRS SOI Historic Table 2"],
                 "reference_urls": ["https://example.test/soi"],
             },
@@ -601,6 +622,9 @@ def test_us_release_rejects_bad_deduction_fit(
         # 2026-07-22 adjudication: relaxed to the 0.25 broad-fit bound while
         # the #462 loss-contract alignment lands (see the register comment).
         "medical_expense_deduction_total": 0.25,
+        # populace#511: interim 0.20 while the donor-side E19200 concept
+        # carve (populace#515) lands (see the register comment).
+        "soi_fiscal_distribution": 0.2,
     }.get(target_role, 0.15)
     assert f"exceeding {expected_cap}" in failures
 
@@ -673,8 +697,13 @@ def test_us_release_rejects_deduction_improvement_past_absolute_gate(
         row for row in diagnostics["targets"] if row["name"] == deduction_name
     )
     # Past each row's own absolute cap (medical sits at the adjudicated 0.25
-    # bound, 2026-07-22): even improving on the incumbent never passes it.
-    overshoot = 1.30 if target_role == "medical_expense_deduction_total" else 1.20
+    # bound, 2026-07-22; mortgage at the interim 0.20, populace#511): even
+    # improving on the incumbent never passes it.
+    overshoot = (
+        1.30
+        if target_role in {"medical_expense_deduction_total", "soi_fiscal_distribution"}
+        else 1.20
+    )
     current_final = deduction_target * overshoot
     target["final_estimate"] = current_final
     target["relative_error"] = (current_final - deduction_target) / deduction_target
@@ -705,7 +734,7 @@ def test_us_release_rejects_deduction_improvement_past_absolute_gate(
     assert deduction_name in failures
     expected_rel = (
         "relative_error=0.3"
-        if target_role == "medical_expense_deduction_total"
+        if target_role in {"medical_expense_deduction_total", "soi_fiscal_distribution"}
         else "relative_error=0.2"
     )
     assert expected_rel in failures
@@ -899,7 +928,12 @@ def test_us_release_requires_direct_deduction_targets(
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert target_role.replace("_total", "_amount") in failures
+    expected_requirement = {
+        # populace#511: the mortgage row's production role is the generic
+        # soi_fiscal_distribution; its requirement id is name-derived.
+        "soi_fiscal_distribution": "home_mortgage_interest_amount",
+    }.get(target_role, target_role.replace("_total", "_amount"))
+    assert expected_requirement in failures
 
 
 @pytest.mark.parametrize("filename", required_release_files(RELEASE_ID))
