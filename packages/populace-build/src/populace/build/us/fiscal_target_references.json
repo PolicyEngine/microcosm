@@ -253,7 +253,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "notes": "broad_fit: the JCT Keogh/SEP line is a NET EXCLUSION concept - contribution deduction plus inside buildup, net of currently taxable distributions - broader than the pure above-the-line contribution deduction neutralized here. Expect the model below the JCT line."
     },
     {
       "entity": "household",
@@ -269,13 +270,14 @@
       },
       "name": "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "notes": "broad_fit: the JCT traditional-IRA line is a NET EXCLUSION concept - contribution deduction plus inside buildup, net of currently taxable distributions - broader than the pure contribution deduction neutralized here. Expect the model below the JCT line."
     },
     {
       "entity": "household",
       "family": "jct",
-      "ledger_source_record_id": "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss",
-      "measure": "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss",
+      "ledger_source_record_id": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
+      "measure": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
       "metadata": {
         "kind": "neutralize_variable",
         "matrix_row": "reform_minus_baseline_income_tax",
@@ -283,9 +285,10 @@
         "output_variable": "income_tax",
         "target_role": "jct_tax_expenditure"
       },
-      "name": "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss",
+      "name": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "notes": "Combined-concept anchor: JCT publishes the CDCC combined with the IRC sec. 129 employer-provided child care exclusion (JCX-48-24 fn. 11, including DCFSA) as one ~$5.6B line. The model neutralizes the credit only: the sec. 129 exclusion has no revenue pathway in policyengine-us (excluded benefits never enter gross income; dependent_care_assistance_exclusion drives only the Form 2441 credit-limit interaction), so the model side is expected to sit below the combined line by the exclusion component's share."
     }
   ]
 }
