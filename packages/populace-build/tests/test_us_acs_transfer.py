@@ -604,6 +604,19 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
         "is_incapable_of_self_care",
         "pre_subsidy_care_expenses",
     )
+    # The 23-stage base zeroed the second-home mortgage legs; the plan must
+    # not declare all-engine-default donor targets.
+    tax_unit = set(
+        declared_acs_transfer_target_families()["tax_unit"]["puf_tax_itemization"]
+    )
+    assert "first_home_mortgage_balance" in tax_unit
+    assert tax_unit.isdisjoint(
+        {
+            "second_home_mortgage_balance",
+            "second_home_mortgage_interest",
+            "second_home_mortgage_origination_year",
+        }
+    )
 
 
 def test_explicit_transfer_adds_requested_model_inputs(

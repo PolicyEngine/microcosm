@@ -279,7 +279,20 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         "model_required_discrete": ("own_children_in_household",),
     },
     "tax_unit": {
-        "puf_tax_itemization": PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        # The 23-stage base carries the second-home mortgage legs as
+        # all-zero schema columns (the mortgage surface consolidated onto
+        # the first-home leaves), so they offer no donor signal; the
+        # donor-coverage gate hard-fails an all-engine-default target.
+        "puf_tax_itemization": tuple(
+            target
+            for target in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+            if target
+            not in {
+                "second_home_mortgage_balance",
+                "second_home_mortgage_interest",
+                "second_home_mortgage_origination_year",
+            }
+        ),
     },
     "spm_unit": {
         # Housing-assistance receipt is source-observed in the raw pool. Other
