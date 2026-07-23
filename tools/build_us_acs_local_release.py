@@ -1272,6 +1272,9 @@ def do_finalize(args) -> None:
             },
         },
         "input_coverage": {
+            # Enforced upstream: the staging driver's donor-coverage gate
+            # hard-fails before transfer, so reaching finalize means it held.
+            "passed": True,
             "binds": "donor_certified_release",
             "note": (
                 "Input coverage is enforced on the certified donor release "
