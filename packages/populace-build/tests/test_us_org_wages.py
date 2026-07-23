@@ -436,6 +436,16 @@ def test_signal_gate_rejects_zero_and_structurally_impossible_premium() -> None:
     assert not gate.passed
     assert any("positive_without_overtime" in failure for failure in gate.failures)
 
+    # An infinite hours signal reads as absent in the estimator, so a
+    # fabricated positive premium riding on it must still trip the gate.
+    nonfinite = _plausible_surface()
+    nonfinite.table("person").loc[500, "fsla_overtime_premium"] = 1_000.0
+    nonfinite.table("person").loc[500, "hours_worked_last_week"] = np.inf
+    nonfinite.table("person").loc[500, "weekly_hours_worked_before_lsr"] = 40.0
+    gate = us_org_wages_signal_gate(nonfinite)
+    assert not gate.passed
+    assert any("positive_without_overtime" in failure for failure in gate.failures)
+
 
 def test_signal_gate_accepts_usual_hours_leg_carriers() -> None:
     # A positive premium with a 40-hour reference week is coherent when the
@@ -451,7 +461,9 @@ def test_signal_gate_accepts_usual_hours_leg_carriers() -> None:
 
 
 def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
-    pytest.importorskip("policyengine_us")
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
 
     class Fitted:
         def predict(self, features):
@@ -501,7 +513,9 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     skipped (poisoned here to prove it), the premium refreshes, and an
     already-consistent surface passes through unchanged.
     """
-    pytest.importorskip("policyengine_us")
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
 
     class PoisonQRF:
         def __init__(self, **kwargs):
@@ -520,21 +534,31 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     person["is_paid_hourly"] = person["employment_income_before_lsr"] > 0
     person["is_union_member_or_covered"] = np.arange(len(person)) % 9 == 0
     # Stale surface: the retired construction's output — zero for the
-    # usual-45/reference-40 workers the reference-week gate dropped.
+    # usual-45/reference-40 workers the reference-week gate dropped. Rows
+    # 850-899 conflict the two signals (usual 45, reference 60) so a
+    # refresh-branch hours swap would surface as 52_000/7 instead of
+    # 52_000/19, and a NaN premium must take the recomputed clean value.
     person.loc[900:949, "weekly_hours_worked_before_lsr"] = 45.0
+    person.loc[850:899, "weekly_hours_worked_before_lsr"] = 45.0
+    person.loc[850:899, "hours_worked_last_week"] = 60.0
     person["fsla_overtime_premium"] = 0.0
     person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
+    person.loc[999, "fsla_overtime_premium"] = np.nan
 
     refreshed = module.with_us_org_wages_inputs(
         _frame(person), seed=0, time_period=2024, org_donor=_donor()
     )
     premium = refreshed.table("person")["fsla_overtime_premium"]
     np.testing.assert_allclose(
+        premium.iloc[850:900], np.full(50, 52_000 / 19), rtol=1e-5
+    )
+    np.testing.assert_allclose(
         premium.iloc[900:950], np.full(50, 52_000 / 19), rtol=1e-5
     )
     np.testing.assert_allclose(
         premium.iloc[950:1000], np.full(50, 52_000 / 11), rtol=1e-5
     )
+    assert np.isfinite(premium.to_numpy()).all()
 
     # Idempotent second pass: already consistent, returned unchanged.
     person_consistent = refreshed.table("person")

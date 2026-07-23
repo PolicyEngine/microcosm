@@ -711,6 +711,23 @@ def impute_us_org_wages(
     return carried, wages
 
 
+def _finite_nonnegative(values: np.ndarray | pd.Series) -> np.ndarray:
+    """Read a numeric signal with NaN and infinities treated as absent."""
+
+    return np.maximum(
+        np.nan_to_num(
+            np.asarray(
+                pd.to_numeric(pd.Series(values), errors="coerce"),
+                dtype=np.float64,
+            ),
+            nan=0,
+            posinf=0,
+            neginf=0,
+        ),
+        0,
+    )
+
+
 def _flsa_policy(year: int) -> tuple[float, float, float, float, float]:
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -749,9 +766,10 @@ def derive_flsa_overtime_premium(
     The retired method annualized the ASEC reference week alone: a worker was
     a carrier only when the March survey week exceeded the hours threshold,
     and that single week's premium share was applied to the whole retrospective
-    income year. That construction preserves aggregate mass in expectation but
-    collapses incidence to one week's draw — and the reference week is not even
-    inside the income year the premium is attributed to.
+    income year. That construction is a mass proxy — exact for steady
+    schedules, biased either way for variable ones — that collapses incidence
+    to one week's draw, and the reference week is not even inside the income
+    year the premium is attributed to.
 
     This estimator adds the persistent signal: when usual weekly hours worked
     last year (ASEC HRSWK) exceed the threshold, the worker is a carrier and
@@ -773,14 +791,6 @@ def derive_flsa_overtime_premium(
     infinities) are treated as absent rather than annualized. Adjudication
     receipts: populace#451 item 4 (overtime-incidence lane).
     """
-
-    def _finite_nonnegative(values: np.ndarray | pd.Series) -> np.ndarray:
-        return np.maximum(
-            np.nan_to_num(
-                np.asarray(values, dtype=np.float64), nan=0, posinf=0, neginf=0
-            ),
-            0,
-        )
 
     income = _finite_nonnegative(employment_income)
     reference_week = _finite_nonnegative(hours_worked_last_week)
@@ -864,11 +874,11 @@ def with_us_org_wages_inputs(
             is_farmer_fisher=person["is_farmer_fisher"],
             is_computer_scientist=person["is_computer_scientist"],
         )
-        stored = (
-            pd.to_numeric(person["fsla_overtime_premium"], errors="coerce")
-            .fillna(0)
-            .to_numpy(dtype=np.float32)
-        )
+        stored = pd.to_numeric(
+            person["fsla_overtime_premium"], errors="coerce"
+        ).to_numpy(dtype=np.float32)
+        # NaN never compares equal, so a non-numeric or NaN-carrying stored
+        # column always takes the recomputed clean values.
         if np.array_equal(stored, refreshed):
             return frame
         tables = {entity: frame.table(entity).copy() for entity in frame.entities}
@@ -925,26 +935,13 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
     premium = pd.to_numeric(person["fsla_overtime_premium"], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    income = (
-        pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
-    hours = (
-        pd.to_numeric(person["hours_worked_last_week"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
-    usual = (
-        pd.to_numeric(person["weekly_hours_worked_before_lsr"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
-    weeks = (
-        pd.to_numeric(person["weeks_worked"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
+    # Input signals share the estimator's non-finite-as-absent read, so the
+    # structural checks below judge exactly what the derivation saw; the
+    # premium itself stays raw so nonfinite outputs are counted, not masked.
+    income = _finite_nonnegative(person["employment_income_before_lsr"])
+    hours = _finite_nonnegative(person["hours_worked_last_week"])
+    usual = _finite_nonnegative(person["weekly_hours_worked_before_lsr"])
+    weeks = _finite_nonnegative(person["weeks_worked"])
     never = person["has_never_worked"].astype(bool).to_numpy()
     military = person["is_military"].astype(bool).to_numpy()
     violations = {
