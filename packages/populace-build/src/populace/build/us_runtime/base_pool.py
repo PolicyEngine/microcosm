@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-
 from typing import Any
 
 import numpy as np
@@ -465,7 +464,13 @@ def _derived_donor_puma(
     inconsistent = (derived // 100_000) != states
     if inconsistent.any():
         examples = sorted(
-            set(zip(states[inconsistent].head(), derived[inconsistent].head()))
+            set(
+                zip(
+                    states[inconsistent].head(),
+                    derived[inconsistent].head(),
+                    strict=True,
+                )
+            )
         )
         raise ValueError(
             f"Derived donor PUMA state prefixes disagree with state_fips: {examples}."
