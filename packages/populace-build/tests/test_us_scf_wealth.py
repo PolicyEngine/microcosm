@@ -582,6 +582,52 @@ def test_with_inputs_writes_asset_and_net_worth_columns() -> None:
     assert (net_worth < 0).any()
 
 
+def test_carry_signal_tolerates_a_single_constant_leaf() -> None:
+    # Bond holdings are ~97% zero in the donor: a healthy draw on a small
+    # frame can produce an all-zero bond column. That must NOT read as an
+    # engine-default surface (per-leaf nonconstancy made pass-through
+    # platform-dependent — the #510 CI failure). Only an all-leaves-constant
+    # surface forces re-imputation.
+    frame = _us_frame(_person_rows(60))
+    donor = _donor_table()
+    once = with_us_scf_wealth_inputs(
+        frame, seed=42, time_period=TIME_PERIOD, scf_donor=donor
+    )
+
+    def _with_person(base, mutate):
+        tables = {entity: base.table(entity).copy() for entity in base.entities}
+        mutate(tables["person"])
+        return Frame(
+            tables,
+            base.schema,
+            {entity: base.weights_for(entity) for entity in base.weighted_entities},
+        )
+
+    def _zero_bond(person):
+        person["bond_assets"] = 0.0
+
+    degenerate_bond = _with_person(once, _zero_bond)
+    twice = with_us_scf_wealth_inputs(
+        degenerate_bond, seed=99, time_period=TIME_PERIOD, scf_donor=donor
+    )
+    np.testing.assert_array_equal(
+        degenerate_bond.table("person")["bank_account_assets"].to_numpy(),
+        twice.table("person")["bank_account_assets"].to_numpy(),
+    )
+
+    def _zero_all(person):
+        for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
+            person[column] = 0.0
+
+    redrawn = with_us_scf_wealth_inputs(
+        _with_person(once, _zero_all),
+        seed=99,
+        time_period=TIME_PERIOD,
+        scf_donor=donor,
+    )
+    assert redrawn.table("person")["bank_account_assets"].to_numpy().sum() > 0
+
+
 def test_with_inputs_is_idempotent_when_signal_present() -> None:
     frame = _us_frame(_person_rows(60))
     donor = _donor_table()

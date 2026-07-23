@@ -1006,23 +1006,27 @@ def impute_us_scf_net_worth(
 
 
 def _financial_assets_carry_signal(person: pd.DataFrame) -> bool:
-    """Whether every persisted financial-asset leaf is trustworthy as-is.
+    """Whether the persisted financial-asset surface is trustworthy as-is.
 
-    A nonfinite or constant column is indistinguishable from a corrupted or
-    engine-default surface and must be re-imputed, not passed through.
+    Nonfinite values mark a corrupted surface and force re-imputation. The
+    engine-default check is JOINT across the three leaves: a surface where
+    every leaf is constant (the all-zero engine default) must be re-imputed,
+    but a single legitimately constant leaf must not force a redraw — bond
+    holdings are ~97% zero in the donor, so a small or chunked frame can
+    draw a constant bond column from a perfectly healthy imputation. A
+    per-leaf nonconstancy test made pass-through platform-dependent (the
+    #510 CI failure) and would silently redraw small production chunks.
     """
 
+    stacked: list[np.ndarray] = []
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
         values = pd.to_numeric(person[column], errors="coerce").to_numpy(
             dtype=np.float64
         )
-        if (
-            len(values) != len(person)
-            or not np.isfinite(values).all()
-            or np.unique(values).size < 2
-        ):
+        if len(values) != len(person) or not np.isfinite(values).all():
             return False
-    return True
+        stacked.append(values)
+    return np.unique(np.concatenate(stacked)).size >= 2
 
 
 def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
