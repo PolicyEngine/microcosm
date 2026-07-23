@@ -232,11 +232,15 @@ def test_occupation_carries_match_retired_poccu2_codes() -> None:
 
 
 def test_flsa_proxy_uses_annual_wage_share_and_exemption_screen() -> None:
+    # usual hours at/below the threshold: the reference-week leg reproduces the
+    # retired annual-wage-share arithmetic exactly (the occasional-overtime
+    # snapshot convention is retained, not re-derived).
     policy = (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
     premium = derive_flsa_overtime_premium(
         time_period=2024,
         employment_income=np.asarray([57_200, 60_000, 60_000, 100_000, 50_000]),
         hours_worked_last_week=np.asarray([50, 50, 50, 50, 50]),
+        usual_weekly_hours=np.asarray([40, 40, 40, 40, 40]),
         weeks_worked=np.asarray([52, 52, 52, 52, 52]),
         is_paid_hourly=np.asarray([True, False, False, False, True]),
         has_never_worked=np.asarray([False, False, False, False, True]),
@@ -249,6 +253,53 @@ def test_flsa_proxy_uses_annual_wage_share_and_exemption_screen() -> None:
         policy=policy,
     )
     np.testing.assert_allclose(premium, [5_200, 0, 0, 100_000 / 11, 0], rtol=1e-6)
+
+
+def test_flsa_two_signal_estimator_usual_hours_leg() -> None:
+    """Usual weekly hours above the threshold carry the persistent-overtime leg.
+
+    share(45) = 0.5*5 / (40 + 1.5*5) = 1/19; share(50) = 0.5*10 / (40 + 15)
+    = 1/11. Workers whose usual week exceeds the threshold are carriers even
+    when the (out-of-income-year) reference week is at or below it, and their
+    annualizer is the persistent usual-hours share, never a single hot week.
+    """
+    policy = (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    premium = derive_flsa_overtime_premium(
+        time_period=2024,
+        employment_income=np.asarray(
+            [57_000, 57_000, 55_000, 55_000, 60_000, 57_000, 57_000, 120_000]
+        ),
+        hours_worked_last_week=np.asarray([40, 60, 0, 50, 40, 40, 40, 40]),
+        usual_weekly_hours=np.asarray([45, 45, 50, 0, 50, 45, 45, 45]),
+        weeks_worked=np.asarray([52, 52, 52, 52, 52, 0, 52, 52]),
+        is_paid_hourly=np.asarray(
+            [False, False, False, False, False, False, False, True]
+        ),
+        has_never_worked=np.asarray(
+            [False, False, False, False, False, False, True, False]
+        ),
+        is_military=np.zeros(8, dtype=bool),
+        is_executive_administrative_professional=np.asarray(
+            [False, False, False, False, True, False, False, False]
+        ),
+        is_farmer_fisher=np.zeros(8, dtype=bool),
+        is_computer_scientist=np.zeros(8, dtype=bool),
+        policy=policy,
+    )
+    np.testing.assert_allclose(
+        premium,
+        [
+            3_000,  # usual 45, reference week 40: recovered carrier, share 1/19
+            3_000,  # usual 45, reference week 60: persistent signal wins
+            5_000,  # usual 50, reference week 0 (absent): recovered, share 1/11
+            5_000,  # usual 0 record, reference 50: reference-week leg, share 1/11
+            0,  # salaried EAP above the salary-basis threshold stays exempt
+            0,  # zero weeks worked stays zero
+            0,  # always-exempt (never worked) stays zero
+            120_000 / 19,  # hourly worker above the HCE threshold stays covered
+        ],
+        rtol=1e-6,
+    )
 
 
 def test_imputation_zeroes_inactive_and_union_is_deterministic(monkeypatch) -> None:
@@ -328,6 +379,11 @@ def _plausible_surface() -> Frame:
     person["fsla_overtime_premium"] = 0.0
     # These 50 are non-exempt code-20 workers with 50 hours and positive wages.
     person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
+    # These 50 carry the usual-hours leg: reference week at the threshold but a
+    # 45-hour usual week (share 1/19) — valid carriers under the two-signal
+    # estimator.
+    person.loc[900:949, "weekly_hours_worked_before_lsr"] = 45.0
+    person.loc[900:949, "fsla_overtime_premium"] = 52_000 / 19
     return _frame(person)
 
 
@@ -346,6 +402,56 @@ def test_signal_gate_rejects_zero_and_structurally_impossible_premium() -> None:
     impossible = _plausible_surface()
     impossible.table("person").loc[500, "fsla_overtime_premium"] = 1_000.0
     impossible.table("person").loc[500, "hours_worked_last_week"] = 40.0
+    impossible.table("person").loc[500, "weekly_hours_worked_before_lsr"] = 40.0
     gate = us_org_wages_signal_gate(impossible)
     assert not gate.passed
     assert any("positive_without_overtime" in failure for failure in gate.failures)
+
+
+def test_signal_gate_accepts_usual_hours_leg_carriers() -> None:
+    # A positive premium with a 40-hour reference week is coherent when the
+    # usual week exceeds the threshold; only both signals at or below the
+    # threshold make a positive premium structurally impossible.
+    frame = _plausible_surface()
+    person = frame.table("person")
+    assert (person.loc[900:949, "hours_worked_last_week"] == 40.0).all()
+    assert (person.loc[900:949, "weekly_hours_worked_before_lsr"] == 45.0).all()
+    assert (person.loc[900:949, "fsla_overtime_premium"] > 0).all()
+    gate = us_org_wages_signal_gate(frame)
+    assert gate.passed, gate.failures
+
+
+def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
+    pytest.importorskip("policyengine_us")
+
+    class Fitted:
+        def predict(self, features):
+            return pd.DataFrame(
+                {
+                    "hourly_wage": np.full(len(features), 25.0),
+                    "is_paid_hourly": np.ones(len(features)),
+                },
+                index=features.index,
+            )
+
+    class FakeQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit(self, *args, **kwargs):
+            return Fitted()
+
+    monkeypatch.setattr("populace.fit.QRF", FakeQRF)
+    person = _person(100)
+    # Recovered carrier: usual 45-hour week, 40-hour reference week.
+    person.loc[50, "employment_income_before_lsr"] = 57_000.0
+    person.loc[50, "weekly_hours_worked_before_lsr"] = 45.0
+    person.loc[50, "hours_worked_last_week"] = 40.0
+    person.loc[50, "weeks_worked"] = 52.0
+    frame = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    )
+    premium = frame.table("person")["fsla_overtime_premium"]
+    np.testing.assert_allclose(premium.iloc[50], 3_000.0, rtol=1e-5)
+    inactive = person["employment_income_before_lsr"].to_numpy() <= 0
+    assert (premium.to_numpy()[inactive] == 0).all()
