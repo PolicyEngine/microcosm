@@ -590,10 +590,11 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
 
     person = declared_acs_transfer_target_families()["person"]
     itemization = set(person["puf_tax_itemization"])
-    # The buildl-era exclusion is stale: the 23-stage base disaggregates
-    # combined partnership income into both observed leaves.
+    # The 23-stage base observes partnership SE earnings (buildl's exclusion
+    # is stale there) but still carries s_corp_income as an all-zero schema
+    # column, so only the SE-earnings leg returns to the plan.
     assert "partnership_self_employment_net_earnings" in itemization
-    assert "s_corp_income" in itemization
+    assert "s_corp_income" not in itemization
     # The Schedule D capital-gain-distributions memo leg is stage-owned, not
     # a PUF-detail default output, so it needs its own declared family.
     assert person["capital_gain_details"] == ("schedule_d_capital_gain_distributions",)

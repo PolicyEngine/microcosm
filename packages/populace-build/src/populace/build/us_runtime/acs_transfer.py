@@ -222,15 +222,17 @@ type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 # transfer, and post-transfer coverage audit all consume the exact same plan.
 _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = {
     "person": {
-        # The buildl-era donor carried combined partnership/S-corporation
-        # income only, so partnership_self_employment_net_earnings and
-        # s_corp_income were excluded here. The 23-stage base disaggregates
-        # both as observed donor leaves, so the default outputs flow through
-        # unfiltered (ACS-native leaves stay native).
+        # The buildl-era donor excluded both partnership leaves because it
+        # carried only combined partnership_income. The 23-stage base now
+        # observes partnership_self_employment_net_earnings (restored below
+        # via the default outputs), but s_corp_income remains an all-zero
+        # schema column on the certified donor — combined income still
+        # lives in partnership_income — so its exclusion stands until the
+        # base disaggregates it.
         "puf_tax_itemization": tuple(
             target
             for target in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-            if target not in ACS_NATIVE_PERSON_INPUTS
+            if target not in ACS_NATIVE_PERSON_INPUTS | {"s_corp_income"}
         ),
         # Stage-owned inputs the Build M/N/O campaign added to the donor
         # after the buildl plan froze. schedule_d_capital_gain_distributions
