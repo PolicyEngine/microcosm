@@ -302,6 +302,35 @@ def test_flsa_two_signal_estimator_usual_hours_leg() -> None:
     )
 
 
+def test_flsa_treats_non_finite_hours_as_absent() -> None:
+    # Malformed infinities must read as missing signals, not annualize or
+    # overflow the straight-time-equivalent denominator into a silent zero.
+    policy = (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    premium = derive_flsa_overtime_premium(
+        time_period=2024,
+        employment_income=np.asarray([57_000.0, 57_000.0, 57_000.0]),
+        hours_worked_last_week=np.asarray([50.0, np.inf, 40.0]),
+        usual_weekly_hours=np.asarray([np.inf, 45.0, np.nan]),
+        weeks_worked=np.asarray([52.0, 52.0, 52.0]),
+        is_paid_hourly=np.ones(3, dtype=bool),
+        has_never_worked=np.zeros(3, dtype=bool),
+        is_military=np.zeros(3, dtype=bool),
+        is_executive_administrative_professional=np.zeros(3, dtype=bool),
+        is_farmer_fisher=np.zeros(3, dtype=bool),
+        is_computer_scientist=np.zeros(3, dtype=bool),
+        policy=policy,
+    )
+    np.testing.assert_allclose(
+        premium,
+        [
+            57_000 / 11,  # inf usual reads as absent; reference-week leg holds
+            3_000,  # inf reference week reads as absent; usual leg holds
+            0,  # NaN usual with a 40-hour reference week stays zero
+        ],
+        rtol=1e-6,
+    )
+
+
 def test_imputation_zeroes_inactive_and_union_is_deterministic(monkeypatch) -> None:
     class Fitted:
         def predict(self, features):
@@ -448,10 +477,71 @@ def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
     person.loc[50, "weekly_hours_worked_before_lsr"] = 45.0
     person.loc[50, "hours_worked_last_week"] = 40.0
     person.loc[50, "weeks_worked"] = 52.0
+    # Conflicting signals: swapped caller wiring would pick the 60-hour
+    # reference week (share 1/7 -> $8,142.86) instead of the usual 45 ($3,000).
+    person.loc[51, "employment_income_before_lsr"] = 57_000.0
+    person.loc[51, "weekly_hours_worked_before_lsr"] = 45.0
+    person.loc[51, "hours_worked_last_week"] = 60.0
+    person.loc[51, "weeks_worked"] = 52.0
     frame = module.with_us_org_wages_inputs(
         _frame(person), seed=0, time_period=2024, org_donor=_donor()
     )
     premium = frame.table("person")["fsla_overtime_premium"]
     np.testing.assert_allclose(premium.iloc[50], 3_000.0, rtol=1e-5)
+    np.testing.assert_allclose(premium.iloc[51], 3_000.0, rtol=1e-5)
     inactive = person["employment_income_before_lsr"].to_numpy() <= 0
     assert (premium.to_numpy()[inactive] == 0).all()
+
+
+def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None:
+    """A populated ORG surface must converge to the current estimator.
+
+    The idempotency skip may not silently retain a premium column produced by
+    the retired reference-week-only construction; the QRF family stays
+    skipped (poisoned here to prove it), the premium refreshes, and an
+    already-consistent surface passes through unchanged.
+    """
+    pytest.importorskip("policyengine_us")
+
+    class PoisonQRF:
+        def __init__(self, **kwargs):
+            raise AssertionError("populated surface must not refit the QRF")
+
+    monkeypatch.setattr("populace.fit.QRF", PoisonQRF)
+    person = _person(1_000)
+    person["cps_race"] = person["PRDTRACE"]
+    person["is_hispanic"] = person["PRDTHSP"].ne(0)
+    carried = derive_us_org_occupation_inputs(person)
+    for column in carried:
+        person[column] = carried[column]
+    person["hourly_wage"] = np.where(
+        person["employment_income_before_lsr"] > 0, 25.0, 0.0
+    )
+    person["is_paid_hourly"] = person["employment_income_before_lsr"] > 0
+    person["is_union_member_or_covered"] = np.arange(len(person)) % 9 == 0
+    # Stale surface: the retired construction's output — zero for the
+    # usual-45/reference-40 workers the reference-week gate dropped.
+    person.loc[900:949, "weekly_hours_worked_before_lsr"] = 45.0
+    person["fsla_overtime_premium"] = 0.0
+    person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
+
+    refreshed = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    )
+    premium = refreshed.table("person")["fsla_overtime_premium"]
+    np.testing.assert_allclose(
+        premium.iloc[900:950], np.full(50, 52_000 / 19), rtol=1e-5
+    )
+    np.testing.assert_allclose(
+        premium.iloc[950:1000], np.full(50, 52_000 / 11), rtol=1e-5
+    )
+
+    # Idempotent second pass: already consistent, returned unchanged.
+    person_consistent = refreshed.table("person")
+    again = module.with_us_org_wages_inputs(
+        _frame(person_consistent), seed=0, time_period=2024, org_donor=_donor()
+    )
+    np.testing.assert_array_equal(
+        again.table("person")["fsla_overtime_premium"].to_numpy(),
+        premium.to_numpy(),
+    )
