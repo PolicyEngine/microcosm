@@ -37,6 +37,24 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "qualified_business_income_deduction": (
         "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss"
     ),
+    "self_employed_health_insurance_ald": (
+        "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss"
+    ),
+    "health_savings_account_ald": (
+        "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss"
+    ),
+    "student_loan_interest_ald": (
+        "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss"
+    ),
+    "self_employed_pension_contribution_ald": (
+        "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss"
+    ),
+    "traditional_ira_contributions": (
+        "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss"
+    ),
+    "cdcc": (
+        "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss"
+    ),
 }
 
 REFERENCE_PROGRAM_TARGET_ROLES = {
