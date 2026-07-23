@@ -55,6 +55,9 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "cdcc": (
         "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss"
     ),
+    "auto_loan_interest_deduction": (
+        "jct.tax_expenditures.cy2024.auto_loan_interest_deduction.revenue_loss"
+    ),
 }
 
 REFERENCE_PROGRAM_TARGET_ROLES = {
