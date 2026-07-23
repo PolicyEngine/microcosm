@@ -53,7 +53,7 @@ REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
         "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss"
     ),
     "cdcc": (
-        "jct.tax_expenditures.cy2024.child_and_dependent_care_credit.revenue_loss"
+        "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss"
     ),
 }
 
