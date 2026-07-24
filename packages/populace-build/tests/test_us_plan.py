@@ -367,9 +367,11 @@ class TestUsSources:
                 "65_plus": "age >= 65",
             },
             "rate_derivation": (
-                "band_target / weighted_candidate_capacity(uncapped_ssi > 0); "
-                "min(reporter_candidate_floor / capacity, 1) once that ratio "
-                "reaches one"
+                "band_target / basis_candidate_capacity(uncapped_ssi > 0); "
+                "basis = this frame's weights, or a prior attempt's "
+                "delivered-weight us_ssi_take_up.json diagnostics "
+                "(populace#507/#508); min(basis_reporter_candidate_floor / "
+                "capacity, 1) once that ratio reaches one"
             ),
             "rate_target_role": "ssa_ssi_age_band_recipients",
             "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,

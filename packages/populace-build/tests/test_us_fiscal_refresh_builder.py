@@ -3568,10 +3568,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return dict(fake_band_targets)
 
     fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
+    # Schema-3 shape (populace#507/#508): main() reconstructs the prior
+    # weight basis from these stage diagnostics with the REAL module helper
+    # and threads it into the final release-weight measurement.
     fake_stage_diagnostics = {
         "checked": True,
+        "schema_version": 3,
+        "prior_weight_basis": {
+            "kind": "current_frame",
+            "source_sha256": None,
+            "source_schema_version": None,
+        },
         "age_bands": [
-            {"age_band": key, "assignment_prior": prior}
+            {
+                "age_band": key,
+                "assignment_prior": prior,
+                "prior_basis_candidate_capacity": 1_000.0,
+                "prior_basis_reporter_candidate_floor": 100.0,
+            }
             for key, prior in fake_stage_priors.items()
         ],
     }
@@ -3583,12 +3597,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         targets,
         reporter_source_ids,
+        prior_basis=None,
     ):
         captured["ssi_take_up_stage_called"] = True
         captured["ssi_take_up_seed"] = seed
         captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
         captured["ssi_take_up_targets"] = dict(targets)
         captured["ssi_reporter_source_ids"] = reporter_source_ids
+        captured["ssi_take_up_prior_basis"] = prior_basis
         return frame, dict(fake_stage_diagnostics)
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
@@ -3875,11 +3891,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         targets,
         assignment_priors,
+        prior_basis,
         reporter_source_ids,
     ):
         captured["final_ssi_diagnostics_called"] = True
         captured["final_ssi_diagnostics_targets"] = dict(targets)
         captured["final_ssi_diagnostics_assignment_priors"] = dict(assignment_priors)
+        captured["final_ssi_diagnostics_prior_basis"] = prior_basis
         captured["final_ssi_diagnostics_reporter_source_ids"] = reporter_source_ids
         return {"checked": True}
 
@@ -3899,6 +3917,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "us_ssi_take_up_diagnostics",
         fake_final_ssi_diagnostics,
+    )
+
+    def fake_ssi_delivery_gate(diagnostics, *, targets):
+        captured["ssi_delivery_gate_called"] = True
+        captured["ssi_delivery_gate_targets"] = dict(targets)
+        return builder.GateResult(
+            name="ssi_take_up_delivery",
+            passed=True,
+            details=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_delivery_gate",
+        fake_ssi_delivery_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -4056,6 +4089,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["final_ssi_diagnostics_reporter_source_ids"] == frozenset(
         {"asec-reporter"}
     )
+    # No CLI basis: the stage draws on current-frame capacities, and the final
+    # measurement republishes the basis reconstructed from the stage's own
+    # diagnostics (populace#507/#508) — then the delivery gate binds it.
+    assert captured["ssi_take_up_prior_basis"] is None
+    final_basis = captured["final_ssi_diagnostics_prior_basis"]
+    assert final_basis.kind == "current_frame"
+    assert final_basis.band("65_plus").candidate_capacity == pytest.approx(1_000.0)
+    assert captured["ssi_delivery_gate_called"] is True
+    assert captured["ssi_delivery_gate_targets"] == fake_band_targets
     assert captured["final_medicaid_diagnostics_called"] is True
     assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
     assert (
@@ -7964,6 +8006,175 @@ def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
         ],
     )
     assert builder._parse_args().allow_qrf_tail_concentration
+
+
+# --- SSI take-up delivered-weight prior basis + delivery gate (#507/#508) ---
+
+_SSI_BAND_TARGETS = {
+    "under_18": 1_001_922.0,
+    "18_64": 3_905_779.0,
+    "65_plus": 2_382_142.0,
+}
+
+
+def _ssi_prior_final_artifact_payload() -> dict:
+    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape)."""
+
+    from populace.build.us_runtime import ssi_take_up as ssi_module
+
+    bands = [
+        ("under_18", 1_001_922.0, 177_582.0, 60_000.0),
+        ("18_64", 3_905_779.0, 6_000_000.0, 2_500_000.0),
+        ("65_plus", 2_382_142.0, 3_995_000.0, 900_000.0),
+    ]
+    return {
+        "schema_version": 2,
+        "classification": "release_diagnostics",
+        "variable": "takes_up_ssi_if_eligible",
+        "candidate_definition": ssi_module._CANDIDATE_DEFINITION,
+        "target_table": ssi_module.US_SSI_TAKE_UP_TARGET_TABLE_NAME,
+        "target_source": ssi_module.SSI_TAKE_UP_SSA_SOURCE_URL,
+        "target_period": ssi_module._TARGET_PERIOD,
+        "target_measure": ssi_module._TARGET_MEASURE,
+        "age_bands": [
+            {
+                "age_band": key,
+                "target": target,
+                "candidate_capacity": capacity,
+                "reporter_candidate_floor": floor,
+            }
+            for key, target, capacity, floor in bands
+        ],
+    }
+
+
+def test_ssi_prior_weight_basis_loads_a_prior_final_artifact(tmp_path) -> None:
+    import hashlib
+
+    builder = _load_builder_module()
+    path = tmp_path / "us_ssi_take_up.json"
+    path.write_text(json.dumps(_ssi_prior_final_artifact_payload()))
+
+    basis = builder._load_ssi_take_up_prior_weight_basis(
+        path, targets=_SSI_BAND_TARGETS
+    )
+
+    assert basis.kind == "release_artifact"
+    assert basis.source_schema_version == 2
+    assert basis.source_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+    aged = basis.band("65_plus")
+    assert aged.candidate_capacity == pytest.approx(3_995_000.0)
+    assert aged.reporter_candidate_floor == pytest.approx(900_000.0)
+    assert (
+        builder._load_ssi_take_up_prior_weight_basis(None, targets=_SSI_BAND_TARGETS)
+        is None
+    )
+
+
+def test_ssi_prior_weight_basis_fails_fast_on_bad_artifacts(tmp_path) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            tmp_path / "missing.json", targets=_SSI_BAND_TARGETS
+        )
+
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{not json")
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        builder._load_ssi_take_up_prior_weight_basis(invalid, targets=_SSI_BAND_TARGETS)
+
+    # A basis measured against a different SSA band target contract must be
+    # refused — one coherent target system (populace#508).
+    drifted_payload = _ssi_prior_final_artifact_payload()
+    drifted_payload["age_bands"][2]["target"] = 2_000_000.0
+    drifted = tmp_path / "drifted.json"
+    drifted.write_text(json.dumps(drifted_payload))
+    with pytest.raises(RuntimeError, match="target contract"):
+        builder._load_ssi_take_up_prior_weight_basis(drifted, targets=_SSI_BAND_TARGETS)
+
+
+def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    base_argv = [
+        "build_us_fiscal_refresh_release.py",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+    ]
+    monkeypatch.setattr(sys, "argv", base_argv)
+    assert builder._parse_args().ssi_take_up_prior_weight_basis is None
+
+    basis_path = tmp_path / "us_ssi_take_up.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [*base_argv, "--ssi-take-up-prior-weight-basis", str(basis_path)],
+    )
+    assert builder._parse_args().ssi_take_up_prior_weight_basis == basis_path
+
+
+def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
+    return {
+        "schema_version": 3,
+        "age_bands": [
+            {
+                "age_band": key,
+                "target": _SSI_BAND_TARGETS[key],
+                "selected_recipient_weight": selected[key],
+            }
+            for key in _SSI_BAND_TARGETS
+        ],
+    }
+
+
+def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    # Build N's measured delivery: 65+ landed 0.98M against 2.38M — the
+    # populace#507 collapse — while under-18 stays fenced (#453/#509).
+    diagnostics = _ssi_delivery_diagnostics(
+        {"under_18": 120_000.0, "18_64": 4_100_000.0, "65_plus": 984_000.0}
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    with pytest.raises(RuntimeError, match="ssi-take-up-prior-weight-basis"):
+        builder._enforce_ssi_take_up_delivery(
+            diagnostics,
+            targets=_SSI_BAND_TARGETS,
+            release_dir=release_dir,
+            telemetry=None,
+        )
+
+    written = json.loads((release_dir / "us_ssi_take_up.json").read_text())
+    assert written == diagnostics
+
+
+def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {
+            "under_18": 120_000.0,  # fenced: an 88% miss must not fail
+            "18_64": 3_900_000.0,
+            "65_plus": 2_350_000.0,
+        }
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert not (release_dir / "us_ssi_take_up.json").exists()
 
 
 def test_calibration_diagnostics_schema_lockstep() -> None:

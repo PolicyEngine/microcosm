@@ -1231,7 +1231,13 @@ def _ssa_ssi_by_area_fact(
     )
 
 
-def test_ssa_ssi_recipients_national_fact_maps_to_ssi_indicator() -> None:
+def test_ssa_ssi_recipients_national_fact_is_a_nonbinding_reference() -> None:
+    # populace#508 owner adjudication (2026-07-23): the by-area national
+    # all_areas_total (7,404,820) is the *federally administered* universe —
+    # it includes ~115k state-supplement-only recipients with no federal SSI
+    # payment — while engine ``ssi`` is the federal payment. It must never
+    # bind: the national federal-payment caseload is the sum of the three
+    # by-age band targets (7,289,843, role ssa_ssi_age_band_recipients).
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -1244,16 +1250,14 @@ def test_ssa_ssi_recipients_national_fact_maps_to_ssi_indicator() -> None:
         ]
     )
 
-    spec = {spec.name: spec for spec in registry.specs}[
-        "ssa_supplement.cy2024.ssi_recipients.by_area_category"
-        ".all_areas_total.recipient_count"
+    assert not [
+        spec
+        for spec in registry.specs
+        if "ssi_recipients.by_area_category" in spec.name
     ]
-    assert spec.family == "ssa"
-    assert spec.value == 7_404_820
-    assert spec.metadata["target_role"] == "ssi_recipients"
-    assert spec.metadata["base_variable"] == "ssi"
-    assert spec.metadata["measure_mode"] == "indicator_sum"
-    assert "state_fips" not in spec.metadata
+    assert not [
+        spec for spec in registry.specs if spec.value == pytest.approx(7_404_820)
+    ]
 
 
 def test_ssa_ssi_recipients_state_fact_compiles_with_state_fips() -> None:
@@ -1299,6 +1303,68 @@ def test_ssa_ssi_recipient_eligibility_category_subrows_are_not_compiled() -> No
     )
 
     assert not [spec for spec in registry.specs if "ssi_recipients" in spec.name]
+
+
+def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
+    """Role-separation guard (populace#508 adjudication, 2026-07-23).
+
+    Table 7.B1's "aged" row (1,161,623) is the aged ELIGIBILITY CATEGORY —
+    people who qualified under the age-65+ pathway — while the by-age 65+
+    band (2,382,142) counts people aged 65+ across all categories, mostly
+    disabled-category recipients who aged past 65. Feeding both through the
+    compiler must leave exactly one binding 65+ target: the by-age band,
+    under its distinct role, at the federal-payment value. Nobody gets to
+    "fix" one number to the other.
+    """
+
+    aged_band_id = (
+        "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
+        "by_age.65_plus.recipient_count"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_ssi_by_area_fact(
+                measure_id="recipient_count",
+                value=1_161_623,
+                record_set_concept="ssi_recipients.by_area_category",
+                area_category="all_areas_aged",
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=aged_band_id,
+                source_name="ssa",
+                measure_id="recipient_count",
+                value=2_382_142,
+                period_value=2024,
+                layout_record_set_id=(
+                    "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age"
+                ),
+                groupby_value_id="65_plus",
+                universe_constraints=[
+                    {
+                        "operator": ">=",
+                        "role": "filter",
+                        "unit": "years",
+                        "value": 65,
+                        "variable": "age",
+                    },
+                ],
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    aged_targets = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "ssa_ssi_age_band_recipients"
+    ]
+    assert [spec.name for spec in aged_targets] == [aged_band_id]
+    assert aged_targets[0].value == 2_382_142
+    # The category row compiled to nothing — under no role at all.
+    assert not [
+        spec for spec in registry.specs if spec.value == pytest.approx(1_161_623)
+    ]
 
 
 def test_ssa_ssi_state_payment_fact_compiles_as_dollar_sum() -> None:

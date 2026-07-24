@@ -2389,6 +2389,16 @@ def _population_age_reference_from_fact(
 # counterpart: the model computes SSI receipt and amount but not the SSI
 # eligibility-category split, so aged/blind/disabled sub-rows are reviewed
 # exclusions in the target-parity manifest rather than silent drops.
+#
+# Role-separation guard (populace#508 owner adjudication, 2026-07-23): the
+# by-area "aged" rows are the AGED ELIGIBILITY CATEGORY (Table 7.B1 national
+# aged row: 1,161,623 — people who qualified under the age-65+ pathway), NOT
+# the age-65+ population. The SSA by-age 65+ band (2,382,142) counts people
+# aged 65+ across ALL eligibility categories — mostly disabled-category
+# recipients who aged past 65. The category rows must never be "fixed" to the
+# age bands or vice versa: category rows never compile (below), and the age
+# bands bind only through the by-age record set's first-class age constraints
+# under the distinct role ``ssa_ssi_age_band_recipients``.
 _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN = "oasdi_ssi_payments"
 _SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
 #: Engine-computed SSI counterpart both by-area families bind through. Receipt
@@ -2427,11 +2437,20 @@ def _ssa_ssi_reference_from_fact(
       aggregates. Delegated unchanged to :func:`_direct_reference_from_fact` so
       the standing ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (family ``ssa``:
       ``social_security_total`` … ``ssi_total``) never regress.
-    - ``ssi_recipients.by_area_category`` — SSI recipients (a count). The
+    - ``ssi_recipients.by_area_category`` — SSI recipients (a count) in the
+      *federally administered* universe, which includes ~115k people receiving
+      a state supplementary payment only (no federal SSI payment). The
       all-category ``total`` maps to an indicator sum of engine ``ssi`` receipt
-      at national and state grain (role ``ssi_recipients``). This is the
-      ``nation/ssa/ssi_recipients`` administrative family the retired
-      us-data/eCPS pipeline calibrated to that the populace registry dropped.
+      at STATE grain only (role ``ssi_recipients``). The national
+      ``all_areas_total`` (7,404,820 in December 2024) is a non-binding
+      witnessed reference per the populace#508 owner adjudication (2026-07-23):
+      engine ``ssi`` is the federal payment, so the national caseload binds
+      through the by-age *federal-payment* cells (Σ = 7,289,843) whose sum is
+      the national goal — the #430-era rescale to 7,404,820 mixed universes.
+      State rows keep binding as the only state-grain SSI caseload signal;
+      their ~115k aggregate universe gap is a documented residual pending a
+      state-level federal-payment source or a modeled state-supplement
+      concept.
     - ``ssi_payments.by_area_category`` — SSI federal payments (a dollar sum).
       The national ``all_areas_total`` equals the ``oasdi_ssi_payments``
       ``ssi_payments`` figure already compiled as ``ssi_total``, so only the
@@ -2451,9 +2470,12 @@ def _ssa_ssi_reference_from_fact(
         # age group (populace#470). The age-band rows bind as national
         # indicator counts of engine ``ssi`` receipt sliced by the fact's
         # first-class age constraints — the ordinary-target replacement for
-        # the retired take-up assignment goals (#469/#473). The all-ages row
-        # never binds: it duplicates the by-area ``all_areas_total`` national
-        # count already compiled under role ``ssi_recipients``.
+        # the retired take-up assignment goals (#469/#473). These three
+        # disjoint, exhaustive bands ARE the national federal-payment goal:
+        # their sum (7,289,843 in December 2024) is the caseload the solve
+        # enforces, per the populace#508 adjudication. The all-ages row never
+        # binds: it would double-weight the identical constraint the three
+        # band rows already carry.
         if _measure_id(fact) != "recipient_count":
             return None
         if _geography_level(fact) != "country":
@@ -2503,11 +2525,17 @@ def _ssa_ssi_reference_from_fact(
         if state_fips is None:
             return None
     elif geography_level == "country":
-        # The national by-area SSI payment duplicates the OASDI-table ssi_total
-        # already compiled from oasdi_ssi_payments; keep only the state rows.
-        if measure_id == "payment_amount":
-            return None
-        state_fips = None
+        # Neither national by-area row binds. The payment duplicates the
+        # OASDI-table ssi_total already compiled from oasdi_ssi_payments. The
+        # recipient count (all_areas_total, 7,404,820 in December 2024) is
+        # the *federally administered* universe — it includes ~115k
+        # state-supplement-only recipients with no federal SSI payment — and
+        # per the populace#508 owner adjudication (2026-07-23) it must not
+        # bind engine ``ssi`` (the federal payment): it stays a non-binding
+        # witnessed reference, and the national federal-payment caseload
+        # binds as the sum of the three by-age band targets (7,289,843,
+        # role ``ssa_ssi_age_band_recipients``). Only state rows compile.
+        return None
     else:
         return None
 
@@ -2523,9 +2551,8 @@ def _ssa_ssi_reference_from_fact(
         "source_measure_id": measure_id,
         "source_period": str(_period_value(fact)),
         "target_period": str(target_period),
+        "state_fips": state_fips,
     }
-    if state_fips:
-        metadata["state_fips"] = state_fips
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
