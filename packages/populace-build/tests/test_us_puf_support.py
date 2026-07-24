@@ -12,6 +12,7 @@ from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING,
     US_PUF_E19200_HOME_MORTGAGE_SHARE,
     clone_us_frame_for_puf_support,
     derive_us_cps_carried_inputs,
@@ -341,6 +342,55 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+
+
+def test_puf_tax_unit_donor_drops_grouped_raw_mortgage_outlier_rows() -> None:
+    assert US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING == 10_000_000.0
+    carved_below_ceiling = 10_500_000.0 * US_PUF_E19200_HOME_MORTGAGE_SHARE
+    assert carved_below_ceiling < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20, 30],
+            "household_weight": [101.0, 202.0, 303.0],
+            "filing_status": [b"JOINT", b"SINGLE", b"HEAD_OF_HOUSEHOLD"],
+            "person_tax_unit_id": [10, 10, 20, 30],
+            # Unit 10 reaches the ceiling only after person grouping. Unit 30
+            # proves the raw-before-carve ordering because its carved value is
+            # below the same literal ceiling.
+            "home_mortgage_interest": [
+                6_000_000.0,
+                4_000_000.0,
+                5_000_000.0,
+                10_500_000.0,
+            ],
+            # Conspicuous values on unrelated columns prove this is a whole-row
+            # drop rather than mortgage-only zeroing.
+            "employment_income": [
+                600_000_000.0,
+                400_000_000.0,
+                50_000.0,
+                800_000_000.0,
+            ],
+            "domestic_production_ald": [900_000_000.0, 700.0, 800_000_000.0],
+        },
+        person_outputs=(
+            "home_mortgage_interest",
+            "employment_income_before_lsr",
+        ),
+        tax_unit_outputs=("domestic_production_ald",),
+    )
+
+    assert len(donor) == 1
+    assert donor.index.tolist() == [0]
+    assert donor["tax_unit_id"].tolist() == [20]
+    assert donor["weight"].tolist() == [202.0]
+    assert donor["employment_income_before_lsr"].tolist() == [50_000.0]
+    assert donor["domestic_production_ald"].tolist() == [700.0]
+    np.testing.assert_allclose(
+        donor["home_mortgage_interest"].to_numpy(),
+        np.asarray([5_000_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+    )
 
 
 def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
