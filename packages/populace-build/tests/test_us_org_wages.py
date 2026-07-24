@@ -821,3 +821,18 @@ def test_outputs_match_rejects_boolean_nan_and_nullable_na(monkeypatch) -> None:
         healed["is_paid_hourly"].to_numpy(),
         consistent["is_paid_hourly"].to_numpy(),
     )
+
+    # Union-only damage: every other column already matches, so this binds
+    # the union comparison specifically — dropping union from the guard
+    # would identity-pass the inverted (nonconstant) column unchanged.
+    union_only = consistent.copy()
+    inverted = ~union_only["is_union_member_or_covered"].astype(bool)
+    assert inverted.nunique() > 1
+    union_only["is_union_member_or_covered"] = inverted
+    healed = module.with_us_org_wages_inputs(
+        _frame(union_only), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    np.testing.assert_array_equal(
+        healed["is_union_member_or_covered"].to_numpy(),
+        consistent["is_union_member_or_covered"].to_numpy(),
+    )
