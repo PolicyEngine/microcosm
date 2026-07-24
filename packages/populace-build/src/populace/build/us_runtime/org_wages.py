@@ -8,6 +8,23 @@ hourly-pay status, assigns union coverage from the published 2024 BLS state
 rates, carries the ASEC occupation fields, and derives the intentionally
 misspelled PolicyEngine input ``fsla_overtime_premium``.
 
+The donor build, QRF, union assignment, and occupation carries remain the
+exact retired port.  The premium derivation deliberately deviates from the
+retired reference-week-only construction: it adds the usual-weekly-hours
+signal (ASEC HRSWK) as the persistent-overtime leg, so regular overtime
+workers whose March reference week happened to sit at or below the threshold
+are no longer dropped, and a single hot reference week no longer overrides a
+measured above-threshold usual schedule.  On ASEC-channel rows HRSWK shares
+the retrospective year with employment income and weeks worked (the reference
+week does not); on PUF-support-channel rows both hours signals are donor-ASEC
+schedule proxies attached to PUF income — the support design's property,
+inherited equally by the retired reference-week leg.  Measured on the
+certified Build N default, the reference-week-only gate carried 19.9M
+weighted persons (19.0M tax units) against Treasury's published ">29 million"
+TY2025 No-Tax-on-Overtime claimant floor; the two-signal estimator carries
+the measured regular-overtime population the snapshot lottery missed.  Full
+adjudication receipts: populace#451 item 4 (overtime-incidence lane).
+
 The upstream implementation cached the transformed monthly files as
 ``census_cps_org_2024_wages.csv.gz`` but did not publish that cache.  Populace
 pins the canonical *uncompressed CSV content* of the generated 119,237-row
@@ -694,6 +711,23 @@ def impute_us_org_wages(
     return carried, wages
 
 
+def _finite_nonnegative(values: np.ndarray | pd.Series) -> np.ndarray:
+    """Read a numeric signal with NaN and infinities treated as absent."""
+
+    return np.maximum(
+        np.nan_to_num(
+            np.asarray(
+                pd.to_numeric(pd.Series(values), errors="coerce"),
+                dtype=np.float64,
+            ),
+            nan=0,
+            posinf=0,
+            neginf=0,
+        ),
+        0,
+    )
+
+
 def _flsa_policy(year: int) -> tuple[float, float, float, float, float]:
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -717,6 +751,7 @@ def derive_flsa_overtime_premium(
     time_period: int,
     employment_income: np.ndarray | pd.Series,
     hours_worked_last_week: np.ndarray | pd.Series,
+    usual_weekly_hours: np.ndarray | pd.Series,
     weeks_worked: np.ndarray | pd.Series,
     is_paid_hourly: np.ndarray | pd.Series,
     has_never_worked: np.ndarray | pd.Series,
@@ -726,17 +761,41 @@ def derive_flsa_overtime_premium(
     is_computer_scientist: np.ndarray | pd.Series,
     policy: tuple[float, float, float, float, float] | None = None,
 ) -> np.ndarray:
-    """Port the retired annual-wage-share FLSA overtime proxy exactly."""
+    """Two-signal annual-wage-share FLSA overtime proxy.
 
-    income = np.maximum(
-        np.nan_to_num(np.asarray(employment_income, dtype=np.float64), nan=0), 0
-    )
-    hours = np.maximum(
-        np.nan_to_num(np.asarray(hours_worked_last_week, dtype=np.float64), nan=0), 0
-    )
-    weeks = np.maximum(
-        np.nan_to_num(np.asarray(weeks_worked, dtype=np.float64), nan=0), 0
-    )
+    The retired method annualized the ASEC reference week alone: a worker was
+    a carrier only when the March survey week exceeded the hours threshold,
+    and that single week's premium share was applied to the whole retrospective
+    income year. That construction is a mass proxy — exact for steady
+    schedules, biased either way for variable ones — that collapses incidence
+    to one week's draw, and the reference week is not even inside the income
+    year the premium is attributed to.
+
+    This estimator adds the persistent signal: when usual weekly hours worked
+    last year (ASEC HRSWK) exceed the threshold, the worker is a carrier and
+    the usual-hours share is the annualizer — a single hot or absent reference
+    week neither overrides nor erases a regular overtime schedule. On
+    ASEC-channel rows HRSWK shares the retrospective year with
+    ``employment_income`` and ``weeks_worked``; on PUF-support-channel rows
+    both hours signals are donor-ASEC schedule proxies attached to PUF income
+    (the support design's property, shared by the retired reference-week leg).
+    Workers whose usual week stays at or below the threshold retain the
+    retired reference-week leg unchanged: it is representative for steady
+    schedules and can under- or over-recover an occasional overtimer's annual
+    premium depending on the sampled week — not an unbiased mass estimator —
+    but it is the only measured signal for that population, and replacing it
+    would require modeled participation rather than measured hours. Both
+    hours measures count all jobs while FLSA §7 applies per employer; that
+    shared upward concept edge is inherited from the retired method.
+    Exemption screens are unchanged. Malformed non-finite inputs (NaN or
+    infinities) are treated as absent rather than annualized. Adjudication
+    receipts: populace#451 item 4 (overtime-incidence lane).
+    """
+
+    income = _finite_nonnegative(employment_income)
+    reference_week = _finite_nonnegative(hours_worked_last_week)
+    usual = _finite_nonnegative(usual_weekly_hours)
+    weeks = _finite_nonnegative(weeks_worked)
     paid_hourly = np.asarray(is_paid_hourly, dtype=bool)
     never = np.asarray(has_never_worked, dtype=bool)
     military = np.asarray(is_military, dtype=bool)
@@ -746,6 +805,7 @@ def derive_flsa_overtime_premium(
     hce, salary_basis, computer_salary, threshold_hours, multiplier = (
         _flsa_policy(time_period) if policy is None else policy
     )
+    hours = np.where(usual > threshold_hours, usual, reference_week)
     overtime_hours = np.maximum(hours - threshold_hours, 0)
     straight_equivalent = (
         np.minimum(hours, threshold_hours) + overtime_hours * multiplier
@@ -779,19 +839,63 @@ def with_us_org_wages_inputs(
     time_period: int,
     org_donor: pd.DataFrame,
 ) -> Frame:
-    """Apply the complete ORG/occupation/FLSA family before calibration."""
+    """Apply the complete ORG/occupation/FLSA family before calibration.
+
+    On a frame whose ORG surface is already populated, the QRF/union/
+    occupation family is skipped (idempotency) but the FLSA premium is still
+    recomputed with the current estimator and refreshed if the stored column
+    came from an earlier construction — an already-populated surface can
+    never silently pin a retired premium semantics.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US ORG inputs require the US schema.")
     us_org_wages_stage_spec()
     person = frame.table("person")
     if _surface_has_signal(person):
-        return frame
+        # The idempotency skip covers the expensive, semantically unchanged
+        # QRF/union/occupation family. The premium derive deviates from the
+        # retired construction, so a populated surface must still converge to
+        # the current estimator: recompute it from the columns already present
+        # and refresh only when the stored values disagree (a stale surface
+        # from an earlier construction), never silently retaining them.
+        refreshed = derive_flsa_overtime_premium(
+            time_period=time_period,
+            employment_income=person["employment_income_before_lsr"],
+            hours_worked_last_week=person["hours_worked_last_week"],
+            usual_weekly_hours=person["weekly_hours_worked_before_lsr"],
+            weeks_worked=person["weeks_worked"],
+            is_paid_hourly=person["is_paid_hourly"],
+            has_never_worked=person["has_never_worked"],
+            is_military=person["is_military"],
+            is_executive_administrative_professional=person[
+                "is_executive_administrative_professional"
+            ],
+            is_farmer_fisher=person["is_farmer_fisher"],
+            is_computer_scientist=person["is_computer_scientist"],
+        )
+        stored = pd.to_numeric(
+            person["fsla_overtime_premium"], errors="coerce"
+        ).to_numpy(dtype=np.float32)
+        # NaN never compares equal, so a non-numeric or NaN-carrying stored
+        # column always takes the recomputed clean values.
+        if np.array_equal(stored, refreshed):
+            return frame
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["person"]["fsla_overtime_premium"] = refreshed
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+        )
     carried, wages = impute_us_org_wages(frame, org_donor, seed=seed)
     premium = derive_flsa_overtime_premium(
         time_period=time_period,
         employment_income=person["employment_income_before_lsr"],
         hours_worked_last_week=person["hours_worked_last_week"],
+        usual_weekly_hours=person["weekly_hours_worked_before_lsr"],
         weeks_worked=person["weeks_worked"],
         is_paid_hourly=wages["is_paid_hourly"],
         has_never_worked=carried["has_never_worked"],
@@ -831,21 +935,13 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
     premium = pd.to_numeric(person["fsla_overtime_premium"], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    income = (
-        pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
-    hours = (
-        pd.to_numeric(person["hours_worked_last_week"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
-    weeks = (
-        pd.to_numeric(person["weeks_worked"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=np.float64)
-    )
+    # Input signals share the estimator's non-finite-as-absent read, so the
+    # structural checks below judge exactly what the derivation saw; the
+    # premium itself stays raw so nonfinite outputs are counted, not masked.
+    income = _finite_nonnegative(person["employment_income_before_lsr"])
+    hours = _finite_nonnegative(person["hours_worked_last_week"])
+    usual = _finite_nonnegative(person["weekly_hours_worked_before_lsr"])
+    weeks = _finite_nonnegative(person["weeks_worked"])
     never = person["has_never_worked"].astype(bool).to_numpy()
     military = person["is_military"].astype(bool).to_numpy()
     violations = {
@@ -854,7 +950,11 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
         "exceeds_employment_income": int(
             (premium > np.maximum(income, 0) + 1e-4).sum()
         ),
-        "positive_without_overtime": int(((premium > 0) & (hours <= 40)).sum()),
+        # A positive premium is structurally impossible only when neither
+        # measured hours signal exceeds the threshold.
+        "positive_without_overtime": int(
+            ((premium > 0) & (hours <= 40) & (usual <= 40)).sum()
+        ),
         "positive_without_weeks": int(((premium > 0) & (weeks <= 0)).sum()),
         "positive_always_exempt": int(((premium > 0) & (never | military)).sum()),
     }
