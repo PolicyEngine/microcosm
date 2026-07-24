@@ -69,7 +69,7 @@ DEFAULT_FEED_PATH = (
     / "consumer_facts_buildn_v9_2.jsonl"
 )
 DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_2.jsonl"
-EXPECTED_FEED_SHA256_PREFIX = "61b115c0"
+EXPECTED_FEED_SHA256_PREFIX = "b3c08356"  # v9.4, cd-retest branch
 TARGET_PERIOD = 2024
 
 # The parity declaration's congressional-district regime. Flipping this is a
@@ -80,7 +80,7 @@ TARGET_PERIOD = 2024
 # first full-scale CD-on run (27,148 CD rows) halved within-10% (90.2% ->
 # 54.5%) and broke the SS-benefits critical row (-14.7%), so the surface
 # stays OFF until the CD loss architecture is reworked.
-CD_SURFACE_REGIME = "off"
+CD_SURFACE_REGIME = "on"  # cd-retest-449-evidence branch ONLY: the #449 adequate-support retest (Max 2026-07-24)
 
 
 def _fence(origin: str, purpose: str, verdict_basis: str) -> dict[str, str]:
