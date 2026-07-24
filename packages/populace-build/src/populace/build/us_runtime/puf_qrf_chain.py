@@ -522,6 +522,10 @@ def _load_target_checkpoint(
         "artifact_kind": _RAW_TARGET_ARTIFACT_KIND,
         "manifest_sha256": _mapping_sha256(manifest),
         "recipient_identity_sha256": manifest["recipient_identity_sha256"],
+        # Written since v1 but validated only since the populace#515 carve
+        # bump: a target checkpoint must carry the loader's own schema, not
+        # merely ride under a valid root manifest.
+        "schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
         "target": target_order[target_index],
         "target_index": target_index,
     }
