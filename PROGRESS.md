@@ -25,11 +25,13 @@
   detecting an old artifact, simulating the missing leaves, and mutating the
   file on load (`datasets/puf/puf.py` lines 993-1302). Populace's bare-h5py
   reader does not invoke that retired upgrade path.
+- Added the aggregate-only 74-column artifact audit, including all 40 logical
+  inputs (34 raw-field lineages and six retired derivations), all 34 unused
+  arrays, the exact current 24-output contract gap, the four requested
+  direct-mapping classifications, and ready-to-paste PR text.
 
 ## Next
 
-- Finish the aggregate-only artifact lineage audit and commit its tracked
-  documentation and ready-to-paste PR summary.
 - Vendor the v1 assumptions and implement a pure, version-gated NumPy QBI
   simulation stage that replaces the retired load-time mutation.
 - Establish exact equivalence where the artifact exposes a comparison column;
