@@ -243,6 +243,63 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
+def test_primary_qrf_rejects_pre_carve_schema_versions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # populace#515: the checkpointed donor frame carries the E19200 ->
+    # mortgage-only carve as of schema v2, and loading validates nothing
+    # about donor construction identity -- so a pre-carve (v1) root manifest
+    # OR a v1 target checkpoint riding under a valid v2 root must both be
+    # rejected, never fitted or drawn from.
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        _expanded_frame(),
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+    )
+    run_primary_puf_qrf_chain(
+        checkpoint_dir,
+        environment={
+            "POPULACE_FIT_N_JOBS": "1",
+            "POPULACE_FIT_PREDICT_WORKERS": "1",
+        },
+    )
+
+    manifest_path = checkpoint_dir / "manifest.json"
+    original_manifest = json.loads(manifest_path.read_text())
+    assert original_manifest["schema_version"] == 2
+    stale_manifest = dict(original_manifest)
+    stale_manifest["schema_version"] = 1
+    manifest_path.write_text(json.dumps(stale_manifest))
+    with pytest.raises(ValueError, match="schema version"):
+        load_primary_puf_qrf_predictions(checkpoint_dir)
+    with pytest.raises(ValueError, match="schema version"):
+        run_primary_puf_qrf_chain(checkpoint_dir)
+    manifest_path.write_text(json.dumps(original_manifest))
+
+    target_path = sorted((checkpoint_dir / "targets").glob("*.h5"))[0]
+    with h5py.File(target_path, mode="r+") as h5:
+        metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
+        assert metadata["schema_version"] == 2
+        metadata["schema_version"] = 1
+        del h5["metadata_json"]
+        h5.create_dataset(
+            "metadata_json",
+            data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
+            track_times=False,
+        )
+    with pytest.raises(ValueError, match="invalid schema_version"):
+        load_primary_puf_qrf_predictions(checkpoint_dir)
+
+
 def test_primary_qrf_resume_rejects_a_gap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

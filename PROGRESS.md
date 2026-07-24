@@ -2,45 +2,52 @@
 
 ## State
 
-Populace #462 split-PR remediation is complete on
-`loss-contract-alignment`, based on `origin/main` at `7b6e10b`. The outcome is
-register alignment only: the multiplier is removed per populace#492, both
-consumers share CD classification, and all four Sol round-1 findings are fixed
-with behavioral containment coverage. Nothing was pushed at the time of
-this handoff; the branch was subsequently pushed and merged as #491
-(2026-07-22), so this remediation is on `main`.
+Populace #515 interim donor-concept carve is complete on
+`mortgage-donor-e19200-carve-2` (rebased onto current `origin/main` after the
+#517 target-side remap and mortgage critical-register entries merged, and
+after the JCT ALD reference and HT2 taxable-interest rebase lanes moved
+`main`). The US `puf_tax_detail` donor now carves its E19200-lineage columns
+to the SOI TY2015 Table 2.1 mortgage-only concept share before the QRF
+learns levels and realized support. The root record-level ETL carve stays
+open on populace#515. (The prior entry here — the #462 split-PR remediation
+handoff — merged as #491 and nothing remains pending from it.)
 
 ## Done
 
-- Read the Sol round-1 report and used its three HIGH reproductions plus the
-  MEDIUM anti-drift gap as the acceptance oracle.
-- Removed every critical-row multiplier surface and restored the loss helper,
-  scorer calls, and historical experiment calls to their `origin/main` shape.
-- Fixed the Table 1.4 prefix narrowing and captured the exact builder failure
-  for `other.table_1_4.all.bad_amount@2024`.
-- Added the exported six-signal shared CD classifier, converted both consumers
-  to thin wrappers, and passed registry metadata through all builder gate
-  paths that classify target rows.
-- Compiled a real CD Ledger reference and proved equal six-row excluded name
-  sets/counts and full-gate exclusion builder-side and publisher-side.
-- Made missing/`None` recorded relative error a builder failure with the
-  required publish-contract message; stale and non-numeric checks remain.
-- Added behavioral containment for exact, semantic, Table-pattern,
-  missing/non-finite, incumbent-escape, and every CD evidence class, including
-  an explicit guard against any accepted-name-prefix narrowing.
-- Preserved the #490 medical 0.25 adjudication block and comment byte-for-byte.
-- Reran the requested combined suite: 264 passed and 3 skipped (267 collected).
-- Reran the three Sol scenarios: the two malformed rows are builder-rejected
-  with exact failure strings, while the CD row is symmetrically excluded by
-  both consumers as required.
-- Confirmed zero multiplier grep hits, Ruff check/format-check cleanliness on
-  all applicable touched files, and a clean `git diff --check`.
-- Replaced `FINAL_REPORT.md` with the complete split-PR outcome and receipts.
-- Attempted `/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md`; the
-  sandbox rejected the write with `Operation not permitted`, so the full
-  report will be printed to stdout per the requested fallback.
+- Traced both production HDF loaders (`tools/build_us_puf_support_base.py`)
+  through `puf_tax_unit_donor_from_arrays` and into both QRF execution
+  paths; the declarative `source_runtime.read_table` path is not the
+  production PUF HDF loader.
+- Confirmed the #486 `support_value_repairs` surface is a release-time level
+  pin, not a donor-column concept-transform seam, so the carve lives at
+  donor construction in `puf_support.py`.
+- Added the symbolic TY2015 SOI mortgage-only share
+  (`US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163`) and a
+  centralized exactly-once carve for the three live donor columns plus the
+  guarded `interest_deduction` compatibility alias.
+- Sol round 1: bumped `PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION` to 2 (the
+  checkpointed donor frame carries the carve; pre-carve checkpoints must
+  not fit/draw under carved code); pinned the lineage tuple by exact
+  membership with a nonzero investment-interest sentinel; documented the
+  carve-before-aliases ordering and the raw-audit E19200 total-interest
+  label.
+- Sol round 2: the raw-target checkpoint loader now validates
+  `schema_version` (written since v1, never checked); new regression pins a
+  v1 root manifest rejected on load and run, and a v1 target checkpoint
+  rejected under a valid v2 root.
+- Suites green with worktree sources across PUF support, QRF chain, US
+  plan, gates, US fiscal targets, and populace-data. Ruff format/check
+  clean.
 
 ## Next
 
-- None — resolved. This handoff (and the branch it describes) was pushed and
-  merged as #491; nothing remains pending from it.
+- PR review cycle, then merge; expect a rebuilt base/release before
+  ratcheting the mortgage critical-fit bound from the interim 0.20 to 0.15
+  (the condition documented in `us_critical_targets.py`).
+- Root ETL carve (per-record, un-zeroes `investment_interest_expense`; JCT
+  reform must then neutralize `deductible_mortgage_interest` instead of
+  `interest_deduction`) remains open on populace#515.
+- populace#516: investigation complete — the ≥$10M donor mortgage rows are a
+  structural outlier cohort (3,066 rows; only 1,823 of them synthetic-id;
+  `donor_realized` clip dead per #482) — whole-row screen at the donor seam
+  queued behind this PR.

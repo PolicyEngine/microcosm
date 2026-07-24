@@ -12,6 +12,7 @@ from populace.build.us_runtime import (
     BASE_ASEC_SUPPORT_CHANNEL,
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_PUF_E19200_HOME_MORTGAGE_SHARE,
     clone_us_frame_for_puf_support,
     derive_us_cps_carried_inputs,
     impute_us_puf_tax_detail_support,
@@ -331,12 +332,82 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert donor["social_security_survivors"].tolist() == [0.0, 0.0]
     assert "social_security" not in donor
     assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
-    assert donor["home_mortgage_interest"].tolist() == [30.0, 30.0]
+    np.testing.assert_allclose(
+        donor["home_mortgage_interest"].to_numpy(),
+        np.asarray([30.0, 30.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+    )
     assert donor["educator_expense"].tolist() == [300.0, 300.0]
     assert "interest_deduction" not in donor
     assert "state_withheld_income_tax" not in donor
     assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+
+
+def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
+    assert US_PUF_E19200_HOME_MORTGAGE_SHARE == 283_004_465 / 304_461_163
+    # Pin the lineage tuple by exact membership: an accidental addition (the
+    # sol round-1 failure mode was appending investment_interest_expense,
+    # invisible behind a zero sentinel) must fail here, not silently carve a
+    # future nonzero column.
+    assert puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS == (
+        "home_mortgage_interest",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "interest_deduction",
+    )
+    grouped_person = (
+        pd.DataFrame(
+            {
+                "tax_unit_id": [10, 10, 20],
+                "home_mortgage_interest": [40.0, 60.0, 200.0],
+            }
+        )
+        .groupby("tax_unit_id", sort=False)
+        .sum()
+    )
+    interest_deduction = puf_support_module._tax_unit_source_values(
+        {},
+        np.asarray([10, 20]),
+        "interest_deduction",
+        grouped_person,
+    )
+    assert interest_deduction is not None
+    donor = pd.DataFrame(
+        {
+            "home_mortgage_interest": [100.0, 200.0],
+            "first_home_mortgage_interest": [75.0, 150.0],
+            "second_home_mortgage_interest": [25.0, 50.0],
+            "interest_deduction": interest_deduction,
+            "real_estate_taxes": [8.0, 16.0],
+            "first_home_mortgage_balance": [250_000.0, 500_000.0],
+            "second_home_mortgage_balance": [0.0, 125_000.0],
+            "first_home_mortgage_origination_year": [2018.0, 2016.0],
+            "second_home_mortgage_origination_year": [0.0, 2020.0],
+            # Nonzero sentinel: the artifact carries this column all-zero,
+            # but a zero fixture cannot distinguish "not scaled" from
+            # "scaled" (0 x share == 0). The root #515 ETL carve will make
+            # it nonzero, and it must stay uncarved then.
+            "investment_interest_expense": [12.0, 34.0],
+        }
+    )
+    original = donor.copy(deep=True)
+
+    puf_support_module._carve_us_puf_e19200_home_mortgage_share(donor)
+
+    for column in puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
+        np.testing.assert_allclose(
+            donor[column].to_numpy(),
+            original[column].to_numpy() * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+        )
+    for column in (
+        "real_estate_taxes",
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
+        "investment_interest_expense",
+    ):
+        np.testing.assert_array_equal(donor[column], original[column])
 
 
 def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
@@ -1136,8 +1207,14 @@ def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
     assert donor["unrecaptured_section_1250_gain"].tolist() == [500.0, 0.0]
     assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
     assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
-    assert donor["first_home_mortgage_interest"].tolist() == [10_000.0, 20_000.0]
-    assert donor["second_home_mortgage_interest"].tolist() == [0.0, 5_000.0]
+    np.testing.assert_allclose(
+        donor["first_home_mortgage_interest"].to_numpy(),
+        np.asarray([10_000.0, 20_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+    )
+    np.testing.assert_allclose(
+        donor["second_home_mortgage_interest"].to_numpy(),
+        np.asarray([0.0, 5_000.0]) * US_PUF_E19200_HOME_MORTGAGE_SHARE,
+    )
     assert donor["first_home_mortgage_origination_year"].tolist() == [
         2018.0,
         2016.0,

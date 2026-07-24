@@ -35,7 +35,13 @@ from populace.build.us_runtime.puf_support import (
 from populace.fit import QRF, QRFChainState
 from populace.frame import EntitySchema, Frame, WeightKind, Weights
 
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 1
+# v2 (populace#515): the checkpointed donor frame now carries the E19200 ->
+# mortgage-only concept carve (US_PUF_E19200_HOME_MORTGAGE_SHARE). Loading
+# validates only schema/digest/kind/role -- not donor construction identity --
+# so a v1 checkpoint initialized pre-carve would keep fitting and drawing the
+# uncarved levels under carved code. The bump rejects every pre-carve
+# checkpoint and forces re-initialization through the carved constructor.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 2
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -516,6 +522,10 @@ def _load_target_checkpoint(
         "artifact_kind": _RAW_TARGET_ARTIFACT_KIND,
         "manifest_sha256": _mapping_sha256(manifest),
         "recipient_identity_sha256": manifest["recipient_identity_sha256"],
+        # Written since v1 but validated only since the populace#515 carve
+        # bump: a target checkpoint must carry the loader's own schema, not
+        # merely ride under a valid root manifest.
+        "schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
         "target": target_order[target_index],
         "target_index": target_index,
     }
