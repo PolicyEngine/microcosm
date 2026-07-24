@@ -4,7 +4,7 @@
 
 - Branch: `qbi-v2-engine`
 - Base: `qbi-port-530` at `d1a6428`
-- Status: host-conditioned SSTB transform and stage wiring in progress
+- Status: version-gated QRF target selection and builder wiring in progress
 
 ## Done
 
@@ -37,9 +37,21 @@
   qualification source to an equivalent prior leaves W-2, UBIA, investment,
   REIT/PTP, and BDC family outputs byte-identical; changing W-2 or UBIA seeds
   leaves the other family byte-identical.
+- Added the pure post-QRF `with_host_sstb_classification` transform. It derives
+  law-determined flags from host record structure, preserves residual-prior
+  flags, applies industry-primary/occupation-secondary crosswalk lookup,
+  assigns ambiguous and passive-only records from the SSTB family stream, and
+  reuses the exact v1 reconciliation router for Schedule C, W-2/UBIA pools,
+  mutually exclusive routes, and exposure caps.
+- Added a ready synthetic crosswalk fixture covering clear SSTB, non-SSTB,
+  ambiguous, passive-only AGI bands, source-eligibility fail-closed behavior,
+  and Schedule C precedence. The transform is deterministic, does not mutate
+  its source frame, satisfies every summary invariant, and passes the QBI
+  signal gate.
 
 ## Next
 
-- Add version-gated QRF target selection and the post-QRF host SSTB transform.
-- Exercise the host transform against the existing reconciliation invariants
-  and signal gate with a ready synthetic crosswalk.
+- Add version-gated QRF target selection.
+- Thread the explicit version through monolithic and checkpointed builder
+  paths while retaining v1 as the default.
+- Add declarative source-stage target metadata and version-seam tests.

@@ -55,6 +55,7 @@ __all__ = [
     "parse_qbi_simulation_assumptions",
     "parse_sstb_crosswalk",
     "qbi_simulation_summary",
+    "resolve_sstb_crosswalk",
     "simulate_qbi_inputs",
     "us_qbi_simulation_stage_spec",
     "with_qbi_simulation_from_puf_arrays",
@@ -1142,7 +1143,7 @@ def simulate_qbi_inputs(
     else:
         if not isinstance(assumptions, QbiSimulationAssumptionsV2):
             raise TypeError("QBI v2 simulation requires v2 assumptions.")
-        _resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
+        resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
         qualification_flags = _derive_v2_qualification_flags(
             inputs,
             assumptions=assumptions,
@@ -1295,7 +1296,7 @@ def qbi_simulation_summary(
     return summary
 
 
-def _resolve_sstb_crosswalk(
+def resolve_sstb_crosswalk(
     assumptions: QbiSimulationAssumptionsV2,
     crosswalk: SstbCrosswalk | Mapping[str, Any] | None,
 ) -> SstbCrosswalk:

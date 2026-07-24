@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,12 @@ from populace.build.us_runtime.qbi_inputs import (
     us_qbi_inputs_signal_gate,
     us_qbi_inputs_stage_spec,
     us_qbi_inputs_summary,
+    with_host_sstb_classification,
     with_us_qbi_input_reconciliation,
+)
+from populace.build.us_runtime.qbi_simulation import (
+    QBI_SIMULATION_V2,
+    load_qbi_simulation_assumptions,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
 from populace.frame.schema import EntitySchema
@@ -97,6 +103,79 @@ def _qbi_person(n: int = 200) -> pd.DataFrame:
     person.loc[puf[:25], "w2_wages_from_qualified_business"] = 2_000.0
     person.loc[puf[:30], "unadjusted_basis_qualified_property"] = 5_000.0
     return person
+
+
+@pytest.fixture
+def ready_sstb_crosswalk() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "crosswalk_version": "synthetic-host-test-v1",
+        "status": "ready",
+        "occupation_code_system": "synthetic Census occupation",
+        "industry_code_system": None,
+        "mapping": {
+            "occupation": {
+                "1010": "clear_sstb",
+                "2020": "non_sstb",
+                "3030": "ambiguous",
+            },
+            "industry": {},
+        },
+    }
+
+
+def _v2_host_person() -> pd.DataFrame:
+    person = _qbi_person()
+    person["PEIOOCC"] = 2020
+    person["AGI"] = 150_000.0
+    person["farm_operations_income"] = 0.0
+    person.loc[100:109, "farm_operations_income"] = 1_000.0
+    person.loc[[103, 105, 110], "partnership_income"] = 2_000.0
+
+    person.loc[100, "PEIOOCC"] = 1010
+    person.loc[101, "PEIOOCC"] = 2020
+    person.loc[102, "PEIOOCC"] = 3030
+
+    # Passive-only, low-AGI partnership income.
+    person.loc[103, "self_employment_income_before_lsr"] = 0.0
+    person.loc[103, "sstb_self_employment_income_before_lsr"] = 0.0
+    person.loc[103, "AGI"] = 50_000.0
+
+    # Passive-only estate income in a zero-probability AGI band.
+    person.loc[104, "self_employment_income_before_lsr"] = 0.0
+    person.loc[104, "sstb_self_employment_income_before_lsr"] = 0.0
+    person.loc[104, "estate_income"] = 2_000.0
+    person.loc[104, "estate_income_would_be_qualified"] = True
+
+    # A non-SSTB Schedule C signal takes precedence over the passive prior.
+    person.loc[105, "PEIOOCC"] = 2020
+    person.loc[105, "AGI"] = 50_000.0
+
+    # No positive qualified mapped source, despite a one-valued AGI prior.
+    person.loc[106, "self_employment_income_before_lsr"] = 0.0
+    person.loc[106, "sstb_self_employment_income_before_lsr"] = 0.0
+    person.loc[106, "AGI"] = 50_000.0
+    return person
+
+
+def _host_test_assumptions():
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    classification = assumptions.sstb_classification
+    bands = tuple(
+        replace(
+            band,
+            probability=1.0 if band.label == "-inf:100000" else 0.0,
+        )
+        for band in classification.passive_passthrough_sstb_prior_by_agi
+    )
+    return replace(
+        assumptions,
+        sstb_classification=replace(
+            classification,
+            ambiguous_prior=1.0,
+            passive_passthrough_sstb_prior_by_agi=bands,
+        ),
+    )
 
 
 def test_archived_coordinates_pin_algorithms_export_clone_and_artifact() -> None:
@@ -221,6 +300,87 @@ def test_reconciliation_restores_sstb_routes_total_pools_and_exposure_caps() -> 
     assert reconciled.loc[sstb, "unadjusted_basis_qualified_property"].sum() > 0
     assert reconciled.loc[100, "qualified_bdc_income"] == 1_000.0
     assert reconciled.loc[100, "qualified_reit_and_ptp_income"] == 1_000.0
+
+
+def test_host_sstb_classification_fails_closed_on_packaged_placeholder() -> None:
+    person = _v2_host_person()
+
+    with pytest.raises(ValueError, match="status is 'placeholder'"):
+        with_host_sstb_classification(
+            _frame(person),
+            qbi_simulation_version=QBI_SIMULATION_V2,
+        )
+
+
+def test_host_sstb_classification_routes_host_and_passive_records(
+    ready_sstb_crosswalk: dict[str, object],
+) -> None:
+    person = _v2_host_person()
+    source = _frame(person)
+    source_before = source.table("person").copy(deep=True)
+    original_total = (
+        person["self_employment_income_before_lsr"]
+        + person["sstb_self_employment_income_before_lsr"]
+    ).to_numpy(copy=True)
+    original_w2 = person["w2_wages_from_qualified_business"].to_numpy(copy=True)
+    original_ubia = person["unadjusted_basis_qualified_property"].to_numpy(copy=True)
+    assumptions = _host_test_assumptions()
+
+    first = with_host_sstb_classification(
+        source,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=assumptions,
+        sstb_crosswalk=ready_sstb_crosswalk,
+    )
+    second = with_host_sstb_classification(
+        source,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=assumptions,
+        sstb_crosswalk=ready_sstb_crosswalk,
+    )
+    result = first.table("person")
+
+    pd.testing.assert_frame_equal(source_before, source.table("person"))
+    pd.testing.assert_frame_equal(result, second.table("person"))
+    assert result.loc[100:106, "business_is_sstb"].tolist() == [
+        True,
+        False,
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+    np.testing.assert_allclose(
+        result["self_employment_income_before_lsr"]
+        + result["sstb_self_employment_income_before_lsr"],
+        original_total,
+    )
+    np.testing.assert_array_equal(
+        result["w2_wages_from_qualified_business"],
+        original_w2,
+    )
+    np.testing.assert_array_equal(
+        result["unadjusted_basis_qualified_property"],
+        original_ubia,
+    )
+    business = result["business_is_sstb"].to_numpy()
+    np.testing.assert_array_equal(
+        result["sstb_w2_wages_from_qualified_business"],
+        np.where(business, original_w2, 0.0),
+    )
+    np.testing.assert_array_equal(
+        result["sstb_unadjusted_basis_qualified_property"],
+        np.where(business, original_ubia, 0.0),
+    )
+    ordinary_route = result["self_employment_income_would_be_qualified"].to_numpy()
+    sstb_route = result["sstb_self_employment_income_would_be_qualified"].to_numpy()
+    assert not np.any(ordinary_route & sstb_route)
+
+    summary = us_qbi_inputs_summary(first)
+    assert all(count == 0 for count in summary["invariants"].values())
+    gate = us_qbi_inputs_signal_gate(first)
+    assert gate.passed, gate.failures
 
 
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
