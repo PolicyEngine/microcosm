@@ -569,3 +569,19 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
         again.table("person")["fsla_overtime_premium"].to_numpy(),
         premium.to_numpy(),
     )
+
+    # Third pass — the NaN-coercion regression guard: on an OTHERWISE
+    # CONSISTENT surface, a stored NaN on a row whose recomputed premium is
+    # zero must still take the recomputed finite zero. A fillna(0) comparison
+    # would coerce the NaN equal to zero and hand back the original frame
+    # with the NaN intact.
+    person_nan = person_consistent.copy()
+    assert person_nan.loc[0, "employment_income_before_lsr"] == 0.0
+    person_nan.loc[0, "fsla_overtime_premium"] = np.nan
+    healed = module.with_us_org_wages_inputs(
+        _frame(person_nan), seed=0, time_period=2024, org_donor=_donor()
+    )
+    healed_premium = healed.table("person")["fsla_overtime_premium"].to_numpy()
+    assert np.isfinite(healed_premium).all()
+    assert healed_premium[0] == 0.0
+    np.testing.assert_array_equal(healed_premium, premium.to_numpy())
