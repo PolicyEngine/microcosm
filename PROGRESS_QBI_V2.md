@@ -4,7 +4,7 @@
 
 - Branch: `qbi-v2-engine`
 - Base: `qbi-port-530` at `d1a6428`
-- Status: implementation complete; full-workspace validation in progress
+- Status: complete; all deliverables committed and full workspace green
 
 ## Done
 
@@ -75,10 +75,18 @@
   retaining the declared congressional-district-off regime. Regeneration now
   sees all 11 JCT tax-expenditure facts and the already-fenced OBBBA family;
   the parity, spec-only country-package, and US-plan contract tests pass.
+- Added `changelog.d/qbi-v2-engine.added.md`.
+- Reran the complete workspace with the restricted PUF replay enabled:
+  3,246 passed, 132 skipped, and 0 failed. Ruff format/check, touched JSON
+  parsing, and `git diff --check` are clean.
+- Wrote the complete handoff, industry-column evidence, stream-independence
+  proof, validation record, and remaining seams to `FINAL_REPORT_QBI_530.md`.
 
 ## Next
 
-- Rerun the full workspace test suite after the parity-pin repair.
-- Write the final report and close the ledger.
-- Replace placeholder crosswalk content and placeholder passive-prior values in
-  follow-up research before enabling v2 in a production build.
+- Replace placeholder crosswalk content, ambiguous probability, and passive
+  AGI-band priors with reviewed evidence before enabling v2.
+- Add and declare a detailed Census industry column only if a frozen source or
+  sidecar becomes available; then populate the existing industry-primary seam.
+- Review the three residual qualification priors and run a full v2 build before
+  any production-default or downstream fiscal-refresh version change.
