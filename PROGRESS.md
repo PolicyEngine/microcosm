@@ -6,7 +6,9 @@ Populace #462 split-PR remediation is complete on
 `loss-contract-alignment`, based on `origin/main` at `7b6e10b`. The outcome is
 register alignment only: the multiplier is removed per populace#492, both
 consumers share CD classification, and all four Sol round-1 findings are fixed
-with behavioral containment coverage. Nothing was pushed.
+with behavioral containment coverage. Nothing was pushed at the time of
+this handoff; the branch was subsequently pushed and merged as #491
+(2026-07-22), so this remediation is on `main`.
 
 ## Done
 
@@ -40,4 +42,5 @@ with behavioral containment coverage. Nothing was pushed.
 
 ## Next
 
-- None. Commit this prose handoff and do not push the branch.
+- None — resolved. This handoff (and the branch it describes) was pushed and
+  merged as #491; nothing remains pending from it.

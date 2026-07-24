@@ -12,7 +12,7 @@
 #   tools/publish_release.sh <release_dir> [--repo-id …] [--artifact-root …] …
 # All arguments are passed straight through to `populace-publish-release`.
 #
-# One-time setup on the build machine (see README "Release alerts"):
+# One-time setup on the build machine (see README "Releasing & alerts"):
 #   cp tools/release.env.example tools/release.env   # then fill in the URLs
 # or just export SLACK_WEBHOOK_POPULACE_US / _UK in your shell.
 
@@ -29,7 +29,7 @@ fi
 if [[ -z "${SLACK_WEBHOOK_POPULACE_US:-}" && -z "${SLACK_WEBHOOK_POPULACE_UK:-}" ]]; then
   echo "warning: no SLACK_WEBHOOK_POPULACE_US/_UK set — this release will" >&2
   echo "         publish WITHOUT a Slack alert. Set them in your shell or in" >&2
-  echo "         $ENV_FILE (see README 'Release alerts')." >&2
+  echo "         $ENV_FILE (see README 'Releasing & alerts')." >&2
 fi
 
 exec populace-publish-release "$@"
