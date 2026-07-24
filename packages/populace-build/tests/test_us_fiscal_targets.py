@@ -3387,6 +3387,66 @@ def test_soi_itemized_deduction_targets_require_itemizing() -> None:
     assert salt_spec.metadata["itemized_only"] == "true"
 
 
+def test_soi_table_2_1_mortgage_targets_bind_capped_deductible_concept() -> None:
+    # populace#511: SOI Table 2.1 "Home mortgage interest" is the amount
+    # DEDUCTED on Schedule A -- post the section 163(h)(3) acquisition-debt
+    # caps -- so both mortgage measures must bind the engine's capped
+    # tax-unit concept, not the gross home_mortgage_interest export input
+    # (on certified O-1 the gross column ran +29.5% while the capped concept
+    # ran +15.0% against the same aged fact).
+    amount_source_record_id = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount"
+    )
+    returns_source_record_id = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_returns"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=amount_source_record_id,
+                source_name="irs_soi",
+                measure_id="home_mortgage_interest_amount",
+                value=171_364_787_000,
+                period_value=2023,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id=("irs_soi.ty2023.table_2_1.itemized_all_returns"),
+            ),
+            _dynamic_ledger_fact(
+                source_record_id=returns_source_record_id,
+                source_name="irs_soi",
+                measure_id="home_mortgage_interest_returns",
+                value=11_644_348,
+                period_value=2023,
+                dimensions={"income_range": "all", "filing_status": "all"},
+                layout_record_set_id=("irs_soi.ty2023.table_2_1.itemized_all_returns"),
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    amount_spec = specs[amount_source_record_id]
+    assert amount_spec.family == "irs_soi"
+    assert amount_spec.metadata["variable"] == "deductible_mortgage_interest"
+    assert (
+        amount_spec.metadata["base_variable"] == "deductible_mortgage_interest_tax_unit"
+    )
+    assert amount_spec.metadata["measure_mode"] == "sum"
+    assert amount_spec.metadata["itemized_only"] == "true"
+    returns_spec = specs[returns_source_record_id]
+    assert returns_spec.family == "irs_soi"
+    assert returns_spec.metadata["variable"] == "deductible_mortgage_interest"
+    assert (
+        returns_spec.metadata["base_variable"]
+        == "deductible_mortgage_interest_tax_unit"
+    )
+    assert returns_spec.metadata["measure_mode"] == "indicator_sum"
+    assert returns_spec.metadata["itemized_only"] == "true"
+
+
 def test_soi_direct_deduction_amount_targets_expose_model_variables() -> None:
     facts = [
         *packaged_reference_facts(),

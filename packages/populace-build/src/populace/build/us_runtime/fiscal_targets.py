@@ -174,15 +174,27 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # _soi_return_universe_from_record_set_id -> "itemized_returns", so
     # _soi_reference_from_fact auto-stamps itemized_only=true and the target
     # sums the model variable over ITEMIZERS ONLY -- the correct universe for a
-    # Schedule-A line. Maps to home_mortgage_interest, the gross person-level
-    # export input column itself (same "target the export column's own variable"
-    # pattern as the Table 1.4 columns above and the person-level, itemized-only
-    # real_estate_taxes target), so calibration directly pulls the itemizer
-    # share of the export mass down from the Build G +44.5% JCT overshoot toward
-    # the SOI level. Only the CW/CX "Total" measure is mapped; the two leg
+    # Schedule-A line. Only the CW/CX "Total" measure is mapped; the two leg
     # measures (mortgage_interest_paid_*, home_mortgage_personal_seller_*) stay
     # unmapped to avoid double-counting.
-    "home_mortgage_interest_amount": "home_mortgage_interest",
+    #
+    # populace#511: the SOI line is the amount DEDUCTED on Schedule A, i.e.
+    # after the section 163(h)(3) acquisition-debt caps, so the target maps to
+    # the engine's capped deductible_mortgage_interest_tax_unit rather than the
+    # gross home_mortgage_interest export input Build H used. On certified O-1
+    # the gross column summed $241.3B over itemizers (+29.5%) while the capped
+    # concept summed $214.2B (+15.0%) against the $186.3B aged fact -- the cap
+    # haircut alone was a $27.1B pure concept gap. The capped formula is linear
+    # in the first/second_home_mortgage_interest export inputs (balances and
+    # origination years only set the deductible share), so calibration keeps
+    # the same pull-through to the export mass that Build H wanted. A
+    # positive-balance unit's deductible share is always positive; gross and
+    # structural carriers are independently imputed, so equality is a data
+    # property, verified on O-1 post-itemizer-mask (identical weighted carrier
+    # totals; the only gross-vs-structural divergent units are non-itemizers).
+    # The residual overshoot is the donor-side E19200 total-interest lineage
+    # (populace#515, #487-adjacent).
+    "home_mortgage_interest_amount": "deductible_mortgage_interest",
 }
 
 
@@ -232,8 +244,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (populace#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
-    # home mortgage interest deduction).
-    "home_mortgage_interest_returns": "home_mortgage_interest",
+    # home mortgage interest deduction). populace#511: indicator over the same
+    # capped concept as the amount row. The deductible share is positive
+    # wherever a positive mortgage balance backs positive interest; carrier
+    # equality with the old gross indicator is a data property (independently
+    # imputed columns), verified on O-1 post-itemizer-mask.
+    "home_mortgage_interest_returns": "deductible_mortgage_interest",
 }
 
 
@@ -258,11 +274,14 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "miscellaneous_income": "miscellaneous_income",
     "miscellaneous_losses": "miscellaneous_income",
     "non_sch_d_capital_gains": "non_sch_d_capital_gains",
-    # Build H (populace#299): SOI Table 2.1 home mortgage interest concept ->
-    # gross person-level pe-us home_mortgage_interest (the export input column);
-    # itemized_only masking (auto from the itemized_all_returns record set)
-    # restricts the sum to itemizers, matching the Schedule-A universe.
-    "home_mortgage_interest": "home_mortgage_interest",
+    # populace#511 (supersedes the Build H gross mapping): SOI Table 2.1 home
+    # mortgage interest is the amount deducted on Schedule A, post the section
+    # 163(h)(3) acquisition-debt caps, so the concept maps to the engine's
+    # capped tax-unit aggregate. itemized_only masking (auto from the
+    # itemized_all_returns record set, plus the concept's membership in
+    # _SOI_ITEMIZED_ONLY_VARIABLES) restricts the sum to itemizers, matching
+    # the Schedule-A universe.
+    "deductible_mortgage_interest": "deductible_mortgage_interest_tax_unit",
     "exempt_interest": "tax_exempt_interest_income",
     "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
@@ -331,6 +350,7 @@ _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
 _SOI_ITEMIZED_ONLY_VARIABLES = frozenset(
     {
         "charitable_deduction",
+        "deductible_mortgage_interest",
         "interest_deduction",
         "itemized_taxable_income_deductions",
         "medical_expense_deduction",

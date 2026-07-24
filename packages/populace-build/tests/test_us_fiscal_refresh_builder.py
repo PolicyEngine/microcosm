@@ -596,6 +596,20 @@ def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
             80_000_000_000.0,
             79_000_000_000.0,
         ),
+        # populace#511: the Table 2.1 mortgage rows are registered critical
+        # (certified O-1 shipped the amount row at +29.5% with no gate).
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_amount",
+            186_310_104_604.0,
+            199_110_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns",
+            11_644_348.0,
+            11_929_445.0,
+        ),
         # The SOI Table 1.4 national dollar blanket (populace#462) needs at
         # least one Table 1.4 amount row on the surface, within tolerance.
         diagnostic(
@@ -1597,6 +1611,52 @@ def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
         "1 positive fiscal targets have zero materialized support "
         f"(examples: nation/irs/zero@{builder.PERIOD})."
     ]
+
+
+def test_release_gate_failures_reject_certified_o1_mortgage_overshoot() -> None:
+    # populace#511 regression: certified O-1 shipped the Table 2.1 mortgage
+    # amount row at +29.5% and no gate objected because mortgage was not in
+    # the critical register. The exact shipped diagnostics must now fail the
+    # release gate, and the expected post-remap fit (+6.9%) must pass.
+    builder = _load_builder_module()
+    row_name = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount"
+    )
+    shipped_o1 = SimpleNamespace(
+        name=f"{row_name}@{builder.PERIOD}",
+        target=186_310_104_604.0,
+        initial_estimate=344_449_138_996.0,
+        final_estimate=241_268_995_041.0,
+        relative_error=(241_268_995_041.0 - 186_310_104_604.0) / 186_310_104_604.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_critical_surface(builder, shipped_o1),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    # Pin the overshoot arithmetic, not just the row identity: the missing-row
+    # formatter also names the row and label, so a fixture slip that drops the
+    # replacement instead of appending it must not satisfy this assertion.
+    assert any(
+        row_name in failure
+        and "home mortgage interest deduction amount" in failure
+        and "relative_error=0.294986" in failure
+        and "exceeding 0.2" in failure
+        for failure in failures
+    ), failures
+
+    passing = SimpleNamespace(
+        skipped=(),
+        diagnostics=_critical_surface(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert builder._release_gate_failures(passing, {"dropped_target_names": []}) == []
 
 
 def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
