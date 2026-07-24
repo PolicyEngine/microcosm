@@ -66,10 +66,10 @@ DEFAULT_FEED_PATH = (
     / "PolicyEngine"
     / "_buildh-runtime"
     / "inputs"
-    / "consumer_facts_buildn_v9_2.jsonl"
+    / "consumer_facts_buildn_v9_4.jsonl"
 )
-DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_2.jsonl"
-EXPECTED_FEED_SHA256_PREFIX = "61b115c0"
+DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_4.jsonl"
+EXPECTED_FEED_SHA256_PREFIX = "b3c08356"
 TARGET_PERIOD = 2024
 
 # The parity declaration's congressional-district regime. Flipping this is a
