@@ -23,6 +23,7 @@ from populace.build.us_runtime.qbi_inputs import (
     US_QBI_OUTPUT_COLUMNS,
 )
 from populace.build.us_runtime.qbi_simulation import (
+    qbi_qrf_excluded_targets,
     with_qbi_simulation_from_puf_arrays,
 )
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
@@ -43,6 +44,7 @@ __all__ = [
     "clone_us_frame_for_puf_support",
     "finalize_us_puf_tax_detail_predictions",
     "impute_us_puf_tax_detail_support",
+    "puf_tax_detail_person_outputs_for_qbi_version",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
@@ -196,6 +198,20 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "second_home_mortgage_origination_year",
     "health_savings_account_ald",
 )
+
+
+def puf_tax_detail_person_outputs_for_qbi_version(
+    qbi_simulation_version: int,
+) -> tuple[str, ...]:
+    """Select QRF person targets while preserving the materialized surface."""
+
+    excluded = set(qbi_qrf_excluded_targets(qbi_simulation_version))
+    return tuple(
+        output
+        for output in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        if output not in excluded
+    )
+
 
 _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
     {

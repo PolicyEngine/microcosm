@@ -130,7 +130,16 @@
             "non_qualified_dividend_income",
             "capital_gains",
             "filing_status"
-          ]
+          ],
+          "qbi_target_exclusions_by_simulation_version": {
+            "1": [],
+            "2": [
+              "farm_operations_income_would_be_qualified",
+              "partnership_s_corp_income_would_be_qualified",
+              "self_employment_income_would_be_qualified",
+              "sstb_self_employment_income_would_be_qualified"
+            ]
+          }
         },
         {
           "kind": "support_clip",

@@ -47,6 +47,7 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    QBI_SIMULATION_SUPPORTED_VERSIONS,
     QBI_SIMULATION_VERSION,
     US_PUF_SUPPORT_FIT_NAME,
     US_SOURCE_MANIFEST,
@@ -65,6 +66,7 @@ from populace.build.us_runtime import (
     load_asec_education_assistance_sources,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    puf_tax_detail_person_outputs_for_qbi_version,
     puf_tax_unit_donor_from_arrays,
     support_channel_column,
     translate_congressional_district_facts_to_current_vintage,
@@ -100,6 +102,7 @@ from populace.build.us_runtime import (
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
+    with_host_sstb_classification,
     with_household_congressional_districts,
     with_household_us_geography_ladder,
     with_us_adult_care_inputs,
@@ -194,7 +197,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "clone_feature_extraction",
         (
             "clone_us_frame_for_puf_support",
-            "puf_tax_unit_donor_from_arrays[qbi_simulation_version=1]",
+            "puf_tax_unit_donor_from_arrays[qbi_simulation_version]",
             "initialize_primary_puf_qrf_chain",
         ),
     ),
@@ -204,7 +207,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         ("run_source_stage[capital_gain_distributions]",),
     ),
-    ("qbi_reconciliation", ("with_us_qbi_input_reconciliation",)),
+    ("qbi_reconciliation", ("_with_versioned_qbi_post_qrf",)),
     ("wic_post_clone", ("with_us_wic_claim_input",)),
     (
         "housing_assistance",
@@ -267,6 +270,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--puf-h5", required=True, type=Path)
+    parser.add_argument(
+        "--qbi-simulation-version",
+        choices=QBI_SIMULATION_SUPPORTED_VERSIONS,
+        default=QBI_SIMULATION_VERSION,
+        type=int,
+        help=(
+            "Versioned Section 199A donor and post-QRF machinery. Version 1 "
+            "remains the production default; version 2 fails closed until its "
+            "reviewed SSTB crosswalk is packaged."
+        ),
+    )
     parser.add_argument(
         "--asec-2023-weeks-unemployed-source",
         type=Path,
@@ -519,6 +533,12 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
         command.extend(("--asec-max-households", str(args.asec_max_households)))
     _append_path_argument(command, "--support-spine-spec", args.support_spine_spec)
     command.extend(("--puf-h5", str(args.puf_h5)))
+    command.extend(
+        (
+            "--qbi-simulation-version",
+            str(_qbi_simulation_version(args)),
+        )
+    )
     _append_path_argument(
         command,
         "--asec-2023-weeks-unemployed-source",
@@ -559,6 +579,36 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
 def _append_path_argument(command: list[str], flag: str, value: Path | None) -> None:
     if value is not None:
         command.extend((flag, str(value)))
+
+
+def _qbi_simulation_version(args: argparse.Namespace) -> int:
+    version = int(
+        getattr(
+            args,
+            "qbi_simulation_version",
+            QBI_SIMULATION_VERSION,
+        )
+    )
+    if version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
+        raise ValueError(f"Unsupported qbi_simulation_version {version!r}.")
+    return version
+
+
+def _qbi_person_outputs(args: argparse.Namespace) -> tuple[str, ...]:
+    return puf_tax_detail_person_outputs_for_qbi_version(_qbi_simulation_version(args))
+
+
+def _with_versioned_qbi_post_qrf(
+    frame: Frame,
+    *,
+    qbi_simulation_version: int,
+) -> Frame:
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        return with_us_qbi_input_reconciliation(frame)
+    return with_host_sstb_classification(
+        frame,
+        qbi_simulation_version=qbi_simulation_version,
+    )
 
 
 def _staged_subprocess_environment() -> dict[str, str]:
@@ -665,6 +715,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "n_estimators": args.n_estimators,
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
+        "qbi_simulation_version": _qbi_simulation_version(args),
         "seed": args.seed,
         "support_spine_spec": path(args.support_spine_spec),
         "target_year": args.target_year,
@@ -994,9 +1045,12 @@ def _run_all(
     _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
+    qbi_simulation_version = _qbi_simulation_version(args)
+    qbi_person_outputs = _qbi_person_outputs(args)
     donor = puf_tax_unit_donor_from_arrays(
         arrays,
-        qbi_simulation_version=QBI_SIMULATION_VERSION,
+        person_outputs=qbi_person_outputs,
+        qbi_simulation_version=qbi_simulation_version,
     )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
@@ -1006,6 +1060,7 @@ def _run_all(
             donor,
             seed=args.seed,
             n_estimators=args.n_estimators,
+            person_outputs=qbi_person_outputs,
             tail_bound_diagnostics=tail_bound_diagnostics,
         )
     else:
@@ -1014,6 +1069,7 @@ def _run_all(
             donor,
             seed=args.seed,
             n_estimators=args.n_estimators,
+            person_outputs=qbi_person_outputs,
             raw_predictions_callback=lambda predictions: (
                 boundary_observer.observe_primary_qrf(expanded, predictions)
             ),
@@ -1026,7 +1082,10 @@ def _run_all(
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         imputed,
     )
-    imputed = with_us_qbi_input_reconciliation(imputed)
+    imputed = _with_versioned_qbi_post_qrf(
+        imputed,
+        qbi_simulation_version=qbi_simulation_version,
+    )
     _observe_frame_boundary(boundary_observer, "qbi_reconciliation", imputed)
     imputed = with_us_wic_claim_input(
         imputed,
@@ -1396,6 +1455,7 @@ def _run_all(
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
         "n_estimators": args.n_estimators,
+        "qbi_simulation_version": qbi_simulation_version,
         "base_rows": _row_counts(base),
         "expanded_rows": _row_counts(imputed),
         "base_household_weight_total": float(base.weights_for("household").total),
@@ -1860,9 +1920,12 @@ def _clone_feature_extraction_stage(
     base: Frame,
 ) -> tuple[Frame, dict[str, object]]:
     expanded = clone_us_frame_for_puf_support(base)
+    qbi_simulation_version = _qbi_simulation_version(args)
+    qbi_person_outputs = _qbi_person_outputs(args)
     donor = puf_tax_unit_donor_from_arrays(
         _read_h5_arrays(args.puf_h5),
-        qbi_simulation_version=QBI_SIMULATION_VERSION,
+        person_outputs=qbi_person_outputs,
+        qbi_simulation_version=qbi_simulation_version,
     )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
@@ -1875,6 +1938,7 @@ def _clone_feature_extraction_stage(
         expanded,
         donor,
         qrf_dir,
+        person_outputs=qbi_person_outputs,
         seed=args.seed,
         n_estimators=args.n_estimators,
     )
@@ -1883,6 +1947,7 @@ def _clone_feature_extraction_stage(
         "puf_sha256": _sha256(args.puf_h5),
         "puf_donor_rows": int(len(donor)),
         "puf_donor_columns": sorted(donor.columns.tolist()),
+        "qbi_simulation_version": qbi_simulation_version,
         "primary_qrf_checkpoint_dir": str(qrf_dir.resolve()),
     }
 
@@ -2031,7 +2096,10 @@ def _post_qrf_frame_stage(
     signals: dict[str, object] = {}
     metadata: dict[str, object] = {"signals": signals}
     if stage == "qbi_reconciliation":
-        frame = with_us_qbi_input_reconciliation(frame)
+        frame = _with_versioned_qbi_post_qrf(
+            frame,
+            qbi_simulation_version=_qbi_simulation_version(args),
+        )
     elif stage == "wic_post_clone":
         frame = with_us_wic_claim_input(
             frame,
@@ -2406,6 +2474,7 @@ def _export_staged_result(
         "output_sha256": _sha256(output_h5),
         "seed": args.seed,
         "n_estimators": args.n_estimators,
+        "qbi_simulation_version": _qbi_simulation_version(args),
         "base_rows": source["base_rows"],
         "expanded_rows": _row_counts(frame),
         "base_household_weight_total": source["base_household_weight_total"],

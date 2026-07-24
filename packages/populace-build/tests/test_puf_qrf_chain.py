@@ -26,6 +26,11 @@ from populace.build.us_runtime.puf_support import (
     clone_us_frame_for_puf_support,
     finalize_us_puf_tax_detail_predictions,
     prepare_us_puf_tax_detail_chain_inputs,
+    puf_tax_detail_person_outputs_for_qbi_version,
+)
+from populace.build.us_runtime.qbi_simulation import (
+    QBI_SIMULATION_V2,
+    QBI_SIMULATION_VERSION,
 )
 from populace.fit import QRF
 from populace.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -157,6 +162,29 @@ def test_primary_qrf_production_target_order_is_locked() -> None:
         json.dumps(list(PRIMARY_QRF_TARGET_ORDER), separators=(",", ":")).encode()
     ).hexdigest()
     assert digest == PRIMARY_QRF_TARGET_ORDER_SHA256
+
+
+def test_v2_primary_qrf_excludes_only_host_derived_qualification_routes() -> None:
+    assert (
+        puf_tax_detail_person_outputs_for_qbi_version(QBI_SIMULATION_VERSION)
+        == PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+
+    v2_outputs = puf_tax_detail_person_outputs_for_qbi_version(QBI_SIMULATION_V2)
+    excluded = set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS) - set(v2_outputs)
+
+    assert excluded == {
+        "farm_operations_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+    }
+    assert len(v2_outputs) == 51
+    assert len((*v2_outputs, *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS)) == 60
+    assert "farm_rent_income_would_be_qualified" in v2_outputs
+    assert "rental_income_would_be_qualified" in v2_outputs
+    assert "estate_income_would_be_qualified" in v2_outputs
+    assert "business_is_sstb" in v2_outputs
 
 
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(

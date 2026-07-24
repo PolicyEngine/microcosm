@@ -54,6 +54,7 @@ __all__ = [
     "load_sstb_crosswalk",
     "parse_qbi_simulation_assumptions",
     "parse_sstb_crosswalk",
+    "qbi_qrf_excluded_targets",
     "qbi_simulation_summary",
     "resolve_sstb_crosswalk",
     "simulate_qbi_inputs",
@@ -1080,7 +1081,59 @@ def us_qbi_simulation_stage_spec() -> SourceStageSpec:
             "populace_qbi_simulation_version="
             f"{QBI_SIMULATION_VERSION}."
         )
+    qrf_operations = tuple(
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+    )
+    if len(qrf_operations) != 1:
+        raise ValueError(
+            "puf_tax_detail must declare exactly one fit_weighted_qrf operation."
+        )
+    exclusions = _require_mapping(
+        qrf_operations[0].parameters.get("qbi_target_exclusions_by_simulation_version"),
+        "qbi_target_exclusions_by_simulation_version",
+    )
+    version_keys = tuple(str(version) for version in QBI_SIMULATION_SUPPORTED_VERSIONS)
+    _require_exact_keys(
+        exclusions,
+        version_keys,
+        "qbi_target_exclusions_by_simulation_version",
+    )
+    for version in QBI_SIMULATION_SUPPORTED_VERSIONS:
+        declared = exclusions[str(version)]
+        if not isinstance(declared, list) or not all(
+            isinstance(column, str) and column for column in declared
+        ):
+            raise ValueError("QBI target exclusions must be lists of nonempty strings.")
+        expected = qbi_qrf_excluded_targets(version)
+        if tuple(declared) != expected:
+            raise ValueError(
+                "puf_tax_detail QBI target exclusions disagree with version "
+                f"{version} assumptions: expected {expected!r}, "
+                f"got {tuple(declared)!r}."
+            )
     return spec
+
+
+def qbi_qrf_excluded_targets(
+    qbi_simulation_version: int,
+) -> tuple[str, ...]:
+    """Return QBI leaves derived after, rather than imputed by, the QRF."""
+
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        return ()
+    assumptions = load_qbi_simulation_assumptions(qbi_simulation_version)
+    if not isinstance(assumptions, QbiSimulationAssumptionsV2):
+        raise TypeError("QBI v2 target selection requires v2 assumptions.")
+    excluded = {
+        _QUALIFICATION_FLAG_BY_SOURCE[derivation.source]
+        for derivation in assumptions.qualification_derivations
+        if derivation.mode == "derived"
+    }
+    if assumptions.qualification_by_source["self_employment_income"].mode == "derived":
+        excluded.add(_SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG)
+    return tuple(column for column in US_QBI_OUTPUT_COLUMNS if column in excluded)
 
 
 def simulate_qbi_inputs(

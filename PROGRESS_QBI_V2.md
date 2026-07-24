@@ -4,7 +4,7 @@
 
 - Branch: `qbi-v2-engine`
 - Base: `qbi-port-530` at `d1a6428`
-- Status: version-gated QRF target selection and builder wiring in progress
+- Status: implementation complete; full-workspace validation in progress
 
 ## Done
 
@@ -48,10 +48,22 @@
   and Schedule C precedence. The transform is deterministic, does not mutate
   its source frame, satisfies every summary invariant, and passes the QBI
   signal gate.
+- Added version-gated QRF target selection. V1 retains its locked 55 person
+  plus 9 tax-unit targets; v2 excludes exactly the four derived route flags,
+  retaining 51 person plus 9 tax-unit targets and the preliminary
+  `business_is_sstb` target for authoritative host reassignment.
+- Declared and runtime-validated the per-version target exclusions in
+  `source_stages.json`.
+- Threaded `qbi_simulation_version` through monolithic and checkpointed builder
+  paths, their locked run configuration, donor construction, QRF fitting, and
+  summaries. V1 remains the CLI default. V2 dispatches the existing
+  `qbi_reconciliation` stage boundary to the host-conditioned transform.
+- Added builder dispatch and child-CLI round-trip tests. The focused QBI, QRF,
+  builder, manifest, and plan tests pass with the v1 golden test unchanged.
 
 ## Next
 
-- Add version-gated QRF target selection.
-- Thread the explicit version through monolithic and checkpointed builder
-  paths while retaining v1 as the default.
-- Add declarative source-stage target metadata and version-seam tests.
+- Add the towncrier fragment and final report.
+- Run format/lint, country-package contracts, and the full workspace test suite.
+- Replace placeholder crosswalk content and placeholder passive-prior values in
+  follow-up research before enabling v2 in a production build.
