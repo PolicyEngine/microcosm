@@ -381,9 +381,11 @@ def test_recipient_income_feature_is_full_year_equivalent(monkeypatch) -> None:
     person.loc[53, "employment_income_before_lsr"] = 30_000.0
     person.loc[53, "weeks_worked"] = np.nan
 
-    frame = module.with_us_org_wages_inputs(
-        _frame(person), seed=0, time_period=2024, org_donor=_donor()
-    )
+    # Strict float errors: zero/missing weeks must never touch the divide.
+    with np.errstate(divide="raise", invalid="raise"):
+        frame = module.with_us_org_wages_inputs(
+            _frame(person), seed=0, time_period=2024, org_donor=_donor()
+        )
     features = captured["features"]
     assert features.loc[50, "employment_income"] == 52_000.0
     assert features.loc[51, "employment_income"] == 52_000.0
@@ -571,23 +573,37 @@ def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
     assert (premium.to_numpy()[inactive] == 0).all()
 
 
+class _ConstantQRF:
+    """Deterministic stand-in: 25.0/hr, everyone paid hourly."""
+
+    def __init__(self, **kwargs):
+        pass
+
+    def fit(self, *args, **kwargs):
+        return self
+
+    def predict(self, features):
+        return pd.DataFrame(
+            {
+                "hourly_wage": np.full(len(features), 25.0),
+                "is_paid_hourly": np.ones(len(features)),
+            },
+            index=features.index,
+        )
+
+
 def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None:
     """A populated ORG surface must converge to the current estimator.
 
-    The idempotency skip may not silently retain a premium column produced by
-    the retired reference-week-only construction; the QRF family stays
-    skipped (poisoned here to prove it), the premium refreshes, and an
-    already-consistent surface passes through unchanged.
+    The stage re-imputes on every entry: a stale premium column from the
+    retired reference-week-only construction converges, a NaN premium takes
+    the recomputed clean value, and a surface that already matches passes
+    through byte-stable (seeded QRF + deterministic lottery + pure derives).
     """
     monkeypatch.setattr(
         module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
     )
-
-    class PoisonQRF:
-        def __init__(self, **kwargs):
-            raise AssertionError("populated surface must not refit the QRF")
-
-    monkeypatch.setattr("populace.fit.QRF", PoisonQRF)
+    monkeypatch.setattr("populace.fit.QRF", _ConstantQRF)
     person = _person(1_000)
     person["cps_race"] = person["PRDTRACE"]
     person["is_hispanic"] = person["PRDTHSP"].ne(0)
@@ -626,7 +642,8 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     )
     assert np.isfinite(premium.to_numpy()).all()
 
-    # Idempotent second pass: already consistent, returned unchanged.
+    # Idempotent second pass: already consistent, returned unchanged —
+    # including the hash-lottery union column, proving byte-stable re-entry.
     person_consistent = refreshed.table("person")
     again = module.with_us_org_wages_inputs(
         _frame(person_consistent), seed=0, time_period=2024, org_donor=_donor()
@@ -634,6 +651,10 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     np.testing.assert_array_equal(
         again.table("person")["fsla_overtime_premium"].to_numpy(),
         premium.to_numpy(),
+    )
+    np.testing.assert_array_equal(
+        again.table("person")["is_union_member_or_covered"].to_numpy(),
+        person_consistent["is_union_member_or_covered"].to_numpy(),
     )
 
     # Third pass — the NaN-coercion regression guard: on an OTHERWISE
@@ -651,3 +672,41 @@ def test_stage_refreshes_stale_premium_on_populated_surface(monkeypatch) -> None
     assert np.isfinite(healed_premium).all()
     assert healed_premium[0] == 0.0
     np.testing.assert_array_equal(healed_premium, premium.to_numpy())
+
+
+def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
+    """Stale QRF outputs on a populated surface must converge too.
+
+    The #529 concept alignment changes what the QRF sees, so a populated
+    frame whose wages came from the earlier feature construction may not
+    survive re-entry: the stage re-imputes hourly wage and hourly status,
+    not just the premium.
+    """
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
+    monkeypatch.setattr("populace.fit.QRF", _ConstantQRF)
+    person = _person(1_000)
+    person["cps_race"] = person["PRDTRACE"]
+    person["is_hispanic"] = person["PRDTHSP"].ne(0)
+    carried = derive_us_org_occupation_inputs(person)
+    for column in carried:
+        person[column] = carried[column]
+    # Stale wage surface: sub-minimum values and inverted hourly status from
+    # an earlier construction; premium zero everywhere except the 50 ref-week
+    # carriers the fixture defines.
+    active = person["employment_income_before_lsr"].to_numpy() > 0
+    person["hourly_wage"] = np.where(active, 5.0, 0.0)
+    person["is_paid_hourly"] = np.where(active, np.arange(1_000) % 2 == 0, False)
+    person["is_union_member_or_covered"] = np.arange(1_000) % 9 == 0
+    person["fsla_overtime_premium"] = 0.0
+    person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
+
+    refreshed = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    )
+    out = refreshed.table("person")
+    np.testing.assert_array_equal(
+        out["hourly_wage"].to_numpy(), np.where(active, 25.0, 0.0)
+    )
+    np.testing.assert_array_equal(out["is_paid_hourly"].to_numpy(), active)
