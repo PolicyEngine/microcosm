@@ -1,5 +1,30 @@
 # Progress
 
+## Current task
+
+The active ledger for the repeal-revenue validation surface is
+`PROGRESS_REPEAL_VALIDATION.md`. This branch starts from local
+`qbi-v2-engine` HEAD `807141e` and remains offline.
+
+## Current state
+
+- Branch `repeal-validation-298` created in the dedicated
+  `.claude/worktrees/populace-wt-530` worktree.
+- Repository reform-validation contracts and release consumers are being
+  mapped before implementation.
+
+## Current done
+
+- Verified the requested branch point and clean starting worktree.
+- Confirmed GitNexus MCP tools are unavailable and selected local source
+  tracing as the documented fallback.
+
+## Current next
+
+- Trace the tax-expenditure and OBBBA reform validators and release payload.
+- Add the declared benchmark resource, runner family, and contract tests.
+- Run focused checks and the full workspace suite, then write the final report.
+
 ## State
 
 Populace #516 whole-row donor outlier screen is complete on
