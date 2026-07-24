@@ -4,7 +4,7 @@
 
 - Branch: `qbi-v2-engine`
 - Base: `qbi-port-530` at `d1a6428`
-- Status: v2 qualification and independent-stream simulation in progress
+- Status: host-conditioned SSTB transform and stage wiring in progress
 
 ## Done
 
@@ -27,9 +27,19 @@
 - Added strict v2 full-schema parsing, unknown-key/mode rejection, public
   runtime exports, and focused loader/crosswalk tests. The untouched v1 golden
   stream test remains green.
+- Implemented v2 donor execution: deterministic `source != 0` derivations do
+  not consume qualification RNG, residual-prior sources retain seeded draws,
+  W-2 and UBIA have separate family generators, and the donor emits a neutral
+  preliminary SSTB route for authoritative post-QRF host classification.
+- Made public v2 simulation fail closed before drawing when the packaged
+  crosswalk remains placeholder-status.
+- Added byte-level stream-independence tests: changing the final derived
+  qualification source to an equivalent prior leaves W-2, UBIA, investment,
+  REIT/PTP, and BDC family outputs byte-identical; changing W-2 or UBIA seeds
+  leaves the other family byte-identical.
 
 ## Next
 
-- Implement v2 qualification derivations and independently seeded families
-  without changing the v1 golden path.
 - Add version-gated QRF target selection and the post-QRF host SSTB transform.
+- Exercise the host transform against the existing reconciliation invariants
+  and signal gate with a ready synthetic crosswalk.

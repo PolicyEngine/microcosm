@@ -1085,8 +1085,9 @@ def us_qbi_simulation_stage_spec() -> SourceStageSpec:
 def simulate_qbi_inputs(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
     qbi_simulation_version: int,
+    sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, np.ndarray]:
     """Run a version-gated Section 199A simulation.
 
@@ -1101,43 +1102,74 @@ def simulate_qbi_inputs(
             f"{qbi_simulation_version!r} does not match assumptions version "
             f"{assumptions.qbi_simulation_version!r}."
         )
-    if qbi_simulation_version != QBI_SIMULATION_VERSION:
+    if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
         raise ValueError(
             f"Unsupported qbi_simulation_version {qbi_simulation_version!r}."
         )
     assumptions.validate()
 
-    qualification_rng = _rng(assumptions.qualification_seed, assumptions.bit_generator)
-    qualification_flags = tuple(
-        qualification_rng.random(inputs.n) < probability
-        for probability in assumptions.qualification_probabilities
-    )
-    qualified_components = np.column_stack(
-        [
-            inputs.source(source) * qualified
-            for source, qualified in zip(
-                assumptions.source_order,
-                qualification_flags,
-                strict=True,
-            )
-        ]
-    )
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        if not isinstance(assumptions, QbiSimulationAssumptions):
+            raise TypeError("QBI v1 simulation requires v1 assumptions.")
+        qualification_rng = _rng(
+            assumptions.qualification_seed,
+            assumptions.bit_generator,
+        )
+        qualification_flags = tuple(
+            qualification_rng.random(inputs.n) < probability
+            for probability in assumptions.qualification_probabilities
+        )
+        qualified_components = _qualified_components(
+            inputs,
+            source_order=assumptions.source_order,
+            qualification_flags=qualification_flags,
+        )
+        w2_rng = _rng(assumptions.w2_ubia_seed, assumptions.bit_generator)
+        w2_wages, ubia = _simulate_w2_and_ubia(
+            qualified_components,
+            assumptions=assumptions,
+            rng=w2_rng,
+        )
+        flag_by_source = dict(
+            zip(assumptions.source_order, qualification_flags, strict=True)
+        )
+        business_is_sstb = _simulate_business_is_sstb(
+            inputs,
+            qualification_flags=flag_by_source,
+            assumptions=assumptions,
+            rng=_rng(assumptions.sstb_seed, assumptions.bit_generator),
+        )
+    else:
+        if not isinstance(assumptions, QbiSimulationAssumptionsV2):
+            raise TypeError("QBI v2 simulation requires v2 assumptions.")
+        _resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
+        qualification_flags = _derive_v2_qualification_flags(
+            inputs,
+            assumptions=assumptions,
+        )
+        qualified_components = _qualified_components(
+            inputs,
+            source_order=assumptions.source_order,
+            qualification_flags=qualification_flags,
+        )
+        w2_wages = _simulate_w2(
+            qualified_components,
+            assumptions=assumptions,
+            rng=_rng(assumptions.w2_seed, assumptions.bit_generator),
+        )
+        ubia = _simulate_ubia(
+            qualified_components,
+            assumptions=assumptions,
+            rng=_rng(assumptions.ubia_seed, assumptions.bit_generator),
+        )
+        flag_by_source = dict(
+            zip(assumptions.source_order, qualification_flags, strict=True)
+        )
+        # The PUF donor has no host occupation or industry. V2 emits a neutral
+        # preliminary route; the authoritative SSTB classifier runs after QRF
+        # placement on the cloned host record.
+        business_is_sstb = np.zeros(inputs.n, dtype=bool)
 
-    w2_rng = _rng(assumptions.w2_ubia_seed, assumptions.bit_generator)
-    w2_wages, ubia = _simulate_w2_and_ubia(
-        qualified_components,
-        assumptions=assumptions,
-        rng=w2_rng,
-    )
-    flag_by_source = dict(
-        zip(assumptions.source_order, qualification_flags, strict=True)
-    )
-    business_is_sstb = _simulate_business_is_sstb(
-        inputs,
-        qualification_flags=flag_by_source,
-        assumptions=assumptions,
-        rng=_rng(assumptions.sstb_seed, assumptions.bit_generator),
-    )
     qualified_reit_and_ptp_income, qualified_bdc_income = _simulate_investment_qbi(
         inputs,
         assumptions=assumptions,
@@ -1186,7 +1218,8 @@ def with_qbi_simulation_from_puf_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
     qbi_simulation_version: int,
-    assumptions: QbiSimulationAssumptions | None = None,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2 | None = None,
+    sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, Sequence[Any]]:
     """Return PUF arrays with a repository-owned QBI simulation applied.
 
@@ -1204,6 +1237,7 @@ def with_qbi_simulation_from_puf_arrays(
         inputs,
         assumptions=resolved_assumptions,
         qbi_simulation_version=qbi_simulation_version,
+        sstb_crosswalk=sstb_crosswalk,
     )
     result: dict[str, Sequence[Any]] = dict(arrays)
     result[_NON_SSTB_SELF_EMPLOYMENT_SOURCE] = np.where(
@@ -1259,6 +1293,63 @@ def qbi_simulation_summary(
             "negative": int(np.count_nonzero(finite & (values < 0.0))),
         }
     return summary
+
+
+def _resolve_sstb_crosswalk(
+    assumptions: QbiSimulationAssumptionsV2,
+    crosswalk: SstbCrosswalk | Mapping[str, Any] | None,
+) -> SstbCrosswalk:
+    resolved = (
+        load_sstb_crosswalk(assumptions.sstb_classification.crosswalk_resource)
+        if crosswalk is None
+        else (
+            crosswalk
+            if isinstance(crosswalk, SstbCrosswalk)
+            else parse_sstb_crosswalk(crosswalk)
+        )
+    )
+    if resolved.status != _SSTB_CROSSWALK_READY_STATUS:
+        raise ValueError("QBI v2 requires a ready SSTB crosswalk.")
+    if not resolved.occupation_mapping and not resolved.industry_mapping:
+        raise ValueError("QBI v2 requires a nonempty SSTB crosswalk.")
+    return resolved
+
+
+def _derive_v2_qualification_flags(
+    inputs: QbiSimulationInputs,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+) -> tuple[np.ndarray, ...]:
+    rng = _rng(assumptions.qualification_seed, assumptions.bit_generator)
+    flags: list[np.ndarray] = []
+    for derivation in assumptions.qualification_derivations:
+        if derivation.mode == "derived":
+            flags.append(inputs.source(derivation.source) != 0.0)
+            continue
+        if derivation.prior_probability is None:
+            raise ValueError(
+                f"QBI prior source {derivation.source!r} lacks a probability."
+            )
+        flags.append(rng.random(inputs.n) < derivation.prior_probability)
+    return tuple(flags)
+
+
+def _qualified_components(
+    inputs: QbiSimulationInputs,
+    *,
+    source_order: tuple[str, ...],
+    qualification_flags: tuple[np.ndarray, ...],
+) -> np.ndarray:
+    return np.column_stack(
+        [
+            inputs.source(source) * qualified
+            for source, qualified in zip(
+                source_order,
+                qualification_flags,
+                strict=True,
+            )
+        ]
+    )
 
 
 def _simulate_w2_and_ubia(
@@ -1323,6 +1414,75 @@ def _simulate_w2_and_ubia(
     return w2_wages, ubia
 
 
+def _simulate_w2(
+    qualified_components: np.ndarray,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    qbi = qualified_components.sum(axis=1)
+    margins = _draw_source_weighted_beta(
+        qualified_components,
+        assumptions.profit_margin_parameters,
+        rng,
+    )
+    revenues = np.divide(
+        np.maximum(qbi, 0.0),
+        margins,
+        out=np.zeros_like(qbi, dtype=np.float64),
+        where=margins > 0.0,
+    )
+    intercept = _calibrate_logit_intercept(
+        revenues,
+        slope=assumptions.has_employees_slope_per_dollar,
+        target_share=assumptions.has_employees_target_share,
+        iterations=assumptions.intercept_bisection_iterations,
+    )
+    employee_probability = np.where(
+        revenues == 0.0,
+        0.0,
+        _logistic(intercept + assumptions.has_employees_slope_per_dollar * revenues),
+    )
+    has_employees = rng.binomial(n=1, p=employee_probability)
+    labor_ratios = _draw_source_weighted_beta(
+        qualified_components,
+        assumptions.labor_ratio_parameters,
+        rng,
+    )
+    return revenues * labor_ratios * has_employees
+
+
+def _simulate_ubia(
+    qualified_components: np.ndarray,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    qbi = qualified_components.sum(axis=1)
+    capital_probability = np.clip(
+        _source_weighted_parameter(
+            qualified_components,
+            assumptions.capital_intensity_probabilities,
+        ),
+        0.0,
+        1.0,
+    )
+    is_capital_intensive = rng.binomial(n=1, p=capital_probability).astype(bool)
+    ubia_multiple = _source_weighted_parameter(
+        qualified_components,
+        assumptions.ubia_multiples,
+    )
+    target_mean = ubia_multiple * np.maximum(qbi, 0.0)
+    eligible = is_capital_intensive & (target_mean > 0.0)
+    safe_target_mean = np.where(target_mean > 0.0, target_mean, 1.0)
+    mu = np.log(safe_target_mean) - (assumptions.ubia_sigma**2 / 2.0)
+    return np.where(
+        eligible,
+        rng.lognormal(mean=mu, sigma=assumptions.ubia_sigma),
+        0.0,
+    )
+
+
 def _simulate_business_is_sstb(
     inputs: QbiSimulationInputs,
     *,
@@ -1346,7 +1506,7 @@ def _simulate_business_is_sstb(
 def _simulate_investment_qbi(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
     exposure_bases = {

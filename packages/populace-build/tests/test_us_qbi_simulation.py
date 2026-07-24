@@ -87,6 +87,24 @@ def _v2_payload() -> dict[str, object]:
     return json.loads(resource.read_text(encoding="utf-8"))
 
 
+def _synthetic_sstb_crosswalk_payload() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "crosswalk_version": "synthetic-test-v1",
+        "status": "ready",
+        "occupation_code_system": "synthetic Census occupation",
+        "industry_code_system": None,
+        "mapping": {
+            "occupation": {
+                "1010": "clear_sstb",
+                "2020": "non_sstb",
+                "3030": "ambiguous",
+            },
+            "industry": {},
+        },
+    }
+
+
 def test_v1_assumptions_pin_stream_order_models_and_manifest_marker() -> None:
     assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_VERSION)
 
@@ -205,23 +223,7 @@ def test_sstb_crosswalk_placeholder_fails_closed_and_ready_fixture_loads() -> No
     with pytest.raises(ValueError, match="status is 'placeholder'"):
         load_sstb_crosswalk("sstb_crosswalk_placeholder.json")
 
-    crosswalk = parse_sstb_crosswalk(
-        {
-            "schema_version": 1,
-            "crosswalk_version": "synthetic-test-v1",
-            "status": "ready",
-            "occupation_code_system": "synthetic Census occupation",
-            "industry_code_system": None,
-            "mapping": {
-                "occupation": {
-                    "1010": "clear_sstb",
-                    "2020": "non_sstb",
-                    "3030": "ambiguous",
-                },
-                "industry": {},
-            },
-        }
-    )
+    crosswalk = parse_sstb_crosswalk(_synthetic_sstb_crosswalk_payload())
 
     assert crosswalk.status == "ready"
     assert crosswalk.mapping_for("occupation") == {
@@ -229,6 +231,122 @@ def test_sstb_crosswalk_placeholder_fails_closed_and_ready_fixture_loads() -> No
         2020: "non_sstb",
         3030: "ambiguous",
     }
+
+
+def test_v2_simulation_fails_closed_before_using_placeholder_crosswalk() -> None:
+    inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
+
+    with pytest.raises(ValueError, match="status is 'placeholder'"):
+        simulate_qbi_inputs(
+            inputs,
+            assumptions=load_qbi_simulation_assumptions(QBI_SIMULATION_V2),
+            qbi_simulation_version=QBI_SIMULATION_V2,
+        )
+
+
+def test_v2_derives_law_determined_flags_and_draws_only_residual_priors() -> None:
+    inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    outputs = simulate_qbi_inputs(
+        inputs,
+        assumptions=assumptions,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        sstb_crosswalk=_synthetic_sstb_crosswalk_payload(),
+    )
+    qualification_rng = np.random.default_rng(assumptions.qualification_seed)
+
+    for derivation in assumptions.qualification_derivations:
+        if derivation.mode == "derived":
+            expected = inputs.source(derivation.source) != 0.0
+        else:
+            assert derivation.prior_probability is not None
+            expected = qualification_rng.random(inputs.n) < derivation.prior_probability
+        np.testing.assert_array_equal(
+            outputs[f"{derivation.source}_would_be_qualified"],
+            expected,
+        )
+
+    assert not np.any(outputs["business_is_sstb"])
+    assert not np.any(outputs["sstb_self_employment_income_before_lsr"])
+
+
+def test_v2_qualification_mode_change_preserves_other_family_bytes() -> None:
+    inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    prior_partnership = replace(
+        assumptions,
+        qualification_derivations=tuple(
+            replace(
+                derivation,
+                mode="prior",
+                prior_probability=1.0,
+            )
+            if derivation.source == "partnership_s_corp_income"
+            else derivation
+            for derivation in assumptions.qualification_derivations
+        ),
+    )
+    fixture = _synthetic_sstb_crosswalk_payload()
+    baseline = simulate_qbi_inputs(
+        inputs,
+        assumptions=assumptions,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        sstb_crosswalk=fixture,
+    )
+    changed = simulate_qbi_inputs(
+        inputs,
+        assumptions=prior_partnership,
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        sstb_crosswalk=fixture,
+    )
+
+    assert not np.array_equal(
+        baseline["partnership_s_corp_income_would_be_qualified"],
+        changed["partnership_s_corp_income_would_be_qualified"],
+    )
+    for column in (
+        "w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "qualified_reit_and_ptp_income",
+        "qualified_bdc_income",
+    ):
+        assert (
+            np.asarray(baseline[column]).tobytes()
+            == np.asarray(changed[column]).tobytes()
+        )
+
+
+def test_v2_w2_and_ubia_family_seeds_are_independent() -> None:
+    inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
+    assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+    fixture = _synthetic_sstb_crosswalk_payload()
+
+    def run(resolved_assumptions):
+        return simulate_qbi_inputs(
+            inputs,
+            assumptions=resolved_assumptions,
+            qbi_simulation_version=QBI_SIMULATION_V2,
+            sstb_crosswalk=fixture,
+        )
+
+    baseline = run(assumptions)
+    changed_w2 = run(replace(assumptions, w2_seed=assumptions.w2_seed + 1))
+    changed_ubia = run(replace(assumptions, ubia_seed=assumptions.ubia_seed + 1))
+
+    assert not np.array_equal(
+        baseline["w2_wages_from_qualified_business"],
+        changed_w2["w2_wages_from_qualified_business"],
+    )
+    assert np.asarray(baseline["unadjusted_basis_qualified_property"]).tobytes() == (
+        np.asarray(changed_w2["unadjusted_basis_qualified_property"]).tobytes()
+    )
+    assert not np.array_equal(
+        baseline["unadjusted_basis_qualified_property"],
+        changed_ubia["unadjusted_basis_qualified_property"],
+    )
+    assert np.asarray(baseline["w2_wages_from_qualified_business"]).tobytes() == (
+        np.asarray(changed_ubia["w2_wages_from_qualified_business"]).tobytes()
+    )
 
 
 def test_version_and_random_stream_order_are_strict() -> None:
