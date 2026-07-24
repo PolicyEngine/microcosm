@@ -99,7 +99,10 @@ def test_shared_puf_stage_declares_exact_source_and_output() -> None:
     assert operation.parameters["casualty_loss_output"] == "casualty_loss"
     assert "casualty_loss" in stage.outputs
     assert "casualty_loss" in stage.nonnegative_outputs
-    assert any("E20500" in str(artifact.get("locator")) for artifact in stage.artifacts)
+    assert any(
+        "E20500" in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    )
 
 
 def test_puf_support_keeps_casualty_loss_sparse_and_earnings_distributed() -> None:

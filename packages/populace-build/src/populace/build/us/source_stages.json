@@ -40,7 +40,7 @@
           "size_bytes": 241045964,
           "physical_qbi_metadata": "no qbi_simulation_version attribute; carries only the retired deterministic W-2 proxy",
           "populace_qbi_simulation_version": 1,
-          "audit": "PUF_2024_ARTIFACT_AUDIT.md",
+          "audit": "experiments/qbi-port-530/PUF_2024_ARTIFACT_AUDIT.md",
           "locator": "release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5"
         },
         {

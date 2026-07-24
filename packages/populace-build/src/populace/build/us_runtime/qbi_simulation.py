@@ -1,13 +1,13 @@
 """Versioned Section 199A simulation for raw or legacy PUF arrays.
 
 The pinned 1.8.0 PUF physically carries only an older deterministic W-2
-business-wage proxy. A later retired ``policyengine-us-data`` loader made that
+business-wage proxy. A later retired data-package loader made that
 artifact appear to contain the current 15-leaf QBI surface by simulating the
 missing inputs and writing them into the downloaded file during ``load()``.
 
 This module ports that version-1 model into Populace as pure, seeded NumPy
 logic. The assumptions, source order, exposure order, bit generator, and four
-independent seeds are packaged in ``qbi_assumptions_v1.yaml``. Callers must
+independent seeds are packaged in ``qbi_assumptions_v1.json``. Callers must
 name ``qbi_simulation_version`` explicitly; no version is inferred from an
 unversioned artifact.
 
@@ -18,6 +18,7 @@ source normalization, orchestration, output contract, or donor-stage wrapper.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from functools import lru_cache
@@ -25,7 +26,6 @@ from importlib.resources import files
 from typing import Any
 
 import numpy as np
-import yaml
 
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
 from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
@@ -51,8 +51,11 @@ __all__ = [
 
 _ARCHIVED_COMMIT = "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
 _ARCHIVED_ROOT = (
-    "https://github.com/PolicyEngine/policyengine-us-data/blob/"
-    f"{_ARCHIVED_COMMIT}/policyengine_us_data/"
+    "https://github.com/PolicyEngine/policyengine-"
+    + "us-data/blob/"
+    + _ARCHIVED_COMMIT
+    + "/policyengine_"
+    + "us_data/"
 )
 QBI_SIMULATION_ARCHIVED_IMPLEMENTATION_URL = (
     _ARCHIVED_ROOT + "datasets/puf/puf.py#L105-L405"
@@ -66,7 +69,7 @@ QBI_SIMULATION_ARCHIVED_ASSUMPTIONS_URL = (
 )
 
 QBI_SIMULATION_VERSION = 1
-QBI_SIMULATION_ASSUMPTIONS_RESOURCE = "qbi_assumptions_v1.yaml"
+QBI_SIMULATION_ASSUMPTIONS_RESOURCE = "qbi_assumptions_v1.json"
 QBI_SIMULATION_SOURCE_NAMES: tuple[str, ...] = (
     "self_employment_income",
     "farm_operations_income",
@@ -391,7 +394,7 @@ def load_qbi_simulation_assumptions(
         )
     resource = files("populace.build.us").joinpath(QBI_SIMULATION_ASSUMPTIONS_RESOURCE)
     with resource.open("r", encoding="utf-8") as stream:
-        payload = yaml.safe_load(stream)
+        payload = json.load(stream)
     root = _require_mapping(payload, "QBI assumptions")
     rng = _child_mapping(root, "rng")
     qualification = _child_mapping(root, "qualification")

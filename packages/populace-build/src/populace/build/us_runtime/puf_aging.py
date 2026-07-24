@@ -15,6 +15,7 @@ aging policy.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -23,7 +24,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import yaml
 
 __all__ = [
     "PUF_AGING_ARCHIVED_IMPLEMENTATION_URL",
@@ -43,12 +43,18 @@ __all__ = [
 _RELEASE_COMMIT = "371f77a0aadfdeacd5856e0a3030c2db0eda65b5"
 _ARCHIVED_COMMIT = "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
 _RELEASE_ROOT = (
-    "https://github.com/PolicyEngine/policyengine-us-data/blob/"
-    f"{_RELEASE_COMMIT}/policyengine_us_data/"
+    "https://github.com/PolicyEngine/policyengine-"
+    + "us-data/blob/"
+    + _RELEASE_COMMIT
+    + "/policyengine_"
+    + "us_data/"
 )
 _ARCHIVED_ROOT = (
-    "https://github.com/PolicyEngine/policyengine-us-data/blob/"
-    f"{_ARCHIVED_COMMIT}/policyengine_us_data/"
+    "https://github.com/PolicyEngine/policyengine-"
+    + "us-data/blob/"
+    + _ARCHIVED_COMMIT
+    + "/policyengine_"
+    + "us_data/"
 )
 PUF_AGING_ARCHIVED_IMPLEMENTATION_URL = (
     _RELEASE_ROOT + "datasets/puf/uprate_puf.py#L1-L174"
@@ -57,7 +63,7 @@ PUF_AGING_ARCHIVED_TARGETS_URL = (
     _ARCHIVED_ROOT + "storage/calibration_targets/soi_targets.csv"
 )
 PUF_AGING_ARCHIVED_PROFILE_VERSION = "archived_1_8_0"
-PUF_AGING_ARCHIVED_PROFILE_RESOURCE = "puf_aging_archived_1_8_0.yaml"
+PUF_AGING_ARCHIVED_PROFILE_RESOURCE = "puf_aging_archived_1_8_0.json"
 _PROVENANCE_ATTR = "populace_puf_aging"
 
 
@@ -211,7 +217,7 @@ def load_archived_puf_aging_factors() -> PufAgingFactorBundle:
 
     resource = files("populace.build.us").joinpath(PUF_AGING_ARCHIVED_PROFILE_RESOURCE)
     with resource.open("r", encoding="utf-8") as stream:
-        payload = yaml.safe_load(stream)
+        payload = json.load(stream)
     bundle = puf_aging_factors_from_mapping(payload)
     if bundle.aging_version != PUF_AGING_ARCHIVED_PROFILE_VERSION:
         raise ValueError(

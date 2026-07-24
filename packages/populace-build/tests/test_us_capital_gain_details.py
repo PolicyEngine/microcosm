@@ -190,7 +190,10 @@ def test_shared_puf_stage_declares_sources_outputs_and_artifact() -> None:
     assert set(US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS) <= set(stage.outputs)
     assert set(US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS) <= set(stage.nonnegative_outputs)
     assert any(
-        all(field in str(artifact.get("locator")) for field in ("E24515", "E24518"))
+        all(
+            field in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+            for field in ("E24515", "E24518")
+        )
         for artifact in stage.artifacts
     )
     assert any(

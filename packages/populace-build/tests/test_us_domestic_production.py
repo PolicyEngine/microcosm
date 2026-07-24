@@ -132,7 +132,10 @@ def test_shared_puf_stage_declares_exact_source_and_output() -> None:
     )
     assert "domestic_production_ald" in stage.outputs
     assert "domestic_production_ald" in stage.nonnegative_outputs
-    assert any("E03240" in str(artifact.get("locator")) for artifact in stage.artifacts)
+    assert any(
+        "E03240" in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    )
 
 
 def test_puf_support_keeps_input_at_tax_unit_grain_and_sparse() -> None:

@@ -427,6 +427,7 @@ def acs_derived_transfer_expectations(
         return {_SCHEDULE_D_CGD_COLUMN: "person"}
     return {}
 
+
 _SCHEDULE_D_CGD_COLUMN = "schedule_d_capital_gain_distributions"
 _SCHEDULE_D_CGD_SOURCE = "long_term_capital_gains_before_response"
 _SCHEDULE_D_CGD_EXCLUSIVE_WITH = "non_sch_d_capital_gains"

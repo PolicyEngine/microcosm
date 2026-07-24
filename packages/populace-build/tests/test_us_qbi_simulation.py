@@ -191,9 +191,6 @@ def test_v1_has_golden_seeded_streams_for_all_fifteen_outputs() -> None:
         "qualified_bdc_income": (
             "076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560"
         ),
-        "qualified_reit_and_ptp_income": (
-            "0718b70f6d4be0b77050f2e459c5fc22d70d4dbac811bffc92302250064b1e77"
-        ),
         "sstb_self_employment_income_before_lsr": (
             "ccb21860777bc6982536880d454e1f18bd920d1491c4a4ef8c372b636428ee3e"
         ),
@@ -202,9 +199,6 @@ def test_v1_has_golden_seeded_streams_for_all_fifteen_outputs() -> None:
         ),
         "sstb_w2_wages_from_qualified_business": (
             "076a27c79e5ace2a3d47f9dd2e83e4ff6ea8872b3c2218f66c92b89b55f36560"
-        ),
-        "unadjusted_basis_qualified_property": (
-            "88ca009481dd677862908f2186eee1ff40a667b0812d68cff782bdac3cd4257b"
         ),
         "w2_wages_from_qualified_business": (
             "687685c48717d9f174b885a0d2623dfbb8d99b1a39f456a9a04f7a7913752fdf"
@@ -217,10 +211,62 @@ def test_v1_has_golden_seeded_streams_for_all_fifteen_outputs() -> None:
         qbi_simulation_version=QBI_SIMULATION_VERSION,
     )
 
+    # Beta and lognormal draws route through libm, whose last-ulp rounding
+    # differs across platforms; these two leaves get value-based goldens with
+    # tolerance while every flag/linear leaf stays byte-exact.
+    libm_sensitive_expected: dict[str, dict[int, float]] = {
+        "qualified_reit_and_ptp_income": {
+            2: 37.66626208631762,
+            12: 103.79383958799434,
+            16: 233.53102781186632,
+            26: 28.33837225431461,
+            28: 211.32889926679022,
+            30: 80.87751309669761,
+            32: 111.54473324411704,
+            36: 520.9426655795415,
+            38: 694.8521547117064,
+            48: 899.592629035168,
+            50: 236.78819258966882,
+            54: 990.4968932479194,
+            62: 1361.5004139746575,
+        },
+        "unadjusted_basis_qualified_property": {
+            0: 30518.054316323058,
+            4: 86945.18129450442,
+            5: 31569.609596577146,
+            6: 40689.834303024974,
+            8: 14465.183779022262,
+            10: 24328.436608781318,
+            15: 14165.063201140407,
+            16: 248840.89983255556,
+            20: 52988.84715631746,
+            27: 79734.50293313447,
+            32: 168466.50112907932,
+            35: 20541.337464914657,
+            36: 760501.1618940977,
+            40: 384821.58411189757,
+            48: 523570.5769025755,
+            50: 68223.48718574771,
+            52: 832480.8658452359,
+            54: 361472.420883897,
+            55: 18378.210763760664,
+            56: 29930.640951148995,
+        },
+    }
+
     assert tuple(outputs) == US_QBI_OUTPUT_COLUMNS
     assert {
-        column: _sha256(np.asarray(values)) for column, values in outputs.items()
+        column: _sha256(np.asarray(values))
+        for column, values in outputs.items()
+        if column in expected_hashes
     } == expected_hashes
+    for column, sparse_expected in libm_sensitive_expected.items():
+        expected = np.zeros(64, dtype=np.float64)
+        for index, value in sparse_expected.items():
+            expected[index] = value
+        actual = np.asarray(outputs[column], dtype=np.float64)
+        assert (actual != 0.0).tolist() == (expected != 0.0).tolist()
+        np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-9)
 
 
 def test_stage_wrapper_replaces_stale_leaves_and_preserves_sstb_identities() -> None:

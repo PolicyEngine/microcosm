@@ -189,7 +189,10 @@ def test_shared_puf_stage_declares_exact_source_output_and_artifact() -> None:
     )
     assert "investment_income_elected_form_4952" in stage.outputs
     assert "investment_income_elected_form_4952" in stage.nonnegative_outputs
-    assert any("E58990" in str(artifact.get("locator")) for artifact in stage.artifacts)
+    assert any(
+        "E58990" in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    )
     assert any(
         "irs-soi-puf/1.8.0/puf_2024.h5" in str(artifact.get("locator"))
         for artifact in stage.artifacts

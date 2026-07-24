@@ -31,7 +31,7 @@
   contract gap, the four requested direct-mapping classifications, and
   ready-to-paste PR text. QBI v1 closes 14 leaves; ten non-QBI leaves remain
   absent from the transitional HDF.
-- Vendored `qbi_assumptions_v1.yaml` and ported the archived Section 199A
+- Vendored `qbi_assumptions_v1.json` and ported the archived Section 199A
   qualification, SSTB, W-2, UBIA, REIT/PTP, and BDC simulations into pure,
   seeded NumPy. The version, PCG64 generator, four seeds, source order, and
   exposure order are all explicit and validated before a stream is consumed.
@@ -134,7 +134,7 @@ Port Section 199A simulation and audit processed PUF inputs
 - Audit all 74 arrays in the pinned 1.8.0 PUF, separating 40 selected physical
   columns (34 raw-field lineages and six retired derivations) from 34 unused
   arrays and documenting the remaining donor-contract gaps.
-- Vendor `qbi_assumptions_v1.yaml` and port the archived seeded qualification,
+- Vendor `qbi_assumptions_v1.json` and port the archived seeded qualification,
   SSTB, W-2, UBIA, REIT/PTP, and BDC simulation into Populace-owned NumPy
   logic behind explicit `qbi_simulation_version=1`.
 - Identify the restricted raw CSVs, add a versioned/fail-closed raw aging

@@ -176,7 +176,10 @@ def test_shared_puf_stage_declares_exact_source_output_and_artifact() -> None:
     assert operation.parameters["salt_refund_income_output"] == "salt_refund_income"
     assert "salt_refund_income" in stage.outputs
     assert "salt_refund_income" in stage.nonnegative_outputs
-    assert any("E00700" in str(artifact.get("locator")) for artifact in stage.artifacts)
+    assert any(
+        "E00700" in str(artifact.get("columns", "")) + str(artifact.get("locator", ""))
+        for artifact in stage.artifacts
+    )
     assert any(
         "irs-soi-puf/1.8.0/puf_2024.h5" in str(artifact.get("locator"))
         for artifact in stage.artifacts

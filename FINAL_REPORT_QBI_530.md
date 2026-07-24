@@ -51,13 +51,13 @@ expenses, farm operations, partnership self-employment earnings, and six
 mortgage-structure leaves.
 
 The complete table and ready-to-paste audit summary are in
-`packages/populace-build/src/populace/build/us/PUF_2024_ARTIFACT_AUDIT.md`.
+`experiments/qbi-port-530/PUF_2024_ARTIFACT_AUDIT.md`.
 
 ## Section 199A port
 
 The port includes:
 
-- `qbi_assumptions_v1.yaml`, with explicit PCG64, seeds 41/42/43/64, source
+- `qbi_assumptions_v1.json`, with explicit PCG64, seeds 41/42/43/64, source
   order, exposure order, and every distribution parameter;
 - immutable assumptions and normalized input objects;
 - pure NumPy qualification, SSTB, W-2, UBIA, REIT/PTP, and BDC functions;
@@ -154,7 +154,7 @@ broader read-only reconstruction covered 56 processed outputs with maximum
 relative residual `1.82e-16`.
 
 The detailed design and blockers are in
-`packages/populace-build/src/populace/build/us/PUF_RAW_PIN_AND_AGING.md`.
+`experiments/qbi-port-530/PUF_RAW_PIN_AND_AGING.md`.
 
 ## Verification
 
@@ -196,8 +196,8 @@ YAML resources successfully.
 2. Re-run the 187-test focused suite and the broader US build suite after the
    rebase.
 3. Run package validation in an environment with cached build tooling; confirm
-   `qbi_assumptions_v1.yaml` and
-   `puf_aging_archived_1_8_0.yaml` are included in the wheel.
+   `qbi_assumptions_v1.json` and
+   `puf_aging_archived_1_8_0.json` are included in the wheel.
 4. Treat the raw switch as design-only until the restricted source revision
    and candidate hashes are certified and a complete `ledger_v1` factor
    bundle is reviewed.
