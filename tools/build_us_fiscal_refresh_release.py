@@ -4551,6 +4551,24 @@ def _ecps_parity_gate(
 #                          down toward the band from $474-526B.
 #   first_home_mortgage_interest follows home_mortgage_interest (second-home
 #                          leg un-imputed / 0 per populace#38).
+#   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
+#                          populace#489 adjudication VINDICATED this
+#                          reference: SOI Pub 1304 Table 1.4 puts taxable
+#                          interest at $313.813B TY2023 (23in14ar.xls; a
+#                          x2.349 realized explosion over TY2022's
+#                          $133.597B that the CBO-AGI aging default missed),
+#                          so the reference sits at 102% of the same-year
+#                          official actual. The stale HT2/CD-lineage rows
+#                          that demanded $134.6-149.1B now rebase onto the
+#                          live Table 4.3 control (~$340.4B@2024, +6.3% vs
+#                          the reference — comfortably in-band); a solve
+#                          satisfying the corrected family passes this
+#                          parity check truthfully. The #492 experiment
+#                          arms' failures on this column were the WRONG
+#                          side of the target self-contradiction winning
+#                          (rational arm: ht2-all -4.3% but Table 4.3
+#                          -58.1% and Table 2.1 -63.6%), not a reference
+#                          defect. No exclusion, by adjudication.
 US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
     "rental_income": (
         "Identified by the ACTIVE registry: irs_soi ht2 "
