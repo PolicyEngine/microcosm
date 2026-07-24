@@ -1,5 +1,10 @@
 # Build J — full re-certification of the whole stack under main's new gates + asset columns
 
+> [!NOTE]
+> Closure (added 2026-07-23): this journal ends mid-run; the Build J
+> adjudicated verdict landed in `experiments/build_j_recert/issue368_verdict.md`
+> and on issue #368. Later builds (K+) supersede this record.
+
 Task: PolicyEngine/populace **#368 (final phase)**. A full gated rebuild proving the whole
 stack on `main`: base pool (restored columns) -> dense -> sparse (rmloss100 selection) ->
 ALL gates -> verdict on #368. The point vs Build I: the SCF-wealth asset columns (#373) and
