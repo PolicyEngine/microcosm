@@ -102,7 +102,8 @@ Additional receipts:
 - `bad7145` — fix Sol finding 4 behavioral containment.
 - `3c96514` — apply the finding-2 classifier's required Ruff formatting.
 
-Nothing was pushed.
+Nothing was pushed at the time of this report; the branch was subsequently
+pushed and merged as #491 (2026-07-22).
 
 The sandbox rejected writing
 `/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
