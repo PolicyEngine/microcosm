@@ -764,6 +764,12 @@ def do_materialize(args) -> None:
         f"materialized admin: {len(admin_names)} measures over "
         f"{len(chunk_stats)} chunks ({time.time() - started:.1f}s)"
     )
+    if len(admin_names) != len(registry):
+        raise SystemExit(
+            f"Compiled admin surface has {len(admin_names)} measures but "
+            f"{len(registry)} specs were declared; admin targets must never "
+            "disappear silently between compile and materialization."
+        )
     admin_targets = [
         dict(name=spec.name, measure=spec.measure, value=spec.value, source=spec.source)
         for spec in compiled_specs
@@ -1601,11 +1607,24 @@ def do_package(args) -> dict:
     # recorded the sha it loaded plain. Packaging different bytes (a
     # recalibrate without re-running qa+finalize) is refused.
     qa_sha = spine_qa.get("artifact_sha256")
+    if spine_qa and qa_sha is None:
+        raise SystemExit(
+            "spine_qa.json carries no artifact_sha256; the gate report "
+            "cannot be bound to these bytes. Re-run --stage qa."
+        )
     if qa_sha is not None and qa_sha != h5_sha:
         raise SystemExit(
             "The calibrated H5 does not match the bytes the QA probe "
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
+        )
+    dropped_cells = identity.get("population_cells_dropped") or []
+    if dropped_cells:
+        raise SystemExit(
+            f"The materialized surface dropped {len(dropped_cells)} ladder "
+            "population cell(s); a release never ships a shrunken surface "
+            "(--allow-partial-geography is for capped smokes only, and a "
+            "smoke's output must not be packaged)."
         )
 
     def _version(package: str) -> str:
@@ -1724,6 +1743,16 @@ def do_package(args) -> dict:
         contract_files["spine_qa.json"] = spine_qa
     if consumer_export:
         contract_files["consumer_export.json"] = consumer_export
+        consumer_fills = _load_json(
+            args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+        )
+        if not consumer_fills:
+            raise SystemExit(
+                "consumer_export.json exists but the per-column consumer "
+                "fill ledger (consumer_reviewed_null_fills.json) is missing; "
+                "the published fills must ship with their evidence."
+            )
+        contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
 

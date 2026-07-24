@@ -146,7 +146,7 @@ def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
 def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     frame, metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
 
     assert frame.n("household") == 2
@@ -176,7 +176,7 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
 def test_build_acs_pums_unit_frame_derives_only_structural_relationship_fields(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     frame, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=2)
     people = frame.table("person").set_index("source_row_id")
     head = people.loc["acs_2024_1yr:2024HU0000001:1"]
@@ -251,7 +251,7 @@ def test_load_acs_pums_tables_requires_native_structure_columns(
 def test_build_acs_pums_unit_frame_uses_person_weight_for_gq_placeholder(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     household_zip = tmp_path / "csv_hus.zip"
     person_zip = tmp_path / "csv_pus.zip"
     _write_csv_zip(
@@ -294,7 +294,7 @@ def test_build_acs_pums_unit_frame_uses_person_weight_for_gq_placeholder(
 def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     household_zip = tmp_path / "csv_hus.zip"
     person_zip = tmp_path / "csv_pus.zip"
     _write_csv_zip(
@@ -333,7 +333,7 @@ def test_build_acs_pums_unit_frame_handles_gq_alongside_multi_person_housing(
 def test_build_acs_pums_unit_frame_uses_adjusted_income_for_dependency_test(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")  # pandas HDF backend
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     household_zip = tmp_path / "csv_hus.zip"
     person_zip = tmp_path / "csv_pus.zip"
     _write_csv_zip(
