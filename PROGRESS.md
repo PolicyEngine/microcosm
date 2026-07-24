@@ -2,12 +2,13 @@
 
 ## State
 
-- Active on branch `qbi-port-530` in a fresh worktree based on the locally
-  cached `origin/main` at `c09f6db`.
-- The required `git fetch origin` was attempted on 2026-07-24, but the sandbox
-  could not resolve `github.com`.
-- The requested sibling worktree path was not writable in the sandbox, so the
-  worktree uses the repository's ignored `.claude/worktrees/` area.
+- Active on branch `qbi-port-530` in
+  `.claude/worktrees/populace-wt-530`, based on `c09f6db`.
+- The supervisor will rebase, push, and open the PR. This run must not make any
+  network call.
+- The pinned 1.8.0 `puf_2015.h5` and `puf_2024.h5` files are available only
+  from `/Users/maxghenis/ops/populace-qbi-port/assets/`; they will be read in
+  place and never copied or committed.
 
 ## Done
 
@@ -15,11 +16,25 @@
   raw-pin investigation scope.
 - Read the GitNexus exploration workflow; its MCP tools are unavailable in this
   session, so source tracing will use repository-native searches.
+- Inspected the current `puf_tax_detail` manifest, processed-PUF support
+  builder, 15-leaf QBI runtime contract, and test conventions.
+- Enumerated both pinned HDF files. Each has the same 74 root datasets, no HDF
+  attributes, and only one literal QBI-contract dataset:
+  `w2_wages_from_qualified_business`.
+- Confirmed the archived loader supplied the apparent 15-leaf surface by
+  detecting an old artifact, simulating the missing leaves, and mutating the
+  file on load (`datasets/puf/puf.py` lines 993-1302). Populace's bare-h5py
+  reader does not invoke that retired upgrade path.
 
 ## Next
 
-- Inspect the current US source-stage graph, QBI runtime contract, and tests.
-- Read the archived implementation and download the gated 1.8.0 artifact.
-- Commit an artifact audit, versioned QBI simulation, tests, raw-pin write-up,
-  changelog fragment, and final report in coherent steps.
-- Push the branch and open a draft PR referencing #530.
+- Finish the aggregate-only artifact lineage audit and commit its tracked
+  documentation and ready-to-paste PR summary.
+- Vendor the v1 assumptions and implement a pure, version-gated NumPy QBI
+  simulation stage that replaces the retired load-time mutation.
+- Establish exact equivalence where the artifact exposes a comparison column;
+  otherwise add and report distributional-equivalence evidence.
+- Identify the true raw asset and either port 2015-to-target-year aging or
+  commit a precise design and blockers.
+- Add the changelog fragment, final report, and final status/PR text here; run
+  formatting and focused tests; commit every coherent step.
