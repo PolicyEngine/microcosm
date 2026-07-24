@@ -1365,20 +1365,35 @@ def _soi_capital_gains_uprating_index(kind: str) -> str:
     return "total_net_capital_gains_amount"
 
 
-#: Control-universe preference for the stale-interest rebase. The family's
-#: own universe (all returns) always outranks the bridge; the bridge admits
-#: ONLY the Pub 1304 all-returns-excluding-dependents total (Table 4.3 —
-#: the sole Pub 1304 interest total in the v9.2 feed). The dependent sliver
-#: it omits is 0.22% of amount / 2.0% of returns at TY2023 (Table 1.4
-#: 23in14ar.xls $313.813B / 55.260M vs Table 4.3 23in43ts.xls $313.120B /
-#: 54.167M), so the bridged control conservatively understates the
-#: all-returns truth and retires automatically when a Table 1.4 interest
-#: fact reaches the feed. The itemized-only universe (Table 2.1) is a
-#: genuinely different population and is never bridgeable.
+#: Control universes admitted for the stale-interest rebase. A stale spec's
+#: own universe always outranks the bridge, and the ONE admitted bridge is
+#: all_returns -> returns_excluding_dependents: the Pub 1304 excluding-
+#: dependents total (Table 4.3 — the sole Pub 1304 interest total in the
+#: v9.2 feed) may stand in for the all-returns concept. The dependent
+#: sliver it omits is 0.22% of amount / 2.0% of returns at TY2023 (Table
+#: 1.4 23in14ar.xls $313.813B / 55.260M vs Table 4.3 23in43ts.xls
+#: $313.120B / 54.167M), so the bridged control conservatively understates
+#: the all-returns truth and retires automatically when a Table 1.4
+#: interest fact reaches the feed. The reverse bridge is never admitted,
+#: and the itemized-only universe (Table 2.1) is a genuinely different
+#: population — never a stand-in in either direction.
 _SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES: tuple[str, ...] = (
     "all_returns",
     "returns_excluding_dependents",
 )
+_SOI_TAXABLE_INTEREST_UNIVERSE_BRIDGES: dict[str, tuple[str, ...]] = {
+    "all_returns": ("returns_excluding_dependents",),
+}
+
+
+def _soi_taxable_interest_control_universe_preference(
+    spec_universe: str,
+) -> tuple[str, ...]:
+    """Candidate control universes for a stale spec, most preferred first."""
+    return (
+        spec_universe,
+        *_SOI_TAXABLE_INTEREST_UNIVERSE_BRIDGES.get(spec_universe, ()),
+    )
 
 
 def _rebase_stale_soi_taxable_interest_distributions(
@@ -1421,24 +1436,40 @@ def _rebase_stale_soi_taxable_interest_distributions(
         target_period=target_period,
     )
     stale_national_totals = _soi_taxable_interest_stale_national_totals(facts)
+    # The all-returns concept has exactly one live national owner: when an
+    # exact all-returns control exists for a (measure, status), any compiled
+    # excluding-dependents national surrogate of the same pair retires — the
+    # bridge target must not ALSO bind, or the surface re-creates a (0.22%-
+    # class) copy of the very dual-scale defect this pass removes.
+    retired_bridge_owners = {
+        (measure_id, status)
+        for (measure_id, status, universe) in controls
+        if universe == "all_returns"
+    }
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         kind = _soi_taxable_interest_kind(spec)
-        if kind is None or not _is_stale_soi_historic_taxable_interest_spec(spec):
+        if kind is None:
+            specs.append(spec)
+            continue
+        if not _is_stale_soi_historic_taxable_interest_spec(spec):
+            if _is_retired_soi_interest_bridge_surrogate_spec(
+                spec, retired_bridge_owners
+            ):
+                continue
             specs.append(spec)
             continue
 
         measure_id = spec.metadata.get("source_measure_id", "")
         status = spec.metadata.get("filing_status", "")
-        control: _SoiTotalControl | None = None
-        control_universe = ""
-        for universe in _SOI_TAXABLE_INTEREST_CONTROL_UNIVERSES:
-            control = controls.get((measure_id, status, universe))
-            if control is not None:
-                control_universe = universe
-                break
-        source_total = stale_national_totals.get(
-            (measure_id, status, spec.metadata["source_period"])
+        spec_universe = spec.metadata.get("soi_return_universe", "all_returns")
+        source_period = spec.metadata.get("source_period", "")
+        source_total = (
+            stale_national_totals.get(
+                (measure_id, status, spec_universe, source_period)
+            )
+            if source_period
+            else None
         )
         if source_total in (None, 0):
             # A stale AGI slice whose own family carries no national total
@@ -1448,12 +1479,23 @@ def _rebase_stale_soi_taxable_interest_distributions(
                 continue
             specs.append(spec)
             continue
-        if control is None:
-            specs.append(spec)
-            continue
-        if not _period_not_before(
-            control.period_key, _period_key_from_value(spec.metadata["source_period"])
+        # Eligibility is part of SELECTION: an unusably old control in a
+        # preferred universe must not shadow an eligible one behind it.
+        source_period_key = _period_key_from_value(source_period)
+        control: _SoiTotalControl | None = None
+        control_universe = ""
+        for universe in _soi_taxable_interest_control_universe_preference(
+            spec_universe
         ):
+            candidate = controls.get((measure_id, status, universe))
+            if candidate is None:
+                continue
+            if not _period_not_before(candidate.period_key, source_period_key):
+                continue
+            control = candidate
+            control_universe = universe
+            break
+        if control is None:
             specs.append(spec)
             continue
 
@@ -1464,7 +1506,7 @@ def _rebase_stale_soi_taxable_interest_distributions(
         metadata = {
             **dict(spec.metadata),
             "uprating_index": _soi_total_uprating_index(measure_id),
-            "uprating_from_period": spec.metadata["source_period"],
+            "uprating_from_period": source_period,
             # The rebase lands the value at the CONTROL's period — NOT the
             # build period; target aging completes the remaining links from
             # there (populace#488 chain-completion law).
@@ -1474,12 +1516,39 @@ def _rebase_stale_soi_taxable_interest_distributions(
             "uprating_factor": _format_float(factor),
             "stale_distribution_rebased_to_active_total": "true",
         }
-        if control_universe != spec.metadata.get("soi_return_universe", "all_returns"):
+        if control_universe != spec_universe:
             # A bridged control is declared, never silent: the manifest must
             # show which universe supplied the national level.
             metadata["soi_return_universe_bridge"] = control_universe
         specs.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(specs, country=registry.country)
+
+
+def _is_retired_soi_interest_bridge_surrogate_spec(
+    spec: TargetSpec,
+    retired_bridge_owners: set[tuple[str, str]],
+) -> bool:
+    """Whether this national excluding-dependents row lost concept ownership.
+
+    True only for a non-HT2, national, full-AGI-range interest spec in the
+    bridge universe whose (measure, status) has an exact all-returns control
+    compiled — the all-returns row owns the concept and the surrogate must
+    not also bind.
+    """
+    if spec.family != "irs_soi":
+        return False
+    if (
+        spec.metadata.get("soi_return_universe", "all_returns")
+        != "returns_excluding_dependents"
+    ):
+        return False
+    if not _is_national_all_agi_spec(spec):
+        return False
+    key = (
+        spec.metadata.get("source_measure_id", ""),
+        spec.metadata.get("filing_status", ""),
+    )
+    return key in retired_bridge_owners
 
 
 def _soi_taxable_interest_active_totals(
@@ -1519,21 +1588,28 @@ def _soi_taxable_interest_active_totals(
 
 def _soi_taxable_interest_stale_national_totals(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str], float]:
-    totals: dict[tuple[str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str], float]:
+    totals: dict[tuple[str, str, str, str], float] = {}
     for fact in facts:
         if not _is_stale_soi_historic_taxable_interest_fact(fact):
             continue
         if _geography_level(fact) != "country":
             continue
-        if not _is_all_income_range(fact):
+        # Full AGI range only — filing-status slices keep their own totals
+        # (keyed by status below), matching the capital-gains template.
+        if not _is_all_agi_range_fact(fact):
             continue
         status = _filing_status_label(_dimensions(fact).get("filing_status"))
         if status is None:
             continue
-        totals[(_measure_id(fact), status, str(_period_value(fact)))] = _numeric_value(
-            fact
-        )
+        totals[
+            (
+                _measure_id(fact),
+                status,
+                _soi_return_universe_from_fact(fact),
+                str(_period_value(fact)),
+            )
+        ] = _numeric_value(fact)
     return totals
 
 
@@ -1582,7 +1658,10 @@ def _soi_taxable_interest_control_key_from_fact(
     # populace#489); they never anchor the interest family.
     if _is_soi_congressional_district_record_set(fact):
         return None
-    if not _is_all_income_range(fact):
+    # Full AGI range only — a filing-status total is a valid control for its
+    # own status family (the key carries the status), matching the
+    # capital-gains template.
+    if not _is_all_agi_range_fact(fact):
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
     if status is None:
@@ -2406,6 +2485,13 @@ def _is_soi_total_uprated_decomposition_fact(
     measure_id: str,
 ) -> bool:
     if measure_id not in _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES:
+        return False
+    # Only Historic Table 2 slices are rescuable: they are the population the
+    # rebase pass normalizes. A cross-period bounded interest slice from any
+    # other table would compile flagged but never rebase — a silent stale
+    # hard target, the exact populace#489 disease — so it is not rescued and
+    # the cross-period gate drops it instead.
+    if ".historic_table_2." not in _str_at(fact, "layout", "record_set_id"):
         return False
     return not _is_all_income_range(fact)
 

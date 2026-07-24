@@ -2453,6 +2453,18 @@ def test_stale_soi_taxable_interest_prefers_exact_universe_control_over_bridge()
         "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
     )
     assert "soi_return_universe_bridge" not in us_bin.metadata
+    # The exact control's own row owns the national concept; the bridge
+    # target retires WITH the bridge — otherwise the surface would carry
+    # two live national rows 0.22% apart, a small copy of the very defect
+    # this pass removes.
+    assert (
+        specs["irs_soi.ty2023.table_1_4.all.taxable_interest_amount"].value
+        == 240_000_000_000
+    )
+    assert (
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
+        "taxable_interest_amount"
+    ) not in specs
 
 
 def test_stale_soi_taxable_interest_ignores_itemized_universe_controls() -> None:
@@ -2735,6 +2747,448 @@ def test_stale_soi_taxable_interest_rebases_to_latest_all_returns_control() -> N
     assert (
         "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_returns" not in specs
     )
+
+
+def test_cross_period_bounded_non_ht2_taxable_interest_slice_is_not_compiled() -> None:
+    # The rescue that lets cross-period HT2 interest slices compile is scoped
+    # to exactly the population the rebase pass normalizes. A bounded
+    # interest slice from any OTHER table would compile flagged but never
+    # rebase — a silent stale hard target, the populace#489 disease — so the
+    # cross-period gate drops it instead (sol review finding 2).
+    stale_bounded_non_ht2 = (
+        "irs_soi.ty2022.table_2_1.itemized_all_returns.200k_to_500k."
+        "taxable_interest_amount"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=stale_bounded_non_ht2,
+                value=9_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+                layout_record_set_id=("irs_soi.ty2022.table_2_1.itemized_all_returns"),
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    assert stale_bounded_non_ht2 not in {spec.name for spec in registry.specs}
+
+
+def test_stale_soi_taxable_interest_filing_status_slices_rebase() -> None:
+    # A filing-status family carries its own totals and controls, keyed by
+    # status — the capital-gains template's semantics (sol review finding 3).
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.single.all."
+                    "taxable_interest_amount"
+                ),
+                value=100_000_000_000,
+                filing_status="single",
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.single.200k_to_500k."
+                    "taxable_interest_amount"
+                ),
+                value=20_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+                filing_status="single",
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_1_4.single.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+                filing_status="single",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    single_bin = specs[
+        "irs_soi.ty2022.historic_table_2.us.single.200k_to_500k.taxable_interest_amount"
+    ]
+    assert single_bin.value == 60_000_000_000
+    assert single_bin.metadata["uprating_factor"] == "3"
+    assert single_bin.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2023.table_1_4.single.taxable_interest_amount"
+    )
+    # The stale status-total row retires in favour of the active control's
+    # own compiled row, exactly like the all-status national row.
+    assert (
+        "irs_soi.ty2022.historic_table_2.us.single.all.taxable_interest_amount"
+        not in specs
+    )
+
+
+def test_stale_soi_taxable_interest_never_reverse_bridges() -> None:
+    # The one admitted bridge is all_returns -> returns_excluding_dependents.
+    # A stale excluding-dependents family must use its exact universe only —
+    # never an all-returns control with a reverse bridge stamp (sol review
+    # finding 4).
+    stale_bin = (
+        "irs_soi.ty2022.historic_table_2.us.excl_dep.200k_to_500k."
+        "taxable_interest_amount"
+    )
+    excl_dep_ht2_facts = [
+        _soi_taxable_interest_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.excl_dep.all."
+                "taxable_interest_amount"
+            ),
+            value=100_000_000_000,
+            layout_record_set_id=(
+                "irs_soi.ty2022.historic_table_2.all_returns_excluding_dependents.us"
+            ),
+        ),
+        _soi_taxable_interest_fact(
+            2022,
+            source_record_id=stale_bin,
+            value=20_000_000_000,
+            income_range="200k_to_500k",
+            lower=200_000,
+            upper=500_000,
+            layout_record_set_id=(
+                "irs_soi.ty2022.historic_table_2.all_returns_excluding_dependents.us"
+            ),
+        ),
+    ]
+    # Only an all-returns control in the feed: the excluding-dependents
+    # family must NOT reverse-bridge onto it.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *excl_dep_ht2_facts,
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[stale_bin]
+    assert spec.value == 20_000_000_000
+    assert "uprating_factor" not in spec.metadata
+    assert "soi_return_universe_bridge" not in spec.metadata
+
+    # With its exact universe present the family uses it — and never the
+    # larger all-returns total.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *excl_dep_ht2_facts,
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents."
+                    "all.taxable_interest_amount"
+                ),
+                value=200_000_000_000,
+                layout_record_set_id=(
+                    "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents"
+                ),
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[stale_bin]
+    assert spec.value == 40_000_000_000
+    assert spec.metadata["uprating_factor"] == "2"
+    assert spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
+        "taxable_interest_amount"
+    )
+    assert "soi_return_universe_bridge" not in spec.metadata
+
+
+def test_stale_soi_taxable_interest_skips_ineligible_control_for_eligible_bridge() -> (
+    None
+):
+    # Eligibility is part of selection: an exact-universe control OLDER than
+    # the stale family must not shadow an eligible bridge behind it (sol
+    # review finding 5).
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=150_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.historic_table_2.us",
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.historic_table_2.us.200k_to_500k."
+                    "taxable_interest_amount"
+                ),
+                value=30_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+                layout_record_set_id="irs_soi.ty2023.historic_table_2.us",
+            ),
+            # Exact universe, but OLDER than the stale family — unusable.
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.table_1_4.all.taxable_interest_amount"
+                ),
+                value=120_000_000_000,
+                layout_record_set_id="irs_soi.ty2022.table_1_4",
+            ),
+            # Bridged universe, eligible.
+            _soi_taxable_interest_fact(
+                2024,
+                source_record_id=(
+                    "irs_soi.ty2024.table_4_3.all_returns_excluding_dependents."
+                    "all.taxable_interest_amount"
+                ),
+                value=450_000_000_000,
+                layout_record_set_id=(
+                    "irs_soi.ty2024.table_4_3.all_returns_excluding_dependents"
+                ),
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    bin_spec = specs[
+        "irs_soi.ty2023.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    ]
+    assert bin_spec.value == 90_000_000_000
+    assert bin_spec.metadata["uprating_factor"] == "3"
+    assert bin_spec.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2024.table_4_3.all_returns_excluding_dependents.all."
+        "taxable_interest_amount"
+    )
+    assert (
+        bin_spec.metadata["soi_return_universe_bridge"]
+        == "returns_excluding_dependents"
+    )
+
+
+def test_stale_soi_taxable_interest_period_selection_laws() -> None:
+    # Within one universe the latest not-after-build control wins; a control
+    # at the family's own period is eligible (equal-period rebase); and the
+    # national-all row survives whenever no rebase runs (sol review
+    # finding 6).
+    ht2 = [
+        _soi_taxable_interest_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+            ),
+            value=100_000_000_000,
+        ),
+        _soi_taxable_interest_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.200k_to_500k."
+                "taxable_interest_amount"
+            ),
+            value=20_000_000_000,
+            income_range="200k_to_500k",
+            lower=200_000,
+            upper=500_000,
+        ),
+    ]
+    # Two exact-universe controls: the later one supplies the factor.
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *ht2,
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.table_1_4.all.taxable_interest_amount"
+                ),
+                value=110_000_000_000,
+                layout_record_set_id="irs_soi.ty2022.table_1_4",
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    bin_spec = specs[
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    ]
+    assert bin_spec.value == 60_000_000_000
+    assert bin_spec.metadata["uprating_index_source_period"] == "2023"
+
+    # A same-period exact control is eligible: the family rebases onto it
+    # (and the stale national-all retires for the control's own row).
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *ht2,
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.table_1_4.all.taxable_interest_amount"
+                ),
+                value=110_000_000_000,
+                layout_record_set_id="irs_soi.ty2022.table_1_4",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    bin_spec = specs[
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    ]
+    assert bin_spec.value == 22_000_000_000
+    assert bin_spec.metadata["uprating_factor"] == "1.1"
+    assert bin_spec.metadata["uprating_to_period"] == "2022"
+    assert "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount" not in specs
+
+    # An unanchored full-range state row survives unchanged when its family
+    # has no national total at all (no ht2 us.all fact in the feed).
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                    "taxable_interest_amount"
+                ),
+                value=25_000_000_000,
+                geography_level="state",
+                geography_id="0400000US06",
+                layout_record_set_id=("irs_soi.ty2022.historic_table_2.state_broad.ca"),
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+                ),
+                value=300_000_000_000,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    specs = {spec.name: spec for spec in registry.specs}
+    ca_broad = specs[
+        "irs_soi.ty2022.historic_table_2.state_broad.ca.all.taxable_interest_amount"
+    ]
+    assert ca_broad.value == 25_000_000_000
+    assert "uprating_factor" not in ca_broad.metadata
+
+
+def test_compiled_interest_family_ages_coherently_end_to_end() -> None:
+    # End-to-end chain-completion: COMPILED specs (not hand-built metadata)
+    # run through the real ager; the rebased bin and the live Pub 1304
+    # national row receive the same remaining 2023->2024 link — the CBO AGI
+    # default, taxable interest's documented aging series — so the family
+    # projects one coherent 2024 quantity (sol review finding 7).
+    from populace.build.us_runtime.target_aging import age_us_dollar_targets
+
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.taxable_interest_amount"
+                ),
+                value=100_000_000_000,
+            ),
+            _soi_taxable_interest_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.200k_to_500k."
+                    "taxable_interest_amount"
+                ),
+                value=20_000_000_000,
+                income_range="200k_to_500k",
+                lower=200_000,
+                upper=500_000,
+            ),
+            _soi_taxable_interest_fact(
+                2023,
+                source_record_id=(
+                    "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents."
+                    "all.taxable_interest_amount"
+                ),
+                value=235_000_000_000,
+                layout_record_set_id=(
+                    "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents"
+                ),
+            ),
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    facts = (
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+    )
+    aged = age_us_dollar_targets(registry, facts, target_period=2024)
+    specs = {spec.name: spec for spec in aged.specs}
+    agi_link = 16_500_000_000_000 / 15_000_000_000_000
+    bin_spec = specs[
+        "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
+    ]
+    national = specs[
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
+        "taxable_interest_amount"
+    ]
+    assert abs(bin_spec.value - 47_000_000_000 * agi_link) < 1e-3
+    assert abs(national.value - 235_000_000_000 * agi_link) < 1e-3
+    # Identical remaining link on both — the bin stays an exact share of the
+    # national row after aging (nothing aged twice, nothing skipped).
+    assert abs(bin_spec.value / national.value - 0.2) < 1e-12
 
 
 def test_stale_soi_capital_gains_state_rows_rebase_to_newer_national_total() -> None:
@@ -4890,6 +5344,7 @@ def _soi_taxable_interest_fact(
     layout_record_set_id: str | None = None,
     geography_level: str = "country",
     geography_id: str = "0100000US",
+    filing_status: str = "all",
 ) -> dict[str, object]:
     constraints: list[dict[str, object]] = []
     if lower is not None:
@@ -4916,7 +5371,7 @@ def _soi_taxable_interest_fact(
         period_value=source_period,
         geography_level=geography_level,
         geography_id=geography_id,
-        dimensions={"income_range": income_range, "filing_status": "all"},
+        dimensions={"income_range": income_range, "filing_status": filing_status},
         universe_constraints=constraints,
         layout_record_set_id=layout_record_set_id
         or f"irs_soi.ty{source_period}.historic_table_2.us",
