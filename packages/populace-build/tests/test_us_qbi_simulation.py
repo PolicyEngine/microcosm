@@ -168,8 +168,14 @@ def test_v2_assumptions_pin_derivations_host_columns_and_family_seeds() -> None:
     assert v2.sstb_classification.occupation_column == "PEIOOCC"
     assert v2.sstb_classification.industry_column is None
     assert v2.sstb_classification.agi_column == "AGI"
+    assert v2.w2_model == v1.w2_model
     assert v2.profit_margin_parameters == v1.profit_margin_parameters
+    assert v2.has_employees_slope_per_dollar == v1.has_employees_slope_per_dollar
+    assert v2.has_employees_target_share == v1.has_employees_target_share
+    assert v2.intercept_bisection_iterations == v1.intercept_bisection_iterations
     assert v2.labor_ratio_parameters == v1.labor_ratio_parameters
+    assert v2.ubia_model == v1.ubia_model
+    assert v2.ubia_sigma == v1.ubia_sigma
     assert v2.ubia_multiples == v1.ubia_multiples
     assert v2.capital_intensity_probabilities == v1.capital_intensity_probabilities
 
@@ -196,6 +202,16 @@ def test_v2_assumptions_pin_derivations_host_columns_and_family_seeds() -> None:
         (
             lambda payload: payload["rng"]["seeds"].__setitem__("extra", 99),
             "keys must match",
+        ),
+        (
+            lambda payload: payload["rng"]["seeds"].__setitem__("qualification", -1),
+            "family seeds must be nonnegative",
+        ),
+        (
+            lambda payload: payload["rng"]["seeds"].__setitem__(
+                "ubia", payload["rng"]["seeds"]["w2"]
+            ),
+            "family seeds must be distinct",
         ),
         (
             lambda payload: payload["sstb_classification"][
@@ -231,6 +247,22 @@ def test_sstb_crosswalk_placeholder_fails_closed_and_ready_fixture_loads() -> No
         2020: "non_sstb",
         3030: "ambiguous",
     }
+
+
+def test_caller_constructed_crosswalk_still_fails_closed() -> None:
+    crosswalk = parse_sstb_crosswalk(_synthetic_sstb_crosswalk_payload())
+    malformed = replace(
+        crosswalk,
+        occupation_mapping=((1010, "unknown_classification"),),
+    )
+
+    with pytest.raises(ValueError, match="unknown classification"):
+        simulate_qbi_inputs(
+            QbiSimulationInputs.from_puf_arrays(_synthetic_sources()),
+            assumptions=load_qbi_simulation_assumptions(QBI_SIMULATION_V2),
+            qbi_simulation_version=QBI_SIMULATION_V2,
+            sstb_crosswalk=malformed,
+        )
 
 
 def test_v2_simulation_fails_closed_before_using_placeholder_crosswalk() -> None:
@@ -330,8 +362,8 @@ def test_v2_w2_and_ubia_family_seeds_are_independent() -> None:
         )
 
     baseline = run(assumptions)
-    changed_w2 = run(replace(assumptions, w2_seed=assumptions.w2_seed + 1))
-    changed_ubia = run(replace(assumptions, ubia_seed=assumptions.ubia_seed + 1))
+    changed_w2 = run(replace(assumptions, w2_seed=assumptions.w2_seed + 100))
+    changed_ubia = run(replace(assumptions, ubia_seed=assumptions.ubia_seed + 100))
 
     assert not np.array_equal(
         baseline["w2_wages_from_qualified_business"],

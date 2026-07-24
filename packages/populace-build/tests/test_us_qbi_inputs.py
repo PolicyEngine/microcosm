@@ -431,6 +431,49 @@ def test_host_sstb_stream_is_independent_of_qualification_mode(
         )
 
 
+def test_host_sstb_uses_industry_first_then_occupation_fallback(
+    ready_sstb_crosswalk: dict[str, object],
+) -> None:
+    person = _v2_host_person()
+    person["PEIOIND"] = 0
+    person.loc[100, "PEIOIND"] = 4040
+    person.loc[101, "PEIOIND"] = 5050
+    assumptions = _host_test_assumptions()
+    assumptions = replace(
+        assumptions,
+        sstb_classification=replace(
+            assumptions.sstb_classification,
+            industry_column="PEIOIND",
+        ),
+    )
+    crosswalk = {
+        **ready_sstb_crosswalk,
+        "industry_code_system": "synthetic Census industry",
+        "mapping": {
+            **ready_sstb_crosswalk["mapping"],
+            "industry": {
+                "4040": "non_sstb",
+                "5050": "clear_sstb",
+            },
+        },
+    }
+
+    result = with_host_sstb_classification(
+        _frame(person),
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=assumptions,
+        sstb_crosswalk=crosswalk,
+    ).table("person")
+
+    # Industry overrides occupation on the first two rows; the unmapped
+    # industry on row 102 falls back to its ambiguous occupation and prior.
+    assert result.loc[100:102, "business_is_sstb"].tolist() == [
+        False,
+        True,
+        True,
+    ]
+
+
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
     person = _qbi_person(200)
     row = 100

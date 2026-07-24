@@ -206,6 +206,52 @@ class SstbCrosswalk:
             return dict(self.industry_mapping)
         raise ValueError(f"Unknown SSTB crosswalk family {family!r}.")
 
+    def validate(self) -> None:
+        """Reject malformed instances, including caller-constructed objects."""
+
+        if self.schema_version != _SSTB_CROSSWALK_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported SSTB crosswalk schema_version {self.schema_version!r}."
+            )
+        if self.status != _SSTB_CROSSWALK_READY_STATUS:
+            raise ValueError("QBI v2 requires a ready SSTB crosswalk.")
+        for name, value in (
+            ("crosswalk_version", self.crosswalk_version),
+            ("occupation_code_system", self.occupation_code_system),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"SSTB crosswalk {name} must be a nonempty string.")
+        if self.industry_code_system is not None and (
+            not isinstance(self.industry_code_system, str)
+            or not self.industry_code_system
+        ):
+            raise ValueError(
+                "SSTB crosswalk industry_code_system must be null or a nonempty string."
+            )
+        for family, mapping in (
+            ("occupation", self.occupation_mapping),
+            ("industry", self.industry_mapping),
+        ):
+            seen: set[int] = set()
+            for code, classification in mapping:
+                if isinstance(code, bool) or not isinstance(code, int) or code < 0:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} codes must be nonnegative integers."
+                    )
+                if code in seen:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} mapping contains duplicate "
+                        f"code {code}."
+                    )
+                seen.add(code)
+                if classification not in _SSTB_CLASSIFICATIONS:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} code {code} has unknown "
+                        f"classification {classification!r}."
+                    )
+        if not self.occupation_mapping and not self.industry_mapping:
+            raise ValueError("Ready SSTB crosswalk mapping must not be empty.")
+
 
 @dataclass(frozen=True)
 class QbiSimulationAssumptions:
@@ -387,6 +433,17 @@ class QbiSimulationAssumptionsV2:
             )
         if self.bit_generator != "PCG64":
             raise ValueError("QBI v2 requires NumPy PCG64 family streams.")
+        family_seeds = {
+            "qualification": self.qualification_seed,
+            "sstb": self.sstb_seed,
+            "w2": self.w2_seed,
+            "ubia": self.ubia_seed,
+            "investment": self.investment_seed,
+        }
+        if any(seed < 0 for seed in family_seeds.values()):
+            raise ValueError("QBI v2 family seeds must be nonnegative integers.")
+        if len(set(family_seeds.values())) != len(family_seeds):
+            raise ValueError("QBI v2 family seeds must be distinct.")
         derivation_sources = tuple(
             derivation.source for derivation in self.qualification_derivations
         )
@@ -1053,8 +1110,7 @@ def parse_sstb_crosswalk(payload: Any) -> SstbCrosswalk:
             "SSTB crosswalk.mapping.industry",
         ),
     )
-    if not crosswalk.occupation_mapping and not crosswalk.industry_mapping:
-        raise ValueError("Ready SSTB crosswalk mapping must not be empty.")
+    crosswalk.validate()
     return crosswalk
 
 
@@ -1131,8 +1187,7 @@ def qbi_qrf_excluded_targets(
         for derivation in assumptions.qualification_derivations
         if derivation.mode == "derived"
     }
-    if assumptions.qualification_by_source["self_employment_income"].mode == "derived":
-        excluded.add(_SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG)
+    excluded.add(_SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG)
     return tuple(column for column in US_QBI_OUTPUT_COLUMNS if column in excluded)
 
 
@@ -1362,10 +1417,7 @@ def resolve_sstb_crosswalk(
             else parse_sstb_crosswalk(crosswalk)
         )
     )
-    if resolved.status != _SSTB_CROSSWALK_READY_STATUS:
-        raise ValueError("QBI v2 requires a ready SSTB crosswalk.")
-    if not resolved.occupation_mapping and not resolved.industry_mapping:
-        raise ValueError("QBI v2 requires a nonempty SSTB crosswalk.")
+    resolved.validate()
     return resolved
 
 

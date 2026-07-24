@@ -62,6 +62,12 @@
   `qbi_reconciliation` stage boundary to the host-conditioned transform.
 - Added builder dispatch and child-CLI round-trip tests. The focused QBI, QRF,
   builder, manifest, and plan tests pass with the v1 golden test unchanged.
+- Hardened all public crosswalk paths so even caller-constructed ready objects
+  are revalidated, and made the assumptions loader reject negative or reused
+  family seeds before any NumPy generator is constructed.
+- Made the post-QRF-created SSTB qualification companion an unconditional v2
+  QRF exclusion and added a synthetic industry-primary/occupation-fallback
+  test for the future non-null industry seam.
 
 ## Next
 
