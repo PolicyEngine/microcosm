@@ -4,7 +4,7 @@
 
 - Branch: `qbi-v2-engine`
 - Base: `qbi-port-530` at `d1a6428`
-- Status: v2 assumptions schema and resource implementation in progress
+- Status: v2 qualification and independent-stream simulation in progress
 
 ## Done
 
@@ -18,10 +18,18 @@
   `industry_column: null`.
 - Confirmed all country-package resources must be JSON/JSONLD, declared in
   `country_package.json`, and free of executable-looking strings.
+- Added and declared `qbi_assumptions_v2.json` with strict derived/prior
+  qualification contracts, occupation-first host SSTB configuration, complete
+  AGI-band coverage, unchanged v1 W-2/UBIA parameter blocks, and five
+  independently seeded RNG families.
+- Added the empty `sstb_crosswalk_placeholder.json` resource and a strict
+  crosswalk loader that rejects placeholder status.
+- Added strict v2 full-schema parsing, unknown-key/mode rejection, public
+  runtime exports, and focused loader/crosswalk tests. The untouched v1 golden
+  stream test remains green.
 
 ## Next
 
-- Add strictly validated v2 assumptions and placeholder crosswalk resources.
 - Implement v2 qualification derivations and independently seeded families
   without changing the v1 golden path.
 - Add version-gated QRF target selection and the post-QRF host SSTB transform.

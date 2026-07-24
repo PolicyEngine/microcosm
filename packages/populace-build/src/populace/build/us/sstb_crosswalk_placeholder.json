@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "crosswalk_version": "placeholder-v0",
+  "status": "placeholder",
+  "occupation_code_system": "Census 2018 occupation code (PEIOOCC)",
+  "industry_code_system": null,
+  "mapping": {}
+}

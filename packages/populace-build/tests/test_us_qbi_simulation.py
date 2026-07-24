@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 import os
 from dataclasses import replace
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -14,9 +17,13 @@ from populace.build.us_runtime import qbi_inputs as qbi_inputs_module
 from populace.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from populace.build.us_runtime.qbi_simulation import (
     QBI_SIMULATION_SOURCE_NAMES,
+    QBI_SIMULATION_V2,
     QBI_SIMULATION_VERSION,
     QbiSimulationInputs,
     load_qbi_simulation_assumptions,
+    load_sstb_crosswalk,
+    parse_qbi_simulation_assumptions,
+    parse_sstb_crosswalk,
     qbi_simulation_summary,
     simulate_qbi_inputs,
     us_qbi_simulation_stage_spec,
@@ -75,6 +82,11 @@ def _synthetic_sources() -> dict[str, np.ndarray]:
     }
 
 
+def _v2_payload() -> dict[str, object]:
+    resource = files("populace.build.us").joinpath("qbi_assumptions_v2.json")
+    return json.loads(resource.read_text(encoding="utf-8"))
+
+
 def test_v1_assumptions_pin_stream_order_models_and_manifest_marker() -> None:
     assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_VERSION)
 
@@ -109,12 +121,122 @@ def test_v1_assumptions_pin_stream_order_models_and_manifest_marker() -> None:
     assert set(US_QBI_OUTPUT_COLUMNS) <= set(stage.outputs)
 
 
+def test_v2_assumptions_pin_derivations_host_columns_and_family_seeds() -> None:
+    v1 = load_qbi_simulation_assumptions(QBI_SIMULATION_VERSION)
+    v2 = load_qbi_simulation_assumptions(QBI_SIMULATION_V2)
+
+    assert v2.schema_version == 2
+    assert v2.qbi_simulation_version == 2
+    assert (
+        v2.qualification_seed,
+        v2.sstb_seed,
+        v2.w2_seed,
+        v2.ubia_seed,
+        v2.investment_seed,
+    ) == (2041, 2064, 2042, 2044, 2043)
+    assert {
+        source: derivation.mode
+        for source, derivation in v2.qualification_by_source.items()
+    } == {
+        "self_employment_income": "derived",
+        "farm_operations_income": "derived",
+        "farm_rent_income": "prior",
+        "rental_income": "prior",
+        "estate_income": "prior",
+        "partnership_s_corp_income": "derived",
+    }
+    assert all(derivation.rationale for derivation in v2.qualification_derivations)
+    assert v2.sstb_classification.mode == "crosswalk"
+    assert v2.sstb_classification.occupation_column == "PEIOOCC"
+    assert v2.sstb_classification.industry_column is None
+    assert v2.sstb_classification.agi_column == "AGI"
+    assert v2.profit_margin_parameters == v1.profit_margin_parameters
+    assert v2.labor_ratio_parameters == v1.labor_ratio_parameters
+    assert v2.ubia_multiples == v1.ubia_multiples
+    assert v2.capital_intensity_probabilities == v1.capital_intensity_probabilities
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    (
+        (
+            lambda payload: payload.__setitem__("unknown_root_key", True),
+            "keys must match",
+        ),
+        (
+            lambda payload: payload["qualification_derivations"][
+                "self_employment_income"
+            ].__setitem__("mode", "coin_flip"),
+            "Unknown QBI v2 qualification mode",
+        ),
+        (
+            lambda payload: payload["sstb_classification"].__setitem__(
+                "mode", "flat_bernoulli"
+            ),
+            "Unknown QBI v2 SSTB classification mode",
+        ),
+        (
+            lambda payload: payload["rng"]["seeds"].__setitem__("extra", 99),
+            "keys must match",
+        ),
+        (
+            lambda payload: payload["sstb_classification"][
+                "passive_passthrough_sstb_prior_by_agi"
+            ].__setitem__("200001:inf", 0.0),
+            "contiguous and non-overlapping",
+        ),
+    ),
+)
+def test_v2_schema_rejects_unknown_keys_modes_and_invalid_bands(
+    mutate,
+    match: str,
+) -> None:
+    payload = copy.deepcopy(_v2_payload())
+    mutate(payload)
+
+    with pytest.raises(ValueError, match=match):
+        parse_qbi_simulation_assumptions(
+            payload,
+            qbi_simulation_version=QBI_SIMULATION_V2,
+        )
+
+
+def test_sstb_crosswalk_placeholder_fails_closed_and_ready_fixture_loads() -> None:
+    with pytest.raises(ValueError, match="status is 'placeholder'"):
+        load_sstb_crosswalk("sstb_crosswalk_placeholder.json")
+
+    crosswalk = parse_sstb_crosswalk(
+        {
+            "schema_version": 1,
+            "crosswalk_version": "synthetic-test-v1",
+            "status": "ready",
+            "occupation_code_system": "synthetic Census occupation",
+            "industry_code_system": None,
+            "mapping": {
+                "occupation": {
+                    "1010": "clear_sstb",
+                    "2020": "non_sstb",
+                    "3030": "ambiguous",
+                },
+                "industry": {},
+            },
+        }
+    )
+
+    assert crosswalk.status == "ready"
+    assert crosswalk.mapping_for("occupation") == {
+        1010: "clear_sstb",
+        2020: "non_sstb",
+        3030: "ambiguous",
+    }
+
+
 def test_version_and_random_stream_order_are_strict() -> None:
     assumptions = load_qbi_simulation_assumptions(QBI_SIMULATION_VERSION)
     inputs = QbiSimulationInputs.from_puf_arrays(_synthetic_sources())
 
     with pytest.raises(ValueError, match="Unsupported qbi_simulation_version"):
-        load_qbi_simulation_assumptions(2)
+        load_qbi_simulation_assumptions(3)
     with pytest.raises(ValueError, match="does not match assumptions"):
         simulate_qbi_inputs(
             inputs,
