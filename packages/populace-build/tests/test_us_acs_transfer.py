@@ -783,6 +783,9 @@ def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")  # pandas HDF backend
+    # The bool restore reads the engine's variable metadata; without the us
+    # extra the adapter's documented dtype fallback applies instead.
+    pytest.importorskip("policyengine_us")
     donor = _with_columns(
         _donor_frame(),
         "person",
