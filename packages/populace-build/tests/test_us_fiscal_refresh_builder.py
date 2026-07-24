@@ -1639,8 +1639,14 @@ def test_release_gate_failures_reject_certified_o1_mortgage_overshoot() -> None:
 
     failures = builder._release_gate_failures(result, {"dropped_target_names": []})
 
+    # Pin the overshoot arithmetic, not just the row identity: the missing-row
+    # formatter also names the row and label, so a fixture slip that drops the
+    # replacement instead of appending it must not satisfy this assertion.
     assert any(
-        row_name in failure and "home mortgage interest deduction amount" in failure
+        row_name in failure
+        and "home mortgage interest deduction amount" in failure
+        and "relative_error=0.294986" in failure
+        and "exceeding 0.2" in failure
         for failure in failures
     ), failures
 

@@ -818,6 +818,119 @@ def test_us_release_rejects_incumbent_improvement_past_hard_stop(
     assert "improvement_hard_stop=0.25" in failures
 
 
+def test_us_release_rejects_mortgage_amount_improvement_inside_hard_stop(
+    release_dir: Path,
+) -> None:
+    # populace#511: the interim 0.20 mortgage cap is unconditional. A miss in
+    # the 0.20-0.25 band with an improving incumbent is exactly where the
+    # incumbent-improvement escape would fire if the register entry ever
+    # regressed to allow_incumbent_improvement=True, so pin that band.
+    mortgage_name = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount@2024"
+    )
+    diagnostics = _calibration_diagnostics()
+    target = next(row for row in diagnostics["targets"] if row["name"] == mortgage_name)
+    mortgage_target = 186_310_104_604.0
+    mortgage_final = mortgage_target * 1.225
+    target["final_estimate"] = mortgage_final
+    target["relative_error"] = (mortgage_final - mortgage_target) / mortgage_target
+    diagnostics["build"] = {
+        "incumbent_diagnostics": {
+            "path": "calibration_diagnostics.json",
+            "sha256": "a" * 64,
+            "critical_targets": {
+                target["name"]: {
+                    "target": mortgage_target,
+                    # The certified O-1 shipped state: worse than the new
+                    # +22.5%, so this is a genuine improvement.
+                    "final_estimate": 241_268_995_041.0,
+                    "relative_error": (241_268_995_041.0 - mortgage_target)
+                    / mortgage_target,
+                }
+            },
+        }
+    }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert mortgage_name in failures
+    assert "home mortgage interest deduction amount" in failures
+    assert "relative_error=0.225" in failures
+    assert "exceeding 0.2" in failures
+
+
+def test_us_release_rejects_bad_mortgage_returns_fit(release_dir: Path) -> None:
+    # populace#511: the paired returns row carries the standard 0.15 cap.
+    returns_name = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_returns@2024"
+    )
+    diagnostics = _calibration_diagnostics()
+    target = next(row for row in diagnostics["targets"] if row["name"] == returns_name)
+    returns_target = 11_644_348.0
+    returns_final = returns_target * 1.2
+    target["final_estimate"] = returns_final
+    target["relative_error"] = (returns_final - returns_target) / returns_target
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert returns_name in failures
+    assert "home mortgage interest deduction returns" in failures
+    assert "exceeding 0.15" in failures
+
+
+def test_us_release_requires_mortgage_returns_row(release_dir: Path) -> None:
+    # populace#511: the returns requirement is required-present on its own,
+    # not just as a rider on the amount row.
+    returns_name = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_returns@2024"
+    )
+    diagnostics = _calibration_diagnostics()
+    diagnostics["targets"] = [
+        row for row in diagnostics["targets"] if row["name"] != returns_name
+    ]
+    diagnostics["target_surface"]["n_targets"] = len(diagnostics["targets"])
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+    build_manifest = _build_manifest()
+    build_manifest["calibration"]["target_surface"]["n_targets"] = len(
+        diagnostics["targets"]
+    )
+    build_manifest["calibration"]["target_registry"]["n_specs"] = len(
+        diagnostics["targets"]
+    )
+    (release_dir / "build_manifest.json").write_text(json.dumps(build_manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "home_mortgage_interest_returns" in failures
+    assert "home mortgage interest deduction returns" in failures
+
+
 def test_us_release_rejects_incumbent_improvement_with_mismatched_target(
     release_dir: Path,
 ) -> None:
