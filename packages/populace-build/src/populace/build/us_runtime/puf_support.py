@@ -569,6 +569,10 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor
+    # alias exists today, but if one is ever added it must derive from the
+    # carved column (aliases skip already-present columns, so a post-alias
+    # carve would leave a stale uncarved predictor copy).
     _carve_us_puf_e19200_home_mortgage_share(tax_unit)
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit

@@ -345,6 +345,16 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
 
 def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
     assert US_PUF_E19200_HOME_MORTGAGE_SHARE == 283_004_465 / 304_461_163
+    # Pin the lineage tuple by exact membership: an accidental addition (the
+    # sol round-1 failure mode was appending investment_interest_expense,
+    # invisible behind a zero sentinel) must fail here, not silently carve a
+    # future nonzero column.
+    assert puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS == (
+        "home_mortgage_interest",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "interest_deduction",
+    )
     grouped_person = (
         pd.DataFrame(
             {
@@ -373,19 +383,18 @@ def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
             "second_home_mortgage_balance": [0.0, 125_000.0],
             "first_home_mortgage_origination_year": [2018.0, 2016.0],
             "second_home_mortgage_origination_year": [0.0, 2020.0],
-            "investment_interest_expense": [0.0, 0.0],
+            # Nonzero sentinel: the artifact carries this column all-zero,
+            # but a zero fixture cannot distinguish "not scaled" from
+            # "scaled" (0 x share == 0). The root #515 ETL carve will make
+            # it nonzero, and it must stay uncarved then.
+            "investment_interest_expense": [12.0, 34.0],
         }
     )
     original = donor.copy(deep=True)
 
     puf_support_module._carve_us_puf_e19200_home_mortgage_share(donor)
 
-    for column in (
-        "home_mortgage_interest",
-        "first_home_mortgage_interest",
-        "second_home_mortgage_interest",
-        "interest_deduction",
-    ):
+    for column in puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         np.testing.assert_allclose(
             donor[column].to_numpy(),
             original[column].to_numpy() * US_PUF_E19200_HOME_MORTGAGE_SHARE,
