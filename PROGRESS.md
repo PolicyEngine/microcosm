@@ -25,10 +25,12 @@
   detecting an old artifact, simulating the missing leaves, and mutating the
   file on load (`datasets/puf/puf.py` lines 993-1302). Populace's bare-h5py
   reader does not invoke that retired upgrade path.
-- Added the aggregate-only 74-column artifact audit, including all 40 logical
-  inputs (34 raw-field lineages and six retired derivations), all 34 unused
-  arrays, the exact current 24-output contract gap, the four requested
-  direct-mapping classifications, and ready-to-paste PR text.
+- Added the aggregate-only 74-column artifact audit, including all 40 physical
+  columns selected before fail-closed donor validation (34 raw-field lineages
+  and six retired derivations), all 34 unused arrays, the original 24-output
+  contract gap, the four requested direct-mapping classifications, and
+  ready-to-paste PR text. QBI v1 closes 14 leaves; ten non-QBI leaves remain
+  absent from the transitional HDF.
 - Vendored `qbi_assumptions_v1.yaml` and ported the archived Section 199A
   qualification, SSTB, W-2, UBIA, REIT/PTP, and BDC simulations into pure,
   seeded NumPy. The version, PCG64 generator, four seeds, source order, and
@@ -52,10 +54,38 @@
   lower bound.
 - Ran Ruff and the QBI, QBI-reconciliation, PUF-donor, and staged-builder
   focused test files successfully, including the restricted-artifact test.
+- Identified the true restricted inputs: `puf_2015.csv` is the governing
+  207,696-row tax-return source, `demographics_2015.csv` is a retired
+  personization supplement, and `irs_puf_2015.h5` is only their two-table
+  wrapper. The archived prerequisite records no revision or SHA, so the
+  observed local digests remain certification candidates rather than
+  authoritative remote pins.
+- Proved the artifact labeled 2024 contains only 2015-to-2021 aging. The
+  intended 2021-to-2024 processed-array loop iterated the wrong DataFrame axis
+  and applied no factors. Release arithmetic also double-aged `E00900` and
+  `E26270`; their effective positive/negative factors are now explicit.
+- Added a pure raw-PUF aging engine with immutable factor/provenance objects,
+  exclusive ownership checks, separate signed legs, strict finite/schema
+  validation, aggregate provenance, and a fail-closed `uprate` source-runtime
+  handler. The raw manifest now orders disaggregation, raw aging, then
+  semantic derivation.
+- Vendored audit-only `archived_1_8_0` assumptions for 2015-to-2021 parity.
+  Full restricted-data tests reproduce processed weights, direct fields,
+  signed business fields, dividend/rental/estate identities, release tuition,
+  and the old W-2 formula from raw inputs. The future manifest version is
+  `ledger_v1`; it is deliberately unavailable without an explicit factor
+  bundle.
+- Documented the production raw-pin sequence and blockers in
+  `PUF_RAW_PIN_AND_AGING.md`: certified licensed-source revision, historical
+  and active-year Ledger facts, corrected target-year policy, HDF-only
+  builder ingestion, ten missing non-QBI leaves, source-runtime QRF/clipping,
+  and the raw-frame donor adapter.
+- Ran Ruff and the combined raw-aging, source-runtime, plan, QBI,
+  reconciliation, donor, and staged-builder tests successfully. An offline
+  wheel build could not start because Hatchling is absent from the local uv
+  cache; no network operation was attempted.
 
 ## Next
 
-- Identify the true raw asset and either port 2015-to-target-year aging or
-  commit a precise design and blockers.
 - Add the changelog fragment, final report, and final status/PR text here; run
   formatting and focused tests; commit every coherent step.

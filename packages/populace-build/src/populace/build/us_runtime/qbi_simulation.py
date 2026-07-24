@@ -502,10 +502,15 @@ def us_qbi_simulation_stage_spec() -> SourceStageSpec:
             "puf_tax_detail manifest does not declare QBI simulation output(s) "
             f"{missing}."
         )
-    version_marker = f"qbi_simulation_version={QBI_SIMULATION_VERSION}"
-    if version_marker not in str(spec.artifacts):
+    version_is_pinned = any(
+        artifact.get("populace_qbi_simulation_version") == QBI_SIMULATION_VERSION
+        for artifact in spec.artifacts
+    )
+    if not version_is_pinned:
         raise ValueError(
-            f"puf_tax_detail artifact declaration must pin {version_marker!r}."
+            "puf_tax_detail artifact declaration must pin structured "
+            "populace_qbi_simulation_version="
+            f"{QBI_SIMULATION_VERSION}."
         )
     return spec
 

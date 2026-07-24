@@ -495,6 +495,20 @@ from populace.build.us_runtime.prior_year_income import (
     us_prior_year_income_summary,
     with_us_prior_year_income_inputs,
 )
+from populace.build.us_runtime.puf_aging import (
+    PUF_AGING_ARCHIVED_IMPLEMENTATION_URL,
+    PUF_AGING_ARCHIVED_PROFILE_RESOURCE,
+    PUF_AGING_ARCHIVED_PROFILE_VERSION,
+    PUF_AGING_ARCHIVED_TARGETS_URL,
+    PufAgingColumnFactor,
+    PufAgingFactorBundle,
+    PufAgingProvenance,
+    PufAgingSignedFactor,
+    age_raw_puf,
+    load_archived_puf_aging_factors,
+    puf_aging_factors_from_mapping,
+    puf_aging_provenance,
+)
 from populace.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -802,6 +816,7 @@ from populace.build.us_runtime.source_coverage import (
 )
 from populace.build.us_runtime.source_runtime import (
     disaggregate_us_puf_aggregate_records_from_manifest,
+    uprate_us_raw_puf_from_manifest,
     us_source_operation_handlers,
 )
 from populace.build.us_runtime.ssi_disability_criteria import (
@@ -1306,6 +1321,18 @@ __all__ = [
     "us_salt_refund_income_signal_gate",
     "us_salt_refund_income_stage_spec",
     "us_salt_refund_income_summary",
+    "PUF_AGING_ARCHIVED_IMPLEMENTATION_URL",
+    "PUF_AGING_ARCHIVED_PROFILE_RESOURCE",
+    "PUF_AGING_ARCHIVED_PROFILE_VERSION",
+    "PUF_AGING_ARCHIVED_TARGETS_URL",
+    "PufAgingColumnFactor",
+    "PufAgingFactorBundle",
+    "PufAgingProvenance",
+    "PufAgingSignedFactor",
+    "age_raw_puf",
+    "load_archived_puf_aging_factors",
+    "puf_aging_factors_from_mapping",
+    "puf_aging_provenance",
     "QBI_ARCHIVED_ASSUMPTIONS_URL",
     "QBI_ARCHIVED_CLONE_URL",
     "QBI_ARCHIVED_DERIVATION_URL",
@@ -1705,6 +1732,7 @@ __all__ = [
     "us_nonzero_shares",
     "us_plan",
     "us_source_operation_handlers",
+    "uprate_us_raw_puf_from_manifest",
     "write_reform_validation",
     "us_source_coverage_diagnostics",
     "us_source_coverage_gate",

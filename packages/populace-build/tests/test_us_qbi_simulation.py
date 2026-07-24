@@ -102,7 +102,10 @@ def test_v1_assumptions_pin_stream_order_models_and_manifest_marker() -> None:
     )
 
     stage = us_qbi_simulation_stage_spec()
-    assert "qbi_simulation_version=1" in str(stage.artifacts)
+    assert any(
+        artifact.get("populace_qbi_simulation_version") == 1
+        for artifact in stage.artifacts
+    )
     assert set(US_QBI_OUTPUT_COLUMNS) <= set(stage.outputs)
 
 

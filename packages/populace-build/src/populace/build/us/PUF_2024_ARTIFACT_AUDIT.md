@@ -1,10 +1,12 @@
 # Processed PUF 1.8.0 artifact audit
 
 This audit covers the exact
-`release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5` asset used by the US
-build. It separates the bytes in that release from the logical dataset that a
-later, retired `policyengine-us-data` class produced by mutating those bytes on
-load.
+`release://policyengine/irs-soi-puf/1.8.0/puf_2024.h5` asset configured as the
+transitional US builder input. The current donor cannot complete from these
+exact bytes, so "consulted" below means selected before fail-closed contract
+validation, not a successful production donor. This audit separates the bytes
+in that release from the logical dataset that a later, retired
+`policyengine-us-data` class produced by mutating those bytes on load.
 
 No microdata values are recorded here. Row counts, file hashes, and other
 aggregate metadata are safe audit evidence.
@@ -18,6 +20,7 @@ aggregate metadata are safe audit evidence.
 | MD5 | `d18cebd81844e67350d58324156fd196` |
 | Root datasets | 74 |
 | Root attributes | 0 |
+| Artifact label / effective value vintage | 2024 / 2021 |
 | Person rows | 484,015 |
 | Tax-unit / household rows | 207,692 |
 | Marital-unit rows | 362,844 |
@@ -31,16 +34,25 @@ The separately pinned `puf_2015.h5` has the same 74 names, shapes, dtypes, and
 and MD5 (`13a07cba76cdb982c0f0a13ca0497b4b`). Neither file is raw IRS
 microdata: both are PolicyEngine entity-array exports.
 
-The physical release matches the generator at the local `1.8.0` tag,
-commit `371f77a0aadfdeacd5856e0a3030c2db0eda65b5`. That generator:
+The 74-column schema exactly matches the generator at the local `1.8.0` tag,
+commit `371f77a0aadfdeacd5856e0a3030c2db0eda65b5`. This establishes
+schema/algorithm lineage, not a byte-provenance attestation. That generator:
 
 - reads the raw `IRS_PUF_2015` tables, renames and derives PolicyEngine inputs,
   and expands tax units into entities (`datasets/puf/puf.py` at the tag,
   lines 134-223 and 287-393);
 - randomly allocates person-grain financial inputs between filer and spouse
   using `EARNSPLIT` (`puf.py` at the tag, lines 395-462);
-- creates 2024 by loading the processed 2021 arrays and applying
-  PolicyEngine-variable uprating factors (`puf.py` at the tag, lines 299-315).
+- attempts to create 2024 from processed 2021 arrays, but applies no factors:
+  its uprating table has variable names on the index and integer years on the
+  columns, while the loop iterates the columns and tests those years against
+  string array names (`puf.py` at the tag, lines 299-315).
+
+The artifact label is therefore 2024, but its effective value vintage is
+2021. Raw data have 207,696 rows, including disclosure aggregates with
+`RECID` 999996-999999 and `MARS == 0`; release 1.8.0 drops those four records
+to reach the artifact's 207,692 tax units. A prospective Populace
+disaggregation stage is a deliberate row-topology change, not release parity.
 
 The current Populace donor immediately regroups person arrays on
 `person_tax_unit_id`. The retired filer/spouse allocation therefore cancels
@@ -49,11 +61,11 @@ but it does not change the tax-unit signal Populace fits.
 
 ## Classification rule
 
-- **A — raw field passthrough, possibly uprated**: the consumed tax-unit total
+- **A — raw field passthrough, possibly uprated**: the selected tax-unit total
   is one raw IRS PUF field (including `P*`, `T*`, `S006`, and `MARS`-adjacent
   identity fields where stated), even if the release renamed, uprated, or
   temporarily split it over people.
-- **B — retired-code-derived**: the consumed value combines fields, maps an
+- **B — retired-code-derived**: the selected value combines fields, maps an
   IRS code, constructs an identity, or applies a retired simulation/proxy.
 - **C — unused**: bare h5py loads the array into memory, but
   `puf_tax_unit_donor_from_arrays` does not consult it under the production
@@ -63,12 +75,13 @@ This is a physical-artifact classification. Populace logic applied after the
 source boundary, such as the E19200 mortgage carve or QRF imputation, is not
 attributed to the artifact.
 
-## A — consumed raw-field passthroughs
+## A — selected raw-field passthroughs
 
-All 34 columns in this table are present in the physical HDF and logically
-consumed. `P` means 484,015 person rows and `TU` means 207,692 tax-unit rows.
-The release mappings are at `datasets/puf/puf.py` at tag `1.8.0`, lines
-134-200; the corresponding later archived mappings are at commit
+All 34 columns in this table are present in the physical HDF and consulted by
+the intended donor mapping before its full-output validation fails. `P` means
+484,015 person rows and `TU` means 207,692 tax-unit rows. The release mappings
+are at `datasets/puf/puf.py` at tag `1.8.0`, lines 134-200; the corresponding
+later archived mappings are at commit
 `42ed5d45c56df80d754fbe24cce21cfeb8d05cbe`, lines 636-719.
 
 | HDF column | Grain | Raw IRS PUF source | Current Populace use |
@@ -84,7 +97,7 @@ The release mappings are at `datasets/puf/puf.py` at tag `1.8.0`, lines
 | `farm_income` | P | `T27800` | same-name Schedule J output |
 | `farm_rent_income` | P | `E27200` | same-name output |
 | `health_savings_account_ald` | TU | `E03290` | same-name output |
-| `household_weight` | TU | `S006 / 100`, then return-count uprating | donor design weight |
+| `household_weight` | TU | `S006 / 100`, then only the 2015-to-2021 return-count factor (1.0686481028722197) | donor design weight |
 | `investment_income_elected_form_4952` | P | `E58990` | same-name output |
 | `long_term_capital_gains` | P | `P23250` | `long_term_capital_gains_before_response` |
 | `long_term_capital_gains_on_collectibles` | P | `E24518` | same-name output |
@@ -108,7 +121,7 @@ The release mappings are at `datasets/puf/puf.py` at tag `1.8.0`, lines
 | `traditional_ira_contributions` | P | `E03150` | `traditional_ira_contributions_desired` |
 | `unrecaptured_section_1250_gain` | TU | `E24515` | same-name output |
 
-The named direct-mapping cases are therefore unambiguous:
+The tag-generator lineage establishes these direct-mapping classifications:
 
 - educator expense is an **A** passthrough from `E03220`;
 - Form 4952 elected investment income is an **A** passthrough from `E58990`;
@@ -121,9 +134,12 @@ Commit `42ed5d45...` later changed qualified tuition to
 fallback is retired-code-derived, but it is not embedded in this older release
 asset. Populace has already made it explicit source-stage logic for a future
 raw pin; when given only the processed array, the current donor consumes that
-array and cannot exercise the fallback.
+array and cannot exercise the fallback. Direct raw-to-artifact checking also
+finds that artifact tuition equals aged `E03230`; 1,907 raw units have
+`E87530 > E03230`, so the later maximum would materially differ and is not
+embedded in the physical release.
 
-## B — consumed retired-code-derived columns
+## B — selected retired-code-derived columns
 
 | HDF column | Grain | Retired derivation | Archived evidence |
 |---|---:|---|---|
@@ -219,8 +235,8 @@ artifact.
 
 Populace reads the file with bare h5py
 (`tools/build_us_puf_support_base.py`, `_read_h5_arrays`) and does not run the
-retired migration. Against the exact bytes, the current default donor contract
-is missing 24 outputs:
+retired migration. Before this issue's QBI port, the exact bytes were missing
+24 outputs from the current default donor contract:
 
 - 14 of the 15 QBI leaves;
 - `home_mortgage_interest`,
@@ -228,19 +244,23 @@ is missing 24 outputs:
   `partnership_self_employment_net_earnings`;
 - six structural mortgage balance/interest/origination-year leaves.
 
-This audit therefore treats the new Populace QBI simulation stage as a port of
-retired load-time logic, not as a redraw of values already present in the
-pinned artifact.
+The QBI port supplies the 14 missing QBI leaves, but these exact staged bytes
+still fail closed on the other ten outputs. This audit therefore treats the
+new Populace QBI simulation stage as a port of retired load-time logic, not as
+a redraw of values already present in the pinned artifact, and it does not
+claim the transitional HDF now forms a complete donor.
 
 ## Ready-to-paste PR-body summary
 
-The pinned `puf_2024.h5` audit found 74 arrays: 40 are logically consumed by
-the current PUF donor path (34 raw-field passthroughs after tax-unit regrouping
-and six retired-generator derivations), while 34 are unused. Educator
-expense (`E03220`), Form 4952 elected investment income (`E58990`), and SALT
-refunds (`E00700`) are direct raw-field mappings. The physical 1.8.0 tuition
-array is also direct `E03230`; the `max(E03230, E87530)` fallback was added
-later and now lives explicitly in Populace's raw-source transformation.
+The pinned `puf_2024.h5` audit found 74 arrays: 40 are selected by the current
+PUF donor mapping before full-contract validation (34 raw-field passthroughs
+after tax-unit regrouping and six retired-generator derivations), while 34 are
+unused. Even after the QBI port, the exact bytes remain short ten non-QBI
+outputs and do not form a complete donor. Educator expense (`E03220`), Form
+4952 elected investment income (`E58990`), and SALT refunds (`E00700`) are
+direct raw-field mappings. The physical 1.8.0 tuition array is also direct
+`E03230`; the `max(E03230, E87530)` fallback was added later and now lives
+explicitly in Populace's prospective raw-source transformation.
 
 The release bytes do **not** contain the claimed 15-leaf QBI v1 surface. They
 contain only an older deterministic W-2 proxy and no QBI version attribute.
@@ -249,4 +269,6 @@ opening the release file read-write, simulating 14 missing leaves (and
 replacing stale leaves), and stamping version 1 during `PUF.load()`. Populace's
 bare-HDF path never invokes that side effect. This PR ports that versioned
 simulation into repository-owned logic and separately documents the move from
-processed entity arrays to raw IRS PUF inputs plus Populace-owned aging.
+processed entity arrays to raw IRS PUF inputs plus Populace-owned aging. That
+raw pin remains blocked on licensed-source certification, Ledger-backed
+target-year factors, and builder integration.

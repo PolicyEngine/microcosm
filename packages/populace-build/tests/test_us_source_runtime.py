@@ -18,6 +18,9 @@ from populace.build.us_runtime.puf_aggregate_records import (
     derive_puf_policyengine_variables,
     disaggregate_puf_aggregate_records,
 )
+from populace.build.us_runtime.puf_aging import (
+    puf_aging_factors_from_mapping,
+)
 from populace.build.us_runtime.source_runtime import (
     aggregate_us_person_to_tax_unit_from_manifest,
     calibrate_us_binary_assignment_from_manifest,
@@ -124,6 +127,42 @@ def _make_runtime_mini_puf() -> pd.DataFrame:
     result["E24518"] = np.where(result["RECID"] % 23 == 0, 4_000.0, 0.0)
     result["E24515"] = np.where(result["RECID"] % 29 == 0, 6_000.0, 0.0)
     return result
+
+
+def _identity_puf_aging_factors():
+    return puf_aging_factors_from_mapping(
+        {
+            "schema_version": 1,
+            "aging_version": "ledger_v1",
+            "source_year": 2015,
+            "target_year": 2024,
+            "provenance": {
+                "source_kind": "test_ledger",
+                "source_artifact_sha256": "a" * 64,
+                "source_coordinates": ["ledger:test"],
+                "notes": "Identity factors for source-runtime ordering tests.",
+            },
+            "weight": {
+                "column": "S006",
+                "factor": 1.0,
+                "fact_ids": ["returns"],
+            },
+            "straight": [
+                {
+                    "column": "E00600",
+                    "factor": 1.0,
+                    "fact_ids": ["ordinary-dividends"],
+                },
+                {
+                    "column": "E00650",
+                    "factor": 1.0,
+                    "fact_ids": ["qualified-dividends"],
+                },
+            ],
+            "signed": [],
+            "unchanged_columns": ["RECID"],
+        }
+    )
 
 
 def test_us_child_support_handlers_are_in_shared_registry() -> None:
@@ -277,30 +316,35 @@ def test_us_puf_manifest_prefix_runs_aggregate_disaggregation() -> None:
         stage,
         tables={"puf_tax_unit": mini_puf},
         operation_handlers=us_source_operation_handlers(),
-        config=SourceRuntimeConfig(seed=42, target_year=2024),
-        stop_after="disaggregate_aggregate_records",
+        config=SourceRuntimeConfig(
+            seed=42,
+            target_year=2024,
+            extra={"puf_aging_factors": _identity_puf_aging_factors()},
+        ),
+        stop_after="derive_puf_policyengine_variables",
     )
 
-    expected = disaggregate_puf_aggregate_records(
-        derive_puf_policyengine_variables(
+    expected = derive_puf_policyengine_variables(
+        disaggregate_puf_aggregate_records(
             mini_puf,
-            qualified_tuition_primary_source="E03230",
-            qualified_tuition_optional_source="E87530",
-            alimony_income_source="E00800",
-            alimony_expense_source="E03500",
-            casualty_loss_source="E20500",
-            domestic_production_ald_source="E03240",
-            educator_expense_source="E03220",
-            unreimbursed_business_employee_expenses_source="E20400",
-            farm_operations_income_source="E02100",
-            farm_rent_income_source="E27200",
-            investment_income_elected_form_4952_source="E58990",
-            salt_refund_income_source="E00700",
-            collectibles_capital_gain_source="E24518",
-            unrecaptured_section_1250_gain_source="E24515",
+            seed=42,
         ),
-        seed=42,
+        qualified_tuition_primary_source="E03230",
+        qualified_tuition_optional_source="E87530",
+        alimony_income_source="E00800",
+        alimony_expense_source="E03500",
+        casualty_loss_source="E20500",
+        domestic_production_ald_source="E03240",
+        educator_expense_source="E03220",
+        unreimbursed_business_employee_expenses_source="E20400",
+        farm_operations_income_source="E02100",
+        farm_rent_income_source="E27200",
+        investment_income_elected_form_4952_source="E58990",
+        salt_refund_income_source="E00700",
+        collectibles_capital_gain_source="E24518",
+        unrecaptured_section_1250_gain_source="E24515",
     )
+    expected["S006"] = expected["S006"].astype("float64")
     pd.testing.assert_frame_equal(result, expected)
     assert not result["RECID"].isin(AGGREGATE_RECIDS).any()
     assert (result["RECID"] >= SYNTHETIC_RECID_START).any()
@@ -375,7 +419,11 @@ def test_us_puf_manifest_rejects_invalid_dividend_sources() -> None:
             stage,
             tables={"puf_tax_unit": mini_puf},
             operation_handlers=us_source_operation_handlers(),
-            config=SourceRuntimeConfig(seed=42, target_year=2024),
+            config=SourceRuntimeConfig(
+                seed=42,
+                target_year=2024,
+                extra={"puf_aging_factors": _identity_puf_aging_factors()},
+            ),
             stop_after="derive_puf_policyengine_variables",
         )
 
