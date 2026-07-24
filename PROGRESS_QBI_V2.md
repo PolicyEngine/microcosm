@@ -68,10 +68,17 @@
 - Made the post-QRF-created SSTB qualification companion an unconditional v2
   QRF exclusion and added a synthetic industry-primary/occupation-fallback
   test for the future non-null industry seam.
+- Ran the first full workspace suite with the restricted PUF enabled:
+  3,244 passed and 132 skipped; the only two failures were the merged target
+  parity generator's stale v9.2 feed pin after six newer JCT references landed.
+- Refreshed that independent parity pin to the locally available v9.4 digest,
+  retaining the declared congressional-district-off regime. Regeneration now
+  sees all 11 JCT tax-expenditure facts and the already-fenced OBBBA family;
+  the parity, spec-only country-package, and US-plan contract tests pass.
 
 ## Next
 
-- Add the towncrier fragment and final report.
-- Run format/lint, country-package contracts, and the full workspace test suite.
+- Rerun the full workspace test suite after the parity-pin repair.
+- Write the final report and close the ledger.
 - Replace placeholder crosswalk content and placeholder passive-prior values in
   follow-up research before enabling v2 in a production build.
