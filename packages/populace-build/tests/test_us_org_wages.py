@@ -722,11 +722,13 @@ def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
         person[column] = carried[column]
     pristine = person.copy()
     active = person["employment_income_before_lsr"].to_numpy() > 0
-    # Stale surface: sub-minimum wages, inverted hourly status, an
-    # impossible all-True union column, and a poisoned occupation carry.
+    # Stale surface: sub-minimum wages, inverted hourly status, a wrong but
+    # NONCONSTANT union pattern (a constant column would fail
+    # _surface_has_signal and bypass the populated-surface comparison this
+    # test exists to bind), and a poisoned occupation carry.
     person["hourly_wage"] = np.where(active, 5.0, 0.0)
     person["is_paid_hourly"] = np.where(active, np.arange(1_000) % 2 == 0, False)
-    person["is_union_member_or_covered"] = True
+    person["is_union_member_or_covered"] = np.arange(1_000) % 3 == 0
     person.loc[20, "is_military"] = True  # POCCU2 is 0 here, not 52
     person["fsla_overtime_premium"] = 0.0
     person.loc[950:999, "fsla_overtime_premium"] = 52_000 / 11
@@ -798,6 +800,21 @@ def test_outputs_match_rejects_boolean_nan_and_nullable_na(monkeypatch) -> None:
     stringy["is_paid_hourly"] = stringy["is_paid_hourly"].astype(int).astype(str)
     healed = module.with_us_org_wages_inputs(
         _frame(stringy), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
+    np.testing.assert_array_equal(
+        healed["is_paid_hourly"].to_numpy(),
+        consistent["is_paid_hourly"].to_numpy(),
+    )
+
+    # Temporal damage coerces to matching 0/1 nanoseconds; the dtype-family
+    # allowlist must rebuild it rather than fast-path the datetime column.
+    temporal = consistent.copy()
+    temporal["is_paid_hourly"] = pd.to_datetime(
+        temporal["is_paid_hourly"].astype(int), unit="ns"
+    )
+    healed = module.with_us_org_wages_inputs(
+        _frame(temporal), seed=0, time_period=2024, org_donor=_donor()
     ).table("person")
     assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
     np.testing.assert_array_equal(

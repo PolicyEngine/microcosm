@@ -855,8 +855,10 @@ def _surface_has_signal(person: pd.DataFrame) -> bool:
 def _outputs_match(person: pd.DataFrame, outputs: dict[str, np.ndarray]) -> bool:
     """True when every recomputed output equals the stored column exactly.
 
-    Object and string dtypes always rebuild (a coercible "1" must not let a
-    damaged dtype survive the fast path). Booleans compare through strict
+    Only boolean, integer, and float dtype families may match — anything
+    else (object, string, temporal, categorical) always rebuilds, because a
+    coercible representation ("1" strings, 0/1-ns datetimes) must not let a
+    damaged dtype survive the fast path. Booleans compare through strict
     0/1 numerics so NaN and pd.NA rebuild rather than casting truthy;
     numerics compare as float32 (the shipped dtype) where a stored NaN never
     compares equal. A damaged column therefore always takes the recomputed
@@ -867,11 +869,14 @@ def _outputs_match(person: pd.DataFrame, outputs: dict[str, np.ndarray]) -> bool
         if column not in person:
             return False
         stored_series = person[column]
-        # Object or string dtypes are never a legitimate shipped
-        # representation — even when their contents would coerce to matching
-        # numerics ("0"/"1"), passing them through would preserve the
-        # damaged dtype on the fast path. Rebuild instead.
-        if stored_series.dtype == object or pd.api.types.is_string_dtype(stored_series):
+        # Positive dtype-family allowlist: shipped surfaces carry only
+        # boolean, integer, and float columns (verified against the cached
+        # Build N/O stores). Rebuild on anything else.
+        if not (
+            pd.api.types.is_bool_dtype(stored_series)
+            or pd.api.types.is_integer_dtype(stored_series)
+            or pd.api.types.is_float_dtype(stored_series)
+        ):
             return False
         if values.dtype == bool:
             # Compare through strict 0/1 numerics: NaN, pd.NA, or any
