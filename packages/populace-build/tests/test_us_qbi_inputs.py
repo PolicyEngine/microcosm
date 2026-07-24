@@ -383,6 +383,54 @@ def test_host_sstb_classification_routes_host_and_passive_records(
     assert gate.passed, gate.failures
 
 
+def test_host_sstb_stream_is_independent_of_qualification_mode(
+    ready_sstb_crosswalk: dict[str, object],
+) -> None:
+    person = _v2_host_person()
+    person["partnership_s_corp_income_would_be_qualified"] = True
+    assumptions = _host_test_assumptions()
+    prior_partnership = replace(
+        assumptions,
+        qualification_derivations=tuple(
+            replace(
+                derivation,
+                mode="prior",
+                prior_probability=1.0,
+            )
+            if derivation.source == "partnership_s_corp_income"
+            else derivation
+            for derivation in assumptions.qualification_derivations
+        ),
+    )
+
+    baseline = with_host_sstb_classification(
+        _frame(person),
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=assumptions,
+        sstb_crosswalk=ready_sstb_crosswalk,
+    ).table("person")
+    changed = with_host_sstb_classification(
+        _frame(person),
+        qbi_simulation_version=QBI_SIMULATION_V2,
+        assumptions=prior_partnership,
+        sstb_crosswalk=ready_sstb_crosswalk,
+    ).table("person")
+
+    assert not np.array_equal(
+        baseline["partnership_s_corp_income_would_be_qualified"],
+        changed["partnership_s_corp_income_would_be_qualified"],
+    )
+    for column in (
+        "business_is_sstb",
+        "sstb_self_employment_income_before_lsr",
+        "sstb_w2_wages_from_qualified_business",
+        "sstb_unadjusted_basis_qualified_property",
+    ):
+        assert baseline[column].to_numpy().tobytes() == (
+            changed[column].to_numpy().tobytes()
+        )
+
+
 def test_sstb_requires_a_positive_qualified_mapped_source() -> None:
     person = _qbi_person(200)
     row = 100

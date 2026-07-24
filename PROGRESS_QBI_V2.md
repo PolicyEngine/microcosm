@@ -36,7 +36,9 @@
 - Added byte-level stream-independence tests: changing the final derived
   qualification source to an equivalent prior leaves W-2, UBIA, investment,
   REIT/PTP, and BDC family outputs byte-identical; changing W-2 or UBIA seeds
-  leaves the other family byte-identical.
+  leaves the other family byte-identical. The equivalent mode change also
+  leaves host SSTB classifications and routed SSTB income/W-2/UBIA bytes
+  identical while the qualification flag bytes change.
 - Added the pure post-QRF `with_host_sstb_classification` transform. It derives
   law-determined flags from host record structure, preserves residual-prior
   flags, applies industry-primary/occupation-secondary crosswalk lookup,
