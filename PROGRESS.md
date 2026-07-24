@@ -10,18 +10,22 @@ The active ledger for the repeal-revenue validation surface is
 
 - Branch `repeal-validation-298` created in the dedicated
   `.claude/worktrees/populace-wt-530` worktree.
-- Repository reform-validation contracts and release consumers are being
-  mapped before implementation.
+- The reform-validation contracts and release hook are mapped; implementation
+  of the declared repeal benchmark resource is next.
 
 ## Current done
 
 - Verified the requested branch point and clean starting worktree.
 - Confirmed GitNexus MCP tools are unavailable and selected local source
   tracing as the documented fallback.
+- Located the diagnostics path:
+  `us_runtime/reform_validation.py` -> `_write_reform_validation()` ->
+  release `reform_validation.json`.
+- Confirmed repeal rows must always use independent simulations, never
+  calibration estimates, and must remain outside release gates.
 
 ## Current next
 
-- Trace the tax-expenditure and OBBBA reform validators and release payload.
 - Add the declared benchmark resource, runner family, and contract tests.
 - Run focused checks and the full workspace suite, then write the final report.
 
