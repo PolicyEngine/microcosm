@@ -32,6 +32,7 @@ __all__ = [
     "PufTaxDetailChainInputs",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
+    "US_PUF_E19200_HOME_MORTGAGE_SHARE",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -55,9 +56,26 @@ US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 #: this fit by name.
 US_PUF_SUPPORT_FIT_NAME = "us_puf_tax_detail_support"
 
+# Interim populace#515 carve: SOI Pub 1304 TY2015 Table 2.1 reports
+# $283,004,465 thousand of home-mortgage interest within $304,461,163 thousand
+# of total interest paid. Apply that concept share per donor record before the
+# QRF learns levels and realized support. The #486 ``support_value_repairs``
+# surface is instead a release-time total pin, so it cannot express this
+# donor-column concept correction (#492). A uniform carve cannot identify the
+# records carrying the removed points, qualified mortgage-insurance premiums,
+# or investment interest, so ``investment_interest_expense`` remains all-zero.
+US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
+
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+)
+
+_US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
+    "home_mortgage_interest",
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+    "interest_deduction",
 )
 
 
@@ -551,8 +569,20 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
+    _carve_us_puf_e19200_home_mortgage_share(tax_unit)
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
+
+
+def _carve_us_puf_e19200_home_mortgage_share(donor: pd.DataFrame) -> None:
+    """Carve E19200-lineage donor columns to the mortgage-only concept."""
+
+    for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
+        if column in donor:
+            donor[column] = (
+                donor[column].to_numpy(dtype=np.float64, copy=False)
+                * US_PUF_E19200_HOME_MORTGAGE_SHARE
+            )
 
 
 def impute_us_puf_tax_detail_support(
