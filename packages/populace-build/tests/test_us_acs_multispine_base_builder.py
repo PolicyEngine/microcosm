@@ -725,6 +725,7 @@ def test_default_transfer_must_register_every_planned_input(
 
 
 def test_staging_h5_round_trips_base_only_nullable_boolean(tmp_path: Path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
     builder = _load_builder_module()
     frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
     frame.table("person")["is_snap_abawd_discretionary_exempt"] = pd.Series(
@@ -782,6 +783,7 @@ def test_engine_input_null_audit_includes_float_bool_and_spine_counts() -> None:
 def test_nullable_staging_writer_round_trips_group_quarters_blanks(
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
     builder = _load_builder_module()
     frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
     frame.person["real_estate_taxes"] = [1_000.0, np.nan]

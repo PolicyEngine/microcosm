@@ -782,6 +782,7 @@ def test_discrete_year_predictions_snap_to_observed_donor_support(
 def test_engine_boolean_metadata_restores_bool_from_float_h5_donor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
     donor = _with_columns(
         _donor_frame(),
         "person",
