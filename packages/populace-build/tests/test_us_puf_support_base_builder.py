@@ -293,6 +293,44 @@ def test_stage_cli_defaults_to_legacy_all_without_checkpoints() -> None:
 
     assert args.stage == "all"
     assert args.checkpoint_dir is None
+    assert args.qbi_simulation_version == builder.QBI_SIMULATION_VERSION
+
+
+def test_qbi_post_qrf_dispatch_is_version_gated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_support_builder_module()
+    calls: list[tuple[str, object, int | None]] = []
+
+    def legacy(frame):
+        calls.append(("legacy", frame, None))
+        return "legacy-output"
+
+    def host(frame, *, qbi_simulation_version):
+        calls.append(("host", frame, qbi_simulation_version))
+        return "host-output"
+
+    monkeypatch.setattr(builder, "with_us_qbi_input_reconciliation", legacy)
+    monkeypatch.setattr(builder, "with_host_sstb_classification", host)
+
+    assert (
+        builder._with_versioned_qbi_post_qrf(
+            "v1-frame",
+            qbi_simulation_version=builder.QBI_SIMULATION_VERSION,
+        )
+        == "legacy-output"
+    )
+    assert (
+        builder._with_versioned_qbi_post_qrf(
+            "v2-frame",
+            qbi_simulation_version=2,
+        )
+        == "host-output"
+    )
+    assert calls == [
+        ("legacy", "v1-frame", None),
+        ("host", "v2-frame", 2),
+    ]
 
 
 def test_reconciled_outer_pipeline_order_is_locked() -> None:
@@ -1754,6 +1792,8 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
         str(tmp_path / "out"),
         "--seed",
         "0",
+        "--qbi-simulation-version",
+        "2",
         "--stage",
         "all",
         "--checkpoint-dir",
@@ -1767,3 +1807,4 @@ def test_stage_cli_round_trips_the_locked_run_config(tmp_path: Path) -> None:
     parent_config = builder._stage_run_config(parent)
     child_config = builder._stage_run_config(child)
     assert child_config == parent_config
+    assert parent_config["qbi_simulation_version"] == 2

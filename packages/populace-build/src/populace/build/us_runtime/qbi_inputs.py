@@ -18,7 +18,9 @@ PolicyEngine-US owns the QBI deduction formulas and statutory limits.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib.resources import files
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -26,6 +28,12 @@ import pandas as pd
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
 from populace.frame import US_SCHEMA, Frame
+
+if TYPE_CHECKING:
+    from populace.build.us_runtime.qbi_simulation import (
+        QbiSimulationAssumptionsV2,
+        SstbCrosswalk,
+    )
 
 __all__ = [
     "QBI_ARCHIVED_ASSUMPTIONS_URL",
@@ -40,9 +48,11 @@ __all__ = [
     "US_QBI_NONNEGATIVE_OUTPUT_COLUMNS",
     "US_QBI_OUTPUT_COLUMNS",
     "US_QBI_STAGE_NAME",
+    "US_QBI_V2_HOST_REQUIRED_SOURCE_COLUMNS",
     "us_qbi_inputs_signal_gate",
     "us_qbi_inputs_stage_spec",
     "us_qbi_inputs_summary",
+    "with_host_sstb_classification",
     "with_us_qbi_input_reconciliation",
 ]
 
@@ -100,6 +110,10 @@ US_QBI_OUTPUT_COLUMNS: tuple[str, ...] = (
     "w2_wages_from_qualified_business",
 )
 US_QBI_NONCONSTANT_PERSON_COLUMNS = US_QBI_OUTPUT_COLUMNS
+US_QBI_V2_HOST_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
+    "AGI",
+    "PEIOOCC",
+)
 
 _PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _BASE_ASEC_SUPPORT_CHANNEL = "asec"
@@ -211,8 +225,229 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
         | ((estate_income > 0.0) & flags["estate_income_would_be_qualified"])
     )
     business_is_sstb = flags["business_is_sstb"] & has_positive_qualified_mapped_source
-    flags["business_is_sstb"] = business_is_sstb
+    return _with_qbi_routing(
+        frame,
+        result=result,
+        flags=flags,
+        business_is_sstb=business_is_sstb,
+        base_self_employment_qualified=base_self_employment_qualified,
+        total_self_employment=total_self_employment,
+        partnership_s_corp_income=partnership_s_corp_income,
+    )
 
+
+def with_host_sstb_classification(
+    frame: Frame,
+    *,
+    qbi_simulation_version: int,
+    assumptions: QbiSimulationAssumptionsV2 | None = None,
+    sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
+) -> Frame:
+    """Apply v2 qualification derivations and host-conditioned SSTB routing.
+
+    This pure post-QRF transform classifies positive qualified Schedule C
+    income from host industry when configured, falling back to detailed
+    occupation. Ambiguous and unmapped codes use the versioned residual prior.
+    Records with no positive qualified Schedule C income but positive qualified
+    partnership/S-corporation or estate income use the versioned AGI-band
+    passive prior.
+    """
+
+    from populace.build.us_runtime.qbi_simulation import (
+        QBI_SIMULATION_V2,
+        QbiSimulationAssumptionsV2,
+        load_qbi_simulation_assumptions,
+        resolve_sstb_crosswalk,
+    )
+
+    if qbi_simulation_version != QBI_SIMULATION_V2:
+        raise ValueError("Host SSTB classification requires qbi_simulation_version=2.")
+    if frame.schema != US_SCHEMA:
+        raise ValueError("Host SSTB classification requires the US schema.")
+    resolved_assumptions = assumptions or load_qbi_simulation_assumptions(
+        qbi_simulation_version
+    )
+    if not isinstance(resolved_assumptions, QbiSimulationAssumptionsV2):
+        raise TypeError("Host SSTB classification requires v2 assumptions.")
+    resolved_assumptions.validate()
+    crosswalk = resolve_sstb_crosswalk(
+        resolved_assumptions,
+        sstb_crosswalk,
+    )
+    classification = resolved_assumptions.sstb_classification
+
+    person = frame.table("person")
+    prior_flag_columns = {
+        f"{derivation.source}_would_be_qualified"
+        for derivation in resolved_assumptions.qualification_derivations
+        if derivation.mode == "prior"
+    }
+    required = {
+        _SELF_EMPLOYMENT_COLUMN,
+        _SSTB_SELF_EMPLOYMENT_COLUMN,
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+        "unadjusted_basis_qualified_property",
+        "w2_wages_from_qualified_business",
+        classification.occupation_column,
+        classification.agi_column,
+        *prior_flag_columns,
+    }
+    if classification.industry_column is not None:
+        required.add(classification.industry_column)
+    missing = sorted(required - set(person.columns))
+    if missing:
+        raise ValueError(
+            f"Host SSTB classification requires post-QRF source column(s): {missing}."
+        )
+
+    result = person.copy(deep=True)
+    total_self_employment = _numeric(
+        result,
+        _SELF_EMPLOYMENT_COLUMN,
+    ) + _numeric(result, _SSTB_SELF_EMPLOYMENT_COLUMN)
+    partnership_s_corp_income = _optional_numeric(
+        result,
+        "partnership_income",
+    ) + _optional_numeric(result, "s_corp_income")
+    source_values = {
+        "self_employment_income": total_self_employment,
+        "farm_operations_income": _optional_numeric(
+            result,
+            "farm_operations_income",
+        ),
+        "farm_rent_income": _optional_numeric(result, "farm_rent_income"),
+        "rental_income": _optional_numeric(result, "rental_income"),
+        "estate_income": _optional_numeric(result, "estate_income"),
+        "partnership_s_corp_income": partnership_s_corp_income,
+    }
+
+    flags: dict[str, np.ndarray] = {}
+    for derivation in resolved_assumptions.qualification_derivations:
+        column = f"{derivation.source}_would_be_qualified"
+        if derivation.mode == "derived":
+            flags[column] = source_values[derivation.source] != 0.0
+        else:
+            flags[column] = _numeric(result, column) > 0.0
+    base_self_employment_qualified = flags["self_employment_income_would_be_qualified"]
+
+    host_classification = _host_sstb_classification_values(
+        result,
+        occupation_column=classification.occupation_column,
+        occupation_mapping=crosswalk.mapping_for("occupation"),
+        industry_column=classification.industry_column,
+        industry_mapping=crosswalk.mapping_for("industry"),
+    )
+    rng = np.random.default_rng(resolved_assumptions.sstb_seed)
+    ambiguous_draw = rng.random(len(result)) < classification.ambiguous_prior
+    schedule_c_qualified = (
+        total_self_employment > 0.0
+    ) & base_self_employment_qualified
+    schedule_c_sstb = (host_classification == "clear_sstb") | (
+        (host_classification == "ambiguous") & ambiguous_draw
+    )
+
+    estate_income = source_values["estate_income"]
+    has_positive_qualified_passive_income = (
+        (partnership_s_corp_income > 0.0)
+        & flags["partnership_s_corp_income_would_be_qualified"]
+    ) | ((estate_income > 0.0) & flags["estate_income_would_be_qualified"])
+    passive_only = ~schedule_c_qualified & has_positive_qualified_passive_income
+    passive_probabilities = _passive_sstb_probabilities(
+        _numeric(result, classification.agi_column),
+        resolved_assumptions,
+    )
+    passive_draw = rng.random(len(result)) < passive_probabilities
+    business_is_sstb = (schedule_c_qualified & schedule_c_sstb) | (
+        passive_only & passive_draw
+    )
+    flags["business_is_sstb"] = business_is_sstb
+    flags[_SSTB_QUALIFICATION_FLAG] = np.zeros(len(result), dtype=bool)
+
+    routed = _with_qbi_routing(
+        frame,
+        result=result,
+        flags=flags,
+        business_is_sstb=business_is_sstb,
+        base_self_employment_qualified=base_self_employment_qualified,
+        total_self_employment=total_self_employment,
+        partnership_s_corp_income=partnership_s_corp_income,
+    )
+    invariant_failures = {
+        name: count
+        for name, count in us_qbi_inputs_summary(routed)["invariants"].items()
+        if count
+    }
+    if invariant_failures:
+        raise AssertionError(
+            "Host SSTB classification violated QBI reconciliation invariants: "
+            f"{invariant_failures}."
+        )
+    return routed
+
+
+def _host_sstb_classification_values(
+    person: pd.DataFrame,
+    *,
+    occupation_column: str,
+    occupation_mapping: Mapping[int, str],
+    industry_column: str | None,
+    industry_mapping: Mapping[int, str],
+) -> np.ndarray:
+    resolved = np.full(len(person), None, dtype=object)
+    unresolved = np.ones(len(person), dtype=bool)
+    if industry_column is not None:
+        industry = _mapped_sstb_values(
+            person[industry_column],
+            industry_mapping,
+        )
+        observed = pd.notna(industry)
+        resolved[observed] = industry[observed]
+        unresolved &= ~observed
+    occupation = _mapped_sstb_values(
+        person[occupation_column],
+        occupation_mapping,
+    )
+    observed = unresolved & pd.notna(occupation)
+    resolved[observed] = occupation[observed]
+    resolved[pd.isna(resolved)] = "ambiguous"
+    return resolved.astype(str)
+
+
+def _mapped_sstb_values(
+    values: pd.Series,
+    mapping: Mapping[int, str],
+) -> np.ndarray:
+    numeric = pd.to_numeric(values, errors="coerce")
+    return numeric.map(mapping).to_numpy(dtype=object)
+
+
+def _passive_sstb_probabilities(
+    agi: np.ndarray,
+    assumptions: QbiSimulationAssumptionsV2,
+) -> np.ndarray:
+    result = np.zeros(len(agi), dtype=np.float64)
+    assigned = np.zeros(len(agi), dtype=bool)
+    for band in assumptions.sstb_classification.passive_passthrough_sstb_prior_by_agi:
+        in_band = (agi >= band.lower) & (agi < band.upper)
+        result[in_band] = band.probability
+        assigned |= in_band
+    if not np.all(assigned):
+        raise ValueError("QBI v2 passive SSTB AGI bands did not cover every record.")
+    return result
+
+
+def _with_qbi_routing(
+    frame: Frame,
+    *,
+    result: pd.DataFrame,
+    flags: dict[str, np.ndarray],
+    business_is_sstb: np.ndarray,
+    base_self_employment_qualified: np.ndarray,
+    total_self_employment: np.ndarray,
+    partnership_s_corp_income: np.ndarray,
+) -> Frame:
+    flags["business_is_sstb"] = business_is_sstb
     flags["self_employment_income_would_be_qualified"] = (
         ~business_is_sstb & base_self_employment_qualified
     )

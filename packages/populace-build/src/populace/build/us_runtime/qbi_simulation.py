@@ -36,14 +36,27 @@ __all__ = [
     "QBI_SIMULATION_ARCHIVED_DERIVATION_URL",
     "QBI_SIMULATION_ARCHIVED_IMPLEMENTATION_URL",
     "QBI_SIMULATION_ASSUMPTIONS_RESOURCE",
+    "QBI_SIMULATION_ASSUMPTIONS_RESOURCES",
     "QBI_SIMULATION_SOURCE_NAMES",
+    "QBI_SIMULATION_SUPPORTED_VERSIONS",
     "QBI_SIMULATION_VERSION",
+    "QBI_SIMULATION_V2",
+    "AgiSstbPriorBand",
     "BetaParameters",
     "ExposureBetaParameters",
+    "QualificationDerivation",
     "QbiSimulationAssumptions",
+    "QbiSimulationAssumptionsV2",
     "QbiSimulationInputs",
+    "SstbClassificationAssumptions",
+    "SstbCrosswalk",
     "load_qbi_simulation_assumptions",
+    "load_sstb_crosswalk",
+    "parse_qbi_simulation_assumptions",
+    "parse_sstb_crosswalk",
+    "qbi_qrf_excluded_targets",
     "qbi_simulation_summary",
+    "resolve_sstb_crosswalk",
     "simulate_qbi_inputs",
     "us_qbi_simulation_stage_spec",
     "with_qbi_simulation_from_puf_arrays",
@@ -69,7 +82,16 @@ QBI_SIMULATION_ARCHIVED_ASSUMPTIONS_URL = (
 )
 
 QBI_SIMULATION_VERSION = 1
+QBI_SIMULATION_V2 = 2
+QBI_SIMULATION_SUPPORTED_VERSIONS = (
+    QBI_SIMULATION_VERSION,
+    QBI_SIMULATION_V2,
+)
 QBI_SIMULATION_ASSUMPTIONS_RESOURCE = "qbi_assumptions_v1.json"
+QBI_SIMULATION_ASSUMPTIONS_RESOURCES = {
+    QBI_SIMULATION_VERSION: QBI_SIMULATION_ASSUMPTIONS_RESOURCE,
+    QBI_SIMULATION_V2: "qbi_assumptions_v2.json",
+}
 QBI_SIMULATION_SOURCE_NAMES: tuple[str, ...] = (
     "self_employment_income",
     "farm_operations_income",
@@ -93,6 +115,17 @@ _SUPPORTED_MODEL_KINDS = {
     "ubia": "source_weighted_capital_bernoulli_lognormal",
     "investment": "exposure_bernoulli_beta_carveout",
 }
+_V2_QUALIFICATION_MODES = frozenset({"derived", "prior"})
+_V2_SSTB_CLASSIFICATION_MODE = "crosswalk"
+_SSTB_CROSSWALK_SCHEMA_VERSION = 1
+_SSTB_CROSSWALK_READY_STATUS = "ready"
+_SSTB_CLASSIFICATIONS = frozenset(
+    {
+        "clear_sstb",
+        "non_sstb",
+        "ambiguous",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +145,112 @@ class ExposureBetaParameters:
     source: str
     probability_of_receiving: float
     beta: BetaParameters
+
+
+@dataclass(frozen=True)
+class QualificationDerivation:
+    """One source's deterministic rule or documented residual prior."""
+
+    source: str
+    mode: str
+    prior_probability: float | None
+    rationale: str
+
+
+@dataclass(frozen=True)
+class AgiSstbPriorBand:
+    """One lower-inclusive, upper-exclusive passive SSTB prior band."""
+
+    label: str
+    lower: float
+    upper: float
+    probability: float
+
+
+@dataclass(frozen=True)
+class SstbClassificationAssumptions:
+    """Host-record SSTB classification inputs and residual priors."""
+
+    mode: str
+    crosswalk_resource: str
+    occupation_column: str
+    industry_column: str | None
+    agi_column: str
+    ambiguous_prior: float
+    ambiguous_prior_status: str
+    agi_band_format: str
+    passive_passthrough_sstb_prior_by_agi: tuple[AgiSstbPriorBand, ...]
+    passive_passthrough_prior_status: str
+    rationale: str
+    follow_up: str
+
+
+@dataclass(frozen=True)
+class SstbCrosswalk:
+    """Validated Census host-code classification crosswalk."""
+
+    schema_version: int
+    crosswalk_version: str
+    status: str
+    occupation_code_system: str
+    industry_code_system: str | None
+    occupation_mapping: tuple[tuple[int, str], ...]
+    industry_mapping: tuple[tuple[int, str], ...]
+
+    def mapping_for(self, family: str) -> dict[int, str]:
+        """Return one signal family's code-to-classification mapping."""
+
+        if family == "occupation":
+            return dict(self.occupation_mapping)
+        if family == "industry":
+            return dict(self.industry_mapping)
+        raise ValueError(f"Unknown SSTB crosswalk family {family!r}.")
+
+    def validate(self) -> None:
+        """Reject malformed instances, including caller-constructed objects."""
+
+        if self.schema_version != _SSTB_CROSSWALK_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported SSTB crosswalk schema_version {self.schema_version!r}."
+            )
+        if self.status != _SSTB_CROSSWALK_READY_STATUS:
+            raise ValueError("QBI v2 requires a ready SSTB crosswalk.")
+        for name, value in (
+            ("crosswalk_version", self.crosswalk_version),
+            ("occupation_code_system", self.occupation_code_system),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"SSTB crosswalk {name} must be a nonempty string.")
+        if self.industry_code_system is not None and (
+            not isinstance(self.industry_code_system, str)
+            or not self.industry_code_system
+        ):
+            raise ValueError(
+                "SSTB crosswalk industry_code_system must be null or a nonempty string."
+            )
+        for family, mapping in (
+            ("occupation", self.occupation_mapping),
+            ("industry", self.industry_mapping),
+        ):
+            seen: set[int] = set()
+            for code, classification in mapping:
+                if isinstance(code, bool) or not isinstance(code, int) or code < 0:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} codes must be nonnegative integers."
+                    )
+                if code in seen:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} mapping contains duplicate "
+                        f"code {code}."
+                    )
+                seen.add(code)
+                if classification not in _SSTB_CLASSIFICATIONS:
+                    raise ValueError(
+                        f"SSTB crosswalk {family} code {code} has unknown "
+                        f"classification {classification!r}."
+                    )
+        if not self.occupation_mapping and not self.industry_mapping:
+            raise ValueError("Ready SSTB crosswalk mapping must not be empty.")
 
 
 @dataclass(frozen=True)
@@ -202,6 +341,195 @@ class QbiSimulationAssumptions:
             "qualification probabilities", self.qualification_probabilities
         )
         _validate_probabilities("SSTB probabilities", self.sstb_probabilities)
+        _validate_probabilities(
+            "capital-intensity probabilities",
+            self.capital_intensity_probabilities,
+        )
+        if not 0.0 < self.has_employees_target_share < 1.0:
+            raise ValueError("QBI employee target share must lie strictly in (0, 1).")
+        if self.has_employees_slope_per_dollar < 0.0:
+            raise ValueError("QBI employee-logit slope must be nonnegative.")
+        if self.intercept_bisection_iterations <= 0:
+            raise ValueError("QBI logit calibration requires positive iterations.")
+        if self.ubia_sigma < 0.0:
+            raise ValueError("QBI UBIA lognormal sigma must be nonnegative.")
+        if any(value < 0.0 for value in self.ubia_multiples):
+            raise ValueError("QBI UBIA multiples must be nonnegative.")
+        for name, parameters in (
+            ("profit margin", self.profit_margin_parameters),
+            ("labor ratio", self.labor_ratio_parameters),
+        ):
+            for parameter in parameters:
+                _validate_beta_parameters(name, parameter)
+        for name, exposures in (
+            ("REIT/PTP", self.reit_ptp_exposures),
+            ("BDC", self.bdc_exposures),
+        ):
+            for exposure in exposures:
+                if not 0.0 <= exposure.probability_of_receiving <= 1.0:
+                    raise ValueError(
+                        f"QBI {name} receipt probability for {exposure.source!r} "
+                        "must lie in [0, 1]."
+                    )
+                _validate_beta_parameters(name, exposure.beta)
+
+
+@dataclass(frozen=True)
+class QbiSimulationAssumptionsV2:
+    """Strict v2 assumptions with host SSTB and per-family random streams."""
+
+    schema_version: int
+    qbi_simulation_version: int
+    engine: str
+    bit_generator: str
+    qualification_seed: int
+    sstb_seed: int
+    w2_seed: int
+    ubia_seed: int
+    investment_seed: int
+    source_order: tuple[str, ...]
+    qualification_derivations: tuple[QualificationDerivation, ...]
+    sstb_classification: SstbClassificationAssumptions
+    w2_model: str
+    profit_margin_parameters: tuple[BetaParameters, ...]
+    has_employees_slope_per_dollar: float
+    has_employees_target_share: float
+    intercept_bisection_iterations: int
+    labor_ratio_parameters: tuple[BetaParameters, ...]
+    ubia_model: str
+    ubia_sigma: float
+    ubia_multiples: tuple[float, ...]
+    capital_intensity_probabilities: tuple[float, ...]
+    investment_model: str
+    reit_ptp_exposures: tuple[ExposureBetaParameters, ...]
+    bdc_exposures: tuple[ExposureBetaParameters, ...]
+
+    @property
+    def qualification_by_source(self) -> dict[str, QualificationDerivation]:
+        """Return the source-indexed qualification contract."""
+
+        return {
+            derivation.source: derivation
+            for derivation in self.qualification_derivations
+        }
+
+    def validate(self) -> None:
+        """Reject malformed v2 assumptions before consuming any family stream."""
+
+        if self.schema_version != 2:
+            raise ValueError(
+                f"Unsupported QBI v2 assumptions schema_version "
+                f"{self.schema_version!r}."
+            )
+        if self.qbi_simulation_version != QBI_SIMULATION_V2:
+            raise ValueError(
+                "QBI v2 assumptions carry unsupported qbi_simulation_version "
+                f"{self.qbi_simulation_version!r}."
+            )
+        if self.source_order != QBI_SIMULATION_SOURCE_NAMES:
+            raise ValueError(
+                "QBI v2 source_order must preserve the engine order "
+                f"{QBI_SIMULATION_SOURCE_NAMES!r}, got {self.source_order!r}."
+            )
+        if self.bit_generator != "PCG64":
+            raise ValueError("QBI v2 requires NumPy PCG64 family streams.")
+        family_seeds = {
+            "qualification": self.qualification_seed,
+            "sstb": self.sstb_seed,
+            "w2": self.w2_seed,
+            "ubia": self.ubia_seed,
+            "investment": self.investment_seed,
+        }
+        if any(seed < 0 for seed in family_seeds.values()):
+            raise ValueError("QBI v2 family seeds must be nonnegative integers.")
+        if len(set(family_seeds.values())) != len(family_seeds):
+            raise ValueError("QBI v2 family seeds must be distinct.")
+        derivation_sources = tuple(
+            derivation.source for derivation in self.qualification_derivations
+        )
+        if derivation_sources != self.source_order:
+            raise ValueError(
+                "QBI v2 qualification derivations must follow source_order."
+            )
+        for derivation in self.qualification_derivations:
+            if derivation.mode not in _V2_QUALIFICATION_MODES:
+                raise ValueError(
+                    "Unknown QBI v2 qualification mode "
+                    f"{derivation.mode!r} for {derivation.source!r}."
+                )
+            if not derivation.rationale.strip():
+                raise ValueError(
+                    f"QBI v2 qualification rationale for "
+                    f"{derivation.source!r} must be nonempty."
+                )
+            if derivation.mode == "derived":
+                if derivation.prior_probability is not None:
+                    raise ValueError(
+                        f"Derived QBI source {derivation.source!r} must not "
+                        "declare a prior."
+                    )
+            elif derivation.prior_probability is None:
+                raise ValueError(
+                    f"Prior-mode QBI source {derivation.source!r} must declare "
+                    "a probability."
+                )
+            else:
+                _validate_probabilities(
+                    f"qualification prior for {derivation.source!r}",
+                    (derivation.prior_probability,),
+                )
+
+        classification = self.sstb_classification
+        if classification.mode != _V2_SSTB_CLASSIFICATION_MODE:
+            raise ValueError(
+                f"Unknown QBI v2 SSTB classification mode {classification.mode!r}."
+            )
+        if not classification.crosswalk_resource.endswith(".json"):
+            raise ValueError("QBI v2 SSTB crosswalk_resource must name a JSON file.")
+        if "/" in classification.crosswalk_resource:
+            raise ValueError(
+                "QBI v2 SSTB crosswalk_resource must be a package basename."
+            )
+        if classification.industry_column == classification.occupation_column:
+            raise ValueError(
+                "QBI v2 SSTB industry and occupation columns must be distinct."
+            )
+        _validate_probabilities(
+            "ambiguous SSTB prior",
+            (classification.ambiguous_prior,),
+        )
+        if classification.agi_band_format != ("lower_inclusive:upper_exclusive"):
+            raise ValueError("Unsupported QBI v2 AGI band format.")
+        _validate_agi_prior_bands(classification.passive_passthrough_sstb_prior_by_agi)
+
+        models = {
+            "w2": self.w2_model,
+            "ubia": self.ubia_model,
+            "investment": self.investment_model,
+        }
+        for family, expected in (
+            ("w2", _SUPPORTED_MODEL_KINDS["w2"]),
+            ("ubia", _SUPPORTED_MODEL_KINDS["ubia"]),
+            ("investment", _SUPPORTED_MODEL_KINDS["investment"]),
+        ):
+            if models[family] != expected:
+                raise ValueError(
+                    f"QBI v2 {family} model must be {expected!r}, "
+                    f"got {models[family]!r}."
+                )
+        source_count = len(self.source_order)
+        ordered_parameter_families = {
+            "profit_margin_parameters": self.profit_margin_parameters,
+            "labor_ratio_parameters": self.labor_ratio_parameters,
+            "ubia_multiples": self.ubia_multiples,
+            "capital_intensity_probabilities": (self.capital_intensity_probabilities),
+        }
+        for name, values in ordered_parameter_families.items():
+            if len(values) != source_count:
+                raise ValueError(
+                    f"QBI v2 assumptions {name} has {len(values)} value(s); "
+                    f"expected {source_count}."
+                )
         _validate_probabilities(
             "capital-intensity probabilities",
             self.capital_intensity_probabilities,
@@ -380,22 +708,61 @@ class QbiSimulationInputs:
         )
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
 def load_qbi_simulation_assumptions(
     qbi_simulation_version: int,
-) -> QbiSimulationAssumptions:
+) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2:
     """Load and strictly validate one packaged QBI assumptions version."""
 
-    if qbi_simulation_version != QBI_SIMULATION_VERSION:
+    if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
         raise ValueError(
             "Unsupported qbi_simulation_version "
             f"{qbi_simulation_version!r}; supported versions: "
-            f"({QBI_SIMULATION_VERSION},)."
+            f"{QBI_SIMULATION_SUPPORTED_VERSIONS!r}."
         )
-    resource = files("populace.build.us").joinpath(QBI_SIMULATION_ASSUMPTIONS_RESOURCE)
+    resource = files("populace.build.us").joinpath(
+        QBI_SIMULATION_ASSUMPTIONS_RESOURCES[qbi_simulation_version]
+    )
     with resource.open("r", encoding="utf-8") as stream:
         payload = json.load(stream)
+    return parse_qbi_simulation_assumptions(
+        payload,
+        qbi_simulation_version=qbi_simulation_version,
+    )
+
+
+def parse_qbi_simulation_assumptions(
+    payload: Any,
+    *,
+    qbi_simulation_version: int,
+) -> QbiSimulationAssumptions | QbiSimulationAssumptionsV2:
+    """Parse one assumptions mapping under its requested versioned schema."""
+
+    if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
+        raise ValueError(
+            "Unsupported qbi_simulation_version "
+            f"{qbi_simulation_version!r}; supported versions: "
+            f"{QBI_SIMULATION_SUPPORTED_VERSIONS!r}."
+        )
     root = _require_mapping(payload, "QBI assumptions")
+    payload_version = _integer(
+        root.get("qbi_simulation_version"),
+        "qbi_simulation_version",
+    )
+    if payload_version != qbi_simulation_version:
+        raise ValueError(
+            "Requested qbi_simulation_version "
+            f"{qbi_simulation_version!r} does not match assumptions version "
+            f"{payload_version!r}."
+        )
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        return _parse_v1_qbi_simulation_assumptions(root)
+    return _parse_v2_qbi_simulation_assumptions(root)
+
+
+def _parse_v1_qbi_simulation_assumptions(
+    root: Mapping[str, Any],
+) -> QbiSimulationAssumptions:
     rng = _child_mapping(root, "rng")
     qualification = _child_mapping(root, "qualification")
     sstb = _child_mapping(root, "sstb")
@@ -492,6 +859,261 @@ def load_qbi_simulation_assumptions(
     return assumptions
 
 
+def _parse_v2_qbi_simulation_assumptions(
+    root: Mapping[str, Any],
+) -> QbiSimulationAssumptionsV2:
+    _validate_v2_payload_keys(root)
+    rng = _child_mapping(root, "rng")
+    seeds = _child_mapping(rng, "seeds")
+    derivations = _child_mapping(root, "qualification_derivations")
+    classification = _child_mapping(root, "sstb_classification")
+    w2 = _child_mapping(root, "w2")
+    employee_logit = _child_mapping(w2, "has_employees_logit")
+    ubia = _child_mapping(root, "ubia")
+    investment = _child_mapping(root, "investment")
+    source_order = _string_tuple(root.get("source_order"), "source_order")
+    reit_order = _string_tuple(
+        investment.get("reit_ptp_exposure_order"),
+        "investment.reit_ptp_exposure_order",
+    )
+    bdc_order = _string_tuple(
+        investment.get("bdc_exposure_order"),
+        "investment.bdc_exposure_order",
+    )
+
+    qualification_derivations: list[QualificationDerivation] = []
+    for source in source_order:
+        entry = _require_mapping(
+            derivations[source],
+            f"qualification_derivations.{source}",
+        )
+        prior_payload = entry.get("prior")
+        prior_probability: float | None = None
+        if prior_payload is not None:
+            prior = _require_mapping(
+                prior_payload,
+                f"qualification_derivations.{source}.prior",
+            )
+            prior_probability = _number(
+                prior.get("probability"),
+                f"qualification_derivations.{source}.prior.probability",
+            )
+        qualification_derivations.append(
+            QualificationDerivation(
+                source=source,
+                mode=_string(
+                    entry.get("mode"),
+                    f"qualification_derivations.{source}.mode",
+                ),
+                prior_probability=prior_probability,
+                rationale=_string(
+                    entry.get("rationale"),
+                    f"qualification_derivations.{source}.rationale",
+                ),
+            )
+        )
+
+    assumptions = QbiSimulationAssumptionsV2(
+        schema_version=_integer(root.get("schema_version"), "schema_version"),
+        qbi_simulation_version=_integer(
+            root.get("qbi_simulation_version"),
+            "qbi_simulation_version",
+        ),
+        engine=_string(root.get("engine"), "engine"),
+        bit_generator=_string(rng.get("bit_generator"), "rng.bit_generator"),
+        qualification_seed=_integer(
+            seeds.get("qualification"),
+            "rng.seeds.qualification",
+        ),
+        sstb_seed=_integer(seeds.get("sstb"), "rng.seeds.sstb"),
+        w2_seed=_integer(seeds.get("w2"), "rng.seeds.w2"),
+        ubia_seed=_integer(seeds.get("ubia"), "rng.seeds.ubia"),
+        investment_seed=_integer(
+            seeds.get("investment"),
+            "rng.seeds.investment",
+        ),
+        source_order=source_order,
+        qualification_derivations=tuple(qualification_derivations),
+        sstb_classification=SstbClassificationAssumptions(
+            mode=_string(
+                classification.get("mode"),
+                "sstb_classification.mode",
+            ),
+            crosswalk_resource=_string(
+                classification.get("crosswalk_resource"),
+                "sstb_classification.crosswalk_resource",
+            ),
+            occupation_column=_string(
+                classification.get("occupation_column"),
+                "sstb_classification.occupation_column",
+            ),
+            industry_column=_optional_string(
+                classification.get("industry_column"),
+                "sstb_classification.industry_column",
+            ),
+            agi_column=_string(
+                classification.get("agi_column"),
+                "sstb_classification.agi_column",
+            ),
+            ambiguous_prior=_number(
+                classification.get("ambiguous_prior"),
+                "sstb_classification.ambiguous_prior",
+            ),
+            ambiguous_prior_status=_string(
+                classification.get("ambiguous_prior_status"),
+                "sstb_classification.ambiguous_prior_status",
+            ),
+            agi_band_format=_string(
+                classification.get("agi_band_format"),
+                "sstb_classification.agi_band_format",
+            ),
+            passive_passthrough_sstb_prior_by_agi=_parse_agi_prior_bands(
+                _child_mapping(
+                    classification,
+                    "passive_passthrough_sstb_prior_by_agi",
+                )
+            ),
+            passive_passthrough_prior_status=_string(
+                classification.get("passive_passthrough_prior_status"),
+                "sstb_classification.passive_passthrough_prior_status",
+            ),
+            rationale=_string(
+                classification.get("rationale"),
+                "sstb_classification.rationale",
+            ),
+            follow_up=_string(
+                classification.get("follow_up"),
+                "sstb_classification.follow_up",
+            ),
+        ),
+        w2_model=_string(w2.get("model"), "w2.model"),
+        profit_margin_parameters=_ordered_betas(
+            _child_mapping(w2, "profit_margin_distribution"),
+            source_order,
+            "w2.profit_margin_distribution",
+        ),
+        has_employees_slope_per_dollar=_number(
+            employee_logit.get("slope_per_dollar"),
+            "w2.has_employees_logit.slope_per_dollar",
+        ),
+        has_employees_target_share=_number(
+            employee_logit.get("target_share_among_positive_receipts"),
+            "w2.has_employees_logit.target_share_among_positive_receipts",
+        ),
+        intercept_bisection_iterations=_integer(
+            employee_logit.get("intercept_bisection_iterations"),
+            "w2.has_employees_logit.intercept_bisection_iterations",
+        ),
+        labor_ratio_parameters=_ordered_betas(
+            _child_mapping(w2, "labor_ratio_distribution"),
+            source_order,
+            "w2.labor_ratio_distribution",
+        ),
+        ubia_model=_string(ubia.get("model"), "ubia.model"),
+        ubia_sigma=_number(ubia.get("sigma"), "ubia.sigma"),
+        ubia_multiples=_ordered_scalars(
+            _child_mapping(ubia, "multiple_of_qbi"),
+            source_order,
+            "ubia.multiple_of_qbi",
+        ),
+        capital_intensity_probabilities=_ordered_scalars(
+            _child_mapping(ubia, "capital_intensity_probabilities"),
+            source_order,
+            "ubia.capital_intensity_probabilities",
+        ),
+        investment_model=_string(investment.get("model"), "investment.model"),
+        reit_ptp_exposures=_ordered_exposures(
+            _child_mapping(investment, "reit_ptp_income_distribution"),
+            reit_order,
+            "investment.reit_ptp_income_distribution",
+        ),
+        bdc_exposures=_ordered_exposures(
+            _child_mapping(investment, "bdc_income_distribution"),
+            bdc_order,
+            "investment.bdc_income_distribution",
+        ),
+    )
+    assumptions.validate()
+    return assumptions
+
+
+def load_sstb_crosswalk(resource_name: str) -> SstbCrosswalk:
+    """Load one packaged SSTB crosswalk and reject placeholder content."""
+
+    if not resource_name.endswith(".json") or "/" in resource_name:
+        raise ValueError("SSTB crosswalk resource must be a package JSON basename.")
+    resource = files("populace.build.us").joinpath(resource_name)
+    with resource.open("r", encoding="utf-8") as stream:
+        payload = json.load(stream)
+    return parse_sstb_crosswalk(payload)
+
+
+def parse_sstb_crosswalk(payload: Any) -> SstbCrosswalk:
+    """Validate a ready SSTB crosswalk mapping, failing closed on placeholders."""
+
+    root = _require_mapping(payload, "SSTB crosswalk")
+    _require_exact_keys(
+        root,
+        (
+            "schema_version",
+            "crosswalk_version",
+            "status",
+            "occupation_code_system",
+            "industry_code_system",
+            "mapping",
+        ),
+        "SSTB crosswalk",
+    )
+    schema_version = _integer(
+        root.get("schema_version"),
+        "SSTB crosswalk.schema_version",
+    )
+    if schema_version != _SSTB_CROSSWALK_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported SSTB crosswalk schema_version {schema_version!r}."
+        )
+    status = _string(root.get("status"), "SSTB crosswalk.status")
+    if status == "placeholder":
+        raise ValueError(
+            "SSTB crosswalk status is 'placeholder'; v2 classification fails "
+            "closed until reviewed mapping content is packaged."
+        )
+    if status != _SSTB_CROSSWALK_READY_STATUS:
+        raise ValueError(f"Unsupported SSTB crosswalk status {status!r}.")
+    mapping = _child_mapping(root, "mapping")
+    _require_exact_keys(
+        mapping,
+        ("occupation", "industry"),
+        "SSTB crosswalk.mapping",
+    )
+    crosswalk = SstbCrosswalk(
+        schema_version=schema_version,
+        crosswalk_version=_string(
+            root.get("crosswalk_version"),
+            "SSTB crosswalk.crosswalk_version",
+        ),
+        status=status,
+        occupation_code_system=_string(
+            root.get("occupation_code_system"),
+            "SSTB crosswalk.occupation_code_system",
+        ),
+        industry_code_system=_optional_string(
+            root.get("industry_code_system"),
+            "SSTB crosswalk.industry_code_system",
+        ),
+        occupation_mapping=_parse_crosswalk_mapping(
+            _child_mapping(mapping, "occupation"),
+            "SSTB crosswalk.mapping.occupation",
+        ),
+        industry_mapping=_parse_crosswalk_mapping(
+            _child_mapping(mapping, "industry"),
+            "SSTB crosswalk.mapping.industry",
+        ),
+    )
+    crosswalk.validate()
+    return crosswalk
+
+
 def us_qbi_simulation_stage_spec() -> SourceStageSpec:
     """Load and validate the manifest contract for the QBI source stage."""
 
@@ -515,14 +1137,66 @@ def us_qbi_simulation_stage_spec() -> SourceStageSpec:
             "populace_qbi_simulation_version="
             f"{QBI_SIMULATION_VERSION}."
         )
+    qrf_operations = tuple(
+        operation
+        for operation in spec.operations
+        if operation.kind == "fit_weighted_qrf"
+    )
+    if len(qrf_operations) != 1:
+        raise ValueError(
+            "puf_tax_detail must declare exactly one fit_weighted_qrf operation."
+        )
+    exclusions = _require_mapping(
+        qrf_operations[0].parameters.get("qbi_target_exclusions_by_simulation_version"),
+        "qbi_target_exclusions_by_simulation_version",
+    )
+    version_keys = tuple(str(version) for version in QBI_SIMULATION_SUPPORTED_VERSIONS)
+    _require_exact_keys(
+        exclusions,
+        version_keys,
+        "qbi_target_exclusions_by_simulation_version",
+    )
+    for version in QBI_SIMULATION_SUPPORTED_VERSIONS:
+        declared = exclusions[str(version)]
+        if not isinstance(declared, list) or not all(
+            isinstance(column, str) and column for column in declared
+        ):
+            raise ValueError("QBI target exclusions must be lists of nonempty strings.")
+        expected = qbi_qrf_excluded_targets(version)
+        if tuple(declared) != expected:
+            raise ValueError(
+                "puf_tax_detail QBI target exclusions disagree with version "
+                f"{version} assumptions: expected {expected!r}, "
+                f"got {tuple(declared)!r}."
+            )
     return spec
+
+
+def qbi_qrf_excluded_targets(
+    qbi_simulation_version: int,
+) -> tuple[str, ...]:
+    """Return QBI leaves derived after, rather than imputed by, the QRF."""
+
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        return ()
+    assumptions = load_qbi_simulation_assumptions(qbi_simulation_version)
+    if not isinstance(assumptions, QbiSimulationAssumptionsV2):
+        raise TypeError("QBI v2 target selection requires v2 assumptions.")
+    excluded = {
+        _QUALIFICATION_FLAG_BY_SOURCE[derivation.source]
+        for derivation in assumptions.qualification_derivations
+        if derivation.mode == "derived"
+    }
+    excluded.add(_SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG)
+    return tuple(column for column in US_QBI_OUTPUT_COLUMNS if column in excluded)
 
 
 def simulate_qbi_inputs(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
     qbi_simulation_version: int,
+    sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, np.ndarray]:
     """Run a version-gated Section 199A simulation.
 
@@ -537,43 +1211,74 @@ def simulate_qbi_inputs(
             f"{qbi_simulation_version!r} does not match assumptions version "
             f"{assumptions.qbi_simulation_version!r}."
         )
-    if qbi_simulation_version != QBI_SIMULATION_VERSION:
+    if qbi_simulation_version not in QBI_SIMULATION_SUPPORTED_VERSIONS:
         raise ValueError(
             f"Unsupported qbi_simulation_version {qbi_simulation_version!r}."
         )
     assumptions.validate()
 
-    qualification_rng = _rng(assumptions.qualification_seed, assumptions.bit_generator)
-    qualification_flags = tuple(
-        qualification_rng.random(inputs.n) < probability
-        for probability in assumptions.qualification_probabilities
-    )
-    qualified_components = np.column_stack(
-        [
-            inputs.source(source) * qualified
-            for source, qualified in zip(
-                assumptions.source_order,
-                qualification_flags,
-                strict=True,
-            )
-        ]
-    )
+    if qbi_simulation_version == QBI_SIMULATION_VERSION:
+        if not isinstance(assumptions, QbiSimulationAssumptions):
+            raise TypeError("QBI v1 simulation requires v1 assumptions.")
+        qualification_rng = _rng(
+            assumptions.qualification_seed,
+            assumptions.bit_generator,
+        )
+        qualification_flags = tuple(
+            qualification_rng.random(inputs.n) < probability
+            for probability in assumptions.qualification_probabilities
+        )
+        qualified_components = _qualified_components(
+            inputs,
+            source_order=assumptions.source_order,
+            qualification_flags=qualification_flags,
+        )
+        w2_rng = _rng(assumptions.w2_ubia_seed, assumptions.bit_generator)
+        w2_wages, ubia = _simulate_w2_and_ubia(
+            qualified_components,
+            assumptions=assumptions,
+            rng=w2_rng,
+        )
+        flag_by_source = dict(
+            zip(assumptions.source_order, qualification_flags, strict=True)
+        )
+        business_is_sstb = _simulate_business_is_sstb(
+            inputs,
+            qualification_flags=flag_by_source,
+            assumptions=assumptions,
+            rng=_rng(assumptions.sstb_seed, assumptions.bit_generator),
+        )
+    else:
+        if not isinstance(assumptions, QbiSimulationAssumptionsV2):
+            raise TypeError("QBI v2 simulation requires v2 assumptions.")
+        resolve_sstb_crosswalk(assumptions, sstb_crosswalk)
+        qualification_flags = _derive_v2_qualification_flags(
+            inputs,
+            assumptions=assumptions,
+        )
+        qualified_components = _qualified_components(
+            inputs,
+            source_order=assumptions.source_order,
+            qualification_flags=qualification_flags,
+        )
+        w2_wages = _simulate_w2(
+            qualified_components,
+            assumptions=assumptions,
+            rng=_rng(assumptions.w2_seed, assumptions.bit_generator),
+        )
+        ubia = _simulate_ubia(
+            qualified_components,
+            assumptions=assumptions,
+            rng=_rng(assumptions.ubia_seed, assumptions.bit_generator),
+        )
+        flag_by_source = dict(
+            zip(assumptions.source_order, qualification_flags, strict=True)
+        )
+        # The PUF donor has no host occupation or industry. V2 emits a neutral
+        # preliminary route; the authoritative SSTB classifier runs after QRF
+        # placement on the cloned host record.
+        business_is_sstb = np.zeros(inputs.n, dtype=bool)
 
-    w2_rng = _rng(assumptions.w2_ubia_seed, assumptions.bit_generator)
-    w2_wages, ubia = _simulate_w2_and_ubia(
-        qualified_components,
-        assumptions=assumptions,
-        rng=w2_rng,
-    )
-    flag_by_source = dict(
-        zip(assumptions.source_order, qualification_flags, strict=True)
-    )
-    business_is_sstb = _simulate_business_is_sstb(
-        inputs,
-        qualification_flags=flag_by_source,
-        assumptions=assumptions,
-        rng=_rng(assumptions.sstb_seed, assumptions.bit_generator),
-    )
     qualified_reit_and_ptp_income, qualified_bdc_income = _simulate_investment_qbi(
         inputs,
         assumptions=assumptions,
@@ -622,7 +1327,8 @@ def with_qbi_simulation_from_puf_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
     qbi_simulation_version: int,
-    assumptions: QbiSimulationAssumptions | None = None,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2 | None = None,
+    sstb_crosswalk: SstbCrosswalk | Mapping[str, Any] | None = None,
 ) -> dict[str, Sequence[Any]]:
     """Return PUF arrays with a repository-owned QBI simulation applied.
 
@@ -640,6 +1346,7 @@ def with_qbi_simulation_from_puf_arrays(
         inputs,
         assumptions=resolved_assumptions,
         qbi_simulation_version=qbi_simulation_version,
+        sstb_crosswalk=sstb_crosswalk,
     )
     result: dict[str, Sequence[Any]] = dict(arrays)
     result[_NON_SSTB_SELF_EMPLOYMENT_SOURCE] = np.where(
@@ -695,6 +1402,60 @@ def qbi_simulation_summary(
             "negative": int(np.count_nonzero(finite & (values < 0.0))),
         }
     return summary
+
+
+def resolve_sstb_crosswalk(
+    assumptions: QbiSimulationAssumptionsV2,
+    crosswalk: SstbCrosswalk | Mapping[str, Any] | None,
+) -> SstbCrosswalk:
+    resolved = (
+        load_sstb_crosswalk(assumptions.sstb_classification.crosswalk_resource)
+        if crosswalk is None
+        else (
+            crosswalk
+            if isinstance(crosswalk, SstbCrosswalk)
+            else parse_sstb_crosswalk(crosswalk)
+        )
+    )
+    resolved.validate()
+    return resolved
+
+
+def _derive_v2_qualification_flags(
+    inputs: QbiSimulationInputs,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+) -> tuple[np.ndarray, ...]:
+    rng = _rng(assumptions.qualification_seed, assumptions.bit_generator)
+    flags: list[np.ndarray] = []
+    for derivation in assumptions.qualification_derivations:
+        if derivation.mode == "derived":
+            flags.append(inputs.source(derivation.source) != 0.0)
+            continue
+        if derivation.prior_probability is None:
+            raise ValueError(
+                f"QBI prior source {derivation.source!r} lacks a probability."
+            )
+        flags.append(rng.random(inputs.n) < derivation.prior_probability)
+    return tuple(flags)
+
+
+def _qualified_components(
+    inputs: QbiSimulationInputs,
+    *,
+    source_order: tuple[str, ...],
+    qualification_flags: tuple[np.ndarray, ...],
+) -> np.ndarray:
+    return np.column_stack(
+        [
+            inputs.source(source) * qualified
+            for source, qualified in zip(
+                source_order,
+                qualification_flags,
+                strict=True,
+            )
+        ]
+    )
 
 
 def _simulate_w2_and_ubia(
@@ -759,6 +1520,75 @@ def _simulate_w2_and_ubia(
     return w2_wages, ubia
 
 
+def _simulate_w2(
+    qualified_components: np.ndarray,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    qbi = qualified_components.sum(axis=1)
+    margins = _draw_source_weighted_beta(
+        qualified_components,
+        assumptions.profit_margin_parameters,
+        rng,
+    )
+    revenues = np.divide(
+        np.maximum(qbi, 0.0),
+        margins,
+        out=np.zeros_like(qbi, dtype=np.float64),
+        where=margins > 0.0,
+    )
+    intercept = _calibrate_logit_intercept(
+        revenues,
+        slope=assumptions.has_employees_slope_per_dollar,
+        target_share=assumptions.has_employees_target_share,
+        iterations=assumptions.intercept_bisection_iterations,
+    )
+    employee_probability = np.where(
+        revenues == 0.0,
+        0.0,
+        _logistic(intercept + assumptions.has_employees_slope_per_dollar * revenues),
+    )
+    has_employees = rng.binomial(n=1, p=employee_probability)
+    labor_ratios = _draw_source_weighted_beta(
+        qualified_components,
+        assumptions.labor_ratio_parameters,
+        rng,
+    )
+    return revenues * labor_ratios * has_employees
+
+
+def _simulate_ubia(
+    qualified_components: np.ndarray,
+    *,
+    assumptions: QbiSimulationAssumptionsV2,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    qbi = qualified_components.sum(axis=1)
+    capital_probability = np.clip(
+        _source_weighted_parameter(
+            qualified_components,
+            assumptions.capital_intensity_probabilities,
+        ),
+        0.0,
+        1.0,
+    )
+    is_capital_intensive = rng.binomial(n=1, p=capital_probability).astype(bool)
+    ubia_multiple = _source_weighted_parameter(
+        qualified_components,
+        assumptions.ubia_multiples,
+    )
+    target_mean = ubia_multiple * np.maximum(qbi, 0.0)
+    eligible = is_capital_intensive & (target_mean > 0.0)
+    safe_target_mean = np.where(target_mean > 0.0, target_mean, 1.0)
+    mu = np.log(safe_target_mean) - (assumptions.ubia_sigma**2 / 2.0)
+    return np.where(
+        eligible,
+        rng.lognormal(mean=mu, sigma=assumptions.ubia_sigma),
+        0.0,
+    )
+
+
 def _simulate_business_is_sstb(
     inputs: QbiSimulationInputs,
     *,
@@ -782,7 +1612,7 @@ def _simulate_business_is_sstb(
 def _simulate_investment_qbi(
     inputs: QbiSimulationInputs,
     *,
-    assumptions: QbiSimulationAssumptions,
+    assumptions: QbiSimulationAssumptions | QbiSimulationAssumptionsV2,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
     exposure_bases = {
@@ -1039,6 +1869,290 @@ def _integer(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{label} must be an integer.")
     return value
+
+
+def _optional_string(value: Any, label: str) -> str | None:
+    if value is None:
+        return None
+    return _string(value, label)
+
+
+def _validate_v2_payload_keys(root: Mapping[str, Any]) -> None:
+    """Require every v2 object to match the complete declared schema."""
+
+    _require_exact_keys(
+        root,
+        (
+            "schema_version",
+            "qbi_simulation_version",
+            "engine",
+            "rng",
+            "source_order",
+            "qualification_derivations",
+            "sstb_classification",
+            "w2",
+            "ubia",
+            "investment",
+        ),
+        "QBI v2 assumptions",
+    )
+    rng = _child_mapping(root, "rng")
+    _require_exact_keys(rng, ("bit_generator", "seeds"), "rng")
+    _require_exact_keys(
+        _child_mapping(rng, "seeds"),
+        ("qualification", "sstb", "w2", "ubia", "investment"),
+        "rng.seeds",
+    )
+
+    source_order = _string_tuple(root.get("source_order"), "source_order")
+    derivations = _child_mapping(root, "qualification_derivations")
+    _require_exact_keys(
+        derivations,
+        source_order,
+        "qualification_derivations",
+    )
+    for source in source_order:
+        label = f"qualification_derivations.{source}"
+        entry = _require_mapping(derivations[source], label)
+        _require_exact_keys(entry, ("mode", "prior", "rationale"), label)
+        prior = entry.get("prior")
+        if prior is not None:
+            _require_exact_keys(
+                _require_mapping(prior, f"{label}.prior"),
+                ("probability",),
+                f"{label}.prior",
+            )
+
+    classification = _child_mapping(root, "sstb_classification")
+    _require_exact_keys(
+        classification,
+        (
+            "mode",
+            "crosswalk_resource",
+            "occupation_column",
+            "industry_column",
+            "agi_column",
+            "ambiguous_prior",
+            "ambiguous_prior_status",
+            "agi_band_format",
+            "passive_passthrough_sstb_prior_by_agi",
+            "passive_passthrough_prior_status",
+            "rationale",
+            "follow_up",
+        ),
+        "sstb_classification",
+    )
+
+    w2 = _child_mapping(root, "w2")
+    _require_exact_keys(
+        w2,
+        (
+            "model",
+            "profit_margin_distribution",
+            "has_employees_logit",
+            "labor_ratio_distribution",
+        ),
+        "w2",
+    )
+    _validate_strict_beta_mapping(
+        _child_mapping(w2, "profit_margin_distribution"),
+        source_order,
+        "w2.profit_margin_distribution",
+    )
+    employee_logit = _child_mapping(w2, "has_employees_logit")
+    _require_exact_keys(
+        employee_logit,
+        (
+            "slope_per_dollar",
+            "target_share_among_positive_receipts",
+            "intercept_bisection_iterations",
+        ),
+        "w2.has_employees_logit",
+    )
+    _validate_strict_beta_mapping(
+        _child_mapping(w2, "labor_ratio_distribution"),
+        source_order,
+        "w2.labor_ratio_distribution",
+    )
+
+    ubia = _child_mapping(root, "ubia")
+    _require_exact_keys(
+        ubia,
+        (
+            "model",
+            "sigma",
+            "multiple_of_qbi",
+            "capital_intensity_probabilities",
+        ),
+        "ubia",
+    )
+    _require_exact_keys(
+        _child_mapping(ubia, "multiple_of_qbi"),
+        source_order,
+        "ubia.multiple_of_qbi",
+    )
+    _require_exact_keys(
+        _child_mapping(ubia, "capital_intensity_probabilities"),
+        source_order,
+        "ubia.capital_intensity_probabilities",
+    )
+
+    investment = _child_mapping(root, "investment")
+    _require_exact_keys(
+        investment,
+        (
+            "model",
+            "reit_ptp_exposure_order",
+            "reit_ptp_income_distribution",
+            "bdc_exposure_order",
+            "bdc_income_distribution",
+        ),
+        "investment",
+    )
+    reit_order = _string_tuple(
+        investment.get("reit_ptp_exposure_order"),
+        "investment.reit_ptp_exposure_order",
+    )
+    bdc_order = _string_tuple(
+        investment.get("bdc_exposure_order"),
+        "investment.bdc_exposure_order",
+    )
+    _validate_strict_exposure_mapping(
+        _child_mapping(investment, "reit_ptp_income_distribution"),
+        reit_order,
+        "investment.reit_ptp_income_distribution",
+    )
+    _validate_strict_exposure_mapping(
+        _child_mapping(investment, "bdc_income_distribution"),
+        bdc_order,
+        "investment.bdc_income_distribution",
+    )
+
+
+def _validate_strict_beta_mapping(
+    values: Mapping[str, Any],
+    order: tuple[str, ...],
+    label: str,
+) -> None:
+    _require_exact_keys(values, order, label)
+    for source in order:
+        _require_exact_keys(
+            _require_mapping(values[source], f"{label}.{source}"),
+            ("beta_a", "beta_b", "scale", "shift"),
+            f"{label}.{source}",
+        )
+
+
+def _validate_strict_exposure_mapping(
+    values: Mapping[str, Any],
+    order: tuple[str, ...],
+    label: str,
+) -> None:
+    _require_exact_keys(values, order, label)
+    for source in order:
+        _require_exact_keys(
+            _require_mapping(values[source], f"{label}.{source}"),
+            (
+                "probability_of_receiving",
+                "beta_a",
+                "beta_b",
+                "scale",
+                "shift",
+            ),
+            f"{label}.{source}",
+        )
+
+
+def _parse_agi_prior_bands(
+    values: Mapping[str, Any],
+) -> tuple[AgiSstbPriorBand, ...]:
+    if not values:
+        raise ValueError("QBI v2 passive SSTB AGI priors must not be empty.")
+    bands: list[AgiSstbPriorBand] = []
+    for label, probability in values.items():
+        if not isinstance(label, str) or label.count(":") != 1:
+            raise ValueError(
+                "QBI v2 passive SSTB AGI band names must use 'lower:upper' syntax."
+            )
+        lower_label, upper_label = label.split(":")
+        lower = _parse_band_endpoint(lower_label, f"{label} lower endpoint")
+        upper = _parse_band_endpoint(upper_label, f"{label} upper endpoint")
+        bands.append(
+            AgiSstbPriorBand(
+                label=label,
+                lower=lower,
+                upper=upper,
+                probability=_number(
+                    probability,
+                    (
+                        "sstb_classification."
+                        f"passive_passthrough_sstb_prior_by_agi.{label}"
+                    ),
+                ),
+            )
+        )
+    result = tuple(sorted(bands, key=lambda band: band.lower))
+    _validate_agi_prior_bands(result)
+    return result
+
+
+def _parse_band_endpoint(value: str, label: str) -> float:
+    if value == "-inf":
+        return float("-inf")
+    if value == "inf":
+        return float("inf")
+    try:
+        result = float(value)
+    except ValueError as error:
+        raise ValueError(f"QBI v2 AGI {label} must be numeric or infinite.") from error
+    if not np.isfinite(result):
+        raise ValueError(f"QBI v2 AGI {label} must use '-inf' or 'inf'.")
+    return result
+
+
+def _validate_agi_prior_bands(bands: tuple[AgiSstbPriorBand, ...]) -> None:
+    if not bands:
+        raise ValueError("QBI v2 passive SSTB AGI priors must not be empty.")
+    if bands[0].lower != float("-inf") or bands[-1].upper != float("inf"):
+        raise ValueError("QBI v2 passive SSTB AGI priors must cover all AGI values.")
+    for index, band in enumerate(bands):
+        if band.lower >= band.upper:
+            raise ValueError(f"QBI v2 AGI band {band.label!r} is empty or reversed.")
+        _validate_probabilities(
+            f"passive SSTB AGI prior {band.label!r}",
+            (band.probability,),
+        )
+        if index and bands[index - 1].upper != band.lower:
+            raise ValueError(
+                "QBI v2 passive SSTB AGI priors must be contiguous and non-overlapping."
+            )
+
+
+def _parse_crosswalk_mapping(
+    values: Mapping[str, Any],
+    label: str,
+) -> tuple[tuple[int, str], ...]:
+    result: list[tuple[int, str]] = []
+    for raw_code, raw_classification in values.items():
+        if (
+            not isinstance(raw_code, str)
+            or not raw_code.isdigit()
+            or str(int(raw_code)) != raw_code
+        ):
+            raise ValueError(
+                f"{label} keys must be canonical nonnegative integer strings."
+            )
+        classification = _string(
+            raw_classification,
+            f"{label}.{raw_code}",
+        )
+        if classification not in _SSTB_CLASSIFICATIONS:
+            raise ValueError(
+                f"{label}.{raw_code} has unknown SSTB classification "
+                f"{classification!r}."
+            )
+        result.append((int(raw_code), classification))
+    return tuple(sorted(result))
 
 
 def _ordered_scalars(

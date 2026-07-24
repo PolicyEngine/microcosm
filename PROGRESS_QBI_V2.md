@@ -1,0 +1,92 @@
+# QBI v2 engine progress
+
+## State
+
+- Branch: `qbi-v2-engine`
+- Base: `qbi-port-530` at `d1a6428`
+- Status: complete; all deliverables committed and full workspace green
+
+## Done
+
+- Created the task branch in the dedicated `populace-wt-530` worktree.
+- Recorded the required deliverables, offline constraints, and full-suite finish gate.
+- Traced the v1 donor simulation, QRF placement, post-QRF reconciliation,
+  invariant gate, checkpoint target-order lock, and production builder seams.
+- Confirmed the frozen `census_cps` person-column declaration includes `AGI`
+  and detailed occupation `PEIOOCC`, but no detailed-industry field. V2 will
+  therefore declare `occupation_column: "PEIOOCC"` and
+  `industry_column: null`.
+- Confirmed all country-package resources must be JSON/JSONLD, declared in
+  `country_package.json`, and free of executable-looking strings.
+- Added and declared `qbi_assumptions_v2.json` with strict derived/prior
+  qualification contracts, occupation-first host SSTB configuration, complete
+  AGI-band coverage, unchanged v1 W-2/UBIA parameter blocks, and five
+  independently seeded RNG families.
+- Added the empty `sstb_crosswalk_placeholder.json` resource and a strict
+  crosswalk loader that rejects placeholder status.
+- Added strict v2 full-schema parsing, unknown-key/mode rejection, public
+  runtime exports, and focused loader/crosswalk tests. The untouched v1 golden
+  stream test remains green.
+- Implemented v2 donor execution: deterministic `source != 0` derivations do
+  not consume qualification RNG, residual-prior sources retain seeded draws,
+  W-2 and UBIA have separate family generators, and the donor emits a neutral
+  preliminary SSTB route for authoritative post-QRF host classification.
+- Made public v2 simulation fail closed before drawing when the packaged
+  crosswalk remains placeholder-status.
+- Added byte-level stream-independence tests: changing the final derived
+  qualification source to an equivalent prior leaves W-2, UBIA, investment,
+  REIT/PTP, and BDC family outputs byte-identical; changing W-2 or UBIA seeds
+  leaves the other family byte-identical. The equivalent mode change also
+  leaves host SSTB classifications and routed SSTB income/W-2/UBIA bytes
+  identical while the qualification flag bytes change.
+- Added the pure post-QRF `with_host_sstb_classification` transform. It derives
+  law-determined flags from host record structure, preserves residual-prior
+  flags, applies industry-primary/occupation-secondary crosswalk lookup,
+  assigns ambiguous and passive-only records from the SSTB family stream, and
+  reuses the exact v1 reconciliation router for Schedule C, W-2/UBIA pools,
+  mutually exclusive routes, and exposure caps.
+- Added a ready synthetic crosswalk fixture covering clear SSTB, non-SSTB,
+  ambiguous, passive-only AGI bands, source-eligibility fail-closed behavior,
+  and Schedule C precedence. The transform is deterministic, does not mutate
+  its source frame, satisfies every summary invariant, and passes the QBI
+  signal gate.
+- Added version-gated QRF target selection. V1 retains its locked 55 person
+  plus 9 tax-unit targets; v2 excludes exactly the four derived route flags,
+  retaining 51 person plus 9 tax-unit targets and the preliminary
+  `business_is_sstb` target for authoritative host reassignment.
+- Declared and runtime-validated the per-version target exclusions in
+  `source_stages.json`.
+- Threaded `qbi_simulation_version` through monolithic and checkpointed builder
+  paths, their locked run configuration, donor construction, QRF fitting, and
+  summaries. V1 remains the CLI default. V2 dispatches the existing
+  `qbi_reconciliation` stage boundary to the host-conditioned transform.
+- Added builder dispatch and child-CLI round-trip tests. The focused QBI, QRF,
+  builder, manifest, and plan tests pass with the v1 golden test unchanged.
+- Hardened all public crosswalk paths so even caller-constructed ready objects
+  are revalidated, and made the assumptions loader reject negative or reused
+  family seeds before any NumPy generator is constructed.
+- Made the post-QRF-created SSTB qualification companion an unconditional v2
+  QRF exclusion and added a synthetic industry-primary/occupation-fallback
+  test for the future non-null industry seam.
+- Ran the first full workspace suite with the restricted PUF enabled:
+  3,244 passed and 132 skipped; the only two failures were the merged target
+  parity generator's stale v9.2 feed pin after six newer JCT references landed.
+- Refreshed that independent parity pin to the locally available v9.4 digest,
+  retaining the declared congressional-district-off regime. Regeneration now
+  sees all 11 JCT tax-expenditure facts and the already-fenced OBBBA family;
+  the parity, spec-only country-package, and US-plan contract tests pass.
+- Added `changelog.d/qbi-v2-engine.added.md`.
+- Reran the complete workspace with the restricted PUF replay enabled:
+  3,246 passed, 132 skipped, and 0 failed. Ruff format/check, touched JSON
+  parsing, and `git diff --check` are clean.
+- Wrote the complete handoff, industry-column evidence, stream-independence
+  proof, validation record, and remaining seams to `FINAL_REPORT_QBI_530.md`.
+
+## Next
+
+- Replace placeholder crosswalk content, ambiguous probability, and passive
+  AGI-band priors with reviewed evidence before enabling v2.
+- Add and declare a detailed Census industry column only if a frozen source or
+  sidecar becomes available; then populate the existing industry-primary seam.
+- Review the three residual qualification priors and run a full v2 build before
+  any production-default or downstream fiscal-refresh version change.
