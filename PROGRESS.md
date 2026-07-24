@@ -85,7 +85,87 @@
   wheel build could not start because Hatchling is absent from the local uv
   cache; no network operation was attempted.
 
-## Next
+## Final status
 
-- Add the changelog fragment, final report, and final status/PR text here; run
-  formatting and focused tests; commit every coherent step.
+### Status summary
+
+- All three issue #530 deliverables are implemented and committed: the
+  74-column artifact audit, the explicit Section 199A v1 simulation port, and
+  the raw-pin/aging implementation plus migration design.
+- QBI equivalence is exact to the archived v1 algorithm and random streams,
+  but necessarily distributional against the literal release artifact: 14
+  leaves are absent and its sole physical QBI leaf is an older deterministic
+  W-2 proxy.
+- Raw aging arithmetic is exact for the audited release path through effective
+  value year 2021. No claim of 2024 equivalence is made because the retired
+  2021-to-2024 loop was a no-op.
+- The changelog fragment is `changelog.d/qbi-port-530.added.md`; the complete
+  handoff is in `FINAL_REPORT.md`.
+- Ruff, JSON parsing, offline lock checking, and 187 focused tests pass,
+  including both restricted raw-to-processed aging parity and full-artifact
+  QBI replay.
+
+### Blockers
+
+- The private raw-source declarations have no immutable revision or hash.
+  Observed local candidate digests require licensed-source certification.
+- A corrected `ledger_v1` production factor bundle needs 2015 and active
+  target-year facts that are not present in the local Ledger surface.
+- The bespoke production builder still reads processed HDF root arrays and
+  does not execute the raw source stage.
+- After QBI supplies 14 leaves, the transitional HDF still lacks ten non-QBI
+  donor outputs.
+- The generic source runtime still lacks the manifest's weighted-QRF tail and
+  compatible aggregate clipping/adapter path.
+- The direct v1 replay's weighted W-2 nonzero share is 0.0939%, just below the
+  current 0.1% plausibility floor; all other direct-replay bands pass.
+- The offline environment lacks cached Hatchling, so a wheel build could not
+  start. The supervisor should verify the two packaged YAML resources after
+  rebasing.
+
+### Suggested PR title
+
+Port Section 199A simulation and audit processed PUF inputs
+
+### Suggested PR body
+
+## Summary
+
+- Audit all 74 arrays in the pinned 1.8.0 PUF, separating 40 selected physical
+  columns (34 raw-field lineages and six retired derivations) from 34 unused
+  arrays and documenting the remaining donor-contract gaps.
+- Vendor `qbi_assumptions_v1.yaml` and port the archived seeded qualification,
+  SSTB, W-2, UBIA, REIT/PTP, and BDC simulation into Populace-owned NumPy
+  logic behind explicit `qbi_simulation_version=1`.
+- Identify the restricted raw CSVs, add a versioned/fail-closed raw aging
+  engine and archived parity profile, and document the certified-raw plus
+  Ledger-backed production migration.
+
+## Equivalence
+
+The new QBI engine reproduces the archived v1 streams exactly. Full-artifact
+replay hashes are W-2 `3fa8f57f...008fb`, UBIA `d818169f...964f`, SSTB
+`4778f172...20d5e`, REIT/PTP `e913f2e0...faf`, and BDC
+`0f97dc7d...2eb`. Literal artifact-column equivalence is unavailable because
+14 leaves are missing and the physical W-2 proxy is a different algorithm.
+Distributional replay gives weighted nonzero shares of 0.0939% (W-2), 4.7821%
+(UBIA), 3.2754% (SSTB), 4.9007% (REIT/PTP), and 0.6740% (BDC).
+
+## Raw pin
+
+The actual source is the restricted 2015 tax-return CSV; both staged HDF files
+are processed exports. The artifact labeled 2024 has effective value vintage
+2021 because its later aging loop was a no-op. The raw switch remains blocked
+on licensed-source certification, complete Ledger factors, and production
+builder integration; the new runtime fails closed rather than substituting
+archived constants for `ledger_v1`.
+
+## Verification
+
+- Ruff check and format: pass.
+- 187 focused source, aging, QBI, donor, plan, and builder tests: pass.
+- Restricted raw-to-processed arithmetic and full-artifact QBI replay: pass.
+- `uv lock --check --offline`: pass.
+- `git diff --check` and manifest JSON parse: pass.
+
+Refs #530
