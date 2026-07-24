@@ -213,5 +213,5 @@ Suggested PR title:
 
 > Port Section 199A simulation and audit processed PUF inputs
 
-The ready-to-paste body is in the final section of `PROGRESS.md` and ends with
+The ready-to-paste body is in the final section of `PROGRESS_QBI_530.md` and ends with
 `Refs #530`.
