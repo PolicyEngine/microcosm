@@ -153,7 +153,7 @@ def test_output_contract_is_exact_and_source_declared() -> None:
     )
 
 
-def test_processed_puf_sstb_alias_is_carried_without_redrawing() -> None:
+def test_legacy_processed_puf_sstb_alias_is_resolved_for_donor() -> None:
     source = {"sstb_self_employment_income": np.array([-20.0, 0.0, 300.0])}
 
     values = puf_support_module._person_source_values(

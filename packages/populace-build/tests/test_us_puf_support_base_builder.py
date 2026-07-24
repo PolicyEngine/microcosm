@@ -1277,7 +1277,11 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         lambda frame: "expanded",
     )
     monkeypatch.setattr(builder, "_read_h5_arrays", lambda path: {})
-    monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", lambda arrays: None)
+    monkeypatch.setattr(
+        builder,
+        "puf_tax_unit_donor_from_arrays",
+        lambda arrays, **kwargs: None,
+    )
     monkeypatch.setattr(
         builder,
         "impute_and_audit_us_puf_support",

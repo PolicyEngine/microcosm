@@ -2,10 +2,11 @@
 
 The retired eCPS PUF pipeline used a pinned, seeded QBI simulation to create
 source-level qualification flags, SSTB classification and self-employment
-splits, allocable W-2 wages / UBIA, and qualified REIT/PTP and BDC income. The
-frozen processed-PUF artifact consumed by the hermetic build carries those
-materialized simulated leaves; Populace does not redraw them. The shared
-weighted PUF QRF places them on the PUF support channel.
+splits, allocable W-2 wages / UBIA, and qualified REIT/PTP and BDC income.
+Release 1.8.0 did not physically carry that surface: a later retired loader
+generated it while mutating the downloaded file. Populace now runs the
+versioned source simulation in :mod:`qbi_simulation` before the shared weighted
+PUF QRF places the leaves on the PUF support channel.
 
 This module restores the cross-column identities after imputation. In
 particular, the archived PUF model is all-or-nothing at tax-record grain: the
@@ -179,7 +180,7 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     for column in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
         values = _numeric(result, column)
         flags[column] = values > 0.0
-    # Populace's base ASEC support has no observations from the frozen PUF QBI
+    # Populace's base ASEC support has no observations from the PUF QBI source
     # simulation. Deliberately preserve PolicyEngine's ordinary qualification
     # defaults on that channel and do not invent an SSTB classification there.
     # This is a hermetic two-channel choice, not a claim about the retired

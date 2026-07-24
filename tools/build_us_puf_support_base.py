@@ -47,6 +47,7 @@ from populace.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    QBI_SIMULATION_VERSION,
     US_PUF_SUPPORT_FIT_NAME,
     US_SOURCE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
@@ -193,7 +194,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "clone_feature_extraction",
         (
             "clone_us_frame_for_puf_support",
-            "puf_tax_unit_donor_from_arrays",
+            "puf_tax_unit_donor_from_arrays[qbi_simulation_version=1]",
             "initialize_primary_puf_qrf_chain",
         ),
     ),
@@ -993,7 +994,10 @@ def _run_all(
     _observe_frame_boundary(boundary_observer, "pre_clone_enrichment", base)
     expanded = clone_us_frame_for_puf_support(base)
     arrays = _read_h5_arrays(args.puf_h5)
-    donor = puf_tax_unit_donor_from_arrays(arrays)
+    donor = puf_tax_unit_donor_from_arrays(
+        arrays,
+        qbi_simulation_version=QBI_SIMULATION_VERSION,
+    )
     _observe_frame_boundary(boundary_observer, "clone_feature_extraction", expanded)
     tail_bound_diagnostics: list[dict[str, object]] = []
     if boundary_observer is None:
@@ -1856,7 +1860,10 @@ def _clone_feature_extraction_stage(
     base: Frame,
 ) -> tuple[Frame, dict[str, object]]:
     expanded = clone_us_frame_for_puf_support(base)
-    donor = puf_tax_unit_donor_from_arrays(_read_h5_arrays(args.puf_h5))
+    donor = puf_tax_unit_donor_from_arrays(
+        _read_h5_arrays(args.puf_h5),
+        qbi_simulation_version=QBI_SIMULATION_VERSION,
+    )
     qrf_dir = args.checkpoint_dir / "primary_qrf"
     if qrf_dir.exists():
         # The outer context marks clone_feature_extraction only after both its

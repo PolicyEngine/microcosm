@@ -29,13 +29,32 @@
   inputs (34 raw-field lineages and six retired derivations), all 34 unused
   arrays, the exact current 24-output contract gap, the four requested
   direct-mapping classifications, and ready-to-paste PR text.
+- Vendored `qbi_assumptions_v1.yaml` and ported the archived Section 199A
+  qualification, SSTB, W-2, UBIA, REIT/PTP, and BDC simulations into pure,
+  seeded NumPy. The version, PCG64 generator, four seeds, source order, and
+  exposure order are all explicit and validated before a stream is consumed.
+- Wired the production PUF donor boundary to request
+  `qbi_simulation_version=1`, replace the physical artifact's stale W-2 proxy,
+  and create the 15-leaf contract before the shared weighted QRF.
+- Pinned all 15 output streams with a compact golden fixture. On the full
+  restricted artifact, the replay's five headline SHA-256 values match the
+  independent archived-code replay, including W-2
+  `3fa8f57f...008fb`, UBIA `d818169f...964f`, SSTB
+  `4778f172...20d5e`, REIT/PTP `e913f2e0...faf`, and BDC
+  `0f97dc7d...2eb`.
+- Classified equivalence honestly: the Populace stream is exact to the
+  archived algorithm, but literal artifact-column equivalence is impossible
+  because 14 leaves are absent and its one physical leaf is an older
+  deterministic W-2 proxy. Distributional checks on the replay find weighted
+  nonzero shares of 0.0939% for W-2, 4.7821% for UBIA, 3.2754% for SSTB,
+  4.9007% for REIT/PTP, and 0.6740% for BDC. Every current plausibility band
+  passes except total W-2, which is 0.0061 percentage points below its 0.1%
+  lower bound.
+- Ran Ruff and the QBI, QBI-reconciliation, PUF-donor, and staged-builder
+  focused test files successfully, including the restricted-artifact test.
 
 ## Next
 
-- Vendor the v1 assumptions and implement a pure, version-gated NumPy QBI
-  simulation stage that replaces the retired load-time mutation.
-- Establish exact equivalence where the artifact exposes a comparison column;
-  otherwise add and report distributional-equivalence evidence.
 - Identify the true raw asset and either port 2015-to-target-year aging or
   commit a precise design and blockers.
 - Add the changelog fragment, final report, and final status/PR text here; run
