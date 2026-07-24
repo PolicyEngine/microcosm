@@ -331,6 +331,72 @@ def test_flsa_treats_non_finite_hours_as_absent() -> None:
     )
 
 
+def test_recipient_income_feature_is_full_year_equivalent(monkeypatch) -> None:
+    """The QRF income predictor must carry the donor's income concept.
+
+    The donor's employment_income is the annualized reference week
+    (pternwa x 52), so recipients feed the full-year-equivalent of their
+    actual annual income: a 26-week worker's income doubles, a full-year
+    worker's is unchanged, and weeks of 0 (or missing) pass income through
+    untouched. The premium derivation keeps actual annual income (populace#529).
+    """
+
+    captured: dict[str, pd.DataFrame] = {}
+
+    class Fitted:
+        def predict(self, features):
+            captured["features"] = features.copy()
+            return pd.DataFrame(
+                {
+                    "hourly_wage": np.full(len(features), 20.0),
+                    "is_paid_hourly": np.ones(len(features)),
+                },
+                index=features.index,
+            )
+
+    class CaptureQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit(self, *args, **kwargs):
+            return Fitted()
+
+    monkeypatch.setattr("populace.fit.QRF", CaptureQRF)
+    monkeypatch.setattr(
+        module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
+    )
+    person = _person(100)
+    # Part-year: $26,000 over 26 weeks -> full-year equivalent $52,000.
+    person.loc[50, "employment_income_before_lsr"] = 26_000.0
+    person.loc[50, "weeks_worked"] = 26.0
+    person.loc[50, "hours_worked_last_week"] = 50.0
+    person.loc[50, "weekly_hours_worked_before_lsr"] = 40.0
+    # Full-year: unchanged.
+    person.loc[51, "employment_income_before_lsr"] = 52_000.0
+    person.loc[51, "weeks_worked"] = 52.0
+    # Zero weeks with positive income: passed through untouched.
+    person.loc[52, "employment_income_before_lsr"] = 10_000.0
+    person.loc[52, "weeks_worked"] = 0.0
+    # Missing weeks: passed through untouched.
+    person.loc[53, "employment_income_before_lsr"] = 30_000.0
+    person.loc[53, "weeks_worked"] = np.nan
+
+    frame = module.with_us_org_wages_inputs(
+        _frame(person), seed=0, time_period=2024, org_donor=_donor()
+    )
+    features = captured["features"]
+    assert features.loc[50, "employment_income"] == 52_000.0
+    assert features.loc[51, "employment_income"] == 52_000.0
+    assert features.loc[52, "employment_income"] == 10_000.0
+    assert features.loc[53, "employment_income"] == 30_000.0
+    # The premium keeps ACTUAL annual income: 26,000 x share(50) = 26,000/11.
+    np.testing.assert_allclose(
+        frame.table("person")["fsla_overtime_premium"].iloc[50],
+        26_000 / 11,
+        rtol=1e-5,
+    )
+
+
 def test_imputation_zeroes_inactive_and_union_is_deterministic(monkeypatch) -> None:
     class Fitted:
         def predict(self, features):

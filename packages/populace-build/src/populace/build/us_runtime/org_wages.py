@@ -9,7 +9,12 @@ rates, carries the ASEC occupation fields, and derives the intentionally
 misspelled PolicyEngine input ``fsla_overtime_premium``.
 
 The donor build, QRF, union assignment, and occupation carries remain the
-exact retired port.  The premium derivation deliberately deviates from the
+retired port, with one recipient-side concept alignment: the QRF income
+feature is the full-year-equivalent of actual annual income (income x
+52/weeks, untouched when weeks are zero or missing), because the donor's
+income is the annualized reference week — without the alignment, part-year
+workers matched low-wage full-year donors and the imputed sub-minimum wage
+tail was severe (populace#529).  The premium derivation deliberately deviates from the
 retired reference-week-only construction: it adds the usual-weekly-hours
 signal (ASEC HRSWK) as the persistent-overtime leg, so regular overtime
 workers whose March reference week happened to sit at or below the threshold
@@ -583,10 +588,26 @@ def _recipient_features(frame: Frame, carried: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"ORG imputation needs person column(s): {missing}.")
     features = pd.DataFrame(index=person.index)
-    features["employment_income"] = (
+    annual_income = (
         pd.to_numeric(person["employment_income_before_lsr"], errors="coerce")
         .fillna(0)
         .clip(lower=0)
+        .to_numpy(dtype=np.float64)
+    )
+    weeks = (
+        pd.to_numeric(person["weeks_worked"], errors="coerce")
+        .fillna(0)
+        .clip(lower=0, upper=52)
+        .to_numpy(dtype=np.float64)
+    )
+    # The donor's employment_income is the annualized reference week
+    # (pternwa x 52), while recipients carry actual annual income. Feeding
+    # the full-year-equivalent aligns the concepts so part-year workers
+    # match same-wage donors instead of low-wage full-year ones; zero or
+    # missing weeks pass income through untouched (populace#529). The
+    # premium derivation keeps actual annual income.
+    features["employment_income"] = np.where(
+        weeks > 0, annual_income * (52.0 / weeks), annual_income
     )
     features["weekly_hours_worked"] = (
         pd.to_numeric(person["weekly_hours_worked_before_lsr"], errors="coerce")
