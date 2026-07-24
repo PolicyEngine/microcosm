@@ -720,6 +720,7 @@ def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
     carried = derive_us_org_occupation_inputs(person)
     for column in carried:
         person[column] = carried[column]
+    pristine = person.copy()
     active = person["employment_income_before_lsr"].to_numpy() > 0
     # Stale surface: sub-minimum wages, inverted hourly status, an
     # impossible all-True union column, and a poisoned occupation carry.
@@ -733,12 +734,21 @@ def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
     refreshed = module.with_us_org_wages_inputs(
         _frame(person), seed=0, time_period=2024, org_donor=_donor()
     )
+    clean = module.with_us_org_wages_inputs(
+        _frame(pristine), seed=0, time_period=2024, org_donor=_donor()
+    )
     out = refreshed.table("person")
+    reference = clean.table("person")
+    # Full convergence: the poisoned surface reproduces the from-scratch
+    # build column-for-column — union quotas, occupation carries, wages,
+    # hourly status, and premium alike.
+    for column in module.US_ORG_WAGES_OUTPUT_COLUMNS:
+        np.testing.assert_array_equal(
+            out[column].to_numpy(), reference[column].to_numpy(), err_msg=column
+        )
     np.testing.assert_allclose(
         out["hourly_wage"].to_numpy(), np.where(active, 25.0, 0.0), rtol=1e-6
     )
-    np.testing.assert_array_equal(out["is_paid_hourly"].to_numpy(), active)
-    assert not out["is_union_member_or_covered"].all()  # quotas re-imposed
     assert not out["is_military"].iloc[20]  # carry re-derived from POCCU2
 
 
@@ -780,3 +790,17 @@ def test_outputs_match_rejects_boolean_nan_and_nullable_na(monkeypatch) -> None:
     ).table("person")
     assert healed["is_military"].to_numpy().dtype == np.dtype(bool)
     assert not bool(healed["is_military"].iloc[0])
+
+    # Coercible numeric strings must not identity-match either: "0"/"1"
+    # would pass a bare to_numeric comparison while preserving the damaged
+    # str dtype on the fast path.
+    stringy = consistent.copy()
+    stringy["is_paid_hourly"] = stringy["is_paid_hourly"].astype(int).astype(str)
+    healed = module.with_us_org_wages_inputs(
+        _frame(stringy), seed=0, time_period=2024, org_donor=_donor()
+    ).table("person")
+    assert healed["is_paid_hourly"].to_numpy().dtype == np.dtype(bool)
+    np.testing.assert_array_equal(
+        healed["is_paid_hourly"].to_numpy(),
+        consistent["is_paid_hourly"].to_numpy(),
+    )
