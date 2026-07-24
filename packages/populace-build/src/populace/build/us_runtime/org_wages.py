@@ -864,8 +864,15 @@ def _outputs_match(person: pd.DataFrame, outputs: dict[str, np.ndarray]) -> bool
         if column not in person:
             return False
         if values.dtype == bool:
-            stored = person[column].astype(bool).to_numpy()
-            if not np.array_equal(stored, values):
+            # Compare through strict 0/1 numerics: NaN, pd.NA, strings, or
+            # any non-canonical value fails the membership test and takes
+            # the rebuild path instead of casting to a truthy True.
+            stored = pd.to_numeric(person[column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            if not np.isin(stored, (0.0, 1.0)).all():
+                return False
+            if not np.array_equal(stored.astype(bool), values):
                 return False
         else:
             stored = pd.to_numeric(person[column], errors="coerce").to_numpy(
