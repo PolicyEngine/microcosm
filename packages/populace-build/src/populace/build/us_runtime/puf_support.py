@@ -80,6 +80,10 @@ US_PUF_E19200_HOME_MORTGAGE_SHARE = 283_004_465 / 304_461_163
 # 2,162 healthy synthetic donors to remove only about $0.7B more.
 US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0
 
+# Reserved internal column used to thread the grouped RAW mortgage value to
+# the outlier screen; never a legal requested output (populace#516).
+_MORTGAGE_OUTLIER_SCREEN_COLUMN = "_raw_home_mortgage_interest_for_outlier_screen"
+
 _DEFAULT_SUPPORT_CHANNELS = (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -542,13 +546,17 @@ def puf_tax_unit_donor_from_arrays(
         }
     )
     person = pd.DataFrame({"tax_unit_id": person_tax_unit_id})
-    mortgage_screen_column = "_raw_home_mortgage_interest_for_outlier_screen"
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in (*person_outputs, *tax_unit_outputs):
+        raise ValueError(
+            f"{_MORTGAGE_OUTLIER_SCREEN_COLUMN!r} is reserved for the donor "
+            "mortgage outlier screen and cannot be a requested output."
+        )
     raw_home_mortgage_interest = _person_source_values(
         arrays,
         "home_mortgage_interest",
     )
     if raw_home_mortgage_interest is not None:
-        person[mortgage_screen_column] = raw_home_mortgage_interest
+        person[_MORTGAGE_OUTLIER_SCREEN_COLUMN] = raw_home_mortgage_interest
 
     engine = _formula_owned_engine()
     assert_formula_owned_blocklist_current(engine)
@@ -590,16 +598,22 @@ def puf_tax_unit_donor_from_arrays(
         if column == "tax_unit_id":
             continue
         tax_unit[column] = pd.to_numeric(tax_unit[column], errors="coerce").fillna(0.0)
-    if mortgage_screen_column in tax_unit:
-        # The screen uses the grouped raw person value before the #515 carve.
-        # Screening the carved value at the same literal would miss 49 corrupt
-        # rows, including raw values in the $10M-to-$10.75M band.
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
+        # The screen thresholds the grouped RAW person value: screening the
+        # CARVED value at the same literal would miss 49 corrupt rows in the
+        # $10M-to-$10.75M raw band (the semantic contract, pinned by the
+        # 10.5M-raw regression). Because the raw value rides its own reserved
+        # helper column -- outside the carve lineage tuple -- the returned
+        # frame is identical whether the screen runs before or after the
+        # carve; it runs first so the carve never touches rows the screen
+        # discards.
         retained = (
-            tax_unit[mortgage_screen_column] < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+            tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN]
+            < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
         )
         tax_unit = (
             tax_unit.loc[retained]
-            .drop(columns=[mortgage_screen_column])
+            .drop(columns=[_MORTGAGE_OUTLIER_SCREEN_COLUMN])
             .reset_index(drop=True)
         )
     # Keep the carve BEFORE _add_predictor_aliases: no mortgage predictor

@@ -42,8 +42,7 @@ so post-carve pre-screen checkpoints rebuild.
 
 ## Next
 
-- Orchestrating session: review the dirty worktree and report, then commit and
-  open/update the PR as appropriate.
-- The next authorized restricted-data rebuild should confirm the expected
-  208,611 donor rows in the existing base summary; no artifact build or
-  certification was performed in this PR-CI task.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on populace#515.

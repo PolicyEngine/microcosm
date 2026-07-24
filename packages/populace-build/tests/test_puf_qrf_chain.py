@@ -277,28 +277,35 @@ def test_primary_qrf_rejects_pre_carve_schema_versions(
     manifest_path = checkpoint_dir / "manifest.json"
     original_manifest = json.loads(manifest_path.read_text())
     assert original_manifest["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-    stale_manifest = dict(original_manifest)
-    stale_manifest["schema_version"] = 1
-    manifest_path.write_text(json.dumps(stale_manifest))
-    with pytest.raises(ValueError, match="schema version"):
-        load_primary_puf_qrf_predictions(checkpoint_dir)
-    with pytest.raises(ValueError, match="schema version"):
-        run_primary_puf_qrf_chain(checkpoint_dir)
+    # Every stale version must reject -- v1 (pre-carve) AND v2 (post-carve,
+    # pre-screen): a loader relaxed to accept {2, 3} would pass a v1-only pin
+    # while resurrecting the exact checkpoint populace#516 invalidates.
+    for stale_version in (1, 2):
+        stale_manifest = dict(original_manifest)
+        stale_manifest["schema_version"] = stale_version
+        manifest_path.write_text(json.dumps(stale_manifest))
+        with pytest.raises(ValueError, match="schema version"):
+            load_primary_puf_qrf_predictions(checkpoint_dir)
+        with pytest.raises(ValueError, match="schema version"):
+            run_primary_puf_qrf_chain(checkpoint_dir)
     manifest_path.write_text(json.dumps(original_manifest))
 
     target_path = sorted((checkpoint_dir / "targets").glob("*.h5"))[0]
-    with h5py.File(target_path, mode="r+") as h5:
-        metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
-        assert metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
-        metadata["schema_version"] = 1
-        del h5["metadata_json"]
-        h5.create_dataset(
-            "metadata_json",
-            data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
-            track_times=False,
-        )
-    with pytest.raises(ValueError, match="invalid schema_version"):
-        load_primary_puf_qrf_predictions(checkpoint_dir)
+    with h5py.File(target_path, mode="r") as h5:
+        pristine_metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
+    assert pristine_metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+    for stale_version in (1, 2):
+        metadata = dict(pristine_metadata)
+        metadata["schema_version"] = stale_version
+        with h5py.File(target_path, mode="r+") as h5:
+            del h5["metadata_json"]
+            h5.create_dataset(
+                "metadata_json",
+                data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
+                track_times=False,
+            )
+        with pytest.raises(ValueError, match="invalid schema_version"):
+            load_primary_puf_qrf_predictions(checkpoint_dir)
 
 
 def test_primary_qrf_resume_rejects_a_gap(

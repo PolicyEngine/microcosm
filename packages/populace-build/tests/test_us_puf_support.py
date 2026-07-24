@@ -393,6 +393,24 @@ def test_puf_tax_unit_donor_drops_grouped_raw_mortgage_outlier_rows() -> None:
     )
 
 
+def test_puf_tax_unit_donor_rejects_reserved_screen_column_output() -> None:
+    # populace#516: the raw-mortgage helper name is reserved -- requesting it
+    # as an output would let the screen threshold and then delete a caller's
+    # column, silently violating the requested-output contract.
+    with pytest.raises(ValueError, match="reserved for the donor"):
+        puf_tax_unit_donor_from_arrays(
+            {
+                "tax_unit_id": [10],
+                "household_weight": [100.0],
+                "filing_status": [b"SINGLE"],
+                "person_tax_unit_id": [10],
+                "_raw_home_mortgage_interest_for_outlier_screen": [5.0],
+            },
+            person_outputs=("_raw_home_mortgage_interest_for_outlier_screen",),
+            tax_unit_outputs=(),
+        )
+
+
 def test_puf_e19200_home_mortgage_carve_scales_only_lineage_columns() -> None:
     assert US_PUF_E19200_HOME_MORTGAGE_SHARE == 283_004_465 / 304_461_163
     # Pin the lineage tuple by exact membership: an accidental addition (the
