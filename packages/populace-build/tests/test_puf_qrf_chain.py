@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from populace.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_TARGET_ORDER,
     PRIMARY_QRF_TARGET_ORDER_SHA256,
     finalize_primary_puf_qrf_chain,
@@ -247,11 +248,11 @@ def test_primary_qrf_rejects_pre_carve_schema_versions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # populace#515: the checkpointed donor frame carries the E19200 ->
-    # mortgage-only carve as of schema v2, and loading validates nothing
-    # about donor construction identity -- so a pre-carve (v1) root manifest
-    # OR a v1 target checkpoint riding under a valid v2 root must both be
-    # rejected, never fitted or drawn from.
+    # populace#515 put the E19200 -> mortgage-only carve in schema v2, and
+    # populace#516 puts the grouped-raw whole-row screen before that carve in
+    # schema v3. Loading validates no donor-construction identity, so stale
+    # pre-carve/pre-screen roots or target checkpoints must be rejected, never
+    # fitted or drawn from. Keep literal v1 mutations as the oldest stale form.
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     checkpoint_dir = tmp_path / "primary_qrf"
@@ -275,29 +276,36 @@ def test_primary_qrf_rejects_pre_carve_schema_versions(
 
     manifest_path = checkpoint_dir / "manifest.json"
     original_manifest = json.loads(manifest_path.read_text())
-    assert original_manifest["schema_version"] == 2
-    stale_manifest = dict(original_manifest)
-    stale_manifest["schema_version"] = 1
-    manifest_path.write_text(json.dumps(stale_manifest))
-    with pytest.raises(ValueError, match="schema version"):
-        load_primary_puf_qrf_predictions(checkpoint_dir)
-    with pytest.raises(ValueError, match="schema version"):
-        run_primary_puf_qrf_chain(checkpoint_dir)
+    assert original_manifest["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+    # Every stale version must reject -- v1 (pre-carve) AND v2 (post-carve,
+    # pre-screen): a loader relaxed to accept {2, 3} would pass a v1-only pin
+    # while resurrecting the exact checkpoint populace#516 invalidates.
+    for stale_version in (1, 2):
+        stale_manifest = dict(original_manifest)
+        stale_manifest["schema_version"] = stale_version
+        manifest_path.write_text(json.dumps(stale_manifest))
+        with pytest.raises(ValueError, match="schema version"):
+            load_primary_puf_qrf_predictions(checkpoint_dir)
+        with pytest.raises(ValueError, match="schema version"):
+            run_primary_puf_qrf_chain(checkpoint_dir)
     manifest_path.write_text(json.dumps(original_manifest))
 
     target_path = sorted((checkpoint_dir / "targets").glob("*.h5"))[0]
-    with h5py.File(target_path, mode="r+") as h5:
-        metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
-        assert metadata["schema_version"] == 2
-        metadata["schema_version"] = 1
-        del h5["metadata_json"]
-        h5.create_dataset(
-            "metadata_json",
-            data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
-            track_times=False,
-        )
-    with pytest.raises(ValueError, match="invalid schema_version"):
-        load_primary_puf_qrf_predictions(checkpoint_dir)
+    with h5py.File(target_path, mode="r") as h5:
+        pristine_metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
+    assert pristine_metadata["schema_version"] == PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+    for stale_version in (1, 2):
+        metadata = dict(pristine_metadata)
+        metadata["schema_version"] = stale_version
+        with h5py.File(target_path, mode="r+") as h5:
+            del h5["metadata_json"]
+            h5.create_dataset(
+                "metadata_json",
+                data=np.frombuffer(json.dumps(metadata).encode(), dtype=np.uint8),
+                track_times=False,
+            )
+        with pytest.raises(ValueError, match="invalid schema_version"):
+            load_primary_puf_qrf_predictions(checkpoint_dir)
 
 
 def test_primary_qrf_resume_rejects_a_gap(

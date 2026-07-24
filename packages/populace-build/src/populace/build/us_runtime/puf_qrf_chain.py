@@ -41,7 +41,11 @@ from populace.frame import EntitySchema, Frame, WeightKind, Weights
 # so a v1 checkpoint initialized pre-carve would keep fitting and drawing the
 # uncarved levels under carved code. The bump rejects every pre-carve
 # checkpoint and forces re-initialization through the carved constructor.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 2
+# v3 (populace#516): donor construction now whole-row-screens grouped raw
+# mortgage-interest outliers before that carve. A v2 post-carve, pre-screen
+# checkpoint would otherwise still fit and draw the corrupt rows under screened
+# code, so it too must be rejected and rebuilt.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 3
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
