@@ -1606,13 +1606,28 @@ def do_package(args) -> dict:
     # The gate report certifies specific artifact bytes: the QA probe
     # recorded the sha it loaded plain. Packaging different bytes (a
     # recalibrate without re-running qa+finalize) is refused.
+    # Package-time evidence is REQUIRED, not conditional: absent files must
+    # never read as vacuously green (a stale finalized summary could
+    # otherwise pair with deleted or never-produced evidence).
+    if not spine_qa:
+        raise SystemExit(
+            "spine_qa.json is missing or empty; the packaged bytes have no "
+            "plain-consumption certification. Run --stage qa (then "
+            "finalize) before packaging."
+        )
+    if not consumer_export:
+        raise SystemExit(
+            "consumer_export.json is missing or empty; the artifact's "
+            "engine-pass export evidence is required. Run --stage calibrate "
+            "before packaging."
+        )
     qa_sha = spine_qa.get("artifact_sha256")
-    if spine_qa and qa_sha is None:
+    if qa_sha is None:
         raise SystemExit(
             "spine_qa.json carries no artifact_sha256; the gate report "
             "cannot be bound to these bytes. Re-run --stage qa."
         )
-    if qa_sha is not None and qa_sha != h5_sha:
+    if qa_sha != h5_sha:
         raise SystemExit(
             "The calibrated H5 does not match the bytes the QA probe "
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
@@ -1739,20 +1754,18 @@ def do_package(args) -> dict:
         "reviewed_null_fills.json": null_fills,
         "run_identity.json": identity,
     }
-    if spine_qa:
-        contract_files["spine_qa.json"] = spine_qa
-    if consumer_export:
-        contract_files["consumer_export.json"] = consumer_export
-        consumer_fills = _load_json(
-            args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+    contract_files["spine_qa.json"] = spine_qa
+    contract_files["consumer_export.json"] = consumer_export
+    consumer_fills = _load_json(
+        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+    )
+    if not consumer_fills:
+        raise SystemExit(
+            "The per-column consumer fill ledger "
+            "(consumer_reviewed_null_fills.json) is missing; the published "
+            "fills must ship with their evidence."
         )
-        if not consumer_fills:
-            raise SystemExit(
-                "consumer_export.json exists but the per-column consumer "
-                "fill ledger (consumer_reviewed_null_fills.json) is missing; "
-                "the published fills must ship with their evidence."
-            )
-        contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
 

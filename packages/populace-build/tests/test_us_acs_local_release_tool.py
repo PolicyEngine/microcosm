@@ -177,3 +177,57 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
 
     with pytest.raises(SystemExit, match="No calibration diagnostics"):
         module.do_finalize(args)
+
+
+def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
+    """Absent evidence must refuse packaging, never read as vacuously green."""
+
+    module = _load_tool_module()
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text("{}")
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
+    (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "run_identity.json").write_text(
+        json.dumps(
+            {
+                "staging_sha256": module._sha256(staging),
+                "population_cells_dropped": [],
+            }
+        )
+    )
+    args = module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps(
+            {
+                "plain_consumption": True,
+                "artifact_sha256": module._sha256(out_h5),
+                "per_spine": {},
+            }
+        )
+    )
+    with pytest.raises(SystemExit, match="consumer_export.json is missing"):
+        module.do_package(args)
