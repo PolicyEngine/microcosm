@@ -118,7 +118,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     )
     # 7 = one-shot Bernoulli SSI take-up (populace#469): checkpoints
     # materialized from count-matched flags must not survive the cutover.
-    assert identity["materializer_version"] == 7
+    assert identity["materializer_version"] == 8
     assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
     path = tmp_path / "target_frame_checkpoint.h5"
 

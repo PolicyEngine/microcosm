@@ -627,6 +627,22 @@ def test_carry_signal_tolerates_a_single_constant_leaf() -> None:
     )
     assert redrawn.table("person")["bank_account_assets"].to_numpy().sum() > 0
 
+    def _distinct_constants(person):
+        person["bank_account_assets"] = 5.0
+        person["stock_assets"] = 3.0
+        person["bond_assets"] = 0.0
+
+    # Three DISTINCT constant leaves are still an untrustworthy surface:
+    # flattened cross-leaf uniqueness would wave it through.
+    reimputed = with_us_scf_wealth_inputs(
+        _with_person(once, _distinct_constants),
+        seed=99,
+        time_period=TIME_PERIOD,
+        scf_donor=donor,
+    )
+    bank = reimputed.table("person")["bank_account_assets"].to_numpy()
+    assert np.unique(bank).size >= 2
+
 
 def test_with_inputs_is_idempotent_when_signal_present() -> None:
     frame = _us_frame(_person_rows(60))

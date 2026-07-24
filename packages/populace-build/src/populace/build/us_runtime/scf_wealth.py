@@ -1015,18 +1015,21 @@ def _financial_assets_carry_signal(person: pd.DataFrame) -> bool:
     holdings are ~97% zero in the donor, so a small or chunked frame can
     draw a constant bond column from a perfectly healthy imputation. A
     per-leaf nonconstancy test made pass-through platform-dependent (the
-    #510 CI failure) and would silently redraw small production chunks.
+    #510 CI failure) and would silently redraw small production chunks;
+    flattened cross-leaf uniqueness would accept three DISTINCT constant
+    leaves, so the check requires at least one genuinely nonconstant leaf.
     """
 
-    stacked: list[np.ndarray] = []
+    any_nonconstant = False
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
         values = pd.to_numeric(person[column], errors="coerce").to_numpy(
             dtype=np.float64
         )
         if len(values) != len(person) or not np.isfinite(values).all():
             return False
-        stacked.append(values)
-    return np.unique(np.concatenate(stacked)).size >= 2
+        if np.unique(values).size >= 2:
+            any_nonconstant = True
+    return any_nonconstant
 
 
 def _net_worth_carries_signal(household: pd.DataFrame) -> bool:
