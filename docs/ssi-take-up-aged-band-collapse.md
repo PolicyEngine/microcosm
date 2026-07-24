@@ -9,9 +9,15 @@ builder lookup that also passes them to `ssi_take_up.py` as priors. The generic
 from PR #477's one-shot assignment lifecycle, not from a national-only goal or
 a binding swap cap.
 
-The stage computes each Bernoulli threshold on pre-calibration weights as
-`band target / weighted(uncapped_ssi > 0)`, freezes the flags, and lets the
-5,672-target calibration/refit change the weights. Build N fixed the 65+ threshold
+The stage computes each band's Bernoulli prior on pre-calibration weights,
+freezes the flags, and lets the 5,672-target calibration/refit change the
+weights. The prior law has two regimes (`ssi_take_up.py`, `_band_prior`):
+while the band subsamples (capacity > target) the prior is
+`band target / weighted(uncapped_ssi > 0)`; once the ratio reaches one the
+band is saturated and the prior falls back to
+`min(reporter mass / capacity, 1)` — the observed take-up rate among
+current candidates. Build N's under-18 band took the saturated fallback
+(frozen prior 0.3027), not a ratio above one. Build N fixed the 65+ threshold
 at 5.9057 percent on 40.336 million weighted candidates. On release weights the
 same band had 3.995 million candidate capacity, so its target-implied threshold
 was 59.6213 percent; the frozen threshold nevertheless remained in force. With
@@ -65,9 +71,15 @@ assignment because it computes live SSI-sensitive eligibility. Swap caps and
 pass history must be per band so an aged shortfall cannot cancel a working-age
 excess in a national delta.
 
-The all-band gate is not currently feasible: Build N's under-18 candidate
-capacity is only 177,582 against the 1,001,922 target. That modeled eligibility
-or candidate-domain defect belongs to the child SSI disability work tracked in
-#453; it does not by itself prove the records are absent from support. Until it
-is fixed, the pipeline cannot truthfully reconcile all three bands; silently
-treating saturation as success would violate the requested caseload gate.
+The all-band gate cannot pass on Build N's release weights as assigned:
+the under-18 band's candidate capacity is 177,582 against the 1,001,922
+target. Capacity is weight-endogenous, not a fixed-support ceiling — this
+same quantity moved from 40.3M to 4.0M for ages 65+ across the refit — so
+the shortfall shows the current assignment is short, not that a per-band
+refit of existing child carrier weights cannot reach the target. The
+modeled-eligibility repair for children remains #453 (ages 0-14 carry no
+disability signal), and reconciling the child band through weight
+concentration alone would trade against the ESS and composition gates; a
+reconcile implementation should treat #453 as the intended fix while NOT
+hard-blocking on it. Silently treating saturation as success would violate
+the requested caseload gate either way.
