@@ -1525,7 +1525,7 @@
       "outputs": [
         "takes_up_ssi_if_eligible"
       ],
-      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, populace#469 and populace#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the band target over a weighted uncapped_ssi > 0 candidate capacity basis, falling back to the basis reporter share of capacity when that ratio reaches one — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (populace#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending populace#453/#509 and its gap ships in the release scorecard."
+      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, populace#469 and populace#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the band target over a weighted uncapped_ssi > 0 candidate capacity basis, falling back to the basis reporter share of capacity when that ratio reaches one — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (populace#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are hard-gated in all three enforced bands (under_18, 18_64, 65_plus) within the documented relative tolerance; no band remains fenced or scorecard-only now that the SIPP child-disability stage supplies qualifying under-18 support (populace#453/#509)."
     },
     {
       "stage": "sipp_tips",
@@ -2190,13 +2190,12 @@
           "locator": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf"
         },
         {
-          "kind": "administrative_calibration_target",
-          "format": "published_table",
-          "vintage": "2024-05",
-          "locator": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html",
-          "under_18_recipient_target": 983176,
-          "age_0_4_caseload_allocation_target": 240000,
-          "target_note": "The age-0-4 value is a modeling allocation required by populace#453, not an observed subtotal in the cited monthly SSA table."
+          "kind": "survey_users_guide",
+          "format": "pdf",
+          "vintage": "2023",
+          "locator": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/methodology/2023_SIPP_Users_Guide_OCT24.pdf",
+          "section": "4.3.4 Disability",
+          "measure": "RDIS_ALT"
         }
       ],
       "operations": [
@@ -2216,11 +2215,16 @@
             "ESEX",
             "TPTOTINC",
             "RSSI_MNYN",
-            "ECOGNIT",
+            "THHLDSTATUS",
+            "RDIS_ALT",
             "EHEARING",
             "ESEEING",
+            "ECOGNIT",
             "EAMBULAT",
-            "ESELFCARE"
+            "ESELFCARE",
+            "EDDELAY",
+            "EPLAYDIF",
+            "ESCHOOLWK"
           ]
         },
         {
@@ -2231,28 +2235,48 @@
             "household_income_proxy"
           ],
           "target": "is_disabled",
-          "target_rule": "any(['ECOGNIT', 'EHEARING', 'ESEEING', 'EAMBULAT', 'ESELFCARE']) == 1",
+          "target_rule": "Census RDIS_ALT child construction: any(EHEARING, ESEEING, ECOGNIT, EAMBULAT, ESELFCARE, EDDELAY, EPLAYDIF, ESCHOOLWK) == 1",
+          "target_source_items": [
+            "EHEARING",
+            "ESEEING",
+            "ECOGNIT",
+            "EAMBULAT",
+            "ESELFCARE",
+            "EDDELAY",
+            "EPLAYDIF",
+            "ESCHOOLWK"
+          ],
+          "target_validation": "computed outcome == (RDIS_ALT == 1) on every valid row",
+          "valid_universe": "RDIS_ALT in [1, 2]",
           "weight": "sipp_weight",
-          "age_domain": [5, 14],
+          "age_domain": [1, 14],
+          "calibration_age_bands": {
+            "age_1_4": [1, 4],
+            "age_5_14": [5, 14]
+          },
+          "pinned_weighted_rates": {
+            "age_1_4": 0.050645332184,
+            "age_5_14": 0.124518076756
+          },
           "classifier": "weighted_logistic_irls",
           "income_proxy": "sum December TPTOTINC for age-15+ members within SSUID + ERESIDENCEID, multiply by 12; recipient analogue is age-15+ household-summed employment_income_before_lsr",
           "income_transform": "log1p_nonnegative_then_standardize",
-          "calibrate_receiver_intercept_to_sipp_weighted_rate": true,
+          "calibrate_receiver_intercept_to_sipp_weighted_rate_by_age_band": true,
           "assignment": "seeded_bernoulli_by_person_source_id",
           "seed_from_build_config": true
         },
         {
           "kind": "assign_binary_from_rate",
-          "age_domain": [0, 4],
-          "rate": 0.089917464767,
-          "rate_role": "calibration_target_not_survey_observation",
-          "ssa_under_18_recipient_target": 983176,
-          "ssa_age_0_4_caseload_target": 240000,
-          "ssa_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html",
-          "sipp_any_item_rate_age_5_14": 0.110253387732,
-          "sipp_monthly_ssi_receipt_rate_age_5_14": 0.017142704601,
-          "sipp_monthly_ssi_receipt_query": "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, weighted by WPFINWGT",
-          "sipp_weighted_population_age_0_4": 17166422.19921,
+          "age_domain": [0, 0],
+          "rate": 0.050645332184,
+          "rate_role": "adjacent_age_1_4_observed_rate_transport_for_unobserved_age_0",
+          "source_age_domain": [1, 4],
+          "source_rate_query": "MONTHCODE == 12 and 1 <= TAGE <= 4 and RDIS_ALT in [1, 2], weighted mean of computed RDIS_ALT child item union",
+          "age_0_support_query": "MONTHCODE == 12 and TAGE == 0: 203 rows; every child disability item and RDIS_ALT is missing",
+          "monthly_ssi_audit_queries": {
+            "age_1_4": "MONTHCODE == 12 and 1 <= TAGE <= 4 and RSSI_MNYN == 1, weighted by WPFINWGT",
+            "age_5_14": "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, weighted by WPFINWGT"
+          },
           "assignment": "seeded_bernoulli_by_person_source_id",
           "seed_from_build_config": true
         }
@@ -2260,7 +2284,7 @@
       "outputs": [
         "is_disabled"
       ],
-      "notes": "Additive child-disability repair for populace#453. The December SIPP donor observes the five functional-difficulty items for ages 5-14; their weighted any-item rate is 11.0253%. A survey-weighted logistic classifier uses only age, sex, and a residence-level annual-income proxy, summing TPTOTINC only for age-15+ residence members to exclude the under-15 SSI-conditioned personal-income field. Predictions are calibrated to the SIPP rate and assigned by stable seeded Bernoulli. Ages 0-4 use the explicit 8.991746% target obtained by carrying SIPP's age-5-14 any-item/monthly-SSI-receipt ratio into the 240,000 youngest-band caseload allocation. The pinned query is December (MONTHCODE == 12), ages 5-14, RSSI_MNYN == 1, weighted by WPFINWGT: 70 rows and 698,957.560971 weighted recipients over 40,772,887.197600 person-weight. That monthly receipt concept matches the cited SSA monthly table; the 240,000 allocation remains a model target, not an observed SSA subtotal. Existing child True values are preserved and writes are restricted to under-15 rows, leaving adult stored values untouched. The later ssi_disability_criteria output owner consumes the same child assignment so SSI receives no second draw. Generic is_disabled intentionally informs HUD housing, SNAP, Medicaid, TANF, child-care assistance, and tax program families; the stage gate records weighted before/after shares."
+      "notes": "Additive child-disability repair for populace#453/#509. Section 4.3.4 of the 2023 SIPP User's Guide defines RDIS_ALT from the exact all-age list ESEEING, EHEARING, ECOGNIT, EAMBULAT, ESELFCARE, EERRANDS, EDDELAY, EPLAYDIF, ESCHOOLWK, EFINDJOB, EJOBCANT, and EDISABL. The exact effective under-15 union is EHEARING, ESEEING, ECOGNIT, EAMBULAT, ESELFCARE, EDDELAY, EPLAYDIF, and ESCHOOLWK: EDDELAY supplies observed ages-1--4 developmental-delay signal, EPLAYDIF and ESCHOOLWK supply ages-5--14 child signal, and EERRANDS plus EFINDJOB, EJOBCANT, and EDISABL are out of universe below 15. The computed union matches RDIS_ALT on every valid pinned age-1--14 row. Four age-1--4 and three age-5--14 movers outside the RDIS_ALT universe are excluded rather than treated as negative. The weighted observed rates are 0.050645332184 for ages 1--4 (85 positives over 14,861,539.117022 valid weight) and 0.124518076756 for ages 5--14 (567 positives over 40,754,911.581437 valid weight); 63 and 72 respective positives are child-item-positive but core-negative. A survey-weighted logistic classifier uses age, sex, and a residence-level annual-income proxy, calibrates receiver probabilities separately to those two observed bands, and assigns by stable source-person draw. Only age 0 uses an unconditional fallback: all 203 pinned December age-0 rows have every disability item and RDIS_ALT missing, so the adjacent observed age-1--4 rate is transported for that single unsupported year. The former ages-0--4 240,000-caseload allocation is removed. RSSI_MNYN == 1 remains a monthly audit concept only: age 1--4 has 7 recipients and 53,096.314483 weight, of whom 5 are positive on the complete union and none on the former core-only union; age 5--14 has 70 recipients and 698,957.560971 weight. Existing child True values are preserved and writes are restricted to under-15 rows, leaving adult stored values untouched. The later ssi_disability_criteria output owner consumes the same child assignment so SSI receives no second disability draw. Generic is_disabled intentionally informs HUD housing, SNAP, Medicaid, TANF, child-care assistance, and tax program families; distinct stage-time and export-time gates persist both the measured blast radius and terminal release shares."
     },
     {
       "stage": "pregnancy",

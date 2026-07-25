@@ -184,6 +184,9 @@ def test_stage_contract_pins_archived_method_and_band_structure() -> None:
         (band.key, band.minimum_age, band.maximum_age)
         for band in US_SSI_TAKE_UP_AGE_TARGETS
     ] == [("under_18", None, 17), ("18_64", 18, 64), ("65_plus", 65, None)]
+    assert "all three enforced bands (under_18, 18_64, 65_plus)" in spec.notes
+    assert "no band remains fenced or scorecard-only" in spec.notes
+    assert "under-18 band is fenced pending" not in spec.notes
 
 
 def test_assignment_preserves_asec_reporters_and_fans_source_decisions() -> None:

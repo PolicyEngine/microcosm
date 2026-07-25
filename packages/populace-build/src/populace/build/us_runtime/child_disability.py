@@ -6,22 +6,35 @@ child, making child SSI structurally absent (populace #453).  This stage
 owns the generic under-15 ``is_disabled`` repair without replacing the adult
 ASEC surface:
 
-* Ages 5--14 receive seeded Bernoulli draws from a survey-weighted logistic
-  classifier fit to the December 2023 SIPP.  Its outcome is any affirmative
-  answer among ``ECOGNIT``, ``EHEARING``, ``ESEEING``, ``EAMBULAT``, and
-  ``ESELFCARE``.  The deliberately small shared predictor set is age, sex, and
-  a household-income proxy.  SIPP's personal monthly ``TPTOTINC`` is summed
-  over December residence members aged 15+ and annualized; the recipient
-  analogue is household-summed ``employment_income_before_lsr`` for members
-  aged 15+.  Excluding younger members avoids using a child's own mostly-blank
-  ``TPTOTINC`` as a near-direct SSI-receipt indicator.
-* Ages 0--4 receive seeded Bernoulli draws at an explicit 8.991746% calibration
-  target.  SIPP does not ask the full functional battery in that age band, so
-  the target carries SIPP's observed 5--14 ratio of any-item disability to SSI
-  receipt into the issue-specified 240,000 youngest-child caseload allocation.
-  Receipt is measured on the matching monthly concept: December rows with
-  ``RSSI_MNYN == 1``, weighted by ``WPFINWGT``.  The 240,000 value is a model
-  target, not an observed SSA age-0--4 count.
+* Ages 1--14 receive seeded Bernoulli draws from a survey-weighted logistic
+  classifier fit to December 2023 SIPP.  The outcome follows Census's 2023
+  SIPP User's Guide construction of ``RDIS_ALT``.  For children, the effective
+  item list is ``EHEARING``, ``ESEEING``, ``ECOGNIT``, ``EAMBULAT``,
+  ``ESELFCARE``, ``EDDELAY``, ``EPLAYDIF``, and ``ESCHOOLWK``: the first two
+  apply from age 1; the next three from age 5; ``EDDELAY`` applies at ages
+  1--4; and ``EPLAYDIF`` / ``ESCHOOLWK`` apply at ages 5--14.  The full
+  all-age list also contains ``EERRANDS``, ``EFINDJOB``, ``EJOBCANT``, and
+  ``EDISABL``; those four are out-of-universe below 15.  A computed any-item
+  indicator is checked row for row against Census's ``RDIS_ALT`` before
+  fitting.
+* The deliberately small shared predictor set is age, sex, and a
+  household-income proxy.  SIPP's personal monthly ``TPTOTINC`` is summed over
+  December residence members aged 15+ and annualized; the recipient analogue
+  is household-summed ``employment_income_before_lsr`` for members aged 15+.
+  Excluding younger members avoids using a child's own mostly-blank
+  ``TPTOTINC`` as a near-direct SSI-receipt indicator.  Receiver probabilities
+  are calibrated separately to the observed age-1--4 and age-5--14 rates.
+* Age 0 alone receives a seeded unconditional draw at the adjacent age-1--4
+  observed rate.  The User's Guide states that SIPP collects no disability
+  data below age 1, and every disability item plus ``RDIS_ALT`` is blank for
+  all 203 pinned December age-0 records.  This one-year transport is therefore
+  explicit and unsupported by an age-0 survey question; the former ages-0--4
+  240,000-caseload transport is removed.
+
+``RSSI_MNYN == 1`` remains the pinned monthly SSI-receipt audit concept.  It is
+not used as the disability label or to fabricate an age-0 rate.  In the pinned
+file, 5 of 7 age-1--4 monthly SSI recipients are positive on the child
+``RDIS_ALT`` item union, while none is positive on the former core-only union.
 
 Draws are keyed by stable person source identity, so support clones and row
 reordering do not change assignment.  Existing child ``True`` values are never
@@ -65,22 +78,23 @@ from populace.frame.units import US_SCHEMA
 
 __all__ = [
     "CHILD_DISABILITY_SIPP_DICTIONARY_URL",
+    "CHILD_DISABILITY_SIPP_USERS_GUIDE_URL",
     "SIPP_2023_CHILD_DISABILITY_DONOR_REVISION",
     "SIPP_2023_CHILD_DISABILITY_DONOR_SHA256",
     "SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES",
     "SIPP_2023_CHILD_DISABILITY_DONOR_URL",
     "SIPP_2023_CHILD_DISABILITY_LOCAL_PATH",
-    "SIPP_CHILD_DISABILITY_AGE_0_4_PARAMETERS",
+    "SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS",
     "SIPP_CHILD_DISABILITY_FIT_PARAMETERS",
     "SIPP_CHILD_DISABILITY_MODEL_PREDICTORS",
     "SIPP_CHILD_DISABILITY_READ_PARAMETERS",
     "SIPP_CHILD_DISABILITY_SOURCE_COLUMNS",
-    "SSA_SSI_AGE_0_4_CASELOAD_TARGET",
-    "SSA_SSI_MONTHLY_MAY_2024_URL",
-    "SSA_SSI_UNDER_18_RECIPIENT_TARGET",
-    "US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND",
-    "US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE",
+    "US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE",
+    "US_CHILD_DISABILITY_AGE_0_SHARE_BAND",
+    "US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND",
+    "US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE",
     "US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND",
+    "US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE",
     "US_CHILD_DISABILITY_OUTPUT_COLUMNS",
     "US_CHILD_DISABILITY_STAGE_NAME",
     "load_sipp_2023_child_disability_donor",
@@ -94,6 +108,10 @@ __all__ = [
 CHILD_DISABILITY_SIPP_DICTIONARY_URL = (
     "https://www2.census.gov/programs-surveys/sipp/tech-documentation/"
     "data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf"
+)
+CHILD_DISABILITY_SIPP_USERS_GUIDE_URL = (
+    "https://www2.census.gov/programs-surveys/sipp/tech-documentation/"
+    "methodology/2023_SIPP_Users_Guide_OCT24.pdf"
 )
 
 # Reuse the exact full-file coordinate already pinned by the SIPP vehicle,
@@ -116,25 +134,24 @@ SIPP_2023_CHILD_DISABILITY_LOCAL_PATH = (
     / "pu2023.csv"
 )
 
-# SSA SSI Monthly Statistics, May 2024, Table 1.  These constants are
-# calibration targets, not SIPP survey observations.  The monthly table gives
-# the under-18 total but no age-0--4 subtotal; 240,000 is the explicit age-curve
-# allocation requested by #453 and must not be described as an SSA observation.
-SSA_SSI_MONTHLY_MAY_2024_URL = (
-    "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-05/table01.html"
-)
-SSA_SSI_UNDER_18_RECIPIENT_TARGET = 983_176
-SSA_SSI_AGE_0_4_CASELOAD_TARGET = 240_000
-
 US_CHILD_DISABILITY_STAGE_NAME = "child_disability"
 US_CHILD_DISABILITY_OUTPUT_COLUMNS: tuple[str, ...] = ("is_disabled",)
 
-_OUTCOME_SOURCE_COLUMNS: tuple[str, ...] = (
-    "ECOGNIT",
+_CORE_CHILD_SOURCE_COLUMNS: tuple[str, ...] = (
     "EHEARING",
     "ESEEING",
+    "ECOGNIT",
     "EAMBULAT",
     "ESELFCARE",
+)
+_CHILD_SPECIFIC_SOURCE_COLUMNS: tuple[str, ...] = (
+    "EDDELAY",
+    "EPLAYDIF",
+    "ESCHOOLWK",
+)
+_OUTCOME_SOURCE_COLUMNS = (
+    *_CORE_CHILD_SOURCE_COLUMNS,
+    *_CHILD_SPECIFIC_SOURCE_COLUMNS,
 )
 SIPP_CHILD_DISABILITY_SOURCE_COLUMNS: tuple[str, ...] = (
     "SSUID",
@@ -146,6 +163,8 @@ SIPP_CHILD_DISABILITY_SOURCE_COLUMNS: tuple[str, ...] = (
     "ESEX",
     "TPTOTINC",
     "RSSI_MNYN",
+    "THHLDSTATUS",
+    "RDIS_ALT",
     *_OUTCOME_SOURCE_COLUMNS,
 )
 SIPP_CHILD_DISABILITY_MODEL_PREDICTORS: tuple[str, ...] = (
@@ -157,56 +176,102 @@ SIPP_CHILD_DISABILITY_MODEL_PREDICTORS: tuple[str, ...] = (
 _OUTPUT = US_CHILD_DISABILITY_OUTPUT_COLUMNS[0]
 _DONOR_WEIGHT_COLUMN = "sipp_weight"
 _HOUSEHOLD_INCOME_COLUMN = "household_income_proxy"
-_MIN_MODEL_AGE = 5
+_MIN_MODEL_AGE = 1
 _MAX_MODEL_AGE = 14
-_MAX_YOUNGEST_AGE = 4
+_MAX_EARLY_CHILD_AGE = 4
 _PERSON_SOURCE_ID_COLUMN = "person_source_id"
 _PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 _ASEC_SUPPORT_CHANNEL = "asec"
 _PUF_SUPPORT_CHANNEL = "puf_tax_detail"
 
-# Immutable-source audit, calculated over all 5--14 December rows.  A missing
-# difficulty response is not affirmative under the requested ``any == 1``
-# outcome; only three of 4,242 rows have any such missing item.
+# Immutable-source audit.  The exact reproducible filters are:
+#
+#   december = pu2023.query("MONTHCODE == 12")
+#   age_1_4 = december.query("1 <= TAGE <= 4")
+#   age_5_14 = december.query("5 <= TAGE <= 14")
+#   valid = RDIS_ALT in [1, 2]
+#   positive = any(EHEARING, ESEEING, ECOGNIT, EAMBULAT, ESELFCARE,
+#                  EDDELAY, EPLAYDIF, ESCHOOLWK) == 1
+#   core_positive = any(EHEARING, ESEEING, ECOGNIT, EAMBULAT,
+#                       ESELFCARE) == 1
+#   child_positive = any(EDDELAY, EPLAYDIF, ESCHOOLWK) == 1
+#   child_only = child_positive and not core_positive
+#   monthly_ssi = RSSI_MNYN == 1
+#
+# For each band, ``*_rows`` and ``*_weight`` are the count and WPFINWGT sum
+# before the RDIS_ALT universe filter; ``*_valid_*`` applies ``valid``;
+# ``*_missing_*`` applies its complement; ``*_positive_*`` applies
+# ``valid & positive``; and ``*_positive_rate`` divides positive weight by
+# valid weight.  The monthly-SSI ``all_rate`` divides by all band weight while
+# ``valid_rate`` divides by valid weight.  The child-only and SSI/positive
+# intersections use the named booleans above.  Age-0 support is queried with
+# ``TAGE == 0`` and counts any nonmissing outcome item or RDIS_ALT value.
+#
+# Census's dictionary universe is TAGE >= 1 and THHLDSTATUS in [1, 2].
+# Seven child movers (THHLDSTATUS == 4) are outside it and remain missing, not
+# negative.  On every valid age-1--14 row, ``positive`` exactly equals
+# ``RDIS_ALT == 1``.
 _PINNED_RAW_ROWS = 476_744
 _PINNED_DECEMBER_ROWS = 39_513
+_PINNED_AGE_0_ROWS = 203
+_PINNED_AGE_0_WEIGHT = 2_246_712.4918057
+_PINNED_AGE_0_OBSERVED_ITEM_ROWS = 0
+_PINNED_AGE_0_MONTHLY_SSI_ROWS = 0
+_PINNED_AGE_0_MONTHLY_SSI_WEIGHT = 0.0
+_PINNED_AGE_1_4_ROWS = 1_451
+_PINNED_AGE_1_4_WEIGHT = 14_919_709.707403801
+_PINNED_AGE_1_4_VALID_ROWS = 1_447
+_PINNED_AGE_1_4_VALID_WEIGHT = 14_861_539.117022298
+_PINNED_AGE_1_4_MISSING_ROWS = 4
+_PINNED_AGE_1_4_MISSING_WEIGHT = 58_170.590381500006
+_PINNED_AGE_1_4_POSITIVE_ROWS = 85
+_PINNED_AGE_1_4_POSITIVE_WEIGHT = 752_667.5853464998
+_PINNED_AGE_1_4_RATE = 0.05064533218395932
+_PINNED_AGE_1_4_MONTHLY_SSI_ROWS = 7
+_PINNED_AGE_1_4_MONTHLY_SSI_WEIGHT = 53_096.3144829
+_PINNED_AGE_1_4_MONTHLY_SSI_ALL_RATE = 0.0035588034569165464
+_PINNED_AGE_1_4_MONTHLY_SSI_VALID_RATE = 0.0035727332185994027
+_PINNED_AGE_1_4_CHILD_ONLY_ROWS = 63
+_PINNED_AGE_1_4_CHILD_ONLY_WEIGHT = 579_339.2190467998
+_PINNED_AGE_1_4_MONTHLY_SSI_POSITIVE_ROWS = 5
+_PINNED_AGE_1_4_MONTHLY_SSI_CORE_POSITIVE_ROWS = 0
 _PINNED_AGE_5_14_ROWS = 4_242
-_PINNED_AGE_5_14_WEIGHT = 40_772_887.197600
-_PINNED_ANY_ITEM_ROWS = 495
-_PINNED_ANY_ITEM_WEIGHT = 4_495_348.941131
-_PINNED_ANY_ITEM_RATE = 0.110253387732
+_PINNED_AGE_5_14_WEIGHT = 40_772_887.19759989
+_PINNED_AGE_5_14_VALID_ROWS = 4_239
+_PINNED_AGE_5_14_VALID_WEIGHT = 40_754_911.58143689
+_PINNED_AGE_5_14_MISSING_ROWS = 3
+_PINNED_AGE_5_14_MISSING_WEIGHT = 17_975.616163
+_PINNED_AGE_5_14_POSITIVE_ROWS = 567
+_PINNED_AGE_5_14_POSITIVE_WEIGHT = 5_074_723.2084883
+_PINNED_AGE_5_14_RATE = 0.1245180767561705
 _PINNED_AGE_5_14_MONTHLY_SSI_ROWS = 70
-_PINNED_AGE_5_14_MONTHLY_SSI_WEIGHT = 698_957.560971
-_PINNED_AGE_5_14_MONTHLY_SSI_RATE = 0.017142704601
-_PINNED_AGE_0_4_ROWS = 1_654
-_PINNED_AGE_0_4_WEIGHT = 17_166_422.199210
+_PINNED_AGE_5_14_MONTHLY_SSI_WEIGHT = 698_957.5609709
+_PINNED_AGE_5_14_MONTHLY_SSI_ALL_RATE = 0.017142704601307814
+_PINNED_AGE_5_14_MONTHLY_SSI_VALID_RATE = 0.01715026566980119
+_PINNED_AGE_5_14_CHILD_ONLY_ROWS = 72
+_PINNED_AGE_5_14_CHILD_ONLY_WEIGHT = 579_374.2673576999
+_PINNED_RDIS_ALT_UNIVERSE_MISMATCH_ROWS = 0
+_PINNED_RDIS_ALT_MISMATCH_ROWS = 0
 _PINNED_FLOAT_RTOL = 1e-10
 
-# Carry SIPP's observed functional-disability / SSI-receipt relationship into
-# the youngest band after replacing the SIPP receipt prevalence with #453's
-# explicit SSA caseload allocation:
-#   0.110253387732 * [(240,000 / 17,166,422.199210) / 0.017142704601]
-# The receipt denominator is the December monthly concept matching SSA's
-# monthly table:
-#   MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1,
-#   weighted by WPFINWGT.
-# The pinned pu2023.csv query yields 70 recipient rows with weighted mass
-# 698,957.560971 over 40,772,887.197600 age-5--14 person-weight.
-# This is a calibration choice, not a survey estimate or statutory threshold.
-US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE = round(
-    _PINNED_ANY_ITEM_RATE
-    * (
-        (SSA_SSI_AGE_0_4_CASELOAD_TARGET / _PINNED_AGE_0_4_WEIGHT)
-        / _PINNED_AGE_5_14_MONTHLY_SSI_RATE
-    ),
-    12,
+US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE = round(_PINNED_AGE_1_4_RATE, 12)
+US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE = round(_PINNED_AGE_5_14_RATE, 12)
+# SIPP has no disability observation below age 1.  Transport only the adjacent
+# observed band, and label it as a fallback rather than a survey observation.
+US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE = US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE
+_FINITE_DRAW_ABSOLUTE_TOLERANCE = 0.015
+US_CHILD_DISABILITY_AGE_0_SHARE_BAND = (
+    US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE - _FINITE_DRAW_ABSOLUTE_TOLERANCE,
+    US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE + _FINITE_DRAW_ABSOLUTE_TOLERANCE,
 )
-
-# The 5--14 gate directly brackets the SIPP any-item observation.  The 0--4
-# band preserves the reviewed +/-1.5 percentage-point finite-draw tolerance
-# around the corrected monthly-concept target.
-US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND = (0.10, 0.13)
-US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND = (0.075, 0.105)
+US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND = (
+    US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE - _FINITE_DRAW_ABSOLUTE_TOLERANCE,
+    US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE + _FINITE_DRAW_ABSOLUTE_TOLERANCE,
+)
+US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND = (
+    US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE - _FINITE_DRAW_ABSOLUTE_TOLERANCE,
+    US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE + _FINITE_DRAW_ABSOLUTE_TOLERANCE,
+)
 
 SIPP_CHILD_DISABILITY_READ_PARAMETERS: dict[str, object] = {
     "table": "sipp_person",
@@ -218,9 +283,23 @@ SIPP_CHILD_DISABILITY_READ_PARAMETERS: dict[str, object] = {
 SIPP_CHILD_DISABILITY_FIT_PARAMETERS: dict[str, object] = {
     "predictors": list(SIPP_CHILD_DISABILITY_MODEL_PREDICTORS),
     "target": _OUTPUT,
-    "target_rule": f"any({list(_OUTCOME_SOURCE_COLUMNS)}) == 1",
+    "target_rule": (
+        "Census RDIS_ALT child construction: any(EHEARING, ESEEING, "
+        "ECOGNIT, EAMBULAT, ESELFCARE, EDDELAY, EPLAYDIF, ESCHOOLWK) == 1"
+    ),
+    "target_source_items": list(_OUTCOME_SOURCE_COLUMNS),
+    "target_validation": "computed outcome == (RDIS_ALT == 1) on every valid row",
+    "valid_universe": "RDIS_ALT in [1, 2]",
     "weight": _DONOR_WEIGHT_COLUMN,
     "age_domain": [_MIN_MODEL_AGE, _MAX_MODEL_AGE],
+    "calibration_age_bands": {
+        "age_1_4": [1, 4],
+        "age_5_14": [5, 14],
+    },
+    "pinned_weighted_rates": {
+        "age_1_4": US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE,
+        "age_5_14": US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE,
+    },
     "classifier": "weighted_logistic_irls",
     "income_proxy": (
         "sum December TPTOTINC for age-15+ members within SSUID + "
@@ -228,23 +307,33 @@ SIPP_CHILD_DISABILITY_FIT_PARAMETERS: dict[str, object] = {
         "household-summed employment_income_before_lsr"
     ),
     "income_transform": "log1p_nonnegative_then_standardize",
-    "calibrate_receiver_intercept_to_sipp_weighted_rate": True,
+    "calibrate_receiver_intercept_to_sipp_weighted_rate_by_age_band": True,
     "assignment": "seeded_bernoulli_by_person_source_id",
     "seed_from_build_config": True,
 }
-SIPP_CHILD_DISABILITY_AGE_0_4_PARAMETERS: dict[str, object] = {
-    "age_domain": [0, _MAX_YOUNGEST_AGE],
-    "rate": US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE,
-    "rate_role": "calibration_target_not_survey_observation",
-    "ssa_under_18_recipient_target": SSA_SSI_UNDER_18_RECIPIENT_TARGET,
-    "ssa_age_0_4_caseload_target": SSA_SSI_AGE_0_4_CASELOAD_TARGET,
-    "ssa_source": SSA_SSI_MONTHLY_MAY_2024_URL,
-    "sipp_any_item_rate_age_5_14": _PINNED_ANY_ITEM_RATE,
-    "sipp_monthly_ssi_receipt_rate_age_5_14": (_PINNED_AGE_5_14_MONTHLY_SSI_RATE),
-    "sipp_monthly_ssi_receipt_query": (
-        "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, weighted by WPFINWGT"
+SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS: dict[str, object] = {
+    "age_domain": [0, 0],
+    "rate": US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE,
+    "rate_role": "adjacent_age_1_4_observed_rate_transport_for_unobserved_age_0",
+    "source_age_domain": [1, 4],
+    "source_rate_query": (
+        "MONTHCODE == 12 and 1 <= TAGE <= 4 and RDIS_ALT in [1, 2], "
+        "weighted mean of computed RDIS_ALT child item union"
     ),
-    "sipp_weighted_population_age_0_4": _PINNED_AGE_0_4_WEIGHT,
+    "age_0_support_query": (
+        "MONTHCODE == 12 and TAGE == 0: 203 rows; every child disability "
+        "item and RDIS_ALT is missing"
+    ),
+    "monthly_ssi_audit_queries": {
+        "age_1_4": (
+            "MONTHCODE == 12 and 1 <= TAGE <= 4 and RSSI_MNYN == 1, "
+            "weighted by WPFINWGT"
+        ),
+        "age_5_14": (
+            "MONTHCODE == 12 and 5 <= TAGE <= 14 and RSSI_MNYN == 1, "
+            "weighted by WPFINWGT"
+        ),
+    },
     "assignment": "seeded_bernoulli_by_person_source_id",
     "seed_from_build_config": True,
 }
@@ -272,7 +361,7 @@ def us_child_disability_stage_spec() -> SourceStageSpec:
     expected_operations = [
         ("read_table", SIPP_CHILD_DISABILITY_READ_PARAMETERS),
         ("fit_weighted_logistic", SIPP_CHILD_DISABILITY_FIT_PARAMETERS),
-        ("assign_binary_from_rate", SIPP_CHILD_DISABILITY_AGE_0_4_PARAMETERS),
+        ("assign_binary_from_rate", SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS),
     ]
     if [operation.kind for operation in spec.operations] != [
         kind for kind, _ in expected_operations
@@ -353,10 +442,29 @@ def _assert_pinned_audit(audit: dict[str, int | float]) -> None:
     expected_counts = {
         "raw_rows": _PINNED_RAW_ROWS,
         "december_rows": _PINNED_DECEMBER_ROWS,
+        "age_0_rows": _PINNED_AGE_0_ROWS,
+        "age_0_observed_item_rows": _PINNED_AGE_0_OBSERVED_ITEM_ROWS,
+        "age_0_monthly_ssi_rows": _PINNED_AGE_0_MONTHLY_SSI_ROWS,
+        "age_1_4_rows": _PINNED_AGE_1_4_ROWS,
+        "age_1_4_valid_rows": _PINNED_AGE_1_4_VALID_ROWS,
+        "age_1_4_missing_rows": _PINNED_AGE_1_4_MISSING_ROWS,
+        "age_1_4_positive_rows": _PINNED_AGE_1_4_POSITIVE_ROWS,
+        "age_1_4_child_only_rows": _PINNED_AGE_1_4_CHILD_ONLY_ROWS,
+        "age_1_4_monthly_ssi_rows": _PINNED_AGE_1_4_MONTHLY_SSI_ROWS,
+        "age_1_4_monthly_ssi_positive_rows": (
+            _PINNED_AGE_1_4_MONTHLY_SSI_POSITIVE_ROWS
+        ),
+        "age_1_4_monthly_ssi_core_positive_rows": (
+            _PINNED_AGE_1_4_MONTHLY_SSI_CORE_POSITIVE_ROWS
+        ),
         "age_5_14_rows": _PINNED_AGE_5_14_ROWS,
-        "any_item_rows": _PINNED_ANY_ITEM_ROWS,
+        "age_5_14_valid_rows": _PINNED_AGE_5_14_VALID_ROWS,
+        "age_5_14_missing_rows": _PINNED_AGE_5_14_MISSING_ROWS,
+        "age_5_14_positive_rows": _PINNED_AGE_5_14_POSITIVE_ROWS,
+        "age_5_14_child_only_rows": _PINNED_AGE_5_14_CHILD_ONLY_ROWS,
         "age_5_14_monthly_ssi_rows": _PINNED_AGE_5_14_MONTHLY_SSI_ROWS,
-        "age_0_4_rows": _PINNED_AGE_0_4_ROWS,
+        "rdis_alt_universe_mismatch_rows": (_PINNED_RDIS_ALT_UNIVERSE_MISMATCH_ROWS),
+        "rdis_alt_mismatch_rows": _PINNED_RDIS_ALT_MISMATCH_ROWS,
     }
     mismatches: dict[str, tuple[int | float, int | float]] = {
         key: (expected, audit[key])
@@ -364,12 +472,26 @@ def _assert_pinned_audit(audit: dict[str, int | float]) -> None:
         if audit[key] != expected
     }
     expected_floats = {
+        "age_0_weight": _PINNED_AGE_0_WEIGHT,
+        "age_0_monthly_ssi_weight": _PINNED_AGE_0_MONTHLY_SSI_WEIGHT,
+        "age_1_4_weight": _PINNED_AGE_1_4_WEIGHT,
+        "age_1_4_valid_weight": _PINNED_AGE_1_4_VALID_WEIGHT,
+        "age_1_4_missing_weight": _PINNED_AGE_1_4_MISSING_WEIGHT,
+        "age_1_4_positive_weight": _PINNED_AGE_1_4_POSITIVE_WEIGHT,
+        "age_1_4_positive_rate": _PINNED_AGE_1_4_RATE,
+        "age_1_4_child_only_weight": _PINNED_AGE_1_4_CHILD_ONLY_WEIGHT,
+        "age_1_4_monthly_ssi_weight": _PINNED_AGE_1_4_MONTHLY_SSI_WEIGHT,
+        "age_1_4_monthly_ssi_all_rate": (_PINNED_AGE_1_4_MONTHLY_SSI_ALL_RATE),
+        "age_1_4_monthly_ssi_valid_rate": (_PINNED_AGE_1_4_MONTHLY_SSI_VALID_RATE),
         "age_5_14_weight": _PINNED_AGE_5_14_WEIGHT,
-        "any_item_weight": _PINNED_ANY_ITEM_WEIGHT,
-        "any_item_rate": _PINNED_ANY_ITEM_RATE,
+        "age_5_14_valid_weight": _PINNED_AGE_5_14_VALID_WEIGHT,
+        "age_5_14_missing_weight": _PINNED_AGE_5_14_MISSING_WEIGHT,
+        "age_5_14_positive_weight": _PINNED_AGE_5_14_POSITIVE_WEIGHT,
+        "age_5_14_positive_rate": _PINNED_AGE_5_14_RATE,
+        "age_5_14_child_only_weight": _PINNED_AGE_5_14_CHILD_ONLY_WEIGHT,
         "age_5_14_monthly_ssi_weight": _PINNED_AGE_5_14_MONTHLY_SSI_WEIGHT,
-        "age_5_14_monthly_ssi_rate": _PINNED_AGE_5_14_MONTHLY_SSI_RATE,
-        "age_0_4_weight": _PINNED_AGE_0_4_WEIGHT,
+        "age_5_14_monthly_ssi_all_rate": (_PINNED_AGE_5_14_MONTHLY_SSI_ALL_RATE),
+        "age_5_14_monthly_ssi_valid_rate": (_PINNED_AGE_5_14_MONTHLY_SSI_VALID_RATE),
     }
     for key, expected in expected_floats.items():
         actual = float(audit[key])
@@ -392,7 +514,7 @@ def load_sipp_2023_child_disability_donor(
     """Load December SIPP children and construct the three-feature donor.
 
     All December persons are retained until residence income is aggregated;
-    only then is the age-5--14 training universe selected.  Tests pass a tiny
+    only then is the valid age-1--14 training universe selected.  Tests pass a tiny
     pipe-delimited fixture and disable artifact pins.
     """
 
@@ -472,14 +594,57 @@ def load_sipp_2023_child_disability_donor(
         .transform("sum")
     )
 
-    outcome_matrix = np.column_stack(
-        [_numeric(december, column).eq(1.0) for column in _OUTCOME_SOURCE_COLUMNS]
+    outcome = pd.Series(
+        np.column_stack(
+            [_numeric(december, column).eq(1.0) for column in _OUTCOME_SOURCE_COLUMNS]
+        ).any(axis=1),
+        index=december.index,
     )
-    any_item = outcome_matrix.any(axis=1)
-    received_monthly_ssi = _numeric(december, "RSSI_MNYN").eq(1.0).to_numpy()
-    age_5_14 = age.between(_MIN_MODEL_AGE, _MAX_MODEL_AGE, inclusive="both")
-    age_0_4 = age.between(0, _MAX_YOUNGEST_AGE, inclusive="both")
-    model_eligible = age_5_14 & weight.gt(0.0)
+    core_outcome = pd.Series(
+        np.column_stack(
+            [
+                _numeric(december, column).eq(1.0)
+                for column in _CORE_CHILD_SOURCE_COLUMNS
+            ]
+        ).any(axis=1),
+        index=december.index,
+    )
+    child_specific_outcome = pd.Series(
+        np.column_stack(
+            [
+                _numeric(december, column).eq(1.0)
+                for column in _CHILD_SPECIFIC_SOURCE_COLUMNS
+            ]
+        ).any(axis=1),
+        index=december.index,
+    )
+    child_only_outcome = child_specific_outcome & ~core_outcome
+    received_monthly_ssi = _numeric(december, "RSSI_MNYN").eq(1.0)
+    household_status = _numeric(december, "THHLDSTATUS")
+    rdis_alt = _numeric(december, "RDIS_ALT")
+    expected_rdis_alt_universe = age.ge(1.0) & household_status.isin([1.0, 2.0])
+    valid_rdis_alt = rdis_alt.isin([1.0, 2.0])
+    rdis_alt_universe_mismatch = expected_rdis_alt_universe.ne(valid_rdis_alt)
+    if rdis_alt_universe_mismatch.any():
+        rows = np.flatnonzero(rdis_alt_universe_mismatch.to_numpy())[:5].tolist()
+        raise ValueError(
+            "SIPP child-disability RDIS_ALT observed universe drifted from "
+            "TAGE >= 1 and THHLDSTATUS in [1, 2]; "
+            f"mismatched December row(s): {rows}."
+        )
+
+    age_0 = age.eq(0.0)
+    age_1_4 = age.between(1.0, 4.0, inclusive="both")
+    age_5_14 = age.between(5.0, 14.0, inclusive="both")
+    model_band = age.between(_MIN_MODEL_AGE, _MAX_MODEL_AGE, inclusive="both")
+    rdis_alt_mismatch = model_band & valid_rdis_alt & outcome.ne(rdis_alt.eq(1.0))
+    if rdis_alt_mismatch.any():
+        rows = np.flatnonzero(rdis_alt_mismatch.to_numpy())[:5].tolist()
+        raise ValueError(
+            "Computed SIPP child-disability item union disagrees with RDIS_ALT; "
+            f"mismatched valid age-1--14 row(s): {rows}."
+        )
+    model_eligible = model_band & valid_rdis_alt & weight.gt(0.0)
 
     donor = pd.DataFrame(
         {
@@ -488,7 +653,7 @@ def load_sipp_2023_child_disability_donor(
             _HOUSEHOLD_INCOME_COLUMN: annual_household_income.loc[
                 model_eligible
             ].to_numpy(dtype=np.float64),
-            _OUTPUT: any_item[model_eligible.to_numpy()],
+            _OUTPUT: outcome.loc[model_eligible].to_numpy(),
             _DONOR_WEIGHT_COLUMN: weight.loc[model_eligible].to_numpy(dtype=np.float64),
         }
     ).reset_index(drop=True)
@@ -497,24 +662,60 @@ def load_sipp_2023_child_disability_donor(
             "SIPP child-disability donor must contain both outcome classes."
         )
 
-    band_weight = float(weight.loc[age_5_14].sum())
-    positive_weight = float(weight.loc[age_5_14 & any_item].sum())
-    monthly_ssi_weight = float(weight.loc[age_5_14 & received_monthly_ssi].sum())
+    def band_audit(prefix: str, band: pd.Series) -> dict[str, int | float]:
+        valid = band & valid_rdis_alt
+        missing = band & ~valid_rdis_alt
+        positive = valid & outcome
+        monthly_ssi = band & received_monthly_ssi
+        total_weight = float(weight.loc[band].sum())
+        valid_weight = float(weight.loc[valid].sum())
+        positive_weight = float(weight.loc[positive].sum())
+        monthly_ssi_weight = float(weight.loc[monthly_ssi].sum())
+        return {
+            f"{prefix}_rows": int(band.sum()),
+            f"{prefix}_weight": total_weight,
+            f"{prefix}_valid_rows": int(valid.sum()),
+            f"{prefix}_valid_weight": valid_weight,
+            f"{prefix}_missing_rows": int(missing.sum()),
+            f"{prefix}_missing_weight": float(weight.loc[missing].sum()),
+            f"{prefix}_positive_rows": int(positive.sum()),
+            f"{prefix}_positive_weight": positive_weight,
+            f"{prefix}_positive_rate": positive_weight / valid_weight,
+            f"{prefix}_child_only_rows": int((valid & child_only_outcome).sum()),
+            f"{prefix}_child_only_weight": float(
+                weight.loc[valid & child_only_outcome].sum()
+            ),
+            f"{prefix}_monthly_ssi_rows": int(monthly_ssi.sum()),
+            f"{prefix}_monthly_ssi_weight": monthly_ssi_weight,
+            f"{prefix}_monthly_ssi_all_rate": monthly_ssi_weight / total_weight,
+            f"{prefix}_monthly_ssi_valid_rate": monthly_ssi_weight / valid_weight,
+        }
+
     audit: dict[str, int | float] = {
         "raw_rows": raw_rows,
         "december_rows": len(december),
-        "age_5_14_rows": int(age_5_14.sum()),
-        "age_5_14_weight": band_weight,
-        "any_item_rows": int(np.count_nonzero(age_5_14.to_numpy() & any_item)),
-        "any_item_weight": positive_weight,
-        "any_item_rate": positive_weight / band_weight,
-        "age_5_14_monthly_ssi_rows": int(
-            np.count_nonzero(age_5_14.to_numpy() & received_monthly_ssi)
+        "age_0_rows": int(age_0.sum()),
+        "age_0_weight": float(weight.loc[age_0].sum()),
+        "age_0_observed_item_rows": int(
+            december.loc[age_0, [*_OUTCOME_SOURCE_COLUMNS, "RDIS_ALT"]]
+            .notna()
+            .any(axis=1)
+            .sum()
         ),
-        "age_5_14_monthly_ssi_weight": monthly_ssi_weight,
-        "age_5_14_monthly_ssi_rate": monthly_ssi_weight / band_weight,
-        "age_0_4_rows": int(age_0_4.sum()),
-        "age_0_4_weight": float(weight.loc[age_0_4].sum()),
+        "age_0_monthly_ssi_rows": int((age_0 & received_monthly_ssi).sum()),
+        "age_0_monthly_ssi_weight": float(
+            weight.loc[age_0 & received_monthly_ssi].sum()
+        ),
+        **band_audit("age_1_4", age_1_4),
+        "age_1_4_monthly_ssi_positive_rows": int(
+            (age_1_4 & valid_rdis_alt & received_monthly_ssi & outcome).sum()
+        ),
+        "age_1_4_monthly_ssi_core_positive_rows": int(
+            (age_1_4 & valid_rdis_alt & received_monthly_ssi & core_outcome).sum()
+        ),
+        **band_audit("age_5_14", age_5_14),
+        "rdis_alt_universe_mismatch_rows": int(rdis_alt_universe_mismatch.sum()),
+        "rdis_alt_mismatch_rows": int(rdis_alt_mismatch.sum()),
     }
     pinned_transform = bool(
         actual_size == SIPP_2023_CHILD_DISABILITY_DONOR_SIZE_BYTES
@@ -856,28 +1057,67 @@ def with_us_child_disability_inputs(
     donor_weight = pd.to_numeric(
         sipp_donor[_DONOR_WEIGHT_COLUMN], errors="coerce"
     ).to_numpy(np.float64)
-    sipp_target_rate = float(np.average(donor_outcome, weights=donor_weight))
+    donor_age = pd.to_numeric(sipp_donor["age"], errors="coerce").to_numpy(np.float64)
+
+    def donor_rate(low: int, high: int) -> float:
+        donor_band = (donor_age >= low) & (donor_age <= high)
+        if not donor_band.any() or float(donor_weight[donor_band].sum()) <= 0.0:
+            raise ValueError(
+                "SIPP child-disability donor has no positive-weight support for "
+                f"ages {low}--{high}."
+            )
+        return float(
+            np.average(donor_outcome[donor_band], weights=donor_weight[donor_band])
+        )
 
     result = current.copy()
-    age_5_14 = (age >= _MIN_MODEL_AGE) & (age <= _MAX_MODEL_AGE)
-    probability_5_14 = _calibrate_probabilities(
-        model_probability[age_5_14],
-        current_true=current[age_5_14],
-        weights=weights[age_5_14],
-        target_share=sipp_target_rate,
-    )
-    draws_5_14 = _stable_uniform_draws(keys.loc[age_5_14], seed=seed, stream="age_5_14")
-    result[age_5_14] |= draws_5_14 < probability_5_14
 
-    age_0_4 = (age >= 0.0) & (age <= _MAX_YOUNGEST_AGE)
-    probability_0_4 = _calibrate_probabilities(
-        np.full(int(age_0_4.sum()), US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE),
-        current_true=current[age_0_4],
-        weights=weights[age_0_4],
-        target_share=US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE,
+    def assign_modeled_band(
+        *,
+        low: int,
+        high: int,
+        target_rate: float,
+        stream: str,
+    ) -> None:
+        receiver_band = (age >= low) & (age <= high)
+        if not receiver_band.any():
+            return
+        probability = _calibrate_probabilities(
+            model_probability[receiver_band],
+            current_true=current[receiver_band],
+            weights=weights[receiver_band],
+            target_share=target_rate,
+        )
+        draws = _stable_uniform_draws(
+            keys.loc[receiver_band],
+            seed=seed,
+            stream=stream,
+        )
+        result[receiver_band] |= draws < probability
+
+    assign_modeled_band(
+        low=1,
+        high=4,
+        target_rate=donor_rate(1, 4),
+        stream="age_1_4",
     )
-    draws_0_4 = _stable_uniform_draws(keys.loc[age_0_4], seed=seed, stream="age_0_4")
-    result[age_0_4] |= draws_0_4 < probability_0_4
+    assign_modeled_band(
+        low=5,
+        high=14,
+        target_rate=donor_rate(5, 14),
+        stream="age_5_14",
+    )
+
+    age_0 = age == 0.0
+    if age_0.any():
+        probability_0 = _calibrate_probabilities(
+            np.full(int(age_0.sum()), US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE),
+            current_true=current[age_0],
+            weights=weights[age_0],
+            target_share=US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE,
+        )
+        draws_0 = _stable_uniform_draws(keys.loc[age_0], seed=seed, stream="age_0")
+        result[age_0] |= draws_0 < probability_0
 
     # The operation is additive: no pre-existing True is ever cleared.
     if np.any(current[under_15] & ~result[under_15]):
@@ -900,7 +1140,7 @@ def with_us_child_disability_inputs(
 
 
 def us_child_disability_summary(frame: Frame) -> dict[str, object]:
-    """Return weighted child-disability shares for the two owned age bands."""
+    """Return weighted child-disability shares for the three owned age bands."""
 
     person = frame.table("person")
     age = pd.to_numeric(person["age"], errors="coerce").to_numpy(np.float64)
@@ -919,20 +1159,27 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
         unique_count = int(pd.Series(values[mask & np.isfinite(values)]).nunique())
         return share, band_weight, unique_count
 
-    age_0_4 = (age >= 0.0) & (age <= _MAX_YOUNGEST_AGE)
-    age_5_14 = (age >= _MIN_MODEL_AGE) & (age <= _MAX_MODEL_AGE)
-    share_0_4, weight_0_4, unique_0_4 = band_summary(age_0_4)
+    age_0 = age == 0.0
+    age_1_4 = (age >= 1.0) & (age <= _MAX_EARLY_CHILD_AGE)
+    age_5_14 = (age >= 5.0) & (age <= _MAX_MODEL_AGE)
+    share_0, weight_0, unique_0 = band_summary(age_0)
+    share_1_4, weight_1_4, unique_1_4 = band_summary(age_1_4)
     share_5_14, weight_5_14, unique_5_14 = band_summary(age_5_14)
     return {
-        "age_0_4_disabled_share": share_0_4,
-        "age_0_4_weight": weight_0_4,
-        "age_0_4_unique_count": unique_0_4,
-        "age_0_4_target_rate": US_CHILD_DISABILITY_AGE_0_4_TARGET_RATE,
-        "age_0_4_share_band": list(US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND),
+        "age_0_disabled_share": share_0,
+        "age_0_weight": weight_0,
+        "age_0_unique_count": unique_0,
+        "age_0_fallback_rate": US_CHILD_DISABILITY_AGE_0_FALLBACK_RATE,
+        "age_0_share_band": list(US_CHILD_DISABILITY_AGE_0_SHARE_BAND),
+        "age_1_4_disabled_share": share_1_4,
+        "age_1_4_weight": weight_1_4,
+        "age_1_4_unique_count": unique_1_4,
+        "age_1_4_sipp_observed_rate": US_CHILD_DISABILITY_AGE_1_4_TARGET_RATE,
+        "age_1_4_share_band": list(US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND),
         "age_5_14_disabled_share": share_5_14,
         "age_5_14_weight": weight_5_14,
         "age_5_14_unique_count": unique_5_14,
-        "age_5_14_sipp_observed_rate": _PINNED_ANY_ITEM_RATE,
+        "age_5_14_sipp_observed_rate": US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE,
         "age_5_14_share_band": list(US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND),
         "missing_or_nonfinite_count": int(
             np.count_nonzero(owned & ~np.isfinite(values))
@@ -972,11 +1219,18 @@ def us_child_disability_signal_gate(
         )
     for label, share_key, weight_key, unique_key, band in (
         (
-            "0-4",
-            "age_0_4_disabled_share",
-            "age_0_4_weight",
-            "age_0_4_unique_count",
-            US_CHILD_DISABILITY_AGE_0_4_SHARE_BAND,
+            "0",
+            "age_0_disabled_share",
+            "age_0_weight",
+            "age_0_unique_count",
+            US_CHILD_DISABILITY_AGE_0_SHARE_BAND,
+        ),
+        (
+            "1-4",
+            "age_1_4_disabled_share",
+            "age_1_4_weight",
+            "age_1_4_unique_count",
+            US_CHILD_DISABILITY_AGE_1_4_SHARE_BAND,
         ),
         (
             "5-14",
@@ -1019,12 +1273,20 @@ def us_child_disability_signal_gate(
     if input_frame is not None:
         input_summary = us_child_disability_summary(input_frame)
         details["weighted_child_is_disabled_share_change"] = {
-            "age_0_4": {
-                "before": input_summary["age_0_4_disabled_share"],
-                "after": summary["age_0_4_disabled_share"],
+            "age_0": {
+                "before": input_summary["age_0_disabled_share"],
+                "after": summary["age_0_disabled_share"],
                 "absolute_change": (
-                    float(summary["age_0_4_disabled_share"])
-                    - float(input_summary["age_0_4_disabled_share"])
+                    float(summary["age_0_disabled_share"])
+                    - float(input_summary["age_0_disabled_share"])
+                ),
+            },
+            "age_1_4": {
+                "before": input_summary["age_1_4_disabled_share"],
+                "after": summary["age_1_4_disabled_share"],
+                "absolute_change": (
+                    float(summary["age_1_4_disabled_share"])
+                    - float(input_summary["age_1_4_disabled_share"])
                 ),
             },
             "age_5_14": {
