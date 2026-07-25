@@ -1598,6 +1598,7 @@ def _target_frame_checkpoint_identity(
     weeks_unemployed_source_sha256: str,
     congressional_district_vintage_crosswalk_sha256: object,
     selection_mass_protections: tuple[str, ...] = (),
+    ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
     identity: dict[str, object] = {
         "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
@@ -1614,6 +1615,17 @@ def _target_frame_checkpoint_identity(
             None
             if congressional_district_vintage_crosswalk_sha256 is None
             else str(congressional_district_vintage_crosswalk_sha256)
+        ),
+        # The SSI prior-weight basis (#524) changes the take-up flags the
+        # materialized target frame is built on, but arrives via a flag the
+        # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
+        # and solved on the other basis's rows (populace#543, instance 2).
+        # Unconditional None-able key — v8 starts a fresh checkpoint world,
+        # so no legacy-identity preservation applies.
+        "ssi_take_up_prior_weight_basis_sha256": (
+            None
+            if ssi_take_up_prior_weight_basis_sha256 is None
+            else str(ssi_take_up_prior_weight_basis_sha256)
         ),
     }
     if selection_mass_protections:
@@ -8545,6 +8557,11 @@ def main() -> None:
             congressional_district_vintage_crosswalk_metadata or {}
         ).get("sha256"),
         selection_mass_protections=selection_mass_protections,
+        ssi_take_up_prior_weight_basis_sha256=(
+            None
+            if ssi_take_up_prior_basis is None
+            else ssi_take_up_prior_basis.source_sha256
+        ),
     )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,

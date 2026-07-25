@@ -1,1 +1,1 @@
-Bump the target-frame materializer version to 8 so release checkpoints written before the #539 ORG full-year-equivalence stage cannot be silently reused, with a regression pinning the stale-version rejection path.
+Bump the target-frame materializer version to 8 and make the SSI prior-weight basis identity-bearing, so release checkpoints cannot be silently reused across the #539 ORG rewrite or across --ssi-take-up-prior-weight-basis variation; regressions pin both rejection paths.

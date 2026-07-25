@@ -120,6 +120,9 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     # inputs before materialization; pre-#539 checkpoints must not be
     # reused (populace#543).
     assert identity["materializer_version"] == 8
+    # The SSI prior-weight basis is identity-bearing (populace#543 instance
+    # 2): unflagged runs carry the key as None.
+    assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
     assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
     path = tmp_path / "target_frame_checkpoint.h5"
 
@@ -225,6 +228,36 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     )
 
     assert loaded is None
+
+    # Instance 2 of the same class (populace#543): a checkpoint written by a
+    # run without --ssi-take-up-prior-weight-basis must not serve a run that
+    # passes it (O attempt 3 warm-hit attempt 2's checkpoint and solved on
+    # the other basis's SSI rows).
+    basis_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
+    )
+    basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
+    builder._write_target_frame_checkpoint(
+        basis_path,
+        frame=frame,
+        identity=identity,
+        compilation={"declared_targets": 1},
+    )
+
+    loaded_with_basis = builder._read_target_frame_checkpoint(
+        basis_path,
+        identity=basis_identity,
+        target_specs=(target,),
+    )
+
+    assert loaded_with_basis is None
 
 
 def test_ssi_candidate_amount_uses_december_person_values() -> None:
