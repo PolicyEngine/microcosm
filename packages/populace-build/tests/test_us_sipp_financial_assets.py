@@ -7,6 +7,7 @@ import hashlib
 import numpy as np
 import pandas as pd
 
+import populace.build.us_runtime.sipp_financial_assets as sipp_financial_assets_module
 from populace.build.us_runtime.sipp_financial_assets import (
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
@@ -277,6 +278,45 @@ def test_fetch_rejects_an_implicit_local_mismatch_then_uses_the_pinned_hub(
 
     assert resolved == downloaded
     assert len(calls) == 1
+
+
+def test_fetch_skips_an_unreadable_implicit_local_candidate(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    local = tmp_path / "unreadable-pu2023.csv"
+    downloaded = tmp_path / "downloaded-pu2023.csv"
+    local.write_bytes(b"evil")
+    downloaded.write_bytes(b"good")
+    expected_sha256 = hashlib.sha256(b"good").hexdigest()
+
+    monkeypatch.setattr(
+        huggingface_hub,
+        "hf_hub_download",
+        lambda **kwargs: str(downloaded),
+    )
+
+    def fake_sha256(path):
+        if path == local:
+            raise OSError("permission denied")
+        return expected_sha256
+
+    monkeypatch.setattr(
+        sipp_financial_assets_module,
+        "_sha256_file",
+        fake_sha256,
+    )
+
+    assert (
+        fetch_sipp_2023_financial_asset_donor(
+            cache_dir=tmp_path / "cache",
+            local_path=local,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=4,
+        )
+        == downloaded
+    )
 
 
 def test_target_balanced_cap_pins_archived_sampling_seed() -> None:

@@ -17,7 +17,8 @@
       "uc_hh_0_children",
       "uc_hh_1_child",
       "uc_hh_2_children",
-      "uc_hh_3plus_children"
+      "uc_hh_3plus_children",
+      "households"
     ],
     "la": [
       "hmrc/self_employment_income/amount",
@@ -40,7 +41,8 @@
       "tenure/owned_mortgage",
       "tenure/private_rent",
       "tenure/social_rent",
-      "rent/private_rent"
+      "rent/private_rent",
+      "households"
     ]
   },
   "area_types": [
@@ -84,6 +86,13 @@
       "rule": "The runtime maps benefit-unit-level UC receipt to household grain: a physical household containing two UC benefit units contributes 2 to uc_households but 1 to a child band. DWP UC statistics count UC claim households, which align with benefit units rather than physical FRS households. Binding must declare the grain crosswalk (or change the runtime metric) before either UC family enters a solve."
     },
     {
+      "authority": "ONS/NRS/NISRA statistical disclosure control documentation; populace#495 scoping (cross-family review measurement).",
+      "enforcement": "review_required_before_binding",
+      "fence_id": "census_disclosure_control_noise",
+      "fenced_fact_count": null,
+      "rule": "All three census household-count legs are disclosure-controlled (ONS/NRS cell-key perturbation; NISRA flexible-table-builder controls), so area counts carry small deliberate noise and do not add exactly across grains (measured constituency-sum vs national-total deltas at review: E&W +105, Scotland -554, NI +3). Binding treats the published counts as the target values with that noise documented \u2014 never as exact controls \u2014 and any cross-grain reconciliation must name which grain wins."
+    },
+    {
       "authority": "FRS background and methodology (private-household universe); ONS population estimates methodology (communal-establishment population); populace#495 scoping (cross-family review finding).",
       "enforcement": "review_required_before_binding",
       "fence_id": "population_universe_private_households",
@@ -113,6 +122,18 @@
       "sources": [
         "ons_pcon_population_by_age",
         "nomis_lad_population_single_year_age"
+      ]
+    },
+    {
+      "adjudications": [
+        "census_disclosure_control_noise"
+      ],
+      "description": "Weighted household counts by area, bound to census occupied-household totals summed from the sha-pinned UK OA ladder artifact (constituency_household_targets / local_authority_household_targets). Universe-compatible with the FRS instrument: census occupied households match the survey's own household frame, so the person-universe adjudication does not bind here.",
+      "family": "census_households",
+      "sources": [
+        "nomis_ts041_ew_oa_households",
+        "nrs_census_2022_index",
+        "nisra_dz21_households"
       ]
     },
     {
@@ -260,6 +281,15 @@
       ],
       "family": "hmrc_income_by_area",
       "name": "hmrc/self_employment_income/count",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "census_households",
+      "name": "households",
       "status": "bound_in_code"
     },
     {
@@ -416,6 +446,48 @@
         "constituency",
         "la"
       ],
+      "latest_vintage": "Census Day 2021-03-21",
+      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py (recorded in the artifact's source_files map).",
+      "product": "Census 2021 table TS041 (number of households), England and Wales, output-area grain \u2014 the E&W leg of the ladder's household counts.",
+      "publisher": "Office for National Statistics (via Nomis)",
+      "source_id": "nomis_ts041_ew_oa_households",
+      "status": "pinned_in_ladder",
+      "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
+      "latest_vintage": "Census Day 2022-03-20",
+      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; the in-zip specification defines HouseholdCount as the 2022 Census occupied household count.",
+      "product": "Census 2022 index zip: Postcode_To_OA.csv census occupied household counts (cell-key perturbed), summed by OA2022 \u2014 the Scotland leg of the ladder's household counts.",
+      "publisher": "National Records of Scotland",
+      "source_id": "nrs_census_2022_index",
+      "status": "pinned_in_ladder",
+      "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
+      "latest_vintage": "Census Day 2021-03-21",
+      "notes": "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py.",
+      "product": "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain \u2014 the NI leg of the ladder's household counts.",
+      "publisher": "Northern Ireland Statistics and Research Agency",
+      "source_id": "nisra_dz21_households",
+      "status": "pinned_in_ladder",
+      "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+      "verified_on": "2026-07-22"
+    },
+    {
+      "geographies": [
+        "constituency",
+        "la"
+      ],
       "latest_vintage": "UC statistics release cadence per DWP schedule (next noted release 2026-08-18 at verification)",
       "notes": "Exact table definitions (households vs people, child-count bands, constituency vintage) are chosen inside the tool and must be pinned per tabulation at binding time. DWP UC official statistics cover Great Britain: Northern Ireland Universal Credit statistics are published separately by the NI Department for Communities and are not yet documented here, so NI has no declared supplier for this family. DWP counts UC claim households \u2014 see the uc_unit_vs_household_grain adjudication.",
       "product": "Stat-Xplore Universal Credit statistics: households and people on UC, tabulated by Westminster parliamentary constituency or local authority, with family-type/child breakdowns built as custom tabulations.",
@@ -469,6 +541,7 @@
   "status_definitions": {
     "bound_in_code": "The household-side metric is computed by local_targets.compute_household_metrics today.",
     "documented_unpinned": "The official product exists and was verified at the recorded URL on verified_on, but no exact table, vintage, or hash is pinned; binding work pins it per family.",
+    "pinned_in_ladder": "The product is downloaded and sha-pinned per build by the UK OA ladder artifact tool, which records every source hash in the artifact metadata; target values derive from the artifact's own sums.",
     "review_required_before_binding": "The fence is a reviewed adjudication requirement recorded for binding work; execution-time enforcement in the local solve configuration lands with the solve-doctrine increment of populace#495."
   }
 }

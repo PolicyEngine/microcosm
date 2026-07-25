@@ -20,9 +20,10 @@ Design rules:
   Ledger target-profile-driven surfaces are governed by their profile
   contract and are explicitly out of scope here.
 * **Reviewed pointers, not scraped claims.** Source rows document official
-  products verified by a human-reviewed fetch on ``verified_on``; they are
-  ``documented_unpinned`` until a binding increment pins exact tables with
-  hashes, mirroring the HMRC/SPI source-contract discipline.
+  products verified by a human-reviewed fetch on ``verified_on``. They start
+  ``documented_unpinned`` and move to ``pinned_in_ladder`` when a build
+  artifact sha-pins them per build, mirroring the HMRC/SPI source-contract
+  discipline.
 * **Fences by reference, enforcement declared.** The banded HMRC facts stay
   fenced exactly as the national replay adjudicated them
   (``FULL_FRS_TI_BAND_FENCE_ID``, ``HMRC_SPI_TARGET_RECORD_COUNT`` are
@@ -50,6 +51,7 @@ __all__ = [
     "CENSUS_SCHEMA_VERSION",
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
+    "SOURCE_STATUS_PINNED_IN_LADDER",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
     "committed_uk_local_target_census_path",
@@ -63,6 +65,7 @@ CENSUS_RESOURCE = "uk_local_target_census.json"
 
 METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
+SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
 #: Review date for every source row below: each URL was fetched and its
@@ -74,6 +77,7 @@ _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
 _BHC_AHC_FENCE_ID = "ons_bhc_ahc_noncomparable"
 _UC_GRAIN_FENCE_ID = "uc_unit_vs_household_grain"
 _POPULATION_UNIVERSE_FENCE_ID = "population_universe_private_households"
+_CENSUS_DISCLOSURE_FENCE_ID = "census_disclosure_control_noise"
 
 #: Exact metric names mapping to a census family. Matching is equality only,
 #: so a near-miss such as ``uc_householdsX`` fails closed instead of
@@ -85,6 +89,10 @@ _EXACT_FAMILY_RULES: dict[str, str] = {
 
 #: Metric-name prefixes mapping to a census family. Every prefix ends at a
 #: separator so it cannot swallow near-miss sibling names.
+#: Exact names continued: the census household-count family is bound via
+#: the ladder artifact rather than an in-code engine metric alone.
+_EXACT_FAMILY_RULES["households"] = "census_households"
+
 _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
     ("hmrc/", "hmrc_income_by_area"),
     ("age/", "age_structure"),
@@ -114,6 +122,24 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
             "nomis_lad_population_single_year_age",
         ],
         "adjudications": [_POPULATION_UNIVERSE_FENCE_ID],
+    },
+    {
+        "family": "census_households",
+        "description": (
+            "Weighted household counts by area, bound to census occupied-"
+            "household totals summed from the sha-pinned UK OA ladder "
+            "artifact (constituency_household_targets / "
+            "local_authority_household_targets). Universe-compatible with "
+            "the FRS instrument: census occupied households match the "
+            "survey's own household frame, so the person-universe "
+            "adjudication does not bind here."
+        ),
+        "sources": [
+            "nomis_ts041_ew_oa_households",
+            "nrs_census_2022_index",
+            "nisra_dz21_households",
+        ],
+        "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
     },
     {
         "family": "uc_households",
@@ -221,6 +247,57 @@ _SOURCES: tuple[dict[str, Any], ...] = (
             "usual-resident population — see the "
             "population_universe_private_households adjudication."
         ),
+    },
+    {
+        "source_id": "nomis_ts041_ew_oa_households",
+        "publisher": "Office for National Statistics (via Nomis)",
+        "product": (
+            "Census 2021 table TS041 (number of households), England and "
+            "Wales, output-area grain — the E&W leg of the ladder's "
+            "household counts."
+        ),
+        "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2021-03-21",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
+            "(recorded in the artifact's source_files map)."
+        ),
+    },
+    {
+        "source_id": "nrs_census_2022_index",
+        "publisher": "National Records of Scotland",
+        "product": (
+            "Census 2022 index zip: Postcode_To_OA.csv census occupied "
+            "household counts (cell-key perturbed), summed by OA2022 — the "
+            "Scotland leg of the ladder's household counts."
+        ),
+        "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2022-03-20",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; "
+            "the in-zip specification defines HouseholdCount as the 2022 "
+            "Census occupied household count."
+        ),
+    },
+    {
+        "source_id": "nisra_dz21_households",
+        "publisher": "Northern Ireland Statistics and Research Agency",
+        "product": (
+            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
+            "the NI leg of the ladder's household counts."
+        ),
+        "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+        "geographies": ["constituency", "la"],
+        "latest_vintage": "Census Day 2021-03-21",
+        "status": SOURCE_STATUS_PINNED_IN_LADDER,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": ("Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py."),
     },
     {
         "source_id": "dwp_stat_xplore_uc",
@@ -416,6 +493,25 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "fence_id": _CENSUS_DISCLOSURE_FENCE_ID,
+        "fenced_fact_count": None,
+        "enforcement": FENCE_ENFORCEMENT_REVIEW,
+        "rule": (
+            "All three census household-count legs are disclosure-controlled "
+            "(ONS/NRS cell-key perturbation; NISRA flexible-table-builder "
+            "controls), so area counts carry small deliberate noise and do "
+            "not add exactly across grains (measured constituency-sum vs "
+            "national-total deltas at review: E&W +105, Scotland -554, NI "
+            "+3). Binding treats the published counts as the target values "
+            "with that noise documented — never as exact controls — and any "
+            "cross-grain reconciliation must name which grain wins."
+        ),
+        "authority": (
+            "ONS/NRS/NISRA statistical disclosure control documentation; "
+            "populace#495 scoping (cross-family review measurement)."
+        ),
+    },
+    {
         "fence_id": _POPULATION_UNIVERSE_FENCE_ID,
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
@@ -445,6 +541,12 @@ _STATUS_DEFINITIONS: dict[str, str] = {
         "The official product exists and was verified at the recorded URL "
         "on verified_on, but no exact table, vintage, or hash is pinned; "
         "binding work pins it per family."
+    ),
+    SOURCE_STATUS_PINNED_IN_LADDER: (
+        "The product is downloaded and sha-pinned per build by the UK OA "
+        "ladder artifact tool, which records every source hash in the "
+        "artifact metadata; target values derive from the artifact's own "
+        "sums."
     ),
     FENCE_ENFORCEMENT_REVIEW: (
         "The fence is a reviewed adjudication requirement recorded for "

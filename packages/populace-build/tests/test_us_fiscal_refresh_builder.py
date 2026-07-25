@@ -2,6 +2,7 @@ import builtins
 import importlib.util
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.calibrate import TargetRegistry, TargetSpec
+from populace.calibrate import TargetRegistry, TargetSpec, calibrate
 from populace.frame import Frame, WeightKind
 
 
@@ -2956,9 +2957,80 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
 
 
-def test_main_writes_diagnostics_before_post_calibration_gate_failure(
-    monkeypatch, tmp_path
+def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
+    small_frame,
+    tmp_path,
 ) -> None:
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_bytes(b"h5")
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="income",
+                entity="person",
+                measure="income",
+                value=500_000.0,
+                source="fixture",
+            ),
+        ),
+        country="us",
+    )
+    result = replace(
+        calibrate(
+            small_frame,
+            registry.to_target_set(),
+            epochs=1,
+            seed=0,
+        ),
+        closing_loss=float("nan"),
+    )
+    passing_gate = builder.GateResult(
+        name="passing",
+        passed=True,
+        details={"checked": True},
+    )
+
+    builder._write_release_calibration_diagnostics(
+        result=result,
+        release_dir=tmp_path,
+        registry=registry,
+        base_h5=base_h5,
+        compilation={"dropped_target_names": []},
+        target_profile_gate=passing_gate,
+        health_input_gate=passing_gate,
+        base_population_gate=passing_gate,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["Calibration final loss is non-finite."],
+        # main() applies the committed 012733e scrub before invoking this real
+        # writer; keep that call boundary explicit rather than moving the fix.
+        default_dataset={"method": "dense_no_l0", "final_loss": None},
+    )
+
+    diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+    assert diagnostics["final_loss"] is None
+    assert diagnostics["build"]["default_dataset"]["final_loss"] is None
+
+
+@pytest.mark.parametrize("terminal_mode", ["merge", "crash", "telemetry"])
+def test_main_writes_diagnostics_before_post_calibration_gate_failure(
+    monkeypatch, tmp_path, terminal_mode
+) -> None:
+    """The populace#547 corridor contract, end to end through main().
+
+    ``merge``: SSI delivery + export other-health + the ctc sentinel all
+    fail in one run — the batch carries every group in corridor order and
+    the diagnostics artifact is written first.
+    ``crash``: the degraded-mode guards themselves are exercised — the
+    health-input evaluation raises, the incumbent path is missing, and
+    ``_release_gate_failures`` raises; each records a line instead of
+    masking the SSI failure, and the incumbent path is nulled for the
+    writer so the caught I/O failure is not replayed at the re-hash.
+    ``telemetry``: live telemetry raises while attaching the already-written
+    calibration diagnostics; the exception becomes a batch line and every
+    later terminal gate group still evaluates before the terminal raise.
+    """
     builder = _load_builder_module()
     release_id = "populace-us-2024-gate-failure-test"
     base_h5 = tmp_path / "base.h5"
@@ -2990,6 +3062,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     captured: dict[str, object] = {
         "health_stage_events": [],
         "source_stage_events": [],
+        "terminal_gate_events": [],
     }
 
     class FakeFrame:
@@ -2997,25 +3070,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return 4
 
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "build_us_fiscal_refresh_release.py",
-            "--base-h5",
-            str(base_h5),
-            "--ledger-facts",
-            str(facts),
-            "--out",
-            str(out),
-            "--release-id",
-            release_id,
-            "--asec-2023-weeks-unemployed-source",
-            str(weeks_source),
-            "--no-target-frame-checkpoint",
-            "--no-staging",
-        ],
-    )
+    argv = [
+        "build_us_fiscal_refresh_release.py",
+        "--base-h5",
+        str(base_h5),
+        "--ledger-facts",
+        str(facts),
+        "--out",
+        str(out),
+        "--release-id",
+        release_id,
+        "--asec-2023-weeks-unemployed-source",
+        str(weeks_source),
+        "--no-target-frame-checkpoint",
+    ]
+    if terminal_mode != "telemetry":
+        argv.append("--no-staging")
+    if terminal_mode == "crash":
+        # Nonexistent incumbent: the degraded-mode guard must record the
+        # load failure, null the path for the writer (no re-hash replay of
+        # the caught I/O error), and still reach the diagnostics artifact.
+        argv += [
+            "--incumbent-diagnostics",
+            str(tmp_path / "missing-incumbent.json"),
+        ]
+    monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
     monkeypatch.setattr(
         builder,
@@ -3023,6 +3102,95 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda path: "weeks-source-sha" if Path(path) == weeks_source else "base-sha",
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    if terminal_mode == "telemetry":
+
+        class LiveTelemetry:
+            run_id = "live-telemetry-test"
+
+            def stage(self, stage, **details):
+                captured.setdefault("telemetry_events", []).append(("stage", stage))
+
+            def attach_artifact(self, name, path, **details):
+                captured.setdefault("telemetry_events", []).append(
+                    ("attach_artifact", name)
+                )
+                if name == "calibration_diagnostics" and not captured.get(
+                    "telemetry_crashed"
+                ):
+                    captured["telemetry_crashed"] = True
+                    raise RuntimeError(
+                        "calibration diagnostics attach exploded "
+                        "[telemetry-crash-sentinel]"
+                    )
+
+            def calibration_progress(self, event):
+                captured.setdefault("telemetry_events", []).append(
+                    ("calibration_progress", event.get("kind"))
+                )
+
+            def complete(self):
+                captured.setdefault("telemetry_events", []).append(
+                    ("complete", "complete")
+                )
+
+        live_telemetry = LiveTelemetry()
+        monkeypatch.setattr(
+            builder,
+            "_staging_telemetry",
+            lambda *args, **kwargs: live_telemetry,
+        )
+        monkeypatch.setattr(
+            builder,
+            "PolicyEngineUSEngine",
+            lambda: SimpleNamespace(),
+        )
+
+        def fake_input_coverage_gate(frame, engine):
+            captured["terminal_gate_events"].append("input_coverage")
+            return builder.GateResult(
+                name="input_coverage",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_export_input_mass_gate(export_frame, base_frame, **kwargs):
+            captured["terminal_gate_events"].append("input_mass_parity")
+            return builder.GateResult(
+                name="export_input_mass_parity",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_qrf_tail_concentration_gate(
+            export_frame,
+            *,
+            reviewed_exclusions,
+        ):
+            captured["terminal_gate_events"].append("qrf_tail_concentration")
+            return (
+                builder.GateResult(
+                    name="qrf_tail_concentration",
+                    passed=True,
+                    details={"reviewed_exclusions": []},
+                ),
+                {"checked": True},
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "us_release_input_coverage_gate",
+            fake_input_coverage_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_export_input_mass_gate",
+            fake_export_input_mass_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_qrf_tail_concentration_gate",
+            fake_qrf_tail_concentration_gate,
+        )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
     monkeypatch.setattr(
@@ -4072,14 +4240,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_with_aca_marketplace_source_outputs",
         fake_with_aca_outputs,
     )
-    monkeypatch.setattr(
-        builder,
-        "_health_input_signal_gate",
-        lambda frame: builder.GateResult(
+
+    def fake_health_input_signal_gate(frame):
+        calls = captured.setdefault("health_input_gate_calls", 0) + 1
+        captured["health_input_gate_calls"] = calls
+        # Like other-health, this gate has a staging callsite (base frame)
+        # before the corridor callsite (export frame). The staging call must
+        # succeed — a crash there is green-path and rightly raises; only the
+        # corridor call exercises the #547 degraded-mode guard.
+        if terminal_mode == "crash" and calls > 1:
+            raise RuntimeError("health-input exploded [crash-sentinel]")
+        return builder.GateResult(
             name="health_input_signal",
             passed=True,
             details={"checked": True},
-        ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        fake_health_input_signal_gate,
     )
 
     def fake_with_medicaid_outputs(
@@ -4129,9 +4309,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_other_health_insurance_signal_gate(frame):
         captured["health_stage_events"].append("other_health_gate")
         captured["other_health_insurance_gate_called"] = True
+        calls = captured.setdefault("other_health_gate_calls", 0) + 1
+        captured["other_health_gate_calls"] = calls
+        if calls == 1:
+            # Staging call on the base frame passes: the pre-solve gate
+            # fails fast by design (nothing to preserve yet).
+            return builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            )
+        # Export-frame call fails deliberately: the populace#547 cofailure
+        # regression proves a failing post-solve signal gate batches
+        # alongside the SSI delivery failure instead of masking it with an
+        # in-place raise (the sparse-selection signal-flattening scenario).
         return builder.GateResult(
             name="other_health_insurance_premiums_signal",
-            passed=True,
+            passed=False,
+            failures=("premiums signal flattened [cofailure-sentinel]",),
             details={"checked": True},
         )
 
@@ -4238,9 +4433,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_ssi_delivery_gate(diagnostics, *, targets):
         captured["ssi_delivery_gate_called"] = True
         captured["ssi_delivery_gate_targets"] = dict(targets)
+        # Fails deliberately: the populace#547 cofailure regression proves
+        # the delivery failure reaches the diagnostics artifact and the
+        # terminal batch while other gates also fail, and that the basis
+        # artifact is written for the retry.
         return builder.GateResult(
             name="ssi_take_up_delivery",
-            passed=True,
+            passed=False,
+            failures=("18_64 delivered over envelope [cofailure-sentinel]",),
             details=diagnostics,
         )
 
@@ -4254,10 +4454,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_medicaid_diagnostics_for_existing_output",
         fake_final_medicaid_diagnostics,
     )
+
+    def fake_release_gate_failures(*args, **kwargs):
+        if terminal_mode == "crash":
+            raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        return ["ctc failed"]
+
     monkeypatch.setattr(
         builder,
         "_release_gate_failures",
-        lambda *args, **kwargs: ["ctc failed"],
+        fake_release_gate_failures,
     )
     monkeypatch.setattr(
         builder,
@@ -4268,16 +4474,82 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     try:
         builder.main()
     except RuntimeError as exc:
-        # The batched pre-write report leads with the calibration battery
-        # failure; degraded-mode coverage/parity evaluation errors on the
-        # fake frame may append further lines after it.
-        assert str(exc).startswith("Release gates failed: ctc failed")
+        # populace#547 cofailure contract: the batched report leads with the
+        # early terminal failures (SSI delivery + its retry-basis note, then
+        # the corridor lines in evaluation order); degraded-mode
+        # coverage/parity evaluation errors on the fake frame may append
+        # further lines after them.
+        message = str(exc)
+        assert message.startswith(
+            "Release gates failed: SSI take-up delivery failed: "
+            "18_64 delivered over envelope [cofailure-sentinel]"
+        )
+        assert (
+            "Other health insurance signal failed on the export frame: "
+            "premiums signal flattened [cofailure-sentinel]" in message
+        )
+        if terminal_mode != "crash":
+            assert "ctc failed" in message
+            if terminal_mode == "telemetry":
+                assert (
+                    "Terminal-batch telemetry "
+                    "attach_artifact('calibration_diagnostics') crashed" in message
+                )
+                assert "telemetry-crash-sentinel" in message
+        else:
+            assert "health-input exploded [crash-sentinel]" in message
+            assert "release-gate evaluation exploded [crash-sentinel]" in message
+            assert "ctc failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
     release_dir = out / "releases" / release_id
     assert (release_dir / "calibration_diagnostics.json").exists()
-    assert captured["diagnostics"]["gate_failures"] == ["ctc failed"]
+    # The SSI retry-basis artifact is written even though the run fails
+    # terminally — it IS the remedy input for the next attempt.
+    assert (release_dir / "us_ssi_take_up.json").exists()
+    # Artifact exclusion: the failed run leaves evidence, never artifacts.
+    # H5s land under the out root (not the release dir), so sweep the tree.
+    assert not list(out.rglob("*.h5"))
+    assert not list(release_dir.glob("*manifest*"))
+    if terminal_mode == "telemetry":
+        assert captured["telemetry_crashed"] is True
+        assert captured["terminal_gate_events"] == [
+            "input_coverage",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        ]
+    if terminal_mode != "crash":
+        assert captured["diagnostics"]["gate_failures"] == [
+            "SSI take-up delivery failed: 18_64 delivered over envelope "
+            "[cofailure-sentinel]",
+            "SSI take-up delivered-weight prior basis written to "
+            f"{release_dir / 'us_ssi_take_up.json'} for the "
+            "--ssi-take-up-prior-weight-basis retry.",
+            "Other health insurance signal failed on the export frame: "
+            "premiums signal flattened [cofailure-sentinel]",
+            "ctc failed",
+        ]
+    else:
+        # Corridor order: SSI delivery + basis note, health-input crash
+        # guard, other-health gate failure, incumbent guard, release-gate
+        # crash guard. Exact error suffixes vary (OS error text), so pin
+        # order-exact prefixes.
+        expected_prefixes = [
+            "SSI take-up delivery failed: 18_64 delivered over envelope",
+            "SSI take-up delivered-weight prior basis written to",
+            "Health-input signal evaluation crashed in degraded mode",
+            "Other health insurance signal failed on the export frame:",
+            "Incumbent diagnostics could not be loaded/validated in degraded mode",
+            "Release gate evaluation crashed in degraded mode",
+        ]
+        actual = captured["diagnostics"]["gate_failures"]
+        assert len(actual) == len(expected_prefixes), actual
+        for line, prefix in zip(actual, expected_prefixes, strict=True):
+            assert line.startswith(prefix), (line, prefix)
+        # The caught incumbent I/O failure must not be replayed at the
+        # writer's re-hash: the path is nulled for the writer.
+        assert captured["diagnostics"]["incumbent_diagnostics_path"] is None
     assert (
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
@@ -8491,9 +8763,16 @@ def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
     }
 
 
-def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
+def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
     tmp_path,
 ) -> None:
+    """A delivery miss returns batchable failures instead of raising.
+
+    populace#547: the old in-place raise destroyed the failed run's
+    calibration diagnostics and skipped every other terminal gate group.
+    The failures now join the #437 batch; the basis artifact write — the
+    retry remedy — is unchanged.
+    """
     builder = _load_builder_module()
     # Build N's measured delivery: both child and 65+ bands miss after
     # populace#453/#509 deliberately adds under-18 to the enforced roster.
@@ -8503,14 +8782,16 @@ def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    with pytest.raises(RuntimeError, match="ssi-take-up-prior-weight-basis"):
-        builder._enforce_ssi_take_up_delivery(
-            diagnostics,
-            targets=_SSI_BAND_TARGETS,
-            release_dir=release_dir,
-            telemetry=None,
-        )
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
 
+    assert failures
+    assert all(failure.startswith("SSI take-up deliver") for failure in failures)
+    assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
     written = json.loads((release_dir / "us_ssi_take_up.json").read_text())
     assert written == diagnostics
 
@@ -8529,14 +8810,108 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     release_dir = tmp_path / "release"
     release_dir.mkdir()
 
-    builder._enforce_ssi_take_up_delivery(
+    failures = builder._enforce_ssi_take_up_delivery(
         diagnostics,
         targets=_SSI_BAND_TARGETS,
         release_dir=release_dir,
         telemetry=None,
     )
 
+    assert failures == []
     assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
+    tmp_path,
+) -> None:
+    """A nonfinite delivery fails the gate AND breaks the retry writer.
+
+    The strict-JSON basis writer (allow_nan=False) raises on the very
+    diagnostics that fail the gate; the reporting crash must not mask the
+    gate failure or destroy the diagnostics artifact downstream
+    (populace#547, confirm round 2 finding 1). The failure line tells the
+    retry it must recompute delivery itself.
+    """
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {"under_18": 120_000.0, "18_64": float("nan"), "65_plus": 984_000.0}
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert failures
+    assert failures[0].startswith("SSI take-up delivery failed:")
+    assert any("could NOT be written" in failure for failure in failures)
+    # json.dumps runs before write_text, so no partial artifact exists.
+    assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_final_medicaid_quarantines_on_ssi_law_violation() -> None:
+    """A Bernoulli-law violation must quarantine, never evaluate (#547).
+
+    pe-us Medicaid eligibility consumes the frozen SSI decisions
+    (takes_up_ssi_if_eligible -> ssi -> is_ssi_recipient_for_medicaid ->
+    medicaid_category), so evaluating on corrupted decisions would
+    mis-measure rather than fail.
+    """
+    builder = _load_builder_module()
+
+    def must_not_evaluate() -> dict:
+        raise AssertionError("Medicaid must not be evaluated under quarantine")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=True,
+        degraded=True,
+        evaluate=must_not_evaluate,
+    )
+
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "quarantined" in failures[0]
+    assert "Bernoulli-law violation" in failures[0]
+
+
+def test_final_medicaid_guard_records_crash_only_in_degraded_mode() -> None:
+    builder = _load_builder_module()
+
+    def boom() -> dict:
+        raise RuntimeError("medicaid recompute exploded")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=True,
+        evaluate=boom,
+    )
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "medicaid recompute exploded" in failures[0]
+
+    with pytest.raises(RuntimeError, match="medicaid recompute exploded"):
+        builder._final_medicaid_diagnostics_or_quarantine(
+            ssi_law_degraded=False,
+            degraded=False,
+            evaluate=boom,
+        )
+
+
+def test_final_medicaid_green_path_evaluates_normally() -> None:
+    builder = _load_builder_module()
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=False,
+        evaluate=lambda: {"enrolled": 1},
+    )
+
+    assert diagnostics == {"enrolled": 1}
+    assert failures == []
 
 
 def test_calibration_diagnostics_schema_lockstep() -> None:

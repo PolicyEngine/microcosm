@@ -232,11 +232,20 @@ def _file_matches(
     expected_sha256: str | None,
     expected_size_bytes: int | None,
 ) -> bool:
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return False
+        if (
+            expected_size_bytes is not None
+            and path.stat().st_size != expected_size_bytes
+        ):
+            return False
+        return expected_sha256 is None or _sha256_file(path) == expected_sha256
+    except OSError:
+        # Implicit candidates are optional fast paths. An unreadable or
+        # concurrently removed candidate must fall through to the immutable
+        # pinned fetch rather than blocking every full-SIPP consumer.
         return False
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        return False
-    return expected_sha256 is None or _sha256_file(path) == expected_sha256
 
 
 def fetch_sipp_2023_financial_asset_donor(
