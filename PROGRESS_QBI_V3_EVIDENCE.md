@@ -39,12 +39,19 @@
 - Added the configurable deterministic builder CLI, strict JSON writer, SCF
   DTA/ZIP reader, SHA-256 provenance, and all-corporation review-only seam.
   A synthetic DTA-versus-ZIP test brings the focused total to 12 passing tests.
+- Ran the builder on the restricted SCF archive and all six SOI workbooks.
+  Both emitted resources pass their strict validators and contain reproducible
+  commands plus SHA-256 digests without embedding absolute source paths.
+- The SCF estimate implies a 35.4919% headcount-at-most-one share among
+  positive-QBI business interests (34.5661% when ambiguous legal-form code 40
+  is excluded), versus the JCT firm-level zero-W-2-employee anchor of 84.2%.
+- Finest-industry wage-share ranges are 0.4568%–34.1482% for sole
+  proprietorships, 2.3615%–42.2970% for partnerships, and
+  4.1531%–78.4294% for S corporations.
 
 ## Next
 
-- Run the builder on all seven restricted inputs and inspect the emitted
-  resources.
-- Run the builder on restricted real inputs, commit only derived resources,
-  and record commands and input digests.
-- Declare resources, add changelog/tests, run Ruff and the full workspace
-  suite, and write the final report.
+- Commit the inspected derived resources.
+- Declare resources and add packaged-resource, declaration, and contract
+  tests plus the changelog fragment.
+- Run Ruff and the full workspace suite, then write the final report.

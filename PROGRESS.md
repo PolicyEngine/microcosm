@@ -29,10 +29,14 @@ item 8; simulation wiring is out of scope.
   audited real workbooks dry-run successfully.
 - Added and tested the deterministic configurable builder with input hashes and
   SCF DTA/ZIP parity.
+- Ran the restricted real-data build and validated both emitted resources,
+  including input digests, derivation metadata, JCT comparison, and finest-level
+  SOI summary ranges.
 
 ## Current next
 
-- Execute the builder and inspect the two derived evidence resources.
+- Commit the derived resources, declare and contract-test them, then run the
+  full workspace verification and write the final report.
 
 ## Historical progress
 
