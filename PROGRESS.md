@@ -43,10 +43,14 @@ item 8; simulation wiring is out of scope.
 - Hardened all nested evidence schemas and added unequal-weight, margin-fallback,
   and malformed-metadata regressions. Forty-seven focused tests pass, Ruff is
   clean, and a restricted rebuild remains byte-identical.
+- Closed every final adversarial schema-audit finding, including disclosure
+  leaks and donor-count/fallback linkage. The real rebuild remains
+  byte-identical; 48 focused tests, full Ruff check, targeted format check, and
+  offline lock validation pass.
 
 ## Current next
 
-- Complete final schema review, full workspace verification, and the report.
+- Run the final full workspace suite and write the report.
 
 ## Historical progress
 

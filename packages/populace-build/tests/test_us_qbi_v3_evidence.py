@@ -631,6 +631,16 @@ def test_wage_capital_schema_rejects_negative_ratio() -> None:
         validate_qbi_wage_capital_priors_resource(broken)
 
 
+def test_soi_observation_rejects_disclosure_flagged_numeric_amount() -> None:
+    with pytest.raises(ValueError, match="conflicts with its publication flag"):
+        _soi_observation(
+            form="partnership",
+            label="Retail trade",
+            ordinal=1,
+            flags=_publication_flags(cost_labor="combined_for_disclosure"),
+        )
+
+
 def test_nested_resource_schemas_reject_inconsistent_metadata() -> None:
     employer = build_qbi_employer_structure_resource(
         _scf_fixture(
@@ -650,6 +660,91 @@ def test_nested_resource_schemas_reject_inconsistent_metadata() -> None:
     broken_employer["cells"][0]["employer_presence"]["estimate_level"] = "invented"
     with pytest.raises(ValueError, match="unknown presence fallback"):
         validate_qbi_employer_structure_resource(broken_employer)
+
+    wrong_minimum = deepcopy(employer)
+    wrong_minimum["methodology"]["minimum_implicate_adjusted_unweighted_n"] = 1.0
+    wrong_minimum["profit_margin_quantiles"][
+        "minimum_implicate_adjusted_unweighted_n"
+    ] = 1.0
+    with pytest.raises(ValueError, match="required value 30"):
+        validate_qbi_employer_structure_resource(wrong_minimum)
+
+    exact = _employer_cell(
+        employer,
+        income_band="0_to_25k",
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    donor = _employer_cell(
+        employer,
+        income_band="over_1m",
+        legal_form_group="sole_or_informal",
+        industry_code=7,
+    )
+    wrong_presence_donor = deepcopy(employer)
+    target = _employer_cell(
+        wrong_presence_donor,
+        income_band="0_to_25k",
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    target["employer_presence"] = deepcopy(donor["employer_presence"])
+    with pytest.raises(ValueError, match="earliest presence donor"):
+        validate_qbi_employer_structure_resource(wrong_presence_donor)
+
+    wrong_size_donor = deepcopy(employer)
+    target = _employer_cell(
+        wrong_size_donor,
+        income_band="0_to_25k",
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    target["headcount_size_distribution"] = deepcopy(
+        donor["headcount_size_distribution"]
+    )
+    with pytest.raises(ValueError, match="earliest size donor"):
+        validate_qbi_employer_structure_resource(wrong_size_donor)
+
+    wrong_requested_counts = deepcopy(employer)
+    target = _employer_cell(
+        wrong_requested_counts,
+        income_band="0_to_25k",
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    target["requested_counts"]["weighted_business_interests"] = 0.0
+    target["requested_counts"]["weighted_employer_proxy_business_interests"] = 0.0
+    with pytest.raises(ValueError, match="requested-count aggregate"):
+        validate_qbi_employer_structure_resource(wrong_requested_counts)
+
+    wrong_margin_counts = deepcopy(employer)
+    margin = _margin_cell(
+        wrong_margin_counts,
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    margin["requested_counts"]["weighted_business_interests"] = 0.0
+    with pytest.raises(ValueError, match="requested-count aggregate"):
+        validate_qbi_employer_structure_resource(wrong_margin_counts)
+
+    wrong_jct_firms = deepcopy(employer)
+    wrong_jct_firms["external_anchor"]["zero_employee_firm_share"] = 0.1
+    with pytest.raises(ValueError, match="must equal 0.842"):
+        validate_qbi_employer_structure_resource(wrong_jct_firms)
+    wrong_jct_dollars = deepcopy(employer)
+    wrong_jct_dollars["external_anchor"]["zero_employee_deduction_dollar_share"] = 0.2
+    with pytest.raises(ValueError, match="must equal 0.357"):
+        validate_qbi_employer_structure_resource(wrong_jct_dollars)
+
+    reordered_quantiles = deepcopy(employer)
+    margin = _margin_cell(
+        reordered_quantiles,
+        legal_form_group="sole_or_informal",
+        industry_code=1,
+    )
+    margin["quantiles"] = dict(reversed(list(margin["quantiles"].items())))
+    validate_qbi_employer_structure_resource(reordered_quantiles)
+    assert exact["employer_presence"]["estimate_level"] == "exact"
 
     wage_capital = build_qbi_wage_capital_priors_resource(
         sole_proprietorship=[
@@ -690,6 +785,27 @@ def test_nested_resource_schemas_reject_inconsistent_metadata() -> None:
     ] = 0
     with pytest.raises(ValueError, match="summary disagrees"):
         validate_qbi_wage_capital_priors_resource(wrong_summary)
+    wrong_measure = deepcopy(wage_capital)
+    wrong_measure["forms"]["partnership"]["wage_measure"] = "nonsense"
+    with pytest.raises(ValueError, match="wage_measure is not recognized"):
+        validate_qbi_wage_capital_priors_resource(wrong_measure)
+    disclosure_leak = deepcopy(wage_capital)
+    partnership = disclosure_leak["forms"]["partnership"]["industries"][0]
+    partnership["publication_flags"]["cost_labor"] = "combined_for_disclosure"
+    partnership["publication_flags"]["wage_share"] = "combined_for_disclosure"
+    with pytest.raises(ValueError, match="raw cost_labor conflicts"):
+        validate_qbi_wage_capital_priors_resource(disclosure_leak)
+    partnership_sector = deepcopy(wage_capital)
+    partnership_sector["forms"]["partnership"]["industries"][0]["industry_level"] = (
+        "sector_total"
+    )
+    validate_qbi_wage_capital_priors_resource(partnership_sector)
+    s_corporation_sector = deepcopy(wage_capital)
+    s_corporation_sector["forms"]["s_corporation"]["industries"][0][
+        "industry_level"
+    ] = "sector_total"
+    with pytest.raises(ValueError, match="inconsistent aggregate metadata"):
+        validate_qbi_wage_capital_priors_resource(s_corporation_sector)
 
 
 def test_packaged_qbi_v3_resources_validate_and_remain_provisional() -> None:
@@ -714,7 +830,7 @@ def test_packaged_qbi_v3_resources_validate_and_remain_provisional() -> None:
     assert unclassified["industry_level"] == "unallocable"
 
 
-def test_qbi_v3_resources_are_declared_as_specs_without_entrypoints() -> None:
+def test_qbi_v3_resources_are_declared_json_specs() -> None:
     package = files("populace.build.us")
     manifest = json.loads(
         package.joinpath("country_package.json").read_text(encoding="utf-8")
@@ -723,5 +839,7 @@ def test_qbi_v3_resources_are_declared_as_specs_without_entrypoints() -> None:
     assert RESOURCE_NAMES.issubset(manifest["resources"])
     for resource_name in RESOURCE_NAMES:
         assert resource_name.endswith(".json")
-        rendered = package.joinpath(resource_name).read_text(encoding="utf-8")
-        assert ".py:" not in rendered
+        assert isinstance(
+            json.loads(package.joinpath(resource_name).read_text(encoding="utf-8")),
+            dict,
+        )

@@ -95,6 +95,16 @@ SOI_PUBLICATION_FLAGS = frozenset(
         "not_published",
     }
 )
+SOI_RAW_AMOUNT_NAMES = (
+    "receipts",
+    "salaries",
+    "cost_labor",
+    "officer_compensation",
+    "guaranteed_payments_excluded",
+    "payroll",
+    "gross_depreciable_assets",
+    "depreciation_deduction",
+)
 
 
 @dataclass(frozen=True)
@@ -1019,6 +1029,66 @@ def _validate_scf_counts(
     return counts
 
 
+def _sum_scf_counts(
+    values: Sequence[Mapping[str, object]],
+    *,
+    include_employer: bool,
+) -> dict[str, float | int]:
+    keys = _SCF_COUNT_KEYS if include_employer else _SCF_SIMPLE_COUNT_KEYS
+    integer_keys = {
+        "pooled_record_count",
+        "employer_proxy_pooled_record_count",
+    }
+    totals: dict[str, float | int] = {}
+    for key in keys:
+        total = sum(float(value[key]) for value in values)
+        totals[key] = int(total) if key in integer_keys else float(total)
+    return totals
+
+
+def _employer_only_scf_counts(
+    value: Mapping[str, object],
+) -> dict[str, float | int]:
+    pooled = int(value["employer_proxy_pooled_record_count"])
+    unweighted = float(value["employer_proxy_implicate_adjusted_unweighted_n"])
+    weighted = float(value["weighted_employer_proxy_business_interests"])
+    return {
+        "pooled_record_count": pooled,
+        "implicate_adjusted_unweighted_n": unweighted,
+        "weighted_business_interests": weighted,
+        "employer_proxy_pooled_record_count": pooled,
+        "employer_proxy_implicate_adjusted_unweighted_n": unweighted,
+        "weighted_employer_proxy_business_interests": weighted,
+    }
+
+
+def _assert_scf_counts_equal(
+    actual: Mapping[str, object],
+    expected: Mapping[str, object],
+    location: str,
+) -> None:
+    if set(actual) != set(expected):
+        raise ValueError(f"{location} count fields do not match their source sample.")
+    integer_keys = {
+        "pooled_record_count",
+        "employer_proxy_pooled_record_count",
+    }
+    for key in expected:
+        if key in integer_keys:
+            equal = int(actual[key]) == int(expected[key])
+        else:
+            equal = math.isclose(
+                float(actual[key]),
+                float(expected[key]),
+                rel_tol=1e-12,
+                abs_tol=1e-9,
+            )
+        if not equal:
+            raise ValueError(
+                f"{location}.{key} disagrees with the requested-count aggregate."
+            )
+
+
 def validate_qbi_employer_structure_resource(
     payload: Mapping[str, object],
 ) -> None:
@@ -1087,8 +1157,20 @@ def validate_qbi_employer_structure_resource(
         },
         "source.variables",
     )
-    if variables["active_management_screeners"] != ["X3103", "X3104"]:
-        raise ValueError("source.variables has the wrong active-management screeners.")
+    expected_variables = {
+        "active_management_screeners": ["X3103", "X3104"],
+        "business_count": "X3105",
+        "weight": "X42001",
+        "industry": ["X3107", "X3207"],
+        "headcount": ["X3111", "X3211"],
+        "legal_form": ["X3119", "X3219"],
+        "ownership_percent_x100": ["X3128", "X3228"],
+        "gross_receipts": ["X3131", "X3231"],
+        "whole_business_net_income": ["X3132", "X3232"],
+        "respondent_or_spouse_works": ["X3113", "X3114", "X3213", "X3214"],
+    }
+    if dict(variables) != expected_variables:
+        raise ValueError("source.variables does not match the SCF extraction contract.")
     _exact_mapping(
         source["codebook"],
         {
@@ -1124,8 +1206,10 @@ def validate_qbi_employer_structure_resource(
         "methodology.minimum_implicate_adjusted_unweighted_n",
         minimum=0.0,
     )
-    if minimum_n == 0.0:
-        raise ValueError("Employer methodology minimum n must be positive.")
+    if minimum_n != SCF_MINIMUM_UNWEIGHTED_N:
+        raise ValueError(
+            "Employer methodology minimum n must equal the required value 30."
+        )
     if methodology["presence_collapse_order"] != [
         "income_form_industry",
         "income_form",
@@ -1156,6 +1240,14 @@ def validate_qbi_employer_structure_resource(
         list(SCF_INCOME_BANDS)
     ):
         raise ValueError("Employer income-band dimensions do not match the contract.")
+    for index, item in enumerate(income_dimensions):
+        dimension = _exact_mapping(
+            item, {"id", "definition"}, f"dimensions.income_bands[{index}]"
+        )
+        _nonempty_text(
+            dimension["definition"],
+            f"dimensions.income_bands[{index}].definition",
+        )
     form_dimensions = _list(
         dimensions["legal_form_groups"], "dimensions.legal_form_groups"
     )
@@ -1163,11 +1255,33 @@ def validate_qbi_employer_structure_resource(
         list(SCF_LEGAL_FORM_GROUPS)
     ):
         raise ValueError("Employer legal-form dimensions do not match the contract.")
+    expected_form_codes = {
+        "partnership_or_llc": [1, 11],
+        "sole_or_informal": [2, 40],
+        "s_corporation": [3],
+        "other_or_unknown": [4, -7],
+    }
+    for index, item in enumerate(form_dimensions):
+        dimension = _exact_mapping(
+            item,
+            {"id", "public_codes"},
+            f"dimensions.legal_form_groups[{index}]",
+        )
+        if dimension["public_codes"] != expected_form_codes[str(dimension["id"])]:
+            raise ValueError("Employer legal-form public codes are inconsistent.")
     industry_dimensions = _list(dimensions["industry_bins"], "dimensions.industry_bins")
     if [
         item.get("code") for item in industry_dimensions if isinstance(item, Mapping)
     ] != list(SCF_INDUSTRY_BINS):
         raise ValueError("Employer industry dimensions do not match the contract.")
+    for index, item in enumerate(industry_dimensions):
+        dimension = _exact_mapping(
+            item, {"code", "summary"}, f"dimensions.industry_bins[{index}]"
+        )
+        _nonempty_text(
+            dimension["summary"],
+            f"dimensions.industry_bins[{index}].summary",
+        )
     size_dimensions = _list(
         dimensions["headcount_size_bands"], "dimensions.headcount_size_bands"
     )
@@ -1175,6 +1289,16 @@ def validate_qbi_employer_structure_resource(
         list(SCF_HEADCOUNT_SIZE_BANDS)
     ):
         raise ValueError("Employer size-band dimensions do not match the contract.")
+    for index, item in enumerate(size_dimensions):
+        dimension = _exact_mapping(
+            item,
+            {"id", "definition"},
+            f"dimensions.headcount_size_bands[{index}]",
+        )
+        _nonempty_text(
+            dimension["definition"],
+            f"dimensions.headcount_size_bands[{index}].definition",
+        )
     _validate_provenance(root["provenance"], "provenance")
     _validate_text_list(root["judgment_calls"], "judgment_calls")
 
@@ -1220,6 +1344,10 @@ def validate_qbi_employer_structure_resource(
             f"got {len(cells)}."
         )
     seen: set[tuple[object, object, object]] = set()
+    validated_cells: dict[
+        tuple[object, object, object],
+        tuple[Mapping[str, object], Mapping[str, object], Mapping[str, object]],
+    ] = {}
     for index, raw_cell in enumerate(cells):
         location = f"cells[{index}]"
         cell = _exact_mapping(
@@ -1248,7 +1376,7 @@ def validate_qbi_employer_structure_resource(
             raise ValueError(f"Employer cell has unknown legal form {key[1]!r}.")
         if key[2] not in SCF_INDUSTRY_BINS:
             raise ValueError(f"Employer cell has unknown industry {key[2]!r}.")
-        _validate_scf_counts(
+        requested_counts = _validate_scf_counts(
             cell["requested_counts"],
             f"{location}.requested_counts",
             include_employer=True,
@@ -1351,6 +1479,103 @@ def validate_qbi_employer_structure_resource(
         ]
         if not math.isclose(sum(values), 1.0, rel_tol=0.0, abs_tol=1e-9):
             raise ValueError(f"Employer cell {key} size shares do not sum to 1.")
+        validated_cells[key] = (requested_counts, presence, size)
+
+    def aggregate_requested_counts(
+        *,
+        income_band: object | None = None,
+        legal_form_group: object | None = None,
+        industry_code: object | None = None,
+    ) -> dict[str, float | int]:
+        selected = [
+            requested
+            for (cell_income, cell_form, cell_industry), (
+                requested,
+                _,
+                __,
+            ) in validated_cells.items()
+            if (income_band is None or cell_income == income_band)
+            and (legal_form_group is None or cell_form == legal_form_group)
+            and (industry_code is None or cell_industry == industry_code)
+        ]
+        if not selected:
+            raise ValueError("Employer count aggregation selected no cells.")
+        return _sum_scf_counts(selected, include_employer=True)
+
+    for key, (_, presence, size) in validated_cells.items():
+        income_band, legal_form_group, industry_code = key
+        presence_candidates = (
+            (
+                "exact",
+                aggregate_requested_counts(
+                    income_band=income_band,
+                    legal_form_group=legal_form_group,
+                    industry_code=industry_code,
+                ),
+            ),
+            (
+                "income_form",
+                aggregate_requested_counts(
+                    income_band=income_band,
+                    legal_form_group=legal_form_group,
+                ),
+            ),
+            (
+                "form",
+                aggregate_requested_counts(legal_form_group=legal_form_group),
+            ),
+            ("all", aggregate_requested_counts()),
+        )
+        expected_presence_level = ""
+        expected_presence_counts: Mapping[str, object] | None = None
+        for level, candidate_counts in presence_candidates:
+            if (
+                float(candidate_counts["implicate_adjusted_unweighted_n"]) >= minimum_n
+                or level == "all"
+            ):
+                expected_presence_level = level
+                expected_presence_counts = candidate_counts
+                break
+        if (
+            presence["estimate_level"] != expected_presence_level
+            or expected_presence_counts is None
+        ):
+            raise ValueError(
+                f"Employer cell {key} does not use earliest presence donor."
+            )
+        _assert_scf_counts_equal(
+            _mapping(presence["source_counts"], "employer_presence.source_counts"),
+            expected_presence_counts,
+            f"Employer cell {key} presence source_counts",
+        )
+
+        size_candidates = tuple(
+            (level, _employer_only_scf_counts(candidate_counts))
+            for level, candidate_counts in presence_candidates
+        )
+        expected_size_level = ""
+        expected_size_counts: Mapping[str, object] | None = None
+        for level, candidate_counts in size_candidates:
+            if (
+                float(candidate_counts["implicate_adjusted_unweighted_n"]) >= minimum_n
+                or level == "all"
+            ):
+                expected_size_level = level
+                expected_size_counts = candidate_counts
+                break
+        if (
+            size["estimate_level"] != expected_size_level
+            or expected_size_counts is None
+        ):
+            raise ValueError(f"Employer cell {key} does not use earliest size donor.")
+        _assert_scf_counts_equal(
+            _mapping(
+                size["source_counts"],
+                "headcount_size_distribution.source_counts",
+            ),
+            expected_size_counts,
+            f"Employer cell {key} size source_counts",
+        )
 
     external = _exact_mapping(
         root["external_anchor"],
@@ -1373,10 +1598,14 @@ def validate_qbi_employer_structure_resource(
         external["zero_employee_firm_share"],
         "external_anchor.zero_employee_firm_share",
     )
-    _finite_probability(
+    deduction_share = _finite_probability(
         external["zero_employee_deduction_dollar_share"],
         "external_anchor.zero_employee_deduction_dollar_share",
     )
+    if external["zero_employee_firm_share"] != JCT_ZERO_EMPLOYEE_FIRM_SHARE:
+        raise ValueError("External JCT zero-employee firm share must equal 0.842.")
+    if deduction_share != 0.357:
+        raise ValueError("External JCT zero-employee dollar share must equal 0.357.")
     _validate_text_list(external["definition_gaps"], "external_anchor.definition_gaps")
     comparisons = _exact_mapping(
         external["scf_comparison"],
@@ -1427,7 +1656,7 @@ def validate_qbi_employer_structure_resource(
         )
         if not math.isclose(
             difference,
-            100.0 * (share - JCT_ZERO_EMPLOYEE_FIRM_SHARE),
+            100.0 * (share - float(external["zero_employee_firm_share"])),
             rel_tol=0.0,
             abs_tol=1e-12,
         ):
@@ -1460,6 +1689,10 @@ def validate_qbi_employer_structure_resource(
             f"Profit-margin resource must carry {expected_margin_count} cells."
         )
     margin_seen: set[tuple[object, object]] = set()
+    validated_margin_cells: dict[
+        tuple[object, object],
+        tuple[Mapping[str, object], Mapping[str, object]],
+    ] = {}
     quantile_names = [_quantile_name(q) for q in SCF_MARGIN_QUANTILES]
     for index, raw_cell in enumerate(margin_cells):
         location = f"profit_margin_quantiles.cells[{index}]"
@@ -1484,7 +1717,7 @@ def validate_qbi_employer_structure_resource(
         margin_seen.add(key)
         if key[0] not in SCF_LEGAL_FORM_GROUPS or key[1] not in SCF_INDUSTRY_BINS:
             raise ValueError(f"Profit-margin resource has unknown cell {key}.")
-        _validate_scf_counts(
+        requested_counts = _validate_scf_counts(
             cell["requested_counts"],
             f"{location}.requested_counts",
             include_employer=False,
@@ -1516,10 +1749,6 @@ def validate_qbi_employer_structure_resource(
         quantiles = _exact_mapping(
             cell["quantiles"], set(quantile_names), f"{location}.quantiles"
         )
-        if list(quantiles) != quantile_names:
-            raise ValueError(
-                f"Profit-margin cell {key} quantiles must be ordered {quantile_names}."
-            )
         values: list[float] = []
         for name in quantile_names:
             values.append(_finite_number(quantiles[name], f"{location}.{name}"))
@@ -1533,6 +1762,61 @@ def validate_qbi_employer_structure_resource(
         )
         if source_minimum > values[0] or values[-1] > source_maximum:
             raise ValueError(f"Profit-margin cell {key} quantiles exceed source range.")
+        validated_margin_cells[key] = (requested_counts, cell)
+
+    def aggregate_margin_counts(
+        *,
+        legal_form_group: object | None = None,
+        industry_code: object | None = None,
+    ) -> dict[str, float | int]:
+        selected = [
+            requested
+            for (cell_form, cell_industry), (
+                requested,
+                _,
+            ) in validated_margin_cells.items()
+            if (legal_form_group is None or cell_form == legal_form_group)
+            and (industry_code is None or cell_industry == industry_code)
+        ]
+        if not selected:
+            raise ValueError("Profit-margin count aggregation selected no cells.")
+        return _sum_scf_counts(selected, include_employer=False)
+
+    for key, (_, cell) in validated_margin_cells.items():
+        legal_form_group, industry_code = key
+        candidates = (
+            (
+                "exact",
+                aggregate_margin_counts(
+                    legal_form_group=legal_form_group,
+                    industry_code=industry_code,
+                ),
+            ),
+            (
+                "form",
+                aggregate_margin_counts(legal_form_group=legal_form_group),
+            ),
+            ("all", aggregate_margin_counts()),
+        )
+        expected_level = ""
+        expected_counts: Mapping[str, object] | None = None
+        for level, candidate_counts in candidates:
+            if (
+                float(candidate_counts["implicate_adjusted_unweighted_n"]) >= minimum_n
+                or level == "all"
+            ):
+                expected_level = level
+                expected_counts = candidate_counts
+                break
+        if cell["estimate_level"] != expected_level or expected_counts is None:
+            raise ValueError(
+                f"Profit-margin cell {key} does not use its earliest donor."
+            )
+        _assert_scf_counts_equal(
+            _mapping(cell["source_counts"], "profit_margin.source_counts"),
+            expected_counts,
+            f"Profit-margin cell {key} source_counts",
+        )
 
 
 @dataclass(frozen=True)
@@ -1573,25 +1857,31 @@ class SoiIndustryObservation:
             "unallocable",
         }:
             raise ValueError(f"Unknown SOI industry level {self.industry_level!r}.")
+        if set(self.publication_flags) != set(SOI_RAW_AMOUNT_NAMES):
+            raise ValueError(
+                "SOI observation publication flags must cover every raw amount."
+            )
         unknown_flags = set(self.publication_flags.values()) - SOI_PUBLICATION_FLAGS
         if unknown_flags:
             raise ValueError(
                 f"SOI observation has unknown publication flags "
                 f"{sorted(unknown_flags)}."
             )
-        for name in (
-            "receipts",
-            "salaries",
-            "cost_labor",
-            "officer_compensation",
-            "guaranteed_payments_excluded",
-            "payroll",
-            "gross_depreciable_assets",
-            "depreciation_deduction",
-        ):
+        for name in SOI_RAW_AMOUNT_NAMES:
             value = getattr(self, name)
             if value is not None and not math.isfinite(value):
                 raise ValueError(f"SOI observation {name} must be finite or null.")
+            flag = self.publication_flags[name]
+            unavailable = flag in {
+                "combined_for_disclosure",
+                "deleted_for_disclosure",
+                "not_published",
+            }
+            if unavailable != (value is None):
+                raise ValueError(
+                    f"SOI observation {name} value conflicts with its "
+                    f"publication flag {flag!r}."
+                )
 
 
 def _clean_label(value: object) -> str:
@@ -2670,6 +2960,18 @@ def validate_qbi_wage_capital_priors_resource(
             "tax_year": 2023,
             "proxy": True,
             "capital_measure": "depreciation_deduction_flow_over_receipts",
+            "source_tables": [
+                "23sp01br.xls Table 1",
+                "23sp02is.xls Table 2",
+            ],
+            "wage_measure": (
+                "Published Payroll (salaries and wages plus cost of labor) "
+                "divided by business receipts"
+            ),
+            "form_capital_measure": (
+                "Depreciation deduction including Form 8829 divided by "
+                "business receipts; a flow proxy, not UBIA"
+            ),
             "wage_names": ("payroll",),
             "capital_names": ("depreciation_deduction",),
             "provenance_extras": {"wage_component_crosscheck_cells"},
@@ -2678,6 +2980,18 @@ def validate_qbi_wage_capital_priors_resource(
             "tax_year": 2023,
             "proxy": False,
             "capital_measure": "gross_depreciable_assets_over_receipts",
+            "source_tables": [
+                "23pa01.xlsx Table 1",
+                "23pa03.xlsx Table 3",
+            ],
+            "wage_measure": (
+                "Cost of labor plus salaries and wages, excluding guaranteed "
+                "payments to partners, divided by business receipts"
+            ),
+            "form_capital_measure": (
+                "Gross depreciable assets divided by business receipts; "
+                "closest public book-value analog to UBIA"
+            ),
             "wage_names": ("cost_labor", "salaries"),
             "capital_names": ("gross_depreciable_assets",),
             "provenance_extras": {
@@ -2689,21 +3003,21 @@ def validate_qbi_wage_capital_priors_resource(
             "tax_year": 2022,
             "proxy": False,
             "capital_measure": "gross_depreciable_assets_over_receipts",
+            "source_tables": ["22co61ccr.xlsx Table 6.1"],
+            "wage_measure": (
+                "Compensation of officers plus salaries and wages divided "
+                "by business receipts"
+            ),
+            "form_capital_measure": (
+                "Gross depreciable assets divided by business receipts; "
+                "closest public book-value analog to UBIA"
+            ),
             "wage_names": ("officer_compensation", "salaries"),
             "capital_names": ("gross_depreciable_assets",),
             "provenance_extras": {"depreciation_deduction_cell"},
         },
     }
-    raw_amount_keys = {
-        "receipts",
-        "salaries",
-        "cost_labor",
-        "officer_compensation",
-        "guaranteed_payments_excluded",
-        "payroll",
-        "gross_depreciable_assets",
-        "depreciation_deduction",
-    }
+    raw_amount_keys = set(SOI_RAW_AMOUNT_NAMES)
     publication_flag_keys = raw_amount_keys | {"wage_share", "ubia_intensity"}
     industry_keys = {
         "industry_key",
@@ -2757,11 +3071,12 @@ def validate_qbi_wage_capital_priors_resource(
         form_payload = _exact_mapping(forms[form], form_keys, f"forms.{form}")
         if form_payload["tax_year"] != spec["tax_year"]:
             raise ValueError(f"forms.{form}.tax_year is not recognized.")
-        _validate_text_list(
-            form_payload["source_tables"], f"forms.{form}.source_tables"
-        )
-        _nonempty_text(form_payload["wage_measure"], f"forms.{form}.wage_measure")
-        _nonempty_text(form_payload["capital_measure"], f"forms.{form}.capital_measure")
+        if form_payload["source_tables"] != spec["source_tables"]:
+            raise ValueError(f"forms.{form}.source_tables is not recognized.")
+        if form_payload["wage_measure"] != spec["wage_measure"]:
+            raise ValueError(f"forms.{form}.wage_measure is not recognized.")
+        if form_payload["capital_measure"] != spec["form_capital_measure"]:
+            raise ValueError(f"forms.{form}.capital_measure is not recognized.")
         summary = _exact_mapping(
             form_payload["summary"], summary_keys, f"forms.{form}.summary"
         )
@@ -2800,7 +3115,10 @@ def validate_qbi_wage_capital_priors_resource(
                 raise ValueError(f"Industry {key!r} has an unknown level.")
             if not isinstance(industry["is_aggregate"], bool):
                 raise ValueError(f"Industry {key!r} is_aggregate must be boolean.")
-            if (level == "all") != industry["is_aggregate"] and level != "sector_total":
+            expected_aggregate = level == "all" or (
+                level == "sector_total" and form != "partnership"
+            )
+            if industry["is_aggregate"] != expected_aggregate:
                 raise ValueError(
                     f"Industry {key!r} has inconsistent aggregate metadata."
                 )
@@ -2845,6 +3163,17 @@ def validate_qbi_wage_capital_priors_resource(
                     f"Industry {key!r} has unknown publication flags "
                     f"{sorted(unknown_flags)}."
                 )
+            for name in SOI_RAW_AMOUNT_NAMES:
+                unavailable = flags[name] in {
+                    "combined_for_disclosure",
+                    "deleted_for_disclosure",
+                    "not_published",
+                }
+                if unavailable != (raw_amounts[name] is None):
+                    raise ValueError(
+                        f"Industry {key!r} raw {name} conflicts with its "
+                        "publication flag."
+                    )
             null_reasons = _exact_mapping(
                 industry["null_reasons"],
                 {"wage_share", "ubia_intensity"},

@@ -72,8 +72,16 @@
   nested-schema regressions. The expanded focused package selection passes 47
   tests; Ruff is clean. A restricted real-data rebuild is byte-identical to the
   post-review committed resources under the hardened validators.
+- A final adversarial schema audit found and closed nine remaining contract
+  gaps: disclosure-value consistency at observation and JSON levels, exact
+  n=30, requested/source count linkage, earliest eligible presence/size/margin
+  donors, fixed JCT anchors, exact form table/measure labels, form-specific
+  sector-total aggregation, JSON-order-independent quantiles, and removal of a
+  weak redundant entrypoint assertion in favor of the global spec-only guard.
+- The real builder remains byte-identical after these checks. Full Ruff check,
+  targeted format check, offline 118-package lock resolution, and the expanded
+  48-test focused selection pass.
 
 ## Next
 
-- Resolve the final schema review, run Ruff and the final full workspace suite,
-  then write the final report.
+- Run the final full workspace suite, then write and commit the final report.
