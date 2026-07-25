@@ -6088,6 +6088,7 @@ def _write_release_calibration_diagnostics(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_stage_gate: GateResult | None = None,
     child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
@@ -6195,6 +6196,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(eligibility_inputs_gate.details),
                 }
                 if eligibility_inputs_gate is not None
+                else None
+            ),
+            "child_disability_stage_signal": (
+                {
+                    "passed": child_disability_stage_gate.passed,
+                    "failures": list(child_disability_stage_gate.failures),
+                    "details": dict(child_disability_stage_gate.details),
+                }
+                if child_disability_stage_gate is not None
                 else None
             ),
             "child_disability_export_signal": (
@@ -6474,6 +6484,7 @@ def _build_manifests(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_stage_gate: GateResult | None = None,
     child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
@@ -6675,6 +6686,17 @@ def _build_manifests(
             ),
             **(
                 {
+                    "child_disability_stage_signal": {
+                        "passed": child_disability_stage_gate.passed,
+                        "failures": list(child_disability_stage_gate.failures),
+                        "details": dict(child_disability_stage_gate.details),
+                    }
+                }
+                if child_disability_stage_gate is not None
+                else {}
+            ),
+            **(
+                {
                     "child_disability_export_signal": {
                         "passed": child_disability_gate.passed,
                         "failures": list(child_disability_gate.failures),
@@ -6794,6 +6816,28 @@ def _build_manifests(
                     }
                 }
                 if eligibility_inputs_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_stage_signal": {
+                        "passed": child_disability_stage_gate.passed,
+                        "failures": list(child_disability_stage_gate.failures),
+                        "details": dict(child_disability_stage_gate.details),
+                    }
+                }
+                if child_disability_stage_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_export_signal": {
+                        "passed": child_disability_gate.passed,
+                        "failures": list(child_disability_gate.failures),
+                        "details": dict(child_disability_gate.details),
+                    }
+                }
+                if child_disability_gate is not None
                 else {}
             ),
             **(
@@ -8016,8 +8060,8 @@ def main() -> None:
         telemetry.stage(
             "child_disability_inputs",
             message=(
-                "Imputing SIPP-observed qualifying disability for ages 5--14 "
-                "and the explicit SSA-anchored rate for ages 0--4."
+                "Imputing complete SIPP RDIS_ALT child-item disability for "
+                "ages 1--14, with the adjacent age-1--4 rate only for age 0."
             ),
         )
     # The child stage is deliberately adjacent to eligibility_inputs: it only
@@ -8039,24 +8083,24 @@ def main() -> None:
         time_period=PERIOD,
         sipp_donor=child_disability_donor,
     )
-    child_disability_gate = us_child_disability_signal_gate(
+    child_disability_stage_gate = us_child_disability_signal_gate(
         base_frame,
         input_frame=child_disability_input_frame,
     )
-    if not child_disability_gate.passed:
+    if not child_disability_stage_gate.passed:
         if telemetry is not None:
             telemetry.stage(
                 "child_disability_inputs_gate",
                 status="failed",
                 message="Child-disability signal gate failed.",
-                failures=list(child_disability_gate.failures),
+                failures=list(child_disability_stage_gate.failures),
                 force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
                 f"Child-disability signal failed: {failure}"
-                for failure in child_disability_gate.failures
+                for failure in child_disability_stage_gate.failures
             )
         )
     if telemetry is not None:
@@ -9225,6 +9269,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
         child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
@@ -9785,6 +9830,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
         child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,

@@ -1526,7 +1526,7 @@ def test_release_gate_failures_include_child_disability_export_signal() -> None:
     child_gate = builder.GateResult(
         name="child_disability_signal",
         passed=False,
-        failures=("age 0-4: disabled share 0.0000 outside band",),
+        failures=("age 1-4: disabled share 0.0000 outside band",),
     )
 
     assert builder._release_gate_failures(
@@ -1535,7 +1535,7 @@ def test_release_gate_failures_include_child_disability_export_signal() -> None:
         child_disability_gate=child_gate,
     ) == [
         (
-            "Child-disability export signal failed: age 0-4: disabled share "
+            "Child-disability export signal failed: age 1-4: disabled share "
             "0.0000 outside band"
         ),
     ]
@@ -2894,10 +2894,27 @@ def test_release_calibration_diagnostics_include_gate_failures(
     registry = TargetRegistry((), country="us")
     profile_gate = SimpleNamespace(passed=True, failures=(), details={"n": 1})
     health_gate = SimpleNamespace(passed=True, failures=(), details={"n": 2})
-    child_disability_gate = SimpleNamespace(
+    child_disability_stage_gate = SimpleNamespace(
         passed=True,
         failures=(),
-        details={"age_0_4_disabled_share": 0.09},
+        details={
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    )
+    child_disability_export_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
     )
     base_population_gate = SimpleNamespace(
         passed=True,
@@ -2913,7 +2930,8 @@ def test_release_calibration_diagnostics_include_gate_failures(
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
-        child_disability_gate=child_disability_gate,
+        child_disability_stage_gate=child_disability_stage_gate,
+        child_disability_gate=child_disability_export_gate,
         base_population_gate=base_population_gate,
         support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
@@ -2938,10 +2956,27 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "failures": [],
         "details": {"n": 2},
     }
+    assert build["child_disability_stage_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    }
     assert build["child_disability_export_signal"] == {
         "passed": True,
         "failures": [],
-        "details": {"age_0_4_disabled_share": 0.09},
+        "details": {
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
     }
     assert build["base_population_scale"] == {
         "passed": True,
@@ -3876,11 +3911,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured.setdefault("child_disability_gate_input_frames", []).append(
             input_frame
         )
-        return builder.GateResult(
+        is_stage_gate = input_frame is not None
+        details = {
+            "scope": "stage" if is_stage_gate else "export",
+            "age_15_plus_unchanged": True if is_stage_gate else None,
+        }
+        if is_stage_gate:
+            details["weighted_child_is_disabled_share_change"] = {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            }
+        gate = builder.GateResult(
             name="child_disability_signal",
             passed=True,
-            details={"checked": True},
+            details=details,
         )
+        captured.setdefault("child_disability_gate_results", []).append(gate)
+        return gate
 
     monkeypatch.setattr(
         builder,
@@ -4628,6 +4678,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert len(child_gate_frames) == 2
     assert child_gate_frames[0] is not None
     assert child_gate_frames[1] is None
+    child_gate_results = captured["child_disability_gate_results"]
+    assert len(child_gate_results) == 2
+    assert (
+        captured["diagnostics"]["child_disability_stage_gate"] is child_gate_results[0]
+    )
+    assert captured["diagnostics"]["child_disability_gate"] is child_gate_results[1]
+    assert captured["diagnostics"]["child_disability_stage_gate"].details[
+        "weighted_child_is_disabled_share_change"
+    ]["age_5_14"] == {
+        "before": 0.0,
+        "after": 0.11,
+        "absolute_change": 0.11,
+    }
+    assert (
+        captured["diagnostics"]["child_disability_stage_gate"].details[
+            "age_15_plus_unchanged"
+        ]
+        is True
+    )
+    assert (
+        captured["diagnostics"]["child_disability_gate"].details[
+            "age_15_plus_unchanged"
+        ]
+        is None
+    )
     source_stage_events = captured["source_stage_events"]
     assert source_stage_events.index("eligibility_inputs") < source_stage_events.index(
         "child_disability"
@@ -6881,6 +6956,28 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
                 }
             },
         ),
+        child_disability_stage_gate=builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details={
+                "weighted_child_is_disabled_share_change": {
+                    "age_5_14": {
+                        "before": 0.0,
+                        "after": 0.11,
+                        "absolute_change": 0.11,
+                    }
+                },
+                "age_15_plus_unchanged": True,
+            },
+        ),
+        child_disability_gate=builder.GateResult(
+            name="child_disability_signal",
+            passed=True,
+            details={
+                "age_5_14_disabled_share": 0.11,
+                "age_15_plus_unchanged": None,
+            },
+        ),
         timing={
             "target_compilation_seconds": 3.0,
             "calibration_seconds": 4.0,
@@ -6912,6 +7009,36 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "takes_up_aca_if_eligible": 2,
         "selected_marketplace_plan_benchmark_ratio": 3,
     }
+    assert build_manifest["gates"]["child_disability_stage_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "weighted_child_is_disabled_share_change": {
+                "age_5_14": {
+                    "before": 0.0,
+                    "after": 0.11,
+                    "absolute_change": 0.11,
+                }
+            },
+            "age_15_plus_unchanged": True,
+        },
+    }
+    assert build_manifest["gates"]["child_disability_export_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {
+            "age_5_14_disabled_share": 0.11,
+            "age_15_plus_unchanged": None,
+        },
+    }
+    assert (
+        manifest["build"]["child_disability_stage_signal"]
+        == build_manifest["gates"]["child_disability_stage_signal"]
+    )
+    assert (
+        manifest["build"]["child_disability_export_signal"]
+        == build_manifest["gates"]["child_disability_export_signal"]
+    )
     assert build_manifest["gates"]["base_population_scale"]["passed"]
     assert (
         build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
