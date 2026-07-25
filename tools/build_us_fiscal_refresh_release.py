@@ -319,7 +319,11 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # (populace#469) — checkpoints materialized from count-matched flags must
 # not survive, or the solve would run on old SSI rows while the frame
 # carries the new assignment (PR #477 review finding 2).
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 7
+# 8: the ORG full-year-equivalence stage (#539) rewrites the staged org-wage
+# inputs before target materialization while the on-disk base hash is
+# unchanged; pre-#539 checkpoints carry the old ORG rows and must not be
+# reused (populace#543, post-merge audit).
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 8
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500

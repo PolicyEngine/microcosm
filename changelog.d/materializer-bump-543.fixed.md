@@ -1,0 +1,1 @@
+Bump the target-frame materializer version to 8 so release checkpoints written before the #539 ORG full-year-equivalence stage cannot be silently reused, with a regression pinning the stale-version rejection path.
