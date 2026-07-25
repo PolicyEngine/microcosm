@@ -328,7 +328,11 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # inputs before target materialization while the on-disk base hash is
 # unchanged; pre-#539 checkpoints carry the old ORG rows and must not be
 # reused (populace#543, post-merge audit).
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 8
+# 9: the child-disability stage (#453/#509) rewrites staged under-15
+# is_disabled and the downstream meets_ssi_disability_criteria input before
+# target materialization while the on-disk base hash remains unchanged;
+# version-8 checkpoints therefore miss the child SSI eligibility surface.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 9
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -1626,7 +1630,7 @@ def _target_frame_checkpoint_identity(
         # materialized target frame is built on, but arrives via a flag the
         # base hash cannot see: O attempt 3 warm-hit attempt 2's checkpoint
         # and solved on the other basis's rows (populace#543, instance 2).
-        # Unconditional None-able key — v8 starts a fresh checkpoint world,
+        # Unconditional None-able key — v9 starts a fresh checkpoint world,
         # so no legacy-identity preservation applies.
         "ssi_take_up_prior_weight_basis_sha256": (
             None
@@ -5612,6 +5616,7 @@ def _release_gate_failures(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     target_registry: TargetRegistry | None = None,
@@ -5651,6 +5656,11 @@ def _release_gate_failures(
         failures.extend(
             f"Eligibility-inputs signal failed: {failure}"
             for failure in eligibility_inputs_gate.failures
+        )
+    if child_disability_gate is not None and not child_disability_gate.passed:
+        failures.extend(
+            f"Child-disability export signal failed: {failure}"
+            for failure in child_disability_gate.failures
         )
     if pregnancy_gate is not None and not pregnancy_gate.passed:
         failures.extend(
@@ -5961,6 +5971,7 @@ def _assert_release_gates(
     immigration_gate: GateResult | None = None,
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     target_registry: TargetRegistry | None = None,
 ) -> None:
     failures = _release_gate_failures(
@@ -5973,6 +5984,7 @@ def _assert_release_gates(
         immigration_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
+        child_disability_gate=child_disability_gate,
         target_registry=target_registry,
     )
     if failures:
@@ -5996,6 +6008,7 @@ def _write_release_calibration_diagnostics(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     gate_failures: Iterable[str],
@@ -6102,6 +6115,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(eligibility_inputs_gate.details),
                 }
                 if eligibility_inputs_gate is not None
+                else None
+            ),
+            "child_disability_export_signal": (
+                {
+                    "passed": child_disability_gate.passed,
+                    "failures": list(child_disability_gate.failures),
+                    "details": dict(child_disability_gate.details),
+                }
+                if child_disability_gate is not None
                 else None
             ),
             "pregnancy_signal": (
@@ -6372,6 +6394,7 @@ def _build_manifests(
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
+    child_disability_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
@@ -6405,6 +6428,7 @@ def _build_manifests(
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_gate=child_disability_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         target_registry=registry,
@@ -6567,6 +6591,17 @@ def _build_manifests(
                     }
                 }
                 if eligibility_inputs_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "child_disability_export_signal": {
+                        "passed": child_disability_gate.passed,
+                        "failures": list(child_disability_gate.failures),
+                        "details": dict(child_disability_gate.details),
+                    }
+                }
+                if child_disability_gate is not None
                 else {}
             ),
             **(
@@ -8845,6 +8880,7 @@ def main() -> None:
     # rows, and a column nonconstant on the candidate base can flatten on the
     # selected support.
     health_input_gate = _health_input_signal_gate(export_frame)
+    child_disability_export_gate = us_child_disability_signal_gate(export_frame)
     other_health_insurance_gate = us_other_health_insurance_signal_gate(export_frame)
     if not other_health_insurance_gate.passed:
         raise RuntimeError(
@@ -8918,6 +8954,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         target_registry=registry,
@@ -8936,6 +8973,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         support_value_repairs={
@@ -9477,6 +9515,7 @@ def main() -> None:
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
+        child_disability_gate=child_disability_export_gate,
         pregnancy_gate=pregnancy_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         timing=timing,

@@ -116,10 +116,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    # 8 = the #539 ORG full-year-equivalence stage rewrites staged org-wage
-    # inputs before materialization; pre-#539 checkpoints must not be
-    # reused (populace#543).
-    assert identity["materializer_version"] == 8
+    # 9 = the child-disability stage rewrites under-15 is_disabled and the
+    # downstream SSI criterion before materialization; version-8 checkpoints
+    # do not carry that eligibility surface (populace#453/#509).
+    assert identity["materializer_version"] == 9
     # The SSI prior-weight basis is identity-bearing (populace#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -175,12 +175,12 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     tmp_path,
     small_frame,
 ) -> None:
-    """A checkpoint stored under materializer version 7 must not load.
+    """A checkpoint stored under materializer version 8 must not load.
 
-    #539 rewrote staged org-wage inputs without bumping the materializer
-    version, so version-7 checkpoints carry pre-fix ORG rows (populace#543).
-    The version constant participates in the identity comparison; this pins
-    the rejection path for the stored-7 vs current shape specifically.
+    The child-disability stage changes pre-materialization input rows without
+    changing the on-disk base hash, so version-8 checkpoints lack child
+    disability and SSI-criteria signal.  The version constant participates in
+    the identity comparison; this pins the immediately previous version miss.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -212,7 +212,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         weeks_unemployed_source_sha256="weeks-source-sha",
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
     )
-    stale_identity = {**dict(identity), "materializer_version": 7}
+    stale_identity = {**dict(identity), "materializer_version": 8}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -1477,6 +1477,32 @@ def test_release_gate_failures_include_health_input_signal() -> None:
         health_input_gate=health_input_gate,
     ) == [
         "Health input signal failed: takes_up_aca_if_eligible: constant",
+    ]
+
+
+def test_release_gate_failures_include_child_disability_export_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    child_gate = builder.GateResult(
+        name="child_disability_signal",
+        passed=False,
+        failures=("age 0-4: disabled share 0.0000 outside band",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        child_disability_gate=child_gate,
+    ) == [
+        (
+            "Child-disability export signal failed: age 0-4: disabled share "
+            "0.0000 outside band"
+        ),
     ]
 
 
@@ -2833,6 +2859,11 @@ def test_release_calibration_diagnostics_include_gate_failures(
     registry = TargetRegistry((), country="us")
     profile_gate = SimpleNamespace(passed=True, failures=(), details={"n": 1})
     health_gate = SimpleNamespace(passed=True, failures=(), details={"n": 2})
+    child_disability_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={"age_0_4_disabled_share": 0.09},
+    )
     base_population_gate = SimpleNamespace(
         passed=True,
         failures=(),
@@ -2847,6 +2878,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
         compilation={"dropped_target_names": []},
         target_profile_gate=profile_gate,
         health_input_gate=health_gate,
+        child_disability_gate=child_disability_gate,
         base_population_gate=base_population_gate,
         support_value_repairs={"social_security_components": {"applied": True}},
         audit_export_targets=False,
@@ -2870,6 +2902,11 @@ def test_release_calibration_diagnostics_include_gate_failures(
         "passed": True,
         "failures": [],
         "details": {"n": 2},
+    }
+    assert build["child_disability_export_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {"age_0_4_disabled_share": 0.09},
     }
     assert build["base_population_scale"] == {
         "passed": True,
@@ -3586,11 +3623,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["child_disability_stage_called"] = True
         captured["child_disability_seed"] = seed
         captured["child_disability_period"] = time_period
+        captured["source_stage_events"].append("child_disability")
         return frame
 
     def fake_child_disability_signal_gate(frame, *, input_frame=None):
         captured["child_disability_gate_called"] = True
-        captured["child_disability_input_frame"] = input_frame
+        captured.setdefault("child_disability_gate_input_frames", []).append(
+            input_frame
+        )
         return builder.GateResult(
             name="child_disability_signal",
             passed=True,
@@ -3669,6 +3709,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
         captured["ssi_disability_stage_called"] = True
         captured["ssi_disability_seed"] = seed
+        captured["source_stage_events"].append("ssi_disability_criteria")
         return frame
 
     def fake_ssi_disability_signal_gate(frame):
@@ -3801,6 +3842,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["ssi_take_up_targets"] = dict(targets)
         captured["ssi_reporter_source_ids"] = reporter_source_ids
         captured["ssi_take_up_prior_basis"] = prior_basis
+        captured["source_stage_events"].append("ssi_take_up")
         return frame, dict(fake_stage_diagnostics)
 
     def fake_ssi_take_up_gate(diagnostics, *, targets):
@@ -4042,6 +4084,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["source_stage_events"].append("materialize_target_frame")
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
 
@@ -4230,7 +4273,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["child_disability_seed"] == 0
     assert captured["child_disability_period"] == builder.PERIOD
     assert captured["child_disability_gate_called"] is True
-    assert captured["child_disability_input_frame"] is not None
+    child_gate_frames = captured["child_disability_gate_input_frames"]
+    assert len(child_gate_frames) == 2
+    assert child_gate_frames[0] is not None
+    assert child_gate_frames[1] is None
+    source_stage_events = captured["source_stage_events"]
+    assert source_stage_events.index("child_disability") < source_stage_events.index(
+        "ssi_disability_criteria"
+    )
+    assert source_stage_events.index(
+        "ssi_disability_criteria"
+    ) < source_stage_events.index("ssi_take_up")
+    assert source_stage_events.index("ssi_take_up") < source_stage_events.index(
+        "materialize_target_frame"
+    )
     assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
     assert (
         captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
@@ -8343,8 +8399,8 @@ def test_enforce_ssi_delivery_writes_the_basis_artifact_before_failing(
     tmp_path,
 ) -> None:
     builder = _load_builder_module()
-    # Build N's measured delivery: 65+ landed 0.98M against 2.38M — the
-    # populace#507 collapse — while under-18 stays fenced (#453/#509).
+    # Build N's measured delivery: both child and 65+ bands miss after
+    # populace#453/#509 deliberately adds under-18 to the enforced roster.
     diagnostics = _ssi_delivery_diagnostics(
         {"under_18": 120_000.0, "18_64": 4_100_000.0, "65_plus": 984_000.0}
     )
@@ -8369,7 +8425,7 @@ def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
     builder = _load_builder_module()
     diagnostics = _ssi_delivery_diagnostics(
         {
-            "under_18": 120_000.0,  # fenced: an 88% miss must not fail
+            "under_18": 990_000.0,
             "18_64": 3_900_000.0,
             "65_plus": 2_350_000.0,
         }
